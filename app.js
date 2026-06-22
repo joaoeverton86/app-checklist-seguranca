@@ -2077,12 +2077,11 @@ function startChecklistWithTypeInput(category) {
 }
 
 // ============================================
-// QR CODE SCANNER (Camera API nativa)
+// QR CODE SCANNER (Camera API nativa + fallback imagem)
 // ============================================
 
 let currentQRCategory = null;
 let qrStream = null;
-let qrVideo = null;
 let qrAnimFrame = null;
 
 function openQRScanner(category) {
@@ -2090,32 +2089,76 @@ function openQRScanner(category) {
     const overlay = document.getElementById('qrModalOverlay');
     overlay.classList.add('show');
     
-    document.getElementById('qr-status').textContent = 'Solicitando acesso à câmera...';
-    
-    const videoEl = document.getElementById('qr-video');
+    const statusEl = document.getElementById('qr-status');
     const readerEl = document.getElementById('qr-reader');
-    readerEl.innerHTML = '';
-    readerEl.appendChild(videoEl);
-    videoEl.style.display = 'block';
-    videoEl.style.width = '100%';
-    videoEl.style.borderRadius = '8px';
+    readerEl.innerHTML = '<video id="qr-video" style="display: none; width: 100%; border-radius: 8px;" playsinline autoplay muted></video>';
     
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        document.getElementById('qr-status').textContent = 'Câmera não suportada neste navegador';
-        return;
+    const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    
+    if (hasMediaDevices) {
+        statusEl.textContent = 'Solicitando acesso à câmera...';
+        navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: { ideal: 'environment' } } 
+        }).then(stream => {
+            qrStream = stream;
+            const videoEl = document.getElementById('qr-video');
+            videoEl.srcObject = stream;
+            videoEl.style.display = 'block';
+            videoEl.play();
+            statusEl.textContent = 'Aponte para o QR Code';
+            startQRDecode(videoEl);
+        }).catch(err => {
+            showQRFallback(statusEl, readerEl);
+        });
+    } else {
+        showQRFallback(statusEl, readerEl);
     }
+}
+
+function showQRFallback(statusEl, readerEl) {
+    statusEl.innerHTML = 'Câmera não disponível.<br>Selecione uma imagem com QR Code:';
+    readerEl.innerHTML = `
+        <div style="text-align: center; padding: 16px;">
+            <input type="file" id="qrFileInput" accept="image/*" capture="environment" 
+                   onchange="scanQRFromImage(this)" 
+                   style="display: none;">
+            <button onclick="document.getElementById('qrFileInput').click()" 
+                    style="background: var(--primary); color: white; border: none; border-radius: 8px; padding: 12px 24px; font-size: 14px; cursor: pointer; width: 100%;">
+                📷 Tirar Foto ou Escolher da Galeria
+            </button>
+        </div>
+    `;
+}
+
+function scanQRFromImage(input) {
+    if (!input.files || !input.files[0]) return;
     
-    navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: { ideal: 'environment' } } 
-    }).then(stream => {
-        qrStream = stream;
-        videoEl.srcObject = stream;
-        videoEl.play();
-        document.getElementById('qr-status').textContent = 'Aponte para o QR Code';
-        startQRDecode(videoEl);
-    }).catch(err => {
-        document.getElementById('qr-status').textContent = 'Erro ao acessar câmera: ' + err.message;
-    });
+    const file = input.files[0];
+    const img = new Image();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    document.getElementById('qr-status').textContent = 'Analisando imagem...';
+    
+    img.onload = function() {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        
+        if (typeof jsQR !== 'undefined') {
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            if (code) {
+                onQRScanSuccess(code.data);
+                return;
+            }
+        }
+        
+        document.getElementById('qr-status').textContent = 'QR Code não encontrado na imagem. Tente outra foto.';
+    };
+    
+    img.src = URL.createObjectURL(file);
 }
 
 function startQRDecode(videoEl) {
@@ -2123,7 +2166,7 @@ function startQRDecode(videoEl) {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     
     function decode() {
-        if (videoEl.readyState < 2) {
+        if (!qrStream || videoEl.readyState < 2) {
             qrAnimFrame = requestAnimationFrame(decode);
             return;
         }
@@ -2174,8 +2217,6 @@ function stopQRScanner() {
 
 function closeQRScanner() {
     stopQRScanner();
-    const readerEl = document.getElementById('qr-reader');
-    if (readerEl) readerEl.innerHTML = '<video id="qr-video" style="display: none; width: 100%; border-radius: 8px;" playsinline autoplay muted></video>';
     document.getElementById('qrModalOverlay').classList.remove('show');
 }
 

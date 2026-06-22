@@ -2077,40 +2077,79 @@ function startChecklistWithTypeInput(category) {
 }
 
 // ============================================
-// QR CODE SCANNER
+// QR CODE SCANNER (Camera API nativa)
 // ============================================
 
 let currentQRCategory = null;
-let html5QrCode = null;
+let qrStream = null;
+let qrVideo = null;
+let qrAnimFrame = null;
 
 function openQRScanner(category) {
     currentQRCategory = category;
     const overlay = document.getElementById('qrModalOverlay');
     overlay.classList.add('show');
     
-    document.getElementById('qr-status').textContent = 'Inicializando câmera...';
+    document.getElementById('qr-status').textContent = 'Solicitando acesso à câmera...';
     
-    if (!html5QrCode) {
-        html5QrCode = new Html5Qrcode("qr-reader");
+    const videoEl = document.getElementById('qr-video');
+    const readerEl = document.getElementById('qr-reader');
+    readerEl.innerHTML = '';
+    readerEl.appendChild(videoEl);
+    videoEl.style.display = 'block';
+    videoEl.style.width = '100%';
+    videoEl.style.borderRadius = '8px';
+    
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        document.getElementById('qr-status').textContent = 'Câmera não suportada neste navegador';
+        return;
     }
     
-    html5QrCode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: 250 },
-        (decodedText) => {
-            onQRScanSuccess(decodedText);
-        },
-        (errorMessage) => {
-        }
-    ).then(() => {
+    navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: { ideal: 'environment' } } 
+    }).then(stream => {
+        qrStream = stream;
+        videoEl.srcObject = stream;
+        videoEl.play();
         document.getElementById('qr-status').textContent = 'Aponte para o QR Code';
+        startQRDecode(videoEl);
     }).catch(err => {
-        document.getElementById('qr-status').textContent = 'Erro ao acessar câmera: ' + err;
+        document.getElementById('qr-status').textContent = 'Erro ao acessar câmera: ' + err.message;
     });
 }
 
+function startQRDecode(videoEl) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    
+    function decode() {
+        if (videoEl.readyState < 2) {
+            qrAnimFrame = requestAnimationFrame(decode);
+            return;
+        }
+        
+        canvas.width = videoEl.videoWidth;
+        canvas.height = videoEl.videoHeight;
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        
+        if (typeof jsQR !== 'undefined') {
+            const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+            if (code) {
+                onQRScanSuccess(code.data);
+                return;
+            }
+        }
+        
+        qrAnimFrame = requestAnimationFrame(decode);
+    }
+    
+    qrAnimFrame = requestAnimationFrame(decode);
+}
+
 function onQRScanSuccess(decodedText) {
-    html5QrCode.stop().catch(() => {});
+    stopQRScanner();
     closeQRScanner();
     
     const input = document.getElementById('cadastroInput' + capitalize(currentQRCategory));
@@ -2122,6 +2161,24 @@ function onQRScanSuccess(decodedText) {
     searchAndSelectCadastro(currentQRCategory, decodedText);
 }
 
+function stopQRScanner() {
+    if (qrAnimFrame) {
+        cancelAnimationFrame(qrAnimFrame);
+        qrAnimFrame = null;
+    }
+    if (qrStream) {
+        qrStream.getTracks().forEach(t => t.stop());
+        qrStream = null;
+    }
+}
+
+function closeQRScanner() {
+    stopQRScanner();
+    const readerEl = document.getElementById('qr-reader');
+    if (readerEl) readerEl.innerHTML = '<video id="qr-video" style="display: none; width: 100%; border-radius: 8px;" playsinline autoplay muted></video>';
+    document.getElementById('qrModalOverlay').classList.remove('show');
+}
+
 async function searchAndSelectCadastro(category, query) {
     const cadastros = await getCadastrosByTipo(category);
     const match = cadastros.find(c => 
@@ -2131,13 +2188,6 @@ async function searchAndSelectCadastro(category, query) {
     if (match) {
         selectCadastroFromSearch(category, match.patrimonio);
     }
-}
-
-function closeQRScanner() {
-    if (html5QrCode && html5QrCode.isScanning) {
-        html5QrCode.stop().catch(() => {});
-    }
-    document.getElementById('qrModalOverlay').classList.remove('show');
 }
 
 document.addEventListener('click', (e) => {

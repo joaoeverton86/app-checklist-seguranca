@@ -1,0 +1,139 @@
+===============================================
+CHECKLIST DE SEGURANÇA DO TRABALHO
+PISF RAMAL DO AGRESTE
+===============================================
+
+COMO USAR NO COMPUTADOR:
+------------------------
+
+1. Clique duas vezes em "iniciar.bat"
+2. O app abrirá no navegador
+
+COMO USAR NO CELULAR (APP):
+----------------------------
+
+IMPORTANTE: O app precisa de um servidor para funcionar no celular.
+
+PASSO 1: GERAR ÍCONES (uma única vez)
+   - Abra o arquivo "gerar-icone.html" no navegador do PC
+   - Clique em "Baixar 192x192" e salve como "icon-192.png"
+   - Clique em "Baixar 512x512" e salve como "icon-512.png"
+   - Coloque os arquivos .png na mesma pasta do app
+
+PASSO 2: INICIAR SERVIDOR NO PC
+   - Clique duas vezes em "servir.bat" (ou "servir.ps1")
+   - Anote o IP que aparecer (ex: 192.168.1.100)
+   - Mantenha o terminal aberto!
+
+PASSO 3: ACESSAR NO CELULAR
+   - Conecte o CELULAR na mesma rede WiFi do PC
+   - Abra o navegador do celular
+   - Digite: http://SEU_IP:8000 (ex: http://192.168.1.100:8000)
+   - O app vai abrir!
+
+PASSO 4: INSTALAR COMO APP
+   - No Chrome do celular: toque nos 3 pontinhos (...)
+   - Selecione "Adicionar a tela inicial"
+   - Confirme
+   - Pronto! Terá um ícone na tela como um app!
+
+MODO OFFLINE:
+-------------
+Uma vez instalado, o app funciona SEM internet!
+Todos os dados ficam salvos no celular.
+
+===============================================
+SINCRONIZAÇÃO COM GOOGLE SHEETS
+===============================================
+
+Para sincronizar os dados automaticamente com uma planilha:
+
+PASSO 1: CRIAR PLANILHA
+   - Abra o Google Sheets
+   - Crie uma nova planilha
+   - Nomeie como "Checklist Segurança - PISF"
+
+PASSO 2: CONFIGURAR APPS SCRIPT
+   - Na planilha, vá em Extensões → Apps Script
+   - Apague o código existente
+   - Cole TODO o código do arquivo "google-apps-script.js"
+   - Clique em "Executar" → selecione "setup"
+   - Autorize quando solicitado
+
+PASSO 3: IMPLANTAR
+   - Clique em "Implantar" → "Nova implantação"
+   - Tipo: Aplicativo da Web
+   - Execute como: Eu (seu email)
+   - Quem acessa: Qualquer pessoa
+   - Clique em "Implantar"
+   - Copie a URL que aparecer
+
+PASSO 4: CONFIGURAR NO APP
+   - Abra o app → vá em Configurações (engrenagem)
+   - Cole a URL na campo "URL do Google Apps Script"
+   - Clique em "Salvar URL"
+   - Clique em "Testar Conexão" para verificar
+   - Clique em "Sincronizar Tudo Agora" para enviar dados
+
+SINCRONIZAÇÃO AUTOMÁTICA:
+   - Dados são sincronizados automaticamente quando online
+   - Dados offline ficam em fila e sincronizam ao reconectar
+   - Verifique o status na página de Configurações
+
+FUNCIONALIDADES:
+----------------
+
+📝 CADASTRO:
+   - Equipamentos/Veículos/Ferramentas
+   - Colaboradores (nome, função, setor, ASO)
+
+📋 CHECKLIST:
+   - Selecione o equipamento cadastrado
+   - Marque itens como Conforme/Não Conforme/N/A
+   - Defina status: Interditado/Liberado c/ Restrição/Liberado
+   - Assine e salve
+
+⚠️ REPORTAR PROBLEMA:
+   - Operadores e motoristas podem reportar
+
+📊 RELATÓRIOS:
+   - Dashboard comparativo (realizados vs pendentes)
+   - Itens com mais não conformidades
+   - Exportar para CSV
+
+⚙️ CONFIGURAÇÕES:
+   - Sincronizar com Google Sheets
+   - Testar conexão
+   - Limpar dados locais
+
+NORMAS REGULAMENTADORAS:
+------------------------
+
+- NR-12: Máquinas e Equipamentos
+- NR-6: EPIs
+- NR-10: Eletricidade
+- NR-23: Incêndio
+- NR-35: Trabalho em Altura
+- NR-30: Embarcações
+- CIR/CONTRAN: Veículos
+
+ARQUIVOS:
+---------
+
+- index.html         → Tela principal
+- app.js             → Lógica do aplicativo
+- data.js            → Dados dos checklists (NRs e itens)
+- sw.js              → Service Worker (offline)
+- manifest.json      → Configuração PWA
+- google-apps-script.js → Código para Google Sheets
+- iniciar.bat        → Abrir no Windows
+- servir.bat         → Iniciar servidor local
+- gerar-icone.html   → Gerar ícones PNG
+- LEIA-ME.txt        → Este arquivo
+
+SUPORTE:
+--------
+
+Em caso de dúvidas, consulte o TST.
+
+===============================================

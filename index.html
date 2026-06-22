@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a5276">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Checklist Segurança - PISF RAMAL DO AGRESTE</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%231a5276'/><text x='50' y='70' font-size='60' text-anchor='middle' fill='white'>✓</text></svg>">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%231a5276'/><text x='50' y='70' font-size='60' text-anchor='middle' fill='white'>✓</text></svg>">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --primary: #1a5276;
+            --primary-dark: #0e3a53;
+            --primary-light: #2980b9;
+            --success: #27ae60;
+            --danger: #e74c3c;
+            --warning: #f39c12;
+            --bg: #f0f2f5;
+            --card: #ffffff;
+            --text: #2c3e50;
+            --text-light: #7f8c8d;
+            --border: #dce1e6;
+            --shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding-bottom: 80px;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            padding: 16px 20px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .header h1 { font-size: 18px; font-weight: 600; }
+        .header .subtitle { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+        .header .back-btn {
+            position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; color: white; font-size: 24px; cursor: pointer;
+            display: none;
+        }
+
+        /* Connection Status */
+        .connection-status {
+            padding: 6px 16px;
+            font-size: 12px;
+            text-align: center;
+            font-weight: 500;
+        }
+        .connection-status.online { background: #d5f5e3; color: #1e8449; }
+        .connection-status.offline { background: #fadbd8; color: #c0392b; }
+
+        /* Main Content */
+        .content { padding: 16px; max-width: 600px; margin: 0 auto; }
+
+        /* Cards */
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+        }
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-title .icon { font-size: 18px; }
+
+        /* Quick Actions */
+        .quick-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .action-btn {
+            background: var(--card);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 20px 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            color: var(--text);
+        }
+        .action-btn:active { transform: scale(0.96); border-color: var(--primary); }
+        .action-btn .icon { font-size: 32px; display: block; margin-bottom: 8px; }
+        .action-btn .label { font-size: 13px; font-weight: 600; }
+
+        /* Equipment Grid */
+        .equipment-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .equipment-item {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .equipment-item:active { background: #eaf2f8; border-color: var(--primary); }
+        .equipment-item .icon { font-size: 28px; display: block; margin-bottom: 6px; }
+        .equipment-item .name { font-size: 12px; font-weight: 500; color: var(--text); }
+        .equipment-item .nr { font-size: 10px; color: var(--text-light); }
+
+        /* Checklist Form */
+        .form-group { margin-bottom: 16px; }
+        .form-label {
+            font-size: 13px; font-weight: 600; color: var(--text);
+            margin-bottom: 6px; display: block;
+        }
+        .form-input, .form-select, .form-textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            background: white;
+            color: var(--text);
+        }
+        .form-textarea { min-height: 80px; resize: vertical; }
+
+        /* Checklist Items */
+        .checklist-item {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 10px;
+        }
+        .checklist-item .item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+        .checklist-item .item-text {
+            font-size: 13px;
+            font-weight: 500;
+            flex: 1;
+            padding-right: 10px;
+        }
+        .checklist-item .item-meta {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .badge {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+        .badge-nr { background: #eaf2f8; color: var(--primary); }
+        .badge-risk-high { background: #fadbd8; color: var(--danger); }
+        .badge-risk-medium { background: #fdebd0; color: var(--warning); }
+        .badge-risk-low { background: #d5f5e3; color: var(--success); }
+
+        /* Status Buttons */
+        .status-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        .status-btn {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            background: white;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+        .status-btn:active { transform: scale(0.95); }
+        .status-btn.c.selected { background: #d5f5e3; border-color: var(--success); color: var(--success); }
+        .status-btn.nc.selected { background: #fadbd8; border-color: var(--danger); color: var(--danger); }
+        .status-btn.na.selected { background: #f0f2f5; border-color: var(--text-light); color: var(--text-light); }
+
+        /* Observation */
+        .item-observation {
+            margin-top: 10px;
+            display: none;
+        }
+        .item-observation.show { display: block; }
+        .item-observation textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 12px;
+            min-height: 60px;
+            resize: vertical;
+        }
+
+        /* Signature */
+        .signature-area {
+            border: 2px dashed var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            background: #fafafa;
+        }
+        .signature-area canvas {
+            width: 100%;
+            height: 100px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: white;
+            touch-action: none;
+        }
+        .signature-area .clear-btn {
+            margin-top: 8px;
+            padding: 6px 16px;
+            background: var(--danger);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        /* Save Button */
+        .save-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--success), #219a52);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 16px;
+            transition: all 0.2s;
+        }
+        .save-btn:active { transform: scale(0.98); }
+        .save-btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+
+        /* Report Cards */
+        .report-summary {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .summary-card {
+            background: white;
+            border-radius: 10px;
+            padding: 14px;
+            text-align: center;
+            box-shadow: var(--shadow);
+        }
+        .summary-card .number { font-size: 28px; font-weight: 700; }
+        .summary-card .label { font-size: 11px; color: var(--text-light); margin-top: 4px; }
+        .summary-card.total .number { color: var(--primary); }
+        .summary-card.conforme .number { color: var(--success); }
+        .summary-card.nao-conforme .number { color: var(--danger); }
+
+        /* Risk List */
+        .risk-list-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            border-left: 4px solid var(--danger);
+        }
+        .risk-list-item .risk-info { flex: 1; }
+        .risk-list-item .risk-item-name { font-size: 13px; font-weight: 600; }
+        .risk-list-item .risk-count { font-size: 11px; color: var(--text-light); }
+        .risk-list-item .risk-badge {
+            background: var(--danger);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        /* History */
+        .history-item {
+            display: flex;
+            align-items: center;
+            padding: 14px;
+            background: white;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            border: 1px solid var(--border);
+        }
+        .history-item:active { background: #f8f9fa; }
+        .history-item .history-icon { font-size: 24px; margin-right: 12px; }
+        .history-item .history-info { flex: 1; }
+        .history-item .history-title { font-size: 14px; font-weight: 600; }
+        .history-item .history-date { font-size: 12px; color: var(--text-light); }
+        .history-item .history-status {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .status-ok { background: #d5f5e3; color: #1e8449; }
+        .status-alert { background: #fadbd8; color: #c0392b; }
+
+        /* Bottom Nav */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-top: 1px solid var(--border);
+            display: flex;
+            padding: 8px 0;
+            padding-bottom: max(8px, env(safe-area-inset-bottom));
+            z-index: 100;
+        }
+        .nav-item {
+            flex: 1;
+            text-align: center;
+            padding: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            color: var(--text-light);
+            transition: color 0.2s;
+        }
+        .nav-item.active { color: var(--primary); }
+        .nav-item .nav-icon { font-size: 22px; display: block; }
+        .nav-item .nav-label { font-size: 10px; margin-top: 2px; }
+
+        /* Page visibility */
+        .page { display: none; }
+        .page.active { display: block; }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-light);
+        }
+        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+        .empty-state .text { font-size: 14px; }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            padding: 20px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            width: 100%;
+            max-width: 400px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal h3 { font-size: 18px; margin-bottom: 16px; }
+        .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+        .modal-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .modal-btn.primary { background: var(--primary); color: white; }
+        .modal-btn.secondary { background: #f0f2f5; color: var(--text); }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--text);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 24px;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 300;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .toast.show { opacity: 1; }
+
+        /* Progress bar */
+        .progress-bar {
+            height: 4px;
+            background: #e0e0e0;
+            border-radius: 2px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            background: var(--success);
+            border-radius: 2px;
+            transition: width 0.3s;
+        }
+
+        /* Section title */
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text);
+            margin: 20px 0 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--primary);
+        }
+
+        /* Floating Action Button */
+        .fab {
+            position: fixed;
+            bottom: 90px;
+            right: 20px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            font-size: 28px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            cursor: pointer;
+            z-index: 90;
+            display: none;
+        }
+        .fab.show { display: block; }
+
+        /* Animations */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+
+        /* Suggestions List */
+        .suggestions-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 0 0 12px 12px;
+            max-height: 280px;
+            overflow-y: auto;
+            z-index: 50;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .suggestions-list.show {
+            display: block;
+        }
+        .suggestion-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f2f5;
+            transition: background 0.15s;
+        }
+        .suggestion-item:last-child {
+            border-bottom: none;
+        }
+        .suggestion-item:hover, .suggestion-item:active {
+            background: #eaf2f8;
+        }
+        .suggestion-item .item-info {
+            flex: 1;
+        }
+        .suggestion-item .item-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+        }
+        .suggestion-item .item-nr {
+            font-size: 11px;
+            color: var(--text-light);
+        }
+        .no-results {
+            padding: 20px;
+            text-align: center;
+            color: var(--text-light);
+            font-size: 13px;
+        }
+        .suggestion-header {
+            padding: 8px 16px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--primary);
+            background: #f8f9fa;
+            border-bottom: 1px solid var(--border);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="header">
+        <button class="back-btn" id="backBtn" onclick="goBack()">←</button>
+        <h1 id="headerTitle">Checklist Segurança</h1>
+        <div class="subtitle" id="headerSubtitle">PISF RAMAL DO AGRESTE</div>
+    </div>
+
+    <!-- Connection Status -->
+    <div class="connection-status" id="connectionStatus">
+        <span id="connectionText">● Online</span>
+    </div>
+
+    <!-- Page: Home -->
+    <div class="page active" id="pageHome">
+        <div class="content">
+            <div class="quick-actions">
+                <a class="action-btn" onclick="showPage('pageCadastro')">
+                    <span class="icon">📝</span>
+                    <span class="label">Cadastro</span>
+                </a>
+                <a class="action-btn" onclick="showPage('pageNewChecklist')">
+                    <span class="icon">📋</span>
+                    <span class="label">Novo Checklist</span>
+                </a>
+                <a class="action-btn" onclick="showPage('pageReportIssue')">
+                    <span class="icon">⚠️</span>
+                    <span class="label">Reportar Problema</span>
+                </a>
+                <a class="action-btn" onclick="showPage('pageReports')">
+                    <span class="icon">📊</span>
+                    <span class="label">Relatórios</span>
+                </a>
+                <a class="action-btn" onclick="showPage('pageHistory')">
+                    <span class="icon">📁</span>
+                    <span class="label">Histórico</span>
+                </a>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon">📋</span> Últimos Checklists</div>
+                <div id="recentChecklists">
+                    <div class="empty-state">
+                        <div class="icon">📝</div>
+                        <div class="text">Nenhum checklist realizado</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon">⚠️</span> Itens com Mais Ocorrências</div>
+                <div id="topRisks">
+                    <div class="empty-state">
+                        <div class="icon">✅</div>
+                        <div class="text">Nenhum registro de não conformidade</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page: New Checklist -->
+    <div class="page" id="pageNewChecklist">
+        <div class="content">
+            <div class="section-title">Selecione o Equipamento</div>
+            
+            <div class="card">
+                <div class="card-title" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    MÁQUINAS E EQUIPAMENTOS
+                </div>
+                <div class="search-container">
+                    <input type="text" class="search-input" id="searchMaquinas" 
+                           placeholder="Buscar equipamento..." 
+                           oninput="filterEquipment('maquinas', this.value)"
+                           onfocus="showSuggestions('maquinas')"
+                           autocomplete="off">
+                    <div class="suggestions-list" id="suggestionsMaquinas"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    VEÍCULOS
+                </div>
+                <div class="search-container">
+                    <input type="text" class="search-input" id="searchVeiculos" 
+                           placeholder="Buscar veículo..." 
+                           oninput="filterEquipment('veiculos', this.value)"
+                           onfocus="showSuggestions('veiculos')"
+                           autocomplete="off">
+                    <div class="suggestions-list" id="suggestionsVeiculos"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    FERRAMENTAS
+                </div>
+                <div class="search-container">
+                    <input type="text" class="search-input" id="searchFerramentas" 
+                           placeholder="Buscar ferramenta..." 
+                           oninput="filterEquipment('ferramentas', this.value)"
+                           onfocus="showSuggestions('ferramentas')"
+                           autocomplete="off">
+                    <div class="suggestions-list" id="suggestionsFerramentas"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page: Checklist Form -->
+    <div class="page" id="pageChecklistForm">
+        <div class="content">
+            <div class="progress-bar">
+                <div class="fill" id="progressFill" style="width: 0%"></div>
+            </div>
+
+            <div class="card">
+                <div class="form-group">
+                    <label class="form-label">Data</label>
+                    <input type="date" class="form-input" id="checklistDate">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Patrimônio / Placa</label>
+                    <input type="text" class="form-input" id="checklistPatrimonio" placeholder="Ex: PAT-001 ou ABC-1234">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nome / Descrição</label>
+                    <input type="text" class="form-input" id="checklistNome" placeholder="Ex: Trator de Esteira CAT D6">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Empresa / Subcontratada</label>
+                    <input type="text" class="form-input" id="checklistEmpresa" placeholder="Nome da empresa">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Operador / Motorista</label>
+                    <input type="text" class="form-input" id="checklistOperador" placeholder="Nome do profissional">
+                </div>
+            </div>
+
+            <div class="section-title">Itens de Verificação</div>
+            <div id="checklistItems"></div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon">📝</span> Observações Gerais</div>
+                <textarea class="form-textarea" id="checklistObservacoes" placeholder="Observações adicionais..."></textarea>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon">🚦</span> Status do Equipamento</div>
+                <p style="font-size: 11px; color: var(--text-light); margin-bottom: 12px;">
+                    Defina o status baseado na severidade dos itens não conformes
+                </p>
+                <div class="status-buttons" style="flex-direction: column;">
+                    <button class="status-btn" style="text-align: left; padding: 14px;" onclick="setStatusChecklist('interditado', this)">
+                        <span style="color: var(--danger); font-size: 16px;">🚫</span>
+                        <div>
+                            <div style="font-weight: 700; color: var(--danger);">INTERDITADO</div>
+                            <div style="font-size: 11px; color: var(--text-light);">Não pode operar até correção</div>
+                        </div>
+                    </button>
+                    <button class="status-btn" style="text-align: left; padding: 14px;" onclick="setStatusChecklist('liberado_restricao', this)">
+                        <span style="color: var(--warning); font-size: 16px;">⚠️</span>
+                        <div>
+                            <div style="font-weight: 700; color: var(--warning);">LIBERADO COM RESTRIÇÃO</div>
+                            <div style="font-size: 11px; color: var(--text-light);">Pode operar com limitações</div>
+                        </div>
+                    </button>
+                    <button class="status-btn" style="text-align: left; padding: 14px;" onclick="setStatusChecklist('liberado', this)">
+                        <span style="color: var(--success); font-size: 16px;">✅</span>
+                        <div>
+                            <div style="font-weight: 700; color: var(--success);">LIBERADO</div>
+                            <div style="font-size: 11px; color: var(--text-light);">Todos os itens conformes</div>
+                        </div>
+                    </button>
+                </div>
+                <div id="prazoAdequacao" style="display: none; margin-top: 12px;">
+                    <label class="form-label">Prazo para Adequação</label>
+                    <input type="date" class="form-input" id="checklistPrazo">
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon">✍️</span> Assinaturas</div>
+                <div class="form-group">
+                    <label class="form-label">Assinatura TST</label>
+                    <div class="signature-area">
+                        <canvas id="signatureCanvas"></canvas>
+                        <button class="clear-btn" onclick="clearSignature()">Limpar Assinatura</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Responsável / Encarregado</label>
+                    <input type="text" class="form-input" id="checklistResponsavel" placeholder="Nome do responsável">
+                </div>
+            </div>
+
+            <button class="save-btn" id="saveBtn" onclick="saveChecklist()">
+                💾 Salvar Checklist
+            </button>
+        </div>
+    </div>
+
+    <!-- Page: Report Issue -->
+    <div class="page" id="pageReportIssue">
+        <div class="content">
+            <div class="card">
+                <div class="card-title"><span class="icon">⚠️</span> Reportar Problema</div>
+                <p style="font-size: 13px; color: var(--text-light); margin-bottom: 16px;">
+                    Operadores e motoristas podem reportar problemas aqui.
+                </p>
+                <div class="form-group">
+                    <label class="form-label">Data e Hora</label>
+                    <input type="datetime-local" class="form-input" id="issueDate">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tipo</label>
+                    <select class="form-select" id="issueType">
+                        <option value="">Selecione...</option>
+                        <option value="maquinas">Máquina / Equipamento</option>
+                        <option value="veiculos">Veículo</option>
+                        <option value="ferramentas">Ferramenta</option>
+                        <option value="infraestrutura">Infraestrutura</option>
+                        <option value="epi">EPI</option>
+                        <option value="outro">Outro</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Identificação (Patrimônio/Placa)</label>
+                    <input type="text" class="form-input" id="issueIdentificacao" placeholder="Ex: PAT-001">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descrição do Problema</label>
+                    <textarea class="form-textarea" id="issueDescription" placeholder="Descreva o problema encontrado..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Seu Nome</label>
+                    <input type="text" class="form-input" id="issueReporter" placeholder="Nome de quem está reportando">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Seu Cargo/Função</label>
+                    <select class="form-select" id="issueRole">
+                        <option value="">Selecione...</option>
+                        <option value="motorista">Motorista</option>
+                        <option value="operador">Operador</option>
+                        <option value="encarregado">Encarregado de Transporte</option>
+                        <option value="mecanico">Mecânico</option>
+                        <option value="outro">Outro</option>
+                    </select>
+                </div>
+                <button class="save-btn" onclick="saveIssue()">📤 Enviar Relato</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page: Reports -->
+    <div class="page" id="pageReports">
+        <div class="content">
+            <div class="section-title" id="reportTitle">📊 Painel do Mês</div>
+            
+            <div class="report-summary" style="grid-template-columns: 1fr 1fr 1fr;">
+                <div class="summary-card total">
+                    <div class="number" id="totalEquipamentos">0</div>
+                    <div class="label">Cadastrados</div>
+                </div>
+                <div class="summary-card conforme">
+                    <div class="number" id="totalRealizados">0</div>
+                    <div class="label">Realizados</div>
+                </div>
+                <div class="summary-card nao-conforme">
+                    <div class="number" id="totalPendentes">0</div>
+                    <div class="label">Pendentes</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon">🔴</span> Status dos Checklists</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+                    <div onclick="showStatusDetails('interditado')" style="text-align: center; padding: 10px; background: #fadbd8; border-radius: 8px; cursor: pointer; transition: transform 0.2s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">
+                        <div style="font-size: 20px; font-weight: 700; color: var(--danger);" id="statusInterditados">0</div>
+                        <div style="font-size: 10px; color: var(--danger);">Interditados</div>
+                        <div style="font-size: 9px; color: var(--text-light); margin-top: 2px;">Toque para ver</div>
+                    </div>
+                    <div onclick="showStatusDetails('liberado_restricao')" style="text-align: center; padding: 10px; background: #fdebd0; border-radius: 8px; cursor: pointer; transition: transform 0.2s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">
+                        <div style="font-size: 20px; font-weight: 700; color: var(--warning);" id="statusRestricao">0</div>
+                        <div style="font-size: 10px; color: var(--warning);">Liberados c/ Restrição</div>
+                        <div style="font-size: 9px; color: var(--text-light); margin-top: 2px;">Toque para ver</div>
+                    </div>
+                    <div onclick="showStatusDetails('liberado')" style="text-align: center; padding: 10px; background: #d5f5e3; border-radius: 8px; cursor: pointer; transition: transform 0.2s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">
+                        <div style="font-size: 20px; font-weight: 700; color: var(--success);" id="statusLiberados">0</div>
+                        <div style="font-size: 10px; color: var(--success);">Liberados</div>
+                        <div style="font-size: 9px; color: var(--text-light); margin-top: 2px;">Toque para ver</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon">⚠️</span> Pendentes de Verificação</div>
+                <div id="pendentesList">
+                    <div class="empty-state">
+                        <div class="icon">📝</div>
+                        <div class="text">Cadastre equipamentos primeiro</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon">🔴</span> Itens com Mais Não Conformidades</div>
+                <div id="riskReportList">
+                    <div class="empty-state">
+                        <div class="icon">✅</div>
+                        <div class="text">Nenhuma não conformidade registrada</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon">📈</span> Checklist por Tipo</div>
+                <div id="typeReportList"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon">⚠️</span> Relatos de Problemas</div>
+                <div id="issuesReportList">
+                    <div class="empty-state">
+                        <div class="icon">✅</div>
+                        <div class="text">Nenhum relato de problema</div>
+                    </div>
+                </div>
+            </div>
+
+            <button class="save-btn" style="background: var(--primary);" onclick="exportToCSV()">
+                📥 Exportar Dados (CSV)
+            </button>
+        </div>
+    </div>
+
+    <!-- Page: History -->
+    <div class="page" id="pageHistory">
+        <div class="content">
+            <div class="card">
+                <div class="card-title"><span class="icon">📁</span> Histórico de Checklists</div>
+                <div id="historyList">
+                    <div class="empty-state">
+                        <div class="icon">📝</div>
+                        <div class="text">Nenhum checklist no histórico</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page: Cadastro -->
+    <div class="page" id="pageCadastro">
+        <div class="content">
+            <div class="section-title">Cadastros</div>
+            
+            <div class="card">
+                <div class="card-title"><span class="icon">📝</span> Cadastrar Equipamento/Veículo/Ferramenta</div>
+                <div class="form-group">
+                    <label class="form-label">Tipo *</label>
+                    <select class="form-select" id="cadastroTipo">
+                        <option value="">Selecione...</option>
+                        <option value="maquinas">🚜 Máquina/Equipamento</option>
+                        <option value="veiculos">🚗 Veículo</option>
+                        <option value="ferramentas">🔧 Ferramenta</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Categoria (NR) *</label>
+                    <select class="form-select" id="cadastroCategoria">
+                        <option value="">Selecione o tipo primeiro...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nome/Descrição *</label>
+                    <input type="text" class="form-input" id="cadastroNome" placeholder="Ex: Trator de Esteira CAT D6">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Patrimônio/Placa *</label>
+                    <input type="text" class="form-input" id="cadastroPatrimonio" placeholder="Ex: PAT-001 ou ABC-1D23">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Empresa Responsável</label>
+                    <input type="text" class="form-input" id="cadastroEmpresa" placeholder="Nome da empresa">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Setor/Localização</label>
+                    <input type="text" class="form-input" id="cadastroSetor" placeholder="Ex: Canteiro de Obras Norte">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Observações</label>
+                    <textarea class="form-textarea" id="cadastroObs" placeholder="Informações adicionais..."></textarea>
+                </div>
+                <button class="save-btn" onclick="saveCadastro()">💾 Cadastrar Equipamento</button>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon">👥</span> Cadastrar Colaborador</div>
+                <div class="form-group">
+                    <label class="form-label">Nome Completo *</label>
+                    <input type="text" class="form-input" id="colabNome" placeholder="Nome do colaborador">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Função/Cargo *</label>
+                    <select class="form-select" id="colabFuncao">
+                        <option value="">Selecione...</option>
+                        <option value="TST">Técnico de Segurança do Trabalho</option>
+                        <option value="motorista">Motorista</option>
+                        <option value="operador">Operador de Máquinas</option>
+                        <option value="encarregado_transporte">Encarregado de Transporte</option>
+                        <option value="mecanico">Mecânico</option>
+                        <option value="eletricista">Eletricista</option>
+                        <option value="pedreiro">Pedreiro</option>
+                        <option value="servente">Servente</option>
+                        <option value="encarregado_geral">Encarregado Geral</option>
+                        <option value="engenheiro">Engenheiro</option>
+                        <option value="outro">Outro</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Setor *</label>
+                    <select class="form-select" id="colabSetor">
+                        <option value="">Selecione...</option>
+                        <option value="seguranca">Segurança do Trabalho</option>
+                        <option value="transporte">Transporte</option>
+                        <option value="manutencao">Manutenção</option>
+                        <option value="operacoes">Operações</option>
+                        <option value="administrativo">Administrativo</option>
+                        <option value="obra">Obra/campo</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Empresa</label>
+                    <input type="text" class="form-input" id="colabEmpresa" placeholder="Nome da empresa">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Matrícula</label>
+                    <input type="text" class="form-input" id="colabMatricula" placeholder="Nº matrícula">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Validade ASO</label>
+                    <input type="date" class="form-input" id="colabASO">
+                </div>
+                <button class="save-btn" onclick="saveColaborador()">💾 Cadastrar Colaborador</button>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon">📋</span> Itens Cadastrados</div>
+                <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                    <select class="form-select" id="filtroCadastro" onchange="loadCadastros()" style="flex: 1;">
+                        <option value="todos">Todos</option>
+                        <option value="equipamentos">🚜 Equipamentos</option>
+                        <option value="colaboradores">👥 Colaboradores</option>
+                    </select>
+                </div>
+                <div id="cadastroList">
+                    <div class="empty-state">
+                        <div class="icon">📝</div>
+                        <div class="text">Nenhum item cadastrado</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page: Checklist Detail -->
+    <div class="page" id="pageChecklistDetail">
+        <div class="content" id="checklistDetailContent"></div>
+    </div>
+
+    <!-- Page: Configurações -->
+    <div class="page" id="pageConfig">
+        <div class="content">
+            <div class="section-title">⚙️ Configurações</div>
+            
+            <div class="card">
+                <div class="card-title"><span class="icon">☁️</span> Sincronização Google Sheets</div>
+                <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
+                    Configure a URL do Google Apps Script para sincronizar dados automaticamente com sua planilha.
+                </p>
+                
+                <div id="syncStatusCard" style="padding: 12px; border-radius: 8px; margin-bottom: 12px; background: #f0f2f5;">
+                    <div style="font-size: 13px; font-weight: 600;" id="syncStatusText">Verificando...</div>
+                    <div style="font-size: 11px; color: var(--text-light); margin-top: 4px;" id="syncStatusDetail"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">URL do Google Apps Script</label>
+                    <input type="url" class="form-input" id="syncUrlInput" 
+                           placeholder="https://script.google.com/macros/s/XXX/exec">
+                    <p style="font-size: 10px; color: var(--text-light); margin-top: 4px;">
+                        Cole a URL do deploy do seu Google Apps Script aqui
+                    </p>
+                </div>
+                
+                <div style="display: flex; gap: 10px;">
+                    <button class="save-btn" style="flex: 1; background: var(--primary);" onclick="saveSyncUrl()">
+                        💾 Salvar URL
+                    </button>
+                    <button class="save-btn" style="flex: 1; background: var(--warning);" onclick="testSync()">
+                        🧪 Testar Conexão
+                    </button>
+                </div>
+                
+                <button class="save-btn" style="background: var(--success); margin-top: 10px;" onclick="syncAllPending()">
+                    🔄 Sincronizar Tudo Agora
+                </button>
+                
+                <button class="save-btn" style="background: var(--primary); margin-top: 10px;" onclick="downloadFromSheets()">
+                    ⬇️ Baixar Dados da Planilha
+                </button>
+            </div>
+            
+            <div class="card">
+                <div class="card-title"><span class="icon">📋</span> Como Configurar</div>
+                <div style="font-size: 12px; color: var(--text-light); line-height: 1.8;">
+                    <strong>1.</strong> Crie uma planilha no Google Sheets<br>
+                    <strong>2.</strong> Vá em Extensões → Apps Script<br>
+                    <strong>3.</strong> Cole o código do arquivo <code>google-apps-script.js</code><br>
+                    <strong>4.</strong> Execute a função <code>setup()</code> uma vez<br>
+                    <strong>5.</strong> Clique em "Implantar" → "Nova implantação"<br>
+                    <strong>6.</strong> Tipo: Aplicativo da Web → Execute como: Eu<br>
+                    <strong>7.</strong> Quem acessa: Qualquer pessoa<br>
+                    <strong>8.</strong> Copie a URL e cole acima
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title"><span class="icon">🗑️</span> Dados Locais</div>
+                <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
+                    Todos os dados ficam salvos no navegador. Use este botão para limpar tudo.
+                </p>
+                <button class="save-btn" style="background: var(--danger);" onclick="clearAllData()">
+                    🗑️ Limpar Todos os Dados
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <div class="bottom-nav">
+        <a class="nav-item active" id="navHome" onclick="showPage('pageHome')">
+            <span class="nav-icon">🏠</span>
+            <span class="nav-label">Início</span>
+        </a>
+        <a class="nav-item" id="navCadastro" onclick="showPage('pageCadastro')">
+            <span class="nav-icon">📝</span>
+            <span class="nav-label">Cadastro</span>
+        </a>
+        <a class="nav-item" id="navNew" onclick="showPage('pageNewChecklist')">
+            <span class="nav-icon">📋</span>
+            <span class="nav-label">Checklist</span>
+        </a>
+        <a class="nav-item" id="navReports" onclick="showPage('pageReports')">
+            <span class="nav-icon">📊</span>
+            <span class="nav-label">Relatórios</span>
+        </a>
+        <a class="nav-item" id="navConfig" onclick="showPage('pageConfig')">
+            <span class="nav-icon">⚙️</span>
+            <span class="nav-label">Config</span>
+        </a>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal" id="modalContent"></div>
+    </div>
+
+    <script src="data.js?v=2"></script>
+    <script src="app.js?v=2"></script>
+</body>
+</html>

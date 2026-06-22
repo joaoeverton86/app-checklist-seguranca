@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Teste Google Sheets Sync</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
+        h2 { color: #1a5276; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+        button { padding: 12px 24px; background: #1a5276; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; margin: 5px; }
+        button:hover { background: #0e3a53; }
+        #resultado { margin-top: 20px; padding: 16px; border-radius: 8px; font-size: 13px; white-space: pre-wrap; word-break: break-all; }
+        .ok { background: #d5f5e3; color: #1e8449; }
+        .erro { background: #fadbd8; color: #c0392b; }
+        .info { background: #eaf2f8; color: #1a5276; }
+    </style>
+</head>
+<body>
+    <h2>🧪 Teste de Conexão - Google Sheets</h2>
+    
+    <label><strong>URL do Google Apps Script:</strong></label>
+    <input type="text" id="url" placeholder="https://script.google.com/macros/s/..." 
+           value="https://script.google.com/macros/s/AKfycby7xkkfCdxUhCzqj7ls_g18XU7WYqqPnnRq_MbamqKL/dev">
+    
+    <br>
+    <button onclick="testarGET()">1. Testar GET (ver se responde)</button>
+    <button onclick="testarPOST()">2. Testar POST (enviar dado)</button>
+    <button onclick="testarSetup()">3. Verificar abas da planilha</button>
+    
+    <div id="resultado">Clique em um botão para testar...</div>
+
+    <script>
+        const resultado = document.getElementById('resultado');
+        
+        async function testarGET() {
+            resultado.className = 'info';
+            resultado.textContent = 'Enviando GET...';
+            
+            try {
+                const url = document.getElementById('url').value;
+                const response = await fetch(url);
+                const text = await response.text();
+                resultado.className = 'ok';
+                resultado.textContent = '✅ Resposta GET:\n\n' + text;
+            } catch (error) {
+                resultado.className = 'erro';
+                resultado.textContent = '❌ Erro GET:\n' + error.message;
+            }
+        }
+        
+        async function testarPOST() {
+            resultado.className = 'info';
+            resultado.textContent = 'Enviando POST de teste...';
+            
+            try {
+                const url = document.getElementById('url').value;
+                await fetch(url, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: JSON.stringify({
+                        store: 'cadastros',
+                        data: {
+                            id: 'TESTE_' + Date.now(),
+                            tipo: 'maquinas',
+                            categoria: 'teste',
+                            nome: 'Equipamento de Teste',
+                            patrimonio: 'TEST-001',
+                            empresa: 'Empresa Teste',
+                            setor: '',
+                            obs: 'Este é um registro de teste - pode apagar',
+                            timestamp: new Date().toISOString(),
+                            ativo: true,
+                            synced: false
+                        }
+                    })
+                });
+                resultado.className = 'ok';
+                resultado.textContent = '✅ POST enviado!\n\nAgora verifique sua planilha no Google Sheets.\nA aba "Cadastros" deve ter o registro "TEST-001".\n\nSe não apareceu, execute a função "setup" no Apps Script e teste novamente.';
+            } catch (error) {
+                resultado.className = 'erro';
+                resultado.textContent = '❌ Erro POST:\n' + error.message;
+            }
+        }
+        
+        async function testarSetup() {
+            resultado.className = 'info';
+            resultado.textContent = 'Enviando cadastro de teste...';
+            
+            try {
+                const url = document.getElementById('url').value;
+                await fetch(url, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: JSON.stringify({
+                        store: 'cadastros',
+                        data: {
+                            id: 'TESTE_' + Date.now(),
+                            tipo: 'maquinas',
+                            categoria: 'teste',
+                            nome: 'Equipamento de Teste',
+                            patrimonio: 'TEST-001',
+                            empresa: 'Empresa Teste',
+                            setor: '',
+                            obs: 'Este é um registro de teste - pode apagar',
+                            timestamp: new Date().toISOString(),
+                            ativo: true,
+                            synced: false
+                        }
+                    })
+                });
+                resultado.className = 'ok';
+                resultado.textContent = '✅ Cadastro de teste enviado!\n\nVerifique sua planilha no Google Sheets.\nDeve aparecer uma aba "Cadastros" com o registro "TEST-001".\n\nSe não apareceu, execute a função "setup" no Apps Script.';
+            } catch (error) {
+                resultado.className = 'erro';
+                resultado.textContent = '❌ Erro:\n' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

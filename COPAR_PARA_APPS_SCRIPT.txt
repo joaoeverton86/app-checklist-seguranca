@@ -1,0 +1,84 @@
+function setup() {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    criarAbaSeNaoExiste(ss, 'Checklists', ['ID', 'Data', 'Patrimonio', 'Equipamento', 'NR', 'Empresa', 'Operador', 'Conformes', 'Nao Conformes', 'NA', 'Observacoes', 'Status', 'Prazo Adequacao', 'Data Hora Registro', 'Sincronizado']);
+    criarAbaSeNaoExiste(ss, 'Relatos', ['ID', 'Data', 'Tipo', 'Identificacao', 'Descricao', 'Reportado por', 'Cargo', 'Status', 'Data Hora Registro']);
+    criarAbaSeNaoExiste(ss, 'Nao Conformidades', ['ID Checklist', 'Data', 'Patrimonio', 'Item', 'NR', 'Risco', 'Observacao', 'Data Hora Registro']);
+    criarAbaSeNaoExiste(ss, 'Cadastros', ['ID', 'Tipo', 'Categoria', 'Nome', 'Patrimonio', 'Empresa', 'Setor', 'Observacoes', 'Data Hora Registro', 'Sincronizado']);
+    criarAbaSeNaoExiste(ss, 'Colaboradores', ['ID', 'Nome', 'Funcao', 'Setor', 'Empresa', 'Matricula', 'Validade ASO', 'Data Hora Registro', 'Sincronizado']);
+}
+
+function criarAbaSeNaoExiste(ss, nomeAba, cabecalhos) {
+    var aba = ss.getSheetByName(nomeAba);
+    if (!aba) {
+        aba = ss.insertSheet(nomeAba);
+        aba.appendRow(cabecalhos);
+    }
+}
+
+function doPost(e) {
+    try {
+        var dados = JSON.parse(e.postData.contents);
+        var store = dados.store;
+        var record = dados.data;
+        var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+        if (store === 'test') {
+            return ContentService.createTextOutput(JSON.stringify({success: true})).setMimeType(ContentService.MimeType.JSON);
+        }
+        if (store === 'checklists') {
+            var aba = ss.getSheetByName('Checklists');
+            aba.appendRow([record.id, record.date, record.patrimonio, record.nome, (record.equipment && record.equipment.nr) || '', record.empresa, record.operador, (record.stats && record.stats.conformes) || 0, (record.stats && record.stats.naoConformes) || 0, (record.stats && record.stats.na) || 0, record.observacoes || '', record.statusChecklist || '', record.prazoAdequacao || '', new Date().toISOString(), 'Sim']);
+        }
+        if (store === 'issues') {
+            var aba = ss.getSheetByName('Relatos');
+            aba.appendRow([record.id, record.date, record.type, record.identificacao, record.description, record.reporter, record.role, record.status, new Date().toISOString()]);
+        }
+        if (store === 'cadastros') {
+            var aba = ss.getSheetByName('Cadastros');
+            aba.appendRow([record.id, record.tipo, record.categoria, record.nome, record.patrimonio, record.empresa, record.setor, record.obs, new Date().toISOString(), 'Sim']);
+        }
+        if (store === 'colaboradores') {
+            var aba = ss.getSheetByName('Colaboradores');
+            aba.appendRow([record.id, record.nome, record.funcao, record.setor, record.empresa, record.matricula, record.aso, new Date().toISOString(), 'Sim']);
+        }
+
+        return ContentService.createTextOutput(JSON.stringify({success: true})).setMimeType(ContentService.MimeType.JSON);
+    } catch (erro) {
+        return ContentService.createTextOutput(JSON.stringify({success: false, error: erro.toString()})).setMimeType(ContentService.MimeType.JSON);
+    }
+}
+
+function doGet(e) {
+    try {
+        var ss = SpreadsheetApp.getActiveSpreadsheet();
+        var store = '';
+        if (e && e.parameter && e.parameter.store) {
+            store = e.parameter.store;
+        }
+
+        if (!store) {
+            return ContentService.createTextOutput(JSON.stringify({success: false, error: 'Parametro store obrigatorio'})).setMimeType(ContentService.MimeType.JSON);
+        }
+
+        var aba = ss.getSheetByName(store);
+        if (!aba) {
+            return ContentService.createTextOutput(JSON.stringify({success: false, error: 'Aba nao encontrada: ' + store})).setMimeType(ContentService.MimeType.JSON);
+        }
+
+        var dados = aba.getDataRange().getValues();
+        var cabecalhos = dados[0];
+        var resultado = [];
+
+        for (var i = 1; i < dados.length; i++) {
+            var obj = {};
+            for (var j = 0; j < cabecalhos.length; j++) {
+                obj[cabecalhos[j]] = dados[i][j];
+            }
+            resultado.push(obj);
+        }
+
+        return ContentService.createTextOutput(JSON.stringify({success: true, data: resultado})).setMimeType(ContentService.MimeType.JSON);
+    } catch (erro) {
+        return ContentService.createTextOutput(JSON.stringify({success: false, error: erro.toString()})).setMimeType(ContentService.MimeType.JSON);
+    }
+}

@@ -131,6 +131,10 @@ function showPage(pageId) {
     
     backBtn.style.display = pageId !== 'pageHome' ? 'block' : 'none';
     
+    if (pageId === 'pageNewChecklist') {
+        resetAllCategorySteps();
+    }
+    
     currentPage = pageId;
     
     // Carregar dados da página
@@ -174,88 +178,51 @@ let currentSuggestions = {};
 let selectedCategory = null;
 
 async function showSuggestions(category) {
-    const input = document.getElementById('search' + capitalize(category));
     const suggestions = document.getElementById('suggestions' + capitalize(category));
     
-    // Buscar tipos de equipamento
     const tipos = EQUIPMENT_TYPES[category] || [];
     
-    // Buscar equipamentos cadastrados desta categoria
-    const cadastros = await getCadastrosByTipo(category);
-    
-    // Combinar: primeiro os cadastrados, depois os tipos
-    currentSuggestions[category] = { tipos, cadastros };
+    currentSuggestions[category] = { tipos, cadastros: [] };
     selectedCategory = category;
     
-    renderSuggestions(category, '', tipos, cadastros);
+    renderSuggestions(category, '', tipos);
     suggestions.classList.add('show');
 }
 
 async function filterEquipment(category, query) {
     const suggestions = document.getElementById('suggestions' + capitalize(category));
     
-    // Buscar tipos de equipamento
     const tipos = EQUIPMENT_TYPES[category] || [];
     
-    // Buscar equipamentos cadastrados desta categoria
-    const cadastros = await getCadastrosByTipo(category);
-    
     if (!query.trim()) {
-        currentSuggestions[category] = { tipos, cadastros };
-        renderSuggestions(category, '', tipos, cadastros);
+        currentSuggestions[category] = { tipos, cadastros: [] };
+        renderSuggestions(category, '', tipos);
         suggestions.classList.add('show');
         return;
     }
     
     const queryLower = query.toLowerCase();
     
-    // Filtrar tipos por nome
     const tiposFiltrados = tipos.filter(item => 
         item.name.toLowerCase().includes(queryLower) ||
         item.nr.toLowerCase().includes(queryLower)
     );
     
-    // Filtrar cadastrados por patrimônio, nome, empresa
-    const cadastrosFiltrados = cadastros.filter(item => 
-        (item.patrimonio && item.patrimonio.toLowerCase().includes(queryLower)) ||
-        (item.nome && item.nome.toLowerCase().includes(queryLower)) ||
-        (item.empresa && item.empresa.toLowerCase().includes(queryLower))
-    );
-    
-    currentSuggestions[category] = { tipos: tiposFiltrados, cadastros: cadastrosFiltrados };
-    renderSuggestions(category, query, tiposFiltrados, cadastrosFiltrados);
+    currentSuggestions[category] = { tipos: tiposFiltrados, cadastros: [] };
+    renderSuggestions(category, query, tiposFiltrados);
     suggestions.classList.add('show');
 }
 
-function renderSuggestions(category, query, tipos, cadastros) {
+function renderSuggestions(category, query, tipos) {
     const suggestions = document.getElementById('suggestions' + capitalize(category));
     let html = '';
     
-    // Equipamentos cadastrados primeiro
-    if (cadastros.length > 0) {
-        html += '<div class="suggestion-header">📦 Equipamentos Cadastrados</div>';
-        cadastros.forEach(item => {
-            const equipType = EQUIPMENT_TYPES[category]?.find(e => e.id === item.categoria);
-            html += `
-                <div class="suggestion-item" onclick="startChecklistWithCadastro('${category}', '${item.categoria}', '${item.patrimonio}')">
-                    <div class="item-info">
-                        <div class="item-name">${item.patrimonio} - ${item.nome}</div>
-                        <div class="item-nr">${item.empresa || 'Sem empresa'} ${item.setor ? '• ' + item.setor : ''}</div>
-                    </div>
-                    <span style="color: var(--text-light); font-size: 18px;">›</span>
-                </div>
-            `;
-        });
-    }
-    
-    // Tipos de equipamento
     if (tipos.length > 0) {
-        html += '<div class="suggestion-header">📋 Tipos de Equipamento</div>';
         tipos.forEach(item => {
             html += `
-                <div class="suggestion-item" onclick="selectEquipment('${category}', '${item.id}')">
+                <div class="suggestion-item" onclick="selectCategoryType('${category}', '${item.id}')">
                     <div class="item-info">
-                        <div class="item-name">${item.name}</div>
+                        <div class="item-name">${item.icon} ${item.name}</div>
                         <div class="item-nr">${item.nr} • ${item.items.length} itens</div>
                     </div>
                     <span style="color: var(--text-light); font-size: 18px;">›</span>
@@ -265,17 +232,15 @@ function renderSuggestions(category, query, tipos, cadastros) {
     }
     
     if (!html) {
-        html = '<div class="no-results">Nenhum equipamento encontrado</div>';
+        html = '<div class="no-results">Nenhum tipo de equipamento encontrado</div>';
     }
     
     suggestions.innerHTML = html;
 }
 
 function startChecklistWithCadastro(category, equipmentId, patrimonio) {
-    // Iniciar checklist já com os dados do cadastrado
     startChecklist(category, equipmentId);
     
-    // Preencher patrimônio depois de um pequeno delay
     setTimeout(async () => {
         const cadastro = await getFromIndexedDB('cadastros', patrimonio);
         if (cadastro) {
@@ -1795,8 +1760,6 @@ async function downloadFromSheets() {
         return;
     }
     
-    showToast('Baixando dados da planilha...');
-    
     const stores = {
         'Checklists': 'checklists',
         'Cadastros': 'cadastros',
@@ -1804,14 +1767,20 @@ async function downloadFromSheets() {
         'Colaboradores': 'colaboradores'
     };
     
+    const summary = {};
     let totalImportados = 0;
     let erros = [];
     
+    showToast('Iniciando download da planilha...');
+    
     for (const [aba, storeName] of Object.entries(stores)) {
         try {
+            showToast(`Baixando ${aba}...`);
+            
             const response = await fetch(url + '?store=' + encodeURIComponent(aba));
             const result = await response.json();
             
+            let count = 0;
             if (result.success && result.data) {
                 for (const row of result.data) {
                     const id = row['ID'] || row['ID Checklist'] || '';
@@ -1823,24 +1792,41 @@ async function downloadFromSheets() {
                         if (item) {
                             item.synced = true;
                             await saveToIndexedDB(storeName, item, true);
+                            count++;
                             totalImportados++;
                         }
                     }
                 }
             }
+            
+            summary[aba] = count;
         } catch (error) {
             erros.push(aba + ': ' + error.message);
+            summary[aba] = 0;
         }
     }
     
-    if (erros.length > 0) {
-        showToast('Importados: ' + totalImportados + ' | Erros: ' + erros.length);
-        console.log('Erros importação:', erros);
-    } else {
-        showToast(totalImportados > 0 ? 
-            totalImportados + ' item(ns) importado(s) da planilha!' : 
-            'Nenhum novo item na planilha');
-    }
+    showModal(`
+        <h3>📥 Download Concluído</h3>
+        <div style="margin: 16px 0;">
+            ${Object.entries(summary).map(([aba, count]) => `
+                <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border);">
+                    <span style="font-size: 13px;">${aba}</span>
+                    <span style="font-size: 13px; font-weight: 600; color: ${count > 0 ? 'var(--success)' : 'var(--text-light)'};">${count} novo(s)</span>
+                </div>
+            `).join('')}
+            <div style="display: flex; justify-content: space-between; padding: 8px 0; margin-top: 4px;">
+                <span style="font-size: 14px; font-weight: 600;">Total</span>
+                <span style="font-size: 14px; font-weight: 700; color: var(--primary);">${totalImportados} item(s)</span>
+            </div>
+        </div>
+        ${erros.length > 0 ? `
+            <div style="background: #fadbd8; padding: 10px; border-radius: 8px; font-size: 12px; color: var(--danger); margin-bottom: 12px;">
+                Erros: ${erros.join('; ')}
+            </div>
+        ` : ''}
+        <button class="save-btn" style="background: var(--primary);" onclick="closeModal()">Fechar</button>
+    `);
     
     loadConfigPage();
 }
@@ -1965,4 +1951,197 @@ window.addEventListener('online', async () => {
     }
     
     updateConnectionStatus();
+});
+
+// ============================================
+// FLUXO SIMPLIFICADO DE EQUIPAMENTOS
+// ============================================
+
+let selectedCategoryTypes = {};
+
+function selectCategoryType(category, typeId) {
+    const equipment = EQUIPMENT_TYPES[category].find(e => e.id === typeId);
+    if (!equipment) return;
+    
+    selectedCategoryTypes[category] = equipment;
+    
+    document.getElementById('typeSearch' + capitalize(category)).style.display = 'none';
+    
+    const step2 = document.getElementById('cadastroSearch' + capitalize(category));
+    step2.style.display = 'block';
+    
+    document.getElementById('selectedType' + capitalize(category)).textContent = 
+        `${equipment.icon} ${equipment.name} (${equipment.nr})`;
+    
+    loadCadastroSuggestions(category);
+    
+    document.querySelectorAll('.suggestions-list').forEach(el => el.classList.remove('show'));
+}
+
+function resetCategoryStep(category) {
+    selectedCategoryTypes[category] = null;
+    
+    document.getElementById('cadastroSearch' + capitalize(category)).style.display = 'none';
+    
+    const step1 = document.getElementById('typeSearch' + capitalize(category));
+    step1.style.display = 'block';
+    
+    document.getElementById('search' + capitalize(category)).value = '';
+    document.getElementById('cadastroInput' + capitalize(category)).value = '';
+}
+
+function resetAllCategorySteps() {
+    ['maquinas', 'veiculos', 'ferramentas'].forEach(cat => {
+        resetCategoryStep(cat);
+    });
+}
+
+async function loadCadastroSuggestions(category) {
+    const cadastros = await getCadastrosByTipo(category);
+    const container = document.getElementById('cadastroList' + capitalize(category));
+    
+    if (cadastros.length === 0) {
+        container.innerHTML = '<div style="font-size: 12px; color: var(--text-light); text-align: center; padding: 12px;">Nenhum equipamento cadastrado para este tipo</div>';
+        return;
+    }
+    
+    container.innerHTML = cadastros.map(c => `
+        <div class="suggestion-item" onclick="selectCadastroFromSearch('${category}', '${c.patrimonio}')" 
+             style="border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px;">
+            <div class="item-info">
+                <div class="item-name" style="font-size: 13px;">${c.patrimonio} - ${c.nome}</div>
+                <div class="item-nr" style="font-size: 11px;">${c.empresa || 'Sem empresa'} ${c.setor ? '• ' + c.setor : ''}</div>
+            </div>
+            <span style="color: var(--text-light); font-size: 18px;">›</span>
+        </div>
+    `).join('');
+}
+
+async function filterCadastros(category, query) {
+    const cadastros = await getCadastrosByTipo(category);
+    const container = document.getElementById('cadastroList' + capitalize(category));
+    
+    if (!query.trim()) {
+        loadCadastroSuggestions(category);
+        return;
+    }
+    
+    const queryLower = query.toLowerCase();
+    const filtered = cadastros.filter(item => 
+        (item.patrimonio && item.patrimonio.toLowerCase().includes(queryLower)) ||
+        (item.nome && item.nome.toLowerCase().includes(queryLower)) ||
+        (item.empresa && item.empresa.toLowerCase().includes(queryLower))
+    );
+    
+    if (filtered.length === 0) {
+        container.innerHTML = `<div style="font-size: 12px; color: var(--text-light); text-align: center; padding: 12px;">
+            Nenhum resultado para "${query}"<br>
+            <span style="font-size: 11px;">Clique em "Iniciar Checklist" para usar este patrimônio</span>
+        </div>`;
+        return;
+    }
+    
+    container.innerHTML = filtered.map(c => `
+        <div class="suggestion-item" onclick="selectCadastroFromSearch('${category}', '${c.patrimonio}')" 
+             style="border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px;">
+            <div class="item-info">
+                <div class="item-name" style="font-size: 13px;">${c.patrimonio} - ${c.nome}</div>
+                <div class="item-nr" style="font-size: 11px;">${c.empresa || 'Sem empresa'} ${c.setor ? '• ' + c.setor : ''}</div>
+            </div>
+            <span style="color: var(--text-light); font-size: 18px;">›</span>
+        </div>
+    `).join('');
+}
+
+function selectCadastroFromSearch(category, patrimonio) {
+    const equipment = selectedCategoryTypes[category];
+    if (!equipment) return;
+    
+    startChecklist(category, equipment.id);
+    
+    setTimeout(async () => {
+        const cadastro = await getFromIndexedDB('cadastros', patrimonio);
+        if (cadastro) {
+            document.getElementById('checklistPatrimonio').value = cadastro.patrimonio || '';
+            document.getElementById('checklistNome').value = cadastro.nome || '';
+            document.getElementById('checklistEmpresa').value = cadastro.empresa || '';
+        }
+    }, 100);
+}
+
+function startChecklistWithTypeInput(category) {
+    const equipment = selectedCategoryTypes[category];
+    if (!equipment) return;
+    
+    startChecklist(category, equipment.id);
+}
+
+// ============================================
+// QR CODE SCANNER
+// ============================================
+
+let currentQRCategory = null;
+let html5QrCode = null;
+
+function openQRScanner(category) {
+    currentQRCategory = category;
+    const overlay = document.getElementById('qrModalOverlay');
+    overlay.classList.add('show');
+    
+    document.getElementById('qr-status').textContent = 'Inicializando câmera...';
+    
+    if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("qr-reader");
+    }
+    
+    html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 250 },
+        (decodedText) => {
+            onQRScanSuccess(decodedText);
+        },
+        (errorMessage) => {
+        }
+    ).then(() => {
+        document.getElementById('qr-status').textContent = 'Aponte para o QR Code';
+    }).catch(err => {
+        document.getElementById('qr-status').textContent = 'Erro ao acessar câmera: ' + err;
+    });
+}
+
+function onQRScanSuccess(decodedText) {
+    html5QrCode.stop().catch(() => {});
+    closeQRScanner();
+    
+    const input = document.getElementById('cadastroInput' + capitalize(currentQRCategory));
+    if (input) {
+        input.value = decodedText;
+        filterCadastros(currentQRCategory, decodedText);
+    }
+    
+    searchAndSelectCadastro(currentQRCategory, decodedText);
+}
+
+async function searchAndSelectCadastro(category, query) {
+    const cadastros = await getCadastrosByTipo(category);
+    const match = cadastros.find(c => 
+        c.patrimonio && c.patrimonio.toLowerCase() === query.toLowerCase()
+    );
+    
+    if (match) {
+        selectCadastroFromSearch(category, match.patrimonio);
+    }
+}
+
+function closeQRScanner() {
+    if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().catch(() => {});
+    }
+    document.getElementById('qrModalOverlay').classList.remove('show');
+}
+
+document.addEventListener('click', (e) => {
+    if (e.target.id === 'qrModalOverlay') {
+        closeQRScanner();
+    }
 });

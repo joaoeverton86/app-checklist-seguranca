@@ -1295,13 +1295,12 @@ async function loadHistory() {
             `${c.stats.naoConformes} NC` : 'Conforme';
         const date = new Date(c.date).toLocaleDateString('pt-BR');
         
-        const icon = c.equipment?.icon || '📦';
         return `
             <div class="history-item" onclick="viewChecklist('${c.id}')">
-                <span class="history-icon">${icon}</span>
                 <div class="history-info">
-                    <div class="history-title">${c.patrimonio || 'Sem patrimônio'} - ${c.nome || ''}</div>
-                    <div class="history-date">${date} • ${c.empresa || 'Sem empresa'}</div>
+                    <div class="history-title">${c.patrimonio || 'Sem patrimônio'}</div>
+                    <div class="history-date">${c.nome || ''}</div>
+                    <div class="history-date">${date} • ${c.empresa || ''}</div>
                 </div>
                 <span class="history-status ${statusClass}">${statusText}</span>
             </div>`;
@@ -1750,13 +1749,12 @@ async function loadRecentChecklists() {
         const statusText = c.stats.naoConformes > 0 ? 
             `${c.stats.naoConformes} NC` : 'OK';
         
-        const icon = c.equipment?.icon || '📦';
         return `
             <div class="history-item" onclick="viewChecklist('${c.id}')">
-                <span class="history-icon">${icon}</span>
                 <div class="history-info">
                     <div class="history-title">${c.patrimonio || 'Sem patrimônio'}</div>
-                    <div class="history-date">${c.nome || ''} • ${date}</div>
+                    <div class="history-date">${c.nome || ''}</div>
+                    <div class="history-date">${date}</div>
                 </div>
                 <span class="history-status ${statusClass}">${statusText}</span>
             </div>`;

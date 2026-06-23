@@ -975,13 +975,48 @@
         </div>
     </div>
 
-    <!-- Page: Cadastro -->
+    <!-- Page: Gestão de Cadastros -->
     <div class="page" id="pageCadastro">
         <div class="content">
-            <div class="section-title">Cadastros</div>
-            
+            <div class="section-title">Gestão de Cadastros</div>
+
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <button class="status-btn c selected" id="tabEquipamentos" onclick="switchGestaoTab('equipamentos')" style="flex: 1;">🚜 Equipamentos</button>
+                <button class="status-btn na" id="tabColaboradores" onclick="switchGestaoTab('colaboradores')" style="flex: 1;">👥 Colaboradores</button>
+            </div>
+
+            <div class="search-container" style="margin-bottom: 12px;">
+                <input type="text" class="search-input" id="gestaoSearch" 
+                       placeholder="Buscar por nome, patrimônio, empresa..." 
+                       oninput="filterGestao(this.value)" autocomplete="off">
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span style="font-size: 12px; color: var(--text-light);" id="gestaoCount">0 itens</span>
+                <button onclick="showPage('pageConfig')" style="background: var(--primary); color: white; border: none; border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer;">+ Novo Cadastro</button>
+            </div>
+
+            <div id="gestaoList">
+                <div class="empty-state">
+                    <div class="icon">📝</div>
+                    <div class="text">Nenhum item cadastrado</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page: Checklist Detail -->
+    <div class="page" id="pageChecklistDetail">
+        <div class="content" id="checklistDetailContent"></div>
+    </div>
+
+    <!-- Page: Configurações -->
+    <div class="page" id="pageConfig">
+        <div class="content">
+            <div class="section-title">⚙️ Configurações</div>
+
             <div class="card">
-                <div class="card-title"><span class="icon">📝</span> Cadastrar Equipamento/Veículo/Ferramenta</div>
+                <div class="card-title"><span class="icon">📝</span> Novo Equipamento/Veículo/Ferramenta</div>
                 <div class="form-group">
                     <label class="form-label">Tipo *</label>
                     <select class="form-select" id="cadastroTipo">
@@ -1021,7 +1056,7 @@
             </div>
 
             <div class="card">
-                <div class="card-title"><span class="icon">👥</span> Cadastrar Colaborador</div>
+                <div class="card-title"><span class="icon">👥</span> Novo Colaborador</div>
                 <div class="form-group">
                     <label class="form-label">Nome Completo *</label>
                     <input type="text" class="form-input" id="colabNome" placeholder="Nome do colaborador">
@@ -1069,35 +1104,6 @@
                 </div>
                 <button class="save-btn" onclick="saveColaborador()">💾 Cadastrar Colaborador</button>
             </div>
-
-            <div class="card">
-                <div class="card-title"><span class="icon">📋</span> Itens Cadastrados</div>
-                <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-                    <select class="form-select" id="filtroCadastro" onchange="loadCadastros()" style="flex: 1;">
-                        <option value="todos">Todos</option>
-                        <option value="equipamentos">🚜 Equipamentos</option>
-                        <option value="colaboradores">👥 Colaboradores</option>
-                    </select>
-                </div>
-                <div id="cadastroList">
-                    <div class="empty-state">
-                        <div class="icon">📝</div>
-                        <div class="text">Nenhum item cadastrado</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Page: Checklist Detail -->
-    <div class="page" id="pageChecklistDetail">
-        <div class="content" id="checklistDetailContent"></div>
-    </div>
-
-    <!-- Page: Configurações -->
-    <div class="page" id="pageConfig">
-        <div class="content">
-            <div class="section-title">⚙️ Configurações</div>
             
             <div class="card">
                 <div class="card-title"><span class="icon">☁️</span> Sincronização Google Sheets</div>
@@ -1174,11 +1180,11 @@
             <span class="nav-label">Início</span>
         </a>
         <a class="nav-item" id="navCadastro" onclick="showPage('pageCadastro')">
-            <span class="nav-icon">📝</span>
-            <span class="nav-label">Cadastro</span>
+            <span class="nav-icon">📋</span>
+            <span class="nav-label">Gestão</span>
         </a>
         <a class="nav-item" id="navNew" onclick="showPage('pageNewChecklist')">
-            <span class="nav-icon">📋</span>
+            <span class="nav-icon">✅</span>
             <span class="nav-label">Checklist</span>
         </a>
         <a class="nav-item" id="navReports" onclick="showPage('pageReports')">

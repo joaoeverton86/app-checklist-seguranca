@@ -1,5 +1,5 @@
 // Service Worker - Checklist Segurança
-const CACHE_NAME = 'checklist-v13';
+const CACHE_NAME = 'checklist-v14';
 const ASSETS = [
     './',
     './index.html',

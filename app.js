@@ -300,7 +300,7 @@ function updateCategoriaOptions(tipo) {
     EQUIPMENT_TYPES[tipo].forEach(eq => {
         const option = document.createElement('option');
         option.value = eq.id;
-        option.textContent = `${eq.icon} ${eq.name} (${eq.nr})`;
+        option.textContent = `${eq.name} (${eq.nr})`;
         categoriaSelect.appendChild(option);
     });
 }
@@ -529,9 +529,29 @@ async function loadGestao(search = '') {
             return;
         }
 
-        const funcaoNome = { TST: 'TST', motorista: 'Motorista', operador: 'Operador', encarregado_transporte: 'Enc. Transporte', mecanico: 'Mecânico', eletricista: 'Eletricista', pedreiro: 'Pedreiro', servente: 'Servente', encarregado_geral: 'Enc. Geral', engenheiro: 'Engenheiro', outro: 'Outro' };
-        const setorNome = { seguranca: 'Segurança', transporte: 'Transporte', manutencao: 'Manutenção', operacoes: 'Operações', administrativo: 'Admin', obra: 'Obra' };
-        const funcoesIcon = { TST: '🦺', motorista: '🚗', operador: '🚜', encarregado_transporte: '🚛', mecanico: '🔧', eletricista: '⚡', pedreiro: '🔨', servente: '👷', encarregado_geral: '👨‍💼', engenheiro: '👷‍♂️', outro: '👤' };
+        const funcaoIcon = (f) => {
+            if (!f) return '👤';
+            const lower = f.toLowerCase();
+            if (lower.includes('motorista')) return '🚛';
+            if (lower.includes('operador')) return '🚜';
+            if (lower.includes('mecân') || lower.includes('mecan')) return '🔧';
+            if (lower.includes('elétr') || lower.includes('eletro')) return '⚡';
+            if (lower.includes('pedreiro')) return '🔨';
+            if (lower.includes('servente')) return '👷';
+            if (lower.includes('engenheiro')) return '👷‍♂️';
+            if (lower.includes('técnico') || lower.includes('tecnico') || lower.includes('tec.')) return '🦺';
+            if (lower.includes('vigia')) return '🛡️';
+            if (lower.includes('secret')) return '📋';
+            if (lower.includes('admin') || lower.includes('aux. admin')) return '📁';
+            if (lower.includes('leiturista')) return '📊';
+            if (lower.includes('topograf')) return '📐';
+            if (lower.includes('enfermeiro')) return '🏥';
+            if (lower.includes('assistente social')) return '🤝';
+            if (lower.includes('informática')) return '💻';
+            if (lower.includes('almoxarifado')) return '📦';
+            if (lower.includes('encarreg') || lower.includes('enc.')) return '👷';
+            return '👤';
+        };
 
         container.innerHTML = items.map(c => {
             const asoStatus = c.aso ? new Date(c.aso) < new Date() ?
@@ -539,10 +559,10 @@ async function loadGestao(search = '') {
                 '<span style="color: var(--success); font-size: 10px;">✓ ASO OK</span>' : '';
             return `
                 <div class="history-item" style="flex-wrap: wrap;">
-                    <span class="history-icon">${funcoesIcon[c.funcao] || '👤'}</span>
+                    <span class="history-icon">${funcaoIcon(c.funcao)}</span>
                     <div class="history-info">
                         <div class="history-title">${c.nome}</div>
-                        <div class="history-date">${funcaoNome[c.funcao] || c.funcao} • ${setorNome[c.setor] || c.setor}</div>
+                        <div class="history-date">${c.funcao || '—'} • ${c.setor || '—'}</div>
                         <div style="margin-top: 4px; font-size: 11px;">${c.empresa || ''} ${c.matricula ? '• Mat: ' + c.matricula : ''} ${asoStatus}</div>
                     </div>
                     <div style="display: flex; gap: 4px;">

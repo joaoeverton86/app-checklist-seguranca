@@ -59,7 +59,7 @@ function doGet(e) {
     Logger.log('doGet chamado');
     try {
         const ss = SpreadsheetApp.getActiveSpreadsheet();
-        const storeParam = e.parameter.store || 'Checklists';
+        const storeParam = (e && e.parameter && e.parameter.store) || 'Checklists';
         
         const storeMap = {
             'Checklists': CHECKLIST_SHEET,

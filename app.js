@@ -1121,6 +1121,7 @@ async function viewChecklist(id) {
     const date = new Date(checklist.date).toLocaleDateString('pt-BR');
     
     let itemsHtml = '';
+    let hasNC = false;
     for (const [itemId, data] of Object.entries(checklist.items)) {
         if (itemId === '_form') continue;
         const item = checklist.equipment?.items?.find(i => i.id === itemId);
@@ -1129,11 +1130,34 @@ async function viewChecklist(id) {
         const statusText = data.status === 'C' ? '✓ Conforme' : 
                           data.status === 'NC' ? '✗ Não Conforme' : '— N/A';
         
+        if (data.status === 'NC') hasNC = true;
+        
+        const isResolved = data.resolved;
+        const resolvedInfo = isResolved ? 
+            `<div style="font-size: 10px; color: var(--success); margin-top: 2px;">✓ Resolvido ${data.resolvedAt ? 'em ' + new Date(data.resolvedAt).toLocaleDateString('pt-BR') : ''} ${data.resolvedBy ? 'por ' + data.resolvedBy : ''}</div>` : '';
+        
         itemsHtml += `
-            <div style="padding: 10px; border-bottom: 1px solid var(--border);">
+            <div class="checklist-item" style="margin-bottom: 8px;">
                 <div style="font-size: 13px; font-weight: 500;">${item?.text || itemId}</div>
-                <div style="font-size: 12px; color: ${statusColor}; font-weight: 600; margin-top: 4px;">${statusText}</div>
                 ${data.observation ? `<div style="font-size: 11px; color: var(--text-light); margin-top: 4px;">Obs: ${data.observation}</div>` : ''}
+                ${resolvedInfo}
+                ${data.resolutionNote ? `<div style="font-size: 11px; color: var(--success); margin-top: 2px;">Resolução: ${data.resolutionNote}</div>` : ''}
+                <div class="status-buttons" style="margin-top: 8px;">
+                    <button class="status-btn c ${data.status === 'C' ? 'selected' : ''}" 
+                            onclick="updateChecklistItem('${checklist.id}', '${itemId}', 'C', this)">✓ Conforme</button>
+                    <button class="status-btn nc ${data.status === 'NC' ? 'selected' : ''}" 
+                            onclick="updateChecklistItem('${checklist.id}', '${itemId}', 'NC', this)">✗ Não Conforme</button>
+                    <button class="status-btn na ${data.status === 'NA' ? 'selected' : ''}" 
+                            onclick="updateChecklistItem('${checklist.id}', '${itemId}', 'NA', this)">— N/A</button>
+                </div>
+                <div id="resolveObs-${itemId}" style="margin-top: 8px; display: none;">
+                    <input type="text" placeholder="Observação da resolução..." 
+                           id="resolveObsInput-${itemId}"
+                           style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px;">
+                    <input type="text" placeholder="Quem resolveu..." 
+                           id="resolveByInput-${itemId}"
+                           style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; margin-top: 6px;">
+                </div>
             </div>`;
     }
     
@@ -1161,6 +1185,7 @@ async function viewChecklist(id) {
         
         <div class="card">
             <div class="card-title">📋 Itens Verificados</div>
+            <p style="font-size: 11px; color: var(--text-light); margin-bottom: 10px;">Altere o status dos itens para acompanhar a resolução</p>
             ${itemsHtml}
         </div>
         
@@ -1181,6 +1206,67 @@ async function viewChecklist(id) {
     `;
     
     showPage('pageChecklistDetail');
+}
+
+let pendingItemUpdate = null;
+
+async function updateChecklistItem(checklistId, itemId, newStatus, btn) {
+    const checklist = await getFromIndexedDB('checklists', checklistId);
+    if (!checklist || !checklist.items[itemId]) return;
+    
+    const oldStatus = checklist.items[itemId].status;
+    checklist.items[itemId].status = newStatus;
+    
+    const wasNC = oldStatus === 'NC';
+    const isNC = newStatus === 'NC';
+    const justResolved = wasNC && !isNC;
+    
+    if (justResolved) {
+        checklist.items[itemId].resolved = true;
+        checklist.items[itemId].resolvedAt = new Date().toISOString();
+        
+        const resolveObs = document.getElementById(`resolveObsInput-${itemId}`);
+        const resolveBy = document.getElementById(`resolveByInput-${itemId}`);
+        if (resolveObs) checklist.items[itemId].resolutionNote = resolveObs.value || '';
+        if (resolveBy) checklist.items[itemId].resolvedBy = resolveBy.value || '';
+    }
+    
+    if (isNC) {
+        checklist.items[itemId].resolved = false;
+        checklist.items[itemId].resolvedAt = null;
+        checklist.items[itemId].resolutionNote = null;
+        checklist.items[itemId].resolvedBy = null;
+    }
+    
+    let conformes = 0, naoConformes = 0, na = 0;
+    for (const [k, v] of Object.entries(checklist.items)) {
+        if (k === '_form') continue;
+        if (v.status === 'C') conformes++;
+        else if (v.status === 'NC') naoConformes++;
+        else if (v.status === 'NA') na++;
+    }
+    checklist.stats = { conformes, naoConformes, na, total: conformes + naoConformes + na };
+    
+    if (naoConformes === 0) {
+        checklist.statusChecklist = 'liberado';
+    } else {
+        const hasHighRiskNC = Object.entries(checklist.items).some(([k, v]) => {
+            if (k === '_form' || v.status !== 'NC') return false;
+            const eqItem = checklist.equipment?.items?.find(i => i.id === k);
+            return eqItem?.risk === 'high';
+        });
+        checklist.statusChecklist = hasHighRiskNC ? 'interditado' : 'liberado_restricao';
+    }
+    
+    await saveToIndexedDB('checklists', checklist);
+    
+    if (justResolved) {
+        showToast('Item marcado como resolvido!');
+    } else {
+        showToast('Status atualizado!');
+    }
+    
+    viewChecklist(checklistId);
 }
 
 async function deleteChecklist(id) {

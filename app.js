@@ -40,7 +40,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadRecentChecklists();
     loadTopRisks();
     renderEquipmentGrids();
-    loadCadastros();
     
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js')
@@ -122,14 +121,14 @@ function showPage(pageId) {
     
     const titles = {
         'pageHome': ['Checklist Segurança', 'PISF RAMAL DO AGRESTE'],
-        'pageCadastro': ['Cadastro', 'Cadastrar equipamentos e veículos'],
+        'pageCadastro': ['Gestão de Cadastros', 'Visualizar e gerenciar cadastros'],
         'pageNewChecklist': ['Novo Checklist', 'Selecione o tipo de equipamento'],
         'pageChecklistForm': ['Preencher Checklist', currentEquipment?.name || ''],
         'pageReportIssue': ['Reportar Problema', 'Para operadores e motoristas'],
         'pageReports': ['Relatórios', 'Análise de conformidades'],
         'pageHistory': ['Histórico', 'Checklists realizados'],
         'pageChecklistDetail': ['Detalhes do Checklist', ''],
-        'pageConfig': ['Configurações', 'Sincronização e dados']
+        'pageConfig': ['Configurações', 'Cadastros e sincronização']
     };
     
     if (titles[pageId]) {
@@ -150,7 +149,7 @@ function showPage(pageId) {
         loadRecentChecklists();
         loadTopRisks();
     } else if (pageId === 'pageCadastro') {
-        loadCadastros();
+        loadGestao();
     } else if (pageId === 'pageReports') {
         loadReports();
     } else if (pageId === 'pageHistory') {
@@ -320,10 +319,36 @@ async function saveCadastro() {
         return;
     }
     
-    // Verificar se já existe patrimônio igual
-    const existing = await getFromIndexedDB('cadastros', patrimonio);
-    if (existing) {
-        showToast('Já existe um item com este patrimônio/placa');
+    const patrimonioNorm = patrimonio.trim().toUpperCase();
+    
+    const existing = await getFromIndexedDB('cadastros', patrimonioNorm);
+    if (existing && existing.ativo !== false) {
+        showToast('⚠️ Já existe equipamento com patrimônio "' + patrimonioNorm + '"');
+        return;
+    }
+    
+    if (existing && existing.ativo === false) {
+        if (!confirm('Já existiu um item com patrimônio "' + patrimonioNorm + '" (desativado). Deseja reativar?')) {
+            return;
+        }
+        existing.ativo = true;
+        existing.nome = nome;
+        existing.empresa = empresa;
+        existing.setor = setor;
+        existing.obs = obs;
+        existing.equipment = EQUIPMENT_TYPES[tipo].find(e => e.id === categoria) || null;
+        await saveToIndexedDB('cadastros', existing);
+        showToast('Equipamento reativado!');
+        
+        document.getElementById('cadastroTipo').value = '';
+        document.getElementById('cadastroCategoria').innerHTML = '<option value="">Selecione o tipo primeiro...</option>';
+        document.getElementById('cadastroNome').value = '';
+        document.getElementById('cadastroPatrimonio').value = '';
+        document.getElementById('cadastroEmpresa').value = '';
+        if (document.getElementById('cadastroSetor')) document.getElementById('cadastroSetor').value = '';
+        document.getElementById('cadastroObs').value = '';
+        
+        setTimeout(() => showPage('pageCadastro'), 800);
         return;
     }
     
@@ -345,9 +370,7 @@ async function saveCadastro() {
     };
     
     await saveToIndexedDB('cadastros', cadastro);
-    showToast('Equipamento cadastrado com sucesso!');
     
-    // Limpar formulário
     document.getElementById('cadastroTipo').value = '';
     document.getElementById('cadastroCategoria').innerHTML = '<option value="">Selecione o tipo primeiro...</option>';
     document.getElementById('cadastroNome').value = '';
@@ -356,7 +379,8 @@ async function saveCadastro() {
     if (document.getElementById('cadastroSetor')) document.getElementById('cadastroSetor').value = '';
     document.getElementById('cadastroObs').value = '';
     
-    loadCadastros();
+    showToast('Equipamento cadastrado!');
+    setTimeout(() => showPage('pageCadastro'), 800);
 }
 
 async function saveColaborador() {
@@ -372,11 +396,35 @@ async function saveColaborador() {
         return;
     }
     
-    // Verificar se já existe matrícula igual
-    if (matricula) {
-        const existing = await getFromIndexedDB('colaboradores', matricula);
-        if (existing) {
-            showToast('Já existe um colaborador com esta matrícula');
+    const matriculaNorm = matricula ? matricula.trim().toUpperCase() : '';
+    
+    if (matriculaNorm) {
+        const existing = await getFromIndexedDB('colaboradores', matriculaNorm);
+        if (existing && existing.ativo !== false) {
+            showToast('⚠️ Já existe colaborador com matrícula "' + matriculaNorm + '"');
+            return;
+        }
+        if (existing && existing.ativo === false) {
+            if (!confirm('Já existiu um colaborador com matrícula "' + matriculaNorm + '" (desativado). Deseja reativar?')) {
+                return;
+            }
+            existing.ativo = true;
+            existing.nome = nome;
+            existing.funcao = funcao;
+            existing.setor = setor;
+            existing.empresa = empresa;
+            existing.aso = aso;
+            await saveToIndexedDB('colaboradores', existing);
+            showToast('Colaborador reativado!');
+            
+            document.getElementById('colabNome').value = '';
+            document.getElementById('colabFuncao').value = '';
+            document.getElementById('colabSetor').value = '';
+            document.getElementById('colabEmpresa').value = '';
+            document.getElementById('colabMatricula').value = '';
+            document.getElementById('colabASO').value = '';
+            
+            setTimeout(() => showPage('pageCadastro'), 800);
             return;
         }
     }
@@ -395,9 +443,8 @@ async function saveColaborador() {
     };
     
     await saveToIndexedDB('colaboradores', colaborador);
-    showToast('Colaborador cadastrado com sucesso!');
+    showToast('Colaborador cadastrado!');
     
-    // Limpar formulário
     document.getElementById('colabNome').value = '';
     document.getElementById('colabFuncao').value = '';
     document.getElementById('colabSetor').value = '';
@@ -405,86 +452,214 @@ async function saveColaborador() {
     document.getElementById('colabMatricula').value = '';
     document.getElementById('colabASO').value = '';
     
-    loadCadastros();
+    setTimeout(() => showPage('pageCadastro'), 800);
 }
 
-async function loadCadastros() {
-    const filtro = document.getElementById('filtroCadastro')?.value || 'todos';
-    const cadastros = await getAllFromIndexedDB('cadastros');
-    const colaboradores = await getAllFromIndexedDB('colaboradores');
-    const container = document.getElementById('cadastroList');
-    
-    let items = [];
-    
-    if (filtro === 'todos' || filtro === 'equipamentos') {
-        cadastros.filter(c => c.ativo !== false).forEach(c => {
-            items.push({ tipo: 'equipamento', data: c, tipoIcon: c.equipment?.icon || '📦' });
-        });
-    }
-    
-    if (filtro === 'todos' || filtro === 'colaboradores') {
-        colaboradores.filter(c => c.ativo !== false).forEach(c => {
-            const funcoes = {
-                TST: '🦺', motorista: '🚗', operador: '🚜', encarregado_transporte: '🚛',
-                mecanico: '🔧', eletricista: '⚡', pedreiro: '🔨', servente: '👷',
-                encarregado_geral: '👨‍💼', engenheiro: '👷‍♂️', outro: '👤'
-            };
-            items.push({ tipo: 'colaborador', data: c, tipoIcon: funcoes[c.funcao] || '👤' });
-        });
-    }
-    
-    if (items.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <div class="icon">📝</div>
-                <div class="text">Nenhum item cadastrado</div>
-            </div>`;
-        return;
-    }
-    
-    container.innerHTML = items.map(item => {
-        if (item.tipo === 'equipamento') {
-            const c = item.data;
-            const statusBadge = c.ultimoChecklist ? 
+let gestaoTab = 'equipamentos';
+
+function switchGestaoTab(tab) {
+    gestaoTab = tab;
+    document.getElementById('tabEquipamentos').className = tab === 'equipamentos' ? 'status-btn c selected' : 'status-btn na';
+    document.getElementById('tabColaboradores').className = tab === 'colaboradores' ? 'status-btn nc selected' : 'status-btn na';
+    document.getElementById('gestaoSearch').value = '';
+    loadGestao();
+}
+
+async function loadGestao(search = '') {
+    const container = document.getElementById('gestaoList');
+    const countEl = document.getElementById('gestaoCount');
+    const query = search.toLowerCase().trim();
+
+    if (gestaoTab === 'equipamentos') {
+        const cadastros = await getAllFromIndexedDB('cadastros');
+        let items = cadastros.filter(c => c.ativo !== false);
+
+        if (query) {
+            items = items.filter(c =>
+                (c.patrimonio && c.patrimonio.toLowerCase().includes(query)) ||
+                (c.nome && c.nome.toLowerCase().includes(query)) ||
+                (c.empresa && c.empresa.toLowerCase().includes(query)) ||
+                (c.setor && c.setor.toLowerCase().includes(query))
+            );
+        }
+
+        countEl.textContent = `${items.length} equipamento(s)`;
+
+        if (items.length === 0) {
+            container.innerHTML = `<div class="empty-state"><div class="icon">🚜</div><div class="text">${query ? 'Nenhum resultado para "' + query + '"' : 'Nenhum equipamento cadastrado'}</div></div>`;
+            return;
+        }
+
+        const funcoesNome = { TST: 'TST', motorista: 'Motorista', operador: 'Operador', mecanico: 'Mecânico', eletricista: 'Eletricista', pedreiro: 'Pedreiro', servente: 'Servente', encarregado_geral: 'Enc. Geral', engenheiro: 'Engenheiro', encarregado_transporte: 'Enc. Transporte', outro: 'Outro' };
+
+        container.innerHTML = items.map(c => {
+            const statusBadge = c.ultimoChecklist ?
                 `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #d5f5e3; color: #1e8449;">✓ Verificado</span>` :
                 `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #fadbd8; color: #c0392b;">⚠ Pendente</span>`;
             return `
-                <div class="history-item">
-                    <span class="history-icon">${item.tipoIcon}</span>
+                <div class="history-item" style="flex-wrap: wrap;">
+                    <span class="history-icon">${c.equipment?.icon || '📦'}</span>
                     <div class="history-info">
                         <div class="history-title">${c.patrimonio} - ${c.nome}</div>
                         <div class="history-date">${c.empresa || 'Sem empresa'} • ${c.equipment?.nr || ''} ${c.setor ? '• ' + c.setor : ''}</div>
                         <div style="margin-top: 4px;">${statusBadge}</div>
                     </div>
-                    <button onclick="deleteCadastro('${c.id}')" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 10px; font-size: 11px; cursor: pointer;">Excluir</button>
+                    <div style="display: flex; gap: 4px;">
+                        <button onclick="editCadastro('${c.id}')" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>
+                        <button onclick="deleteCadastro('${c.id}')" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🗑️</button>
+                    </div>
                 </div>`;
-        } else {
-            const c = item.data;
-            const funcaoNome = {
-                TST: 'TST', motorista: 'Motorista', operador: 'Operador', 
-                encarregado_transporte: 'Enc. Transporte', mecanico: 'Mecânico',
-                eletricista: 'Eletricista', pedreiro: 'Pedreiro', servente: 'Servente',
-                encarregado_geral: 'Enc. Geral', engenheiro: 'Engenheiro', outro: 'Outro'
-            };
-            const setorNome = {
-                seguranca: 'Segurança', transporte: 'Transporte', manutencao: 'Manutenção',
-                operacoes: 'Operações', administrativo: 'Admin', obra: 'Obra'
-            };
-            const asoStatus = c.aso ? new Date(c.aso) < new Date() ? 
-                '<span style="color: var(--danger);">ASO Vencido</span>' : 
-                '<span style="color: var(--success);">ASO OK</span>' : '';
+        }).join('');
+    } else {
+        const colaboradores = await getAllFromIndexedDB('colaboradores');
+        let items = colaboradores.filter(c => c.ativo !== false);
+
+        if (query) {
+            items = items.filter(c =>
+                (c.nome && c.nome.toLowerCase().includes(query)) ||
+                (c.empresa && c.empresa.toLowerCase().includes(query)) ||
+                (c.matricula && c.matricula.toLowerCase().includes(query))
+            );
+        }
+
+        countEl.textContent = `${items.length} colaborador(es)`;
+
+        if (items.length === 0) {
+            container.innerHTML = `<div class="empty-state"><div class="icon">👥</div><div class="text">${query ? 'Nenhum resultado para "' + query + '"' : 'Nenhum colaborador cadastrado'}</div></div>`;
+            return;
+        }
+
+        const funcaoNome = { TST: 'TST', motorista: 'Motorista', operador: 'Operador', encarregado_transporte: 'Enc. Transporte', mecanico: 'Mecânico', eletricista: 'Eletricista', pedreiro: 'Pedreiro', servente: 'Servente', encarregado_geral: 'Enc. Geral', engenheiro: 'Engenheiro', outro: 'Outro' };
+        const setorNome = { seguranca: 'Segurança', transporte: 'Transporte', manutencao: 'Manutenção', operacoes: 'Operações', administrativo: 'Admin', obra: 'Obra' };
+        const funcoesIcon = { TST: '🦺', motorista: '🚗', operador: '🚜', encarregado_transporte: '🚛', mecanico: '🔧', eletricista: '⚡', pedreiro: '🔨', servente: '👷', encarregado_geral: '👨‍💼', engenheiro: '👷‍♂️', outro: '👤' };
+
+        container.innerHTML = items.map(c => {
+            const asoStatus = c.aso ? new Date(c.aso) < new Date() ?
+                '<span style="color: var(--danger); font-size: 10px;">⚠ ASO Vencido</span>' :
+                '<span style="color: var(--success); font-size: 10px;">✓ ASO OK</span>' : '';
             return `
-                <div class="history-item">
-                    <span class="history-icon">${item.tipoIcon}</span>
+                <div class="history-item" style="flex-wrap: wrap;">
+                    <span class="history-icon">${funcoesIcon[c.funcao] || '👤'}</span>
                     <div class="history-info">
                         <div class="history-title">${c.nome}</div>
                         <div class="history-date">${funcaoNome[c.funcao] || c.funcao} • ${setorNome[c.setor] || c.setor}</div>
                         <div style="margin-top: 4px; font-size: 11px;">${c.empresa || ''} ${c.matricula ? '• Mat: ' + c.matricula : ''} ${asoStatus}</div>
                     </div>
-                    <button onclick="deleteColaborador('${c.id}')" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 10px; font-size: 11px; cursor: pointer;">Excluir</button>
+                    <div style="display: flex; gap: 4px;">
+                        <button onclick="editColaborador('${c.id}')" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>
+                        <button onclick="deleteColaborador('${c.id}')" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🗑️</button>
+                    </div>
                 </div>`;
+        }).join('');
+    }
+}
+
+function filterGestao(query) {
+    loadGestao(query);
+}
+
+async function editCadastro(id) {
+    const cadastro = await getFromIndexedDB('cadastros', id);
+    if (!cadastro) return;
+
+    showPage('pageConfig');
+
+    setTimeout(() => {
+        document.getElementById('cadastroTipo').value = cadastro.tipo || '';
+        updateCategoriaOptions(cadastro.tipo);
+        setTimeout(() => {
+            document.getElementById('cadastroCategoria').value = cadastro.categoria || '';
+        }, 50);
+        document.getElementById('cadastroNome').value = cadastro.nome || '';
+        document.getElementById('cadastroPatrimonio').value = cadastro.patrimonio || '';
+        document.getElementById('cadastroEmpresa').value = cadastro.empresa || '';
+        document.getElementById('cadastroSetor').value = cadastro.setor || '';
+        document.getElementById('cadastroObs').value = cadastro.obs || '';
+
+        const btn = document.querySelector('#pageConfig .save-btn[onclick="saveCadastro()"]');
+        if (btn) {
+            btn.textContent = '💾 Atualizar Equipamento';
+            btn.setAttribute('onclick', `saveCadastroEdit('${id}')`);
         }
-    }).join('');
+    }, 100);
+}
+
+async function saveCadastroEdit(id) {
+    const cadastro = await getFromIndexedDB('cadastros', id);
+    if (!cadastro) return;
+
+    cadastro.nome = document.getElementById('cadastroNome').value.trim();
+    cadastro.patrimonio = document.getElementById('cadastroPatrimonio').value.trim();
+    cadastro.empresa = document.getElementById('cadastroEmpresa').value.trim();
+    cadastro.setor = document.getElementById('cadastroSetor').value.trim();
+    cadastro.obs = document.getElementById('cadastroObs').value.trim();
+
+    await saveToIndexedDB('cadastros', cadastro);
+    showToast('Equipamento atualizado!');
+
+    const btn = document.querySelector('#pageConfig .save-btn[onclick^="saveCadastroEdit"]');
+    if (btn) {
+        btn.textContent = '💾 Cadastrar Equipamento';
+        btn.setAttribute('onclick', 'saveCadastro()');
+    }
+
+    document.getElementById('cadastroTipo').value = '';
+    document.getElementById('cadastroCategoria').innerHTML = '<option value="">Selecione o tipo primeiro...</option>';
+    document.getElementById('cadastroNome').value = '';
+    document.getElementById('cadastroPatrimonio').value = '';
+    document.getElementById('cadastroEmpresa').value = '';
+    document.getElementById('cadastroSetor').value = '';
+    document.getElementById('cadastroObs').value = '';
+}
+
+async function editColaborador(id) {
+    const colab = await getFromIndexedDB('colaboradores', id);
+    if (!colab) return;
+
+    showPage('pageConfig');
+
+    setTimeout(() => {
+        document.getElementById('colabNome').value = colab.nome || '';
+        document.getElementById('colabFuncao').value = colab.funcao || '';
+        document.getElementById('colabSetor').value = colab.setor || '';
+        document.getElementById('colabEmpresa').value = colab.empresa || '';
+        document.getElementById('colabMatricula').value = colab.matricula || '';
+        document.getElementById('colabASO').value = colab.aso || '';
+
+        const btn = document.querySelector('#pageConfig .save-btn[onclick="saveColaborador()"]');
+        if (btn) {
+            btn.textContent = '💾 Atualizar Colaborador';
+            btn.setAttribute('onclick', `saveColaboradorEdit('${id}')`);
+        }
+    }, 100);
+}
+
+async function saveColaboradorEdit(id) {
+    const colab = await getFromIndexedDB('colaboradores', id);
+    if (!colab) return;
+
+    colab.nome = document.getElementById('colabNome').value.trim();
+    colab.funcao = document.getElementById('colabFuncao').value;
+    colab.setor = document.getElementById('colabSetor').value;
+    colab.empresa = document.getElementById('colabEmpresa').value.trim();
+    colab.matricula = document.getElementById('colabMatricula').value.trim();
+    colab.aso = document.getElementById('colabASO').value;
+
+    await saveToIndexedDB('colaboradores', colab);
+    showToast('Colaborador atualizado!');
+
+    const btn = document.querySelector('#pageConfig .save-btn[onclick^="saveColaboradorEdit"]');
+    if (btn) {
+        btn.textContent = '💾 Cadastrar Colaborador';
+        btn.setAttribute('onclick', 'saveColaborador()');
+    }
+
+    document.getElementById('colabNome').value = '';
+    document.getElementById('colabFuncao').value = '';
+    document.getElementById('colabSetor').value = '';
+    document.getElementById('colabEmpresa').value = '';
+    document.getElementById('colabMatricula').value = '';
+    document.getElementById('colabASO').value = '';
 }
 
 async function deleteCadastro(id) {
@@ -495,7 +670,7 @@ async function deleteCadastro(id) {
         await saveToIndexedDB('cadastros', cadastro);
     }
     showToast('Cadastro excluído');
-    loadCadastros();
+    loadGestao();
 }
 
 async function deleteColaborador(id) {
@@ -1718,6 +1893,17 @@ function loadConfigPage() {
         statusText.textContent = '⚠️ Não configurado';
         statusText.style.color = '#c0392b';
         statusDetail.textContent = 'Configure a URL do Google Apps Script para sincronizar';
+    }
+
+    const btnEqp = document.querySelector('#pageConfig .save-btn[onclick^="saveCadastro"]');
+    if (btnEqp && !btnEqp.getAttribute('onclick').includes('Edit')) {
+        btnEqp.textContent = '💾 Cadastrar Equipamento';
+        btnEqp.setAttribute('onclick', 'saveCadastro()');
+    }
+    const btnColab = document.querySelector('#pageConfig .save-btn[onclick^="saveColaborador"]');
+    if (btnColab && !btnColab.getAttribute('onclick').includes('Edit')) {
+        btnColab.textContent = '💾 Cadastrar Colaborador';
+        btnColab.setAttribute('onclick', 'saveColaborador()');
     }
 }
 

@@ -741,7 +741,12 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Patrimônio / Placa</label>
-                    <input type="text" class="form-input" id="checklistPatrimonio" placeholder="Ex: PAT-001 ou ABC-1234">
+                    <div style="position: relative;">
+                        <select class="form-input" id="checklistPatrimonio" onchange="fillFromCadastro()" style="appearance: auto;">
+                            <option value="">Selecione um equipamento cadastrado...</option>
+                        </select>
+                        <button onclick="openQRScanner('checklist')" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: var(--primary); color: white; border: none; border-radius: 6px; width: 36px; height: 36px; font-size: 16px; cursor: pointer;">📷</button>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Nome / Descrição</label>

@@ -543,59 +543,36 @@ function startChecklist(category, equipmentId) {
 
 async function loadCadastroSelect(category) {
     const cadastros = await getCadastrosByTipo(category);
-    const patrimonioInput = document.getElementById('checklistPatrimonio');
-    const nomeInput = document.getElementById('checklistNome');
-    const empresaInput = document.getElementById('checklistEmpresa');
+    const select = document.getElementById('checklistPatrimonio');
     
-    // Criar ou atualizar dropdown
-    let selectContainer = document.getElementById('cadastroSelectContainer');
-    if (!selectContainer) {
-        selectContainer = document.createElement('div');
-        selectContainer.id = 'cadastroSelectContainer';
-        selectContainer.className = 'form-group';
-        selectContainer.innerHTML = `
-            <label class="form-label">Selecionar Cadastrado (opcional)</label>
-            <select class="form-select" id="cadastroSelect" onchange="fillFromCadastro()">
-                <option value=""> Digite manualmente ou selecione...</option>
-            </select>
-            <p style="font-size: 11px; color: var(--text-light); margin-top: 4px;">
-                Se não encontrou, cadastre primeiro em "Cadastro"
-            </p>
-        `;
-        const patrimonioGroup = patrimonioInput.closest('.form-group');
-        patrimonioGroup.parentNode.insertBefore(selectContainer, patrimonioGroup);
-    }
-    
-    const select = document.getElementById('cadastroSelect');
-    select.innerHTML = '<option value="">Digite manualmente ou selecione...</option>';
+    select.innerHTML = '<option value="">Selecione um equipamento cadastrado...</option>';
     
     cadastros.forEach(c => {
         const option = document.createElement('option');
         option.value = c.patrimonio;
-        option.textContent = `${c.patrimonio} - ${c.nome}`;
+        option.textContent = `${c.patrimonio} - ${c.nome} (${c.empresa || 'Sem empresa'})`;
+        option.dataset.nome = c.nome || '';
+        option.dataset.empresa = c.empresa || '';
         select.appendChild(option);
     });
+    
+    if (cadastros.length === 0) {
+        select.innerHTML = '<option value="">Nenhum equipamento cadastrado para este tipo</option>';
+    }
 }
 
 function fillFromCadastro() {
-    const select = document.getElementById('cadastroSelect');
-    const patrimonio = select.value;
+    const select = document.getElementById('checklistPatrimonio');
+    const option = select.options[select.selectedIndex];
     
-    if (!patrimonio) {
-        document.getElementById('checklistPatrimonio').value = '';
+    if (!select.value) {
         document.getElementById('checklistNome').value = currentEquipment?.name || '';
         document.getElementById('checklistEmpresa').value = '';
         return;
     }
     
-    // Buscar dados do cadastro
-    getFromIndexedDB('cadastros', patrimonio).then(cadastro => {
-        if (cadastro) {
-            document.getElementById('checklistPatrimonio').value = cadastro.patrimonio;
-            document.getElementById('checklistNome').value = cadastro.nome;
-            document.getElementById('checklistEmpresa').value = cadastro.empresa || '';
-        }
-    });
+    document.getElementById('checklistNome').value = option.dataset.nome || currentEquipment?.name || '';
+    document.getElementById('checklistEmpresa').value = option.dataset.empresa || '';
 }
 
 function renderChecklistItems(equipment) {
@@ -800,9 +777,10 @@ function saveChecklist() {
     const formData = checklistData._form || {};
     
     // Validações
-    if (!formData.patrimonio) {
-        showToast('Preencha o Patrimônio/Placa');
-        document.getElementById('checklistPatrimonio').focus();
+    const patrimonioSelect = document.getElementById('checklistPatrimonio');
+    if (!patrimonioSelect.value || patrimonioSelect.value === '') {
+        showToast('Selecione um equipamento cadastrado');
+        patrimonioSelect.focus();
         return;
     }
     
@@ -2195,13 +2173,30 @@ function onQRScanSuccess(decodedText) {
     stopQRScanner();
     closeQRScanner();
     
-    const input = document.getElementById('cadastroInput' + capitalize(currentQRCategory));
-    if (input) {
-        input.value = decodedText;
-        filterCadastros(currentQRCategory, decodedText);
+    if (currentQRCategory === 'checklist') {
+        selectPatrimonioByQR(decodedText);
+    } else {
+        const input = document.getElementById('cadastroInput' + capitalize(currentQRCategory));
+        if (input) {
+            input.value = decodedText;
+            filterCadastros(currentQRCategory, decodedText);
+        }
+        searchAndSelectCadastro(currentQRCategory, decodedText);
     }
+}
+
+async function selectPatrimonioByQR(patrimonio) {
+    const select = document.getElementById('checklistPatrimonio');
+    const options = Array.from(select.options);
+    const match = options.find(o => o.value.toLowerCase() === patrimonio.toLowerCase());
     
-    searchAndSelectCadastro(currentQRCategory, decodedText);
+    if (match) {
+        select.value = match.value;
+        fillFromCadastro();
+        showToast('Equipamento encontrado: ' + match.textContent);
+    } else {
+        showToast('Equipamento "' + patrimonio + '" não encontrado nos cadastrados');
+    }
 }
 
 function stopQRScanner() {

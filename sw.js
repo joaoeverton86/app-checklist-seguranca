@@ -1,40 +1,47 @@
 // Service Worker - Checklist Segurança
-const CACHE_NAME = 'checklist-v12';
+const CACHE_NAME = 'checklist-v13';
+const ASSETS = [
+    './',
+    './index.html',
+    './app.js',
+    './data.js',
+    './sw.js',
+    './manifest.json',
+    './icon-192.png',
+    './icon-512.png'
+];
 
-// Instalar - limpar caches antigos
 self.addEventListener('install', event => {
+    event.waitUntil(
+        caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
+    );
+    self.skipWaiting();
+});
+
+self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(names => {
             return Promise.all(
                 names.filter(n => n !== CACHE_NAME).map(n => caches.delete(n))
             );
-        })
+        }).then(() => self.clients.claim())
     );
-    self.skipWaiting();
 });
 
-// Ativar
-self.addEventListener('activate', event => {
-    event.waitUntil(self.clients.claim());
-});
-
-// Buscar - Network First (sempre buscar arquivos novos)
 self.addEventListener('fetch', event => {
+    if (event.request.url.includes('script.google.com')) return;
+    if (event.request.url.includes('fonts.googleapis.com')) return;
+    
     event.respondWith(
-        fetch(event.request)
-            .then(response => {
-                // Salvar no cache para funcionar offline depois
+        caches.match(event.request).then(cached => {
+            const fetched = fetch(event.request).then(response => {
                 if (response && response.status === 200) {
-                    const responseClone = response.clone();
-                    caches.open(CACHE_NAME).then(cache => {
-                        cache.put(event.request, responseClone);
-                    });
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
                 }
                 return response;
-            })
-            .catch(() => {
-                // Se offline, usar cache
-                return caches.match(event.request);
-            })
+            }).catch(() => cached);
+            return cached || fetched;
+        })
     );
 });

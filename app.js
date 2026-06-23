@@ -501,7 +501,8 @@ async function loadGestao(search = '') {
                     <div class="history-info">
                         <div class="history-title">${c.patrimonio}</div>
                         <div class="history-date">${c.nome || ''}</div>
-                        <div class="history-date">${c.empresa || ''} ${c.setor ? '• ' + c.setor : ''}</div>
+                        <div class="history-date">${c.empresa || ''}</div>
+                        <div class="history-date">${c.setor || ''}</div>
                         <div style="margin-top: 4px;">${statusBadge}</div>
                     </div>
                     <div style="display: flex; gap: 4px;">
@@ -562,8 +563,10 @@ async function loadGestao(search = '') {
                     <div class="history-info">
                         <div class="history-title">${c.nome}</div>
                         <div class="history-date">${c.funcao || ''}</div>
-                        <div class="history-date">${c.setor || ''} ${c.empresa ? '• ' + c.empresa : ''}</div>
-                        <div style="margin-top: 4px; font-size: 11px;">${c.matricula ? 'Mat: ' + c.matricula : ''} ${asoStatus}</div>
+                        <div class="history-date">${c.setor || ''}</div>
+                        <div class="history-date">${c.empresa || ''}</div>
+                        <div class="history-date">${c.matricula ? 'Mat: ' + c.matricula : ''}</div>
+                        <div style="margin-top: 4px; font-size: 11px;">${asoStatus}</div>
                     </div>
                     <div style="display: flex; gap: 4px;">
                         <button onclick="editColaborador('${c.id}')" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>

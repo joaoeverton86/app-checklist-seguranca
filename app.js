@@ -1573,8 +1573,9 @@ async function loadReports() {
                  onclick="startChecklistFromPending(this.dataset.patrimonio)"
                  onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform='scale(1)'">
                 <div class="risk-info">
-                    <div class="risk-item-name">${p.equipment?.icon || '📦'} ${p.patrimonio} - ${p.nome}</div>
-                    <div class="risk-count">${p.empresa || 'Sem empresa'}</div>
+                    <div class="risk-item-name" style="font-size: 13px;">${p.patrimonio}</div>
+                    <div class="risk-count" style="font-size: 12px;">${p.nome || ''}</div>
+                    <div class="risk-count">${p.empresa || ''}</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="background: var(--warning); color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;">PENDENTE</span>

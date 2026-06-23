@@ -2,7 +2,8 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-// Estado do app
+const APP_VERSION = 'v17';
+
 let currentPage = 'pageHome';
 let currentChecklist = null;
 let currentEquipment = null;
@@ -14,17 +15,22 @@ let signaturePad = null;
 // ============================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Limpar cache antigo do Service Worker
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(registrations => {
-            for (let registration of registrations) {
-                registration.unregister();
-            }
-        });
+    const savedVersion = localStorage.getItem('app_version');
+    if (savedVersion && savedVersion !== APP_VERSION) {
+        localStorage.setItem('app_version', APP_VERSION);
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(regs => {
+                regs.forEach(r => r.unregister());
+            });
+        }
         caches.keys().then(names => {
-            names.forEach(name => caches.delete(name));
+            Promise.all(names.map(n => caches.delete(n))).then(() => {
+                window.location.reload(true);
+            });
         });
+        return;
     }
+    localStorage.setItem('app_version', APP_VERSION);
     
     initApp();
     initSignaturePad();
@@ -36,16 +42,18 @@ document.addEventListener('DOMContentLoaded', () => {
     renderEquipmentGrids();
     loadCadastros();
     
-    // Registrar Service Worker
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js')
-            .then(reg => console.log('SW registrado'))
+            .then(reg => {
+                reg.update();
+                console.log('SW registrado e atualizado');
+            })
             .catch(err => console.log('SW erro:', err));
     }
 });
 
 function initApp() {
-    console.log('App Checklist Segurança inicializado');
+    console.log('App Checklist Segurança inicializado - ' + APP_VERSION);
 }
 
 function initDateDefaults() {
@@ -1092,11 +1100,12 @@ async function loadHistory() {
             `${c.stats.naoConformes} NC` : 'Conforme';
         const date = new Date(c.date).toLocaleDateString('pt-BR');
         
+        const icon = c.equipment?.icon || '📦';
         return `
             <div class="history-item" onclick="viewChecklist('${c.id}')">
-                <span class="history-icon">${c.equipment.icon}</span>
+                <span class="history-icon">${icon}</span>
                 <div class="history-info">
-                    <div class="history-title">${c.nome} - ${c.patrimonio}</div>
+                    <div class="history-title">${c.patrimonio || 'Sem patrimônio'} - ${c.nome || ''}</div>
                     <div class="history-date">${date} • ${c.empresa || 'Sem empresa'}</div>
                 </div>
                 <span class="history-status ${statusClass}">${statusText}</span>
@@ -1114,7 +1123,7 @@ async function viewChecklist(id) {
     let itemsHtml = '';
     for (const [itemId, data] of Object.entries(checklist.items)) {
         if (itemId === '_form') continue;
-        const item = checklist.equipment.items?.find(i => i.id === itemId);
+        const item = checklist.equipment?.items?.find(i => i.id === itemId);
         const statusColor = data.status === 'C' ? 'var(--success)' : 
                            data.status === 'NC' ? 'var(--danger)' : 'var(--text-light)';
         const statusText = data.status === 'C' ? '✓ Conforme' : 
@@ -1130,7 +1139,7 @@ async function viewChecklist(id) {
     
     container.innerHTML = `
         <div class="card">
-            <div class="card-title"><span class="icon">${checklist.equipment.icon}</span> ${checklist.nome}</div>
+            <div class="card-title"><span class="icon">${checklist.equipment?.icon || '📦'}</span> ${checklist.nome}</div>
             <div style="font-size: 13px; color: var(--text-light);">
                 <div>📅 ${date}</div>
                 <div>📋 Patrimônio: ${checklist.patrimonio}</div>
@@ -1329,7 +1338,7 @@ async function loadReports() {
         totalNC += c.stats.naoConformes;
         
         // Contar por tipo
-        const type = c.equipment.name;
+        const type = c.equipment?.name || 'Desconhecido';
         typeCounts[type] = (typeCounts[type] || 0) + 1;
         
         // Contar status de interdição
@@ -1365,12 +1374,18 @@ async function loadReports() {
         pendentesContainer.innerHTML = `<div class="empty-state"><div class="text">Cadastre equipamentos primeiro</div></div>`;
     } else {
         pendentesContainer.innerHTML = pendentes.map(p => `
-            <div class="risk-list-item" style="border-left-color: var(--warning);">
+            <div class="risk-list-item" style="border-left-color: var(--warning); cursor: pointer; transition: transform 0.2s;" 
+                 data-patrimonio="${p.patrimonio}"
+                 onclick="startChecklistFromPending(this.dataset.patrimonio)"
+                 onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform='scale(1)'">
                 <div class="risk-info">
                     <div class="risk-item-name">${p.equipment?.icon || '📦'} ${p.patrimonio} - ${p.nome}</div>
                     <div class="risk-count">${p.empresa || 'Sem empresa'}</div>
                 </div>
-                <span style="background: var(--warning); color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;">PENDENTE</span>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="background: var(--warning); color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;">PENDENTE</span>
+                    <span style="color: var(--text-light); font-size: 18px;">›</span>
+                </div>
             </div>
         `).join('');
     }
@@ -1454,12 +1469,13 @@ async function loadRecentChecklists() {
         const statusText = c.stats.naoConformes > 0 ? 
             `${c.stats.naoConformes} NC` : 'OK';
         
+        const icon = c.equipment?.icon || '📦';
         return `
             <div class="history-item" onclick="viewChecklist('${c.id}')">
-                <span class="history-icon">${c.equipment.icon}</span>
+                <span class="history-icon">${icon}</span>
                 <div class="history-info">
-                    <div class="history-title">${c.patrimonio}</div>
-                    <div class="history-date">${date}</div>
+                    <div class="history-title">${c.patrimonio || 'Sem patrimônio'}</div>
+                    <div class="history-date">${c.nome || ''} • ${date}</div>
                 </div>
                 <span class="history-status ${statusClass}">${statusText}</span>
             </div>`;
@@ -2130,6 +2146,55 @@ function startChecklistWithTypeInput(category) {
     if (!equipment) return;
     
     startChecklist(category, equipment.id);
+}
+
+async function startChecklistFromPending(patrimonio) {
+    const cadastro = await getFromIndexedDB('cadastros', patrimonio);
+    if (!cadastro) {
+        showToast('Equipamento não encontrado');
+        return;
+    }
+    
+    const tipo = cadastro.tipo;
+    const categoria = cadastro.categoria;
+    
+    if (!tipo || !EQUIPMENT_TYPES[tipo]) {
+        showToast('Tipo de equipamento inválido');
+        return;
+    }
+    
+    const equipment = EQUIPMENT_TYPES[tipo].find(e => e.id === categoria);
+    if (!equipment) {
+        showToast('Categoria de equipamento não encontrada');
+        return;
+    }
+    
+    currentEquipment = equipment;
+    checklistData = {};
+    
+    document.getElementById('checklistDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('checklistPatrimonio').value = cadastro.patrimonio || '';
+    document.getElementById('checklistNome').value = cadastro.nome || equipment.name;
+    document.getElementById('checklistEmpresa').value = cadastro.empresa || '';
+    document.getElementById('checklistOperador').value = '';
+    document.getElementById('checklistObservacoes').value = '';
+    
+    loadCadastroSelect(tipo);
+    clearSignature();
+    renderChecklistItems(equipment);
+    
+    setTimeout(() => {
+        document.getElementById('checklistPatrimonio').value = cadastro.patrimonio || '';
+    }, 50);
+    
+    currentStatusChecklist = null;
+    document.querySelectorAll('#pageChecklistForm .status-btn').forEach(b => {
+        b.classList.remove('selected');
+        b.style.background = 'white';
+    });
+    document.getElementById('prazoAdequacao').style.display = 'none';
+    
+    showPage('pageChecklistForm');
 }
 
 // ============================================

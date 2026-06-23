@@ -498,10 +498,10 @@ async function loadGestao(search = '') {
                 `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #fadbd8; color: #c0392b;">⚠ Pendente</span>`;
             return `
                 <div class="history-item" style="flex-wrap: wrap;">
-                    <span class="history-icon">${c.equipment?.icon || '📦'}</span>
                     <div class="history-info">
-                        <div class="history-title">${c.patrimonio} - ${c.nome}</div>
-                        <div class="history-date">${c.empresa || 'Sem empresa'} • ${c.equipment?.nr || ''} ${c.setor ? '• ' + c.setor : ''}</div>
+                        <div class="history-title">${c.patrimonio}</div>
+                        <div class="history-date">${c.nome || ''}</div>
+                        <div class="history-date">${c.empresa || ''} ${c.setor ? '• ' + c.setor : ''}</div>
                         <div style="margin-top: 4px;">${statusBadge}</div>
                     </div>
                     <div style="display: flex; gap: 4px;">
@@ -559,11 +559,11 @@ async function loadGestao(search = '') {
                 '<span style="color: var(--success); font-size: 10px;">✓ ASO OK</span>' : '';
             return `
                 <div class="history-item" style="flex-wrap: wrap;">
-                    <span class="history-icon">${funcaoIcon(c.funcao)}</span>
                     <div class="history-info">
                         <div class="history-title">${c.nome}</div>
-                        <div class="history-date">${c.funcao || '—'} • ${c.setor || '—'}</div>
-                        <div style="margin-top: 4px; font-size: 11px;">${c.empresa || ''} ${c.matricula ? '• Mat: ' + c.matricula : ''} ${asoStatus}</div>
+                        <div class="history-date">${c.funcao || ''}</div>
+                        <div class="history-date">${c.setor || ''} ${c.empresa ? '• ' + c.empresa : ''}</div>
+                        <div style="margin-top: 4px; font-size: 11px;">${c.matricula ? 'Mat: ' + c.matricula : ''} ${asoStatus}</div>
                     </div>
                     <div style="display: flex; gap: 4px;">
                         <button onclick="editColaborador('${c.id}')" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>

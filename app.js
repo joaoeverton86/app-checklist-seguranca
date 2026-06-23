@@ -229,7 +229,7 @@ function renderSuggestions(category, query, tipos) {
             html += `
                 <div class="suggestion-item" onclick="selectCategoryType('${category}', '${item.id}')">
                     <div class="item-info">
-                        <div class="item-name">${item.icon} ${item.name}</div>
+                        <div class="item-name">${item.name}</div>
                         <div class="item-nr">${item.nr} • ${item.items.length} itens</div>
                     </div>
                     <span style="color: var(--text-light); font-size: 18px;">›</span>

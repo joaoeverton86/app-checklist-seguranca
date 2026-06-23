@@ -1,6 +1,8 @@
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const PORT = 8000;
 const DIR = __dirname;
@@ -16,9 +18,8 @@ const MIME_TYPES = {
     '.ico': 'image/x-icon'
 };
 
-const server = http.createServer((req, res) => {
+function handler(req, res) {
     let filePath = path.join(DIR, req.url === '/' ? 'index.html' : req.url);
-    
     const ext = path.extname(filePath);
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
     
@@ -31,9 +32,22 @@ const server = http.createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': contentType });
         res.end(content);
     });
-});
+}
 
-// Get network IP
+const certPath = path.join(DIR, 'cert.pem');
+const keyPath = path.join(DIR, 'key.pem');
+
+if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
+    console.log('Gerando certificado auto-assinado...');
+    execSync(`openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 365 -nodes -subj "/CN=localhost"`);
+    console.log('Certificado gerado!');
+}
+
+const options = {
+    key: fs.readFileSync(keyPath),
+    cert: fs.readFileSync(certPath)
+};
+
 const os = require('os');
 const interfaces = os.networkInterfaces();
 let localIP = 'localhost';
@@ -46,15 +60,18 @@ for (const name in interfaces) {
     }
 }
 
+const server = https.createServer(options, handler);
+
 server.listen(PORT, '0.0.0.0', () => {
     console.log('========================================');
-    console.log('  SERVIDOR - CHECKLIST SEGURANCA');
+    console.log('  SERVIDOR HTTPS - CHECKLIST SEGURANCA');
     console.log('========================================');
     console.log('');
     console.log(`Servidor rodando!`);
     console.log('');
-    console.log(`No PC: http://localhost:${PORT}`);
-    console.log(`No celular: http://${localIP}:${PORT}`);
+    console.log(`No PC: https://localhost:${PORT}`);
+    console.log(`No celular: https://${localIP}:${PORT}`);
     console.log('');
+    console.log('No celular: aceite o aviso de certificado');
     console.log('Para parar: Ctrl+C');
 });

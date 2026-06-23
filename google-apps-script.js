@@ -54,13 +54,44 @@ function criarAbaSeNaoExiste(ss, nomeAba, cabecalhos) {
     }
 }
 
-// GET - Consultar dados
+// GET - Consultar dados (suporta ?store=NomeAba)
 function doGet(e) {
     Logger.log('doGet chamado');
     try {
         const ss = SpreadsheetApp.getActiveSpreadsheet();
-        const aba = ss.getSheetByName(CHECKLIST_SHEET);
-        const dados = aba.getDataRange().getValues();
+        const storeParam = e.parameter.store || 'Checklists';
+        
+        const storeMap = {
+            'Checklists': CHECKLIST_SHEET,
+            'Cadastros': CADASTROS_SHEET,
+            'Relatos': ISSUES_SHEET,
+            'Colaboradores': COLABORADORES_SHEET
+        };
+        
+        const nomeAba = storeMap[storeParam] || storeParam;
+        const aba = ss.getSheetByName(nomeAba);
+        
+        if (!aba) {
+            return ContentService
+                .createTextOutput(JSON.stringify({ success: true, data: [] }))
+                .setMimeType(ContentService.MimeType.JSON);
+        }
+        
+        const dadosRaw = aba.getDataRange().getValues();
+        if (dadosRaw.length < 2) {
+            return ContentService
+                .createTextOutput(JSON.stringify({ success: true, data: [] }))
+                .setMimeType(ContentService.MimeType.JSON);
+        }
+        
+        const headers = dadosRaw[0];
+        const dados = [];
+        for (let i = 1; i < dadosRaw.length; i++) {
+            const obj = {};
+            headers.forEach((h, j) => { obj[h] = dadosRaw[i][j]; });
+            dados.push(obj);
+        }
+        
         return ContentService
             .createTextOutput(JSON.stringify({ success: true, data: dados }))
             .setMimeType(ContentService.MimeType.JSON);

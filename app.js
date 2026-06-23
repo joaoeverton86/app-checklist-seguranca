@@ -1761,10 +1761,10 @@ async function downloadFromSheets() {
     }
     
     const stores = {
-        'Checklists': 'checklists',
         'Cadastros': 'cadastros',
-        'Relatos': 'issues',
-        'Colaboradores': 'colaboradores'
+        'Checklists': 'checklists',
+        'Colaboradores': 'colaboradores',
+        'Relatos': 'issues'
     };
     
     const summary = {};

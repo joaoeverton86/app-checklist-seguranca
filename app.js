@@ -503,7 +503,7 @@ async function deleteColaborador(id) {
 
 async function getCadastrosByTipo(tipo) {
     const cadastros = await getAllFromIndexedDB('cadastros');
-    return cadastros.filter(c => c.tipo === tipo && c.ativo !== false);
+    return cadastros.filter(c => c.tipo && c.tipo.toLowerCase() === tipo.toLowerCase() && c.ativo !== false);
 }
 
 async function getAllCadastros() {
@@ -1811,10 +1811,37 @@ async function downloadFromSheets() {
 
 function converterParaApp(storeName, row) {
     if (storeName === 'cadastros') {
+        const tipoRaw = row['Tipo'] || '';
+        const tipoLower = tipoRaw.toLowerCase();
+        const categoriaRaw = row['Categoria'] || '';
+        const categoriaLower = categoriaRaw.toLowerCase();
+        
+        const categoriaMap = {
+            'trator esteira': 'trator_esteira',
+            'trator pneu': 'trator_agricola',
+            'retro': 'retroescavadeira',
+            'patrol': 'motoniveladora',
+            'escavadeira': 'escavadeira',
+            'rolo': 'rolo',
+            'bobcat': 'minicarregadeira',
+            'pc': 'pcarregadeira',
+            'munck': 'caminhao_munk',
+            'basulante': 'caminhao_basculante',
+            'basculante': 'caminhao_basculante',
+            'pipa': 'caminhao_pipa',
+            'comboio': 'caminhao_comboio',
+            'prancha': 'veiculos_leves',
+            'apoio': 'veiculos_leves',
+            'transporte': 'onibus',
+            'teste': 'teste'
+        };
+        
+        const categoriaFinal = categoriaMap[categoriaLower] || categoriaLower;
+        
         return {
             id: row['Patrimônio'] || row['ID'] || '',
-            tipo: row['Tipo'] || '',
-            categoria: row['Categoria'] || '',
+            tipo: tipoLower,
+            categoria: categoriaFinal,
             nome: row['Nome'] || '',
             patrimonio: row['Patrimônio'] || '',
             empresa: row['Empresa'] || '',

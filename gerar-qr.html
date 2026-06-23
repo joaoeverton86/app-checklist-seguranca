@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerar QR Code - Patrimônio</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; text-align: center; }
+        h2 { color: #1a5276; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; box-sizing: border-box; }
+        button { padding: 14px 28px; background: #1a5276; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; margin: 10px 5px; }
+        button:hover { background: #0e3a53; }
+        #qrcode { margin: 20px auto; padding: 16px; background: white; display: inline-block; border: 1px solid #ccc; border-radius: 8px; }
+        .patrimonio-list { text-align: left; margin-top: 20px; }
+        .patrimonio-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin: 5px 0; cursor: pointer; }
+        .patrimonio-item:hover { background: #eaf2f8; }
+    </style>
+</head>
+<body>
+    <h2>📱 Gerar QR Code de Patrimônio</h2>
+    <p>Digite o patrimônio/placa ou clique em um dos itens abaixo:</p>
+    
+    <input type="text" id="patrimonioInput" placeholder="Ex: JHU7F58, TE-001, 416F2...">
+    <br>
+    <button onclick="gerarQR()">Gerar QR Code</button>
+    
+    <div id="qrcode"></div>
+    
+    <h3 style="margin-top: 30px; color: #1a5276;">Patrimônios Cadastrados</h3>
+    <div class="patrimonio-list" id="patrimonioList"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script>
+        const patrimonios = [
+            { pat: 'JHU7F58', nome: 'Caminhão Apoio' },
+            { pat: 'JHU7488', nome: 'Caminhão Apoio' },
+            { pat: 'JHU7F18', nome: 'Caminhão Apoio' },
+            { pat: 'JHU7528', nome: 'Caminhão Apoio' },
+            { pat: 'JHU7E68', nome: 'Caminhão Apoio' },
+            { pat: 'JHU7F08', nome: 'Caminhão Apoio' },
+            { pat: 'JJQ2J27', nome: 'Ônibus' },
+            { pat: 'JJQ4F07', nome: 'Ônibus' },
+            { pat: 'JHR1G84', nome: 'Caminhão Comboio' },
+            { pat: 'JJG4D08', nome: 'Caminhão Munck' },
+            { pat: 'GDL7D70', nome: 'Caminhão Basculante' },
+            { pat: 'PCB1D10', nome: 'Caminhão Basculante' },
+            { pat: 'PGQ0B04', nome: 'Caminhão Basculante' },
+            { pat: 'JHJ5158', nome: 'Caminhão Pipa' },
+            { pat: 'GZW3C50', nome: 'Caminhão Prancha' },
+            { pat: '416F2', nome: 'Retroescavadeira' },
+            { pat: 'TE-001', nome: 'Trator Esteira D6' },
+            { pat: 'TEST-001', nome: 'Equipamento de Teste' }
+        ];
+
+        const list = document.getElementById('patrimonioList');
+        patrimonios.forEach(p => {
+            const div = document.createElement('div');
+            div.className = 'patrimonio-item';
+            div.innerHTML = `<span><strong>${p.pat}</strong> - ${p.nome}</span><span>📱</span>`;
+            div.onclick = () => {
+                document.getElementById('patrimonioInput').value = p.pat;
+                gerarQR();
+            };
+            list.appendChild(div);
+        });
+
+        function gerarQR() {
+            const pat = document.getElementById('patrimonioInput').value.trim();
+            if (!pat) {
+                alert('Digite um patrimônio!');
+                return;
+            }
+            
+            const qrcodeDiv = document.getElementById('qrcode');
+            qrcodeDiv.innerHTML = '';
+            
+            QRCode.toCanvas(pat, { width: 250, margin: 2 }, (err, canvas) => {
+                if (err) {
+                    console.error(err);
+                    return;
+                }
+                qrcodeDiv.appendChild(canvas);
+            });
+        }
+    </script>
+</body>
+</html>

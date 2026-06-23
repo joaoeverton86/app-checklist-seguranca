@@ -1063,32 +1063,68 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Função/Cargo *</label>
-                    <select class="form-select" id="colabFuncao">
-                        <option value="">Selecione...</option>
-                        <option value="TST">Técnico de Segurança do Trabalho</option>
-                        <option value="motorista">Motorista</option>
-                        <option value="operador">Operador de Máquinas</option>
-                        <option value="encarregado_transporte">Encarregado de Transporte</option>
-                        <option value="mecanico">Mecânico</option>
-                        <option value="eletricista">Eletricista</option>
-                        <option value="pedreiro">Pedreiro</option>
-                        <option value="servente">Servente</option>
-                        <option value="encarregado_geral">Encarregado Geral</option>
-                        <option value="engenheiro">Engenheiro</option>
-                        <option value="outro">Outro</option>
-                    </select>
+                    <input type="text" class="form-input" id="colabFuncao" list="listaFuncoes" placeholder="Digite ou selecione a função">
+                    <datalist id="listaFuncoes">
+                        <option value="SERVENTE">
+                        <option value="PEDREIRO">
+                        <option value="MOTORISTA DE VEICULO PESADO">
+                        <option value="MOTORISTA DE CARRETA">
+                        <option value="MOTORISTA DE COMBIO">
+                        <option value="OPERADOR DE MAQUINAS">
+                        <option value="OPERADOR DE MOTOSSERRA">
+                        <option value="OPERADOR DE SUBESTAÇÃO">
+                        <option value="OPERADOR DE SISTEMAS HIDRICOS">
+                        <option value="ENCARREGADO DE CAMPO">
+                        <option value="ENC. DE CAMPO">
+                        <option value="ENC. DE OPERAÇÃO">
+                        <option value="ENC. DE MANUTENÇÃO MECÂNICA">
+                        <option value="ENCARREGADO DE MANUTENÇÃO ELÉTRICA">
+                        <option value="TÉCNICO DE MANUTENÇÃO ELÉTRICA">
+                        <option value="TECNICO MANUTENÇÃO MECÂNICA">
+                        <option value="TÉC. SEG. TRABALHO">
+                        <option value="TEC. ENFERMEIRO DO TRABALHO">
+                        <option value="ENGENHEIRO DE SEGURANÇA DO TRABALHO">
+                        <option value="ENGENHEIRO CIVIL">
+                        <option value="ENGENHEIRO CIVIL JUNIOR">
+                        <option value="ENGENHEIRO MECÂNICO">
+                        <option value="ASSISTENTE DE CAMPO">
+                        <option value="ASSISTENTE SOCIAL">
+                        <option value="AUXILIAR DE TOPOGRAFIA">
+                        <option value="TOPÓGRAFO">
+                        <option value="AUX. ADMINISTRATIVO">
+                        <option value="AUX. SERVIÇOS GERAIS">
+                        <option value="AUXILIAR DE ALMOXARIFADO">
+                        <option value="AUXILIAR DE INFORMÁTICA">
+                        <option value="SECRETARIA">
+                        <option value="LEITURISTA">
+                        <option value="VIGIA - DIURNO">
+                        <option value="VIGIA - NOTURNO">
+                        <option value="ANALISTA DE PLANEJAMENTO JUNIOR">
+                        <option value="ANALISTA DE SISTEMAS ELÉTRICOS">
+                        <option value="TECNICO">
+                    </datalist>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Setor *</label>
-                    <select class="form-select" id="colabSetor">
-                        <option value="">Selecione...</option>
-                        <option value="seguranca">Segurança do Trabalho</option>
-                        <option value="transporte">Transporte</option>
-                        <option value="manutencao">Manutenção</option>
-                        <option value="operacoes">Operações</option>
-                        <option value="administrativo">Administrativo</option>
-                        <option value="obra">Obra/campo</option>
-                    </select>
+                    <input type="text" class="form-input" id="colabSetor" list="listaSetores" placeholder="Digite ou selecione o setor">
+                    <datalist id="listaSetores">
+                        <option value="CIVIL">
+                        <option value="ELÉTRICA">
+                        <option value="ELETROMECÂNICA">
+                        <option value="OPERAÇÃO">
+                        <option value="CONSERVAÇÃO E LIMPEZA">
+                        <option value="SEG. BARRAGEM">
+                        <option value="TOPOGRAFIA">
+                        <option value="ADM">
+                        <option value="SERV. GERAIS">
+                        <option value="VIGILÂNCIA">
+                        <option value="SESMT">
+                        <option value="PLANEJAMENTO">
+                        <option value="PCM">
+                        <option value="ALMOXARIFADO">
+                        <option value="SALA TECNICA">
+                        <option value="TRANSPORTE">
+                    </datalist>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Empresa</label>

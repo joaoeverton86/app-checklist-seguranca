@@ -2233,7 +2233,7 @@ function selectCategoryType(category, typeId) {
     step2.style.display = 'block';
     
     document.getElementById('selectedType' + capitalize(category)).textContent = 
-        `${equipment.icon} ${equipment.name} (${equipment.nr})`;
+        `${equipment.name} (${equipment.nr})`;
     
     loadCadastroSuggestions(category);
     

@@ -1727,6 +1727,18 @@ async function clearAllData() {
     loadConfigPage();
 }
 
+async function clearAndReimport() {
+    if (!confirm('Isso vai apagar todos os cadastros e baixar novamente da planilha. Checklists e relatos serão mantidos. Continuar?')) return;
+    
+    const items = await getAllFromIndexedDB('cadastros');
+    for (const item of items) {
+        await deleteFromIndexedDB('cadastros', item.id);
+    }
+    
+    showToast('Cadastros apagados. Baixando da planilha...');
+    await downloadFromSheets();
+}
+
 // ============================================
 // BAIXAR DADOS DO GOOGLE SHEETS
 // ============================================
@@ -1820,31 +1832,52 @@ function converterParaApp(storeName, row) {
             'trator esteira': 'trator_esteira',
             'trator pneu': 'trator_agricola',
             'retro': 'retroescavadeira',
+            'retroescavadeira': 'retroescavadeira',
             'patrol': 'motoniveladora',
+            'motoniveladora': 'motoniveladora',
             'escavadeira': 'escavadeira',
+            'escavadeira hidráulica': 'escavadeira',
             'rolo': 'rolo',
+            'rolo compactador': 'rolo',
             'bobcat': 'minicarregadeira',
+            'mini-carregadeira': 'minicarregadeira',
             'pc': 'pcarregadeira',
+            'pá carregadeira': 'pcarregadeira',
             'munck': 'caminhao_munk',
+            'caminhão munck': 'caminhao_munk',
             'basulante': 'caminhao_basculante',
             'basculante': 'caminhao_basculante',
+            'caminhão basculante': 'caminhao_basculante',
             'pipa': 'caminhao_pipa',
+            'caminhão pipa': 'caminhao_pipa',
             'comboio': 'caminhao_comboio',
+            'caminhão comboio': 'caminhao_comboio',
             'prancha': 'veiculos_leves',
+            'caminhão prancha': 'veiculos_leves',
             'apoio': 'veiculos_leves',
+            'caminhão apoio': 'veiculos_leves',
             'transporte': 'onibus',
+            'ônibus': 'onibus',
             'teste': 'teste'
         };
         
         const categoriaFinal = categoriaMap[categoriaLower] || categoriaLower;
         
+        let patrimonio = row['Patrimônio'] || '';
+        if (!patrimonio || patrimonio.toLowerCase() === 'artec' || patrimonio.toLowerCase() === 'ar locações') {
+            patrimonio = row['ID'] || '';
+        }
+        
+        const nome = row['Nome'] || '';
+        const empresa = row['Empresa'] || '';
+        
         return {
-            id: row['Patrimônio'] || row['ID'] || '',
+            id: patrimonio || row['ID'] || '',
             tipo: tipoLower,
             categoria: categoriaFinal,
-            nome: row['Nome'] || '',
-            patrimonio: row['Patrimônio'] || '',
-            empresa: row['Empresa'] || '',
+            nome: nome,
+            patrimonio: patrimonio,
+            empresa: empresa,
             setor: row['Setor'] || '',
             obs: row['Observações'] || '',
             equipment: null,
@@ -2002,15 +2035,24 @@ function resetAllCategorySteps() {
 }
 
 async function loadCadastroSuggestions(category) {
+    const equipment = selectedCategoryTypes[category];
     const cadastros = await getCadastrosByTipo(category);
     const container = document.getElementById('cadastroList' + capitalize(category));
     
-    if (cadastros.length === 0) {
+    const filtrados = cadastros.filter(c => {
+        if (!equipment) return true;
+        if (!c.categoria) return true;
+        const cat = c.categoria.toLowerCase();
+        const eqId = equipment.id.toLowerCase();
+        return cat === eqId || cat.includes(eqId) || eqId.includes(cat);
+    });
+    
+    if (filtrados.length === 0) {
         container.innerHTML = '<div style="font-size: 12px; color: var(--text-light); text-align: center; padding: 12px;">Nenhum equipamento cadastrado para este tipo</div>';
         return;
     }
     
-    container.innerHTML = cadastros.map(c => `
+    container.innerHTML = filtrados.map(c => `
         <div class="suggestion-item" onclick="selectCadastroFromSearch('${category}', '${c.patrimonio}')" 
              style="border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px;">
             <div class="item-info">
@@ -2023,8 +2065,17 @@ async function loadCadastroSuggestions(category) {
 }
 
 async function filterCadastros(category, query) {
+    const equipment = selectedCategoryTypes[category];
     const cadastros = await getCadastrosByTipo(category);
     const container = document.getElementById('cadastroList' + capitalize(category));
+    
+    const filtradosBase = cadastros.filter(c => {
+        if (!equipment) return true;
+        if (!c.categoria) return true;
+        const cat = c.categoria.toLowerCase();
+        const eqId = equipment.id.toLowerCase();
+        return cat === eqId || cat.includes(eqId) || eqId.includes(cat);
+    });
     
     if (!query.trim()) {
         loadCadastroSuggestions(category);
@@ -2032,7 +2083,7 @@ async function filterCadastros(category, query) {
     }
     
     const queryLower = query.toLowerCase();
-    const filtered = cadastros.filter(item => 
+    const filtered = filtradosBase.filter(item => 
         (item.patrimonio && item.patrimonio.toLowerCase().includes(queryLower)) ||
         (item.nome && item.nome.toLowerCase().includes(queryLower)) ||
         (item.empresa && item.empresa.toLowerCase().includes(queryLower))

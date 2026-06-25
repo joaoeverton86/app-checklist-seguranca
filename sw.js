@@ -1,8 +1,22 @@
-// Service Worker - Checklist Segurança
-const CACHE_NAME = 'checklist-v19';
+const CACHE_NAME = 'checklist-v23';
+const SHELL_URLS = [
+    './',
+    './index.html',
+    './app.js',
+    './data.js',
+    './manifest.json'
+];
 
 self.addEventListener('install', event => {
-    self.skipWaiting();
+    event.waitUntil(
+        caches.keys().then(names => {
+            return Promise.all(
+                names.filter(n => n !== CACHE_NAME).map(n => caches.delete(n))
+            );
+        }).then(() => caches.open(CACHE_NAME))
+        .then(cache => cache.addAll(SHELL_URLS))
+        .then(() => self.skipWaiting())
+    );
 });
 
 self.addEventListener('activate', event => {
@@ -22,11 +36,24 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    const isMainFile = url.pathname.endsWith('index.html') || url.pathname.endsWith('app.js') || url.pathname.endsWith('data.js');
-
-    if (isMainFile) {
+    if (url.hostname === 'cdn.jsdelivr.net' || url.hostname === 'cdnjs.cloudflare.com') {
         event.respondWith(
             fetch(event.request).then(response => {
+                if (response && response.status === 200) {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+                }
+                return response;
+            }).catch(() => caches.match(event.request))
+        );
+        return;
+    }
+
+    const isShellFile = SHELL_URLS.some(s => url.pathname.endsWith(s.replace('./', '/')));
+
+    if (isShellFile) {
+        event.respondWith(
+            fetch(event.request, { cache: 'no-cache' }).then(response => {
                 const clone = response.clone();
                 caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
                 return response;

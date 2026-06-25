@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v20';
+const APP_VERSION = 'v23';
 
 let currentPage = 'pageHome';
 let currentChecklist = null;
@@ -41,6 +41,11 @@ document.addEventListener('DOMContentLoaded', () => {
     loadRecentChecklists();
     loadTopRisks();
     renderEquipmentGrids();
+    iniciarSyncPeriodica();
+
+    if (navigator.onLine && getSyncUrl()) {
+        setTimeout(function() { sincronizacaoBidirecional(); }, 2000);
+    }
     
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js')
@@ -79,7 +84,8 @@ function updateConnectionStatus() {
     const text = document.getElementById('connectionText');
     if (navigator.onLine) {
         status.className = 'connection-status online';
-        text.textContent = '● Online - Dados serão sincronizados';
+        text.textContent = '● Online - Sincronizando...';
+        sincronizacaoBidirecional();
     } else {
         status.className = 'connection-status offline';
         text.textContent = '● Offline - Dados salvos localmente';
@@ -949,7 +955,8 @@ function saveFormData() {
         empresa: document.getElementById('checklistEmpresa').value,
         operador: document.getElementById('checklistOperador').value,
         observacoes: document.getElementById('checklistObservacoes').value,
-        responsavel: selectedResponsavel
+        responsavel: selectedResponsavel,
+        sst: selectedSST
     };
 }
 
@@ -1043,24 +1050,43 @@ function getSignatureResponsavelImage() {
 }
 
 async function loadResponsavelSelect() {
-    const select = document.getElementById('checklistResponsavelSelect');
-    if (!select) return;
     const colaboradores = await getAllFromIndexedDB('colaboradores');
     const ativos = colaboradores.filter(c => c.ativo !== false);
-    select.innerHTML = '<option value="">Selecione um responsável...</option>';
-    ativos.forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c.nome;
-        opt.textContent = `${c.nome} - ${c.funcao || ''}`;
-        select.appendChild(opt);
-    });
+
+    const selectResp = document.getElementById('checklistResponsavelSelect');
+    if (selectResp) {
+        selectResp.innerHTML = '<option value="">Selecione...</option>';
+        ativos.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.nome;
+            opt.textContent = `${c.nome} - ${c.funcao || ''}`;
+            selectResp.appendChild(opt);
+        });
+    }
+
+    const selectSST = document.getElementById('checklistSSTSelect');
+    if (selectSST) {
+        selectSST.innerHTML = '<option value="">Selecione o TST/Engenheiro...</option>';
+        ativos.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.nome;
+            opt.textContent = `${c.nome} - ${c.funcao || ''}`;
+            selectSST.appendChild(opt);
+        });
+    }
 }
 
 let selectedResponsavel = '';
+let selectedSST = '';
 
 function fillResponsavelFromSelect() {
     const select = document.getElementById('checklistResponsavelSelect');
     selectedResponsavel = select ? select.value : '';
+}
+
+function fillSSTFromSelect() {
+    const select = document.getElementById('checklistSSTSelect');
+    selectedSST = select ? select.value : '';
 }
 
 // ============================================
@@ -1124,6 +1150,7 @@ function saveChecklist() {
         operador: formData.operador,
         observacoes: formData.observacoes,
         responsavel: formData.responsavel,
+        sst: formData.sst,
         statusChecklist: statusFinal,
         prazoAdequacao: prazo,
         equipment: {
@@ -1483,6 +1510,118 @@ function getSyncStatus() {
 }
 
 // ============================================
+// SINCRONIZAÇÃO BIDIRECIONAL AUTOMÁTICA
+// ============================================
+
+let syncBidirecionalEmAndamento = false;
+let syncIntervalId = null;
+
+async function sincronizacaoBidirecional() {
+    const SCRIPT_URL = getSyncUrl();
+    if (!SCRIPT_URL || syncBidirecionalEmAndamento || !navigator.onLine) return;
+
+    syncBidirecionalEmAndamento = true;
+    const statusEl = document.getElementById('connectionText');
+    const originalText = statusEl ? statusEl.textContent : '';
+
+    try {
+        if (statusEl) statusEl.textContent = '● Sincronizando dados...';
+
+        await processarFilaPendente();
+
+        const storesParaSync = [
+            { aba: 'Cadastros', store: 'cadastros' },
+            { aba: 'Colaboradores', store: 'colaboradores' }
+        ];
+
+        let totalAtualizados = 0;
+
+        for (const { aba, store } of storesParaSync) {
+            try {
+                const response = await fetch(SCRIPT_URL + '?store=' + encodeURIComponent(aba));
+                const result = await response.json();
+
+                if (!result.success || !result.data) continue;
+
+                const locais = await getAllFromIndexedDB(store);
+                const localMap = {};
+                locais.forEach(item => { localMap[item.id] = item; });
+
+                const remotos = result.data;
+                const remoteMap = {};
+
+                for (const row of remotos) {
+                    const id = row['ID'] || row['Patrimônio'] || row['Matrícula'] || '';
+                    if (!id) continue;
+
+                    const remoto = converterParaApp(store, row);
+                    if (!remoto) continue;
+                    remoto.id = id;
+                    remoto.synced = true;
+                    remoteMap[id] = remoto;
+
+                    const local = localMap[id];
+
+                    if (!local) {
+                        await saveToIndexedDB(store, remoto, true);
+                        totalAtualizados++;
+                    } else if (local.ativo === false) {
+                        continue;
+                    } else if (!local.synced && local.timestamp) {
+                        continue;
+                    } else {
+                        const remotoTs = remoto.timestamp ? new Date(remoto.timestamp).getTime() : 0;
+                        const localTs = local.timestamp ? new Date(local.timestamp).getTime() : 0;
+
+                        if (remotoTs > localTs) {
+                            remoto.disabledItems = local.disabledItems;
+                            remoto.customItems = local.customItems;
+                            remoto.ultimoChecklist = local.ultimoChecklist;
+                            await saveToIndexedDB(store, remoto, true);
+                            totalAtualizados++;
+                        }
+                    }
+                }
+
+                for (const local of locais) {
+                    if (local.ativo === false) continue;
+                    if (!remoteMap[local.id] && local.synced !== true) {
+                        syncToGoogleSheets(store, local);
+                        totalAtualizados++;
+                    }
+                }
+            } catch (err) {
+                console.log('Erro sync bidirecional ' + aba + ':', err.message);
+            }
+        }
+
+        if (statusEl) {
+            if (totalAtualizados > 0) {
+                statusEl.textContent = '● Sync concluída (' + totalAtualizados + ' atualizados)';
+            } else {
+                statusEl.textContent = '● Online - Dados sincronizados';
+            }
+        }
+
+        localStorage.setItem('last_bidirectional_sync', new Date().toISOString());
+    } catch (err) {
+        console.log('Erro na sincronização bidirecional:', err.message);
+        if (statusEl) statusEl.textContent = originalText;
+    } finally {
+        syncBidirecionalEmAndamento = false;
+    }
+}
+
+function iniciarSyncPeriodica() {
+    if (syncIntervalId) clearInterval(syncIntervalId);
+    syncIntervalId = setInterval(function() {
+        if (navigator.onLine && getSyncUrl()) {
+            sincronizacaoBidirecional();
+        }
+    }, 5 * 60 * 1000);
+}
+
+// ============================================
 // HISTÓRICO
 // ============================================
 
@@ -1599,13 +1738,15 @@ async function viewChecklist(id) {
         
         ${checklist.signature ? `
             <div class="card">
-                <div class="card-title">✍️ Assinatura TST</div>
+                <div class="card-title">✍️ Responsável de Segurança do Trabalho</div>
+                ${checklist.sst ? `<div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">${checklist.sst}</div>` : ''}
                 <img src="${checklist.signature}" style="width: 100%; border: 1px solid var(--border); border-radius: 8px;">
             </div>` : ''}
 
         ${checklist.signatureResponsavel ? `
             <div class="card">
-                <div class="card-title">✍️ Assinatura do Responsável</div>
+                <div class="card-title">✍️ Encarregado / Responsável</div>
+                ${checklist.responsavel ? `<div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">${checklist.responsavel}</div>` : ''}
                 <img src="${checklist.signatureResponsavel}" style="width: 100%; border: 1px solid var(--border); border-radius: 8px;">
             </div>` : ''}
         
@@ -1710,9 +1851,8 @@ async function renderDashboardCharts() {
     if (typeof Chart === 'undefined') return;
 
     const checklists = await getAllFromIndexedDB('checklists');
-    const now = new Date();
-    const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1);
-    const checklistsMes = checklists.filter(c => new Date(c.date) >= inicioMes);
+    const { inicio, fim } = getDateRange();
+    const checklistsMes = checklists.filter(c => { const d = new Date(c.date); return d >= inicio && d <= fim; });
     if (checklistsMes.length === 0) return;
 
     const colors = { success: '#27ae60', danger: '#e74c3c', gray: '#95a5a6', primary: '#1a5276', primaryLight: '#2980b9' };
@@ -1742,6 +1882,7 @@ async function renderDashboardCharts() {
     }
 
     const meses = [], contagens = [];
+    const now = new Date();
     for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         meses.push(d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
@@ -1769,6 +1910,57 @@ async function renderDashboardCharts() {
     }
 }
 
+let reportFilter = 'mes';
+let reportFilterCustomFrom = null;
+let reportFilterCustomTo = null;
+
+function setReportFilter(filter) {
+    reportFilter = filter;
+    ['filterMes', 'filterSemana', 'filterTodos', 'filterCustom'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.className = 'status-btn na';
+    });
+    const activeMap = { mes: 'filterMes', semana: 'filterSemana', todos: 'filterTodos', custom: 'filterCustom' };
+    const activeEl = document.getElementById(activeMap[filter]);
+    if (activeEl) activeEl.className = 'status-btn c selected';
+
+    const customDiv = document.getElementById('customDateFilter');
+    if (customDiv) customDiv.style.display = filter === 'custom' ? 'block' : 'none';
+
+    if (filter !== 'custom') {
+        loadReports();
+    }
+}
+
+function applyCustomDateFilter() {
+    const from = document.getElementById('filterDateFrom').value;
+    const to = document.getElementById('filterDateTo').value;
+    if (from && to) {
+        reportFilterCustomFrom = from;
+        reportFilterCustomTo = to;
+        loadReports();
+    }
+}
+
+function getDateRange() {
+    const now = new Date();
+    if (reportFilter === 'semana') {
+        const inicio = new Date(now);
+        inicio.setDate(now.getDate() - 7);
+        inicio.setHours(0, 0, 0, 0);
+        return { inicio, fim: now };
+    }
+    if (reportFilter === 'custom' && reportFilterCustomFrom && reportFilterCustomTo) {
+        const inicio = new Date(reportFilterCustomFrom + 'T00:00:00');
+        const fim = new Date(reportFilterCustomTo + 'T23:59:59');
+        return { inicio, fim };
+    }
+    if (reportFilter === 'todos') {
+        return { inicio: new Date(2000, 0, 1), fim: now };
+    }
+    return { inicio: new Date(now.getFullYear(), now.getMonth(), 1), fim: now };
+}
+
 // ============================================
 // RELATÓRIOS
 // ============================================
@@ -1779,12 +1971,12 @@ async function renderDashboardCharts() {
 
 async function showStatusDetails(status) {
     const checklists = await getAllFromIndexedDB('checklists');
-    const agora = new Date();
-    const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
+    const { inicio, fim } = getDateRange();
     
-    const checklistsMes = checklists.filter(c => 
-        new Date(c.date) >= inicioMes && c.statusChecklist === status
-    );
+    const checklistsMes = checklists.filter(c => {
+        const d = new Date(c.date);
+        return d >= inicio && d <= fim && c.statusChecklist === status;
+    });
     
     const statusLabels = {
         interditado: { title: '🚫 Interditados', color: 'var(--danger)', bg: '#fadbd8' },
@@ -1886,20 +2078,25 @@ async function loadReports() {
     const agora = new Date();
     const tituloEl = document.getElementById('reportTitle');
     if (tituloEl) {
-        tituloEl.textContent = `📊 Painel do Mês - ${meses[agora.getMonth()]} ${agora.getFullYear()}`;
+        if (reportFilter === 'semana') {
+            tituloEl.textContent = `📊 Painel - Última Semana`;
+        } else if (reportFilter === 'todos') {
+            tituloEl.textContent = `📊 Painel - Todos os Dados`;
+        } else if (reportFilter === 'custom') {
+            tituloEl.textContent = `📊 Painel - Período Personalizado`;
+        } else {
+            tituloEl.textContent = `📊 Painel do Mês - ${meses[agora.getMonth()]} ${agora.getFullYear()}`;
+        }
     }
     
     const checklists = await getAllFromIndexedDB('checklists');
     const issues = await getAllFromIndexedDB('issues');
     const cadastros = await getAllFromIndexedDB('cadastros');
     
-    // Filtrar apenas equipamentos ativos
     const equipamentosAtivos = cadastros.filter(c => c.ativo !== false && c.tipo !== 'colaborador');
     
-    // Calcular checklists deste mês
-    const now = new Date();
-    const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1);
-    const checklistsMes = checklists.filter(c => new Date(c.date) >= inicioMes);
+    const { inicio, fim } = getDateRange();
+    const checklistsMes = checklists.filter(c => { const d = new Date(c.date); return d >= inicio && d <= fim; });
     
     // Equipamentos que já foram verificados este mês
     const patrimoniosVerificados = new Set(checklistsMes.map(c => c.patrimonio));
@@ -2249,8 +2446,9 @@ async function exportChecklist(id) {
         if (y > 250) { doc.addPage(); y = 15; }
         doc.setFont(undefined, 'bold');
         doc.setFontSize(10);
-        doc.text('Assinatura TST:', 15, y);
-        y += 4;
+        doc.text('Resp. Seguranca do Trabalho:', 15, y);
+        if (c.sst) { doc.setFont(undefined, 'normal'); doc.text(c.sst, 80, y); }
+        y += 6;
         try { doc.addImage(c.signature, 'PNG', 15, y, 60, 25); } catch (e) {}
         y += 28;
     }
@@ -2260,8 +2458,9 @@ async function exportChecklist(id) {
         if (y > 250) { doc.addPage(); y = 15; }
         doc.setFont(undefined, 'bold');
         doc.setFontSize(10);
-        doc.text('Assinatura do Responsavel:', 15, y);
-        y += 4;
+        doc.text('Encarregado / Responsavel:', 15, y);
+        if (c.responsavel) { doc.setFont(undefined, 'normal'); doc.text(c.responsavel, 75, y); }
+        y += 6;
         try { doc.addImage(c.signatureResponsavel, 'PNG', 15, y, 60, 25); } catch (e) {}
     }
 
@@ -2293,11 +2492,13 @@ function loadConfigPage() {
     
     if (status.configurado) {
         statusCard.style.background = '#d5f5e3';
-        statusText.textContent = '✅ Configurado';
+        statusText.textContent = '✅ Configurado - Sync Automática Ativa';
         statusText.style.color = '#1e8449';
-        statusDetail.textContent = status.pendentes > 0 ? 
-            `${status.pendentes} item(ns) pendente(s) de sincronização` : 
-            'Sincronização ativa - todos os dados sincronizados';
+        const lastSync = localStorage.getItem('last_bidirectional_sync');
+        const lastSyncStr = lastSync ? new Date(lastSync).toLocaleString('pt-BR') : 'Nunca';
+        statusDetail.textContent = status.pendentes > 0 ?
+            `${status.pendentes} item(ns) pendente(s) | Última sync: ${lastSyncStr}` :
+            `Sync bidirecional ativa (a cada 5 min) | Última: ${lastSyncStr}`;
     } else {
         statusCard.style.background = '#fadbd8';
         statusText.textContent = '⚠️ Não configurado';

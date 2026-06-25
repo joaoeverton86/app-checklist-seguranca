@@ -756,12 +756,13 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Patrimônio / Placa</label>
-                    <div style="position: relative;">
-                        <select class="form-input" id="checklistPatrimonio" onchange="fillFromCadastro()" style="appearance: auto;">
-                            <option value="">Selecione um equipamento cadastrado...</option>
-                        </select>
-                        <button onclick="openQRScanner('checklist')" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: var(--primary); color: white; border: none; border-radius: 6px; width: 36px; height: 36px; font-size: 16px; cursor: pointer;">📷</button>
-                    </div>
+                    <button onclick="openQRScanner('checklist')" style="width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 8px;">
+                        📷 Escanear QR Code do Equipamento
+                    </button>
+                    <div style="text-align: center; font-size: 11px; color: var(--text-light); margin-bottom: 8px;">— ou selecione manualmente —</div>
+                    <select class="form-input" id="checklistPatrimonio" onchange="fillFromCadastro()" style="appearance: auto;">
+                        <option value="">Selecione um equipamento cadastrado...</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Nome / Descrição</label>
@@ -822,8 +823,11 @@
             <div class="card">
                 <div class="card-title"><span class="icon">✍️</span> Assinaturas</div>
                 <div class="form-group">
-                    <label class="form-label">Assinatura TST</label>
-                    <div class="signature-area">
+                    <label class="form-label">Assinatura do Responsável de Segurança do Trabalho</label>
+                    <select class="form-select" id="checklistSSTSelect" onchange="fillSSTFromSelect()">
+                        <option value="">Selecione o TST/Engenheiro...</option>
+                    </select>
+                    <div class="signature-area" style="margin-top: 8px;">
                         <canvas id="signatureCanvas"></canvas>
                         <button class="clear-btn" onclick="clearSignature()">Limpar Assinatura</button>
                     </div>
@@ -833,10 +837,7 @@
                     <select class="form-select" id="checklistResponsavelSelect" onchange="fillResponsavelFromSelect()">
                         <option value="">Selecione...</option>
                     </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Assinatura do Responsável</label>
-                    <div class="signature-area">
+                    <div class="signature-area" style="margin-top: 8px;">
                         <canvas id="signatureCanvasResponsavel"></canvas>
                         <button class="clear-btn" onclick="clearSignatureResponsavel()">Limpar Assinatura</button>
                     </div>
@@ -905,7 +906,31 @@
     <div class="page" id="pageReports">
         <div class="content">
             <div class="section-title" id="reportTitle">📊 Painel do Mês</div>
-            
+
+            <div class="card" style="margin-bottom: 12px;">
+                <div class="card-title"><span class="icon">📅</span> Filtrar por Período</div>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;">
+                    <button class="status-btn c selected" id="filterMes" onclick="setReportFilter('mes')" style="flex: 1; min-width: 80px;">Este Mês</button>
+                    <button class="status-btn na" id="filterSemana" onclick="setReportFilter('semana')" style="flex: 1; min-width: 80px;">Última Semana</button>
+                    <button class="status-btn na" id="filterTodos" onclick="setReportFilter('todos')" style="flex: 1; min-width: 80px;">Todos</button>
+                </div>
+                <div id="customDateFilter" style="display: none;">
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <div style="flex: 1;">
+                            <label class="form-label" style="font-size: 11px;">De</label>
+                            <input type="date" class="form-input" id="filterDateFrom" onchange="applyCustomDateFilter()" style="padding: 8px; font-size: 12px;">
+                        </div>
+                        <div style="flex: 1;">
+                            <label class="form-label" style="font-size: 11px;">Até</label>
+                            <input type="date" class="form-input" id="filterDateTo" onchange="applyCustomDateFilter()" style="padding: 8px; font-size: 12px;">
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 6px; margin-top: 8px;">
+                    <button class="status-btn na" id="filterCustom" onclick="setReportFilter('custom')" style="flex: 1;">Personalizado</button>
+                </div>
+            </div>
+
             <div class="report-summary" style="grid-template-columns: 1fr 1fr 1fr;">
                 <div class="summary-card total">
                     <div class="number" id="totalEquipamentos">0</div>
@@ -1098,7 +1123,11 @@
                 </div>
 
                 <button class="save-btn" style="background: var(--success); margin-top: 10px;" onclick="syncAllPending()">
-                    🔄 Sincronizar Tudo Agora
+                    🔄 Enviar Dados Pendentes
+                </button>
+
+                <button class="save-btn" style="background: #2980b9; margin-top: 10px;" onclick="sincronizacaoBidirecional().then(function(){ loadConfigPage(); showToast('Sincronização concluída!'); })">
+                    🔃 Sincronizar Agora (Bidirecional)
                 </button>
 
                 <button class="save-btn" style="background: var(--primary); margin-top: 10px;" onclick="downloadFromSheets()">
@@ -1365,7 +1394,7 @@
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="data.js?v=7"></script>
-    <script src="app.js?v=7"></script>
+    <script src="data.js?v=10"></script>
+    <script src="app.js?v=10"></script>
 </body>
 </html>

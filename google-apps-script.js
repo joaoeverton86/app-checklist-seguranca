@@ -16,7 +16,7 @@ function setup() {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     criarAbaSeNaoExiste(ss, CHECKLIST_SHEET, [
         'ID', 'Data', 'Patrimônio', 'Equipamento', 'NR', 'Empresa', 
-        'Operador', 'Conformes', 'Não Conformes', 'N/A', 'Observações', 
+        'Operador', 'SST', 'Responsável', 'Conformes', 'Não Conformes', 'N/A', 'Observações', 
         'Status', 'Prazo Adequação', 'Data Hora Registro', 'Sincronizado'
     ]);
     criarAbaSeNaoExiste(ss, ISSUES_SHEET, [
@@ -167,6 +167,8 @@ function salvarChecklist(record) {
         (record.equipment && record.equipment.nr) || '',
         record.empresa || '',
         record.operador || '',
+        record.sst || '',
+        record.responsavel || '',
         (record.stats && record.stats.conformes) || 0,
         (record.stats && record.stats.naoConformes) || 0,
         (record.stats && record.stats.na) || 0,

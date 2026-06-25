@@ -784,9 +784,11 @@ function startChecklist(category, equipmentId) {
     
     // Carregar cadastros deste tipo
     loadCadastroSelect(category);
-    
+    loadResponsavelSelect();
+
     clearSignature();
-    renderChecklistItems(equipment);
+    clearSignatureResponsavel();
+    renderChecklistItems(equipment, currentCadastro);
     showPage('pageChecklistForm');
 }
 
@@ -952,32 +954,34 @@ function saveFormData() {
 // ============================================
 
 function initSignaturePad() {
-    const canvas = document.getElementById('signatureCanvas');
+    setupCanvas('signatureCanvas');
+    setupCanvas('signatureCanvasResponsavel');
+}
+
+function setupCanvas(canvasId) {
+    const canvas = document.getElementById(canvasId);
     if (!canvas) return;
-    
+
     const ctx = canvas.getContext('2d');
     let drawing = false;
     let lastX = 0;
     let lastY = 0;
-    
+
     function resizeCanvas() {
         const rect = canvas.getBoundingClientRect();
         canvas.width = rect.width;
         canvas.height = rect.height;
     }
-    
+
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
-    
+
     function getPos(e) {
         const rect = canvas.getBoundingClientRect();
         const touch = e.touches ? e.touches[0] : e;
-        return {
-            x: touch.clientX - rect.left,
-            y: touch.clientY - rect.top
-        };
+        return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
     }
-    
+
     function startDraw(e) {
         e.preventDefault();
         drawing = true;
@@ -985,12 +989,11 @@ function initSignaturePad() {
         lastX = pos.x;
         lastY = pos.y;
     }
-    
+
     function draw(e) {
         if (!drawing) return;
         e.preventDefault();
         const pos = getPos(e);
-        
         ctx.beginPath();
         ctx.moveTo(lastX, lastY);
         ctx.lineTo(pos.x, pos.y);
@@ -998,13 +1001,12 @@ function initSignaturePad() {
         ctx.lineWidth = 2;
         ctx.lineCap = 'round';
         ctx.stroke();
-        
         lastX = pos.x;
         lastY = pos.y;
     }
-    
+
     function stopDraw() { drawing = false; }
-    
+
     canvas.addEventListener('mousedown', startDraw);
     canvas.addEventListener('mousemove', draw);
     canvas.addEventListener('mouseup', stopDraw);
@@ -1017,13 +1019,43 @@ function initSignaturePad() {
 function clearSignature() {
     const canvas = document.getElementById('signatureCanvas');
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function clearSignatureResponsavel() {
+    const canvas = document.getElementById('signatureCanvasResponsavel');
+    if (!canvas) return;
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
 }
 
 function getSignatureImage() {
     const canvas = document.getElementById('signatureCanvas');
     return canvas ? canvas.toDataURL() : null;
+}
+
+function getSignatureResponsavelImage() {
+    const canvas = document.getElementById('signatureCanvasResponsavel');
+    return canvas ? canvas.toDataURL() : null;
+}
+
+async function loadResponsavelSelect() {
+    const select = document.getElementById('checklistResponsavelSelect');
+    if (!select) return;
+    const colaboradores = await getAllFromIndexedDB('colaboradores');
+    const ativos = colaboradores.filter(c => c.ativo !== false);
+    select.innerHTML = '<option value="">Selecione um responsável...</option>';
+    ativos.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.nome;
+        opt.textContent = `${c.nome} - ${c.funcao || ''}`;
+        select.appendChild(opt);
+    });
+}
+
+function fillResponsavelFromSelect() {
+    const select = document.getElementById('checklistResponsavelSelect');
+    const input = document.getElementById('checklistResponsavel');
+    if (select && input) input.value = select.value || '';
 }
 
 // ============================================
@@ -1098,6 +1130,7 @@ function saveChecklist() {
         items: checklistData,
         stats: { conformes, naoConformes, na, total: items.length },
         signature: getSignatureImage(),
+        signatureResponsavel: getSignatureResponsavelImage(),
         synced: false
     };
     
@@ -1563,6 +1596,12 @@ async function viewChecklist(id) {
             <div class="card">
                 <div class="card-title">✍️ Assinatura TST</div>
                 <img src="${checklist.signature}" style="width: 100%; border: 1px solid var(--border); border-radius: 8px;">
+            </div>` : ''}
+
+        ${checklist.signatureResponsavel ? `
+            <div class="card">
+                <div class="card-title">✍️ Assinatura do Responsável</div>
+                <img src="${checklist.signatureResponsavel}" style="width: 100%; border: 1px solid var(--border); border-radius: 8px;">
             </div>` : ''}
         
         <div style="display: flex; gap: 10px; margin-top: 16px;">
@@ -2207,9 +2246,18 @@ async function exportChecklist(id) {
         doc.setFontSize(10);
         doc.text('Assinatura TST:', 15, y);
         y += 4;
-        try {
-            doc.addImage(c.signature, 'PNG', 15, y, 60, 25);
-        } catch (e) {}
+        try { doc.addImage(c.signature, 'PNG', 15, y, 60, 25); } catch (e) {}
+        y += 28;
+    }
+
+    if (c.signatureResponsavel) {
+        y += 4;
+        if (y > 250) { doc.addPage(); y = 15; }
+        doc.setFont(undefined, 'bold');
+        doc.setFontSize(10);
+        doc.text('Assinatura do Responsavel:', 15, y);
+        y += 4;
+        try { doc.addImage(c.signatureResponsavel, 'PNG', 15, y, 60, 25); } catch (e) {}
     }
 
     doc.save(`checklist_${c.patrimonio || 'item'}_${c.date}.pdf`);
@@ -2797,18 +2845,21 @@ async function startChecklistFromPending(patrimonio) {
     }
     
     currentEquipment = equipment;
+    currentCadastro = cadastro;
     checklistData = {};
-    
+
     document.getElementById('checklistDate').value = new Date().toISOString().split('T')[0];
     document.getElementById('checklistPatrimonio').value = cadastro.patrimonio || '';
     document.getElementById('checklistNome').value = cadastro.nome || equipment.name;
     document.getElementById('checklistEmpresa').value = cadastro.empresa || '';
     document.getElementById('checklistOperador').value = '';
     document.getElementById('checklistObservacoes').value = '';
-    
+
     loadCadastroSelect(tipo);
+    loadResponsavelSelect();
     clearSignature();
-    renderChecklistItems(equipment);
+    clearSignatureResponsavel();
+    renderChecklistItems(equipment, cadastro);
     
     setTimeout(() => {
         document.getElementById('checklistPatrimonio').value = cadastro.patrimonio || '';

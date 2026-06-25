@@ -231,7 +231,7 @@
         }
         .signature-area canvas {
             width: 100%;
-            height: 100px;
+            height: 150px;
             border: 1px solid var(--border);
             border-radius: 8px;
             background: white;
@@ -830,7 +830,17 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Responsável / Encarregado</label>
-                    <input type="text" class="form-input" id="checklistResponsavel" placeholder="Nome do responsável">
+                    <select class="form-select" id="checklistResponsavelSelect" onchange="fillResponsavelFromSelect()">
+                        <option value="">Selecione um responsável...</option>
+                    </select>
+                    <input type="text" class="form-input" id="checklistResponsavel" placeholder="Nome do responsável" style="margin-top: 6px;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Assinatura do Responsável</label>
+                    <div class="signature-area">
+                        <canvas id="signatureCanvasResponsavel"></canvas>
+                        <button class="clear-btn" onclick="clearSignatureResponsavel()">Limpar Assinatura</button>
+                    </div>
                 </div>
             </div>
 

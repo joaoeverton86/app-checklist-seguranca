@@ -2481,6 +2481,9 @@ function downloadFile(content, filename) {
 // ============================================
 
 function loadConfigPage() {
+    const versionEl = document.getElementById('versionDisplay');
+    if (versionEl) versionEl.textContent = APP_VERSION;
+
     const url = getSyncUrl();
     const urlInput = document.getElementById('syncUrlInput');
     if (urlInput) urlInput.value = url;

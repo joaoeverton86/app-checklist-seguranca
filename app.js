@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v19';
+const APP_VERSION = 'v20';
 
 let currentPage = 'pageHome';
 let currentChecklist = null;

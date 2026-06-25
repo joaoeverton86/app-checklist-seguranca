@@ -2107,32 +2107,113 @@ async function exportToCSV() {
 async function exportChecklist(id) {
     const c = await getFromIndexedDB('checklists', id);
     if (!c) return;
-    
-    const date = new Date(c.date).toLocaleDateString('pt-BR');
-    let csv = `CHECKLIST DE SEGURANÇA DO TRABALHO\n`;
-    csv += `Data;${date}\n`;
-    csv += `Equipamento;${c.nome}\n`;
-    csv += `Patrimônio;${c.patrimonio}\n`;
-    csv += `Empresa;${c.empresa}\n`;
-    csv += `Operador;${c.operador}\n`;
-    csv += `\nItem;Status;Observação\n`;
-    
+
+    if (typeof jspdf === 'undefined' && typeof window.jspdf === 'undefined') {
+        showToast('Biblioteca PDF não carregada. Tente novamente.');
+        return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 15;
+
+    doc.setFontSize(16);
+    doc.setFont(undefined, 'bold');
+    doc.text('CHECKLIST DE SEGURANCA DO TRABALHO', pageWidth / 2, y, { align: 'center' });
+    y += 10;
+
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.text(`Data: ${new Date(c.date).toLocaleDateString('pt-BR')}`, 15, y); y += 6;
+    doc.text(`Equipamento: ${c.nome || ''}`, 15, y); y += 6;
+    doc.text(`Patrimonio: ${c.patrimonio || ''}`, 15, y); y += 6;
+    doc.text(`Empresa: ${c.empresa || ''}`, 15, y); y += 6;
+    doc.text(`Operador: ${c.operador || ''}`, 15, y); y += 6;
+    doc.text(`Responsavel: ${c.responsavel || ''}`, 15, y); y += 6;
+    doc.text(`Status: ${c.statusChecklist || ''}`, 15, y); y += 6;
+    doc.text(`Conformes: ${c.stats.conformes} | Nao Conformes: ${c.stats.naoConformes} | N/A: ${c.stats.na}`, 15, y); y += 10;
+
+    doc.setDrawColor(200);
+    doc.line(15, y, pageWidth - 15, y);
+    y += 6;
+
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(11);
+    doc.text('Itens Verificados', 15, y);
+    y += 8;
+
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(9);
+
     for (const [itemId, data] of Object.entries(c.items)) {
         if (itemId === '_form') continue;
+
+        if (y > 270) {
+            doc.addPage();
+            y = 15;
+        }
+
         const itemName = ITEM_NAMES[itemId] || data.customText || itemId;
-        const status = data.status === 'C' ? 'Conforme' : 
-                      data.status === 'NC' ? 'Não Conforme' : 'N/A';
-        csv += `${itemName};${status};${data.observation || ''}\n`;
+        const status = data.status === 'C' ? 'Conforme' : data.status === 'NC' ? 'Nao Conforme' : 'N/A';
+        const statusColor = data.status === 'C' ? [39, 174, 96] : data.status === 'NC' ? [231, 76, 60] : [149, 165, 166];
+
+        doc.setTextColor(0);
+        const itemLines = doc.splitTextToSize(itemName, pageWidth - 60);
+        doc.text(itemLines, 15, y);
+        y += itemLines.length * 4;
+
+        doc.setTextColor(...statusColor);
+        doc.setFont(undefined, 'bold');
+        doc.text(status, pageWidth - 15, y - (itemLines.length * 4) + 4, { align: 'right' });
+        doc.setFont(undefined, 'normal');
+
+        if (data.observation) {
+            doc.setTextColor(120);
+            const obsLines = doc.splitTextToSize(`Obs: ${data.observation}`, pageWidth - 35);
+            doc.text(obsLines, 20, y);
+            y += obsLines.length * 4;
+        }
+
+        if (data.resolved) {
+            doc.setTextColor(39, 174, 96);
+            const resText = `Resolvido${data.resolvedAt ? ' em ' + new Date(data.resolvedAt).toLocaleDateString('pt-BR') : ''}${data.resolvedBy ? ' por ' + data.resolvedBy : ''}`;
+            doc.text(resText, 20, y);
+            y += 4;
+        }
+
+        doc.setTextColor(0);
+        y += 3;
     }
-    
-    csv += `\nConformes;${c.stats.conformes}\n`;
-    csv += `Não Conformes;${c.stats.naoConformes}\n`;
-    csv += `N/A;${c.stats.na}\n`;
-    
-    if (c.observacoes) csv += `\nObservações;${c.observacoes}\n`;
-    
-    downloadFile(csv, `checklist_${c.patrimonio}_${c.date}.csv`);
-    showToast('Checklist exportado!');
+
+    if (c.observacoes) {
+        y += 5;
+        if (y > 270) { doc.addPage(); y = 15; }
+        doc.setFont(undefined, 'bold');
+        doc.setFontSize(10);
+        doc.text('Observacoes Gerais:', 15, y);
+        y += 6;
+        doc.setFont(undefined, 'normal');
+        doc.setFontSize(9);
+        const obsLines = doc.splitTextToSize(c.observacoes, pageWidth - 30);
+        doc.text(obsLines, 15, y);
+        y += obsLines.length * 4;
+    }
+
+    if (c.signature) {
+        y += 8;
+        if (y > 250) { doc.addPage(); y = 15; }
+        doc.setFont(undefined, 'bold');
+        doc.setFontSize(10);
+        doc.text('Assinatura TST:', 15, y);
+        y += 4;
+        try {
+            doc.addImage(c.signature, 'PNG', 15, y, 60, 25);
+        } catch (e) {}
+    }
+
+    doc.save(`checklist_${c.patrimonio || 'item'}_${c.date}.pdf`);
+    showToast('PDF exportado!');
 }
 
 function downloadFile(content, filename) {

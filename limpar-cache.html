@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Limpar Cache - Checklist</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 400px; margin: 60px auto; padding: 20px; text-align: center; }
+        .btn { padding: 16px 32px; background: #1a5276; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; margin: 10px; width: 100%; }
+        .btn:hover { background: #0e3a53; }
+        .status { margin: 20px 0; padding: 16px; border-radius: 8px; font-size: 14px; }
+        .ok { background: #d5f5e3; color: #1e8449; }
+        .loading { background: #fdebd0; color: #e67e22; }
+    </style>
+</head>
+<body>
+    <h2>Limpar Cache do App</h2>
+    <p>Clique no botao abaixo para limpar o cache antigo e atualizar o app.</p>
+    <button class="btn" onclick="limparTudo()">Limpar Cache e Atualizar</button>
+    <div id="status"></div>
+
+    <script>
+        function limparTudo() {
+            var status = document.getElementById('status');
+            status.className = 'status loading';
+            status.textContent = 'Limpando cache...';
+
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function(regs) {
+                    var promises = [];
+                    regs.forEach(function(r) {
+                        promises.push(r.unregister());
+                    });
+                    return Promise.all(promises);
+                }).then(function() {
+                    status.textContent = 'Service Workers removidos. Limpando caches...';
+                    return caches.keys();
+                }).then(function(names) {
+                    var promises = [];
+                    names.forEach(function(n) {
+                        promises.push(caches.delete(n));
+                    });
+                    return Promise.all(promises);
+                }).then(function() {
+                    localStorage.clear();
+                    status.className = 'status ok';
+                    status.textContent = 'Cache limpo! Redirecionando...';
+                    setTimeout(function() {
+                        window.location.href = './index.html?v=' + Date.now();
+                    }, 1000);
+                });
+            } else {
+                localStorage.clear();
+                status.className = 'status ok';
+                status.textContent = 'Cache limpo! Redirecionando...';
+                setTimeout(function() {
+                    window.location.href = './index.html?v=' + Date.now();
+                }, 1000);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -2,11 +2,12 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v17';
+const APP_VERSION = 'v19';
 
 let currentPage = 'pageHome';
 let currentChecklist = null;
 let currentEquipment = null;
+let currentCadastro = null;
 let checklistData = {};
 let signaturePad = null;
 
@@ -106,9 +107,12 @@ function showPage(pageId) {
         'pageChecklistForm': 'navNew',
         'pageReportIssue': 'navNew',
         'pageReports': 'navReports',
-        'pageHistory': 'navHistory',
-        'pageChecklistDetail': 'navHistory',
-        'pageConfig': 'navConfig'
+        'pageHistory': 'navReports',
+        'pageChecklistDetail': 'navReports',
+        'pageConfig': 'navConfig',
+        'pageNovoEquipamento': 'navConfig',
+        'pageNovoColaborador': 'navConfig',
+        'pageGerenciarItens': 'navConfig'
     };
     if (navMap[pageId]) {
         document.getElementById(navMap[pageId]).classList.add('active');
@@ -128,7 +132,10 @@ function showPage(pageId) {
         'pageReports': ['Relatórios', 'Análise de conformidades'],
         'pageHistory': ['Histórico', 'Checklists realizados'],
         'pageChecklistDetail': ['Detalhes do Checklist', ''],
-        'pageConfig': ['Configurações', 'Cadastros e sincronização']
+        'pageConfig': ['Configurações', 'Cadastros e sincronização'],
+        'pageNovoEquipamento': ['Novo Equipamento', 'Cadastrar equipamento/veículo'],
+        'pageNovoColaborador': ['Novo Colaborador', 'Cadastrar colaborador'],
+        'pageGerenciarItens': ['Gerenciar Itens', 'Itens de verificação']
     };
     
     if (titles[pageId]) {
@@ -156,6 +163,21 @@ function showPage(pageId) {
         loadHistory();
     } else if (pageId === 'pageConfig') {
         loadConfigPage();
+    } else if (pageId === 'pageGerenciarItens') {
+        loadItemGerenciaSelect();
+    }
+}
+
+function goToConfigSection(secao) {
+    const secaoMap = {
+        'equipamento': 'pageNovoEquipamento',
+        'colaborador': 'pageNovoColaborador',
+        'itens': 'pageGerenciarItens'
+    };
+    const paginaAlvo = secaoMap[secao];
+    if (paginaAlvo) {
+        showPage(paginaAlvo);
+        if (secao === 'itens') loadItemGerenciaSelect();
     }
 }
 
@@ -555,9 +577,11 @@ async function loadGestao(search = '') {
         };
 
         container.innerHTML = items.map(c => {
-            const asoStatus = c.aso ? new Date(c.aso) < new Date() ?
-                '<span style="color: var(--danger); font-size: 10px;">⚠ ASO Vencido</span>' :
-                '<span style="color: var(--success); font-size: 10px;">✓ ASO OK</span>' : '';
+            const asoStatus = c.aso
+                ? new Date(c.aso) < new Date()
+                    ? '<span style="color: var(--danger); font-size: 10px;">⚠ ASO Vencido</span>'
+                    : '<span style="color: var(--success); font-size: 10px;">✓ ASO OK</span>'
+                : '<span style="color: var(--warning); font-size: 10px;">⚠ ASO não cadastrado</span>';
             return `
                 <div class="history-item" style="flex-wrap: wrap;">
                     <div class="history-info">
@@ -585,7 +609,7 @@ async function editCadastro(id) {
     const cadastro = await getFromIndexedDB('cadastros', id);
     if (!cadastro) return;
 
-    showPage('pageConfig');
+    showPage('pageNovoEquipamento');
 
     setTimeout(() => {
         document.getElementById('cadastroTipo').value = cadastro.tipo || '';
@@ -599,9 +623,9 @@ async function editCadastro(id) {
         document.getElementById('cadastroSetor').value = cadastro.setor || '';
         document.getElementById('cadastroObs').value = cadastro.obs || '';
 
-        const btn = document.querySelector('#pageConfig .save-btn[onclick="saveCadastro()"]');
+        const btn = document.querySelector('#pageNovoEquipamento .save-btn[onclick="saveCadastro()"]');
         if (btn) {
-            btn.textContent = '💾 Atualizar Equipamento';
+            btn.textContent = 'Atualizar Equipamento';
             btn.setAttribute('onclick', `saveCadastroEdit('${id}')`);
         }
     }, 100);
@@ -620,9 +644,9 @@ async function saveCadastroEdit(id) {
     await saveToIndexedDB('cadastros', cadastro);
     showToast('Equipamento atualizado!');
 
-    const btn = document.querySelector('#pageConfig .save-btn[onclick^="saveCadastroEdit"]');
+    const btn = document.querySelector('#pageNovoEquipamento .save-btn[onclick^="saveCadastroEdit"]');
     if (btn) {
-        btn.textContent = '💾 Cadastrar Equipamento';
+        btn.textContent = 'Cadastrar Equipamento';
         btn.setAttribute('onclick', 'saveCadastro()');
     }
 
@@ -639,7 +663,7 @@ async function editColaborador(id) {
     const colab = await getFromIndexedDB('colaboradores', id);
     if (!colab) return;
 
-    showPage('pageConfig');
+    showPage('pageNovoColaborador');
 
     setTimeout(() => {
         document.getElementById('colabNome').value = colab.nome || '';
@@ -649,9 +673,9 @@ async function editColaborador(id) {
         document.getElementById('colabMatricula').value = colab.matricula || '';
         document.getElementById('colabASO').value = colab.aso || '';
 
-        const btn = document.querySelector('#pageConfig .save-btn[onclick="saveColaborador()"]');
+        const btn = document.querySelector('#pageNovoColaborador .save-btn[onclick="saveColaborador()"]');
         if (btn) {
-            btn.textContent = '💾 Atualizar Colaborador';
+            btn.textContent = 'Atualizar Colaborador';
             btn.setAttribute('onclick', `saveColaboradorEdit('${id}')`);
         }
     }, 100);
@@ -671,9 +695,9 @@ async function saveColaboradorEdit(id) {
     await saveToIndexedDB('colaboradores', colab);
     showToast('Colaborador atualizado!');
 
-    const btn = document.querySelector('#pageConfig .save-btn[onclick^="saveColaboradorEdit"]');
+    const btn = document.querySelector('#pageNovoColaborador .save-btn[onclick^="saveColaboradorEdit"]');
     if (btn) {
-        btn.textContent = '💾 Cadastrar Colaborador';
+        btn.textContent = 'Cadastrar Colaborador';
         btn.setAttribute('onclick', 'saveColaborador()');
     }
 
@@ -704,7 +728,7 @@ async function deleteColaborador(id) {
         await saveToIndexedDB('colaboradores', colab);
     }
     showToast('Colaborador excluído');
-    loadCadastros();
+    loadGestao();
 }
 
 async function getCadastrosByTipo(tipo) {
@@ -721,14 +745,33 @@ async function getAllColaboradores() {
 }
 
 // ============================================
+// ITENS CUSTOMIZADOS POR CADASTRO
+// ============================================
+
+function getEffectiveItems(equipment, cadastro) {
+    const baseItems = equipment.items || [];
+    const disabled = cadastro?.disabledItems || [];
+    const custom = cadastro?.customItems || [];
+    const filtered = baseItems.filter(item => !disabled.includes(item.id));
+    const customItems = custom.map(item => ({
+        id: item.id,
+        text: item.text,
+        nr: item.nr || equipment.nr || '',
+        risk: item.risk || 'medium'
+    }));
+    return [...filtered, ...customItems];
+}
+
+// ============================================
 // CHECKLIST
 // ============================================
 
 function startChecklist(category, equipmentId) {
     const equipment = EQUIPMENT_TYPES[category].find(e => e.id === equipmentId);
     if (!equipment) return;
-    
+
     currentEquipment = equipment;
+    currentCadastro = null;
     checklistData = {};
     
     // Inicializar dados do formulário
@@ -767,26 +810,35 @@ async function loadCadastroSelect(category) {
     }
 }
 
-function fillFromCadastro() {
+async function fillFromCadastro() {
     const select = document.getElementById('checklistPatrimonio');
     const option = select.options[select.selectedIndex];
-    
+
     if (!select.value) {
         document.getElementById('checklistNome').value = currentEquipment?.name || '';
         document.getElementById('checklistEmpresa').value = '';
+        currentCadastro = null;
+        renderChecklistItems(currentEquipment);
         return;
     }
-    
+
     document.getElementById('checklistNome').value = option.dataset.nome || currentEquipment?.name || '';
     document.getElementById('checklistEmpresa').value = option.dataset.empresa || '';
+
+    const cadastro = await getFromIndexedDB('cadastros', select.value);
+    if (cadastro) {
+        currentCadastro = cadastro;
+        renderChecklistItems(currentEquipment, cadastro);
+    }
 }
 
-function renderChecklistItems(equipment) {
+function renderChecklistItems(equipment, cadastro) {
     const container = document.getElementById('checklistItems');
     let currentSection = null;
-    
+    const items = cadastro ? getEffectiveItems(equipment, cadastro) : equipment.items;
+
     let html = '';
-    equipment.items.forEach(item => {
+    items.forEach(item => {
         // Seção (apenas para veículos)
         if (item.section && item.section !== currentSection) {
             currentSection = item.section;
@@ -853,7 +905,8 @@ function setObservation(itemId, value) {
 
 function updateProgress() {
     if (!currentEquipment) return;
-    const total = currentEquipment.items.length;
+    const items = currentCadastro ? getEffectiveItems(currentEquipment, currentCadastro) : currentEquipment.items;
+    const total = items.length;
     const filled = Object.keys(checklistData).filter(k => checklistData[k].status).length;
     const pct = Math.round((filled / total) * 100);
     document.getElementById('progressFill').style.width = `${pct}%`;
@@ -1005,10 +1058,13 @@ function saveChecklist() {
     
     // Calcular estatísticas
     let conformes = 0, naoConformes = 0, na = 0;
+    const effectiveItems = currentCadastro ? getEffectiveItems(currentEquipment, currentCadastro) : currentEquipment.items;
     items.forEach(k => {
         if (checklistData[k].status === 'C') conformes++;
         else if (checklistData[k].status === 'NC') naoConformes++;
         else if (checklistData[k].status === 'NA') na++;
+        const effItem = effectiveItems.find(i => i.id === k);
+        if (effItem) checklistData[k].customText = effItem.text;
     });
     
     // Se há não conformes e status não foi definido, sugerir interdição
@@ -1184,6 +1240,122 @@ async function deleteFromIndexedDB(storeName, id) {
 }
 
 // ============================================
+// GERENCIAMENTO DE ITENS POR CADASTRO
+// ============================================
+
+let itemGerenciaCadastro = null;
+let itemGerenciaDisabled = [];
+let itemGerenciaCustom = [];
+
+async function loadItemGerenciaSelect() {
+    const select = document.getElementById('itemGerenciaSelect');
+    if (!select) return;
+    const cadastros = await getAllFromIndexedDB('cadastros');
+    const ativos = cadastros.filter(c => c.ativo !== false && c.tipo !== 'colaborador');
+    select.innerHTML = '<option value="">Selecione um equipamento...</option>';
+    ativos.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.patrimonio;
+        opt.textContent = `${c.patrimonio} - ${c.nome || ''}`;
+        select.appendChild(opt);
+    });
+}
+
+async function loadItemGerenciaItems() {
+    const select = document.getElementById('itemGerenciaSelect');
+    const content = document.getElementById('itemGerenciaContent');
+    if (!select.value) {
+        content.style.display = 'none';
+        itemGerenciaCadastro = null;
+        return;
+    }
+    const cadastro = await getFromIndexedDB('cadastros', select.value);
+    if (!cadastro || !cadastro.categoria) {
+        content.style.display = 'none';
+        return;
+    }
+    itemGerenciaCadastro = cadastro;
+    itemGerenciaDisabled = [...(cadastro.disabledItems || [])];
+    itemGerenciaCustom = [...(cadastro.customItems || [])];
+    content.style.display = 'block';
+    renderItemGerenciaLists();
+}
+
+function renderItemGerenciaLists() {
+    if (!itemGerenciaCadastro) return;
+    const tipo = itemGerenciaCadastro.tipo;
+    const categoria = itemGerenciaCadastro.categoria;
+    const equipment = EQUIPMENT_TYPES[tipo]?.find(e => e.id === categoria);
+    if (!equipment) return;
+
+    const baseContainer = document.getElementById('itemGerenciaBase');
+    const customContainer = document.getElementById('itemGerenciaCustom');
+
+    baseContainer.innerHTML = equipment.items.map(item => {
+        const disabled = itemGerenciaDisabled.includes(item.id);
+        return `
+            <div style="display: flex; align-items: center; padding: 10px; background: ${disabled ? '#f5f5f5' : 'white'}; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; opacity: ${disabled ? '0.5' : '1'};">
+                <label style="display: flex; align-items: center; gap: 10px; flex: 1; cursor: pointer;">
+                    <input type="checkbox" ${!disabled ? 'checked' : ''} onchange="toggleBaseItem('${item.id}', this.checked)" style="width: 18px; height: 18px;">
+                    <div>
+                        <div style="font-size: 13px; font-weight: 500;">${item.text}</div>
+                        <div style="font-size: 11px; color: var(--text-light);">${item.nr} • ${item.risk === 'high' ? 'Risco Alto' : item.risk === 'medium' ? 'Risco Médio' : 'Risco Baixo'}</div>
+                    </div>
+                </label>
+            </div>`;
+    }).join('');
+
+    if (itemGerenciaCustom.length === 0) {
+        customContainer.innerHTML = '<div style="font-size: 12px; color: var(--text-light); padding: 8px;">Nenhum item customizado</div>';
+    } else {
+        customContainer.innerHTML = itemGerenciaCustom.map((item, idx) => `
+            <div style="display: flex; align-items: center; padding: 10px; background: white; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px;">
+                <div style="flex: 1;">
+                    <div style="font-size: 13px; font-weight: 500;">${item.text}</div>
+                    <div style="font-size: 11px; color: var(--text-light);">${item.nr} • ${item.risk === 'high' ? 'Risco Alto' : item.risk === 'medium' ? 'Risco Médio' : 'Risco Baixo'}</div>
+                </div>
+                <button onclick="removeCustomItem(${idx})" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 10px; font-size: 11px; cursor: pointer;">Remover</button>
+            </div>`).join('');
+    }
+}
+
+function toggleBaseItem(itemId, enabled) {
+    if (enabled) {
+        itemGerenciaDisabled = itemGerenciaDisabled.filter(id => id !== itemId);
+    } else {
+        if (!itemGerenciaDisabled.includes(itemId)) {
+            itemGerenciaDisabled.push(itemId);
+        }
+    }
+    renderItemGerenciaLists();
+}
+
+function addCustomItem() {
+    const text = document.getElementById('newItemText').value.trim();
+    const nr = document.getElementById('newItemNr').value.trim();
+    const risk = document.getElementById('newItemRisk').value;
+    if (!text) { showToast('Digite a descrição do item'); return; }
+    itemGerenciaCustom.push({ id: 'custom_' + Date.now(), text, nr: nr || '', risk });
+    document.getElementById('newItemText').value = '';
+    document.getElementById('newItemNr').value = '';
+    renderItemGerenciaLists();
+    showToast('Item adicionado');
+}
+
+function removeCustomItem(index) {
+    itemGerenciaCustom.splice(index, 1);
+    renderItemGerenciaLists();
+}
+
+async function saveItemGerencia() {
+    if (!itemGerenciaCadastro) return;
+    itemGerenciaCadastro.disabledItems = itemGerenciaDisabled;
+    itemGerenciaCadastro.customItems = itemGerenciaCustom;
+    await saveToIndexedDB('cadastros', itemGerenciaCadastro);
+    showToast('Itens do equipamento atualizados!');
+}
+
+// ============================================
 // SINCRONIZAÇÃO COM GOOGLE SHEETS
 // ============================================
 
@@ -1322,9 +1494,10 @@ async function viewChecklist(id) {
     for (const [itemId, data] of Object.entries(checklist.items)) {
         if (itemId === '_form') continue;
         const item = checklist.equipment?.items?.find(i => i.id === itemId);
-        const statusColor = data.status === 'C' ? 'var(--success)' : 
+        const itemText = item?.text || ITEM_NAMES[itemId] || data.customText || itemId;
+        const statusColor = data.status === 'C' ? 'var(--success)' :
                            data.status === 'NC' ? 'var(--danger)' : 'var(--text-light)';
-        const statusText = data.status === 'C' ? '✓ Conforme' : 
+        const statusText = data.status === 'C' ? '✓ Conforme' :
                           data.status === 'NC' ? '✗ Não Conforme' : '— N/A';
         
         if (data.status === 'NC') hasNC = true;
@@ -1335,7 +1508,7 @@ async function viewChecklist(id) {
         
         itemsHtml += `
             <div class="checklist-item" style="margin-bottom: 8px;">
-                <div style="font-size: 13px; font-weight: 500;">${item?.text || itemId}</div>
+                <div style="font-size: 13px; font-weight: 500;">${itemText}</div>
                 ${data.observation ? `<div style="font-size: 11px; color: var(--text-light); margin-top: 4px;">Obs: ${data.observation}</div>` : ''}
                 ${resolvedInfo}
                 ${data.resolutionNote ? `<div style="font-size: 11px; color: var(--success); margin-top: 2px;">Resolução: ${data.resolutionNote}</div>` : ''}
@@ -1474,6 +1647,85 @@ async function deleteChecklist(id) {
 }
 
 // ============================================
+// DASHBOARD - GRÁFICOS
+// ============================================
+
+let chartInstances = {};
+
+function destroyCharts() {
+    Object.values(chartInstances).forEach(c => { if (c) c.destroy(); });
+    chartInstances = {};
+}
+
+async function renderDashboardCharts() {
+    destroyCharts();
+    ['chartCardStatus', 'chartCardTipo', 'chartCardMeses', 'chartCardItens'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    if (typeof Chart === 'undefined') return;
+
+    const checklists = await getAllFromIndexedDB('checklists');
+    const now = new Date();
+    const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1);
+    const checklistsMes = checklists.filter(c => new Date(c.date) >= inicioMes);
+    if (checklistsMes.length === 0) return;
+
+    const colors = { success: '#27ae60', danger: '#e74c3c', gray: '#95a5a6', primary: '#1a5276', primaryLight: '#2980b9' };
+
+    let totalC = 0, totalNC = 0, totalNA = 0;
+    checklistsMes.forEach(c => { totalC += c.stats.conformes; totalNC += c.stats.naoConformes; totalNA += c.stats.na; });
+
+    if (totalC + totalNC + totalNA > 0) {
+        document.getElementById('chartCardStatus').style.display = 'block';
+        chartInstances.status = new Chart(document.getElementById('chartConformidade'), {
+            type: 'doughnut',
+            data: { labels: ['Conformes', 'Não Conformes', 'N/A'], datasets: [{ data: [totalC, totalNC, totalNA], backgroundColor: [colors.success, colors.danger, colors.gray], borderWidth: 2, borderColor: '#fff' }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { padding: 12, font: { size: 12 } } } }, cutout: '55%' }
+        });
+    }
+
+    const typeCounts = {};
+    checklistsMes.forEach(c => { const t = c.equipment?.name || 'Desconhecido'; typeCounts[t] = (typeCounts[t] || 0) + 1; });
+    const typeSorted = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
+    if (typeSorted.length > 0) {
+        document.getElementById('chartCardTipo').style.display = 'block';
+        chartInstances.tipo = new Chart(document.getElementById('chartPorTipo'), {
+            type: 'bar',
+            data: { labels: typeSorted.map(t => t[0]), datasets: [{ label: 'Checklists', data: typeSorted.map(t => t[1]), backgroundColor: colors.primaryLight, borderRadius: 6, barThickness: 20 }] },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { font: { size: 11 } } } } }
+        });
+    }
+
+    const meses = [], contagens = [];
+    for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        meses.push(d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
+        const ini = new Date(d.getFullYear(), d.getMonth(), 1);
+        const fim = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        contagens.push(checklists.filter(c => { const dt = new Date(c.date); return dt >= ini && dt <= fim; }).length);
+    }
+    document.getElementById('chartCardMeses').style.display = 'block';
+    chartInstances.meses = new Chart(document.getElementById('chartPorMes'), {
+        type: 'line',
+        data: { labels: meses, datasets: [{ label: 'Checklists', data: contagens, borderColor: colors.primary, backgroundColor: 'rgba(26,82,118,0.1)', fill: true, tension: 0.3, pointRadius: 5, pointBackgroundColor: colors.primary }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+
+    const itemCounts = {};
+    checklistsMes.forEach(c => { for (const [itemId, data] of Object.entries(c.items)) { if (itemId === '_form') continue; if (data.status === 'NC') { const n = ITEM_NAMES[itemId] || data.customText || itemId; itemCounts[n] = (itemCounts[n] || 0) + 1; } } });
+    const itemsSorted = Object.entries(itemCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    if (itemsSorted.length > 0) {
+        document.getElementById('chartCardItens').style.display = 'block';
+        chartInstances.itens = new Chart(document.getElementById('chartItensNC'), {
+            type: 'bar',
+            data: { labels: itemsSorted.map(i => i[0]), datasets: [{ label: 'Ocorrências', data: itemsSorted.map(i => i[1]), backgroundColor: itemsSorted.map((_, idx) => `rgba(231, 76, 60, ${1 - idx * 0.07})`), borderRadius: 6, barThickness: 18 }] },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { font: { size: 10 } } } } }
+        });
+    }
+}
+
+// ============================================
 // RELATÓRIOS
 // ============================================
 
@@ -1516,7 +1768,7 @@ async function showStatusDetails(status) {
             for (const [itemId, itemData] of Object.entries(c.items)) {
                 if (itemId === '_form') continue;
                 if (itemData.status === 'NC') {
-                    const itemNome = ITEM_NAMES[itemId] || itemId;
+                    const itemNome = ITEM_NAMES[itemId] || itemData.customText || itemId;
                     itensNC.push({ nome: itemNome, obs: itemData.observation || '' });
                 }
             }
@@ -1633,7 +1885,7 @@ async function loadReports() {
         for (const [itemId, data] of Object.entries(c.items)) {
             if (itemId === '_form') continue;
             if (data.status === 'NC') {
-                const itemName = ITEM_NAMES[itemId] || itemId;
+                const itemName = ITEM_NAMES[itemId] || data.customText || itemId;
                 itemCounts[itemName] = (itemCounts[itemName] || 0) + 1;
             }
         }
@@ -1724,6 +1976,8 @@ async function loadReports() {
             </div>
         `).join('');
     }
+
+    renderDashboardCharts();
 }
 
 // ============================================
@@ -1774,7 +2028,7 @@ async function loadTopRisks() {
         for (const [itemId, data] of Object.entries(c.items)) {
             if (itemId === '_form') continue;
             if (data.status === 'NC') {
-                const itemName = ITEM_NAMES[itemId] || itemId;
+                const itemName = ITEM_NAMES[itemId] || data.customText || itemId;
                 itemCounts[itemName] = (itemCounts[itemName] || 0) + 1;
             }
         }
@@ -1829,7 +2083,7 @@ async function exportToCSV() {
             for (const [itemId, data] of Object.entries(c.items)) {
                 if (itemId === '_form') continue;
                 if (data.status === 'NC') {
-                    const itemName = ITEM_NAMES[itemId] || itemId;
+                const itemName = ITEM_NAMES[itemId] || data.customText || itemId;
                     csv += `${c.date};${c.patrimonio};${itemName};${data.observation || ''}\n`;
                 }
             }
@@ -1865,7 +2119,7 @@ async function exportChecklist(id) {
     
     for (const [itemId, data] of Object.entries(c.items)) {
         if (itemId === '_form') continue;
-        const itemName = ITEM_NAMES[itemId] || itemId;
+        const itemName = ITEM_NAMES[itemId] || data.customText || itemId;
         const status = data.status === 'C' ? 'Conforme' : 
                       data.status === 'NC' ? 'Não Conforme' : 'N/A';
         csv += `${itemName};${status};${data.observation || ''}\n`;
@@ -1960,19 +2214,17 @@ async function testSync() {
         });
         
         showModal(`
-            <h3>✅ Conexão Testada</h3>
+            <h3>✅ Dados Enviados</h3>
             <p style="font-size: 13px; margin: 12px 0; color: var(--text-light);">
-                O dado foi enviado para o Google Sheets.
+                O dado de teste foi enviado para o Google Sheets.
             </p>
             <p style="font-size: 12px; margin: 12px 0;">
                 <strong>Verifique sua planilha:</strong><br>
-                Abra a planilha no Google Sheets e veja se os dados estão aparecendo.
+                Abra a planilha no Google Sheets e confirme se uma linha de teste apareceu.
             </p>
-            <p style="font-size: 11px; color: var(--text-light); margin-top: 12px;">
-                Nota: Devido a limitações de segurança do navegador, não é possível 
-                confirmar se o Google recebou os dados. Mas se o GET funciona, 
-                o POST também funciona.
-            </p>
+            <div style="background: #fdebd0; padding: 10px; border-radius: 8px; font-size: 11px; color: var(--warning); margin-top: 8px;">
+                ⚠️ Por limitação de segurança do navegador (CORS), não é possível confirmar automaticamente se o Google recebeu os dados. Sempre verifique a planilha para ter certeza.
+            </div>
             <button class="save-btn" style="background: var(--primary); margin-top: 16px;" onclick="closeModal()">Fechar</button>
         `);
     } catch (error) {

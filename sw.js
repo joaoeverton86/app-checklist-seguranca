@@ -1,5 +1,5 @@
 // Service Worker - Checklist Segurança
-const CACHE_NAME = 'checklist-v16';
+const CACHE_NAME = 'checklist-v19';
 
 self.addEventListener('install', event => {
     self.skipWaiting();

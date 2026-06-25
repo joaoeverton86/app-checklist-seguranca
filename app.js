@@ -148,6 +148,10 @@ function showPage(pageId) {
     if (pageId === 'pageNewChecklist') {
         resetAllCategorySteps();
     }
+
+    if (pageId === 'pageChecklistForm') {
+        setTimeout(() => initSignaturePad(), 50);
+    }
     
     currentPage = pageId;
     
@@ -945,7 +949,7 @@ function saveFormData() {
         empresa: document.getElementById('checklistEmpresa').value,
         operador: document.getElementById('checklistOperador').value,
         observacoes: document.getElementById('checklistObservacoes').value,
-        responsavel: document.getElementById('checklistResponsavel')?.value || ''
+        responsavel: selectedResponsavel
     };
 }
 
@@ -1052,10 +1056,11 @@ async function loadResponsavelSelect() {
     });
 }
 
+let selectedResponsavel = '';
+
 function fillResponsavelFromSelect() {
     const select = document.getElementById('checklistResponsavelSelect');
-    const input = document.getElementById('checklistResponsavel');
-    if (select && input) input.value = select.value || '';
+    selectedResponsavel = select ? select.value : '';
 }
 
 // ============================================

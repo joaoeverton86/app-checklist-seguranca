@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v23';
+const APP_VERSION = 'v24';
 
 let currentPage = 'pageHome';
 let currentChecklist = null;
@@ -980,8 +980,32 @@ function setupCanvas(canvasId) {
 
     function resizeCanvas() {
         const rect = canvas.getBoundingClientRect();
-        canvas.width = rect.width;
-        canvas.height = rect.height;
+        const newWidth = Math.round(rect.width);
+        const newHeight = Math.round(rect.height);
+        
+        if (canvas.width === newWidth && canvas.height === newHeight) {
+            return;
+        }
+
+        let tempImg = null;
+        try {
+            // Verificar se o canvas não está vazio antes de fazer backup
+            // (Evita redesenhar canvas em branco desnecessariamente)
+            tempImg = canvas.toDataURL();
+        } catch (e) {
+            console.log('Erro ao salvar imagem do canvas:', e);
+        }
+
+        canvas.width = newWidth;
+        canvas.height = newHeight;
+
+        if (tempImg) {
+            const img = new Image();
+            img.onload = () => {
+                ctx.drawImage(img, 0, 0, newWidth, newHeight);
+            };
+            img.src = tempImg;
+        }
     }
 
     resizeCanvas();
@@ -1441,17 +1465,27 @@ async function syncToGoogleSheets(storeName, data) {
     }
     
     try {
-        await fetch(SCRIPT_URL, {
+        const response = await fetch(SCRIPT_URL, {
             method: 'POST',
-            mode: 'no-cors',
+            mode: 'cors',
+            headers: {
+                'Content-Type': 'text/plain;charset=utf-8'
+            },
             body: JSON.stringify({ store: storeName, data: data })
         });
         
-        data.synced = true;
-        await saveToIndexedDB(storeName, data, true);
-        console.log('Sincronizado:', storeName, data.id);
+        const result = await response.json();
+        
+        if (result && result.success) {
+            data.synced = true;
+            await saveToIndexedDB(storeName, data, true);
+            console.log('Sincronizado com sucesso:', storeName, data.id);
+        } else {
+            console.warn('Erro retornado pelo script:', result ? result.error : 'Sem resposta');
+            adicionarFilaPendente(storeName, data);
+        }
     } catch (error) {
-        console.log('Erro ao sincronizar:', error.message);
+        console.log('Erro ao sincronizar, adicionando à fila:', error.message);
         adicionarFilaPendente(storeName, data);
     }
 }
@@ -1483,13 +1517,24 @@ async function processarFilaPendente() {
     
     for (const item of processar) {
         try {
-            await fetch(SCRIPT_URL, {
+            const response = await fetch(SCRIPT_URL, {
                 method: 'POST',
-                mode: 'no-cors',
+                mode: 'cors',
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8'
+                },
                 body: JSON.stringify({ store: item.store, data: item.data })
             });
-            item.data.synced = true;
-            await saveToIndexedDB(item.store, item.data, true);
+            
+            const result = await response.json();
+            
+            if (result && result.success) {
+                item.data.synced = true;
+                await saveToIndexedDB(item.store, item.data, true);
+            } else {
+                item.tentativas++;
+                restante.push(item);
+            }
         } catch {
             item.tentativas++;
             restante.push(item);
@@ -2836,7 +2881,7 @@ function converterParaApp(storeName, row) {
                 total: 0
             },
             equipment: { name: row['Equipamento'] || '', nr: row['NR'] || '' },
-            items: {},
+            items: row['Itens Detalhados'] ? JSON.parse(row['Itens Detalhados']) : {},
             synced: true
         };
     }
@@ -3205,6 +3250,8 @@ function onQRScanSuccess(decodedText) {
     
     if (currentQRCategory === 'checklist') {
         selectPatrimonioByQR(decodedText);
+    } else if (currentQRCategory === 'global') {
+        iniciarChecklistPorQRGlobal(decodedText);
     } else {
         const input = document.getElementById('cadastroInput' + capitalize(currentQRCategory));
         if (input) {
@@ -3212,6 +3259,32 @@ function onQRScanSuccess(decodedText) {
             filterCadastros(currentQRCategory, decodedText);
         }
         searchAndSelectCadastro(currentQRCategory, decodedText);
+    }
+}
+
+async function iniciarChecklistPorQRGlobal(patrimonio) {
+    const cadastros = await getAllFromIndexedDB('cadastros');
+    const cadastro = cadastros.find(c => c.patrimonio && c.patrimonio.toLowerCase() === patrimonio.toLowerCase() && c.ativo !== false);
+    
+    if (cadastro) {
+        const tipo = cadastro.tipo;
+        const categoria = cadastro.categoria;
+        
+        if (tipo && categoria) {
+            showToast('Equipamento: ' + (cadastro.nome || cadastro.patrimonio));
+            startChecklist(tipo, categoria);
+            await loadCadastroSelect(tipo);
+            const selectPatr = document.getElementById('checklistPatrimonio');
+            if (selectPatr) {
+                selectPatr.value = cadastro.patrimonio || '';
+                await fillFromCadastro();
+            }
+            showPage('pageChecklistForm');
+        } else {
+            showToast('Erro: Cadastro com tipo ou categoria incompletos.');
+        }
+    } else {
+        showToast('Equipamento "' + patrimonio + '" não cadastrado no app.');
     }
 }
 

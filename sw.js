@@ -1,4 +1,4 @@
-const CACHE_NAME = 'checklist-v23';
+const CACHE_NAME = 'checklist-v24';
 const SHELL_URLS = [
     './',
     './index.html',
@@ -38,13 +38,16 @@ self.addEventListener('fetch', event => {
 
     if (url.hostname === 'cdn.jsdelivr.net' || url.hostname === 'cdnjs.cloudflare.com') {
         event.respondWith(
-            fetch(event.request).then(response => {
-                if (response && response.status === 200) {
-                    const clone = response.clone();
-                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-                }
-                return response;
-            }).catch(() => caches.match(event.request))
+            caches.match(event.request).then(cached => {
+                if (cached) return cached;
+                return fetch(event.request).then(response => {
+                    if (response && response.status === 200) {
+                        const clone = response.clone();
+                        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+                    }
+                    return response;
+                });
+            })
         );
         return;
     }

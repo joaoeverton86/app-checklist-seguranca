@@ -17,7 +17,7 @@ function setup() {
     criarAbaSeNaoExiste(ss, CHECKLIST_SHEET, [
         'ID', 'Data', 'Patrimônio', 'Equipamento', 'NR', 'Empresa', 
         'Operador', 'SST', 'Responsável', 'Conformes', 'Não Conformes', 'N/A', 'Observações', 
-        'Status', 'Prazo Adequação', 'Data Hora Registro', 'Sincronizado'
+        'Status', 'Prazo Adequação', 'Data Hora Registro', 'Sincronizado', 'Itens Detalhados'
     ]);
     criarAbaSeNaoExiste(ss, ISSUES_SHEET, [
         'ID', 'Data', 'Tipo', 'Identificação', 'Descrição', 
@@ -156,10 +156,27 @@ function doPost(e) {
     }
 }
 
+// ============================================
+// FUNÇÕES AUXILIARES DE PERSISTÊNCIA
+// ============================================
+
+// Busca um ID na primeira coluna da aba correspondente para evitar duplicidades
+function encontrarLinhaPorId(aba, id) {
+    if (!id) return -1;
+    const dados = aba.getDataRange().getValues();
+    for (let i = 1; i < dados.length; i++) {
+        if (dados[i][0] == id) {
+            return i + 1; // 1-based index do Google Sheets
+        }
+    }
+    return -1;
+}
+
 function salvarChecklist(record) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const aba = ss.getSheetByName(CHECKLIST_SHEET);
-    aba.appendRow([
+    
+    const rowData = [
         record.id || '',
         record.date || '',
         record.patrimonio || '',
@@ -176,27 +193,58 @@ function salvarChecklist(record) {
         record.statusChecklist || '',
         record.prazoAdequacao || '',
         new Date().toISOString(),
-        'Sim'
-    ]);
+        'Sim',
+        JSON.stringify(record.items || {}) // Salva o detalhado de cada item verificado como JSON
+    ];
     
-    if (record.stats && record.stats.naoConformes > 0 && record.items && record.equipment && record.equipment.items) {
+    const linha = encontrarLinhaPorId(aba, record.id);
+    if (linha !== -1) {
+        aba.getRange(linha, 1, 1, rowData.length).setValues([rowData]);
+    } else {
+        aba.appendRow(rowData);
+    }
+    
+    // Processamento de não conformidades (aba NC)
+    if (record.items) {
         const abaNC = ss.getSheetByName(NC_SHEET);
-        const itens = record.equipment.items;
+        const itens = (record.equipment && record.equipment.items) || [];
         for (const itemId in record.items) {
             if (itemId === '_form') continue;
             const data = record.items[itemId];
+            
+            // Procura o nome amigável do item
+            const item = itens.find(function(i) { return i.id === itemId; });
+            const itemText = (item && item.text) || itemId;
+            
+            // Procura se já existe essa NC na aba
+            let linhaNC = -1;
+            const dadosNC = abaNC.getDataRange().getValues();
+            for (let i = 1; i < dadosNC.length; i++) {
+                if (dadosNC[i][0] == record.id && dadosNC[i][3] == itemText) {
+                    linhaNC = i + 1;
+                    break;
+                }
+            }
+            
             if (data.status === 'NC') {
-                const item = itens.find(function(i) { return i.id === itemId; });
-                abaNC.appendRow([
+                const rowDataNC = [
                     record.id || '',
                     record.date || '',
                     record.patrimonio || '',
-                    (item && item.text) || itemId,
+                    itemText,
                     (item && item.nr) || '',
                     (item && item.risk) || '',
                     data.observation || '',
                     new Date().toISOString()
-                ]);
+                ];
+                if (linhaNC !== -1) {
+                    abaNC.getRange(linhaNC, 1, 1, rowDataNC.length).setValues([rowDataNC]);
+                } else {
+                    abaNC.appendRow(rowDataNC);
+                }
+            } else if (linhaNC !== -1) {
+                // Se o item foi corrigido (não é mais NC), deleta a linha correspondente da aba de NC
+                abaNC.deleteRow(linhaNC);
             }
         }
     }
@@ -205,7 +253,8 @@ function salvarChecklist(record) {
 function salvarRelato(record) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const aba = ss.getSheetByName(ISSUES_SHEET);
-    aba.appendRow([
+    
+    const rowData = [
         record.id || '',
         record.date || '',
         record.type || '',
@@ -215,13 +264,21 @@ function salvarRelato(record) {
         record.role || '',
         record.status || '',
         new Date().toISOString()
-    ]);
+    ];
+    
+    const linha = encontrarLinhaPorId(aba, record.id);
+    if (linha !== -1) {
+        aba.getRange(linha, 1, 1, rowData.length).setValues([rowData]);
+    } else {
+        aba.appendRow(rowData);
+    }
 }
 
 function salvarCadastro(record) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const aba = ss.getSheetByName(CADASTROS_SHEET);
-    aba.appendRow([
+    
+    const rowData = [
         record.id || '',
         record.tipo || '',
         record.categoria || '',
@@ -232,13 +289,21 @@ function salvarCadastro(record) {
         record.obs || '',
         new Date().toISOString(),
         'Sim'
-    ]);
+    ];
+    
+    const linha = encontrarLinhaPorId(aba, record.id);
+    if (linha !== -1) {
+        aba.getRange(linha, 1, 1, rowData.length).setValues([rowData]);
+    } else {
+        aba.appendRow(rowData);
+    }
 }
 
 function salvarColaborador(record) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const aba = ss.getSheetByName(COLABORADORES_SHEET);
-    aba.appendRow([
+    
+    const rowData = [
         record.id || '',
         record.nome || '',
         record.funcao || '',
@@ -248,5 +313,12 @@ function salvarColaborador(record) {
         record.aso || '',
         new Date().toISOString(),
         'Sim'
-    ]);
+    ];
+    
+    const linha = encontrarLinhaPorId(aba, record.id);
+    if (linha !== -1) {
+        aba.getRange(linha, 1, 1, rowData.length).setValues([rowData]);
+    } else {
+        aba.appendRow(rowData);
+    }
 }

@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v24';
+const APP_VERSION = 'v25';
 
 let currentPage = 'pageHome';
 let currentChecklist = null;
@@ -755,13 +755,20 @@ async function getAllColaboradores() {
 }
 
 // ============================================
-// ITENS CUSTOMIZADOS POR CADASTRO
+// ITENS CUSTOMIZADOS POR TIPO DE EQUIPAMENTO
 // ============================================
 
-function getEffectiveItems(equipment, cadastro) {
+function getEffectiveItems(equipment) {
+    if (!equipment) return [];
     const baseItems = equipment.items || [];
-    const disabled = cadastro?.disabledItems || [];
-    const custom = cadastro?.customItems || [];
+    
+    // Carrega as customizações globais do tipo do localStorage
+    const settings = JSON.parse(localStorage.getItem('custom_type_settings') || '{}');
+    const typeSettings = settings[equipment.id] || {};
+    
+    const disabled = typeSettings.disabledItems || [];
+    const custom = typeSettings.customItems || [];
+    
     const filtered = baseItems.filter(item => !disabled.includes(item.id));
     const customItems = custom.map(item => ({
         id: item.id,
@@ -847,7 +854,7 @@ async function fillFromCadastro() {
 function renderChecklistItems(equipment, cadastro) {
     const container = document.getElementById('checklistItems');
     let currentSection = null;
-    const items = cadastro ? getEffectiveItems(equipment, cadastro) : equipment.items;
+    const items = getEffectiveItems(equipment);
 
     let html = '';
     items.forEach(item => {
@@ -917,7 +924,7 @@ function setObservation(itemId, value) {
 
 function updateProgress() {
     if (!currentEquipment) return;
-    const items = currentCadastro ? getEffectiveItems(currentEquipment, currentCadastro) : currentEquipment.items;
+    const items = getEffectiveItems(currentEquipment);
     const total = items.length;
     const filled = Object.keys(checklistData).filter(k => checklistData[k].status).length;
     const pct = Math.round((filled / total) * 100);
@@ -1145,7 +1152,7 @@ function saveChecklist() {
     
     // Calcular estatísticas
     let conformes = 0, naoConformes = 0, na = 0;
-    const effectiveItems = currentCadastro ? getEffectiveItems(currentEquipment, currentCadastro) : currentEquipment.items;
+    const effectiveItems = getEffectiveItems(currentEquipment);
     items.forEach(k => {
         if (checklistData[k].status === 'C') conformes++;
         else if (checklistData[k].status === 'NC') naoConformes++;
@@ -1332,22 +1339,32 @@ async function deleteFromIndexedDB(storeName, id) {
 // GERENCIAMENTO DE ITENS POR CADASTRO
 // ============================================
 
-let itemGerenciaCadastro = null;
+let itemGerenciaTypeId = null;
+let itemGerenciaTypeCategory = null;
 let itemGerenciaDisabled = [];
 let itemGerenciaCustom = [];
 
 async function loadItemGerenciaSelect() {
     const select = document.getElementById('itemGerenciaSelect');
     if (!select) return;
-    const cadastros = await getAllFromIndexedDB('cadastros');
-    const ativos = cadastros.filter(c => c.ativo !== false && c.tipo !== 'colaborador');
-    select.innerHTML = '<option value="">Selecione um equipamento...</option>';
-    ativos.forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c.patrimonio;
-        opt.textContent = `${c.patrimonio} - ${c.nome || ''}`;
-        select.appendChild(opt);
-    });
+    
+    select.innerHTML = '<option value="">Selecione um tipo de equipamento...</option>';
+    
+    for (const [categoriaKey, items] of Object.entries(EQUIPMENT_TYPES)) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = categoriaKey === 'maquinas' ? 'Máquinas e Equipamentos' :
+                         categoriaKey === 'veiculos' ? 'Veículos' : 'Ferramentas';
+        
+        items.forEach(eq => {
+            const opt = document.createElement('option');
+            opt.value = eq.id;
+            opt.textContent = `${eq.name} (${eq.nr})`;
+            opt.dataset.categoria = categoriaKey;
+            optgroup.appendChild(opt);
+        });
+        
+        select.appendChild(optgroup);
+    }
 }
 
 async function loadItemGerenciaItems() {
@@ -1355,26 +1372,40 @@ async function loadItemGerenciaItems() {
     const content = document.getElementById('itemGerenciaContent');
     if (!select.value) {
         content.style.display = 'none';
-        itemGerenciaCadastro = null;
+        itemGerenciaTypeId = null;
         return;
     }
-    const cadastro = await getFromIndexedDB('cadastros', select.value);
-    if (!cadastro || !cadastro.categoria) {
+    
+    const selectedOption = select.options[select.selectedIndex];
+    const optgroupLabel = selectedOption.parentNode.label;
+    const categoriaKey = optgroupLabel === 'Veículos' ? 'veiculos' :
+                         optgroupLabel === 'Ferramentas' ? 'ferramentas' : 'maquinas';
+    
+    const typeId = select.value;
+    const equipment = EQUIPMENT_TYPES[categoriaKey]?.find(e => e.id === typeId);
+    
+    if (!equipment) {
         content.style.display = 'none';
+        itemGerenciaTypeId = null;
         return;
     }
-    itemGerenciaCadastro = cadastro;
-    itemGerenciaDisabled = [...(cadastro.disabledItems || [])];
-    itemGerenciaCustom = [...(cadastro.customItems || [])];
+    
+    itemGerenciaTypeId = typeId;
+    itemGerenciaTypeCategory = categoriaKey;
+    
+    const settings = JSON.parse(localStorage.getItem('custom_type_settings') || '{}');
+    const typeSettings = settings[typeId] || {};
+    
+    itemGerenciaDisabled = [...(typeSettings.disabledItems || [])];
+    itemGerenciaCustom = [...(typeSettings.customItems || [])];
+    
     content.style.display = 'block';
     renderItemGerenciaLists();
 }
 
 function renderItemGerenciaLists() {
-    if (!itemGerenciaCadastro) return;
-    const tipo = itemGerenciaCadastro.tipo;
-    const categoria = itemGerenciaCadastro.categoria;
-    const equipment = EQUIPMENT_TYPES[tipo]?.find(e => e.id === categoria);
+    if (!itemGerenciaTypeId) return;
+    const equipment = EQUIPMENT_TYPES[itemGerenciaTypeCategory]?.find(e => e.id === itemGerenciaTypeId);
     if (!equipment) return;
 
     const baseContainer = document.getElementById('itemGerenciaBase');
@@ -1437,11 +1468,16 @@ function removeCustomItem(index) {
 }
 
 async function saveItemGerencia() {
-    if (!itemGerenciaCadastro) return;
-    itemGerenciaCadastro.disabledItems = itemGerenciaDisabled;
-    itemGerenciaCadastro.customItems = itemGerenciaCustom;
-    await saveToIndexedDB('cadastros', itemGerenciaCadastro);
-    showToast('Itens do equipamento atualizados!');
+    if (!itemGerenciaTypeId) return;
+    
+    const settings = JSON.parse(localStorage.getItem('custom_type_settings') || '{}');
+    settings[itemGerenciaTypeId] = {
+        disabledItems: itemGerenciaDisabled,
+        customItems: itemGerenciaCustom
+    };
+    
+    localStorage.setItem('custom_type_settings', JSON.stringify(settings));
+    showToast('Itens do tipo de equipamento atualizados!');
 }
 
 // ============================================

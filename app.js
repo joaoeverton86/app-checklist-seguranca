@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v31';
+const APP_VERSION = 'v32';
 
 let currentPage = 'pageHome';
 let currentChecklist = null;
@@ -42,6 +42,9 @@ document.addEventListener('DOMContentLoaded', () => {
     loadTopRisks();
     renderEquipmentGrids();
     iniciarSyncPeriodica();
+    
+    // Limpeza de duplicados por diferença de caixa alta/baixa
+    cleanDuplicateCadastros();
 
     if (navigator.onLine && getSyncUrl()) {
         setTimeout(function() { sincronizacaoBidirecional(); }, 2000);
@@ -407,11 +410,11 @@ async function saveCadastro() {
     const equipment = EQUIPMENT_TYPES[tipo].find(e => e.id === categoria);
     
     const cadastro = {
-        id: patrimonio,
+        id: patrimonioNorm,
         tipo,
         categoria,
         nome,
-        patrimonio,
+        patrimonio: patrimonioNorm,
         empresa,
         setor,
         obs,
@@ -701,14 +704,35 @@ async function editCadastro(id) {
 }
 
 async function saveCadastroEdit(id) {
-    const cadastro = await getFromIndexedDB('cadastros', id);
-    if (!cadastro) return;
+    const oldCadastro = await getFromIndexedDB('cadastros', id);
+    if (!oldCadastro) return;
 
-    cadastro.nome = document.getElementById('cadastroNome').value.trim();
-    cadastro.patrimonio = document.getElementById('cadastroPatrimonio').value.trim();
-    cadastro.empresa = document.getElementById('cadastroEmpresa').value.trim();
-    cadastro.setor = document.getElementById('cadastroSetor').value.trim();
-    cadastro.obs = document.getElementById('cadastroObs').value.trim();
+    const newPatrimonio = document.getElementById('cadastroPatrimonio').value.trim().toUpperCase();
+    if (!newPatrimonio) {
+        showToast('Preencha o patrimônio');
+        return;
+    }
+
+    if (newPatrimonio !== id.toUpperCase()) {
+        const existing = await getFromIndexedDB('cadastros', newPatrimonio);
+        if (existing && existing.ativo !== false) {
+            showToast('⚠️ Já existe um equipamento com patrimônio "' + newPatrimonio + '"');
+            return;
+        }
+        await deleteFromIndexedDB('cadastros', id);
+    }
+
+    const cadastro = {
+        ...oldCadastro,
+        id: newPatrimonio,
+        patrimonio: newPatrimonio,
+        nome: document.getElementById('cadastroNome').value.trim(),
+        empresa: document.getElementById('cadastroEmpresa').value.trim(),
+        setor: document.getElementById('cadastroSetor').value.trim(),
+        obs: document.getElementById('cadastroObs').value.trim(),
+        ativo: true,
+        synced: false
+    };
 
     await saveToIndexedDB('cadastros', cadastro);
     showToast('Equipamento atualizado!');
@@ -879,7 +903,17 @@ async function loadCadastroSelect(category) {
     
     select.innerHTML = '<option value="">Selecione um equipamento cadastrado...</option>';
     
+    const seen = new Set();
+    const cadastrosUnicos = [];
     cadastros.forEach(c => {
+        const key = (c.patrimonio || '').trim().toUpperCase();
+        if (key && !seen.has(key)) {
+            seen.add(key);
+            cadastrosUnicos.push(c);
+        }
+    });
+
+    cadastrosUnicos.forEach(c => {
         const option = document.createElement('option');
         option.value = c.patrimonio;
         option.textContent = `${c.patrimonio} - ${c.nome} (${c.empresa || 'Sem empresa'})`;
@@ -888,7 +922,7 @@ async function loadCadastroSelect(category) {
         select.appendChild(option);
     });
     
-    if (cadastros.length === 0) {
+    if (cadastrosUnicos.length === 0) {
         select.innerHTML = '<option value="">Nenhum equipamento cadastrado para este tipo</option>';
     }
 }
@@ -3088,9 +3122,9 @@ function converterParaApp(storeName, row) {
         
         const categoriaFinal = categoriaMap[categoriaLower] || categoriaLower;
         
-        let patrimonio = row['Patrimônio'] || '';
+        let patrimonio = (row['Patrimônio'] || '').trim().toUpperCase();
         if (!patrimonio || patrimonio.toLowerCase() === 'artec' || patrimonio.toLowerCase() === 'ar locações') {
-            patrimonio = row['ID'] || '';
+            patrimonio = (row['ID'] || '').trim().toUpperCase();
         }
         
         const nome = row['Nome'] || '';
@@ -3277,7 +3311,17 @@ async function loadCadastroSuggestions(category) {
         return;
     }
     
-    container.innerHTML = filtrados.map(c => `
+    const seen = new Set();
+    const filtradosUnicos = [];
+    filtrados.forEach(c => {
+        const key = (c.patrimonio || '').trim().toUpperCase();
+        if (key && !seen.has(key)) {
+            seen.add(key);
+            filtradosUnicos.push(c);
+        }
+    });
+
+    container.innerHTML = filtradosUnicos.map(c => `
         <div class="suggestion-item" onclick="selectCadastroFromSearch('${category}', '${c.patrimonio}')" 
              style="border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px;">
             <div class="item-info">
@@ -3322,7 +3366,17 @@ async function filterCadastros(category, query) {
         return;
     }
     
-    container.innerHTML = filtered.map(c => `
+    const seen = new Set();
+    const filteredUnique = [];
+    filtered.forEach(c => {
+        const key = (c.patrimonio || '').trim().toUpperCase();
+        if (key && !seen.has(key)) {
+            seen.add(key);
+            filteredUnique.push(c);
+        }
+    });
+
+    container.innerHTML = filteredUnique.map(c => `
         <div class="suggestion-item" onclick="selectCadastroFromSearch('${category}', '${c.patrimonio}')" 
              style="border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px;">
             <div class="item-info">

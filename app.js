@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v29';
+const APP_VERSION = 'v30';
 
 let currentPage = 'pageHome';
 let currentChecklist = null;
@@ -283,11 +283,10 @@ function startChecklistWithCadastro(category, equipmentId, patrimonio) {
     startChecklist(category, equipmentId);
     
     setTimeout(async () => {
-        const cadastro = await getFromIndexedDB('cadastros', patrimonio);
-        if (cadastro) {
-            document.getElementById('checklistPatrimonio').value = cadastro.patrimonio || '';
-            document.getElementById('checklistNome').value = cadastro.nome || '';
-            document.getElementById('checklistEmpresa').value = cadastro.empresa || '';
+        const select = document.getElementById('checklistPatrimonio');
+        if (select) {
+            select.value = patrimonio || '';
+            await fillFromCadastro();
         }
     }, 100);
 }
@@ -839,10 +838,7 @@ function startChecklist(category, equipmentId) {
     const empresaInput = document.getElementById('checklistEmpresa');
     nomeInput.value = equipment.name;
     empresaInput.value = '';
-    nomeInput.readOnly = false;
-    empresaInput.readOnly = false;
-    nomeInput.style.backgroundColor = '';
-    empresaInput.style.backgroundColor = '';
+    lockEquipmentFields(false);
     document.getElementById('checklistOperador').value = '';
     document.getElementById('checklistObservacoes').value = '';
     document.getElementById('checklistSSTSelect').value = '';
@@ -878,6 +874,24 @@ async function loadCadastroSelect(category) {
     }
 }
 
+function lockEquipmentFields(lock) {
+    const nomeInput = document.getElementById('checklistNome');
+    const empresaInput = document.getElementById('checklistEmpresa');
+    if (!nomeInput || !empresaInput) return;
+    
+    if (lock) {
+        nomeInput.disabled = true;
+        empresaInput.disabled = true;
+        nomeInput.style.backgroundColor = '#f1f5f9';
+        empresaInput.style.backgroundColor = '#f1f5f9';
+    } else {
+        nomeInput.disabled = false;
+        empresaInput.disabled = false;
+        nomeInput.style.backgroundColor = '';
+        empresaInput.style.backgroundColor = '';
+    }
+}
+
 async function fillFromCadastro() {
     const select = document.getElementById('checklistPatrimonio');
     const option = select.options[select.selectedIndex];
@@ -887,10 +901,7 @@ async function fillFromCadastro() {
     if (!select.value) {
         nomeInput.value = currentEquipment?.name || '';
         empresaInput.value = '';
-        nomeInput.readOnly = false;
-        empresaInput.readOnly = false;
-        nomeInput.style.backgroundColor = '';
-        empresaInput.style.backgroundColor = '';
+        lockEquipmentFields(false);
         currentCadastro = null;
         renderChecklistItems(currentEquipment);
         return;
@@ -898,10 +909,7 @@ async function fillFromCadastro() {
 
     nomeInput.value = option.dataset.nome || currentEquipment?.name || '';
     empresaInput.value = option.dataset.empresa || '';
-    nomeInput.readOnly = true;
-    empresaInput.readOnly = true;
-    nomeInput.style.backgroundColor = '#f1f5f9';
-    empresaInput.style.backgroundColor = '#f1f5f9';
+    lockEquipmentFields(true);
 
     const cadastro = await getFromIndexedDB('cadastros', select.value);
     if (cadastro) {
@@ -3314,11 +3322,10 @@ function selectCadastroFromSearch(category, patrimonio) {
     startChecklist(category, equipment.id);
     
     setTimeout(async () => {
-        const cadastro = await getFromIndexedDB('cadastros', patrimonio);
-        if (cadastro) {
-            document.getElementById('checklistPatrimonio').value = cadastro.patrimonio || '';
-            document.getElementById('checklistNome').value = cadastro.nome || '';
-            document.getElementById('checklistEmpresa').value = cadastro.empresa || '';
+        const select = document.getElementById('checklistPatrimonio');
+        if (select) {
+            select.value = patrimonio || '';
+            await fillFromCadastro();
         }
     }, 100);
 }
@@ -3359,6 +3366,7 @@ async function startChecklistFromPending(patrimonio) {
     document.getElementById('checklistPatrimonio').value = cadastro.patrimonio || '';
     document.getElementById('checklistNome').value = cadastro.nome || equipment.name;
     document.getElementById('checklistEmpresa').value = cadastro.empresa || '';
+    lockEquipmentFields(true);
     document.getElementById('checklistOperador').value = '';
     document.getElementById('checklistObservacoes').value = '';
 

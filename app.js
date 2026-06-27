@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v27';
+const APP_VERSION = 'v28';
 
 let currentPage = 'pageHome';
 let currentChecklist = null;
@@ -200,6 +200,8 @@ function goBack() {
         }
     } else if (currentPage === 'pageChecklistDetail') {
         showPage('pageHistory');
+    } else if (currentPage === 'pageNovoEquipamento' || currentPage === 'pageNovoColaborador' || currentPage === 'pageGerenciarItens') {
+        showPage('pageCadastro');
     } else {
         showPage('pageHome');
     }
@@ -495,6 +497,45 @@ function switchGestaoTab(tab) {
     document.getElementById('tabColaboradores').className = tab === 'colaboradores' ? 'status-btn nc selected' : 'status-btn na';
     document.getElementById('gestaoSearch').value = '';
     loadGestao();
+}
+
+function openNovoCadastro() {
+    if (gestaoTab === 'equipamentos') {
+        // Clear equipment form fields
+        document.getElementById('cadastroTipo').value = '';
+        document.getElementById('cadastroCategoria').innerHTML = '<option value="">Selecione o tipo primeiro...</option>';
+        document.getElementById('cadastroNome').value = '';
+        document.getElementById('cadastroPatrimonio').value = '';
+        document.getElementById('cadastroEmpresa').value = '';
+        if (document.getElementById('cadastroSetor')) document.getElementById('cadastroSetor').value = '';
+        document.getElementById('cadastroObs').value = '';
+        
+        // Reset Save Button to default
+        const btn = document.querySelector('#pageNovoEquipamento .save-btn');
+        if (btn) {
+            btn.textContent = 'Cadastrar Equipamento';
+            btn.setAttribute('onclick', 'saveCadastro()');
+        }
+        
+        showPage('pageNovoEquipamento');
+    } else {
+        // Clear collaborator form fields
+        document.getElementById('colabNome').value = '';
+        document.getElementById('colabFuncao').value = '';
+        document.getElementById('colabSetor').value = '';
+        document.getElementById('colabEmpresa').value = '';
+        document.getElementById('colabMatricula').value = '';
+        document.getElementById('colabASO').value = '';
+        
+        // Reset Save Button to default
+        const btn = document.querySelector('#pageNovoColaborador .save-btn');
+        if (btn) {
+            btn.textContent = 'Cadastrar Colaborador';
+            btn.setAttribute('onclick', 'saveColaborador()');
+        }
+        
+        showPage('pageNovoColaborador');
+    }
 }
 
 async function loadGestao(search = '') {

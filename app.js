@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v28';
+const APP_VERSION = 'v29';
 
 let currentPage = 'pageHome';
 let currentChecklist = null;
@@ -835,10 +835,18 @@ function startChecklist(category, equipmentId) {
     // Inicializar dados do formulário
     document.getElementById('checklistDate').value = new Date().toISOString().split('T')[0];
     document.getElementById('checklistPatrimonio').value = '';
-    document.getElementById('checklistNome').value = equipment.name;
-    document.getElementById('checklistEmpresa').value = '';
+    const nomeInput = document.getElementById('checklistNome');
+    const empresaInput = document.getElementById('checklistEmpresa');
+    nomeInput.value = equipment.name;
+    empresaInput.value = '';
+    nomeInput.readOnly = false;
+    empresaInput.readOnly = false;
+    nomeInput.style.backgroundColor = '';
+    empresaInput.style.backgroundColor = '';
     document.getElementById('checklistOperador').value = '';
     document.getElementById('checklistObservacoes').value = '';
+    document.getElementById('checklistSSTSelect').value = '';
+    document.getElementById('checklistResponsavelSelect').value = '';
     
     // Carregar cadastros deste tipo
     loadCadastroSelect(category);
@@ -873,17 +881,27 @@ async function loadCadastroSelect(category) {
 async function fillFromCadastro() {
     const select = document.getElementById('checklistPatrimonio');
     const option = select.options[select.selectedIndex];
+    const nomeInput = document.getElementById('checklistNome');
+    const empresaInput = document.getElementById('checklistEmpresa');
 
     if (!select.value) {
-        document.getElementById('checklistNome').value = currentEquipment?.name || '';
-        document.getElementById('checklistEmpresa').value = '';
+        nomeInput.value = currentEquipment?.name || '';
+        empresaInput.value = '';
+        nomeInput.readOnly = false;
+        empresaInput.readOnly = false;
+        nomeInput.style.backgroundColor = '';
+        empresaInput.style.backgroundColor = '';
         currentCadastro = null;
         renderChecklistItems(currentEquipment);
         return;
     }
 
-    document.getElementById('checklistNome').value = option.dataset.nome || currentEquipment?.name || '';
-    document.getElementById('checklistEmpresa').value = option.dataset.empresa || '';
+    nomeInput.value = option.dataset.nome || currentEquipment?.name || '';
+    empresaInput.value = option.dataset.empresa || '';
+    nomeInput.readOnly = true;
+    empresaInput.readOnly = true;
+    nomeInput.style.backgroundColor = '#f1f5f9';
+    empresaInput.style.backgroundColor = '#f1f5f9';
 
     const cadastro = await getFromIndexedDB('cadastros', select.value);
     if (cadastro) {
@@ -1003,8 +1021,8 @@ function saveFormData() {
         empresa: document.getElementById('checklistEmpresa').value,
         operador: document.getElementById('checklistOperador').value,
         observacoes: document.getElementById('checklistObservacoes').value,
-        responsavel: selectedResponsavel,
-        sst: selectedSST
+        responsavel: document.getElementById('checklistResponsavelSelect').value,
+        sst: document.getElementById('checklistSSTSelect').value
     };
 }
 
@@ -1125,41 +1143,41 @@ async function loadResponsavelSelect() {
     const colaboradores = await getAllFromIndexedDB('colaboradores');
     const ativos = colaboradores.filter(c => c.ativo !== false);
 
-    const selectResp = document.getElementById('checklistResponsavelSelect');
-    if (selectResp) {
-        selectResp.innerHTML = '<option value="">Selecione...</option>';
+    const listResp = document.getElementById('listaResponsaveis');
+    if (listResp) {
+        listResp.innerHTML = '';
         ativos.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c.nome;
-            opt.textContent = `${c.nome} - ${c.funcao || ''}`;
-            selectResp.appendChild(opt);
+            opt.textContent = `${c.funcao || ''} - ${c.empresa || ''}`;
+            listResp.appendChild(opt);
         });
     }
 
-    const selectSST = document.getElementById('checklistSSTSelect');
-    if (selectSST) {
-        selectSST.innerHTML = '<option value="">Selecione o TST/Engenheiro...</option>';
+    const listSST = document.getElementById('listaSST');
+    if (listSST) {
+        listSST.innerHTML = '';
         ativos.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c.nome;
-            opt.textContent = `${c.nome} - ${c.funcao || ''}`;
-            selectSST.appendChild(opt);
+            opt.textContent = `${c.funcao || ''} - ${c.empresa || ''}`;
+            listSST.appendChild(opt);
+        });
+    }
+
+    const listOperadores = document.getElementById('listaOperadores');
+    if (listOperadores) {
+        listOperadores.innerHTML = '';
+        ativos.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.nome;
+            opt.textContent = `${c.funcao || ''} - ${c.empresa || ''}`;
+            listOperadores.appendChild(opt);
         });
     }
 }
 
-let selectedResponsavel = '';
-let selectedSST = '';
-
-function fillResponsavelFromSelect() {
-    const select = document.getElementById('checklistResponsavelSelect');
-    selectedResponsavel = select ? select.value : '';
-}
-
-function fillSSTFromSelect() {
-    const select = document.getElementById('checklistSSTSelect');
-    selectedSST = select ? select.value : '';
-}
+// Removidos selecionadores antigos de SST/Responsável
 
 // ============================================
 // SALVAR CHECKLIST
@@ -1830,6 +1848,15 @@ async function viewChecklist(id) {
             </div>`;
     }
     
+    const hasDeadline = checklist.statusChecklist === 'liberado_restricao' || checklist.statusChecklist === 'interditado';
+    const deadlineHtml = hasDeadline ? `
+        <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <strong>Prazo Adequação:</strong>
+            <input type="date" id="detailPrazoAdequacao" value="${checklist.prazoAdequacao || ''}"
+                   onchange="updateChecklistPrazo('${checklist.id}', this.value)"
+                   style="padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; color: var(--text); font-family: inherit;">
+        </div>` : '';
+
     container.innerHTML = `
         <div class="card">
             <div class="card-title"><span class="icon">${checklist.equipment?.icon || '📦'}</span> ${checklist.nome}</div>
@@ -1843,6 +1870,7 @@ async function viewChecklist(id) {
                     <span style="color: var(--danger);">✗ ${checklist.stats.naoConformes} Não Conformes</span> • 
                     <span style="color: var(--text-light);">— ${checklist.stats.na} N/A</span>
                 </div>
+                ${deadlineHtml}
             </div>
         </div>
         
@@ -1943,6 +1971,18 @@ async function updateChecklistItem(checklistId, itemId, newStatus, btn) {
         showToast('Status atualizado!');
     }
     
+    viewChecklist(checklistId);
+}
+
+async function updateChecklistPrazo(checklistId, newPrazo) {
+    const checklist = await getFromIndexedDB('checklists', checklistId);
+    if (!checklist) return;
+
+    checklist.prazoAdequacao = newPrazo || null;
+    checklist.synced = false;
+
+    await saveToIndexedDB('checklists', checklist);
+    showToast('Prazo de adequação atualizado!');
     viewChecklist(checklistId);
 }
 

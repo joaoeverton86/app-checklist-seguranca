@@ -172,9 +172,30 @@ function encontrarLinhaPorId(aba, id) {
     return -1;
 }
 
+function obterAbaSegura(ss, nomeAba, cabecalhos) {
+    let aba = ss.getSheetByName(nomeAba);
+    if (!aba) {
+        aba = ss.insertSheet(nomeAba);
+        aba.appendRow(cabecalhos);
+        const range = aba.getRange(1, 1, 1, cabecalhos.length);
+        range.setFontWeight('bold');
+        range.setBackground('#1a5276');
+        range.setFontColor('white');
+        range.setHorizontalAlignment('center');
+        cabecalhos.forEach((_, i) => {
+            aba.setColumnWidth(i + 1, 150);
+        });
+    }
+    return aba;
+}
+
 function salvarChecklist(record) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const aba = ss.getSheetByName(CHECKLIST_SHEET);
+    const aba = obterAbaSegura(ss, CHECKLIST_SHEET, [
+        'ID', 'Data', 'Patrimônio', 'Equipamento', 'NR', 'Empresa', 
+        'Operador', 'SST', 'Responsável', 'Conformes', 'Não Conformes', 'N/A', 'Observações', 
+        'Status', 'Prazo Adequação', 'Data Hora Registro', 'Sincronizado', 'Itens Detalhados'
+    ]);
     
     const rowData = [
         record.id || '',
@@ -194,7 +215,7 @@ function salvarChecklist(record) {
         record.prazoAdequacao || '',
         new Date().toISOString(),
         'Sim',
-        JSON.stringify(record.items || {}) // Salva o detalhado de cada item verificado como JSON
+        JSON.stringify(record.items || {})
     ];
     
     const linha = encontrarLinhaPorId(aba, record.id);
@@ -204,19 +225,19 @@ function salvarChecklist(record) {
         aba.appendRow(rowData);
     }
     
-    // Processamento de não conformidades (aba NC)
     if (record.items) {
-        const abaNC = ss.getSheetByName(NC_SHEET);
+        const abaNC = obterAbaSegura(ss, NC_SHEET, [
+            'ID Checklist', 'Data', 'Patrimônio', 'Item', 'NR', 'Risco',
+            'Observação', 'Data Hora Registro'
+        ]);
         const itens = (record.equipment && record.equipment.items) || [];
         for (const itemId in record.items) {
             if (itemId === '_form') continue;
             const data = record.items[itemId];
             
-            // Procura o nome amigável do item
             const item = itens.find(function(i) { return i.id === itemId; });
             const itemText = (item && item.text) || itemId;
             
-            // Procura se já existe essa NC na aba
             let linhaNC = -1;
             const dadosNC = abaNC.getDataRange().getValues();
             for (let i = 1; i < dadosNC.length; i++) {
@@ -243,7 +264,6 @@ function salvarChecklist(record) {
                     abaNC.appendRow(rowDataNC);
                 }
             } else if (linhaNC !== -1) {
-                // Se o item foi corrigido (não é mais NC), deleta a linha correspondente da aba de NC
                 abaNC.deleteRow(linhaNC);
             }
         }
@@ -252,7 +272,10 @@ function salvarChecklist(record) {
 
 function salvarRelato(record) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const aba = ss.getSheetByName(ISSUES_SHEET);
+    const aba = obterAbaSegura(ss, ISSUES_SHEET, [
+        'ID', 'Data', 'Tipo', 'Identificação', 'Descrição', 
+        'Reportado por', 'Cargo', 'Status', 'Data Hora Registro'
+    ]);
     
     const rowData = [
         record.id || '',
@@ -276,7 +299,10 @@ function salvarRelato(record) {
 
 function salvarCadastro(record) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const aba = ss.getSheetByName(CADASTROS_SHEET);
+    const aba = obterAbaSegura(ss, CADASTROS_SHEET, [
+        'ID', 'Tipo', 'Categoria', 'Nome', 'Patrimônio', 'Empresa',
+        'Setor', 'Observações', 'Data Hora Registro', 'Sincronizado'
+    ]);
     
     const rowData = [
         record.id || '',
@@ -301,7 +327,10 @@ function salvarCadastro(record) {
 
 function salvarColaborador(record) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const aba = ss.getSheetByName(COLABORADORES_SHEET);
+    const aba = obterAbaSegura(ss, COLABORADORES_SHEET, [
+        'ID', 'Nome', 'Função', 'Setor', 'Empresa', 'Matrícula',
+        'Validade ASO', 'Data Hora Registro', 'Sincronizado'
+    ]);
     
     const rowData = [
         record.id || '',

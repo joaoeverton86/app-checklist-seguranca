@@ -2,7 +2,35 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v32';
+const APP_VERSION = 'v33';
+
+function formatSimpleDate(dateStr) {
+    if (!dateStr) return '—';
+    if (dateStr.includes('T')) {
+        try {
+            return new Date(dateStr).toLocaleDateString('pt-BR');
+        } catch (e) {
+            dateStr = dateStr.split('T')[0];
+        }
+    }
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateStr;
+}
+
+function parseLocalDate(dateStr) {
+    if (!dateStr) return new Date();
+    if (dateStr.includes('T')) {
+        return new Date(dateStr);
+    }
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+        return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    }
+    return new Date(dateStr);
+}
 
 let currentPage = 'pageHome';
 let currentChecklist = null;
@@ -1846,7 +1874,7 @@ async function loadHistory() {
         const statusClass = c.stats.naoConformes > 0 ? 'status-alert' : 'status-ok';
         const statusText = c.stats.naoConformes > 0 ? 
             `${c.stats.naoConformes} NC` : 'Conforme';
-        const date = new Date(c.date).toLocaleDateString('pt-BR');
+        const date = formatSimpleDate(c.date);
         
         return `
             <div class="history-item" onclick="viewChecklist('${c.id}')">
@@ -1865,7 +1893,7 @@ async function viewChecklist(id) {
     if (!checklist) return;
     
     const container = document.getElementById('checklistDetailContent');
-    const date = new Date(checklist.date).toLocaleDateString('pt-BR');
+    const date = formatSimpleDate(checklist.date);
     
     let itemsHtml = '';
     let hasNC = false;
@@ -2075,7 +2103,7 @@ async function renderDashboardCharts() {
 
     const checklists = await getAllFromIndexedDB('checklists');
     const { inicio, fim } = getDateRange();
-    const checklistsMes = checklists.filter(c => { const d = new Date(c.date); return d >= inicio && d <= fim; });
+    const checklistsMes = checklists.filter(c => { const d = parseLocalDate(c.date); return d >= inicio && d <= fim; });
     if (checklistsMes.length === 0) return;
 
     const colors = { success: '#27ae60', danger: '#e74c3c', gray: '#95a5a6', primary: '#1a5276', primaryLight: '#2980b9' };
@@ -2111,7 +2139,7 @@ async function renderDashboardCharts() {
         meses.push(d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
         const ini = new Date(d.getFullYear(), d.getMonth(), 1);
         const fim = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-        contagens.push(checklists.filter(c => { const dt = new Date(c.date); return dt >= ini && dt <= fim; }).length);
+        contagens.push(checklists.filter(c => { const dt = parseLocalDate(c.date); return dt >= ini && dt <= fim; }).length);
     }
     document.getElementById('chartCardMeses').style.display = 'block';
     chartInstances.meses = new Chart(document.getElementById('chartPorMes'), {
@@ -2197,7 +2225,7 @@ async function showStatusDetails(status) {
     const { inicio, fim } = getDateRange();
     
     const checklistsMes = checklists.filter(c => {
-        const d = new Date(c.date);
+        const d = parseLocalDate(c.date);
         return d >= inicio && d <= fim && c.statusChecklist === status;
     });
     
@@ -2220,7 +2248,7 @@ async function showStatusDetails(status) {
         html += `<div class="empty-state"><div class="icon">✅</div><div class="text">Nenhum checklist com este status</div></div>`;
     } else {
         checklistsMes.forEach(c => {
-            const data = new Date(c.date).toLocaleDateString('pt-BR');
+            const data = formatSimpleDate(c.date);
             
             // Itens não conformes
             let itensNC = [];
@@ -2319,7 +2347,7 @@ async function loadReports() {
     const equipamentosAtivos = cadastros.filter(c => c.ativo !== false && c.tipo !== 'colaborador');
     
     const { inicio, fim } = getDateRange();
-    const checklistsMes = checklists.filter(c => { const d = new Date(c.date); return d >= inicio && d <= fim; });
+    const checklistsMes = checklists.filter(c => { const d = parseLocalDate(c.date); return d >= inicio && d <= fim; });
     
     // Equipamentos que já foram verificados este mês
     const patrimoniosVerificados = new Set(checklistsMes.map(c => c.patrimonio));
@@ -2435,7 +2463,7 @@ async function loadReports() {
             <div class="risk-list-item">
                 <div class="risk-info">
                     <div class="risk-item-name">${CATEGORY_ICONS[i.type] || '📦'} ${i.description.substring(0, 50)}...</div>
-                    <div class="risk-count">${i.reporter} • ${new Date(i.date).toLocaleDateString('pt-BR')}</div>
+                    <div class="risk-count">${i.reporter} • ${formatSimpleDate(i.date)}</div>
                 </div>
             </div>
         `).join('');
@@ -2466,7 +2494,7 @@ async function loadRecentChecklists() {
         .slice(0, 5);
     
     container.innerHTML = recent.map(c => {
-        const date = new Date(c.date).toLocaleDateString('pt-BR');
+        const date = formatSimpleDate(c.date);
         const statusClass = c.stats.naoConformes > 0 ? 'status-alert' : 'status-ok';
         const statusText = c.stats.naoConformes > 0 ? 
             `${c.stats.naoConformes} NC` : 'OK';
@@ -2610,7 +2638,7 @@ async function exportChecklist(id) {
     doc.setTextColor(15, 23, 42); // Slate 900
 
     let innerY = y + 7;
-    drawField('Data: ', new Date(c.date).toLocaleDateString('pt-BR'), 20, innerY);
+    drawField('Data: ', formatSimpleDate(c.date), 20, innerY);
     drawField('Equipamento: ', c.nome, 20, innerY + 6);
     drawField('Patrimônio: ', c.patrimonio, 20, innerY + 12);
     drawField('Empresa: ', c.empresa, 20, innerY + 18);

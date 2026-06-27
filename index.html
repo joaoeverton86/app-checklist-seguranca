@@ -734,7 +734,7 @@
             <div class="quick-actions">
                 <a class="action-btn" onclick="showPage('pageCadastro')">
                     <span class="icon">📝</span>
-                    <span class="label">Cadastro</span>
+                    <span class="label">Gestão de Cadastros</span>
                 </a>
                 <a class="action-btn" onclick="showPage('pageNewChecklist')">
                     <span class="icon">📋</span>
@@ -751,18 +751,6 @@
                 <a class="action-btn" onclick="showPage('pageHistory')">
                     <span class="icon">📁</span>
                     <span class="label">Histórico</span>
-                </a>
-                <a class="action-btn" onclick="goToConfigSection('equipamento')">
-                    <span class="icon">🚜</span>
-                    <span class="label">Novo Equipamento</span>
-                </a>
-                <a class="action-btn" onclick="goToConfigSection('colaborador')">
-                    <span class="icon">👤</span>
-                    <span class="label">Novo Colaborador</span>
-                </a>
-                <a class="action-btn" onclick="goToConfigSection('itens')">
-                    <span class="icon">🔧</span>
-                    <span class="label">Gerenciar Itens</span>
                 </a>
             </div>
 
@@ -1218,6 +1206,7 @@
             <div class="status-buttons" style="margin-bottom: 12px;">
                 <button class="status-btn c selected" id="tabEquipamentos" onclick="switchGestaoTab('equipamentos')" style="flex: 1;">🚜 Equipamentos</button>
                 <button class="status-btn na" id="tabColaboradores" onclick="switchGestaoTab('colaboradores')" style="flex: 1;">👥 Colaboradores</button>
+                <button class="status-btn nc" id="tabItens" onclick="switchGestaoTab('itens')" style="flex: 1;">🔧 Itens Checklist</button>
             </div>
 
             <div class="search-container" style="margin-bottom: 12px;">
@@ -1228,7 +1217,7 @@
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <span style="font-size: 12px; color: var(--text-light);" id="gestaoCount">0 itens</span>
-                <button onclick="openNovoCadastro()" style="background: var(--primary); color: white; border: none; border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer;">+ Novo Cadastro</button>
+                <button id="btnNovoCadastro" onclick="openNovoCadastro()" style="background: var(--primary); color: white; border: none; border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer;">+ Novo Equipamento</button>
             </div>
 
             <div id="gestaoList">

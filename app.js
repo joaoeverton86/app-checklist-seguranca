@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v35';
+const APP_VERSION = 'v36';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -241,7 +241,7 @@ function showPage(pageId) {
         loadRecentChecklists();
         loadTopRisks();
     } else if (pageId === 'pageCadastro') {
-        loadGestao();
+        switchGestaoTab(gestaoTab);
     } else if (pageId === 'pageReports') {
         loadReports();
     } else if (pageId === 'pageHistory') {
@@ -585,9 +585,30 @@ async function saveColaborador() {
 let gestaoTab = 'equipamentos';
 
 function switchGestaoTab(tab) {
+    if (tab === 'itens') {
+        showPage('pageGerenciarItens');
+        return;
+    }
+    
     gestaoTab = tab;
+    
     document.getElementById('tabEquipamentos').className = tab === 'equipamentos' ? 'status-btn c selected' : 'status-btn na';
     document.getElementById('tabColaboradores').className = tab === 'colaboradores' ? 'status-btn nc selected' : 'status-btn na';
+    
+    const tabItens = document.getElementById('tabItens');
+    if (tabItens) {
+        tabItens.className = 'status-btn na';
+    }
+    
+    const btnNovo = document.getElementById('btnNovoCadastro');
+    if (btnNovo) {
+        if (tab === 'equipamentos') {
+            btnNovo.textContent = '+ Novo Equipamento';
+        } else if (tab === 'colaboradores') {
+            btnNovo.textContent = '+ Novo Colaborador';
+        }
+    }
+    
     document.getElementById('gestaoSearch').value = '';
     loadGestao();
 }

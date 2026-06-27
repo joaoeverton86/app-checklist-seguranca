@@ -932,7 +932,8 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Operador / Motorista</label>
-                    <input type="text" class="form-input" id="checklistOperador" placeholder="Nome do profissional">
+                    <input type="text" class="form-input" id="checklistOperador" list="listaOperadores" placeholder="Digite ou selecione o operador/motorista...">
+                    <datalist id="listaOperadores"></datalist>
                 </div>
             </div>
 
@@ -982,9 +983,8 @@
                 <div class="card-title"><span class="icon">✍️</span> Assinaturas</div>
                 <div class="form-group">
                     <label class="form-label">Assinatura do Responsável de Segurança do Trabalho</label>
-                    <select class="form-select" id="checklistSSTSelect" onchange="fillSSTFromSelect()">
-                        <option value="">Selecione o TST/Engenheiro...</option>
-                    </select>
+                    <input type="text" class="form-input" id="checklistSSTSelect" list="listaSST" placeholder="Digite ou selecione o TST/Engenheiro...">
+                    <datalist id="listaSST"></datalist>
                     <div class="signature-area" style="margin-top: 8px;">
                         <canvas id="signatureCanvas"></canvas>
                         <button class="clear-btn" onclick="clearSignature()">Limpar Assinatura</button>
@@ -992,9 +992,8 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Encarregado / Responsável</label>
-                    <select class="form-select" id="checklistResponsavelSelect" onchange="fillResponsavelFromSelect()">
-                        <option value="">Selecione...</option>
-                    </select>
+                    <input type="text" class="form-input" id="checklistResponsavelSelect" list="listaResponsaveis" placeholder="Digite ou selecione o Encarregado/Responsável...">
+                    <datalist id="listaResponsaveis"></datalist>
                     <div class="signature-area" style="margin-top: 8px;">
                         <canvas id="signatureCanvasResponsavel"></canvas>
                         <button class="clear-btn" onclick="clearSignatureResponsavel()">Limpar Assinatura</button>

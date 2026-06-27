@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v30';
+const APP_VERSION = 'v31';
 
 let currentPage = 'pageHome';
 let currentChecklist = null;
@@ -193,11 +193,7 @@ function goToConfigSection(secao) {
 
 function goBack() {
     if (currentPage === 'pageChecklistForm') {
-        if (confirm('Deseja salvar o checklist antes de sair?')) {
-            saveChecklist();
-        } else {
-            showPage('pageNewChecklist');
-        }
+        showExitConfirmModal();
     } else if (currentPage === 'pageChecklistDetail') {
         showPage('pageHistory');
     } else if (currentPage === 'pageNovoEquipamento' || currentPage === 'pageNovoColaborador' || currentPage === 'pageGerenciarItens') {
@@ -205,6 +201,29 @@ function goBack() {
     } else {
         showPage('pageHome');
     }
+}
+
+function showExitConfirmModal() {
+    const html = `
+        <div style="text-align: center; padding: 10px 0;">
+            <div style="font-size: 32px; margin-bottom: 12px;">⚠️</div>
+            <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px; color: var(--text);">Deseja salvar o checklist antes de sair?</h3>
+            <p style="font-size: 12px; color: var(--text-light); margin-bottom: 20px;">Escolha se prefere salvar suas alterações ou descartar o rascunho atual.</p>
+            
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <button class="save-btn" style="background: var(--success); margin: 0; padding: 12px;" onclick="closeModal(); saveChecklist();">
+                    💾 Sim, salvar e sair
+                </button>
+                <button class="save-btn" style="background: var(--danger); margin: 0; padding: 12px;" onclick="closeModal(); showPage('pageNewChecklist');">
+                    🗑️ Sair sem salvar
+                </button>
+                <button class="save-btn" style="background: #f1f5f9; color: var(--text); margin: 0; padding: 12px; border: 1px solid var(--border);" onclick="closeModal();">
+                    ❌ Cancelar (permanecer)
+                </button>
+            </div>
+        </div>
+    `;
+    showModal(html);
 }
 
 // ============================================

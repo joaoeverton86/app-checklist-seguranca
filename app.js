@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v26';
+const APP_VERSION = 'v27';
 
 let currentPage = 'pageHome';
 let currentChecklist = null;
@@ -2440,109 +2440,245 @@ async function exportChecklist(id) {
     const pageWidth = doc.internal.pageSize.getWidth();
     let y = 15;
 
-    doc.setFontSize(16);
-    doc.setFont(undefined, 'bold');
-    doc.text('CHECKLIST DE SEGURANCA DO TRABALHO', pageWidth / 2, y, { align: 'center' });
-    y += 10;
-
-    doc.setFontSize(10);
-    doc.setFont(undefined, 'normal');
-    doc.text(`Data: ${new Date(c.date).toLocaleDateString('pt-BR')}`, 15, y); y += 6;
-    doc.text(`Equipamento: ${c.nome || ''}`, 15, y); y += 6;
-    doc.text(`Patrimonio: ${c.patrimonio || ''}`, 15, y); y += 6;
-    doc.text(`Empresa: ${c.empresa || ''}`, 15, y); y += 6;
-    doc.text(`Operador: ${c.operador || ''}`, 15, y); y += 6;
-    doc.text(`Responsavel: ${c.responsavel || ''}`, 15, y); y += 6;
-    doc.text(`Status: ${c.statusChecklist || ''}`, 15, y); y += 6;
-    doc.text(`Conformes: ${c.stats.conformes} | Nao Conformes: ${c.stats.naoConformes} | N/A: ${c.stats.na}`, 15, y); y += 10;
-
-    doc.setDrawColor(200);
-    doc.line(15, y, pageWidth - 15, y);
-    y += 6;
-
+    // Header Accent Bar
+    doc.setFillColor(79, 70, 229); // Indigo 600
+    doc.rect(15, y, pageWidth - 30, 12, 'F');
+    
+    doc.setTextColor(255, 255, 255);
     doc.setFont(undefined, 'bold');
     doc.setFontSize(11);
-    doc.text('Itens Verificados', 15, y);
+    doc.text('CHECKLIST DE SEGURANÇA DO TRABALHO', pageWidth / 2, y + 7.5, { align: 'center' });
+    y += 17;
+
+    // Helper to draw bold key with normal value
+    function drawField(label, value, x, yVal) {
+        doc.setFont(undefined, 'bold');
+        doc.text(label, x, yVal);
+        const labelWidth = doc.getTextWidth(label);
+        doc.setFont(undefined, 'normal');
+        doc.text(String(value || ''), x + labelWidth + 2, yVal);
+    }
+
+    // Metadata Box
+    doc.setFillColor(248, 250, 252); // Slate 50
+    doc.setDrawColor(226, 232, 240); // Slate 200
+    doc.rect(15, y, pageWidth - 30, 48, 'FD');
+
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42); // Slate 900
+
+    let innerY = y + 7;
+    drawField('Data: ', new Date(c.date).toLocaleDateString('pt-BR'), 20, innerY);
+    drawField('Equipamento: ', c.nome, 20, innerY + 6);
+    drawField('Patrimônio: ', c.patrimonio, 20, innerY + 12);
+    drawField('Empresa: ', c.empresa, 20, innerY + 18);
+    drawField('Setor: ', c.setor || 'N/A', 20, innerY + 24);
+
+    const col2X = pageWidth / 2 + 10;
+    drawField('Operador: ', c.operador, col2X, innerY);
+    drawField('Encarregado: ', c.responsavel, col2X, innerY + 6);
+    drawField('Resp. SST: ', c.sst || 'N/A', col2X, innerY + 12);
+
+    // Draw status badge
+    doc.setFont(undefined, 'bold');
+    doc.text('Status:', col2X, innerY + 18);
+    const statusText = c.statusChecklist || 'Pendente';
+    let statusColor = [100, 116, 139]; // grey
+    if (statusText === 'Liberado') {
+        statusColor = [16, 185, 129]; // green
+    } else if (statusText === 'Liberado com Restrição') {
+        statusColor = [245, 158, 11]; // orange
+    } else if (statusText === 'Interditado') {
+        statusColor = [239, 68, 68]; // red
+    }
+    doc.setFillColor(...statusColor);
+    const labelWidth = doc.getTextWidth('Status:');
+    doc.rect(col2X + labelWidth + 3, innerY + 14.5, 45, 5, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(7.5);
+    doc.text(statusText, col2X + labelWidth + 25.5, innerY + 18, { align: 'center' });
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(9);
+    drawField('Resumo: ', `C: ${c.stats.conformes} | NC: ${c.stats.naoConformes} | N/A: ${c.stats.na}`, col2X, innerY + 24);
+
+    y += 56;
+
+    // Items table header
+    doc.setFillColor(15, 23, 42); // Slate 900
+    doc.rect(15, y, pageWidth - 30, 8, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(9);
+    doc.text('ITEM DE VERIFICAÇÃO', 18, y + 5.5);
+    doc.text('STATUS', pageWidth - 18, y + 5.5, { align: 'right' });
     y += 8;
 
-    doc.setFont(undefined, 'normal');
-    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    let isAlternate = false;
 
     for (const [itemId, data] of Object.entries(c.items)) {
         if (itemId === '_form') continue;
 
-        if (y > 270) {
-            doc.addPage();
-            y = 15;
+        const itemName = ITEM_NAMES[itemId] || data.customText || itemId;
+        const itemLines = doc.splitTextToSize(itemName, pageWidth - 70);
+        let rowHeight = itemLines.length * 4.5 + 4;
+        
+        if (data.observation) {
+            rowHeight += 5;
+        }
+        if (data.resolved) {
+            rowHeight += 4;
         }
 
-        const itemName = ITEM_NAMES[itemId] || data.customText || itemId;
-        const status = data.status === 'C' ? 'Conforme' : data.status === 'NC' ? 'Nao Conforme' : 'N/A';
-        const statusColor = data.status === 'C' ? [39, 174, 96] : data.status === 'NC' ? [231, 76, 60] : [149, 165, 166];
+        if (y + rowHeight > 275) {
+            doc.addPage();
+            y = 15;
+            // Draw table header on new page
+            doc.setFillColor(15, 23, 42); // Slate 900
+            doc.rect(15, y, pageWidth - 30, 8, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(9);
+            doc.text('ITEM DE VERIFICAÇÃO', 18, y + 5.5);
+            doc.text('STATUS', pageWidth - 18, y + 5.5, { align: 'right' });
+            y += 8;
+        }
 
-        doc.setTextColor(0);
-        const itemLines = doc.splitTextToSize(itemName, pageWidth - 60);
-        doc.text(itemLines, 15, y);
-        y += itemLines.length * 4;
+        // Row background
+        if (isAlternate) {
+            doc.setFillColor(248, 250, 252); // Slate 50
+            doc.rect(15, y, pageWidth - 30, rowHeight, 'F');
+        }
+        isAlternate = !isAlternate;
 
-        doc.setTextColor(...statusColor);
-        doc.setFont(undefined, 'bold');
-        doc.text(status, pageWidth - 15, y - (itemLines.length * 4) + 4, { align: 'right' });
+        // Row border bottom
+        doc.setDrawColor(241, 245, 249); // Slate 100
+        doc.line(15, y + rowHeight, pageWidth - 15, y + rowHeight);
+
+        // Print item name
+        doc.setTextColor(15, 23, 42);
         doc.setFont(undefined, 'normal');
+        doc.setFontSize(9);
+        doc.text(itemLines, 18, y + 4.5);
 
+        // Print Status Badge
+        const status = data.status === 'C' ? 'Conforme' : data.status === 'NC' ? 'Não Conforme' : 'N/A';
+        const badgeColor = data.status === 'C' ? [16, 185, 129] : data.status === 'NC' ? [239, 68, 68] : [100, 116, 139];
+        
+        doc.setFillColor(...badgeColor);
+        doc.rect(pageWidth - 45, y + 1.5, 30, 5.5, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont(undefined, 'bold');
+        doc.setFontSize(7.5);
+        doc.text(status, pageWidth - 30, y + 5.2, { align: 'center' });
+
+        let innerYItem = y + itemLines.length * 4.5 + 4.5;
         if (data.observation) {
-            doc.setTextColor(120);
-            const obsLines = doc.splitTextToSize(`Obs: ${data.observation}`, pageWidth - 35);
-            doc.text(obsLines, 20, y);
-            y += obsLines.length * 4;
+            doc.setTextColor(100, 116, 139);
+            doc.setFont(undefined, 'italic');
+            doc.setFontSize(8);
+            doc.text(`Obs: ${data.observation}`, 22, innerYItem);
+            innerYItem += 5;
         }
 
         if (data.resolved) {
-            doc.setTextColor(39, 174, 96);
-            const resText = `Resolvido${data.resolvedAt ? ' em ' + new Date(data.resolvedAt).toLocaleDateString('pt-BR') : ''}${data.resolvedBy ? ' por ' + data.resolvedBy : ''}`;
-            doc.text(resText, 20, y);
-            y += 4;
+            doc.setTextColor(16, 185, 129);
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(8);
+            const resText = `✓ Resolvido${data.resolvedAt ? ' em ' + new Date(data.resolvedAt).toLocaleDateString('pt-BR') : ''}${data.resolvedBy ? ' por ' + data.resolvedBy : ''}`;
+            doc.text(resText, 22, innerYItem);
         }
 
-        doc.setTextColor(0);
-        y += 3;
+        y += rowHeight;
     }
 
     if (c.observacoes) {
-        y += 5;
-        if (y > 270) { doc.addPage(); y = 15; }
-        doc.setFont(undefined, 'bold');
-        doc.setFontSize(10);
-        doc.text('Observacoes Gerais:', 15, y);
-        y += 6;
-        doc.setFont(undefined, 'normal');
-        doc.setFontSize(9);
-        const obsLines = doc.splitTextToSize(c.observacoes, pageWidth - 30);
-        doc.text(obsLines, 15, y);
-        y += obsLines.length * 4;
-    }
-
-    if (c.signature) {
         y += 8;
-        if (y > 250) { doc.addPage(); y = 15; }
+        if (y > 260) { doc.addPage(); y = 15; }
+        doc.setFillColor(254, 243, 199); // Amber 100
+        doc.setDrawColor(252, 211, 77); // Amber 300
+        doc.rect(15, y, pageWidth - 30, 18, 'FD');
+        doc.setTextColor(180, 83, 9); // Amber 800
         doc.setFont(undefined, 'bold');
-        doc.setFontSize(10);
-        doc.text('Resp. Seguranca do Trabalho:', 15, y);
-        if (c.sst) { doc.setFont(undefined, 'normal'); doc.text(c.sst, 80, y); }
-        y += 6;
-        try { doc.addImage(c.signature, 'PNG', 15, y, 60, 25); } catch (e) {}
-        y += 28;
+        doc.setFontSize(9);
+        doc.text('Observações Gerais:', 18, y + 5);
+        doc.setTextColor(15, 23, 42);
+        doc.setFont(undefined, 'normal');
+        doc.setFontSize(8.5);
+        const obsLines = doc.splitTextToSize(c.observacoes, pageWidth - 36);
+        doc.text(obsLines, 18, y + 10);
+        y += 22;
     }
 
+    // Side-by-side signatures
+    y += 10;
+    if (y > 240) { doc.addPage(); y = 15; }
+
+    const colWidth = (pageWidth - 40) / 2;
+
+    // Left Column: Resp. SST
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text('Resp. Segurança do Trabalho:', 15, y);
+    doc.setFont(undefined, 'normal');
+    if (c.sst) {
+        doc.text(c.sst, 15, y + 5);
+    }
+    if (c.signature) {
+        try {
+            doc.addImage(c.signature, 'PNG', 15, y + 8, 60, 22);
+        } catch (e) {
+            doc.setDrawColor(200);
+            doc.rect(15, y + 8, 60, 22);
+            doc.text('Assinatura Digital', 45, y + 20, { align: 'center' });
+        }
+    } else {
+        doc.setDrawColor(203, 213, 225);
+        doc.line(15, y + 25, 15 + colWidth - 10, y + 25);
+        doc.setFontSize(7.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text('(Sem assinatura registrada)', 15, y + 29);
+    }
+
+    // Right Column: Operator/Supervisor/Encarregado
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text('Encarregado / Responsável:', 15 + colWidth + 10, y);
+    doc.setFont(undefined, 'normal');
+    if (c.responsavel) {
+        doc.text(c.responsavel, 15 + colWidth + 10, y + 5);
+    }
     if (c.signatureResponsavel) {
-        y += 4;
-        if (y > 250) { doc.addPage(); y = 15; }
-        doc.setFont(undefined, 'bold');
-        doc.setFontSize(10);
-        doc.text('Encarregado / Responsavel:', 15, y);
-        if (c.responsavel) { doc.setFont(undefined, 'normal'); doc.text(c.responsavel, 75, y); }
-        y += 6;
-        try { doc.addImage(c.signatureResponsavel, 'PNG', 15, y, 60, 25); } catch (e) {}
+        try {
+            doc.addImage(c.signatureResponsavel, 'PNG', 15 + colWidth + 10, y + 8, 60, 22);
+        } catch (e) {
+            doc.setDrawColor(200);
+            doc.rect(15 + colWidth + 10, y + 8, 60, 22);
+            doc.text('Assinatura Digital', 15 + colWidth + 40, y + 20, { align: 'center' });
+        }
+    } else {
+        doc.setDrawColor(203, 213, 225);
+        doc.line(15 + colWidth + 10, y + 25, pageWidth - 15, y + 25);
+        doc.setFontSize(7.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text('(Sem assinatura registrada)', 15 + colWidth + 10, y + 29);
+    }
+
+    // Footers and Page Numbers on all pages
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setDrawColor(226, 232, 240); // Slate 200
+        doc.line(15, 285, pageWidth - 15, 285);
+        
+        doc.setFontSize(7);
+        doc.setTextColor(148, 163, 184);
+        doc.setFont(undefined, 'normal');
+        doc.text('App Checklist de Segurança - Emissão via Dispositivo Móvel (Offline)', 15, 290);
+        doc.text(`Página ${i} de ${pageCount}`, pageWidth - 15, 290, { align: 'right' });
     }
 
     doc.save(`checklist_${c.patrimonio || 'item'}_${c.date}.pdf`);

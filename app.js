@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v34';
+const APP_VERSION = 'v35';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -518,12 +518,12 @@ async function saveColaborador() {
     const matricula = document.getElementById('colabMatricula').value.trim();
     const aso = document.getElementById('colabASO').value;
     
-    if (!nome || !funcao || !setor) {
-        showToast('Preencha todos os campos obrigatórios');
+    const matriculaNorm = matricula ? matricula.trim().toUpperCase() : '';
+    
+    if (!nome || !funcao || !matriculaNorm) {
+        showToast('Preencha todos os campos obrigatórios (Nome, Função e Matrícula)');
         return;
     }
-    
-    const matriculaNorm = matricula ? matricula.trim().toUpperCase() : '';
     
     if (matriculaNorm) {
         const existing = await getFromIndexedDB('colaboradores', matriculaNorm);
@@ -721,20 +721,13 @@ async function loadGestao(search = '') {
         };
 
         container.innerHTML = items.map(c => {
-            const asoStatus = c.aso
-                ? new Date(c.aso) < new Date()
-                    ? '<span style="color: var(--danger); font-size: 10px;">⚠ ASO Vencido</span>'
-                    : '<span style="color: var(--success); font-size: 10px;">✓ ASO OK</span>'
-                : '<span style="color: var(--warning); font-size: 10px;">⚠ ASO não cadastrado</span>';
+            const icon = funcaoIcon(c.funcao);
             return `
                 <div class="history-item" style="flex-wrap: wrap;">
                     <div class="history-info">
-                        <div class="history-title">${c.nome}</div>
-                        <div class="history-date">${c.funcao || ''}</div>
-                        <div class="history-date">${c.setor || ''}</div>
-                        <div class="history-date">${c.empresa || ''}</div>
-                        <div class="history-date">${c.matricula ? 'Mat: ' + c.matricula : ''}</div>
-                        <div style="margin-top: 4px; font-size: 11px;">${asoStatus}</div>
+                        <div class="history-title">${icon} ${c.nome}</div>
+                        <div class="history-date" style="font-weight: 550; color: var(--primary);">${c.funcao || ''}</div>
+                        <div class="history-date">Matrícula: ${c.matricula || 'N/A'}</div>
                     </div>
                     <div style="display: flex; gap: 4px;">
                         <button onclick="editColaborador('${c.id}')" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>

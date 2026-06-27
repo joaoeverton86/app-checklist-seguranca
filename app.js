@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v33';
+const APP_VERSION = 'v34';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -90,6 +90,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function initApp() {
     console.log('App Checklist Segurança inicializado - ' + APP_VERSION);
+}
+
+async function cleanDuplicateCadastros() {
+    try {
+        const cadastros = await getAllFromIndexedDB('cadastros');
+        const seenCadastros = new Set();
+        for (const item of cadastros) {
+            const normalizedId = String(item.id).trim().toUpperCase();
+            if (seenCadastros.has(normalizedId)) {
+                await deleteFromIndexedDB('cadastros', item.id);
+                console.log('Deletado cadastro duplicado local:', item.id);
+            } else {
+                seenCadastros.add(normalizedId);
+                if (item.id !== normalizedId || item.patrimonio !== normalizedId) {
+                    await deleteFromIndexedDB('cadastros', item.id);
+                    item.id = normalizedId;
+                    item.patrimonio = normalizedId;
+                    await saveToIndexedDB('cadastros', item, true);
+                    console.log('Normalizado id de cadastro:', item.id);
+                }
+            }
+        }
+
+        const colaboradores = await getAllFromIndexedDB('colaboradores');
+        const seenColabs = new Set();
+        for (const item of colaboradores) {
+            const normalizedId = String(item.id).trim().toUpperCase();
+            if (seenColabs.has(normalizedId)) {
+                await deleteFromIndexedDB('colaboradores', item.id);
+                console.log('Deletado colaborador duplicado local:', item.id);
+            } else {
+                seenColabs.add(normalizedId);
+                if (item.id !== normalizedId || item.matricula !== normalizedId) {
+                    await deleteFromIndexedDB('colaboradores', item.id);
+                    item.id = normalizedId;
+                    item.matricula = normalizedId;
+                    await saveToIndexedDB('colaboradores', item, true);
+                    console.log('Normalizado id de colaborador:', item.id);
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Erro ao limpar duplicados:', e);
+    }
 }
 
 function initDateDefaults() {
@@ -513,12 +557,12 @@ async function saveColaborador() {
     }
     
     const colaborador = {
-        id: matricula || Date.now().toString(),
+        id: matriculaNorm || Date.now().toString(),
         nome,
         funcao,
         setor,
         empresa,
-        matricula,
+        matricula: matriculaNorm,
         aso,
         timestamp: new Date().toISOString(),
         ativo: true,
@@ -803,15 +847,37 @@ async function editColaborador(id) {
 }
 
 async function saveColaboradorEdit(id) {
-    const colab = await getFromIndexedDB('colaboradores', id);
-    if (!colab) return;
+    const oldColab = await getFromIndexedDB('colaboradores', id);
+    if (!oldColab) return;
 
-    colab.nome = document.getElementById('colabNome').value.trim();
-    colab.funcao = document.getElementById('colabFuncao').value;
-    colab.setor = document.getElementById('colabSetor').value;
-    colab.empresa = document.getElementById('colabEmpresa').value.trim();
-    colab.matricula = document.getElementById('colabMatricula').value.trim();
-    colab.aso = document.getElementById('colabASO').value;
+    const newMatricula = document.getElementById('colabMatricula').value.trim().toUpperCase();
+    if (!newMatricula) {
+        showToast('Preencha a matrícula');
+        return;
+    }
+
+    const idNorm = id.toUpperCase();
+    if (newMatricula !== idNorm) {
+        const existing = await getFromIndexedDB('colaboradores', newMatricula);
+        if (existing && existing.ativo !== false) {
+            showToast('⚠️ Já existe um colaborador com matrícula "' + newMatricula + '"');
+            return;
+        }
+        await deleteFromIndexedDB('colaboradores', id);
+    }
+
+    const colab = {
+        ...oldColab,
+        id: newMatricula,
+        matricula: newMatricula,
+        nome: document.getElementById('colabNome').value.trim(),
+        funcao: document.getElementById('colabFuncao').value,
+        setor: document.getElementById('colabSetor').value,
+        empresa: document.getElementById('colabEmpresa').value.trim(),
+        aso: document.getElementById('colabASO').value,
+        ativo: true,
+        synced: false
+    };
 
     await saveToIndexedDB('colaboradores', colab);
     showToast('Colaborador atualizado!');
@@ -1774,13 +1840,16 @@ async function sincronizacaoBidirecional() {
 
                 const locais = await getAllFromIndexedDB(store);
                 const localMap = {};
-                locais.forEach(item => { localMap[item.id] = item; });
+                locais.forEach(item => { 
+                    const normId = String(item.id).trim().toUpperCase();
+                    localMap[normId] = item; 
+                });
 
                 const remotos = result.data;
                 const remoteMap = {};
 
                 for (const row of remotos) {
-                    const id = row['ID'] || row['Patrimônio'] || row['Matrícula'] || '';
+                    const id = String(row['ID'] || row['Patrimônio'] || row['Matrícula'] || '').trim().toUpperCase();
                     if (!id) continue;
 
                     const remoto = converterParaApp(store, row);
@@ -3175,13 +3244,15 @@ function converterParaApp(storeName, row) {
     }
     
     if (storeName === 'colaboradores') {
+        const idVal = String(row['Matrícula'] || row['ID'] || '').trim().toUpperCase();
+        const matVal = String(row['Matrícula'] || '').trim().toUpperCase();
         return {
-            id: row['Matrícula'] || row['ID'] || '',
+            id: idVal,
             nome: row['Nome'] || '',
             funcao: row['Função'] || '',
             setor: row['Setor'] || '',
             empresa: row['Empresa'] || '',
-            matricula: row['Matrícula'] || '',
+            matricula: matVal,
             aso: row['Validade ASO'] || '',
             timestamp: row['Data Hora Registro'] || new Date().toISOString(),
             ativo: true,

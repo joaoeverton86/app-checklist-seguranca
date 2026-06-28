@@ -194,8 +194,10 @@ function salvarChecklist(record) {
     const aba = obterAbaSegura(ss, CHECKLIST_SHEET, [
         'ID', 'Data', 'Patrimônio', 'Equipamento', 'NR', 'Empresa', 
         'Operador', 'SST', 'Responsável', 'Conformes', 'Não Conformes', 'N/A', 'Observações', 
-        'Status', 'Prazo Adequação', 'Data Hora Registro', 'Sincronizado', 'Itens Detalhados'
+        'Status', 'Prazo Adequação', 'Data Hora Registro', 'Sincronizado', 'Itens Detalhados', 'Link PDF'
     ]);
+    
+    const pdfUrl = criarPDFNoDrive(record);
     
     const rowData = [
         record.id || '',
@@ -215,7 +217,8 @@ function salvarChecklist(record) {
         record.prazoAdequacao || '',
         new Date().toISOString(),
         'Sim',
-        JSON.stringify(record.items || {})
+        JSON.stringify(record.items || {}),
+        pdfUrl
     ];
     
     const linha = encontrarLinhaPorId(aba, record.id);
@@ -349,5 +352,78 @@ function salvarColaborador(record) {
         aba.getRange(linha, 1, 1, rowData.length).setValues([rowData]);
     } else {
         aba.appendRow(rowData);
+    }
+}
+
+function criarPDFNoDrive(record) {
+    try {
+        var html = "<html><body style='font-family: Arial, sans-serif; padding: 20px; color: #333;'>";
+        html += "<div style='max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px; border-radius: 8px;'>";
+        html += "<h2 style='color:#1a5276; border-bottom:2px solid #1a5276; padding-bottom:8px; margin-top:0;'>" + (record.nome || "Checklist") + " - Checklist de Segurança</h2>";
+        html += "<table style='width: 100%; border-collapse: collapse; margin-bottom: 20px;'>";
+        html += "<tr><td style='padding: 6px 0; border-bottom: 1px solid #eee;'><strong>ID:</strong></td><td style='padding: 6px 0; border-bottom: 1px solid #eee;'>" + (record.id || 'N/A') + "</td></tr>";
+        html += "<tr><td style='padding: 6px 0; border-bottom: 1px solid #eee;'><strong>Data:</strong></td><td style='padding: 6px 0; border-bottom: 1px solid #eee;'>" + (record.date || 'N/A') + "</td></tr>";
+        html += "<tr><td style='padding: 6px 0; border-bottom: 1px solid #eee;'><strong>Patrimônio:</strong></td><td style='padding: 6px 0; border-bottom: 1px solid #eee;'>" + (record.patrimonio || 'N/A') + "</td></tr>";
+        html += "<tr><td style='padding: 6px 0; border-bottom: 1px solid #eee;'><strong>Empresa:</strong></td><td style='padding: 6px 0; border-bottom: 1px solid #eee;'>" + (record.empresa || 'N/A') + "</td></tr>";
+        html += "<tr><td style='padding: 6px 0; border-bottom: 1px solid #eee;'><strong>Operador/Motorista:</strong></td><td style='padding: 6px 0; border-bottom: 1px solid #eee;'>" + (record.operador || 'N/A') + "</td></tr>";
+        html += "<tr><td style='padding: 6px 0; border-bottom: 1px solid #eee;'><strong>Téc. Segurança (SST):</strong></td><td style='padding: 6px 0; border-bottom: 1px solid #eee;'>" + (record.sst || 'N/A') + "</td></tr>";
+        html += "<tr><td style='padding: 6px 0; border-bottom: 1px solid #eee;'><strong>Encarregado/Responsável:</strong></td><td style='padding: 6px 0; border-bottom: 1px solid #eee;'>" + (record.responsavel || 'N/A') + "</td></tr>";
+        html += "<tr><td style='padding: 6px 0; border-bottom: 1px solid #eee;'><strong>Status Geral:</strong></td><td style='padding: 6px 0; border-bottom: 1px solid #eee; font-weight: bold; color: " + 
+                (record.statusChecklist === 'liberado' ? '#27ae60' : (record.statusChecklist === 'liberado_restricao' ? '#f39c12' : '#c0392b')) + ";'>" + 
+                (record.statusChecklist ? record.statusChecklist.toUpperCase().replace('_', ' ') : 'N/A') + "</td></tr>";
+        if (record.prazoAdequacao) {
+            html += "<tr><td style='padding: 6px 0; border-bottom: 1px solid #eee;'><strong>Prazo de Adequação:</strong></td><td style='padding: 6px 0; border-bottom: 1px solid #eee; color: #c0392b; font-weight: bold;'>" + record.prazoAdequacao + "</td></tr>";
+        }
+        html += "</table>";
+        
+        if (record.observacoes) {
+            html += "<div style='background: #f9f9f9; padding: 10px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #1a5276;'><strong>Observações Gerais:</strong><p style='margin: 4px 0 0 0; font-size: 13px;'>" + record.observacoes + "</p></div>";
+        }
+        
+        html += "<h3>Itens Verificados:</h3>";
+        html += "<table style='width: 100%; border-collapse: collapse; font-size: 13px;'>";
+        html += "<thead><tr style='background: #f2f2f2;'><th style='text-align: left; padding: 8px; border: 1px solid #ddd;'>Item</th><th style='text-align: center; padding: 8px; border: 1px solid #ddd; width: 120px;'>Status</th></tr></thead><tbody>";
+        
+        for (var itemId in record.items) {
+            if (itemId === '_form') continue;
+            var itemData = record.items[itemId];
+            var statusText = itemData.status === 'C' ? 'Conforme' : (itemData.status === 'NC' ? 'Não Conforme' : 'N/A');
+            var statusColor = itemData.status === 'C' ? '#27ae60' : (itemData.status === 'NC' ? '#c0392b' : '#95a5a6');
+            
+            html += "<tr>";
+            html += "<td style='padding: 8px; border: 1px solid #ddd;'><strong>" + itemId.toUpperCase() + "</strong>" + (itemData.observation ? "<br><span style='color:#7f8c8d; font-size: 11px;'>Obs: " + itemData.observation + "</span>" : "") + "</td>";
+            html += "<td style='padding: 8px; border: 1px solid #ddd; text-align: center; color: " + statusColor + "; font-weight: bold;'>" + statusText + "</td>";
+            html += "</tr>";
+        }
+        html += "</tbody></table>";
+        html += "</div></body></html>";
+        
+        var blob = Utilities.newBlob(html, "text/html", "checklist-" + record.id + ".html");
+        
+        var folderName = "Checklists_PDFs";
+        var folders = DriveApp.getFoldersByName(folderName);
+        var folder;
+        if (folders.hasNext()) {
+            folder = folders.next();
+        } else {
+            folder = DriveApp.createFolder(folderName);
+        }
+        
+        var tempFile = DriveApp.createFile(blob);
+        var pdfBlob = tempFile.getAs("application/pdf");
+        var pdfFile = folder.createFile(pdfBlob);
+        pdfFile.setName((record.nome || 'Checklist') + "_" + (record.patrimonio || 'SemPatrimonio') + "_" + (record.date || 'SemData') + ".pdf");
+        
+        try {
+            pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        } catch(e) {
+            console.log("Erro ao definir compartilhamento: " + e.toString());
+        }
+        
+        tempFile.setTrashed(true);
+        
+        return pdfFile.getUrl();
+    } catch(e) {
+        return "Erro PDF: " + e.toString();
     }
 }

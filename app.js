@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v38';
+const APP_VERSION = 'v39';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -73,6 +73,11 @@ document.addEventListener('DOMContentLoaded', () => {
     
     cleanDuplicateCadastros();
     updatePendingBadge();
+    
+    const osAppId = localStorage.getItem('onesignal_app_id');
+    if (osAppId) {
+        loadOneSignalSDK(osAppId);
+    }
 
     if (navigator.onLine && getSyncUrl()) {
         setTimeout(function() { sincronizacaoBidirecional(); }, 2000);
@@ -3156,6 +3161,10 @@ function loadConfigPage() {
     const urlInput = document.getElementById('syncUrlInput');
     if (urlInput) urlInput.value = url;
     
+    const osId = localStorage.getItem('onesignal_app_id') || '';
+    const osInput = document.getElementById('oneSignalAppIdInput');
+    if (osInput) osInput.value = osId;
+    
     const status = getSyncStatus();
     const statusCard = document.getElementById('syncStatusCard');
     const statusText = document.getElementById('syncStatusText');
@@ -3198,6 +3207,51 @@ function saveSyncUrl() {
     setSyncUrl(url);
     showToast('URL salva com sucesso!');
     loadConfigPage();
+}
+
+function saveOneSignalAppId() {
+    const appId = document.getElementById('oneSignalAppIdInput').value.trim();
+    if (!appId) {
+        showToast('Digite o OneSignal App ID');
+        return;
+    }
+    localStorage.setItem('onesignal_app_id', appId);
+    showToast('App ID do OneSignal salvo!');
+    loadOneSignalSDK(appId);
+}
+
+function initOneSignal(appId) {
+    if (!appId) return;
+    window.OneSignal = window.OneSignal || [];
+    OneSignal.push(function() {
+        OneSignal.init({
+            appId: appId,
+            allowLocalhostAsSecureOrigin: true,
+            notifyButton: {
+                enable: true,
+                size: 'medium',
+                position: 'bottom-right',
+                theme: 'default',
+                colors: {
+                    'circle.background': '#1a5276'
+                }
+            }
+        });
+    });
+}
+
+function loadOneSignalSDK(appId) {
+    if (!appId) return;
+    if (document.getElementById('onesignal-sdk')) {
+        initOneSignal(appId);
+        return;
+    }
+    const script = document.createElement('script');
+    script.id = 'onesignal-sdk';
+    script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
+    script.defer = true;
+    script.onload = () => initOneSignal(appId);
+    document.head.appendChild(script);
 }
 
 async function testSync() {

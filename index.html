@@ -1362,6 +1362,13 @@
                     <label class="form-label">Observações</label>
                     <textarea class="form-textarea" id="cadastroObs" placeholder="Informações adicionais..."></textarea>
                 </div>
+                <div class="form-group" id="groupCadastroStatus" style="display: none;">
+                    <label class="form-label">Status (Mobilização na Obra)</label>
+                    <select class="form-select" id="cadastroStatus">
+                        <option value="ativo" selected>🟢 Mobilizado (Ativo)</option>
+                        <option value="inativo">🔴 Desmobilizado (Inativo)</option>
+                    </select>
+                </div>
                 <button class="save-btn" onclick="saveCadastro()">Cadastrar Equipamento</button>
             </div>
         </div>

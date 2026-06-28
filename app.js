@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v37';
+const APP_VERSION = 'v38';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -708,7 +708,13 @@ async function loadGestao(search = '') {
 
     if (gestaoTab === 'equipamentos') {
         const cadastros = await getAllFromIndexedDB('cadastros');
-        let items = cadastros.filter(c => c.ativo !== false);
+        let items = [...cadastros];
+        items.sort((a, b) => {
+            const aAtivo = a.ativo !== false;
+            const bAtivo = b.ativo !== false;
+            if (aAtivo === bAtivo) return 0;
+            return aAtivo ? -1 : 1;
+        });
 
         if (query) {
             items = items.filter(c =>
@@ -726,14 +732,21 @@ async function loadGestao(search = '') {
             return;
         }
 
-        const funcoesNome = { TST: 'TST', motorista: 'Motorista', operador: 'Operador', mecanico: 'Mecânico', eletricista: 'Eletricista', pedreiro: 'Pedreiro', servente: 'Servente', encarregado_geral: 'Enc. Geral', engenheiro: 'Engenheiro', encarregado_transporte: 'Enc. Transporte', outro: 'Outro' };
-
         container.innerHTML = items.map(c => {
-            const statusBadge = c.ultimoChecklist ?
-                `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #d5f5e3; color: #1e8449;">✓ Verificado</span>` :
-                `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #fadbd8; color: #c0392b;">⚠ Pendente</span>`;
+            const isAtivo = c.ativo !== false;
+            const statusBadge = isAtivo ?
+                (c.ultimoChecklist ?
+                    `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #d5f5e3; color: #1e8449; font-weight: 600;">🟢 Mobilizado (Verificado)</span>` :
+                    `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #fadbd8; color: #c0392b; font-weight: 600;">🟢 Mobilizado (Pendente)</span>`) :
+                `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #f2f3f4; color: #7f8c8d; font-weight: 600;">🔴 Desmobilizado</span>`;
+                
+            const opacityStyle = isAtivo ? '' : 'opacity: 0.65; background: #f8f9f9;';
+            const deleteBtnHtml = isAtivo ? 
+                `<button onclick="deleteCadastro('${c.id}')" title="Desmobilizar" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🗑️</button>` : 
+                '';
+                
             return `
-                <div class="history-item" style="flex-wrap: wrap;">
+                <div class="history-item" style="flex-wrap: wrap; ${opacityStyle}">
                     <div class="history-info">
                         <div class="history-title">${c.patrimonio}</div>
                         <div class="history-date">${c.nome || ''}</div>
@@ -741,9 +754,9 @@ async function loadGestao(search = '') {
                         <div class="history-date">${c.setor || ''}</div>
                         <div style="margin-top: 4px;">${statusBadge}</div>
                     </div>
-                    <div style="display: flex; gap: 4px;">
-                        <button onclick="editCadastro('${c.id}')" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>
-                        <button onclick="deleteCadastro('${c.id}')" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🗑️</button>
+                    <div style="display: flex; gap: 4px; align-items: center;">
+                        <button onclick="editCadastro('${c.id}')" title="Editar" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>
+                        ${deleteBtnHtml}
                     </div>
                 </div>`;
         }).join('');
@@ -830,6 +843,13 @@ async function editCadastro(id) {
         document.getElementById('cadastroSetor').value = cadastro.setor || '';
         document.getElementById('cadastroObs').value = cadastro.obs || '';
 
+        const statusGroup = document.getElementById('groupCadastroStatus');
+        if (statusGroup) statusGroup.style.display = 'block';
+        const statusSelect = document.getElementById('cadastroStatus');
+        if (statusSelect) {
+            statusSelect.value = cadastro.ativo !== false ? 'ativo' : 'inativo';
+        }
+
         const btn = document.querySelector('#pageNovoEquipamento .save-btn[onclick="saveCadastro()"]');
         if (btn) {
             btn.textContent = 'Atualizar Equipamento';
@@ -857,6 +877,9 @@ async function saveCadastroEdit(id) {
         await deleteFromIndexedDB('cadastros', id);
     }
 
+    const statusVal = document.getElementById('cadastroStatus') ? document.getElementById('cadastroStatus').value : 'ativo';
+    const isAtivo = statusVal === 'ativo';
+
     const cadastro = {
         ...oldCadastro,
         id: newPatrimonio,
@@ -865,18 +888,23 @@ async function saveCadastroEdit(id) {
         empresa: document.getElementById('cadastroEmpresa').value.trim(),
         setor: document.getElementById('cadastroSetor').value.trim(),
         obs: document.getElementById('cadastroObs').value.trim(),
-        ativo: true,
+        ativo: isAtivo,
         synced: false
     };
 
     await saveToIndexedDB('cadastros', cadastro);
-    showToast('Equipamento atualizado!');
+    showToast(isAtivo ? 'Equipamento atualizado!' : 'Equipamento desmobilizado!');
 
     const btn = document.querySelector('#pageNovoEquipamento .save-btn[onclick^="saveCadastroEdit"]');
     if (btn) {
         btn.textContent = 'Cadastrar Equipamento';
         btn.setAttribute('onclick', 'saveCadastro()');
     }
+
+    const statusGroup = document.getElementById('groupCadastroStatus');
+    if (statusGroup) statusGroup.style.display = 'none';
+    const statusSelect = document.getElementById('cadastroStatus');
+    if (statusSelect) statusSelect.value = 'ativo';
 
     document.getElementById('cadastroTipo').value = '';
     document.getElementById('cadastroCategoria').innerHTML = '<option value="">Selecione o tipo primeiro...</option>';
@@ -960,13 +988,14 @@ async function saveColaboradorEdit(id) {
 }
 
 async function deleteCadastro(id) {
-    if (!confirm('Deseja excluir este cadastro?')) return;
+    if (!confirm('Deseja desmobilizar este equipamento/veículo? (Ele não será mais cobrado nos checklists pendentes e relatórios, mas seu histórico será mantido)')) return;
     const cadastro = await getFromIndexedDB('cadastros', id);
     if (cadastro) {
         cadastro.ativo = false;
+        cadastro.synced = false;
         await saveToIndexedDB('cadastros', cadastro);
     }
-    showToast('Cadastro excluído');
+    showToast('Equipamento desmobilizado');
     loadGestao();
 }
 
@@ -975,6 +1004,7 @@ async function deleteColaborador(id) {
     const colab = await getFromIndexedDB('colaboradores', id);
     if (colab) {
         colab.ativo = false;
+        colab.synced = false;
         await saveToIndexedDB('colaboradores', colab);
     }
     showToast('Colaborador excluído');
@@ -1928,8 +1958,6 @@ async function sincronizacaoBidirecional() {
                     if (!local) {
                         await saveToIndexedDB(store, remoto, true);
                         totalAtualizados++;
-                    } else if (local.ativo === false) {
-                        continue;
                     } else if (!local.synced && local.timestamp) {
                         continue;
                     } else {
@@ -1947,8 +1975,7 @@ async function sincronizacaoBidirecional() {
                 }
 
                 for (const local of locais) {
-                    if (local.ativo === false) continue;
-                    if (!remoteMap[local.id] && local.synced !== true) {
+                    if (local.synced !== true) {
                         syncToGoogleSheets(store, local);
                         totalAtualizados++;
                     }
@@ -3423,7 +3450,7 @@ function converterParaApp(storeName, row) {
             obs: row['Observações'] || '',
             equipment: null,
             timestamp: row['Data Hora Registro'] || new Date().toISOString(),
-            ativo: true,
+            ativo: row['Ativo'] !== 'Não',
             synced: true
         };
     }
@@ -3440,7 +3467,7 @@ function converterParaApp(storeName, row) {
             matricula: matVal,
             aso: row['Validade ASO'] || '',
             timestamp: row['Data Hora Registro'] || new Date().toISOString(),
-            ativo: true,
+            ativo: row['Ativo'] !== 'Não',
             synced: true
         };
     }

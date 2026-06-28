@@ -320,7 +320,7 @@ function salvarCadastro(record) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const aba = obterAbaSegura(ss, CADASTROS_SHEET, [
         'ID', 'Tipo', 'Categoria', 'Nome', 'Patrimônio', 'Empresa',
-        'Setor', 'Observações', 'Data Hora Registro', 'Sincronizado'
+        'Setor', 'Observações', 'Data Hora Registro', 'Sincronizado', 'Ativo'
     ]);
     
     const rowData = [
@@ -333,7 +333,8 @@ function salvarCadastro(record) {
         record.setor || '',
         record.obs || '',
         new Date().toISOString(),
-        'Sim'
+        'Sim',
+        record.ativo !== false ? 'Sim' : 'Não'
     ];
     
     const linha = encontrarLinhaPorId(aba, record.id);
@@ -348,7 +349,7 @@ function salvarColaborador(record) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const aba = obterAbaSegura(ss, COLABORADORES_SHEET, [
         'ID', 'Nome', 'Função', 'Setor', 'Empresa', 'Matrícula',
-        'Validade ASO', 'Data Hora Registro', 'Sincronizado'
+        'Validade ASO', 'Data Hora Registro', 'Sincronizado', 'Ativo'
     ]);
     
     const rowData = [
@@ -360,7 +361,8 @@ function salvarColaborador(record) {
         record.matricula || '',
         record.aso || '',
         new Date().toISOString(),
-        'Sim'
+        'Sim',
+        record.ativo !== false ? 'Sim' : 'Não'
     ];
     
     const linha = encontrarLinhaPorId(aba, record.id);

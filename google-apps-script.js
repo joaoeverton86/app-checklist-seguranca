@@ -185,6 +185,22 @@ function obterAbaSegura(ss, nomeAba, cabecalhos) {
         cabecalhos.forEach((_, i) => {
             aba.setColumnWidth(i + 1, 150);
         });
+    } else {
+        const lastCol = aba.getLastColumn();
+        if (lastCol > 0) {
+            const headersExistentes = aba.getRange(1, 1, 1, lastCol).getValues()[0];
+            cabecalhos.forEach((header, index) => {
+                if (index >= headersExistentes.length) {
+                    const celula = aba.getRange(1, index + 1);
+                    celula.setValue(header);
+                    celula.setFontWeight('bold');
+                    celula.setBackground('#1a5276');
+                    celula.setFontColor('white');
+                    celula.setHorizontalAlignment('center');
+                    aba.setColumnWidth(index + 1, 150);
+                }
+            });
+        }
     }
     return aba;
 }
@@ -426,4 +442,27 @@ function criarPDFNoDrive(record) {
     } catch(e) {
         return "Erro PDF: " + e.toString();
     }
+}
+
+function testarPDFEDrive() {
+    const dummyRecord = {
+        id: "TESTE-123",
+        date: "2026-06-28",
+        patrimonio: "TESTE-PATRIMONIO",
+        nome: "Equipamento Teste",
+        empresa: "Empresa Teste",
+        operador: "Operador Teste",
+        sst: "SST Teste",
+        responsavel: "Responsavel Teste",
+        statusChecklist: "liberado",
+        prazoAdequacao: "",
+        items: {
+            "item1": { status: "C", observation: "" },
+            "item2": { status: "NC", observation: "Necessita ajuste" }
+        }
+    };
+    
+    Logger.log("Iniciando geração do PDF de teste...");
+    const url = criarPDFNoDrive(dummyRecord);
+    Logger.log("PDF criado com sucesso! Link: " + url);
 }

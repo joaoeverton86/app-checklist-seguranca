@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v39';
+const APP_VERSION = 'v40';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -3218,6 +3218,30 @@ function saveOneSignalAppId() {
     localStorage.setItem('onesignal_app_id', appId);
     showToast('App ID do OneSignal salvo!');
     loadOneSignalSDK(appId);
+}
+
+function requestPushPermission() {
+    if (window.OneSignal) {
+        try {
+            if (OneSignal.Notifications && OneSignal.Notifications.requestPermission) {
+                OneSignal.Notifications.requestPermission().then(() => {
+                    showToast("Inscrição solicitada!");
+                });
+            } else if (OneSignal.showSlidedownPrompt) {
+                OneSignal.showSlidedownPrompt();
+                showToast("Inscrição solicitada!");
+            } else {
+                OneSignal.push(function() {
+                    OneSignal.registerForPushNotifications();
+                });
+            }
+        } catch (e) {
+            console.error("Erro OneSignal prompt:", e);
+            showToast("Erro ao abrir prompt de notificação.");
+        }
+    } else {
+        showToast("OneSignal não carregado. Configure o App ID primeiro.");
+    }
 }
 
 function initOneSignal(appId) {

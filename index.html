@@ -1074,6 +1074,13 @@
                 <div style="display: flex; gap: 6px; margin-top: 8px;">
                     <button class="status-btn na" id="filterCustom" onclick="setReportFilter('custom')" style="flex: 1;">Personalizado</button>
                 </div>
+                
+                <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);">
+                    <label class="form-label" style="font-size: 11px; margin-bottom: 4px; display: block;">Filtrar por Equipamento / Veículo</label>
+                    <select class="form-select" id="reportFilterPatrimonio" onchange="applyReportPatrimonioFilter()" style="padding: 8px; font-size: 12px; width: 100%;">
+                        <option value="">Todos os Equipamentos...</option>
+                    </select>
+                </div>
             </div>
 
             <div class="report-summary" style="grid-template-columns: 1fr 1fr 1fr;">

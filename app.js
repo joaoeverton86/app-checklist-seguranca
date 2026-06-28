@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v36';
+const APP_VERSION = 'v37';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -71,8 +71,8 @@ document.addEventListener('DOMContentLoaded', () => {
     renderEquipmentGrids();
     iniciarSyncPeriodica();
     
-    // Limpeza de duplicados por diferença de caixa alta/baixa
     cleanDuplicateCadastros();
+    updatePendingBadge();
 
     if (navigator.onLine && getSyncUrl()) {
         setTimeout(function() { sincronizacaoBidirecional(); }, 2000);
@@ -156,14 +156,63 @@ function initConnectionStatus() {
 
 function updateConnectionStatus() {
     const status = document.getElementById('connectionStatus');
-    const text = document.getElementById('connectionText');
     if (navigator.onLine) {
-        status.className = 'connection-status online';
-        text.textContent = '● Online - Sincronizando...';
+        if (status) status.className = 'connection-status online';
         sincronizacaoBidirecional();
     } else {
-        status.className = 'connection-status offline';
-        text.textContent = '● Offline - Dados salvos localmente';
+        if (status) status.className = 'connection-status offline';
+        updatePendingBadge();
+    }
+}
+
+async function updatePendingBadge() {
+    const status = getSyncStatus();
+    const count = status.pendentes;
+    
+    const text = document.getElementById('connectionText');
+    if (text) {
+        if (navigator.onLine) {
+            if (count > 0) {
+                text.textContent = `● Online - Sincronizando (${count} pendente(s))...`;
+                text.style.color = 'var(--warning)';
+            } else {
+                text.textContent = '● Sincronizado';
+                text.style.color = 'var(--success)';
+            }
+        } else {
+            text.textContent = `● Offline (${count} pendente(s) localmente)`;
+            text.style.color = 'var(--danger)';
+        }
+    }
+    
+    const navConfig = document.getElementById('navConfig');
+    if (navConfig) {
+        navConfig.style.position = 'relative';
+        let badge = navConfig.querySelector('.nav-badge');
+        if (count > 0) {
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'nav-badge';
+                badge.style.position = 'absolute';
+                badge.style.top = '2px';
+                badge.style.right = '12px';
+                badge.style.background = 'var(--danger)';
+                badge.style.color = 'white';
+                badge.style.fontSize = '9px';
+                badge.style.fontWeight = 'bold';
+                badge.style.borderRadius = '50%';
+                badge.style.width = '14px';
+                badge.style.height = '14px';
+                badge.style.display = 'flex';
+                badge.style.alignItems = 'center';
+                badge.style.justifyContent = 'center';
+                navConfig.appendChild(badge);
+            }
+            badge.textContent = count;
+            badge.style.display = 'flex';
+        } else if (badge) {
+            badge.style.display = 'none';
+        }
     }
 }
 
@@ -1760,6 +1809,7 @@ function adicionarFilaPendente(storeName, data) {
     if (!existe) {
         fila.push({ store: storeName, data, tentativas: 0, criado: new Date().toISOString() });
         localStorage.setItem('sync_pending_queue', JSON.stringify(fila));
+        updatePendingBadge();
     }
 }
 
@@ -1806,6 +1856,7 @@ async function processarFilaPendente() {
     }
     
     localStorage.setItem('sync_pending_queue', JSON.stringify(restante));
+    updatePendingBadge();
     
     if (processar.length > 0 && restante.length === 0) {
         showToast(`Sincronizados ${processar.length} item(ns)!`);
@@ -2072,17 +2123,101 @@ async function viewChecklist(id) {
                 <img src="${checklist.signatureResponsavel}" style="width: 100%; border: 1px solid var(--border); border-radius: 8px;">
             </div>` : ''}
         
-        <div style="display: flex; gap: 10px; margin-top: 16px;">
-            <button class="save-btn" style="background: var(--danger);" onclick="deleteChecklist('${checklist.id}')">
+        <div style="display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap;">
+            <button class="save-btn" style="background: var(--danger); flex: 1; min-width: 80px;" onclick="deleteChecklist('${checklist.id}')">
                 🗑️ Excluir
             </button>
-            <button class="save-btn" style="background: var(--primary);" onclick="exportChecklist('${checklist.id}')">
+            <button class="save-btn" style="background: var(--warning); flex: 1.2; min-width: 120px;" onclick="reinspecionarChecklist('${checklist.id}')">
+                🔄 Reinspecionar
+            </button>
+            <button class="save-btn" style="background: var(--primary); flex: 1; min-width: 80px;" onclick="exportChecklist('${checklist.id}')">
                 📥 Exportar
             </button>
         </div>
     `;
     
     showPage('pageChecklistDetail');
+}
+
+async function reinspecionarChecklist(id) {
+    const original = await getFromIndexedDB('checklists', id);
+    if (!original) return;
+    
+    const category = original.equipment?.tipo || original.equipment?.category || '';
+    const equipmentId = original.equipment?.id || '';
+    
+    if (!category || !equipmentId) {
+        showToast('Erro: Não foi possível determinar o tipo do equipamento.');
+        return;
+    }
+    
+    const equipment = EQUIPMENT_TYPES[category].find(e => e.id === equipmentId);
+    if (!equipment) {
+        showToast('Erro: Tipo de equipamento não cadastrado.');
+        return;
+    }
+    
+    currentEquipment = equipment;
+    currentCadastro = null;
+    
+    document.getElementById('checklistDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('checklistPatrimonio').value = original.patrimonio || '';
+    
+    const nomeInput = document.getElementById('checklistNome');
+    const empresaInput = document.getElementById('checklistEmpresa');
+    nomeInput.value = original.nome || '';
+    empresaInput.value = original.empresa || '';
+    
+    document.getElementById('checklistOperador').value = original.operador || '';
+    document.getElementById('checklistObservacoes').value = `Reinspeção baseada no checklist #${original.id}. ` + (original.observacoes || '');
+    
+    const sstInput = document.getElementById('checklistSSTSelect');
+    if (sstInput) sstInput.value = original.sst || '';
+    
+    const respInput = document.getElementById('checklistResponsavelSelect');
+    if (respInput) respInput.value = original.responsavel || '';
+    
+    lockEquipmentFields(!!original.patrimonio);
+    
+    await loadCadastroSelect(category);
+    await loadResponsavelSelect();
+    
+    checklistData = {};
+    for (const [itemId, itemData] of Object.entries(original.items)) {
+        if (itemId === '_form') continue;
+        checklistData[itemId] = {
+            status: itemData.status,
+            observation: itemData.observation || ''
+        };
+    }
+    
+    clearSignature();
+    clearSignatureResponsavel();
+    
+    renderChecklistItems(equipment, currentCadastro);
+    
+    setTimeout(() => {
+        for (const [itemId, itemData] of Object.entries(checklistData)) {
+            const option = document.querySelector(`input[name="${itemId}"][value="${itemData.status}"]`);
+            if (option) {
+                option.checked = true;
+                const btnGroup = option.closest('.btn-group');
+                if (btnGroup) {
+                    btnGroup.querySelectorAll('label').forEach(lbl => lbl.classList.remove('selected'));
+                    const label = btnGroup.querySelector(`label[for="${option.id}"]`);
+                    if (label) label.classList.add('selected');
+                }
+            }
+            
+            const obsInput = document.getElementById(`obs_${itemId}`);
+            if (obsInput) {
+                obsInput.value = itemData.observation || '';
+            }
+        }
+    }, 100);
+    
+    showPage('pageChecklistForm');
+    showToast('Reinspeção iniciada! Dados anteriores carregados.');
 }
 
 let pendingItemUpdate = null;
@@ -2186,7 +2321,13 @@ async function renderDashboardCharts() {
 
     const checklists = await getAllFromIndexedDB('checklists');
     const { inicio, fim } = getDateRange();
-    const checklistsMes = checklists.filter(c => { const d = parseLocalDate(c.date); return d >= inicio && d <= fim; });
+    let checklistsMes = checklists.filter(c => { const d = parseLocalDate(c.date); return d >= inicio && d <= fim; });
+    
+    const selectedPatrimonio = document.getElementById('reportFilterPatrimonio')?.value || '';
+    if (selectedPatrimonio) {
+        checklistsMes = checklistsMes.filter(c => c.patrimonio === selectedPatrimonio);
+    }
+    
     if (checklistsMes.length === 0) return;
 
     const colors = { success: '#27ae60', danger: '#e74c3c', gray: '#95a5a6', primary: '#1a5276', primaryLight: '#2980b9' };
@@ -2274,6 +2415,10 @@ function applyCustomDateFilter() {
         reportFilterCustomTo = to;
         loadReports();
     }
+}
+
+function applyReportPatrimonioFilter() {
+    loadReports();
 }
 
 function getDateRange() {
@@ -2422,20 +2567,46 @@ async function loadReports() {
             tituloEl.textContent = `📊 Painel do Mês - ${meses[agora.getMonth()]} ${agora.getFullYear()}`;
         }
     }
-    
     const checklists = await getAllFromIndexedDB('checklists');
     const issues = await getAllFromIndexedDB('issues');
     const cadastros = await getAllFromIndexedDB('cadastros');
     
     const equipamentosAtivos = cadastros.filter(c => c.ativo !== false && c.tipo !== 'colaborador');
     
+    // Popular o select de filtro por patrimônio
+    const selectPatrimonio = document.getElementById('reportFilterPatrimonio');
+    if (selectPatrimonio) {
+        const valAnterior = selectPatrimonio.value;
+        selectPatrimonio.innerHTML = '<option value="">Todos os Equipamentos...</option>';
+        const sortedEquips = [...equipamentosAtivos].sort((a, b) => (a.patrimonio || '').localeCompare(b.patrimonio || ''));
+        sortedEquips.forEach(eq => {
+            const opt = document.createElement('option');
+            opt.value = eq.patrimonio;
+            opt.textContent = `${eq.patrimonio} - ${eq.nome}`;
+            selectPatrimonio.appendChild(opt);
+        });
+        selectPatrimonio.value = valAnterior;
+    }
+    
+    const selectedPatrimonio = selectPatrimonio ? selectPatrimonio.value : '';
+    
     const { inicio, fim } = getDateRange();
     const checklistsMes = checklists.filter(c => { const d = parseLocalDate(c.date); return d >= inicio && d <= fim; });
     
     // Equipamentos que já foram verificados este mês
     const patrimoniosVerificados = new Set(checklistsMes.map(c => c.patrimonio));
-    const pendentes = equipamentosAtivos.filter(e => !patrimoniosVerificados.has(e.patrimonio));
-    const realizados = equipamentosAtivos.filter(e => patrimoniosVerificados.has(e.patrimonio));
+    
+    let pendentes = equipamentosAtivos.filter(e => !patrimoniosVerificados.has(e.patrimonio));
+    let realizados = equipamentosAtivos.filter(e => patrimoniosVerificados.has(e.patrimonio));
+    
+    if (selectedPatrimonio) {
+        pendentes = pendentes.filter(e => e.patrimonio === selectedPatrimonio);
+        realizados = realizados.filter(e => e.patrimonio === selectedPatrimonio);
+    }
+    
+    const checklistsFiltrados = selectedPatrimonio ? 
+        checklistsMes.filter(c => c.patrimonio === selectedPatrimonio) : 
+        checklistsMes;
     
     // Totais
     let totalC = 0, totalNC = 0;
@@ -2443,7 +2614,7 @@ async function loadReports() {
     const typeCounts = {};
     const statusCounts = { interditado: 0, liberado_restricao: 0, liberado: 0 };
     
-    checklistsMes.forEach(c => {
+    checklistsFiltrados.forEach(c => {
         totalC += c.stats.conformes;
         totalNC += c.stats.naoConformes;
         
@@ -2467,7 +2638,7 @@ async function loadReports() {
     });
     
     // Atualizar resumo
-    document.getElementById('totalEquipamentos').textContent = equipamentosAtivos.length;
+    document.getElementById('totalEquipamentos').textContent = selectedPatrimonio ? 1 : equipamentosAtivos.length;
     document.getElementById('totalRealizados').textContent = realizados.length;
     document.getElementById('totalPendentes').textContent = pendentes.length;
     

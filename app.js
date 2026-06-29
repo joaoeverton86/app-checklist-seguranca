@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v47';
+const APP_VERSION = 'v48';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -72,6 +72,20 @@ function getNCDescription(text, itemId) {
     if (/Condições dos/i.test(ncText)) return ncText.replace(/Condições dos/i, 'Irregularidade nas condições dos');
 
     return 'Irregularidade: ' + ncText;
+}
+
+function toggleIssueDetails(element) {
+    const details = element.querySelector('.issue-details');
+    const chevron = element.querySelector('.chevron-icon');
+    if (!details || !chevron) return;
+    
+    if (details.style.display === 'none') {
+        details.style.display = 'block';
+        chevron.style.transform = 'rotate(180deg)';
+    } else {
+        details.style.display = 'none';
+        chevron.style.transform = 'rotate(0deg)';
+    }
 }
 
 function parseLocalDate(dateStr) {
@@ -3045,10 +3059,27 @@ async function loadReports() {
             </div>`;
     } else {
         issuesContainer.innerHTML = issues.slice(0, 10).map(i => `
-            <div class="risk-list-item">
-                <div class="risk-info">
-                    <div class="risk-item-name">${CATEGORY_ICONS[i.type] || '📦'} ${i.description.substring(0, 50)}...</div>
-                    <div class="risk-count">${i.reporter} • ${formatSimpleDate(i.date)}</div>
+            <div class="risk-list-item" onclick="toggleIssueDetails(this)" style="cursor: pointer; display: block; border-left-color: var(--warning);">
+                <div style="display: flex; justify-content: space-between; align-items: start; width: 100%;">
+                    <div class="risk-info" style="overflow: hidden;">
+                        <div class="risk-item-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100vw - 80px);">${CATEGORY_ICONS[i.type] || '📦'} ${i.description}</div>
+                        <div class="risk-count">${i.reporter} • ${formatSimpleDate(i.date)}</div>
+                    </div>
+                    <div class="chevron-icon" style="font-size: 11px; color: var(--text-light); transition: transform 0.2s; margin-left: 8px; margin-top: 4px;">▼</div>
+                </div>
+                
+                <!-- Detalhes ocultos -->
+                <div class="issue-details" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px;">
+                    <p style="margin: 0 0 6px; font-weight: 600;">Descrição Completa:</p>
+                    <p style="margin: 0 0 12px; color: var(--text-light); line-height: 1.45; white-space: pre-wrap; font-size: 12.5px;">${i.description}</p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11.5px; background: var(--bg); padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
+                        <div><strong>Tipo:</strong> ${i.type}</div>
+                        <div><strong>Identificação:</strong> ${i.identificacao || 'N/A'}</div>
+                        <div><strong>Relatado por:</strong> ${i.reporter}</div>
+                        <div><strong>Cargo/Função:</strong> ${i.role || 'N/A'}</div>
+                        <div><strong>Status:</strong> <span style="font-weight: 600; color: ${i.status === 'Resolvido' ? 'var(--success)' : 'var(--danger)'}">${i.status || 'Pendente'}</span></div>
+                        <div><strong>Data Registro:</strong> ${formatSimpleDate(i.date)}</div>
+                    </div>
                 </div>
             </div>
         `).join('');

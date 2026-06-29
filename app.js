@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v41';
+const APP_VERSION = 'v42';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -242,8 +242,8 @@ function showPage(pageId) {
         'pageChecklistForm': 'navNew',
         'pageReportIssue': 'navNew',
         'pageReports': 'navReports',
-        'pageHistory': 'navReports',
-        'pageChecklistDetail': 'navReports',
+        'pageHistory': 'navHome',
+        'pageChecklistDetail': 'navHome',
         'pageConfig': 'navConfig',
         'pageNovoEquipamento': 'navConfig',
         'pageNovoColaborador': 'navConfig',
@@ -2055,9 +2055,15 @@ async function loadHistory() {
 }
 
 async function viewChecklist(id) {
-    const checklist = await getFromIndexedDB('checklists', id);
+    let checklist = await getFromIndexedDB('checklists', id);
+    if (!checklist) {
+        const numId = Number(id);
+        if (!isNaN(numId)) {
+            checklist = await getFromIndexedDB('checklists', numId);
+        }
+    }
     if (!checklist) return;
-    
+
     const container = document.getElementById('checklistDetailContent');
     const date = formatSimpleDate(checklist.date);
     
@@ -2172,7 +2178,13 @@ async function viewChecklist(id) {
 }
 
 async function reinspecionarChecklist(id) {
-    const original = await getFromIndexedDB('checklists', id);
+    let original = await getFromIndexedDB('checklists', id);
+    if (!original) {
+        const numId = Number(id);
+        if (!isNaN(numId)) {
+            original = await getFromIndexedDB('checklists', numId);
+        }
+    }
     if (!original) return;
     
     const category = original.equipment?.tipo || original.equipment?.category || '';
@@ -2314,7 +2326,13 @@ async function updateChecklistItem(checklistId, itemId, newStatus, btn) {
 }
 
 async function updateChecklistPrazo(checklistId, newPrazo) {
-    const checklist = await getFromIndexedDB('checklists', checklistId);
+    let checklist = await getFromIndexedDB('checklists', checklistId);
+    if (!checklist) {
+        const numId = Number(checklistId);
+        if (!isNaN(numId)) {
+            checklist = await getFromIndexedDB('checklists', numId);
+        }
+    }
     if (!checklist) return;
 
     checklist.prazoAdequacao = newPrazo || null;
@@ -2328,6 +2346,10 @@ async function updateChecklistPrazo(checklistId, newPrazo) {
 async function deleteChecklist(id) {
     if (!confirm('Tem certeza que deseja excluir este checklist?')) return;
     await deleteFromIndexedDB('checklists', id);
+    const numId = Number(id);
+    if (!isNaN(numId)) {
+        await deleteFromIndexedDB('checklists', numId);
+    }
     showToast('Checklist excluído');
     showPage('pageHistory');
 }

@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v45';
+const APP_VERSION = 'v46';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2189,36 +2189,139 @@ function iniciarSyncPeriodica() {
 // HISTÓRICO
 // ============================================
 
+let historyChecklistsCache = [];
+
 async function loadHistory() {
     const checklists = await getAllFromIndexedDB('checklists');
-    const container = document.getElementById('historyList');
+    historyChecklistsCache = checklists;
     
-    if (checklists.length === 0) {
+    const selectMonth = document.getElementById('historyFilterMonth');
+    if (selectMonth) {
+        const mesesNomes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
+                            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+        const uniqueMonths = new Set();
+        checklists.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        checklists.forEach(c => {
+            const parsed = parseLocalDate(c.date);
+            if (!isNaN(parsed.getTime())) {
+                uniqueMonths.add(`${mesesNomes[parsed.getMonth()]} ${parsed.getFullYear()}`);
+            }
+        });
+        
+        selectMonth.innerHTML = '<option value="">Todos os Meses</option>';
+        uniqueMonths.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m;
+            selectMonth.appendChild(opt);
+        });
+    }
+    
+    // Reset inputs
+    const searchInput = document.getElementById('historySearch');
+    if (searchInput) searchInput.value = '';
+    const selectStatus = document.getElementById('historyFilterStatus');
+    if (selectStatus) selectStatus.value = '';
+    if (selectMonth) selectMonth.value = '';
+    
+    renderHistoryFiltered();
+}
+
+function renderHistoryFiltered() {
+    const container = document.getElementById('historyList');
+    if (!container) return;
+    
+    const search = (document.getElementById('historySearch')?.value || '').trim();
+    const monthYear = document.getElementById('historyFilterMonth')?.value || '';
+    const status = document.getElementById('historyFilterStatus')?.value || '';
+    
+    const mesesNomes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
+                        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+                        
+    function getChecklistMonthYearKey(dateStr) {
+        if (!dateStr) return 'Desconhecido';
+        const parsed = parseLocalDate(dateStr);
+        if (isNaN(parsed.getTime())) return 'Desconhecido';
+        return `${mesesNomes[parsed.getMonth()]} ${parsed.getFullYear()}`;
+    }
+    
+    const checklists = [...historyChecklistsCache];
+    checklists.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    
+    const filtered = checklists.filter(c => {
+        const term = search.toLowerCase();
+        const matchSearch = !term || 
+            (c.patrimonio || '').toLowerCase().includes(term) ||
+            (c.nome || '').toLowerCase().includes(term) ||
+            (c.operador || '').toLowerCase().includes(term) ||
+            (c.empresa || '').toLowerCase().includes(term);
+            
+        const matchMonth = !monthYear || getChecklistMonthYearKey(c.date) === monthYear;
+        
+        let matchStatus = true;
+        if (status === 'conforme') {
+            matchStatus = c.stats.naoConformes === 0 && c.statusChecklist !== 'interditado';
+        } else if (status === 'NC') {
+            matchStatus = c.stats.naoConformes > 0;
+        } else if (status === 'interditado') {
+            matchStatus = c.statusChecklist === 'interditado';
+        }
+        
+        return matchSearch && matchMonth && matchStatus;
+    });
+    
+    if (filtered.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <div class="icon">📝</div>
-                <div class="text">Nenhum checklist no histórico</div>
+                <div class="icon">🔍</div>
+                <div class="text">Nenhum checklist correspondente aos filtros</div>
             </div>`;
         return;
     }
     
-    // Ordenar por data (mais recente primeiro)
-    checklists.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const groups = {};
+    const groupKeys = [];
+    filtered.forEach(c => {
+        const key = getChecklistMonthYearKey(c.date);
+        if (!groups[key]) {
+            groups[key] = [];
+            groupKeys.push(key);
+        }
+        groups[key].push(c);
+    });
     
-    container.innerHTML = checklists.map(c => {
-        const statusClass = c.stats.naoConformes > 0 ? 'status-alert' : 'status-ok';
-        const statusText = c.stats.naoConformes > 0 ? 
-            `${c.stats.naoConformes} NC` : 'Conforme';
-        const date = formatSimpleDate(c.date);
+    container.innerHTML = groupKeys.map(key => {
+        const itemsHtml = groups[key].map(c => {
+            const statusClass = c.stats.naoConformes > 0 ? 'status-alert' : 'status-ok';
+            let statusText = 'Conforme';
+            let badgeClass = statusClass;
+            
+            if (c.statusChecklist === 'interditado') {
+                statusText = 'Interditado';
+                badgeClass = 'status-alert';
+            } else if (c.stats.naoConformes > 0) {
+                statusText = `${c.stats.naoConformes} NC`;
+            }
+            
+            const date = formatSimpleDate(c.date);
+            return `
+                <div class="history-item" onclick="viewChecklist('${c.id}')" style="margin-bottom: 8px;">
+                    <div class="history-info">
+                        <div class="history-title">${c.patrimonio || 'Sem patrimônio'}</div>
+                        <div class="history-date">${c.nome || ''}</div>
+                        <div class="history-date">${date} • ${c.empresa || ''}</div>
+                    </div>
+                    <span class="history-status ${badgeClass}">${statusText}</span>
+                </div>`;
+        }).join('');
         
         return `
-            <div class="history-item" onclick="viewChecklist('${c.id}')">
-                <div class="history-info">
-                    <div class="history-title">${c.patrimonio || 'Sem patrimônio'}</div>
-                    <div class="history-date">${c.nome || ''}</div>
-                    <div class="history-date">${date} • ${c.empresa || ''}</div>
+            <div class="history-month-group" style="margin-bottom: 16px;">
+                <div style="font-size: 13px; font-weight: 600; color: var(--primary); margin: 12px 4px 8px; display: flex; align-items: center; gap: 6px;">
+                    <span>📅</span> ${key}
+                    <span style="font-size: 11px; background: rgba(26,82,118,0.1); padding: 2px 6px; border-radius: 12px; color: var(--primary);">${groups[key].length}</span>
                 </div>
-                <span class="history-status ${statusClass}">${statusText}</span>
+                ${itemsHtml}
             </div>`;
     }).join('');
 }

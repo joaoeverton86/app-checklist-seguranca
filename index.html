@@ -1199,6 +1199,21 @@
         <div class="content">
             <div class="card">
                 <div class="card-title"><span class="icon">📁</span> Histórico de Checklists</div>
+                
+                <!-- Filtros do Histórico -->
+                <div style="display: flex; gap: 8px; margin: 0 4px 16px; flex-wrap: wrap;">
+                    <input type="text" id="historySearch" placeholder="🔍 Buscar por patrimônio, máquina, operador..." oninput="renderHistoryFiltered()" style="flex: 2; min-width: 200px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; transition: border-color 0.2s;">
+                    <select id="historyFilterMonth" onchange="renderHistoryFiltered()" style="flex: 1; min-width: 120px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--text); outline: none; background: white; cursor: pointer;">
+                        <option value="">Todos os Meses</option>
+                    </select>
+                    <select id="historyFilterStatus" onchange="renderHistoryFiltered()" style="flex: 1; min-width: 120px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--text); outline: none; background: white; cursor: pointer;">
+                        <option value="">Todos os Status</option>
+                        <option value="conforme">Conforme</option>
+                        <option value="NC">Com Não Conformidade</option>
+                        <option value="interditado">Interditado</option>
+                    </select>
+                </div>
+
                 <div id="historyList">
                     <div class="empty-state">
                         <div class="icon">📝</div>

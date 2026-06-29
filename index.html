@@ -1203,8 +1203,23 @@
                 <!-- Filtros do Histórico -->
                 <div style="display: flex; gap: 8px; margin: 0 4px 16px; flex-wrap: wrap;">
                     <input type="text" id="historySearch" placeholder="🔍 Buscar por patrimônio, máquina, operador..." oninput="renderHistoryFiltered()" style="flex: 2; min-width: 200px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; transition: border-color 0.2s;">
+                    <select id="historyFilterYear" onchange="renderHistoryFiltered()" style="flex: 1; min-width: 100px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--text); outline: none; background: white; cursor: pointer;">
+                        <option value="">Todos os Anos</option>
+                    </select>
                     <select id="historyFilterMonth" onchange="renderHistoryFiltered()" style="flex: 1; min-width: 120px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--text); outline: none; background: white; cursor: pointer;">
                         <option value="">Todos os Meses</option>
+                        <option value="0">Janeiro</option>
+                        <option value="1">Fevereiro</option>
+                        <option value="2">Março</option>
+                        <option value="3">Abril</option>
+                        <option value="4">Maio</option>
+                        <option value="5">Junho</option>
+                        <option value="6">Julho</option>
+                        <option value="7">Agosto</option>
+                        <option value="8">Setembro</option>
+                        <option value="9">Outubro</option>
+                        <option value="10">Novembro</option>
+                        <option value="11">Dezembro</option>
                     </select>
                     <select id="historyFilterStatus" onchange="renderHistoryFiltered()" style="flex: 1; min-width: 120px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--text); outline: none; background: white; cursor: pointer;">
                         <option value="">Todos os Status</option>

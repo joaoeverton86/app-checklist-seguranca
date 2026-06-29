@@ -752,6 +752,10 @@
                     <span class="icon">📁</span>
                     <span class="label">Histórico</span>
                 </a>
+                <a class="action-btn" style="border: 2px solid rgba(231, 76, 60, 0.2);" onclick="showPage('pageInterdicao')">
+                    <span class="icon" style="color: var(--danger);">🚫</span>
+                    <span class="label" style="color: var(--danger); font-weight: 600;">Interdição Rápida</span>
+                </a>
             </div>
 
             <div class="card">
@@ -1522,6 +1526,71 @@
 
                     <button class="save-btn" onclick="saveItemGerencia()">Salvar Alterações</button>
                 </div>
+            </div>
+        </div>
+    <!-- Page: Interdição Rápida -->
+    <div class="page" id="pageInterdicao">
+        <div class="content">
+            <div class="section-title">🚫 Interdição Rápida</div>
+            <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
+                Use este formulário para bloquear imediatamente o uso de um equipamento ou veículo em situação de risco grave.
+            </p>
+            <div class="card">
+                <div class="form-group">
+                    <label class="form-label">Equipamento/Veículo *</label>
+                    <select class="form-select" id="interdicaoPatrimonio">
+                        <option value="">Selecione o equipamento...</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Motivo Principal *</label>
+                    <select class="form-select" id="interdicaoMotivo">
+                        <option value="">Selecione um motivo...</option>
+                        <option value="Vazamento crítico de óleo/fluido">Vazamento crítico de óleo/fluido</option>
+                        <option value="Sistema de freio inoperante/irregular">Sistema de freio inoperante/irregular</option>
+                        <option value="Trinca ou fadiga estrutural grave">Trinca ou fadiga estrutural grave</option>
+                        <option value="Ausência de EPI/Dispositivos obrigatórios de segurança">Ausência de EPI/Dispositivos obrigatórios de segurança</option>
+                        <option value="Pneus/Esteiras desgastados ou com avaria grave">Pneus/Esteiras desgastados ou com avaria grave</option>
+                        <option value="Pane elétrica ou risco de curto-circuito">Pane elétrica ou risco de curto-circuito</option>
+                        <option value="Outro risco imediato (especificar abaixo)">Outro risco imediato (especificar abaixo)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Descrição Detalhada do Risco *</label>
+                    <textarea class="form-textarea" id="interdicaoDescricao" placeholder="Descreva os detalhes da falha observada..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Técnico de Segurança (SST) *</label>
+                    <input type="text" class="form-input" id="interdicaoSST" placeholder="Nome do Técnico">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Encarregado / Responsável Notificado</label>
+                    <input type="text" class="form-input" id="interdicaoResponsavel" placeholder="Nome do Encarregado (Opcional)">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Assinatura do Técnico (SST) *</label>
+                    <div style="position: relative; border: 1px solid var(--border); border-radius: 8px; background: white; overflow: hidden;">
+                        <canvas id="signatureCanvasInterdicaoSST" style="width: 100%; height: 120px; display: block;"></canvas>
+                        <button onclick="clearSignatureCanvas('signatureCanvasInterdicaoSST')" style="position: absolute; right: 8px; bottom: 8px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 4px; padding: 4px 8px; font-size: 10px; cursor: pointer;">Limpar</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Assinatura do Encarregado / Responsável</label>
+                    <div style="position: relative; border: 1px solid var(--border); border-radius: 8px; background: white; overflow: hidden;">
+                        <canvas id="signatureCanvasInterdicaoResp" style="width: 100%; height: 120px; display: block;"></canvas>
+                        <button onclick="clearSignatureCanvas('signatureCanvasInterdicaoResp')" style="position: absolute; right: 8px; bottom: 8px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 4px; padding: 4px 8px; font-size: 10px; cursor: pointer;">Limpar</button>
+                    </div>
+                </div>
+
+                <button class="save-btn" style="background: var(--danger);" onclick="salvarInterdicaoUrgente()">
+                    🚫 Confirmar Interdição Imediata
+                </button>
             </div>
         </div>
     </div>

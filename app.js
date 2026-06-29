@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v46';
+const APP_VERSION = 'v47';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2195,25 +2195,23 @@ async function loadHistory() {
     const checklists = await getAllFromIndexedDB('checklists');
     historyChecklistsCache = checklists;
     
-    const selectMonth = document.getElementById('historyFilterMonth');
-    if (selectMonth) {
-        const mesesNomes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
-                            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-        const uniqueMonths = new Set();
+    const selectYear = document.getElementById('historyFilterYear');
+    if (selectYear) {
+        const uniqueYears = new Set();
         checklists.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         checklists.forEach(c => {
             const parsed = parseLocalDate(c.date);
             if (!isNaN(parsed.getTime())) {
-                uniqueMonths.add(`${mesesNomes[parsed.getMonth()]} ${parsed.getFullYear()}`);
+                uniqueYears.add(parsed.getFullYear().toString());
             }
         });
         
-        selectMonth.innerHTML = '<option value="">Todos os Meses</option>';
-        uniqueMonths.forEach(m => {
+        selectYear.innerHTML = '<option value="">Todos os Anos</option>';
+        uniqueYears.forEach(y => {
             const opt = document.createElement('option');
-            opt.value = m;
-            opt.textContent = m;
-            selectMonth.appendChild(opt);
+            opt.value = y;
+            opt.textContent = y;
+            selectYear.appendChild(opt);
         });
     }
     
@@ -2222,7 +2220,9 @@ async function loadHistory() {
     if (searchInput) searchInput.value = '';
     const selectStatus = document.getElementById('historyFilterStatus');
     if (selectStatus) selectStatus.value = '';
+    const selectMonth = document.getElementById('historyFilterMonth');
     if (selectMonth) selectMonth.value = '';
+    if (selectYear) selectYear.value = '';
     
     renderHistoryFiltered();
 }
@@ -2232,7 +2232,8 @@ function renderHistoryFiltered() {
     if (!container) return;
     
     const search = (document.getElementById('historySearch')?.value || '').trim();
-    const monthYear = document.getElementById('historyFilterMonth')?.value || '';
+    const selectedYear = document.getElementById('historyFilterYear')?.value || '';
+    const selectedMonth = document.getElementById('historyFilterMonth')?.value || '';
     const status = document.getElementById('historyFilterStatus')?.value || '';
     
     const mesesNomes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
@@ -2249,14 +2250,17 @@ function renderHistoryFiltered() {
     checklists.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     
     const filtered = checklists.filter(c => {
+        const parsedDate = parseLocalDate(c.date);
         const term = search.toLowerCase();
+        
         const matchSearch = !term || 
             (c.patrimonio || '').toLowerCase().includes(term) ||
             (c.nome || '').toLowerCase().includes(term) ||
             (c.operador || '').toLowerCase().includes(term) ||
             (c.empresa || '').toLowerCase().includes(term);
             
-        const matchMonth = !monthYear || getChecklistMonthYearKey(c.date) === monthYear;
+        const matchYear = !selectedYear || (!isNaN(parsedDate.getTime()) && parsedDate.getFullYear().toString() === selectedYear);
+        const matchMonth = !selectedMonth || (!isNaN(parsedDate.getTime()) && parsedDate.getMonth().toString() === selectedMonth);
         
         let matchStatus = true;
         if (status === 'conforme') {
@@ -2267,7 +2271,7 @@ function renderHistoryFiltered() {
             matchStatus = c.statusChecklist === 'interditado';
         }
         
-        return matchSearch && matchMonth && matchStatus;
+        return matchSearch && matchYear && matchMonth && matchStatus;
     });
     
     if (filtered.length === 0) {

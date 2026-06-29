@@ -11,6 +11,7 @@ const ISSUES_SHEET = 'Relatos';
 const NC_SHEET = 'Não Conformidades';
 const CADASTROS_SHEET = 'Cadastros';
 const COLABORADORES_SHEET = 'Colaboradores';
+const ITEMS_SHEET = 'Itens Checklist';
 
 function setup() {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -35,7 +36,20 @@ function setup() {
         'ID', 'Nome', 'Função', 'Setor', 'Empresa', 'Matrícula',
         'Validade ASO', 'Data Hora Registro', 'Sincronizado'
     ]);
+    criarABASeNaoExisteOuAtualizar(ss, ITEMS_SHEET);
     Logger.log('Setup concluído!');
+}
+
+function criarABASeNaoExisteOuAtualizar(ss, nomeAba) {
+    let aba = ss.getSheetByName(nomeAba);
+    const cabecalhos = [
+        'ID', 'ID Equipamento', 'Nome Equipamento', 'Ícone Equipamento', 
+        'Categoria Equipamento', 'Texto do Item', 'NR', 'Risco', 'Seção', 'Ordem', 'Ativo'
+    ];
+    if (!aba) {
+        aba = ss.insertSheet(nomeAba);
+        aba.appendRow(cabecalhos);
+    }
 }
 
 function criarAbaSeNaoExiste(ss, nomeAba, cabecalhos) {
@@ -137,6 +151,10 @@ function doPost(e) {
             salvarCadastro(record);
         } else if (data.store === 'colaboradores') {
             salvarColaborador(record);
+        } else if (data.store === 'checklist_items') {
+            salvarItemChecklist(record);
+        } else if (data.store === 'checklist_items_bulk') {
+            salvarItensEmMassa(record);
         } else {
             return ContentService
                 .createTextOutput(JSON.stringify({ success: false, error: 'Store desconhecido: ' + data.store }))
@@ -373,6 +391,66 @@ function salvarColaborador(record) {
         aba.getRange(linha, 1, 1, rowData.length).setValues([rowData]);
     } else {
         aba.appendRow(rowData);
+    }
+}
+
+function salvarItemChecklist(record) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const aba = obterAbaSegura(ss, ITEMS_SHEET, [
+        'ID', 'ID Equipamento', 'Nome Equipamento', 'Ícone Equipamento', 
+        'Categoria Equipamento', 'Texto do Item', 'NR', 'Risco', 'Seção', 'Ordem', 'Ativo'
+    ]);
+    
+    const rowData = [
+        record.id || '',
+        record.idEquipamento || '',
+        record.nomeEquipamento || '',
+        record.iconeEquipamento || '',
+        record.categoriaEquipamento || '',
+        record.textoItem || '',
+        record.nr || '',
+        record.risco || 'medium',
+        record.secao || '',
+        record.ordem !== undefined ? record.ordem : 0,
+        record.ativo !== false && record.ativo !== 'Não' ? 'Sim' : 'Não'
+    ];
+    
+    const linha = encontrarLinhaPorId(aba, record.id);
+    if (linha !== -1) {
+        aba.getRange(linha, 1, 1, rowData.length).setValues([rowData]);
+    } else {
+        aba.appendRow(rowData);
+    }
+}
+
+function salvarItensEmMassa(items) {
+    if (!items || !items.length) return;
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const aba = obterAbaSegura(ss, ITEMS_SHEET, [
+        'ID', 'ID Equipamento', 'Nome Equipamento', 'Ícone Equipamento', 
+        'Categoria Equipamento', 'Texto do Item', 'NR', 'Risco', 'Seção', 'Ordem', 'Ativo'
+    ]);
+    
+    const rows = [];
+    for (var i = 0; i < items.length; i++) {
+        const item = items[i];
+        rows.push([
+            item.id || '',
+            item.idEquipamento || '',
+            item.nomeEquipamento || '',
+            item.iconeEquipamento || '',
+            item.categoriaEquipamento || '',
+            item.textoItem || '',
+            item.nr || '',
+            item.risco || 'medium',
+            item.secao || '',
+            item.ordem !== undefined ? item.ordem : 0,
+            item.ativo !== false && item.ativo !== 'Não' ? 'Sim' : 'Não'
+        ]);
+    }
+    
+    if (rows.length > 0) {
+        aba.getRange(aba.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
     }
 }
 

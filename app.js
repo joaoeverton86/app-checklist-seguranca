@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v48';
+const APP_VERSION = 'v49';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -107,11 +107,74 @@ let currentCadastro = null;
 let checklistData = {};
 let signaturePad = null;
 
+async function initDynamicEquipmentTypes() {
+    try {
+        const dbItems = await getAllFromIndexedDB('checklist_items');
+        if (dbItems && dbItems.length > 0) {
+            const dynamicTypes = {
+                maquinas: [],
+                veiculos: []
+            };
+            const eqpMap = {};
+            
+            // Sort by order
+            dbItems.sort((a, b) => (Number(a.ordem) || 0) - (Number(b.ordem) || 0));
+            
+            dbItems.forEach(item => {
+                if (item.ativo === 'Não') return;
+                
+                const cat = item.categoriaEquipamento || 'maquinas';
+                const eqpId = item.idEquipamento;
+                const eqpName = item.nomeEquipamento;
+                const eqpIcon = item.iconeEquipamento || '📦';
+                
+                if (!eqpMap[eqpId]) {
+                    eqpMap[eqpId] = {
+                        id: eqpId,
+                        name: eqpName,
+                        icon: eqpIcon,
+                        nr: item.nr || 'NR-12',
+                        items: []
+                    };
+                    if (dynamicTypes[cat]) {
+                        dynamicTypes[cat].push(eqpMap[eqpId]);
+                    } else {
+                        dynamicTypes.maquinas.push(eqpMap[eqpId]);
+                    }
+                }
+                
+                eqpMap[eqpId].items.push({
+                    id: item.id,
+                    text: item.textoItem,
+                    nr: item.nr || '',
+                    risk: item.risco || 'medium',
+                    section: item.secao || undefined
+                });
+            });
+            
+            // Mutate global EQUIPMENT_TYPES object
+            for (const key in EQUIPMENT_TYPES) {
+                delete EQUIPMENT_TYPES[key];
+            }
+            Object.assign(EQUIPMENT_TYPES, dynamicTypes);
+            
+            // Rebuild ITEM_NAMES mapping dynamically
+            const dynamicItemNames = {};
+            dbItems.forEach(item => {
+                dynamicItemNames[item.id] = item.textoItem;
+            });
+            Object.assign(ITEM_NAMES, dynamicItemNames);
+        }
+    } catch (e) {
+        console.error('Erro ao inicializar itens dinâmicos do checklist:', e);
+    }
+}
+
 // ============================================
 // INICIALIZAÇÃO
 // ============================================
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const savedVersion = localStorage.getItem('app_version');
     if (savedVersion && savedVersion !== APP_VERSION) {
         localStorage.setItem('app_version', APP_VERSION);
@@ -129,7 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     localStorage.setItem('app_version', APP_VERSION);
     
-    initApp();
+    await initApp();
     initSignaturePad();
     initConnectionStatus();
     initDateDefaults();
@@ -155,14 +218,15 @@ document.addEventListener('DOMContentLoaded', () => {
         navigator.serviceWorker.register('sw.js')
             .then(reg => {
                 reg.update();
-                console.log('SW registrado e atualizado');
+                console.log('SW registrado e updated');
             })
             .catch(err => console.log('SW erro:', err));
     }
 });
 
-function initApp() {
+async function initApp() {
     console.log('App Checklist Segurança inicializado - ' + APP_VERSION);
+    await initDynamicEquipmentTypes();
 }
 
 async function cleanDuplicateCadastros() {
@@ -1764,7 +1828,7 @@ function saveIssue() {
 
 function openDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open('ChecklistSeguranca', 3);
+        const request = indexedDB.open('ChecklistSeguranca', 4);
         request.onupgradeneeded = (e) => {
             const db = e.target.result;
             if (!db.objectStoreNames.contains('checklists')) {
@@ -1778,6 +1842,9 @@ function openDB() {
             }
             if (!db.objectStoreNames.contains('colaboradores')) {
                 db.createObjectStore('colaboradores', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('checklist_items')) {
+                db.createObjectStore('checklist_items', { keyPath: 'id' });
             }
         };
         request.onsuccess = (e) => resolve(e.target.result);
@@ -2109,7 +2176,8 @@ async function sincronizacaoBidirecional() {
 
         const storesParaSync = [
             { aba: 'Cadastros', store: 'cadastros' },
-            { aba: 'Colaboradores', store: 'colaboradores' }
+            { aba: 'Colaboradores', store: 'colaboradores' },
+            { aba: 'Itens Checklist', store: 'checklist_items' }
         ];
 
         let totalAtualizados = 0;
@@ -2124,15 +2192,77 @@ async function sincronizacaoBidirecional() {
                 const locais = await getAllFromIndexedDB(store);
                 const localMap = {};
                 locais.forEach(item => { 
-                    const normId = String(item.id).trim().toUpperCase();
+                    const normId = (store === 'checklist_items') ?
+                        String(item.id).trim() :
+                        String(item.id).trim().toUpperCase();
                     localMap[normId] = item; 
                 });
 
                 const remotos = result.data;
+                
+                // Se a planilha Itens Checklist estiver vazia, preencher com os dados padrões
+                if (store === 'checklist_items' && remotos.length === 0) {
+                    console.log('Nenhum item remoto em Itens Checklist. Enviando itens padrão...');
+                    const defaultItems = [];
+                    let orderCounter = 1;
+                    for (const [category, equipments] of Object.entries(EQUIPMENT_TYPES)) {
+                        equipments.forEach(eqp => {
+                            eqp.items.forEach(item => {
+                                defaultItems.push({
+                                    id: item.id,
+                                    idEquipamento: eqp.id,
+                                    nomeEquipamento: eqp.name,
+                                    iconeEquipamento: eqp.icon,
+                                    categoriaEquipamento: category,
+                                    textoItem: item.text,
+                                    nr: item.nr || '',
+                                    risco: item.risk || 'medium',
+                                    secao: item.section || '',
+                                    ordem: orderCounter++,
+                                    ativo: 'Sim'
+                                });
+                            });
+                        });
+                    }
+                    
+                    // Salvar localmente
+                    for (const item of defaultItems) {
+                        await saveToIndexedDB('checklist_items', item, true);
+                    }
+                    
+                    // Enviar em massa para a planilha
+                    try {
+                        const bulkResponse = await fetch(SCRIPT_URL, {
+                            method: 'POST',
+                            mode: 'cors',
+                            headers: {
+                                'Content-Type': 'text/plain;charset=utf-8'
+                            },
+                            body: JSON.stringify({ store: 'checklist_items_bulk', data: defaultItems })
+                        });
+                        const bulkResult = await bulkResponse.json();
+                        if (bulkResult && bulkResult.success) {
+                            console.log('Itens do checklist enviados em massa com sucesso!');
+                            for (const item of defaultItems) {
+                                item.synced = true;
+                                await saveToIndexedDB('checklist_items', item, true);
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Erro ao enviar itens em massa:', err);
+                    }
+                    
+                    await initDynamicEquipmentTypes();
+                    totalAtualizados += defaultItems.length;
+                    continue;
+                }
+
                 const remoteMap = {};
 
                 for (const row of remotos) {
-                    const id = String(row['ID'] || row['Patrimônio'] || row['Matrícula'] || '').trim().toUpperCase();
+                    const id = (store === 'checklist_items') ?
+                        String(row['ID'] || '').trim() :
+                        String(row['ID'] || row['Patrimônio'] || row['Matrícula'] || '').trim().toUpperCase();
                     if (!id) continue;
 
                     const remoto = converterParaApp(store, row);
@@ -3863,6 +3993,24 @@ function converterParaApp(storeName, row) {
             equipment: null,
             timestamp: row['Data Hora Registro'] || new Date().toISOString(),
             ativo: row['Ativo'] !== 'Não',
+            synced: true
+        };
+    }
+    
+    if (storeName === 'checklist_items') {
+        return {
+            id: row['ID'] || '',
+            idEquipamento: row['ID Equipamento'] || '',
+            nomeEquipamento: row['Nome Equipamento'] || '',
+            iconeEquipamento: row['Ícone Equipamento'] || '',
+            categoriaEquipamento: row['Categoria Equipamento'] || '',
+            textoItem: row['Texto do Item'] || '',
+            nr: row['NR'] || '',
+            risco: row['Risco'] || 'medium',
+            secao: row['Seção'] || '',
+            ordem: row['Ordem'] !== undefined ? Number(row['Ordem']) : 0,
+            ativo: row['Ativo'] !== 'Não',
+            timestamp: row['Data Hora Registro'] || new Date().toISOString(),
             synced: true
         };
     }

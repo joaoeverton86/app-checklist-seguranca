@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v42';
+const APP_VERSION = 'v43';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -247,7 +247,8 @@ function showPage(pageId) {
         'pageConfig': 'navConfig',
         'pageNovoEquipamento': 'navConfig',
         'pageNovoColaborador': 'navConfig',
-        'pageGerenciarItens': 'navConfig'
+        'pageGerenciarItens': 'navConfig',
+        'pageInterdicao': 'navHome'
     };
     if (navMap[pageId]) {
         document.getElementById(navMap[pageId]).classList.add('active');
@@ -270,7 +271,8 @@ function showPage(pageId) {
         'pageConfig': ['Configurações', 'Cadastros e sincronização'],
         'pageNovoEquipamento': ['Novo Equipamento', 'Cadastrar equipamento/veículo'],
         'pageNovoColaborador': ['Novo Colaborador', 'Cadastrar colaborador'],
-        'pageGerenciarItens': ['Gerenciar Itens', 'Itens de verificação']
+        'pageGerenciarItens': ['Gerenciar Itens', 'Itens de verificação'],
+        'pageInterdicao': ['Interdição Rápida', 'Bloqueio imediato de equipamento']
     };
     
     if (titles[pageId]) {
@@ -304,6 +306,9 @@ function showPage(pageId) {
         loadConfigPage();
     } else if (pageId === 'pageGerenciarItens') {
         loadItemGerenciaSelect();
+    } else if (pageId === 'pageInterdicao') {
+        loadInterdicaoEquipments();
+        setTimeout(() => initInterdicaoSignatures(), 50);
     }
 }
 
@@ -1390,6 +1395,116 @@ function getSignatureImage() {
 function getSignatureResponsavelImage() {
     const canvas = document.getElementById('signatureCanvasResponsavel');
     return canvas ? canvas.toDataURL() : null;
+}
+
+function clearSignatureCanvas(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function getSignatureCanvasImage(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return null;
+    const ctx = canvas.getContext('2d');
+    try {
+        const buffer = new Uint32Array(ctx.getImageData(0, 0, canvas.width, canvas.height).data.buffer);
+        const isBlank = !buffer.some(color => color !== 0);
+        return isBlank ? null : canvas.toDataURL();
+    } catch(e) {
+        return canvas.toDataURL();
+    }
+}
+
+async function loadInterdicaoEquipments() {
+    const cadastros = await getAllFromIndexedDB('cadastros');
+    const ativos = cadastros.filter(c => c.ativo !== false && c.tipo !== 'colaborador');
+    const select = document.getElementById('interdicaoPatrimonio');
+    if (select) {
+        select.innerHTML = '<option value="">Selecione o equipamento...</option>';
+        ativos.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.patrimonio;
+            opt.textContent = `${c.patrimonio} - ${c.nome}`;
+            select.appendChild(opt);
+        });
+    }
+}
+
+function initInterdicaoSignatures() {
+    setupCanvas('signatureCanvasInterdicaoSST');
+    setupCanvas('signatureCanvasInterdicaoResp');
+}
+
+async function salvarInterdicaoUrgente() {
+    const patrimonio = document.getElementById('interdicaoPatrimonio').value;
+    const motivo = document.getElementById('interdicaoMotivo').value;
+    const descricao = document.getElementById('interdicaoDescricao').value.trim();
+    const sst = document.getElementById('interdicaoSST').value.trim();
+    const responsavel = document.getElementById('interdicaoResponsavel').value.trim();
+    
+    if (!patrimonio || !motivo || !descricao || !sst) {
+        showToast('Preencha todos os campos obrigatórios (*)');
+        return;
+    }
+    
+    const sigSST = getSignatureCanvasImage('signatureCanvasInterdicaoSST');
+    if (!sigSST) {
+        showToast('A assinatura do Técnico (SST) é obrigatória!');
+        return;
+    }
+    
+    const sigResp = getSignatureCanvasImage('signatureCanvasInterdicaoResp');
+    
+    const cadastros = await getAllFromIndexedDB('cadastros');
+    const cadastro = cadastros.find(c => c.patrimonio === patrimonio);
+    if (!cadastro) {
+        showToast('Equipamento não encontrado!');
+        return;
+    }
+    
+    const checklist = {
+        id: Date.now().toString(),
+        timestamp: new Date().toISOString(),
+        date: new Date().toISOString().split('T')[0],
+        patrimonio: patrimonio,
+        nome: cadastro.nome,
+        empresa: cadastro.empresa || '',
+        operador: 'N/A - Interdição Urgente',
+        sst: sst,
+        responsavel: responsavel || 'Não Informado',
+        observacoes: `[INTERDIÇÃO RÁPIDA] Motivo: ${motivo}. Detalhe: ${descricao}`,
+        statusChecklist: 'interditado',
+        prazoAdequacao: '',
+        equipment: cadastro.equipment || { id: cadastro.categoria, name: cadastro.nome, nr: '' },
+        items: {
+            "item_interdicao": { status: 'NC', observation: motivo + ' - ' + descricao }
+        },
+        stats: { conformes: 0, naoConformes: 1, na: 0, total: 1 },
+        signature: sigSST,
+        signatureResponsavel: sigResp,
+        synced: false
+    };
+    
+    await saveToIndexedDB('checklists', checklist);
+    await updateCadastroLastChecklist(patrimonio);
+    
+    showToast('🚫 Equipamento interditado com sucesso!');
+    
+    // Reset values
+    document.getElementById('interdicaoPatrimonio').value = '';
+    document.getElementById('interdicaoMotivo').value = '';
+    document.getElementById('interdicaoDescricao').value = '';
+    document.getElementById('interdicaoSST').value = '';
+    document.getElementById('interdicaoResponsavel').value = '';
+    clearSignatureCanvas('signatureCanvasInterdicaoSST');
+    clearSignatureCanvas('signatureCanvasInterdicaoResp');
+    
+    setTimeout(() => {
+        showPage('pageHome');
+        sincronizacaoBidirecional();
+    }, 1200);
 }
 
 async function loadResponsavelSelect() {

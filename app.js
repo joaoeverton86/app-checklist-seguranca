@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v44';
+const APP_VERSION = 'v45';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -18,6 +18,60 @@ function formatSimpleDate(dateStr) {
         return `${parts[2]}/${parts[1]}/${parts[0]}`;
     }
     return dateStr;
+}
+
+function getNCDescription(text, itemId) {
+    if (!text) return 'Irregularidade';
+    if (itemId === 'item_interdicao') return 'Interdição Urgente';
+    
+    let ncText = text.trim();
+    
+    // Check specific IDs
+    let idLower = (itemId || '').toLowerCase();
+    if (idLower.indexOf('extintor') !== -1) return 'Extintor vencido, descarregado ou irregular';
+    if (idLower.indexOf('treinamento') !== -1) return 'Operador sem treinamento ou qualificação válida';
+    if (idLower.indexOf('cinto') !== -1) return 'Cinto de segurança ausente ou danificado';
+    if (idLower.indexOf('habilitacao') !== -1) return 'Habilitação do condutor vencida ou ausente';
+    if (idLower.indexOf('doc') !== -1) return 'Documentação irregular ou vencida';
+    if (idLower.indexOf('limpador') !== -1) return 'Limpador de para-brisa inoperante ou palheta danificada';
+    if (idLower.indexOf('retrovisor') !== -1) return 'Retrovisores quebrados, ausentes ou irregulares';
+    if (idLower.indexOf('buzina') !== -1) return 'Buzina inoperante';
+    if (idLower.indexOf('luzes') !== -1) return 'Luzes inoperantes (faróis, ré, setas ou freio queimados)';
+    if (idLower.indexOf('farol') !== -1 && idLower.indexOf('protetor') === -1) return 'Faróis ou lanternas inoperantes/queimados';
+    if (idLower.indexOf('freio') !== -1 && idLower.indexOf('oleo') === -1) return 'Falha ou irregularidade no sistema de freios';
+    if (idLower.indexOf('pneus') !== -1) return 'Pneus carecas, danificados ou com pressão inadequada';
+    if (idLower.indexOf('sinal_sonoro') !== -1) return 'Sinal sonoro de ré inoperante';
+    if (idLower.indexOf('vazamento') !== -1) return 'Presença de vazamento(s)';
+
+    // Common text pattern replacements
+    if (/Ausência de vazamento/i.test(ncText)) return ncText.replace(/Ausência de vazamento/i, 'Presença de vazamento');
+    if (/Ausência de vazamentos/i.test(ncText)) return ncText.replace(/Ausência de vazamentos/i, 'Presença de vazamentos');
+    if (/Sem vazamento/i.test(ncText)) return ncText.replace(/Sem vazamento/i, 'Presença de vazamento');
+    
+    if (/funcionando/i.test(ncText)) {
+        return ncText.replace(/funcionando normalmente/i, 'inoperante')
+                     .replace(/funcionando de forma correta/i, 'inoperante')
+                     .replace(/funcionando/i, 'inoperante');
+    }
+    if (/em funcionamento/i.test(ncText)) return ncText.replace(/em funcionamento/i, 'inoperante');
+    
+    if (/em bom estado/i.test(ncText)) return ncText.replace(/em bom estado/i, 'em mau estado/danificado');
+    if (/em perfeitas condições/i.test(ncText)) return ncText.replace(/em perfeitas condições/i, 'irregular/com defeito');
+    if (/em ordem/i.test(ncText)) return ncText.replace(/em ordem/i, 'irregular');
+    if (/aprovado/i.test(ncText)) return ncText.replace(/aprovado/i, 'reprovado/irregular');
+    if (/em dia/i.test(ncText)) return ncText.replace(/em dia/i, 'vencido/irregular');
+    if (/adequado/i.test(ncText)) return ncText.replace(/adequado/i, 'inadequado');
+    if (/adequados/i.test(ncText)) return ncText.replace(/adequados/i, 'inadequados');
+    if (/limpo e organizado/i.test(ncText)) return ncText.replace(/limpo e organizado/i, 'sujo/desorganizado');
+    if (/visível/i.test(ncText)) return ncText.replace(/visível/i, 'ausente ou ilegível');
+    if (/desobstruídas/i.test(ncText)) return ncText.replace(/desobstruídas/i, 'obstruídas');
+
+    if (/Condição de/i.test(ncText)) return ncText.replace(/Condição de/i, 'Irregularidade na condição de');
+    if (/Condição dos/i.test(ncText)) return ncText.replace(/Condição dos/i, 'Irregularidade na condição dos');
+    if (/Condições do/i.test(ncText)) return ncText.replace(/Condições do/i, 'Irregularidade nas condições do');
+    if (/Condições dos/i.test(ncText)) return ncText.replace(/Condições dos/i, 'Irregularidade nas condições dos');
+
+    return 'Irregularidade: ' + ncText;
 }
 
 function parseLocalDate(dateStr) {
@@ -2653,7 +2707,7 @@ async function showStatusDetails(status) {
                 if (itemId === '_form') continue;
                 if (itemData.status === 'NC') {
                     const itemNome = ITEM_NAMES[itemId] || itemData.customText || itemId;
-                    itensNC.push({ nome: itemNome, obs: itemData.observation || '' });
+                    itensNC.push({ nome: getNCDescription(itemNome, itemId), obs: itemData.observation || '' });
                 }
             }
             
@@ -2800,7 +2854,8 @@ async function loadReports() {
         for (const [itemId, data] of Object.entries(c.items)) {
             if (itemId === '_form') continue;
             if (data.status === 'NC') {
-                const itemName = ITEM_NAMES[itemId] || data.customText || itemId;
+                const itemNameRaw = ITEM_NAMES[itemId] || data.customText || itemId;
+                const itemName = getNCDescription(itemNameRaw, itemId);
                 itemCounts[itemName] = (itemCounts[itemName] || 0) + 1;
             }
         }
@@ -2943,7 +2998,8 @@ async function loadTopRisks() {
         for (const [itemId, data] of Object.entries(c.items)) {
             if (itemId === '_form') continue;
             if (data.status === 'NC') {
-                const itemName = ITEM_NAMES[itemId] || data.customText || itemId;
+                const itemNameRaw = ITEM_NAMES[itemId] || data.customText || itemId;
+                const itemName = getNCDescription(itemNameRaw, itemId);
                 itemCounts[itemName] = (itemCounts[itemName] || 0) + 1;
             }
         }
@@ -2998,7 +3054,8 @@ async function exportToCSV() {
             for (const [itemId, data] of Object.entries(c.items)) {
                 if (itemId === '_form') continue;
                 if (data.status === 'NC') {
-                const itemName = ITEM_NAMES[itemId] || data.customText || itemId;
+                    const itemNameRaw = ITEM_NAMES[itemId] || data.customText || itemId;
+                    const itemName = getNCDescription(itemNameRaw, itemId);
                     csv += `${c.date};${c.patrimonio};${itemName};${data.observation || ''}\n`;
                 }
             }

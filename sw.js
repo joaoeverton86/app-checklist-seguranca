@@ -1,4 +1,4 @@
-const CACHE_NAME = 'checklist-v40';
+const CACHE_NAME = 'checklist-v41';
 const SHELL_URLS = [
     './',
     './index.html',

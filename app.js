@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v40';
+const APP_VERSION = 'v41';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -3221,7 +3221,13 @@ function saveOneSignalAppId() {
 }
 
 function requestPushPermission() {
-    if (window.OneSignal) {
+    const appId = localStorage.getItem('onesignal_app_id');
+    if (!appId) {
+        showToast("Configure o App ID do OneSignal primeiro.");
+        return;
+    }
+    
+    if (window.OneSignal && !Array.isArray(window.OneSignal)) {
         try {
             if (OneSignal.Notifications && OneSignal.Notifications.requestPermission) {
                 OneSignal.Notifications.requestPermission().then(() => {
@@ -3230,36 +3236,32 @@ function requestPushPermission() {
             } else if (OneSignal.showSlidedownPrompt) {
                 OneSignal.showSlidedownPrompt();
                 showToast("Inscrição solicitada!");
-            } else {
-                OneSignal.push(function() {
-                    OneSignal.registerForPushNotifications();
-                });
             }
         } catch (e) {
             console.error("Erro OneSignal prompt:", e);
             showToast("Erro ao abrir prompt de notificação.");
         }
     } else {
-        showToast("OneSignal não carregado. Configure o App ID primeiro.");
+        window.OneSignalDeferred = window.OneSignalDeferred || [];
+        OneSignalDeferred.push(function(OneSignal) {
+            if (OneSignal.Notifications && OneSignal.Notifications.requestPermission) {
+                OneSignal.Notifications.requestPermission();
+            } else if (OneSignal.showSlidedownPrompt) {
+                OneSignal.showSlidedownPrompt();
+            }
+        });
+        loadOneSignalSDK(appId);
+        showToast("Inicializando notificações... Se a janela não abrir, clique novamente.");
     }
 }
 
 function initOneSignal(appId) {
     if (!appId) return;
-    window.OneSignal = window.OneSignal || [];
-    OneSignal.push(function() {
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(function(OneSignal) {
         OneSignal.init({
             appId: appId,
-            allowLocalhostAsSecureOrigin: true,
-            notifyButton: {
-                enable: true,
-                size: 'medium',
-                position: 'bottom-right',
-                theme: 'default',
-                colors: {
-                    'circle.background': '#1a5276'
-                }
-            }
+            allowLocalhostAsSecureOrigin: true
         });
     });
 }

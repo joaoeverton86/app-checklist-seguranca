@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v51';
+const APP_VERSION = 'v52';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -198,6 +198,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initDateDefaults();
     initCadastroSelects();
     loadRecentChecklists();
+    renderDeadlineAlerts();
     loadTopRisks();
     renderEquipmentGrids();
     iniciarSyncPeriodica();
@@ -423,6 +424,7 @@ function showPage(pageId) {
     // Carregar dados da página
     if (pageId === 'pageHome') {
         loadRecentChecklists();
+        renderDeadlineAlerts();
         loadTopRisks();
     } else if (pageId === 'pageCadastro') {
         switchGestaoTab(gestaoTab);
@@ -3251,6 +3253,120 @@ async function loadRecentChecklists() {
                 <span class="history-status ${statusClass}">${statusText}</span>
             </div>`;
     }).join('');
+}
+
+async function renderDeadlineAlerts() {
+    const container = document.getElementById('deadlineAlertsList');
+    const card = document.getElementById('deadlineAlertsCard');
+    if (!container || !card) return;
+    
+    try {
+        const checklists = await getAllFromIndexedDB('checklists');
+        if (!checklists || checklists.length === 0) {
+            card.style.display = 'none';
+            return;
+        }
+        
+        // Group checklists by patrimonio and get the latest one for each
+        const latestByPatrimonio = {};
+        checklists.forEach(record => {
+            const patr = String(record.patrimonio || '').trim().toUpperCase();
+            if (!patr) return;
+            
+            const currentRecord = latestByPatrimonio[patr];
+            const recordTime = record.timestamp ? new Date(record.timestamp).getTime() : 0;
+            const currentTime = currentRecord && currentRecord.timestamp ? new Date(currentRecord.timestamp).getTime() : 0;
+            
+            if (!currentRecord || recordTime > currentTime) {
+                latestByPatrimonio[patr] = record;
+            }
+        });
+        
+        const alerts = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        Object.values(latestByPatrimonio).forEach(record => {
+            if ((record.statusChecklist === 'interditado' || record.statusChecklist === 'liberado_restricao') && record.prazoAdequacao) {
+                const deadline = parseLocalDate(record.prazoAdequacao);
+                deadline.setHours(0, 0, 0, 0);
+                
+                const diffTime = deadline.getTime() - today.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                
+                // Show alerts for expired (< 0), today (0), tomorrow (1), and next 3 days
+                if (diffDays <= 3) {
+                    alerts.push({
+                        record,
+                        diffDays
+                    });
+                }
+            }
+        });
+        
+        if (alerts.length === 0) {
+            card.style.display = 'none';
+            return;
+        }
+        
+        // Sort alerts: expired first, then today, then tomorrow, then upcoming
+        alerts.sort((a, b) => a.diffDays - b.diffDays);
+        
+        container.innerHTML = alerts.map(({ record, diffDays }) => {
+            // Find NC items
+            const itemsNC = [];
+            if (record.items) {
+                for (const [itemId, itemData] of Object.entries(record.items)) {
+                    if (itemData.status === 'NC') {
+                        const desc = getNCDescription(ITEM_NAMES[itemId] || itemId, itemId);
+                        itemsNC.push(desc);
+                    }
+                }
+            }
+            const itemsText = itemsNC.length > 0 ? itemsNC.join(', ') : 'itens gerais';
+            
+            const color = diffDays < 0 ? '#e74c3c' : (diffDays === 0 ? '#e74c3c' : (diffDays === 1 ? '#f39c12' : '#3498db'));
+            const bg = diffDays < 0 ? '#fdf2f2' : (diffDays === 0 ? '#fdf2f2' : (diffDays === 1 ? '#fef9e7' : '#ebf5fb'));
+            const border = diffDays < 0 ? '#f5b7b1' : (diffDays === 0 ? '#f5b7b1' : (diffDays === 1 ? '#f9e79f' : '#a9cce3'));
+            const icon = diffDays < 0 ? '🚫' : (diffDays === 0 ? '🔴' : (diffDays === 1 ? '🟡' : '🔵'));
+            
+            let messageText = '';
+            if (diffDays < 0) {
+                messageText = `⚠️ <strong>Prazo Expirado!</strong> O período de correção expirou há ${Math.abs(diffDays)} dia(s).`;
+            } else if (diffDays === 0) {
+                messageText = `🔴 <strong>Expira Hoje!</strong> Hoje é o último dia para adequação.`;
+            } else if (diffDays === 1) {
+                messageText = `🟡 <strong>Expira Amanhã!</strong> Amanhã é o último dia para adequação.`;
+            } else {
+                messageText = `🔵 <strong>Prazo Próximo:</strong> Restam ${diffDays} dias para adequação.`;
+            }
+            
+            return `
+                <div style="padding: 14px; background: ${bg}; border-left: 5px solid ${color}; border-top: 1px solid ${border}; border-right: 1px solid ${border}; border-bottom: 1px solid ${border}; border-radius: 8px; font-size: 13px; color: #2c3e50; line-height: 1.5; display: flex; align-items: flex-start; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                    <div style="font-size: 18px; line-height: 1; padding-top: 2px;">${icon}</div>
+                    <div style="flex: 1;">
+                        <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; margin-bottom: 4px;">
+                            <span style="font-weight: 700; color: #2c3e50; font-size: 14px;">${record.nome} (${record.patrimonio})</span>
+                            <span style="font-size: 11px; background: rgba(255,255,255,0.7); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.05); font-weight: 500;">Prazo: ${formatSimpleDate(record.prazoAdequacao)}</span>
+                        </div>
+                        <div style="font-size: 12px; color: #34495e; margin-bottom: 4px;">${messageText}</div>
+                        <div style="font-size: 11px; color: #7f8c8d; background: rgba(255,255,255,0.5); padding: 6px; border-radius: 4px; border: 1px dotted rgba(0,0,0,0.08);">
+                            <strong>Itens Pendentes:</strong> ${itemsText}
+                        </div>
+                        <div style="font-size: 11px; color: #95a5a6; margin-top: 4px; display: flex; justify-content: space-between;">
+                            <span>TST: ${record.sst || '—'}</span>
+                            <span>Encarregado: ${record.responsavel || '—'}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        card.style.display = 'block';
+    } catch (e) {
+        console.error('Erro ao renderizar lembretes de prazos:', e);
+        card.style.display = 'none';
+    }
 }
 
 async function loadTopRisks() {

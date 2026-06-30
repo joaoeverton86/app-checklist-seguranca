@@ -262,6 +262,9 @@ function salvarChecklist(record) {
         aba.appendRow(rowData);
     }
     
+    // Envia e-mail automático em caso de interdição
+    enviarEmailInterdicao(record, pdfUrl);
+    
     if (record.items) {
         const abaNC = obterAbaSegura(ss, NC_SHEET, [
             'ID Checklist', 'Data', 'Patrimônio', 'Item', 'NR', 'Risco',
@@ -601,4 +604,87 @@ function getNCDescription(text, itemId) {
     if (/Condições dos/i.test(ncText)) return ncText.replace(/Condições dos/i, 'Irregularidade nas condições dos');
 
     return 'Irregularidade: ' + ncText;
+}
+
+function enviarEmailInterdicao(record, pdfUrl) {
+    if (record.statusChecklist !== 'interditado') {
+        return;
+    }
+    
+    try {
+        const DESTINATARIOS_EMAIL = ""; // Defina os e-mails de destino aqui. Ex: "gestor@empresa.com, encarregado@empresa.com"
+        const emailDestino = DESTINATARIOS_EMAIL || SpreadsheetApp.getActiveSpreadsheet().getOwner().getEmail();
+        
+        if (!emailDestino) {
+            Logger.log("Aviso: Nenhum e-mail de destino configurado ou encontrado.");
+            return;
+        }
+        
+        const statusText = "🔴 INTERDITADO";
+        const titulo = "🔴 ALERTA DE INTERDIÇÃO - " + (record.nome || 'Equipamento') + " (" + (record.patrimonio || 'Sem Patrimônio') + ")";
+        
+        // List non-conformities
+        const itensNC = [];
+        if (record.items) {
+            const itens = (record.equipment && record.equipment.items) || [];
+            for (const itemId in record.items) {
+                if (itemId === '_form') continue;
+                const itemData = record.items[itemId];
+                if (itemData.status === 'NC') {
+                    // Try to find the item text
+                    var itemText = itemId;
+                    for (var i = 0; i < itens.length; i++) {
+                        if (itens[i].id === itemId) {
+                            itemText = itens[i].text;
+                            break;
+                        }
+                    }
+                    const ncText = getNCDescription(itemText, itemId);
+                    const obsText = itemData.observation ? " (Obs: " + itemData.observation + ")" : "";
+                    itensNC.push("<li><strong>" + ncText + "</strong>" + obsText + "</li>");
+                }
+            }
+        }
+        const itensListHtml = itensNC.length > 0 ? "<ul>" + itensNC.join("") + "</ul>" : "<p>Nenhum item NC detalhado.</p>";
+        
+        var html = "<html><body style='font-family: Arial, sans-serif; padding: 20px; color: #333; line-height: 1.6;'>";
+        html += "<div style='max-width: 600px; margin: 0 auto; border: 2px solid #e74c3c; padding: 25px; border-radius: 8px; background: #fff;'>";
+        html += "<h2 style='color:#e74c3c; border-bottom:2px solid #e74c3c; padding-bottom:12px; margin-top:0;'>🔴 ALERTA DE EQUIPAMENTO INTERDITADO</h2>";
+        html += "<p>Atenção, o checklist de segurança identificou não conformidades críticas e o equipamento foi <strong>INTERDITADO</strong> para uso.</p>";
+        
+        html += "<table style='width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 20px;'>";
+        html += "<tr><td style='padding: 8px; border-bottom: 1px solid #ddd; width: 40%;'><strong>Equipamento:</strong></td><td style='padding: 8px; border-bottom: 1px solid #ddd;'>" + (record.nome || 'N/A') + "</td></tr>";
+        html += "<tr><td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Patrimônio / Placa:</strong></td><td style='padding: 8px; border-bottom: 1px solid #ddd;'>" + (record.patrimonio || 'N/A') + "</td></tr>";
+        html += "<tr><td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Norma Relacionada:</strong></td><td style='padding: 8px; border-bottom: 1px solid #ddd;'>" + (record.nr || 'N/A') + "</td></tr>";
+        html += "<tr><td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Operador / Motorista:</strong></td><td style='padding: 8px; border-bottom: 1px solid #ddd;'>" + (record.operador || 'N/A') + "</td></tr>";
+        html += "<tr><td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Registrado por (TST):</strong></td><td style='padding: 8px; border-bottom: 1px solid #ddd;'>" + (record.sst || 'N/A') + "</td></tr>";
+        html += "<tr><td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Encarregado Notificado:</strong></td><td style='padding: 8px; border-bottom: 1px solid #ddd;'>" + (record.responsavel || 'N/A') + "</td></tr>";
+        html += "<tr><td style='padding: 8px; border-bottom: 1px solid #ddd;'><strong>Data do Registro:</strong></td><td style='padding: 8px; border-bottom: 1px solid #ddd;'>" + new Date().toLocaleString('pt-BR') + "</td></tr>";
+        if (record.prazoAdequacao) {
+            html += "<tr><td style='padding: 8px; border-bottom: 1px solid #ddd; color: #e74c3c;'><strong>Prazo de Adequação:</strong></td><td style='padding: 8px; border-bottom: 1px solid #ddd; color: #e74c3c; font-weight: bold;'>" + formatSimpleDate(record.prazoAdequacao) + "</td></tr>";
+        }
+        html += "</table>";
+        
+        html += "<h3 style='color:#c0392b; border-bottom: 1px solid #ddd; padding-bottom: 6px;'>Não Conformidades Encontradas:</h3>";
+        html += itensListHtml;
+        
+        if (pdfUrl) {
+            html += "<div style='margin-top: 25px; text-align: center;'>";
+            html += "<a href='" + pdfUrl + "' style='background-color: #e74c3c; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block;'>📄 Acessar PDF do Checklist no Drive</a>";
+            html += "</div>";
+        }
+        
+        html += "<p style='font-size: 11px; color: #7f8c8d; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px;'>Este e-mail foi gerado automaticamente pelo aplicativo de Checklist de Segurança.</p>";
+        html += "</div></body></html>";
+        
+        MailApp.sendEmail({
+            to: emailDestino,
+            subject: titulo,
+            htmlBody: html
+        });
+        
+        Logger.log("E-mail de interdição enviado com sucesso para: " + emailDestino);
+    } catch (e) {
+        Logger.log("Erro ao enviar e-mail de interdição: " + e.toString());
+    }
 }

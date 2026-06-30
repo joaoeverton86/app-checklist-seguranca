@@ -262,8 +262,6 @@ function salvarChecklist(record) {
         aba.appendRow(rowData);
     }
     
-    enviarNotificacaoPush(record);
-    
     if (record.items) {
         const abaNC = obterAbaSegura(ss, NC_SHEET, [
             'ID Checklist', 'Data', 'Patrimônio', 'Item', 'NR', 'Risco',
@@ -550,48 +548,6 @@ function testarPDFEDrive() {
     Logger.log("PDF criado com sucesso! Link: " + url);
 }
 
-function enviarNotificacaoPush(record) {
-    const ONESIGNAL_APP_ID = PropertiesService.getScriptProperties().getProperty('ONESIGNAL_APP_ID');
-    const ONESIGNAL_API_KEY = PropertiesService.getScriptProperties().getProperty('ONESIGNAL_API_KEY');
-    
-    if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY) {
-        Logger.log("Aviso: Chaves do OneSignal não configuradas nas propriedades do script.");
-        return;
-    }
-    
-    if (record.statusChecklist !== 'interditado' && record.statusChecklist !== 'liberado_restricao') {
-        return;
-    }
-    
-    const statusText = record.statusChecklist === 'interditado' ? '🔴 INTERDITADO' : '🟡 LIBERADO COM RESTRIÇÃO';
-    const titulo = "Alerta de Checklist - " + (record.patrimonio || 'Sem Patrimônio');
-    const mensagem = (record.nome || 'Equipamento') + " foi registrado como " + statusText + " por TST " + (record.sst || '') + ".";
-    
-    const payload = {
-        "app_id": ONESIGNAL_APP_ID,
-        "included_segments": ["All"],
-        "headings": {"pt": titulo, "en": titulo},
-        "contents": {"pt": mensagem, "en": mensagem},
-        "url": "https://joaoeverton86.github.io/app-checklist-seguranca/"
-    };
-    
-    const options = {
-        "method": "post",
-        "headers": {
-            "Authorization": "Basic " + ONESIGNAL_API_KEY,
-            "Content-Type": "application/json; charset=UTF-8"
-        },
-        "payload": JSON.stringify(payload),
-        "muteHttpExceptions": true
-    };
-    
-    try {
-        const response = UrlFetchApp.fetch("https://onesignal.com/api/v1/notifications", options);
-        Logger.log("OneSignal response: " + response.getContentText());
-    } catch (e) {
-        Logger.log("Erro ao enviar push via OneSignal: " + e.toString());
-    }
-}
 
 function getNCDescription(text, itemId) {
     if (!text) return 'Irregularidade';

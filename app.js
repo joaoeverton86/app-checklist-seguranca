@@ -204,11 +204,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     cleanDuplicateCadastros();
     updatePendingBadge();
-    
-    const osAppId = localStorage.getItem('onesignal_app_id');
-    if (osAppId) {
-        loadOneSignalSDK(osAppId);
-    }
+
 
     if (navigator.onLine && getSyncUrl()) {
         setTimeout(function() { sincronizacaoBidirecional(); }, 2000);
@@ -3623,9 +3619,7 @@ function loadConfigPage() {
     const urlInput = document.getElementById('syncUrlInput');
     if (urlInput) urlInput.value = url;
     
-    const osId = localStorage.getItem('onesignal_app_id') || '';
-    const osInput = document.getElementById('oneSignalAppIdInput');
-    if (osInput) osInput.value = osId;
+
     
     const status = getSyncStatus();
     const statusCard = document.getElementById('syncStatusCard');
@@ -3671,77 +3665,7 @@ function saveSyncUrl() {
     loadConfigPage();
 }
 
-function saveOneSignalAppId() {
-    const appId = document.getElementById('oneSignalAppIdInput').value.trim();
-    if (!appId) {
-        showToast('Digite o OneSignal App ID');
-        return;
-    }
-    localStorage.setItem('onesignal_app_id', appId);
-    showToast('App ID do OneSignal salvo!');
-    loadOneSignalSDK(appId);
-}
 
-function requestPushPermission() {
-    const appId = localStorage.getItem('onesignal_app_id');
-    if (!appId) {
-        showToast("Configure o App ID do OneSignal primeiro.");
-        return;
-    }
-    
-    if (window.OneSignal && !Array.isArray(window.OneSignal)) {
-        try {
-            if (OneSignal.Notifications && OneSignal.Notifications.requestPermission) {
-                OneSignal.Notifications.requestPermission().then(() => {
-                    showToast("Inscrição solicitada!");
-                });
-            } else if (OneSignal.showSlidedownPrompt) {
-                OneSignal.showSlidedownPrompt();
-                showToast("Inscrição solicitada!");
-            }
-        } catch (e) {
-            console.error("Erro OneSignal prompt:", e);
-            showToast("Erro ao abrir prompt de notificação.");
-        }
-    } else {
-        window.OneSignalDeferred = window.OneSignalDeferred || [];
-        OneSignalDeferred.push(function(OneSignal) {
-            if (OneSignal.Notifications && OneSignal.Notifications.requestPermission) {
-                OneSignal.Notifications.requestPermission();
-            } else if (OneSignal.showSlidedownPrompt) {
-                OneSignal.showSlidedownPrompt();
-            }
-        });
-        loadOneSignalSDK(appId);
-        showToast("Inicializando notificações... Se a janela não abrir, clique novamente.");
-    }
-}
-
-function initOneSignal(appId) {
-    if (!appId) return;
-    window.OneSignalDeferred = window.OneSignalDeferred || [];
-    OneSignalDeferred.push(function(OneSignal) {
-        OneSignal.init({
-            appId: appId,
-            allowLocalhostAsSecureOrigin: true,
-            serviceWorkerPath: 'sw.js'
-        });
-    });
-}
-
-function loadOneSignalSDK(appId) {
-    if (!appId) return;
-    if (document.getElementById('onesignal-sdk')) {
-        initOneSignal(appId);
-        return;
-    }
-    const script = document.createElement('script');
-    script.id = 'onesignal-sdk';
-    script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
-    script.defer = true;
-    script.onload = () => initOneSignal(appId);
-    document.head.appendChild(script);
-}
 
 async function testSync() {
     const url = getSyncUrl();

@@ -613,7 +613,7 @@ function enviarEmailInterdicao(record, pdfUrl) {
     
     try {
         const DESTINATARIOS_EMAIL = ""; // Defina os e-mails de destino aqui. Ex: "gestor@empresa.com, encarregado@empresa.com"
-        const emailDestino = DESTINATARIOS_EMAIL || SpreadsheetApp.getActiveSpreadsheet().getOwner().getEmail();
+        const emailDestino = DESTINATARIOS_EMAIL || Session.getEffectiveUser().getEmail();
         
         if (!emailDestino) {
             Logger.log("Aviso: Nenhum e-mail de destino configurado ou encontrado.");
@@ -687,4 +687,15 @@ function enviarEmailInterdicao(record, pdfUrl) {
     } catch (e) {
         Logger.log("Erro ao enviar e-mail de interdição: " + e.toString());
     }
+}
+
+function formatSimpleDate(dateStr) {
+    if (!dateStr) return '—';
+    if (dateStr.indexOf('-') !== -1) {
+        var parts = dateStr.split('-');
+        if (parts.length === 3) {
+            return parts[2] + '/' + parts[1] + '/' + parts[0];
+        }
+    }
+    return dateStr;
 }

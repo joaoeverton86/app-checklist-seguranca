@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v49';
+const APP_VERSION = 'v50';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -3723,7 +3723,8 @@ function initOneSignal(appId) {
     OneSignalDeferred.push(function(OneSignal) {
         OneSignal.init({
             appId: appId,
-            allowLocalhostAsSecureOrigin: true
+            allowLocalhostAsSecureOrigin: true,
+            serviceWorkerPath: 'sw.js'
         });
     });
 }

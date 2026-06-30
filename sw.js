@@ -1,4 +1,7 @@
-const CACHE_NAME = 'checklist-v49';
+// Integração com OneSignal Push Notifications
+importScripts('https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js');
+
+const CACHE_NAME = 'checklist-v50';
 const SHELL_URLS = [
     './',
     './index.html',

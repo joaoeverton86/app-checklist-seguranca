@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v52';
+const APP_VERSION = 'v53';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -3262,8 +3262,14 @@ async function renderDeadlineAlerts() {
     
     try {
         const checklists = await getAllFromIndexedDB('checklists');
+        card.style.display = 'block'; // Always keep the card visible to prove the feature is loaded
+        
         if (!checklists || checklists.length === 0) {
-            card.style.display = 'none';
+            container.innerHTML = `
+                <div class="empty-state" style="padding: 15px 0;">
+                    <div class="icon" style="font-size: 24px; margin-bottom: 5px;">✅</div>
+                    <div class="text" style="font-size: 13px; color: var(--text-light);">Nenhum equipamento interditado ou com prazo pendente</div>
+                </div>`;
             return;
         }
         
@@ -3305,7 +3311,11 @@ async function renderDeadlineAlerts() {
         });
         
         if (alerts.length === 0) {
-            card.style.display = 'none';
+            container.innerHTML = `
+                <div class="empty-state" style="padding: 15px 0;">
+                    <div class="icon" style="font-size: 24px; margin-bottom: 5px;">✅</div>
+                    <div class="text" style="font-size: 13px; color: var(--text-light);">Nenhum equipamento interditado ou com prazo pendente</div>
+                </div>`;
             return;
         }
         

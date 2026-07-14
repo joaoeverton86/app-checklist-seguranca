@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v56';
+const APP_VERSION = 'v57';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2957,6 +2957,18 @@ function applyCustomDateFilter() {
 
 function applyReportPatrimonioFilter() {
     loadReports();
+}
+
+function clearReportFilters() {
+    const selectSetor = document.getElementById('reportFilterSetor');
+    const selectCategoria = document.getElementById('reportFilterCategoria');
+    const selectPatrimonio = document.getElementById('reportFilterPatrimonio');
+    
+    if (selectSetor) selectSetor.value = "";
+    if (selectCategoria) selectCategoria.value = "";
+    if (selectPatrimonio) selectPatrimonio.value = "";
+    
+    setReportFilter('mes');
 }
 
 function getDateRange() {

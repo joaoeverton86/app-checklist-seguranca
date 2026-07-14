@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v54';
+const APP_VERSION = 'v55';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -106,6 +106,13 @@ let currentEquipment = null;
 let currentCadastro = null;
 let checklistData = {};
 let signaturePad = null;
+let itensComFalhaAnterior = [];
+
+function clearReinspectionState() {
+    itensComFalhaAnterior = [];
+    const banner = document.getElementById('reinspectionBanner');
+    if (banner) banner.style.display = 'none';
+}
 
 async function initDynamicEquipmentTypes() {
     try {
@@ -1200,6 +1207,7 @@ function startChecklist(category, equipmentId) {
     currentEquipment = equipment;
     currentCadastro = null;
     checklistData = {};
+    clearReinspectionState();
     
     // Inicializar dados do formulário
     document.getElementById('checklistDate').value = new Date().toISOString().split('T')[0];
@@ -1318,10 +1326,18 @@ function renderChecklistItems(equipment, cadastro) {
         const riskText = item.risk === 'high' ? 'RISCO ALTO' : 
                         item.risk === 'medium' ? 'RISCO MÉDIO' : 'RISCO BAIXO';
         
+        const isReinspectFailure = itensComFalhaAnterior.includes(item.id);
+        const itemStyle = isReinspectFailure ? 
+            `border-left: 5px solid var(--warning); background: #fffcf4; border-top: 1px solid #f9e79f; border-right: 1px solid #f9e79f; border-bottom: 1px solid #f9e79f;` : 
+            '';
+        const failureBadge = isReinspectFailure ? 
+            `<span class="badge" style="background: #fff9e6; color: #b78a00; border: 1px solid #ffe8a1; font-weight: 700; font-size: 10px; margin-left: 6px;">⚠️ FALHA ANTERIOR</span>` : 
+            '';
+
         html += `
-            <div class="checklist-item" id="item-${item.id}">
+            <div class="checklist-item" id="item-${item.id}" style="${itemStyle}">
                 <div class="item-header">
-                    <span class="item-text">${item.text}</span>
+                    <span class="item-text">${item.text} ${failureBadge}</span>
                 </div>
                 <div class="item-meta">
                     <span class="badge badge-nr">${item.nr}</span>
@@ -2644,6 +2660,24 @@ async function reinspecionarChecklist(id) {
     await loadCadastroSelect(category);
     await loadResponsavelSelect();
     
+    // Store previous failures/NC items to highlight in the UI
+    itensComFalhaAnterior = [];
+    for (const [itemId, itemData] of Object.entries(original.items)) {
+        if (itemData.status === 'NC') {
+            itensComFalhaAnterior.push(itemId);
+        }
+    }
+    
+    // Update reinspection banner visibility
+    const banner = document.getElementById('reinspectionBanner');
+    if (banner) {
+        banner.style.display = itensComFalhaAnterior.length > 0 ? 'flex' : 'none';
+        const bannerDetail = document.getElementById('reinspectionBannerDetail');
+        if (bannerDetail) {
+            bannerDetail.textContent = `Esta reinspeção é baseada no checklist #${original.id}. Os itens com não conformidades anteriores foram destacados com bordas e selos amarelos.`;
+        }
+    }
+    
     checklistData = {};
     for (const [itemId, itemData] of Object.entries(original.items)) {
         if (itemId === '_form') continue;
@@ -2660,20 +2694,18 @@ async function reinspecionarChecklist(id) {
     
     setTimeout(() => {
         for (const [itemId, itemData] of Object.entries(checklistData)) {
-            const option = document.querySelector(`input[name="${itemId}"][value="${itemData.status}"]`);
-            if (option) {
-                option.checked = true;
-                const btnGroup = option.closest('.btn-group');
-                if (btnGroup) {
-                    btnGroup.querySelectorAll('label').forEach(lbl => lbl.classList.remove('selected'));
-                    const label = btnGroup.querySelector(`label[for="${option.id}"]`);
-                    if (label) label.classList.add('selected');
+            const itemContainer = document.getElementById(`item-${itemId}`);
+            if (itemContainer) {
+                const btnClass = itemData.status.toLowerCase();
+                const btn = itemContainer.querySelector(`.status-btn.${btnClass}`);
+                if (btn) {
+                    setStatus(itemId, itemData.status, btn);
                 }
-            }
-            
-            const obsInput = document.getElementById(`obs_${itemId}`);
-            if (obsInput) {
-                obsInput.value = itemData.observation || '';
+                
+                const obsTextarea = itemContainer.querySelector(`.item-observation textarea`);
+                if (obsTextarea) {
+                    obsTextarea.value = itemData.observation || '';
+                }
             }
         }
     }, 100);
@@ -4356,6 +4388,7 @@ async function startChecklistFromPending(patrimonio) {
     currentEquipment = equipment;
     currentCadastro = cadastro;
     checklistData = {};
+    clearReinspectionState();
 
     document.getElementById('checklistDate').value = new Date().toISOString().split('T')[0];
     document.getElementById('checklistPatrimonio').value = cadastro.patrimonio || '';

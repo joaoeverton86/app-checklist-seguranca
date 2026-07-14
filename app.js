@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v55';
+const APP_VERSION = 'v56';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2824,13 +2824,44 @@ async function renderDashboardCharts() {
     if (typeof Chart === 'undefined') return;
 
     const checklists = await getAllFromIndexedDB('checklists');
+    const cadastros = await getAllFromIndexedDB('cadastros');
     const { inicio, fim } = getDateRange();
-    let checklistsMes = checklists.filter(c => { const d = parseLocalDate(c.date); return d >= inicio && d <= fim; });
     
+    const selectedSetor = document.getElementById('reportFilterSetor')?.value || '';
+    const selectedCategoria = document.getElementById('reportFilterCategoria')?.value || '';
     const selectedPatrimonio = document.getElementById('reportFilterPatrimonio')?.value || '';
-    if (selectedPatrimonio) {
-        checklistsMes = checklistsMes.filter(c => c.patrimonio === selectedPatrimonio);
+    
+    // Map patrimonio -> setor e categoria
+    const cadastroByPatr = {};
+    cadastros.forEach(c => {
+        if (c.patrimonio) {
+            cadastroByPatr[c.patrimonio.toUpperCase()] = c;
+        }
+    });
+    
+    // Helper function to apply filters to a list of checklists
+    function filterChecklistArray(arr) {
+        let result = arr;
+        if (selectedSetor) {
+            result = result.filter(c => {
+                const cad = c.patrimonio ? cadastroByPatr[c.patrimonio.toUpperCase()] : null;
+                return cad && cad.setor && cad.setor.trim() === selectedSetor;
+            });
+        }
+        if (selectedCategoria) {
+            result = result.filter(c => {
+                const cad = c.patrimonio ? cadastroByPatr[c.patrimonio.toUpperCase()] : null;
+                return cad && cad.categoria === selectedCategoria;
+            });
+        }
+        if (selectedPatrimonio) {
+            result = result.filter(c => c.patrimonio === selectedPatrimonio);
+        }
+        return result;
     }
+    
+    let checklistsMes = checklists.filter(c => { const d = parseLocalDate(c.date); return d >= inicio && d <= fim; });
+    checklistsMes = filterChecklistArray(checklistsMes);
     
     if (checklistsMes.length === 0) return;
 
@@ -2867,7 +2898,10 @@ async function renderDashboardCharts() {
         meses.push(d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
         const ini = new Date(d.getFullYear(), d.getMonth(), 1);
         const fim = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-        contagens.push(checklists.filter(c => { const dt = parseLocalDate(c.date); return dt >= ini && dt <= fim; }).length);
+        
+        let sublist = checklists.filter(c => { const dt = parseLocalDate(c.date); return dt >= ini && dt <= fim; });
+        sublist = filterChecklistArray(sublist);
+        contagens.push(sublist.length);
     }
     document.getElementById('chartCardMeses').style.display = 'block';
     chartInstances.meses = new Chart(document.getElementById('chartPorMes'), {
@@ -3077,12 +3111,75 @@ async function loadReports() {
     
     const equipamentosAtivos = cadastros.filter(c => c.ativo !== false && c.tipo !== 'colaborador');
     
-    // Popular o select de filtro por patrimônio
+    const selectSetor = document.getElementById('reportFilterSetor');
+    const selectCategoria = document.getElementById('reportFilterCategoria');
     const selectPatrimonio = document.getElementById('reportFilterPatrimonio');
+    
+    // 1. Popular Setor Select
+    if (selectSetor) {
+        const valAnterior = selectSetor.value;
+        selectSetor.innerHTML = '<option value="">Todos os Setores...</option>';
+        
+        const setores = new Set();
+        equipamentosAtivos.forEach(c => {
+            if (c.setor) setores.add(c.setor.trim());
+        });
+        const sortedSetores = Array.from(setores).sort();
+        sortedSetores.forEach(setor => {
+            const opt = document.createElement('option');
+            opt.value = setor;
+            opt.textContent = setor;
+            selectSetor.appendChild(opt);
+        });
+        selectSetor.value = valAnterior;
+        if (selectSetor.value !== valAnterior) selectSetor.value = "";
+    }
+    
+    // 2. Popular Categoria Select
+    if (selectCategoria) {
+        const valAnterior = selectCategoria.value;
+        selectCategoria.innerHTML = '<option value="">Todas as Categorias...</option>';
+        
+        const categorias = new Set();
+        equipamentosAtivos.forEach(c => {
+            if (c.categoria) categorias.add(c.categoria.trim());
+        });
+        const sortedCategorias = Array.from(categorias).sort();
+        sortedCategorias.forEach(catId => {
+            const opt = document.createElement('option');
+            opt.value = catId;
+            
+            let catName = catId;
+            for (const [tipo, list] of Object.entries(EQUIPMENT_TYPES)) {
+                const found = list.find(e => e.id === catId);
+                if (found) {
+                    catName = found.name;
+                    break;
+                }
+            }
+            opt.textContent = catName;
+            selectCategoria.appendChild(opt);
+        });
+        selectCategoria.value = valAnterior;
+        if (selectCategoria.value !== valAnterior) selectCategoria.value = "";
+    }
+    
+    const selectedSetor = selectSetor ? selectSetor.value : '';
+    const selectedCategoria = selectCategoria ? selectCategoria.value : '';
+    
+    // 3. Popular Patrimonio Select (filtrado por Setor e Categoria se selecionados)
+    let filteredEquipsForSelect = [...equipamentosAtivos];
+    if (selectedSetor) {
+        filteredEquipsForSelect = filteredEquipsForSelect.filter(c => c.setor && c.setor.trim() === selectedSetor);
+    }
+    if (selectedCategoria) {
+        filteredEquipsForSelect = filteredEquipsForSelect.filter(c => c.categoria === selectedCategoria);
+    }
+    
     if (selectPatrimonio) {
         const valAnterior = selectPatrimonio.value;
         selectPatrimonio.innerHTML = '<option value="">Todos os Equipamentos...</option>';
-        const sortedEquips = [...equipamentosAtivos].sort((a, b) => (a.patrimonio || '').localeCompare(b.patrimonio || ''));
+        const sortedEquips = [...filteredEquipsForSelect].sort((a, b) => (a.patrimonio || '').localeCompare(b.patrimonio || ''));
         sortedEquips.forEach(eq => {
             const opt = document.createElement('option');
             opt.value = eq.patrimonio;
@@ -3090,6 +3187,7 @@ async function loadReports() {
             selectPatrimonio.appendChild(opt);
         });
         selectPatrimonio.value = valAnterior;
+        if (selectPatrimonio.value !== valAnterior) selectPatrimonio.value = "";
     }
     
     const selectedPatrimonio = selectPatrimonio ? selectPatrimonio.value : '';
@@ -3097,20 +3195,49 @@ async function loadReports() {
     const { inicio, fim } = getDateRange();
     const checklistsMes = checklists.filter(c => { const d = parseLocalDate(c.date); return d >= inicio && d <= fim; });
     
-    // Equipamentos que já foram verificados este mês
-    const patrimoniosVerificados = new Set(checklistsMes.map(c => c.patrimonio));
-    
-    let pendentes = equipamentosAtivos.filter(e => !patrimoniosVerificados.has(e.patrimonio));
-    let realizados = equipamentosAtivos.filter(e => patrimoniosVerificados.has(e.patrimonio));
-    
+    // Filtrar equipamentos ativos para cálculos de pendentes/realizados
+    let filteredEquips = [...equipamentosAtivos];
+    if (selectedSetor) {
+        filteredEquips = filteredEquips.filter(e => e.setor && e.setor.trim() === selectedSetor);
+    }
+    if (selectedCategoria) {
+        filteredEquips = filteredEquips.filter(e => e.categoria === selectedCategoria);
+    }
     if (selectedPatrimonio) {
-        pendentes = pendentes.filter(e => e.patrimonio === selectedPatrimonio);
-        realizados = realizados.filter(e => e.patrimonio === selectedPatrimonio);
+        filteredEquips = filteredEquips.filter(e => e.patrimonio === selectedPatrimonio);
     }
     
-    const checklistsFiltrados = selectedPatrimonio ? 
-        checklistsMes.filter(c => c.patrimonio === selectedPatrimonio) : 
-        checklistsMes;
+    // Equipamentos verificados
+    const patrimoniosVerificados = new Set(checklistsMes.map(c => c.patrimonio));
+    
+    let pendentes = filteredEquips.filter(e => !patrimoniosVerificados.has(e.patrimonio));
+    let realizados = filteredEquips.filter(e => patrimoniosVerificados.has(e.patrimonio));
+    
+    // Map patrimonio -> setor e categoria
+    const cadastroByPatr = {};
+    cadastros.forEach(c => {
+        if (c.patrimonio) {
+            cadastroByPatr[c.patrimonio.toUpperCase()] = c;
+        }
+    });
+    
+    // Filtrar checklists do período
+    let checklistsFiltrados = checklistsMes;
+    if (selectedSetor) {
+        checklistsFiltrados = checklistsFiltrados.filter(c => {
+            const cad = c.patrimonio ? cadastroByPatr[c.patrimonio.toUpperCase()] : null;
+            return cad && cad.setor && cad.setor.trim() === selectedSetor;
+        });
+    }
+    if (selectedCategoria) {
+        checklistsFiltrados = checklistsFiltrados.filter(c => {
+            const cad = c.patrimonio ? cadastroByPatr[c.patrimonio.toUpperCase()] : null;
+            return cad && cad.categoria === selectedCategoria;
+        });
+    }
+    if (selectedPatrimonio) {
+        checklistsFiltrados = checklistsFiltrados.filter(c => c.patrimonio === selectedPatrimonio);
+    }
     
     // Totais
     let totalC = 0, totalNC = 0;
@@ -3143,7 +3270,7 @@ async function loadReports() {
     });
     
     // Atualizar resumo
-    document.getElementById('totalEquipamentos').textContent = selectedPatrimonio ? 1 : equipamentosAtivos.length;
+    document.getElementById('totalEquipamentos').textContent = filteredEquips.length;
     document.getElementById('totalRealizados').textContent = realizados.length;
     document.getElementById('totalPendentes').textContent = pendentes.length;
     
@@ -3154,10 +3281,10 @@ async function loadReports() {
     
     // Pendentes - lista
     const pendentesContainer = document.getElementById('pendentesList');
-    if (pendentes.length === 0 && equipamentosAtivos.length > 0) {
-        pendentesContainer.innerHTML = `<div style="padding: 12px; background: #d5f5e3; border-radius: 8px; text-align: center; color: #1e8449; font-weight: 600;">✓ Todos os equipamentos foram verificados este mês!</div>`;
+    if (pendentes.length === 0 && filteredEquips.length > 0) {
+        pendentesContainer.innerHTML = `<div style="padding: 12px; background: #d5f5e3; border-radius: 8px; text-align: center; color: #1e8449; font-weight: 600;">✓ Todos os equipamentos filtrados foram verificados este mês!</div>`;
     } else if (pendentes.length === 0) {
-        pendentesContainer.innerHTML = `<div class="empty-state"><div class="text">Cadastre equipamentos primeiro</div></div>`;
+        pendentesContainer.innerHTML = `<div class="empty-state"><div class="text">Nenhum equipamento cadastrado corresponde ao filtro</div></div>`;
     } else {
         pendentesContainer.innerHTML = pendentes.map(p => `
             <div class="risk-list-item" style="border-left-color: var(--warning); cursor: pointer; transition: transform 0.2s;" 

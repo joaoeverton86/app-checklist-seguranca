@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v60';
+const APP_VERSION = 'v61';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -243,6 +243,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function initApp() {
     console.log('App Checklist Segurança inicializado - ' + APP_VERSION);
+    const verEl = document.getElementById('loginVersion');
+    if (verEl) verEl.textContent = 'Versão ' + APP_VERSION;
     await initDynamicEquipmentTypes();
 }
 
@@ -4852,13 +4854,101 @@ document.addEventListener('click', (e) => {
 // AUTENTICAÇÃO E PERMISSÕES (LOGIN)
 // ============================================
 
+function sha256Fallback(ascii) {
+    function rightRotate(value, amount) {
+        return (value >>> amount) | (value << (32 - amount));
+    }
+    var mathPow = Math.pow;
+    var maxWord = mathPow(2, 32);
+    var lengthProperty = 'length';
+    var i, j;
+    var result = '';
+    var words = [];
+    var asciiLength = ascii[lengthProperty];
+    var hash = sha256Fallback.h = sha256Fallback.h || [];
+    var k = sha256Fallback.k = sha256Fallback.k || [];
+    var primeCounter = k[lengthProperty];
+    var isComposite = {};
+    for (var candidate = 2; primeCounter < 64; candidate++) {
+        if (!isComposite[candidate]) {
+            for (i = 0; i < 313; i += candidate) {
+                isComposite[i] = 1;
+            }
+            hash[primeCounter] = (mathPow(candidate, .5) * maxWord) | 0;
+            k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+        }
+    }
+    ascii += '\x80';
+    while (ascii[lengthProperty] % 64 - 56) ascii += '\x00';
+    for (i = 0; i < ascii[lengthProperty]; i++) {
+        j = ascii.charCodeAt(i);
+        if (j >> 8) return '';
+        words[i >> 2] |= j << ((3 - i) % 4 * 8);
+    }
+    words[words[lengthProperty]] = ((asciiLength * 8) / maxWord) | 0;
+    words[words[lengthProperty]] = (asciiLength * 8);
+    var h0 = hash[0], h1 = hash[1], h2 = hash[2], h3 = hash[3],
+        h4 = hash[4], h5 = hash[5], h6 = hash[6], h7 = hash[7];
+    for (i = 0; i < words[lengthProperty]; i += 16) {
+        var w = words.slice(i, i + 16);
+        var olda = h0, oldb = h1, oldc = h2, oldd = h3, olde = h4, oldf = h5, oldg = h6, oldh = h7;
+        for (j = 0; j < 64; j++) {
+            if (j >= 16) {
+                var w15 = w[j - 15], w2 = w[j - 2];
+                w[j] = (
+                    (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3)) +
+                    w[j - 7] +
+                    (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10)) +
+                    w[j - 16]
+                ) | 0;
+            }
+            var ch = (olde & oldf) ^ (~olde & oldg);
+            var maj = (olda & oldb) ^ (olda & oldc) ^ (oldb & oldc);
+            var temp1 = (oldh + (rightRotate(olde, 6) ^ rightRotate(olde, 11) ^ rightRotate(olde, 25)) + ch + k[j] + w[j]) | 0;
+            var temp2 = ((rightRotate(olda, 2) ^ rightRotate(olda, 13) ^ rightRotate(olda, 22)) + maj) | 0;
+            oldh = oldg;
+            oldg = oldf;
+            oldf = olde;
+            olde = (oldd + temp1) | 0;
+            oldd = oldc;
+            oldc = oldb;
+            oldb = olda;
+            olda = (temp1 + temp2) | 0;
+        }
+        h0 = (h0 + olda) | 0;
+        h1 = (h1 + oldb) | 0;
+        h2 = (h2 + oldc) | 0;
+        h3 = (h3 + oldd) | 0;
+        h4 = (h4 + olde) | 0;
+        h5 = (h5 + oldf) | 0;
+        h6 = (h6 + oldg) | 0;
+        h7 = (h7 + oldh) | 0;
+    }
+    var h = [h0, h1, h2, h3, h4, h5, h6, h7];
+    for (i = 0; i < 8; i++) {
+        var word = h[i];
+        result += ((word >>> 24) & 255).toString(16).padStart(2, '0') +
+                  ((word >>> 16) & 255).toString(16).padStart(2, '0') +
+                  ((word >>> 8) & 255).toString(16).padStart(2, '0') +
+                  (word & 255).toString(16).padStart(2, '0');
+    }
+    return result;
+}
+
 async function sha256(message) {
     if (!message) return '';
-    const msgBuffer = new TextEncoder().encode(message);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    return hashHex;
+    try {
+        if (window.crypto && window.crypto.subtle) {
+            const msgBuffer = new TextEncoder().encode(message);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            return hashHex;
+        }
+    } catch (e) {
+        console.warn('Subtle crypto error, falling back to JS implementation:', e);
+    }
+    return sha256Fallback(message);
 }
 
 async function realizarLogin() {

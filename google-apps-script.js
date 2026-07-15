@@ -34,7 +34,8 @@ function setup() {
     ]);
     criarAbaSeNaoExiste(ss, COLABORADORES_SHEET, [
         'ID', 'Nome', 'Função', 'Setor', 'Empresa', 'Matrícula',
-        'Validade ASO', 'Data Hora Registro', 'Sincronizado', 'Ativo', 'Senha', 'NivelAcesso'
+        'Validade ASO', 'Data Hora Registro', 'Sincronizado', 'Ativo', 'Senha', 'NivelAcesso',
+        'Email', 'ResetCode', 'ResetCodeExpires'
     ]);
     criarABASeNaoExisteOuAtualizar(ss, ITEMS_SHEET);
     Logger.log('Setup concluído!');
@@ -155,6 +156,10 @@ function doPost(e) {
             salvarItemChecklist(record);
         } else if (data.store === 'checklist_items_bulk') {
             salvarItensEmMassa(record);
+        } else if (data.store === 'forgot_password') {
+            return processarEsqueciSenha(record);
+        } else if (data.store === 'reset_password_verify') {
+            return processarRedefinirSenha(record);
         } else {
             return ContentService
                 .createTextOutput(JSON.stringify({ success: false, error: 'Store desconhecido: ' + data.store }))
@@ -371,8 +376,34 @@ function salvarColaborador(record) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const aba = obterAbaSegura(ss, COLABORADORES_SHEET, [
         'ID', 'Nome', 'Função', 'Setor', 'Empresa', 'Matrícula',
-        'Validade ASO', 'Data Hora Registro', 'Sincronizado', 'Ativo', 'Senha', 'NivelAcesso'
+        'Validade ASO', 'Data Hora Registro', 'Sincronizado', 'Ativo', 'Senha', 'NivelAcesso',
+        'Email', 'ResetCode', 'ResetCodeExpires'
     ]);
+    
+    const linha = encontrarLinhaPorId(aba, record.id);
+    let senhaExistente = record.senha || '';
+    let emailExistente = record.email || '';
+    let nivelExistente = record.nivelAcesso || 'Tecnico';
+    let codeExistente = record.resetCode || '';
+    let expiresExistente = record.resetCodeExpires || '';
+    
+    if (linha !== -1) {
+        const lastCol = aba.getLastColumn();
+        const headers = aba.getRange(1, 1, 1, lastCol).getValues()[0];
+        const rowValues = aba.getRange(linha, 1, 1, lastCol).getValues()[0];
+        
+        const idxSenha = headers.indexOf('Senha');
+        const idxEmail = headers.indexOf('Email');
+        const idxNivel = headers.indexOf('NivelAcesso');
+        const idxCode = headers.indexOf('ResetCode');
+        const idxExpires = headers.indexOf('ResetCodeExpires');
+        
+        if (idxSenha !== -1 && !senhaExistente) senhaExistente = rowValues[idxSenha] || '';
+        if (idxEmail !== -1 && !emailExistente) emailExistente = rowValues[idxEmail] || '';
+        if (idxNivel !== -1 && !record.nivelAcesso) nivelExistente = rowValues[idxNivel] || 'Tecnico';
+        if (idxCode !== -1 && !codeExistente) codeExistente = rowValues[idxCode] || '';
+        if (idxExpires !== -1 && !expiresExistente) expiresExistente = rowValues[idxExpires] || '';
+    }
     
     const rowData = [
         record.id || '',
@@ -385,11 +416,13 @@ function salvarColaborador(record) {
         new Date().toISOString(),
         'Sim',
         record.ativo !== false ? 'Sim' : 'Não',
-        record.senha || '',
-        record.nivelAcesso || 'Tecnico'
+        senhaExistente,
+        nivelExistente,
+        emailExistente,
+        codeExistente,
+        expiresExistente
     ];
     
-    const linha = encontrarLinhaPorId(aba, record.id);
     if (linha !== -1) {
         aba.getRange(linha, 1, 1, rowData.length).setValues([rowData]);
     } else {
@@ -700,4 +733,189 @@ function formatSimpleDate(dateStr) {
         }
     }
     return dateStr;
+}
+
+function processarEsqueciSenha(record) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const aba = ss.getSheetByName(COLABORADORES_SHEET);
+    if (!aba) {
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: false, error: 'Aba de colaboradores não encontrada.' }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    const emailInput = String(record.email || '').trim().toLowerCase();
+    const matriculaInput = String(record.matricula || '').trim().toUpperCase();
+    
+    if (!emailInput || !matriculaInput) {
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: false, error: 'E-mail e Matrícula são obrigatórios.' }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    const lastRow = aba.getLastRow();
+    if (lastRow <= 1) {
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: false, error: 'Nenhum colaborador cadastrado.' }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    const lastCol = aba.getLastColumn();
+    const headers = aba.getRange(1, 1, 1, lastCol).getValues()[0];
+    const dataRange = aba.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    
+    const idxEmail = headers.indexOf('Email');
+    const idxMatricula = headers.indexOf('Matrícula');
+    const idxCode = headers.indexOf('ResetCode');
+    const idxExpires = headers.indexOf('ResetCodeExpires');
+    const idxNome = headers.indexOf('Nome');
+    
+    if (idxEmail === -1 || idxMatricula === -1 || idxCode === -1 || idxExpires === -1) {
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: false, error: 'Estrutura da planilha desatualizada. Por favor rodar o setup.' }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    let linhaEncontrada = -1;
+    let nomeColaborador = '';
+    
+    for (let i = 0; i < dataRange.length; i++) {
+        const row = dataRange[i];
+        const emailVal = String(row[idxEmail] || '').trim().toLowerCase();
+        const matriculaVal = String(row[idxMatricula] || '').trim().toUpperCase();
+        
+        if (emailVal === emailInput && matriculaVal === matriculaInput) {
+            linhaEncontrada = i + 2;
+            nomeColaborador = row[idxNome] || 'Colaborador';
+            break;
+        }
+    }
+    
+    if (linhaEncontrada === -1) {
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: false, error: 'Colaborador não encontrado com esta Matrícula e E-mail.' }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // Gerar PIN de 6 dígitos
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    
+    // Salvar na planilha
+    aba.getRange(linhaEncontrada, idxCode + 1).setValue(code);
+    aba.getRange(linhaEncontrada, idxExpires + 1).setValue(expires);
+    
+    // Enviar e-mail
+    try {
+        MailApp.sendEmail({
+            to: emailInput,
+            subject: "Código de Recuperação - Checklist Segurança",
+            htmlBody: "<h3>Olá, " + nomeColaborador + "!</h3>" +
+                      "<p>Você solicitou a recuperação de senha no aplicativo <b>Checklist Segurança</b>.</p>" +
+                      "<p>Seu código de redefinição de senha é: <b style='font-size: 20px; color: #27ae60;'>" + code + "</b></p>" +
+                      "<p>Este código expira em 15 minutos.</p>" +
+                      "<p>Se você não solicitou esta alteração, apenas ignore este e-mail.</p>"
+        });
+        
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: true }))
+            .setMimeType(ContentService.MimeType.JSON);
+            
+    } catch (mailError) {
+        Logger.log('Erro ao enviar e-mail: ' + mailError.toString());
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: false, error: 'Erro ao enviar o e-mail: ' + mailError.toString() }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+}
+
+function processarRedefinirSenha(record) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const aba = ss.getSheetByName(COLABORADORES_SHEET);
+    if (!aba) {
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: false, error: 'Aba de colaboradores não encontrada.' }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    const emailInput = String(record.email || '').trim().toLowerCase();
+    const matriculaInput = String(record.matricula || '').trim().toUpperCase();
+    const codeInput = String(record.code || '').trim();
+    const newSenha = String(record.newSenha || '').trim();
+    
+    if (!emailInput || !matriculaInput || !codeInput || !newSenha) {
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: false, error: 'Todos os campos são obrigatórios.' }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    const lastRow = aba.getLastRow();
+    if (lastRow <= 1) {
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: false, error: 'Nenhum colaborador cadastrado.' }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    const lastCol = aba.getLastColumn();
+    const headers = aba.getRange(1, 1, 1, lastCol).getValues()[0];
+    const dataRange = aba.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    
+    const idxEmail = headers.indexOf('Email');
+    const idxMatricula = headers.indexOf('Matrícula');
+    const idxCode = headers.indexOf('ResetCode');
+    const idxExpires = headers.indexOf('ResetCodeExpires');
+    const idxSenha = headers.indexOf('Senha');
+    
+    if (idxEmail === -1 || idxMatricula === -1 || idxCode === -1 || idxExpires === -1 || idxSenha === -1) {
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: false, error: 'Estrutura da planilha desatualizada.' }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    let linhaEncontrada = -1;
+    let savedCode = '';
+    let expirationStr = '';
+    
+    for (let i = 0; i < dataRange.length; i++) {
+        const row = dataRange[i];
+        const emailVal = String(row[idxEmail] || '').trim().toLowerCase();
+        const matriculaVal = String(row[idxMatricula] || '').trim().toUpperCase();
+        
+        if (emailVal === emailInput && matriculaVal === matriculaInput) {
+            linhaEncontrada = i + 2;
+            savedCode = String(row[idxCode] || '').trim();
+            expirationStr = String(row[idxExpires] || '').trim();
+            break;
+        }
+    }
+    
+    if (linhaEncontrada === -1) {
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: false, error: 'Colaborador não encontrado.' }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    if (codeInput !== savedCode) {
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: false, error: 'Código de recuperação inválido.' }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    if (expirationStr) {
+        const expirationTime = new Date(expirationStr).getTime();
+        const now = Date.now();
+        if (now > expirationTime) {
+            return ContentService
+                .createTextOutput(JSON.stringify({ success: false, error: 'Código de recuperação expirou.' }))
+                .setMimeType(ContentService.MimeType.JSON);
+        }
+    }
+    
+    aba.getRange(linhaEncontrada, idxSenha + 1).setValue(newSenha);
+    aba.getRange(linhaEncontrada, idxCode + 1).setValue('');
+    aba.getRange(linhaEncontrada, idxExpires + 1).setValue('');
+    
+    return ContentService
+        .createTextOutput(JSON.stringify({ success: true }))
+        .setMimeType(ContentService.MimeType.JSON);
 }

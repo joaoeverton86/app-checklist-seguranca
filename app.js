@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v58';
+const APP_VERSION = 'v59';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';

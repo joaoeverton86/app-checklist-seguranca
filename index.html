@@ -487,6 +487,8 @@
         /* Page visibility */
         .page { display: none; }
         .page.active { display: block; }
+        #pageLogin { display: none; }
+        #pageLogin.active { display: flex !important; }
 
         /* Empty State */
         .empty-state {
@@ -730,7 +732,7 @@
     </div>
 
     <!-- Page: Login -->
-    <div class="page active" id="pageLogin" style="background: linear-gradient(135deg, #1f4068 0%, #162447 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+    <div class="page active" id="pageLogin" style="background: linear-gradient(135deg, #1f4068 0%, #162447 100%); min-height: 100vh; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
         <div style="width: 100%; max-width: 400px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 20px; padding: 35px 25px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); text-align: center; color: white; box-sizing: border-box;">
             <!-- Logo / Header -->
             <div style="margin-bottom: 25px;">

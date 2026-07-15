@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v59';
+const APP_VERSION = 'v60';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2372,6 +2372,14 @@ async function sincronizacaoBidirecional() {
                         const localTs = local.timestamp ? new Date(local.timestamp).getTime() : 0;
 
                         if (remotoTs > localTs) {
+                            if (store === 'colaboradores') {
+                                if (!remoto.senha && local.senha) {
+                                    remoto.senha = local.senha;
+                                }
+                                if (local.nivelAcesso && local.nivelAcesso !== 'Tecnico') {
+                                    remoto.nivelAcesso = local.nivelAcesso;
+                                }
+                            }
                             remoto.disabledItems = local.disabledItems;
                             remoto.customItems = local.customItems;
                             remoto.ultimoChecklist = local.ultimoChecklist;

@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v62';
+const APP_VERSION = 'v63';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -250,40 +250,97 @@ async function initApp() {
 
 async function cleanDuplicateCadastros() {
     try {
+        // 1. Limpar duplicados em cadastros
         const cadastros = await getAllFromIndexedDB('cadastros');
-        const seenCadastros = new Set();
+        const cadastrosByPatrimonio = {};
         for (const item of cadastros) {
-            const normalizedId = String(item.id).trim().toUpperCase();
-            if (seenCadastros.has(normalizedId)) {
-                await deleteFromIndexedDB('cadastros', item.id);
-                console.log('Deletado cadastro duplicado local:', item.id);
+            const normalizedId = String(item.id || item.patrimonio || '').trim().toUpperCase();
+            if (!normalizedId) continue;
+            if (!cadastrosByPatrimonio[normalizedId]) {
+                cadastrosByPatrimonio[normalizedId] = [];
+            }
+            cadastrosByPatrimonio[normalizedId].push(item);
+        }
+        for (const [patrimonio, list] of Object.entries(cadastrosByPatrimonio)) {
+            if (list.length > 1) {
+                let best = list[0];
+                for (let i = 1; i < list.length; i++) {
+                    const current = list[i];
+                    const bestTs = best.timestamp ? new Date(best.timestamp).getTime() : 0;
+                    const currTs = current.timestamp ? new Date(current.timestamp).getTime() : 0;
+                    if (currTs > bestTs) {
+                        best = current;
+                    }
+                }
+                for (const item of list) {
+                    if (item.id !== best.id) {
+                        await deleteFromIndexedDB('cadastros', item.id);
+                    }
+                }
+                if (best.id !== patrimonio || best.patrimonio !== patrimonio) {
+                    await deleteFromIndexedDB('cadastros', best.id);
+                    best.id = patrimonio;
+                    best.patrimonio = patrimonio;
+                    await saveToIndexedDB('cadastros', best, true);
+                }
             } else {
-                seenCadastros.add(normalizedId);
-                if (item.id !== normalizedId || item.patrimonio !== normalizedId) {
+                const item = list[0];
+                if (item.id !== patrimonio || item.patrimonio !== patrimonio) {
                     await deleteFromIndexedDB('cadastros', item.id);
-                    item.id = normalizedId;
-                    item.patrimonio = normalizedId;
+                    item.id = patrimonio;
+                    item.patrimonio = patrimonio;
                     await saveToIndexedDB('cadastros', item, true);
-                    console.log('Normalizado id de cadastro:', item.id);
                 }
             }
         }
 
+        // 2. Limpar duplicados em colaboradores
         const colaboradores = await getAllFromIndexedDB('colaboradores');
-        const seenColabs = new Set();
+        const colabsByMatricula = {};
         for (const item of colaboradores) {
-            const normalizedId = String(item.id).trim().toUpperCase();
-            if (seenColabs.has(normalizedId)) {
-                await deleteFromIndexedDB('colaboradores', item.id);
-                console.log('Deletado colaborador duplicado local:', item.id);
+            const normalizedId = String(item.id || item.matricula || '').trim().toUpperCase();
+            if (!normalizedId) continue;
+            if (!colabsByMatricula[normalizedId]) {
+                colabsByMatricula[normalizedId] = [];
+            }
+            colabsByMatricula[normalizedId].push(item);
+        }
+        for (const [matricula, list] of Object.entries(colabsByMatricula)) {
+            if (list.length > 1) {
+                let best = list[0];
+                for (let i = 1; i < list.length; i++) {
+                    const current = list[i];
+                    const bestHasSenha = !!best.senha;
+                    const currHasSenha = !!current.senha;
+                    if (currHasSenha && !bestHasSenha) {
+                        best = current;
+                    } else if (currHasSenha === bestHasSenha) {
+                        const bestTs = best.timestamp ? new Date(best.timestamp).getTime() : 0;
+                        const currTs = current.timestamp ? new Date(current.timestamp).getTime() : 0;
+                        if (currTs > bestTs) {
+                            best = current;
+                        }
+                    }
+                }
+                for (const item of list) {
+                    if (item.id !== best.id) {
+                        await deleteFromIndexedDB('colaboradores', item.id);
+                    }
+                }
+                if (best.id !== matricula || best.matricula !== matricula) {
+                    await deleteFromIndexedDB('colaboradores', best.id);
+                    best.id = matricula;
+                    best.matricula = matricula;
+                    await saveToIndexedDB('colaboradores', best, true);
+                }
+                console.log('Duplicados de colaboradores limpos para matrícula:', matricula, 'Senha mantida:', !!best.senha);
             } else {
-                seenColabs.add(normalizedId);
-                if (item.id !== normalizedId || item.matricula !== normalizedId) {
+                const item = list[0];
+                if (item.id !== matricula || item.matricula !== matricula) {
                     await deleteFromIndexedDB('colaboradores', item.id);
-                    item.id = normalizedId;
-                    item.matricula = normalizedId;
+                    item.id = matricula;
+                    item.matricula = matricula;
                     await saveToIndexedDB('colaboradores', item, true);
-                    console.log('Normalizado id de colaborador:', item.id);
                 }
             }
         }

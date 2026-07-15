@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v63';
+const APP_VERSION = 'v64';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -965,7 +965,7 @@ function openNovoCadastro() {
         document.getElementById('colabASO').value = '';
         
         // Reset Save Button to default
-        const btn = document.querySelector('#pageNovoColaborador .save-btn');
+        const btn = document.getElementById('btnSaveColaborador');
         if (btn) {
             btn.textContent = 'Cadastrar Colaborador';
             btn.setAttribute('onclick', 'saveColaborador()');
@@ -1205,7 +1205,7 @@ async function editColaborador(id) {
         document.getElementById('colabSenha').value = '';
         document.getElementById('colabNivelAcesso').value = colab.nivelAcesso || 'Tecnico';
 
-        const btn = document.querySelector('#pageNovoColaborador .save-btn[onclick="saveColaborador()"]');
+        const btn = document.getElementById('btnSaveColaborador');
         if (btn) {
             btn.textContent = 'Atualizar Colaborador';
             btn.setAttribute('onclick', `saveColaboradorEdit('${id}')`);
@@ -1264,7 +1264,7 @@ async function saveColaboradorEdit(id) {
         return;
     }
 
-    const btn = document.querySelector('#pageNovoColaborador .save-btn[onclick^="saveColaboradorEdit"]');
+    const btn = document.getElementById('btnSaveColaborador');
     if (btn) {
         btn.textContent = 'Cadastrar Colaborador';
         btn.setAttribute('onclick', 'saveColaborador()');

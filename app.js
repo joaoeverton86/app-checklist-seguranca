@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v64';
+const APP_VERSION = 'v65';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -821,18 +821,21 @@ async function saveColaborador() {
     const setor = document.getElementById('colabSetor').value;
     const empresa = document.getElementById('colabEmpresa').value.trim();
     const matricula = document.getElementById('colabMatricula').value.trim();
+    const email = document.getElementById('colabEmail').value.trim().toLowerCase();
     const aso = document.getElementById('colabASO').value;
-    const senha = document.getElementById('colabSenha').value;
     const nivelAcesso = document.getElementById('colabNivelAcesso').value || 'Tecnico';
     
     const matriculaNorm = matricula ? matricula.trim().toUpperCase() : '';
     
-    if (!nome || !funcao || !matriculaNorm) {
-        showToast('Preencha todos os campos obrigatórios (Nome, Função e Matrícula)');
+    if (!nome || !funcao || !matriculaNorm || !email) {
+        showToast('Preencha todos os campos obrigatórios (Nome, Função, Matrícula e E-mail)');
         return;
     }
-    
-    const hash = senha ? await sha256(senha) : '';
+
+    if (!email.includes('@') || !email.includes('.')) {
+        showToast('❌ Insira um e-mail válido!');
+        return;
+    }
     
     if (matriculaNorm) {
         const existing = await getFromIndexedDB('colaboradores', matriculaNorm);
@@ -849,8 +852,9 @@ async function saveColaborador() {
             existing.funcao = funcao;
             existing.setor = setor;
             existing.empresa = empresa;
+            existing.email = email;
             existing.aso = aso;
-            existing.senha = hash;
+            existing.senha = ''; // Senha zerada até o usuário criar
             existing.nivelAcesso = nivelAcesso;
             await saveToIndexedDB('colaboradores', existing);
             showToast('Colaborador reativado!');
@@ -860,8 +864,8 @@ async function saveColaborador() {
             document.getElementById('colabSetor').value = '';
             document.getElementById('colabEmpresa').value = '';
             document.getElementById('colabMatricula').value = '';
+            document.getElementById('colabEmail').value = '';
             document.getElementById('colabASO').value = '';
-            document.getElementById('colabSenha').value = '';
             document.getElementById('colabNivelAcesso').value = 'Tecnico';
             
             setTimeout(() => showPage('pageCadastro'), 800);
@@ -876,8 +880,9 @@ async function saveColaborador() {
         setor,
         empresa,
         matricula: matriculaNorm,
+        email,
         aso,
-        senha: hash,
+        senha: '', // Em branco até o usuário se cadastrar
         nivelAcesso: nivelAcesso,
         timestamp: new Date().toISOString(),
         ativo: true,
@@ -898,8 +903,8 @@ async function saveColaborador() {
     document.getElementById('colabSetor').value = '';
     document.getElementById('colabEmpresa').value = '';
     document.getElementById('colabMatricula').value = '';
+    document.getElementById('colabEmail').value = '';
     document.getElementById('colabASO').value = '';
-    document.getElementById('colabSenha').value = '';
     document.getElementById('colabNivelAcesso').value = 'Tecnico';
     
     setTimeout(() => showPage('pageCadastro'), 800);
@@ -1201,8 +1206,8 @@ async function editColaborador(id) {
         document.getElementById('colabSetor').value = colab.setor || '';
         document.getElementById('colabEmpresa').value = colab.empresa || '';
         document.getElementById('colabMatricula').value = colab.matricula || '';
+        document.getElementById('colabEmail').value = colab.email || '';
         document.getElementById('colabASO').value = colab.aso || '';
-        document.getElementById('colabSenha').value = '';
         document.getElementById('colabNivelAcesso').value = colab.nivelAcesso || 'Tecnico';
 
         const btn = document.getElementById('btnSaveColaborador');
@@ -1218,8 +1223,15 @@ async function saveColaboradorEdit(id) {
     if (!oldColab) return;
 
     const newMatricula = document.getElementById('colabMatricula').value.trim().toUpperCase();
-    if (!newMatricula) {
-        showToast('Preencha a matrícula');
+    const newEmail = document.getElementById('colabEmail').value.trim().toLowerCase();
+    
+    if (!newMatricula || !newEmail) {
+        showToast('Preencha a matrícula e o e-mail');
+        return;
+    }
+
+    if (!newEmail.includes('@') || !newEmail.includes('.')) {
+        showToast('❌ Insira um e-mail válido!');
         return;
     }
 
@@ -1233,23 +1245,18 @@ async function saveColaboradorEdit(id) {
         await deleteFromIndexedDB('colaboradores', id);
     }
 
-    const inputSenha = document.getElementById('colabSenha').value;
     const newNivelAcesso = document.getElementById('colabNivelAcesso').value || 'Tecnico';
-    let newSenha = oldColab.senha || '';
-    if (inputSenha) {
-        newSenha = await sha256(inputSenha);
-    }
 
     const colab = {
         ...oldColab,
         id: newMatricula,
         matricula: newMatricula,
+        email: newEmail,
         nome: document.getElementById('colabNome').value.trim(),
         funcao: document.getElementById('colabFuncao').value,
         setor: document.getElementById('colabSetor').value,
         empresa: document.getElementById('colabEmpresa').value.trim(),
         aso: document.getElementById('colabASO').value,
-        senha: newSenha,
         nivelAcesso: newNivelAcesso,
         ativo: true,
         synced: false
@@ -1275,8 +1282,8 @@ async function saveColaboradorEdit(id) {
     document.getElementById('colabSetor').value = '';
     document.getElementById('colabEmpresa').value = '';
     document.getElementById('colabMatricula').value = '';
+    document.getElementById('colabEmail').value = '';
     document.getElementById('colabASO').value = '';
-    document.getElementById('colabSenha').value = '';
     document.getElementById('colabNivelAcesso').value = 'Tecnico';
 }
 
@@ -2447,8 +2454,11 @@ async function sincronizacaoBidirecional() {
                                 if (!remoto.senha && local.senha) {
                                     remoto.senha = local.senha;
                                 }
-                                if (local.nivelAcesso && local.nivelAcesso !== 'Tecnico') {
+                                if (!remoto.nivelAcesso && local.nivelAcesso) {
                                     remoto.nivelAcesso = local.nivelAcesso;
+                                }
+                                if (!remoto.email && local.email) {
+                                    remoto.email = local.email;
                                 }
                             }
                             remoto.disabledItems = local.disabledItems;
@@ -4401,6 +4411,7 @@ function converterParaApp(storeName, row) {
             setor: row['Setor'] || '',
             empresa: row['Empresa'] || '',
             matricula: matVal,
+            email: row['Email'] || '',
             aso: row['Validade ASO'] || '',
             senha: row['Senha'] || '',
             nivelAcesso: row['NivelAcesso'] || 'Tecnico',
@@ -5027,10 +5038,10 @@ async function realizarLogin() {
     
     if (!matriculaInput || !senhaInput) return;
     
-    const matricula = matriculaInput.value.trim().toUpperCase();
+    const loginVal = matriculaInput.value.trim();
     const senha = senhaInput.value;
     
-    if (!matricula || !senha) {
+    if (!loginVal || !senha) {
         if (errorDiv) {
             errorDiv.textContent = '❌ Por favor, preencha todos os campos.';
             errorDiv.style.display = 'block';
@@ -5041,23 +5052,33 @@ async function realizarLogin() {
     let authenticated = false;
     let userRole = 'Tecnico';
     let userName = '';
+    let userMatricula = '';
+    
+    const loginUpper = loginVal.toUpperCase();
     
     // 1. Fallback admin/admin
-    if (matricula === 'ADMIN' && senha === 'admin') {
+    if (loginUpper === 'ADMIN' && senha === 'admin') {
         authenticated = true;
         userRole = 'Admin';
         userName = 'Administrador Padrão';
+        userMatricula = 'ADMIN';
     } else {
         // Buscar no IndexedDB
-        console.log('Tentativa de login para matrícula:', matricula);
-        const colab = await getFromIndexedDB('colaboradores', matricula);
-        console.log('Resultado da busca no IndexedDB:', colab);
+        console.log('Tentativa de login para:', loginVal);
+        const colaboradores = await getAllFromIndexedDB('colaboradores');
+        
+        // 1. Procurar por Matrícula
+        let colab = colaboradores.find(c => String(c.matricula || '').trim().toUpperCase() === loginUpper);
+        
+        // 2. Se não achou, procurar por E-mail
+        if (!colab) {
+            const loginLower = loginVal.toLowerCase();
+            colab = colaboradores.find(c => String(c.email || '').trim().toLowerCase() === loginLower);
+        }
+        
         if (colab) {
-            console.log('Senha cadastrada (hash):', colab.senha);
-            console.log('Nível de acesso:', colab.nivelAcesso);
-            console.log('Status ativo:', colab.ativo);
-            
-            if (colab.ativo === false) {
+            console.log('Colaborador encontrado:', colab.nome);
+            if (colab.ativo === false || colab.ativo === 'Não') {
                 if (errorDiv) {
                     errorDiv.textContent = '❌ Este colaborador está inativo/desmobilizado.';
                     errorDiv.style.display = 'block';
@@ -5074,17 +5095,16 @@ async function realizarLogin() {
             }
             
             const hashedInput = await sha256(senha);
-            console.log('Hash da senha digitada:', hashedInput);
-            
             if (colab.senha === hashedInput) {
                 authenticated = true;
                 userRole = colab.nivelAcesso || 'Tecnico';
                 userName = colab.nome;
+                userMatricula = colab.matricula;
             } else {
                 console.warn('Senha incorreta!');
             }
         } else {
-            console.warn('Colaborador não encontrado com matrícula:', matricula);
+            console.warn('Colaborador não encontrado com:', loginVal);
         }
     }
     
@@ -5093,7 +5113,7 @@ async function realizarLogin() {
         
         // Criar e salvar sessão no localStorage
         const session = {
-            matricula: matricula,
+            matricula: userMatricula,
             role: userRole,
             nome: userName,
             loginTime: Date.now()
@@ -5110,10 +5130,258 @@ async function realizarLogin() {
         showPage('pageHome');
     } else {
         if (errorDiv) {
-            errorDiv.textContent = '❌ Matrícula ou senha incorretos.';
+            errorDiv.textContent = '❌ Matrícula/E-mail ou senha incorretos.';
             errorDiv.style.display = 'block';
         }
     }
+}
+
+async function realizarCadastroConta() {
+    const nome = document.getElementById('signUpNome').value.trim();
+    const email = document.getElementById('signUpEmail').value.trim();
+    const matricula = document.getElementById('signUpMatricula').value.trim();
+    const funcao = document.getElementById('signUpFuncao').value.trim();
+    const setor = document.getElementById('signUpSetor').value.trim() || 'Geral';
+    const senha = document.getElementById('signUpSenha').value;
+    const senhaConfirm = document.getElementById('signUpSenhaConfirm').value;
+    const errorEl = document.getElementById('signUpError');
+    
+    if (errorEl) errorEl.style.display = 'none';
+
+    if (!nome || !email || !matricula || !funcao || !senha) {
+        showSignUpError('❌ Por favor, preencha todos os campos obrigatórios (*).');
+        return;
+    }
+
+    if (senha !== senhaConfirm) {
+        showSignUpError('❌ As senhas não conferem.');
+        return;
+    }
+
+    if (senha.length < 4) {
+        showSignUpError('❌ A senha deve conter pelo menos 4 caracteres.');
+        return;
+    }
+
+    if (!email.includes('@') || !email.includes('.')) {
+        showSignUpError('❌ Por favor, insira um e-mail válido.');
+        return;
+    }
+
+    const matriculaNorm = matricula.toUpperCase();
+    const emailNorm = email.toLowerCase();
+
+    try {
+        // Verificar duplicados localmente
+        const colaboradores = await getAllFromIndexedDB('colaboradores');
+        
+        const dupMatricula = colaboradores.find(c => String(c.matricula || '').trim().toUpperCase() === matriculaNorm);
+        if (dupMatricula && dupMatricula.ativo !== false && dupMatricula.ativo !== 'Não') {
+            showSignUpError('⚠️ Já existe um colaborador ativo com esta Matrícula.');
+            return;
+        }
+
+        const dupEmail = colaboradores.find(c => String(c.email || '').trim().toLowerCase() === emailNorm);
+        if (dupEmail && dupEmail.ativo !== false && dupEmail.ativo !== 'Não') {
+            showSignUpError('⚠️ Já existe um colaborador ativo com este E-mail.');
+            return;
+        }
+
+        // Hashing senha
+        const hash = await sha256(senha);
+
+        const novoColab = {
+            id: matriculaNorm,
+            nome: nome,
+            email: emailNorm,
+            matricula: matriculaNorm,
+            funcao: funcao.toUpperCase(),
+            setor: setor.toUpperCase(),
+            empresa: '',
+            aso: '',
+            senha: hash,
+            nivelAcesso: 'Tecnico',
+            ativo: true,
+            synced: false,
+            timestamp: new Date().toISOString()
+        };
+
+        await saveToIndexedDB('colaboradores', novoColab);
+        showToast('🎉 Conta criada com sucesso! Faça login.');
+        
+        // Limpar inputs
+        document.getElementById('signUpNome').value = '';
+        document.getElementById('signUpEmail').value = '';
+        document.getElementById('signUpMatricula').value = '';
+        document.getElementById('signUpFuncao').value = '';
+        document.getElementById('signUpSetor').value = '';
+        document.getElementById('signUpSenha').value = '';
+        document.getElementById('signUpSenhaConfirm').value = '';
+
+        // Sincronizar em background
+        syncColecao('colaboradores').catch(err => console.error('Erro no sync do cadastro:', err));
+
+        // Redirecionar para login
+        setTimeout(() => {
+            showPage('pageLogin');
+        }, 1000);
+
+    } catch (err) {
+        console.error('Erro ao realizar cadastro:', err);
+        showSignUpError('❌ Erro interno ao cadastrar. Tente novamente.');
+    }
+}
+
+function showSignUpError(msg) {
+    const errorEl = document.getElementById('signUpError');
+    if (errorEl) {
+        errorEl.textContent = msg;
+        errorEl.style.display = 'block';
+    }
+}
+
+async function solicitarCodigoRecuperacao() {
+    const matricula = document.getElementById('recoverMatricula').value.trim();
+    const email = document.getElementById('recoverEmail').value.trim();
+    const errorEl = document.getElementById('recoverError');
+    
+    if (errorEl) errorEl.style.display = 'none';
+
+    if (!matricula || !email) {
+        showRecoverError('❌ Preencha a Matrícula e o E-mail.');
+        return;
+    }
+
+    if (!navigator.onLine) {
+        showRecoverError('⚠️ Você está offline. A recuperação exige conexão com a internet.');
+        return;
+    }
+
+    showToast('Processando solicitação...');
+    const matriculaNorm = matricula.toUpperCase();
+    const emailNorm = email.toLowerCase();
+
+    try {
+        const payload = {
+            store: 'forgot_password',
+            data: {
+                matricula: matriculaNorm,
+                email: emailNorm
+            }
+        };
+
+        const response = await fetch(SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            showToast('✅ Código de recuperação enviado para seu e-mail!');
+            document.getElementById('recoverStep1').style.display = 'none';
+            document.getElementById('recoverStep2').style.display = 'flex';
+        } else {
+            showRecoverError('❌ ' + (result.error || 'Erro ao enviar código. Verifique se os dados estão corretos.'));
+        }
+    } catch (err) {
+        console.error('Erro na solicitação de recuperação:', err);
+        showRecoverError('❌ Falha na conexão com o servidor de recuperação.');
+    }
+}
+
+async function redefinirSenhaComCodigo() {
+    const matricula = document.getElementById('recoverMatricula').value.trim();
+    const email = document.getElementById('recoverEmail').value.trim();
+    const code = document.getElementById('recoverCode').value.trim();
+    const newSenha = document.getElementById('recoverNewSenha').value;
+    const newSenhaConfirm = document.getElementById('recoverNewSenhaConfirm').value;
+    
+    if (!matricula || !email || !code || !newSenha) {
+        showRecoverError('❌ Preencha todos os campos.');
+        return;
+    }
+
+    if (newSenha !== newSenhaConfirm) {
+        showRecoverError('❌ As senhas não conferem.');
+        return;
+    }
+
+    if (newSenha.length < 4) {
+        showRecoverError('❌ A senha deve ter pelo menos 4 caracteres.');
+        return;
+    }
+
+    if (!navigator.onLine) {
+        showRecoverError('⚠️ Você está offline. A redefinição exige conexão com a internet.');
+        return;
+    }
+
+    showToast('Redefinindo senha...');
+    const matriculaNorm = matricula.toUpperCase();
+    const emailNorm = email.toLowerCase();
+
+    try {
+        const hashedSenha = await sha256(newSenha);
+
+        const payload = {
+            store: 'reset_password_verify',
+            data: {
+                matricula: matriculaNorm,
+                email: emailNorm,
+                code: code,
+                newSenha: hashedSenha
+            }
+        };
+
+        const response = await fetch(SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            // Atualizar no IndexedDB local também
+            const colab = await getFromIndexedDB('colaboradores', matriculaNorm);
+            if (colab) {
+                colab.senha = hashedSenha;
+                colab.timestamp = new Date().toISOString();
+                colab.synced = true;
+                await saveToIndexedDB('colaboradores', colab, true);
+            }
+            
+            showToast('🎉 Senha redefinida com sucesso! Faça login.');
+            cancelarRecuperacao();
+        } else {
+            showRecoverError('❌ ' + (result.error || 'Código inválido ou expirado.'));
+        }
+    } catch (err) {
+        console.error('Erro ao redefinir senha:', err);
+        showRecoverError('❌ Falha na conexão ao redefinir.');
+    }
+}
+
+function showRecoverError(msg) {
+    const errorEl = document.getElementById('recoverError');
+    if (errorEl) {
+        errorEl.textContent = msg;
+        errorEl.style.display = 'block';
+    }
+}
+
+function cancelarRecuperacao() {
+    document.getElementById('recoverMatricula').value = '';
+    document.getElementById('recoverEmail').value = '';
+    document.getElementById('recoverCode').value = '';
+    document.getElementById('recoverNewSenha').value = '';
+    document.getElementById('recoverNewSenhaConfirm').value = '';
+    
+    document.getElementById('recoverStep1').style.display = 'flex';
+    document.getElementById('recoverStep2').style.display = 'none';
+    
+    const errorEl = document.getElementById('recoverError');
+    if (errorEl) errorEl.style.display = 'none';
+    
+    showPage('pageLogin');
 }
 
 function realizarLogout() {

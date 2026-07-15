@@ -489,6 +489,10 @@
         .page.active { display: block; }
         #pageLogin { display: none; }
         #pageLogin.active { display: flex !important; }
+        #pageSignUp { display: none; }
+        #pageSignUp.active { display: flex !important; }
+        #pageForgotPassword { display: none; }
+        #pageForgotPassword.active { display: flex !important; }
 
         /* Empty State */
         .empty-state {
@@ -764,6 +768,134 @@
             
             <div id="loginError" style="margin-top: 15px; font-size: 12px; color: #ff7675; display: none; font-weight: 600;">
                 ❌ Matrícula ou senha incorretos.
+            </div>
+
+            <!-- Links for Recovery and Sign Up -->
+            <div style="margin-top: 25px; display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                <a onclick="showPage('pageForgotPassword')" style="color: rgba(255, 255, 255, 0.7); text-decoration: underline; cursor: pointer;">Esqueci minha senha</a>
+                <a onclick="showPage('pageSignUp')" style="color: #2ecc71; font-weight: 600; text-decoration: underline; cursor: pointer;">Não tem conta? Cadastre-se</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page: SignUp -->
+    <div class="page" id="pageSignUp" style="background: linear-gradient(135deg, #1f4068 0%, #162447 100%); min-height: 100vh; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+        <div style="width: 100%; max-width: 450px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 20px; padding: 30px 20px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); text-align: center; color: white; box-sizing: border-box;">
+            <!-- Logo / Header -->
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 32px; margin-bottom: 5px;">🛡️</div>
+                <h1 style="font-size: 20px; font-weight: 700; margin: 0; color: #ffffff; letter-spacing: 0.5px;">Cadastro de Conta</h1>
+                <div style="font-size: 11px; color: rgba(255, 255, 255, 0.6); margin-top: 4px; text-transform: uppercase;">Checklist Segurança - PISF</div>
+            </div>
+
+            <!-- Sign Up Form -->
+            <div style="text-align: left; display: flex; flex-direction: column; gap: 12px;">
+                <div class="form-group">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 4px; display: block;">Nome Completo *</label>
+                    <input type="text" class="form-input" id="signUpNome" placeholder="Seu nome completo" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 10px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 4px; display: block;">E-mail *</label>
+                    <input type="email" class="form-input" id="signUpEmail" placeholder="Seu e-mail" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 10px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 4px; display: block;">Matrícula *</label>
+                    <input type="text" class="form-input" id="signUpMatricula" placeholder="Digite sua matrícula" autocomplete="off" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 10px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 4px; display: block;">Função / Cargo *</label>
+                    <input type="text" class="form-input" id="signUpFuncao" list="listaFuncoes" placeholder="Ex: TÉCNICO DE SEGURANÇA" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 10px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 4px; display: block;">Setor</label>
+                    <input type="text" class="form-input" id="signUpSetor" list="listaSetores" placeholder="Ex: SESMT" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 10px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 4px; display: block;">Senha *</label>
+                    <input type="password" class="form-input" id="signUpSenha" placeholder="Digite sua senha" autocomplete="new-password" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 10px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 4px; display: block;">Confirmar Senha *</label>
+                    <input type="password" class="form-input" id="signUpSenhaConfirm" placeholder="Confirme sua senha" autocomplete="new-password" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 10px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                </div>
+
+                <button class="save-btn" onclick="realizarCadastroConta()" style="margin-top: 10px; width: 100%; padding: 12px; background: #27ae60; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background 0.2s;">
+                    🔑 Criar Conta
+                </button>
+            </div>
+            
+            <div id="signUpError" style="margin-top: 12px; font-size: 12px; color: #ff7675; display: none; font-weight: 600;">
+                ❌ Erro de validação.
+            </div>
+
+            <div style="margin-top: 20px; font-size: 13px;">
+                <a onclick="showPage('pageLogin')" style="color: rgba(255, 255, 255, 0.7); text-decoration: underline; cursor: pointer;">Já tem conta? Entrar</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page: ForgotPassword -->
+    <div class="page" id="pageForgotPassword" style="background: linear-gradient(135deg, #1f4068 0%, #162447 100%); min-height: 100vh; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+        <div style="width: 100%; max-width: 400px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 20px; padding: 35px 25px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); text-align: center; color: white; box-sizing: border-box;">
+            <!-- Logo / Header -->
+            <div style="margin-bottom: 25px;">
+                <div style="font-size: 38px; margin-bottom: 5px;">🔑</div>
+                <h1 style="font-size: 22px; font-weight: 700; margin: 0; color: #ffffff;">Recuperar Senha</h1>
+                <div style="font-size: 11px; color: rgba(255, 255, 255, 0.6); margin-top: 4px;">Checklist Segurança - PISF</div>
+            </div>
+
+            <!-- Passo 1: Solicitar Código -->
+            <div id="recoverStep1" style="text-align: left; display: flex; flex-direction: column; gap: 15px;">
+                <p style="font-size: 13px; color: rgba(255, 255, 255, 0.8); line-height: 1.5; margin: 0 0 10px 0;">
+                    Insira sua matrícula e o e-mail cadastrado. Enviaremos um código de verificação de 6 dígitos para o seu e-mail.
+                </p>
+                <div class="form-group">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 6px; display: block;">Matrícula *</label>
+                    <input type="text" class="form-input" id="recoverMatricula" placeholder="Digite sua matrícula" autocomplete="off" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 12px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 6px; display: block;">E-mail *</label>
+                    <input type="email" class="form-input" id="recoverEmail" placeholder="Digite seu e-mail cadastrado" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 12px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                </div>
+                <button class="save-btn" onclick="solicitarCodigoRecuperacao()" style="margin-top: 15px; width: 100%; padding: 14px; background: #2980b9; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background 0.2s;">
+                    📩 Enviar Código
+                </button>
+            </div>
+
+            <!-- Passo 2: Digitar Código e Nova Senha -->
+            <div id="recoverStep2" style="text-align: left; display: none; flex-direction: column; gap: 15px;">
+                <p style="font-size: 13px; color: rgba(255, 255, 255, 0.8); line-height: 1.5; margin: 0 0 10px 0;">
+                    Digite o código de 6 dígitos enviado para seu e-mail e defina sua nova senha.
+                </p>
+                <div class="form-group">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 6px; display: block;">Código de 6 dígitos *</label>
+                    <input type="text" class="form-input" id="recoverCode" placeholder="Código de 6 dígitos" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 12px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box; text-align: center; font-weight: bold; letter-spacing: 2px;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 6px; display: block;">Nova Senha *</label>
+                    <input type="password" class="form-input" id="recoverNewSenha" placeholder="Digite sua nova senha" autocomplete="new-password" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 12px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 6px; display: block;">Confirmar Nova Senha *</label>
+                    <input type="password" class="form-input" id="recoverNewSenhaConfirm" placeholder="Confirme sua nova senha" autocomplete="new-password" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 12px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                </div>
+                <button class="save-btn" onclick="redefinirSenhaComCodigo()" style="margin-top: 15px; width: 100%; padding: 14px; background: #27ae60; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background 0.2s;">
+                    🔑 Redefinir Senha
+                </button>
+            </div>
+
+            <div id="recoverError" style="margin-top: 15px; font-size: 12px; color: #ff7675; display: none; font-weight: 600;">
+                ❌ Erro de processamento.
+            </div>
+
+            <div style="margin-top: 25px; font-size: 13px;">
+                <a onclick="cancelarRecuperacao()" style="color: rgba(255, 255, 255, 0.7); text-decoration: underline; cursor: pointer;">Voltar para o Login</a>
             </div>
         </div>
     </div>
@@ -1567,8 +1699,12 @@
                     <input type="text" class="form-input" id="colabMatricula" placeholder="Nº matrícula" autocomplete="off">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Senha de Acesso</label>
-                    <input type="password" class="form-input" id="colabSenha" placeholder="Defina a senha (deixe vazio se não for usar login)" autocomplete="new-password">
+                    <label class="form-label">E-mail *</label>
+                    <input type="email" class="form-input" id="colabEmail" placeholder="E-mail do colaborador">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Validade ASO</label>
+                    <input type="date" class="form-input" id="colabASO">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Nível de Acesso</label>

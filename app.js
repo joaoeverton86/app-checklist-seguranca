@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v65';
+const APP_VERSION = 'v66';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -5172,17 +5172,30 @@ async function realizarCadastroConta() {
     const emailNorm = email.toLowerCase();
 
     try {
-        // Verificar duplicados localmente
         const colaboradores = await getAllFromIndexedDB('colaboradores');
+        let colabObj = null;
         
         const dupMatricula = colaboradores.find(c => String(c.matricula || '').trim().toUpperCase() === matriculaNorm);
         if (dupMatricula && dupMatricula.ativo !== false && dupMatricula.ativo !== 'Não') {
-            showSignUpError('⚠️ Já existe um colaborador ativo com esta Matrícula.');
-            return;
+            if (dupMatricula.senha) {
+                showSignUpError('⚠️ Já existe um colaborador ativo com esta Matrícula.');
+                return;
+            }
+            // Se já existe mas não tem senha, a gente atualiza os campos e ativa a senha
+            colabObj = {
+                ...dupMatricula,
+                nome: nome,
+                email: emailNorm,
+                funcao: funcao.toUpperCase(),
+                setor: setor.toUpperCase(),
+                senha: '', // Será preenchido abaixo com o hash
+                synced: false,
+                timestamp: new Date().toISOString()
+            };
         }
 
         const dupEmail = colaboradores.find(c => String(c.email || '').trim().toLowerCase() === emailNorm);
-        if (dupEmail && dupEmail.ativo !== false && dupEmail.ativo !== 'Não') {
+        if (dupEmail && dupEmail.id !== matriculaNorm && dupEmail.ativo !== false && dupEmail.ativo !== 'Não') {
             showSignUpError('⚠️ Já existe um colaborador ativo com este E-mail.');
             return;
         }
@@ -5190,23 +5203,27 @@ async function realizarCadastroConta() {
         // Hashing senha
         const hash = await sha256(senha);
 
-        const novoColab = {
-            id: matriculaNorm,
-            nome: nome,
-            email: emailNorm,
-            matricula: matriculaNorm,
-            funcao: funcao.toUpperCase(),
-            setor: setor.toUpperCase(),
-            empresa: '',
-            aso: '',
-            senha: hash,
-            nivelAcesso: 'Tecnico',
-            ativo: true,
-            synced: false,
-            timestamp: new Date().toISOString()
-        };
+        if (colabObj) {
+            colabObj.senha = hash;
+        } else {
+            colabObj = {
+                id: matriculaNorm,
+                nome: nome,
+                email: emailNorm,
+                matricula: matriculaNorm,
+                funcao: funcao.toUpperCase(),
+                setor: setor.toUpperCase(),
+                empresa: '',
+                aso: '',
+                senha: hash,
+                nivelAcesso: 'Tecnico',
+                ativo: true,
+                synced: false,
+                timestamp: new Date().toISOString()
+            };
+        }
 
-        await saveToIndexedDB('colaboradores', novoColab);
+        await saveToIndexedDB('colaboradores', colabObj);
         showToast('🎉 Conta criada com sucesso! Faça login.');
         
         // Limpar inputs

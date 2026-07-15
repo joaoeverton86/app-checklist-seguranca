@@ -717,10 +717,11 @@
 <body>
 
     <!-- Header -->
-    <div class="header">
+    <div class="header" style="position: relative;">
         <button class="back-btn" id="backBtn" onclick="goBack()">←</button>
         <h1 id="headerTitle">Checklist Segurança</h1>
         <div class="subtitle" id="headerSubtitle">PISF RAMAL DO AGRESTE</div>
+        <button id="logoutBtn" onclick="realizarLogout()" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); color: white; border-radius: 6px; padding: 6px 12px; font-size: 11px; font-weight: 600; cursor: pointer; display: none; align-items: center; gap: 4px;">🚪 Sair</button>
     </div>
 
     <!-- Connection Status -->
@@ -728,11 +729,47 @@
         <span id="connectionText">● Online</span>
     </div>
 
+    <!-- Page: Login -->
+    <div class="page active" id="pageLogin" style="background: linear-gradient(135deg, #1f4068 0%, #162447 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+        <div style="width: 100%; max-width: 400px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 20px; padding: 35px 25px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); text-align: center; color: white; box-sizing: border-box;">
+            <!-- Logo / Header -->
+            <div style="margin-bottom: 25px;">
+                <div style="font-size: 38px; margin-bottom: 5px;">🛡️</div>
+                <h1 style="font-size: 22px; font-weight: 700; margin: 0; color: #ffffff; letter-spacing: 0.5px;">Checklist Segurança</h1>
+                <div style="font-size: 11px; color: rgba(255, 255, 255, 0.6); margin-top: 4px; text-transform: uppercase; letter-spacing: 1px;">Ramal do Agreste - PISF</div>
+            </div>
+
+            <!-- Login Form -->
+            <div style="text-align: left; display: flex; flex-direction: column; gap: 15px;">
+                <div class="form-group">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 6px; display: block;">Matrícula / Usuário</label>
+                    <input type="text" class="form-input" id="loginMatricula" placeholder="Digite sua matrícula..." style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 12px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 6px; display: block;">Senha</label>
+                    <div style="position: relative; width: 100%;">
+                        <input type="password" class="form-input" id="loginSenha" placeholder="Digite sua senha..." style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 12px; padding-right: 40px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                        <button onclick="toggleLoginPassword()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: rgba(255,255,255,0.6); font-size: 16px; cursor: pointer; padding: 5px; z-index: 10;">👁️</button>
+                    </div>
+                </div>
+
+                <button class="save-btn" onclick="realizarLogin()" style="margin-top: 15px; width: 100%; padding: 14px; background: #27ae60; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background 0.2s; box-shadow: 0 4px 15px rgba(39, 174, 96, 0.3);">
+                    🔑 Entrar
+                </button>
+            </div>
+            
+            <div id="loginError" style="margin-top: 15px; font-size: 12px; color: #ff7675; display: none; font-weight: 600;">
+                ❌ Matrícula ou senha incorretos.
+            </div>
+        </div>
+    </div>
+
     <!-- Page: Home -->
-    <div class="page active" id="pageHome">
+    <div class="page" id="pageHome">
         <div class="content">
             <div class="quick-actions">
-                <a class="action-btn" onclick="showPage('pageCadastro')">
+                <a class="action-btn" id="btnHomeCadastro" onclick="showPage('pageCadastro')">
                     <span class="icon">📝</span>
                     <span class="label">Gestão de Cadastros</span>
                 </a>
@@ -1526,9 +1563,16 @@
                     <label class="form-label">Matrícula *</label>
                     <input type="text" class="form-input" id="colabMatricula" placeholder="Nº matrícula">
                 </div>
-                <div class="form-group" style="display: none;">
-                    <label class="form-label">Validade ASO</label>
-                    <input type="date" class="form-input" id="colabASO" value="">
+                <div class="form-group">
+                    <label class="form-label">Senha de Acesso</label>
+                    <input type="password" class="form-input" id="colabSenha" placeholder="Defina a senha (deixe vazio se não for usar login)">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nível de Acesso</label>
+                    <select class="form-input" id="colabNivelAcesso" style="appearance: auto;">
+                        <option value="Tecnico">Técnico de Segurança (Acesso Padrão)</option>
+                        <option value="Admin">Administrador (Acesso Total)</option>
+                    </select>
                 </div>
                 <button class="save-btn" onclick="saveColaborador()">Cadastrar Colaborador</button>
             </div>

@@ -34,7 +34,7 @@ function setup() {
     ]);
     criarAbaSeNaoExiste(ss, COLABORADORES_SHEET, [
         'ID', 'Nome', 'Função', 'Setor', 'Empresa', 'Matrícula',
-        'Validade ASO', 'Data Hora Registro', 'Sincronizado'
+        'Validade ASO', 'Data Hora Registro', 'Sincronizado', 'Ativo', 'Senha', 'NivelAcesso'
     ]);
     criarABASeNaoExisteOuAtualizar(ss, ITEMS_SHEET);
     Logger.log('Setup concluído!');
@@ -371,7 +371,7 @@ function salvarColaborador(record) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const aba = obterAbaSegura(ss, COLABORADORES_SHEET, [
         'ID', 'Nome', 'Função', 'Setor', 'Empresa', 'Matrícula',
-        'Validade ASO', 'Data Hora Registro', 'Sincronizado', 'Ativo'
+        'Validade ASO', 'Data Hora Registro', 'Sincronizado', 'Ativo', 'Senha', 'NivelAcesso'
     ]);
     
     const rowData = [
@@ -384,7 +384,9 @@ function salvarColaborador(record) {
         record.aso || '',
         new Date().toISOString(),
         'Sim',
-        record.ativo !== false ? 'Sim' : 'Não'
+        record.ativo !== false ? 'Sim' : 'Não',
+        record.senha || '',
+        record.nivelAcesso || 'Tecnico'
     ];
     
     const linha = encontrarLinhaPorId(aba, record.id);

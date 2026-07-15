@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v57';
+const APP_VERSION = 'v58';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -217,6 +217,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (navigator.onLine && getSyncUrl()) {
         setTimeout(function() { sincronizacaoBidirecional(); }, 2000);
     }
+    const sessionStr = localStorage.getItem('active_session');
+    if (sessionStr) {
+        try {
+            const session = JSON.parse(sessionStr);
+            updateNavigationForRole(session.role);
+            showPage('pageHome');
+        } catch (e) {
+            localStorage.removeItem('active_session');
+            showPage('pageLogin');
+        }
+    } else {
+        showPage('pageLogin');
+    }
     
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js')
@@ -362,6 +375,26 @@ async function updatePendingBadge() {
 // ============================================
 
 function showPage(pageId) {
+    // Router guard
+    const sessionStr = localStorage.getItem('active_session');
+    if (!sessionStr && pageId !== 'pageLogin') {
+        showPage('pageLogin');
+        return;
+    }
+    
+    // Role-based authorization guard
+    if (sessionStr) {
+        const session = JSON.parse(sessionStr);
+        if (session.role === 'Tecnico') {
+            const forbiddenPages = ['pageCadastro', 'pageGerenciarItens', 'pageNovoEquipamento', 'pageNovoColaborador'];
+            if (forbiddenPages.includes(pageId)) {
+                showToast('🚫 Acesso restrito a administradores.');
+                showPage('pageHome');
+                return;
+            }
+        }
+    }
+
     // Salvar dados do formulário antes de sair
     if (currentPage === 'pageChecklistForm') {
         saveFormData();
@@ -384,10 +417,27 @@ function showPage(pageId) {
         'pageNovoEquipamento': 'navConfig',
         'pageNovoColaborador': 'navConfig',
         'pageGerenciarItens': 'navConfig',
-        'pageInterdicao': 'navHome'
+        'pageInterdicao': 'navHome',
+        'pageLogin': 'navHome'
     };
-    if (navMap[pageId]) {
+    if (navMap[pageId] && document.getElementById(navMap[pageId])) {
         document.getElementById(navMap[pageId]).classList.add('active');
+    }
+    
+    // Ocultar/exibir header e nav inferior se for login
+    const header = document.querySelector('.header');
+    const bottomNav = document.querySelector('.bottom-nav');
+    if (pageId === 'pageLogin') {
+        if (header) header.style.display = 'none';
+        if (bottomNav) bottomNav.style.display = 'none';
+    } else {
+        if (header) header.style.display = 'block';
+        if (bottomNav) bottomNav.style.display = 'flex';
+        // Assegurar que o botão de logout esteja visível
+        if (sessionStr) {
+            const session = JSON.parse(sessionStr);
+            updateNavigationForRole(session.role);
+        }
     }
     
     // Atualizar header
@@ -713,6 +763,8 @@ async function saveColaborador() {
     const empresa = document.getElementById('colabEmpresa').value.trim();
     const matricula = document.getElementById('colabMatricula').value.trim();
     const aso = document.getElementById('colabASO').value;
+    const senha = document.getElementById('colabSenha').value;
+    const nivelAcesso = document.getElementById('colabNivelAcesso').value || 'Tecnico';
     
     const matriculaNorm = matricula ? matricula.trim().toUpperCase() : '';
     
@@ -720,6 +772,8 @@ async function saveColaborador() {
         showToast('Preencha todos os campos obrigatórios (Nome, Função e Matrícula)');
         return;
     }
+    
+    const hash = senha ? await sha256(senha) : '';
     
     if (matriculaNorm) {
         const existing = await getFromIndexedDB('colaboradores', matriculaNorm);
@@ -737,6 +791,8 @@ async function saveColaborador() {
             existing.setor = setor;
             existing.empresa = empresa;
             existing.aso = aso;
+            existing.senha = hash;
+            existing.nivelAcesso = nivelAcesso;
             await saveToIndexedDB('colaboradores', existing);
             showToast('Colaborador reativado!');
             
@@ -746,6 +802,8 @@ async function saveColaborador() {
             document.getElementById('colabEmpresa').value = '';
             document.getElementById('colabMatricula').value = '';
             document.getElementById('colabASO').value = '';
+            document.getElementById('colabSenha').value = '';
+            document.getElementById('colabNivelAcesso').value = 'Tecnico';
             
             setTimeout(() => showPage('pageCadastro'), 800);
             return;
@@ -760,6 +818,8 @@ async function saveColaborador() {
         empresa,
         matricula: matriculaNorm,
         aso,
+        senha: hash,
+        nivelAcesso: nivelAcesso,
         timestamp: new Date().toISOString(),
         ativo: true,
         synced: false
@@ -774,6 +834,8 @@ async function saveColaborador() {
     document.getElementById('colabEmpresa').value = '';
     document.getElementById('colabMatricula').value = '';
     document.getElementById('colabASO').value = '';
+    document.getElementById('colabSenha').value = '';
+    document.getElementById('colabNivelAcesso').value = 'Tecnico';
     
     setTimeout(() => showPage('pageCadastro'), 800);
 }
@@ -1075,6 +1137,8 @@ async function editColaborador(id) {
         document.getElementById('colabEmpresa').value = colab.empresa || '';
         document.getElementById('colabMatricula').value = colab.matricula || '';
         document.getElementById('colabASO').value = colab.aso || '';
+        document.getElementById('colabSenha').value = '';
+        document.getElementById('colabNivelAcesso').value = colab.nivelAcesso || 'Tecnico';
 
         const btn = document.querySelector('#pageNovoColaborador .save-btn[onclick="saveColaborador()"]');
         if (btn) {
@@ -1104,6 +1168,13 @@ async function saveColaboradorEdit(id) {
         await deleteFromIndexedDB('colaboradores', id);
     }
 
+    const inputSenha = document.getElementById('colabSenha').value;
+    const newNivelAcesso = document.getElementById('colabNivelAcesso').value || 'Tecnico';
+    let newSenha = oldColab.senha || '';
+    if (inputSenha) {
+        newSenha = await sha256(inputSenha);
+    }
+
     const colab = {
         ...oldColab,
         id: newMatricula,
@@ -1113,6 +1184,8 @@ async function saveColaboradorEdit(id) {
         setor: document.getElementById('colabSetor').value,
         empresa: document.getElementById('colabEmpresa').value.trim(),
         aso: document.getElementById('colabASO').value,
+        senha: newSenha,
+        nivelAcesso: newNivelAcesso,
         ativo: true,
         synced: false
     };
@@ -1132,6 +1205,8 @@ async function saveColaboradorEdit(id) {
     document.getElementById('colabEmpresa').value = '';
     document.getElementById('colabMatricula').value = '';
     document.getElementById('colabASO').value = '';
+    document.getElementById('colabSenha').value = '';
+    document.getElementById('colabNivelAcesso').value = 'Tecnico';
 }
 
 async function deleteCadastro(id) {
@@ -4248,6 +4323,8 @@ function converterParaApp(storeName, row) {
             empresa: row['Empresa'] || '',
             matricula: matVal,
             aso: row['Validade ASO'] || '',
+            senha: row['Senha'] || '',
+            nivelAcesso: row['NivelAcesso'] || 'Tecnico',
             timestamp: row['Data Hora Registro'] || new Date().toISOString(),
             ativo: row['Ativo'] !== 'Não',
             synced: true
@@ -4762,3 +4839,127 @@ document.addEventListener('click', (e) => {
         closeQRScanner();
     }
 });
+
+// ============================================
+// AUTENTICAÇÃO E PERMISSÕES (LOGIN)
+// ============================================
+
+async function sha256(message) {
+    if (!message) return '';
+    const msgBuffer = new TextEncoder().encode(message);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+}
+
+async function realizarLogin() {
+    const matriculaInput = document.getElementById('loginMatricula');
+    const senhaInput = document.getElementById('loginSenha');
+    const errorDiv = document.getElementById('loginError');
+    
+    if (!matriculaInput || !senhaInput) return;
+    
+    const matricula = matriculaInput.value.trim().toUpperCase();
+    const senha = senhaInput.value;
+    
+    if (!matricula || !senha) {
+        if (errorDiv) {
+            errorDiv.textContent = '❌ Por favor, preencha todos os campos.';
+            errorDiv.style.display = 'block';
+        }
+        return;
+    }
+    
+    let authenticated = false;
+    let userRole = 'Tecnico';
+    let userName = '';
+    
+    // 1. Fallback admin/admin
+    if (matricula === 'ADMIN' && senha === 'admin') {
+        authenticated = true;
+        userRole = 'Admin';
+        userName = 'Administrador Padrão';
+    } else {
+        // Buscar no IndexedDB
+        const colab = await getFromIndexedDB('colaboradores', matricula);
+        if (colab && colab.ativo !== false && colab.senha) {
+            const hashedInput = await sha256(senha);
+            if (colab.senha === hashedInput) {
+                authenticated = true;
+                userRole = colab.nivelAcesso || 'Tecnico';
+                userName = colab.nome;
+            }
+        }
+    }
+    
+    if (authenticated) {
+        if (errorDiv) errorDiv.style.display = 'none';
+        
+        // Criar e salvar sessão no localStorage
+        const session = {
+            matricula: matricula,
+            role: userRole,
+            nome: userName,
+            loginTime: Date.now()
+        };
+        localStorage.setItem('active_session', JSON.stringify(session));
+        
+        // Limpar inputs
+        matriculaInput.value = '';
+        senhaInput.value = '';
+        
+        // Atualizar interface
+        updateNavigationForRole(userRole);
+        showToast(`Bem-vindo, ${userName}!`);
+        showPage('pageHome');
+    } else {
+        if (errorDiv) {
+            errorDiv.textContent = '❌ Matrícula ou senha incorretos.';
+            errorDiv.style.display = 'block';
+        }
+    }
+}
+
+function realizarLogout() {
+    if (confirm('Deseja realmente sair da sua conta?')) {
+        localStorage.removeItem('active_session');
+        updateNavigationForRole(null);
+        showPage('pageLogin');
+        showToast('Sessão encerrada.');
+    }
+}
+
+function toggleLoginPassword() {
+    const input = document.getElementById('loginSenha');
+    if (input) {
+        input.type = input.type === 'password' ? 'text' : 'password';
+    }
+}
+
+function updateNavigationForRole(role) {
+    const navCadastro = document.getElementById('navCadastro');
+    const navConfig = document.getElementById('navConfig');
+    const btnHomeCadastro = document.getElementById('btnHomeCadastro');
+    const logoutBtn = document.getElementById('logoutBtn');
+    
+    if (role === 'Tecnico') {
+        if (navCadastro) navCadastro.style.display = 'none';
+        if (navConfig) navConfig.style.display = 'none';
+        if (btnHomeCadastro) btnHomeCadastro.style.display = 'none';
+    } else if (role === 'Admin') {
+        if (navCadastro) navCadastro.style.display = 'inline-flex';
+        if (navConfig) navConfig.style.display = 'inline-flex';
+        if (btnHomeCadastro) btnHomeCadastro.style.display = 'flex';
+    } else {
+        // Ninguém logado (ou deslogando)
+        if (navCadastro) navCadastro.style.display = 'none';
+        if (navConfig) navConfig.style.display = 'none';
+        if (btnHomeCadastro) btnHomeCadastro.style.display = 'none';
+    }
+    
+    // Exibir/ocultar botão de logout no header
+    if (logoutBtn) {
+        logoutBtn.style.display = role ? 'flex' : 'none';
+    }
+}

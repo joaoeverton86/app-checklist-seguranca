@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v61';
+const APP_VERSION = 'v62';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -827,8 +827,14 @@ async function saveColaborador() {
         synced: false
     };
     
-    await saveToIndexedDB('colaboradores', colaborador);
-    showToast('Colaborador cadastrado!');
+    try {
+        await saveToIndexedDB('colaboradores', colaborador);
+        showToast('Colaborador cadastrado!');
+    } catch (err) {
+        console.error('Erro ao cadastrar colaborador no IndexedDB:', err);
+        showToast('❌ Erro ao salvar localmente: ' + err.message);
+        return;
+    }
     
     document.getElementById('colabNome').value = '';
     document.getElementById('colabFuncao').value = '';
@@ -1192,8 +1198,14 @@ async function saveColaboradorEdit(id) {
         synced: false
     };
 
-    await saveToIndexedDB('colaboradores', colab);
-    showToast('Colaborador atualizado!');
+    try {
+        await saveToIndexedDB('colaboradores', colab);
+        showToast('Colaborador atualizado!');
+    } catch (err) {
+        console.error('Erro ao atualizar colaborador no IndexedDB:', err);
+        showToast('❌ Erro ao salvar localmente: ' + err.message);
+        return;
+    }
 
     const btn = document.querySelector('#pageNovoColaborador .save-btn[onclick^="saveColaboradorEdit"]');
     if (btn) {
@@ -4980,14 +4992,42 @@ async function realizarLogin() {
         userName = 'Administrador Padrão';
     } else {
         // Buscar no IndexedDB
+        console.log('Tentativa de login para matrícula:', matricula);
         const colab = await getFromIndexedDB('colaboradores', matricula);
-        if (colab && colab.ativo !== false && colab.senha) {
+        console.log('Resultado da busca no IndexedDB:', colab);
+        if (colab) {
+            console.log('Senha cadastrada (hash):', colab.senha);
+            console.log('Nível de acesso:', colab.nivelAcesso);
+            console.log('Status ativo:', colab.ativo);
+            
+            if (colab.ativo === false) {
+                if (errorDiv) {
+                    errorDiv.textContent = '❌ Este colaborador está inativo/desmobilizado.';
+                    errorDiv.style.display = 'block';
+                }
+                return;
+            }
+            
+            if (!colab.senha) {
+                if (errorDiv) {
+                    errorDiv.textContent = '❌ Colaborador não possui senha configurada.';
+                    errorDiv.style.display = 'block';
+                }
+                return;
+            }
+            
             const hashedInput = await sha256(senha);
+            console.log('Hash da senha digitada:', hashedInput);
+            
             if (colab.senha === hashedInput) {
                 authenticated = true;
                 userRole = colab.nivelAcesso || 'Tecnico';
                 userName = colab.nome;
+            } else {
+                console.warn('Senha incorreta!');
             }
+        } else {
+            console.warn('Colaborador não encontrado com matrícula:', matricula);
         }
     }
     

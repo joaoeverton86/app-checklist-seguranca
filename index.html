@@ -727,7 +727,7 @@
         <button class="back-btn" id="backBtn" onclick="goBack()">←</button>
         <h1 id="headerTitle">Checklist Segurança</h1>
         <div class="subtitle" id="headerSubtitle">PISF RAMAL DO AGRESTE</div>
-        <button id="logoutBtn" onclick="realizarLogout()" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); color: white; border-radius: 6px; padding: 6px 12px; font-size: 11px; font-weight: 600; cursor: pointer; display: none; align-items: center; gap: 4px;">🚪 Sair</button>
+        <button id="logoutBtn" onclick="realizarLogout()" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: #fff5f5; border: 1px solid #feb2b2; color: #e53e3e; border-radius: 8px; padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer; display: none; align-items: center; gap: 4px; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">🚪 Sair</button>
     </div>
 
     <!-- Connection Status -->
@@ -903,6 +903,14 @@
     <!-- Page: Home -->
     <div class="page" id="pageHome">
         <div class="content">
+            <!-- Welcome Info -->
+            <div id="welcomeBanner" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; padding: 15px 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: none; align-items: center; justify-content: space-between;">
+                <div>
+                    <div style="font-size: 10px; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Conectado como</div>
+                    <div id="welcomeUser" style="font-size: 15px; font-weight: 700; margin-top: 2px;">—</div>
+                </div>
+                <div id="welcomeRoleBadge" style="background: rgba(255,255,255,0.2); font-size: 9px; font-weight: 700; padding: 4px 8px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em;">TÉCNICO</div>
+            </div>
             <div class="quick-actions">
                 <a class="action-btn" id="btnHomeCadastro" onclick="showPage('pageCadastro')">
                     <span class="icon">📝</span>

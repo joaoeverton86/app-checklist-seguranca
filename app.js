@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v68';
+const APP_VERSION = 'v69';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2504,6 +2504,46 @@ async function sincronizacaoBidirecional() {
         if (statusEl) statusEl.textContent = originalText;
     } finally {
         syncBidirecionalEmAndamento = false;
+    }
+}
+
+async function sincronizarStoreEspecifico(aba, store) {
+    const SCRIPT_URL = getSyncUrl();
+    if (!SCRIPT_URL || !navigator.onLine) return;
+    try {
+        const response = await fetch(SCRIPT_URL + '?store=' + encodeURIComponent(aba));
+        const result = await response.json();
+        if (result.success && result.data) {
+            const locais = await getAllFromIndexedDB(store);
+            const localMap = {};
+            locais.forEach(item => {
+                const normId = String(item.id).trim().toUpperCase();
+                localMap[normId] = item;
+            });
+            
+            for (const row of result.data) {
+                const id = String(row['ID'] || row['Matrícula'] || '').trim().toUpperCase();
+                if (!id) continue;
+                const remoto = converterParaApp(store, row);
+                if (!remoto) continue;
+                remoto.id = id;
+                remoto.synced = true;
+                
+                const local = localMap[id];
+                if (!local) {
+                    await saveToIndexedDB(store, remoto, true);
+                } else {
+                    if (!remoto.senha && local.senha) remoto.senha = local.senha;
+                    if (!remoto.nivelAcesso && local.nivelAcesso) remoto.nivelAcesso = local.nivelAcesso;
+                    if (!remoto.email && local.email) remoto.email = local.email;
+                    
+                    await saveToIndexedDB(store, remoto, true);
+                }
+            }
+            console.log('Sync específico para ' + store + ' concluído.');
+        }
+    } catch (e) {
+        console.error('Erro no sync específico:', e);
     }
 }
 
@@ -5095,25 +5135,69 @@ async function realizarLogin() {
                 return;
             }
             
+            const hashedInput = await sha256(senha);
+            
             if (!colab.senha) {
-                if (errorDiv) {
-                    errorDiv.textContent = '❌ Colaborador não possui senha configurada.';
-                    errorDiv.style.display = 'block';
+                if (navigator.onLine && getSyncUrl()) {
+                    console.log('Sem senha localmente. Rodando sync de colaboradores...');
+                    showToast('Buscando credenciais online...');
+                    await sincronizarStoreEspecifico('Colaboradores', 'colaboradores');
+                    const colabAtualizado = await getFromIndexedDB('colaboradores', colab.id);
+                    if (colabAtualizado && colabAtualizado.senha === hashedInput) {
+                        colab = colabAtualizado;
+                    }
                 }
-                return;
+                
+                if (!colab.senha) {
+                    if (errorDiv) {
+                        errorDiv.textContent = '❌ Colaborador não possui senha configurada.';
+                        errorDiv.style.display = 'block';
+                    }
+                    return;
+                }
             }
             
-            const hashedInput = await sha256(senha);
             if (colab.senha === hashedInput) {
                 authenticated = true;
                 userRole = colab.nivelAcesso || 'Tecnico';
                 userName = colab.nome;
                 userMatricula = colab.matricula;
             } else {
-                console.warn('Senha incorreta!');
+                if (navigator.onLine && getSyncUrl()) {
+                    console.log('Senha incorreta localmente. Rodando sync de colaboradores...');
+                    showToast('Verificando credenciais atualizadas...');
+                    await sincronizarStoreEspecifico('Colaboradores', 'colaboradores');
+                    const colabAtualizado = await getFromIndexedDB('colaboradores', colab.id);
+                    if (colabAtualizado && colabAtualizado.senha === hashedInput) {
+                        authenticated = true;
+                        userRole = colabAtualizado.nivelAcesso || 'Tecnico';
+                        userName = colabAtualizado.nome;
+                        userMatricula = colabAtualizado.matricula;
+                    }
+                }
             }
         } else {
-            console.warn('Colaborador não encontrado com:', loginVal);
+            if (navigator.onLine && getSyncUrl()) {
+                console.log('Colaborador não encontrado localmente. Rodando sync...');
+                showToast('Buscando colaborador na base online...');
+                await sincronizarStoreEspecifico('Colaboradores', 'colaboradores');
+                const colaboradoresAtualizados = await getAllFromIndexedDB('colaboradores');
+                let colabAtualizado = colaboradoresAtualizados.find(c => String(c.matricula || '').trim().toUpperCase() === loginUpper);
+                if (!colabAtualizado) {
+                    const loginLower = loginVal.toLowerCase();
+                    colabAtualizado = colaboradoresAtualizados.find(c => String(c.email || '').trim().toLowerCase() === loginLower);
+                }
+                
+                if (colabAtualizado) {
+                    const hashedInput = await sha256(senha);
+                    if (colabAtualizado.senha === hashedInput) {
+                        authenticated = true;
+                        userRole = colabAtualizado.nivelAcesso || 'Tecnico';
+                        userName = colabAtualizado.nome;
+                        userMatricula = colabAtualizado.matricula;
+                    }
+                }
+            }
         }
     }
     
@@ -5287,6 +5371,12 @@ async function solicitarCodigoRecuperacao() {
     const matriculaNorm = matricula.toUpperCase();
     const emailNorm = email.toLowerCase();
 
+    const SCRIPT_URL = getSyncUrl();
+    if (!SCRIPT_URL) {
+        showRecoverError('❌ Servidor de sincronização não configurado.');
+        return;
+    }
+
     try {
         const payload = {
             store: 'forgot_password',
@@ -5345,6 +5435,12 @@ async function redefinirSenhaComCodigo() {
     showToast('Redefinindo senha...');
     const matriculaNorm = matricula.toUpperCase();
     const emailNorm = email.toLowerCase();
+
+    const SCRIPT_URL = getSyncUrl();
+    if (!SCRIPT_URL) {
+        showRecoverError('❌ Servidor de sincronização não configurado.');
+        return;
+    }
 
     try {
         const hashedSenha = await sha256(newSenha);

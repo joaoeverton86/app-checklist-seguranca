@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v66';
+const APP_VERSION = 'v67';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -238,6 +238,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.log('SW registrado e updated');
             })
             .catch(err => console.log('SW erro:', err));
+            
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!refreshing) {
+                refreshing = true;
+                window.location.reload(true);
+            }
+        });
     }
 });
 

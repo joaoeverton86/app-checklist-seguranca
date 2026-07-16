@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v67';
+const APP_VERSION = 'v68';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -444,7 +444,8 @@ async function updatePendingBadge() {
 function showPage(pageId) {
     // Router guard
     const sessionStr = localStorage.getItem('active_session');
-    if (!sessionStr && pageId !== 'pageLogin') {
+    const publicPages = ['pageLogin', 'pageSignUp', 'pageForgotPassword'];
+    if (!sessionStr && !publicPages.includes(pageId)) {
         showPage('pageLogin');
         return;
     }
@@ -494,7 +495,7 @@ function showPage(pageId) {
     // Ocultar/exibir header e nav inferior se for login
     const header = document.querySelector('.header');
     const bottomNav = document.querySelector('.bottom-nav');
-    if (pageId === 'pageLogin') {
+    if (pageId === 'pageLogin' || pageId === 'pageSignUp' || pageId === 'pageForgotPassword') {
         if (header) header.style.display = 'none';
         if (bottomNav) bottomNav.style.display = 'none';
     } else {

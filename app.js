@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v70';
+const APP_VERSION = 'v71';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -221,30 +221,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (sessionStr) {
         try {
             const session = JSON.parse(sessionStr);
-            
-            // Buscar papel e nome atualizados no IndexedDB local para atualizar a sessão
-            getFromIndexedDB('colaboradores', session.matricula).then(colab => {
-                if (colab) {
-                    let changed = false;
-                    if (colab.nivelAcesso && colab.nivelAcesso !== session.role) {
-                        session.role = colab.nivelAcesso;
-                        changed = true;
-                    }
-                    if (colab.nome && colab.nome !== session.nome) {
-                        session.nome = colab.nome;
-                        changed = true;
-                    }
-                    if (changed) {
-                        localStorage.setItem('active_session', JSON.stringify(session));
-                        updateNavigationForRole(session.role);
-                        updateWelcomeBanner();
-                    }
-                }
-            }).catch(err => console.error('Erro ao atualizar papel da sessao:', err));
-
             updateNavigationForRole(session.role);
             updateWelcomeBanner();
             showPage('pageHome');
+            verificarEAtualizarPapelSessao();
         } catch (e) {
             localStorage.removeItem('active_session');
             showPage('pageLogin');
@@ -2480,7 +2460,26 @@ async function sincronizacaoBidirecional() {
                         const remotoTs = remoto.timestamp ? new Date(remoto.timestamp).getTime() : 0;
                         const localTs = local.timestamp ? new Date(local.timestamp).getTime() : 0;
 
-                        if (remotoTs > localTs) {
+                        let hasDifference = false;
+                        if (store === 'colaboradores') {
+                            hasDifference = (
+                                remoto.nivelAcesso !== local.nivelAcesso ||
+                                remoto.email !== local.email ||
+                                remoto.nome !== local.nome ||
+                                remoto.funcao !== local.funcao ||
+                                remoto.setor !== local.setor ||
+                                remoto.ativo !== local.ativo
+                            );
+                        } else if (store === 'cadastros') {
+                            hasDifference = (
+                                remoto.nome !== local.nome ||
+                                remoto.categoria !== local.categoria ||
+                                remoto.tipo !== local.tipo ||
+                                remoto.ativo !== local.ativo
+                            );
+                        }
+
+                        if (remotoTs > localTs || hasDifference) {
                             if (store === 'colaboradores') {
                                 if (!remoto.senha && local.senha) {
                                     remoto.senha = local.senha;
@@ -2526,6 +2525,7 @@ async function sincronizacaoBidirecional() {
         if (statusEl) statusEl.textContent = originalText;
     } finally {
         syncBidirecionalEmAndamento = false;
+        verificarEAtualizarPapelSessao();
     }
 }
 
@@ -5594,5 +5594,34 @@ function updateWelcomeBanner() {
         }
     } else {
         if (welcomeBanner) welcomeBanner.style.display = 'none';
+    }
+}
+
+async function verificarEAtualizarPapelSessao() {
+    const sessionStr = localStorage.getItem('active_session');
+    if (!sessionStr) return;
+    try {
+        const session = JSON.parse(sessionStr);
+        const colab = await getFromIndexedDB('colaboradores', session.matricula);
+        if (colab) {
+            let changed = false;
+            if (colab.nivelAcesso && colab.nivelAcesso !== session.role) {
+                console.log('Atualizando papel da sessão de', session.role, 'para', colab.nivelAcesso);
+                session.role = colab.nivelAcesso;
+                changed = true;
+            }
+            if (colab.nome && colab.nome !== session.nome) {
+                session.nome = colab.nome;
+                changed = true;
+            }
+            if (changed) {
+                localStorage.setItem('active_session', JSON.stringify(session));
+                updateNavigationForRole(session.role);
+                updateWelcomeBanner();
+                showToast('🔑 Seu nível de acesso foi atualizado!');
+            }
+        }
+    } catch (e) {
+        console.error('Erro ao verificar papel da sessao:', e);
     }
 }

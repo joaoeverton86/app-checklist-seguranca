@@ -160,6 +160,8 @@ function doPost(e) {
             return processarEsqueciSenha(record);
         } else if (data.store === 'reset_password_verify') {
             return processarRedefinirSenha(record);
+        } else if (data.store === 'delete_record') {
+            return deletarRegistro(data.aba, data.id);
         } else {
             return ContentService
                 .createTextOutput(JSON.stringify({ success: false, error: 'Store desconhecido: ' + data.store }))
@@ -193,6 +195,43 @@ function encontrarLinhaPorId(aba, id) {
         }
     }
     return -1;
+}
+
+function deletarRegistro(nomeAba, id) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const aba = ss.getSheetByName(nomeAba);
+    if (!aba) {
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: false, error: 'Aba não encontrada: ' + nomeAba }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+    const linha = encontrarLinhaPorId(aba, id);
+    if (linha !== -1) {
+        aba.deleteRow(linha);
+        
+        // Se for checklist, também deleta as Não Conformidades associadas na aba NC_SHEET
+        if (nomeAba === CHECKLIST_SHEET) {
+            const abaNC = ss.getSheetByName(NC_SHEET);
+            if (abaNC) {
+                let dadosNC = abaNC.getDataRange().getValues();
+                // De baixo para cima para não quebrar os índices ao deletar
+                for (let i = dadosNC.length - 1; i >= 1; i--) {
+                    if (dadosNC[i][0] == id) {
+                        abaNC.deleteRow(i + 1);
+                    }
+                }
+            }
+        }
+        
+        Logger.log('Registro deletado com sucesso: ID ' + id + ' da aba ' + nomeAba);
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: true }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+    Logger.log('Registro não encontrado para deletar: ID ' + id + ' da aba ' + nomeAba);
+    return ContentService
+        .createTextOutput(JSON.stringify({ success: false, error: 'Registro não encontrado' }))
+        .setMimeType(ContentService.MimeType.JSON);
 }
 
 function obterAbaSegura(ss, nomeAba, cabecalhos) {

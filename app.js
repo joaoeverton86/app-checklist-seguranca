@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v72';
+const APP_VERSION = 'v73';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -3035,12 +3035,44 @@ async function updateChecklistPrazo(checklistId, newPrazo) {
 
 async function deleteChecklist(id) {
     if (!confirm('Tem certeza que deseja excluir este checklist?')) return;
+    
+    // Tentar deletar online se estiver conectado
+    if (navigator.onLine && getSyncUrl()) {
+        try {
+            showToast('Excluindo da planilha...');
+            const SCRIPT_URL = getSyncUrl();
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({
+                    store: 'delete_record',
+                    aba: 'Checklists',
+                    id: String(id)
+                })
+            });
+            const result = await response.json();
+            if (!result.success) {
+                console.warn('Erro ao deletar na planilha, deletando apenas local:', result.error);
+            }
+        } catch (err) {
+            console.error('Falha de conexão ao deletar da planilha:', err);
+        }
+    } else {
+        showToast('Offline: Deletado apenas deste aparelho.');
+    }
+    
     await deleteFromIndexedDB('checklists', id);
     const numId = Number(id);
     if (!isNaN(numId)) {
         await deleteFromIndexedDB('checklists', numId);
     }
+    
+    // Remover do cache local para atualização imediata
+    historyChecklistsCache = historyChecklistsCache.filter(c => String(c.id) !== String(id));
+    
     showToast('Checklist excluído');
+    renderHistoryFiltered();
     showPage('pageHistory');
 }
 

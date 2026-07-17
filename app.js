@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v71';
+const APP_VERSION = 'v72';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2787,9 +2787,14 @@ async function viewChecklist(id) {
                    style="padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; color: var(--text); font-family: inherit;">
         </div>` : '';
 
+    let icon = checklist.equipment?.icon || '📦';
+    if (typeof icon === 'object' || String(icon).includes('[object') || !icon) {
+        icon = obterIconeFallback(checklist.equipment?.id);
+    }
+
     container.innerHTML = `
         <div class="card">
-            <div class="card-title"><span class="icon">${checklist.equipment?.icon || '📦'}</span> ${checklist.nome}</div>
+            <div class="card-title"><span class="icon">${icon}</span> ${checklist.nome}</div>
             <div style="font-size: 13px; color: var(--text-light);">
                 <div>📅 ${date}</div>
                 <div>📋 Patrimônio: ${checklist.patrimonio}</div>
@@ -4455,11 +4460,16 @@ function converterParaApp(storeName, row) {
     }
     
     if (storeName === 'checklist_items') {
+        const idEquipamento = row['ID Equipamento'] || '';
+        let icone = row['Ícone Equipamento'] || '';
+        if (typeof icone === 'object' || String(icone).includes('[object') || !icone) {
+            icone = obterIconeFallback(idEquipamento);
+        }
         return {
             id: row['ID'] || '',
-            idEquipamento: row['ID Equipamento'] || '',
+            idEquipamento: idEquipamento,
             nomeEquipamento: row['Nome Equipamento'] || '',
-            iconeEquipamento: row['Ícone Equipamento'] || '',
+            iconeEquipamento: icone,
             categoriaEquipamento: row['Categoria Equipamento'] || '',
             textoItem: row['Texto do Item'] || '',
             nr: row['NR'] || '',
@@ -5624,4 +5634,64 @@ async function verificarEAtualizarPapelSessao() {
     } catch (e) {
         console.error('Erro ao verificar papel da sessao:', e);
     }
+}
+
+function obterIconeFallback(idEquipamento) {
+    const norm = String(idEquipamento || '').trim().toLowerCase();
+    const fallbacks = {
+        'trator_esteira': '🚜',
+        'trator_esteiras': '🚜',
+        'trator_agricola': '🌾',
+        'trator_agrícola': '🌾',
+        'trator_pneu': '🌾',
+        'escavadeira': '⛏️',
+        'escavadeira_hidraulica': '⛏️',
+        'escavadeira_hidráulica': '⛏️',
+        'retroescavadeira': '🏗️',
+        'retro': '🏗️',
+        'rolo': '⚙️',
+        'rolo_compactador': '⚙️',
+        'gerador': '⚡',
+        'betoneira': '🪣',
+        'betoneira_eletrica': '🪣',
+        'betoneira_elétrica': '🪣',
+        'embarcacao': '🚢',
+        'embarcação': '🚢',
+        'minicarregadeira': '🔧',
+        'mini_carregadeira': '🔧',
+        'bobcat': '🔧',
+        'bomba': '💧',
+        'bomba_estacionaria': '💧',
+        'bomba_estacionária': '💧',
+        'motoniveladora': '🚜',
+        'patrol': '🚜',
+        'pcarregadeira': '🚛',
+        'pa_carregadeira': '🚛',
+        'pá_carregadeira': '🚛',
+        'plataforma': '🪜',
+        'plataforma_elevatoria': '🪜',
+        'plataforma_elevatória': '🪜',
+        'sondagem': '🔩',
+        'equipamento_sondagem': '🔩',
+        'veiculos_leves': '🚗',
+        'veículos_leves': '🚗',
+        'van': '🚐',
+        'ambulancia': '🚑',
+        'ambulância': '🚑',
+        'onibus': '🚌',
+        'ônibus': '🚌',
+        'caminhao_cabinado': '🚛',
+        'caminhão_cabinado': '🚛',
+        'caminhao_munk': '🚛',
+        'caminhão_munk': '🚛',
+        'caminhao_munck': '🚛',
+        'caminhão_munck': '🚛',
+        'caminhao_comboio': '🚛',
+        'caminhão_comboio': '🚛',
+        'caminhao_pipa': '🚛',
+        'caminhão_pipa': '🚛',
+        'caminhao_basculante': '🚛',
+        'caminhão_basculante': '🚛'
+    };
+    return fallbacks[norm] || '📦';
 }

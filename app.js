@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v73';
+const APP_VERSION = 'v74';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2482,7 +2482,11 @@ async function sincronizacaoBidirecional() {
                         if (remotoTs > localTs || hasDifference) {
                             if (store === 'colaboradores') {
                                 if (!remoto.senha && local.senha) {
-                                    remoto.senha = local.senha;
+                                    if (local.synced) {
+                                        remoto.senha = '';
+                                    } else {
+                                        remoto.senha = local.senha;
+                                    }
                                 }
                                 if (!remoto.nivelAcesso && local.nivelAcesso) {
                                     remoto.nivelAcesso = local.nivelAcesso;
@@ -2555,7 +2559,13 @@ async function sincronizarStoreEspecifico(aba, store) {
                 if (!local) {
                     await saveToIndexedDB(store, remoto, true);
                 } else {
-                    if (!remoto.senha && local.senha) remoto.senha = local.senha;
+                    if (!remoto.senha && local.senha) {
+                        if (local.synced) {
+                            remoto.senha = '';
+                        } else {
+                            remoto.senha = local.senha;
+                        }
+                    }
                     if (!remoto.nivelAcesso && local.nivelAcesso) remoto.nivelAcesso = local.nivelAcesso;
                     if (!remoto.email && local.email) remoto.email = local.email;
                     

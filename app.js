@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v77';
+const APP_VERSION = 'v78';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -4852,7 +4852,7 @@ function converterParaApp(storeName, row) {
             email: row['Email'] || '',
             aso: row['Validade ASO'] || '',
             senha: row['Senha'] || '',
-            nivelAcesso: row['NivelAcesso'] || 'Tecnico',
+            nivelAcesso: normalizarNivelAcesso(row['NivelAcesso'] || row['Nível Acesso'] || row['Nível de Acesso'] || row['Nivel Acesso'] || row['Nivel'] || row['Acesso'] || ''),
             timestamp: row['Data Hora Registro'] || new Date().toISOString(),
             ativo: row['Ativo'] !== 'Não',
             synced: true
@@ -5913,20 +5913,29 @@ function toggleLoginPassword() {
     }
 }
 
+function normalizarNivelAcesso(val) {
+    if (!val) return 'Tecnico';
+    const str = String(val).trim().toLowerCase();
+    if (str.includes('admin')) return 'Admin';
+    return 'Tecnico';
+}
+
 function updateNavigationForRole(role) {
     const navCadastro = document.getElementById('navCadastro');
     const navConfig = document.getElementById('navConfig');
     const btnHomeCadastro = document.getElementById('btnHomeCadastro');
     const logoutBtn = document.getElementById('logoutBtn');
     
-    if (role === 'Tecnico') {
-        if (navCadastro) navCadastro.style.display = 'none';
-        if (navConfig) navConfig.style.display = 'none';
-        if (btnHomeCadastro) btnHomeCadastro.style.display = 'none';
-    } else if (role === 'Admin') {
+    const normRole = normalizarNivelAcesso(role);
+    
+    if (normRole === 'Admin') {
         if (navCadastro) navCadastro.style.display = 'inline-flex';
         if (navConfig) navConfig.style.display = 'inline-flex';
         if (btnHomeCadastro) btnHomeCadastro.style.display = 'flex';
+    } else if (role) {
+        if (navCadastro) navCadastro.style.display = 'none';
+        if (navConfig) navConfig.style.display = 'none';
+        if (btnHomeCadastro) btnHomeCadastro.style.display = 'none';
     } else {
         // Ninguém logado (ou deslogando)
         if (navCadastro) navCadastro.style.display = 'none';
@@ -5949,11 +5958,12 @@ function updateWelcomeBanner() {
     if (sessionStr) {
         try {
             const session = JSON.parse(sessionStr);
+            const normRole = normalizarNivelAcesso(session.role);
             if (welcomeUser) welcomeUser.textContent = session.nome || 'Usuário';
             if (welcomeRoleBadge) {
-                welcomeRoleBadge.textContent = session.role === 'Admin' ? 'ADMINISTRADOR' : 'TÉCNICO';
-                welcomeRoleBadge.style.background = session.role === 'Admin' ? 'rgba(231, 76, 60, 0.25)' : 'rgba(255, 255, 255, 0.2)';
-                welcomeRoleBadge.style.color = session.role === 'Admin' ? '#ff7675' : 'white';
+                welcomeRoleBadge.textContent = normRole === 'Admin' ? 'ADMINISTRADOR' : 'TÉCNICO';
+                welcomeRoleBadge.style.background = normRole === 'Admin' ? 'rgba(231, 76, 60, 0.25)' : 'rgba(255, 255, 255, 0.2)';
+                welcomeRoleBadge.style.color = normRole === 'Admin' ? '#ff7675' : 'white';
             }
             if (welcomeBanner) welcomeBanner.style.display = 'flex';
         } catch (e) {
@@ -5969,12 +5979,23 @@ async function verificarEAtualizarPapelSessao() {
     if (!sessionStr) return;
     try {
         const session = JSON.parse(sessionStr);
-        const colab = await getFromIndexedDB('colaboradores', session.matricula);
+        const colaboradores = await getAllFromIndexedDB('colaboradores');
+        const sessMat = String(session.matricula || '').trim().toUpperCase();
+        
+        let colab = colaboradores.find(c => String(c.matricula || c.id || '').trim().toUpperCase() === sessMat);
+        if (!colab && session.nome) {
+            const sessNome = String(session.nome).trim().toUpperCase();
+            colab = colaboradores.find(c => String(c.nome || '').trim().toUpperCase() === sessNome);
+        }
+
         if (colab) {
+            const targetRole = normalizarNivelAcesso(colab.nivelAcesso);
+            const currentRole = normalizarNivelAcesso(session.role);
+            
             let changed = false;
-            if (colab.nivelAcesso && colab.nivelAcesso !== session.role) {
-                console.log('Atualizando papel da sessão de', session.role, 'para', colab.nivelAcesso);
-                session.role = colab.nivelAcesso;
+            if (targetRole !== currentRole) {
+                console.log('Atualizando papel da sessão de', session.role, 'para', targetRole);
+                session.role = targetRole;
                 changed = true;
             }
             if (colab.nome && colab.nome !== session.nome) {
@@ -5985,7 +6006,7 @@ async function verificarEAtualizarPapelSessao() {
                 localStorage.setItem('active_session', JSON.stringify(session));
                 updateNavigationForRole(session.role);
                 updateWelcomeBanner();
-                showToast('🔑 Seu nível de acesso foi atualizado!');
+                showToast('🔑 Seu nível de acesso foi atualizado para ' + (targetRole === 'Admin' ? 'ADMINISTRADOR' : 'TÉCNICO') + '!');
             }
         }
     } catch (e) {

@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v74';
+const APP_VERSION = 'v75';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -1031,9 +1031,6 @@ async function loadGestao(search = '') {
                 `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #f2f3f4; color: #7f8c8d; font-weight: 600;">🔴 Desmobilizado</span>`;
                 
             const opacityStyle = isAtivo ? '' : 'opacity: 0.65; background: #f8f9f9;';
-            const deleteBtnHtml = isAtivo ? 
-                `<button onclick="deleteCadastro('${c.id}')" title="Desmobilizar" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🗑️</button>` : 
-                '';
                 
             return `
                 <div class="history-item" style="flex-wrap: wrap; ${opacityStyle}">
@@ -1046,13 +1043,19 @@ async function loadGestao(search = '') {
                     </div>
                     <div style="display: flex; gap: 4px; align-items: center;">
                         <button onclick="editCadastro('${c.id}')" title="Editar" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>
-                        ${deleteBtnHtml}
+                        <button onclick="deleteCadastroPermanente('${c.id}')" title="Excluir Definitivamente" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🗑️</button>
                     </div>
                 </div>`;
         }).join('');
     } else {
         const colaboradores = await getAllFromIndexedDB('colaboradores');
-        let items = colaboradores.filter(c => c.ativo !== false);
+        let items = [...colaboradores];
+        items.sort((a, b) => {
+            const aAtivo = a.ativo !== false;
+            const bAtivo = b.ativo !== false;
+            if (aAtivo === bAtivo) return 0;
+            return aAtivo ? -1 : 1;
+        });
 
         if (query) {
             items = items.filter(c =>
@@ -1094,17 +1097,24 @@ async function loadGestao(search = '') {
         };
 
         container.innerHTML = items.map(c => {
+            const isAtivo = c.ativo !== false;
             const icon = funcaoIcon(c.funcao);
+            const statusBadge = isAtivo ?
+                `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #d5f5e3; color: #1e8449; font-weight: 600;">🟢 Ativo</span>` :
+                `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #f2f3f4; color: #7f8c8d; font-weight: 600;">🔴 Inativo</span>`;
+            const opacityStyle = isAtivo ? '' : 'opacity: 0.65; background: #f8f9f9;';
+
             return `
-                <div class="history-item" style="flex-wrap: wrap;">
+                <div class="history-item" style="flex-wrap: wrap; ${opacityStyle}">
                     <div class="history-info">
                         <div class="history-title">${icon} ${c.nome}</div>
                         <div class="history-date" style="font-weight: 550; color: var(--primary);">${c.funcao || ''}</div>
-                        <div class="history-date">Matrícula: ${c.matricula || 'N/A'}</div>
+                        <div class="history-date">Matrícula: ${c.matricula || 'N/A'} • Nível: ${c.nivelAcesso || 'Tecnico'}</div>
+                        <div style="margin-top: 4px;">${statusBadge}</div>
                     </div>
-                    <div style="display: flex; gap: 4px;">
-                        <button onclick="editColaborador('${c.id}')" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>
-                        <button onclick="deleteColaborador('${c.id}')" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🗑️</button>
+                    <div style="display: flex; gap: 4px; align-items: center;">
+                        <button onclick="editColaborador('${c.id}')" title="Editar" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>
+                        <button onclick="deleteColaboradorPermanente('${c.id}')" title="Excluir Definitivamente" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🗑️</button>
                     </div>
                 </div>`;
         }).join('');
@@ -1299,26 +1309,82 @@ async function saveColaboradorEdit(id) {
 }
 
 async function deleteCadastro(id) {
-    if (!confirm('Deseja desmobilizar este equipamento/veículo? (Ele não será mais cobrado nos checklists pendentes e relatórios, mas seu histórico será mantido)')) return;
+    return deleteCadastroPermanente(id);
+}
+
+async function deleteCadastroPermanente(id) {
     const cadastro = await getFromIndexedDB('cadastros', id);
-    if (cadastro) {
-        cadastro.ativo = false;
-        cadastro.synced = false;
-        await saveToIndexedDB('cadastros', cadastro);
+    const label = cadastro ? `${cadastro.patrimonio || ''} ${cadastro.nome ? '(' + cadastro.nome + ')' : ''}` : id;
+
+    if (!confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o equipamento "${label.trim()}" da planilha Google e do aplicativo?`)) return;
+
+    if (navigator.onLine && getSyncUrl()) {
+        try {
+            showToast('Excluindo da planilha...');
+            const SCRIPT_URL = getSyncUrl();
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({
+                    store: 'delete_record',
+                    aba: 'Cadastros',
+                    id: String(id)
+                })
+            });
+            const result = await response.json();
+            if (!result.success) {
+                console.warn('Erro ao deletar na planilha, deletando apenas local:', result.error);
+            }
+        } catch (err) {
+            console.error('Falha de conexão ao deletar da planilha:', err);
+        }
+    } else {
+        showToast('Offline: Deletado apenas deste aparelho.');
     }
-    showToast('Equipamento desmobilizado');
+
+    await deleteFromIndexedDB('cadastros', id);
+    showToast('Equipamento excluído com sucesso');
     loadGestao();
 }
 
 async function deleteColaborador(id) {
-    if (!confirm('Deseja excluir este colaborador?')) return;
+    return deleteColaboradorPermanente(id);
+}
+
+async function deleteColaboradorPermanente(id) {
     const colab = await getFromIndexedDB('colaboradores', id);
-    if (colab) {
-        colab.ativo = false;
-        colab.synced = false;
-        await saveToIndexedDB('colaboradores', colab);
+    const label = colab ? `${colab.nome || ''} (Matrícula: ${colab.matricula || id})` : id;
+
+    if (!confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o colaborador "${label.trim()}" da planilha Google e do aplicativo?`)) return;
+
+    if (navigator.onLine && getSyncUrl()) {
+        try {
+            showToast('Excluindo da planilha...');
+            const SCRIPT_URL = getSyncUrl();
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({
+                    store: 'delete_record',
+                    aba: 'Colaboradores',
+                    id: String(id)
+                })
+            });
+            const result = await response.json();
+            if (!result.success) {
+                console.warn('Erro ao deletar na planilha, deletando apenas local:', result.error);
+            }
+        } catch (err) {
+            console.error('Falha de conexão ao deletar da planilha:', err);
+        }
+    } else {
+        showToast('Offline: Deletado apenas deste aparelho.');
     }
-    showToast('Colaborador excluído');
+
+    await deleteFromIndexedDB('colaboradores', id);
+    showToast('Colaborador excluído com sucesso');
     loadGestao();
 }
 
@@ -2508,6 +2574,11 @@ async function sincronizacaoBidirecional() {
                     if (local.synced !== true) {
                         syncToGoogleSheets(store, local);
                         totalAtualizados++;
+                    } else if (store === 'cadastros' || store === 'colaboradores') {
+                        if (!remoteMap[local.id]) {
+                            await deleteFromIndexedDB(store, local.id);
+                            totalAtualizados++;
+                        }
                     }
                 }
             } catch (err) {

@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v80';
+const APP_VERSION = 'v81';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -1586,7 +1586,110 @@ function renderChecklistItems(equipment, cadastro) {
         `;
     });
     
+    html += `
+        <div style="margin-top: 24px; padding: 16px; background: #f8f9fa; border: 2px dashed #27ae60; border-radius: 12px; text-align: center;">
+            <p style="margin: 0 0 10px; font-size: 12px; color: var(--text-light); font-weight: 600;">Sentiu falta de algum item neste checklist? (ex: Ar-Condicionado, Cinto de Segurança...)</p>
+            <button type="button" onclick="abrirModalAdicionarItemCustomChecklist()" style="background: #27ae60; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 3px 8px rgba(39, 174, 96, 0.25);">
+                ➕ Adicionar Item Extra a este Checklist
+            </button>
+        </div>
+    `;
+
     container.innerHTML = html;
+}
+
+function abrirModalAdicionarItemCustomChecklist() {
+    const html = `
+        <div style="padding: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <h3 style="margin: 0; font-size: 16px; color: var(--primary);">➕ Adicionar Item Extra ao Checklist</h3>
+                <button onclick="closeModal()" style="background: none; border: none; font-size: 20px; cursor: pointer;">✕</button>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label" style="font-size: 12px; font-weight: bold;">Nome do Item de Verificação *</label>
+                <input type="text" id="customItemText" class="form-input" placeholder="Ex: Ar-Condicionado, Condições do Estepe..." style="width: 100%; padding: 8px; border-radius: 6px;">
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                <div>
+                    <label class="form-label" style="font-size: 12px; font-weight: bold;">Norma / NR</label>
+                    <input type="text" id="customItemNR" class="form-input" value="NR-12" style="width: 100%; padding: 8px; border-radius: 6px;">
+                </div>
+                <div>
+                    <label class="form-label" style="font-size: 12px; font-weight: bold;">Grau de Risco</label>
+                    <select id="customItemRisk" class="form-select" style="width: 100%; padding: 8px; border-radius: 6px;">
+                        <option value="medium">RISCO MÉDIO</option>
+                        <option value="high">RISCO ALTO</option>
+                        <option value="low">RISCO BAIXO</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 14px; font-size: 12px;">
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                    <input type="checkbox" id="customItemSavePermanently" checked>
+                    <strong>Salvar este item para este modelo de equipamento</strong>
+                </label>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 14px;">
+                <button onclick="confirmarAdicionarItemCustomChecklist()" class="save-btn" style="flex: 1; padding: 10px; font-weight: bold; background: #27ae60;">
+                    Adicionar ao Checklist
+                </button>
+                <button onclick="closeModal()" class="save-btn" style="background: #95a5a6; padding: 10px;">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    `;
+    showModal(html);
+}
+
+async function confirmarAdicionarItemCustomChecklist() {
+    const textInput = document.getElementById('customItemText');
+    const nrInput = document.getElementById('customItemNR');
+    const riskInput = document.getElementById('customItemRisk');
+    const permInput = document.getElementById('customItemSavePermanently');
+
+    const text = textInput ? textInput.value.trim() : '';
+    if (!text) {
+        showToast('⚠️ Digite o nome do item de verificação');
+        return;
+    }
+
+    const nr = nrInput ? nrInput.value.trim() || 'NR-12' : 'NR-12';
+    const risk = riskInput ? riskInput.value : 'medium';
+    const savePermanently = permInput ? permInput.checked : false;
+
+    const newItemId = 'custom_' + Date.now();
+    const newItem = {
+        id: newItemId,
+        text: text,
+        nr: nr,
+        risk: risk,
+        custom: true
+    };
+
+    if (currentEquipment) {
+        if (!currentEquipment.items) currentEquipment.items = [];
+        currentEquipment.items.push(newItem);
+
+        if (savePermanently && currentEquipment.id) {
+            try {
+                if (typeof saveCustomItem === 'function') {
+                    const category = currentCategory || currentEquipment.category || currentEquipment.tipo || 'veiculos';
+                    await saveCustomItem(category, currentEquipment.id, newItem);
+                }
+            } catch (e) {
+                console.error('Erro ao salvar item customizado permanentemente:', e);
+            }
+        }
+    }
+
+    closeModal();
+    renderChecklistItems(currentEquipment, currentCadastro);
+    showToast(`✅ Item "${text}" adicionado ao checklist!`);
 }
 
 function setStatus(itemId, status, btn) {
@@ -3050,9 +3153,51 @@ function encontrarEquipamentoParaChecklist(checklist) {
         }
     }
 
-    // 3. Procurar em todos os EQUIPMENT_TYPES por nome ou id exatos
     const targetName = String(checklist.nome || checklist.equipment?.name || '').trim().toUpperCase();
 
+    // 3. Mapeamento explícito de apelidos / sinônimos comuns
+    const sinonimos = {
+        'PATROL': 'motoniveladora',
+        'PATROLA': 'motoniveladora',
+        'MOTONIVELADORA': 'motoniveladora',
+        'CAÇAMBA': 'cacamba',
+        'CACAMBA': 'cacamba',
+        'CAMINHÃO CAÇAMBA': 'cacamba',
+        'CAMINHAO CACAMBA': 'cacamba',
+        'COMBOIO': 'caminhao_comboio',
+        'CAMINHÃO COMBOIO': 'caminhao_comboio',
+        'CAMINHAO COMBOIO': 'caminhao_comboio',
+        'MUNCK': 'caminhao_munck',
+        'CAMINHÃO MUNCK': 'caminhao_munck',
+        'PIPA': 'caminhao_pipa',
+        'CAMINHÃO PIPA': 'caminhao_pipa',
+        'PRANCHA': 'caminhao_prancha',
+        'CAMINHÃO PRANCHA': 'caminhao_prancha',
+        'RETRO': 'retroescavadeira',
+        'RETROESCAVADEIRA': 'retroescavadeira',
+        'ESCAVADEIRA': 'escavadeira_hidraulica',
+        'TRATOR DE ESTEIRA': 'trator_esteira',
+        'TRATOR ESTEIRA': 'trator_esteira',
+        'TRATOR AGRÍCOLA': 'trator_agricola',
+        'TRATOR AGRICOLA': 'trator_agricola',
+        'CARREGADEIRA': 'pa_carregadeira',
+        'PÁ CARREGADEIRA': 'pa_carregadeira',
+        'PA CARREGADEIRA': 'pa_carregadeira',
+        'COMPACTADOR': 'rolo_compactador',
+        'ROLO': 'rolo_compactador'
+    };
+
+    for (const [key, mappedId] of Object.entries(sinonimos)) {
+        if (targetName === key || targetName.includes(key)) {
+            for (const [catKey, list] of Object.entries(EQUIPMENT_TYPES)) {
+                if (!Array.isArray(list)) continue;
+                const found = list.find(e => e.id === mappedId);
+                if (found) return found;
+            }
+        }
+    }
+
+    // 4. Procurar em todos os EQUIPMENT_TYPES por id ou nome exatos
     for (const [catKey, list] of Object.entries(EQUIPMENT_TYPES)) {
         if (!Array.isArray(list)) continue;
         for (const eq of list) {
@@ -3065,29 +3210,13 @@ function encontrarEquipamentoParaChecklist(checklist) {
         }
     }
 
-    // 4. Se não achou por nome exato, tentar correspondência por palavra-chave
+    // 5. Correspondência por palavra-chave parcial
     if (targetName) {
         for (const [catKey, list] of Object.entries(EQUIPMENT_TYPES)) {
             if (!Array.isArray(list)) continue;
             for (const eq of list) {
                 const eqName = String(eq.name || '').trim().toUpperCase();
                 const eqId = String(eq.id || '').trim().toUpperCase();
-
-                if (targetName.includes('CAÇAMBA') || targetName.includes('CACAMBA')) {
-                    if (eqName.includes('CAÇAMBA') || eqName.includes('CACAMBA') || eqId.includes('CACAMBA')) return eq;
-                }
-                if (targetName.includes('TRATOR') && targetName.includes('ESTEIRA')) {
-                    if (eqName.includes('TRATOR DE ESTEIRA') || eqId.includes('TRATOR_ESTEIRA')) return eq;
-                }
-                if (targetName.includes('TRATOR') && (targetName.includes('AGRÍCOLA') || targetName.includes('AGRICOLA'))) {
-                    if (eqName.includes('TRATOR AGRÍCOLA') || eqId.includes('TRATOR_AGRICOLA')) return eq;
-                }
-                if (targetName.includes('ESCAVADEIRA')) {
-                    if (eqName.includes('ESCAVADEIRA') || eqId.includes('ESCAVADEIRA')) return eq;
-                }
-                if (targetName.includes('CAMINHÃO') || targetName.includes('CAMINHAO')) {
-                    if (eqName.includes('CAMINHÃO') || eqName.includes('CAMINHAO') || eqId.includes('CAMINHAO')) return eq;
-                }
 
                 if (targetName.includes(eqName) || eqName.includes(targetName)) {
                     return eq;
@@ -3096,7 +3225,21 @@ function encontrarEquipamentoParaChecklist(checklist) {
         }
     }
 
-    return null;
+    // 6. Fallback garantido: retornar o primeiro equipamento da primeira categoria
+    const firstCat = Object.keys(EQUIPMENT_TYPES)[0];
+    if (firstCat && EQUIPMENT_TYPES[firstCat] && EQUIPMENT_TYPES[firstCat].length > 0) {
+        return EQUIPMENT_TYPES[firstCat][0];
+    }
+
+    return {
+        id: 'generico',
+        name: checklist.nome || 'Equipamento',
+        category: 'geral',
+        tipo: 'geral',
+        icon: '🚜',
+        nr: 'NR-12',
+        items: []
+    };
 }
 
 async function reinspecionarChecklist(id) {

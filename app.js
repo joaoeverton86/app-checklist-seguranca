@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v81';
+const APP_VERSION = 'v82';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2955,6 +2955,37 @@ function renderHistoryFiltered() {
     }).join('');
 }
 
+function recalcularStatsChecklist(checklist) {
+    if (!checklist) return { conformes: 0, naoConformes: 0, na: 0, total: 0 };
+    
+    let conformes = 0;
+    let naoConformes = 0;
+    let na = 0;
+
+    if (checklist.items && typeof checklist.items === 'object') {
+        const keys = Object.keys(checklist.items).filter(k => k !== '_form');
+        if (keys.length > 0) {
+            keys.forEach(k => {
+                const item = checklist.items[k];
+                if (item && item.status) {
+                    if (item.status === 'C') conformes++;
+                    else if (item.status === 'NC') naoConformes++;
+                    else if (item.status === 'NA') na++;
+                }
+            });
+            return { conformes, naoConformes, na, total: conformes + naoConformes + na };
+        }
+    }
+
+    if (checklist.stats) {
+        conformes = parseInt(checklist.stats.conformes) || 0;
+        naoConformes = parseInt(checklist.stats.naoConformes) || 0;
+        na = parseInt(checklist.stats.na) || 0;
+    }
+
+    return { conformes, naoConformes, na, total: conformes + naoConformes + na };
+}
+
 async function viewChecklist(id) {
     let checklist = await getFromIndexedDB('checklists', id);
     if (!checklist) {
@@ -2964,6 +2995,8 @@ async function viewChecklist(id) {
         }
     }
     if (!checklist) return;
+
+    checklist.stats = recalcularStatsChecklist(checklist);
 
     const container = document.getElementById('checklistDetailContent');
     const date = formatSimpleDate(checklist.date);
@@ -5163,6 +5196,35 @@ function converterParaApp(storeName, row) {
     }
     
     if (storeName === 'checklists') {
+        const rawItems = row['Itens Detalhados'];
+        let itemsParsed = {};
+        if (rawItems) {
+            try {
+                itemsParsed = typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems;
+            } catch (e) {
+                console.error('Erro ao fazer parse de Itens Detalhados:', e);
+            }
+        }
+
+        let conformes = parseInt(row['Conformes'] || row['Conforme'] || row['CONFORMES'] || row['conformes']) || 0;
+        let naoConformes = parseInt(row['Não Conformes'] || row['Nao Conformes'] || row['Não Conforme'] || row['NÃO CONFORMES']) || 0;
+        let na = parseInt(row['N/A'] || row['NA'] || row['na']) || 0;
+
+        if (itemsParsed && typeof itemsParsed === 'object' && Object.keys(itemsParsed).length > 0) {
+            let calcC = 0, calcNC = 0, calcNA = 0;
+            for (const [k, v] of Object.entries(itemsParsed)) {
+                if (k === '_form') continue;
+                if (v && v.status === 'C') calcC++;
+                else if (v && v.status === 'NC') calcNC++;
+                else if (v && v.status === 'NA') calcNA++;
+            }
+            if (calcC > 0 || calcNC > 0 || calcNA > 0) {
+                conformes = calcC;
+                naoConformes = calcNC;
+                na = calcNA;
+            }
+        }
+
         return {
             id: row['ID'] || '',
             timestamp: row['Data Hora Registro'] || new Date().toISOString(),
@@ -5175,13 +5237,13 @@ function converterParaApp(storeName, row) {
             statusChecklist: row['Status'] || '',
             prazoAdequacao: row['Prazo Adequação'] || '',
             stats: {
-                conformes: parseInt(row['Conformes']) || 0,
-                naoConformes: parseInt(row['Não Conformes']) || 0,
-                na: parseInt(row['N/A']) || 0,
-                total: 0
+                conformes: conformes,
+                naoConformes: naoConformes,
+                na: na,
+                total: conformes + naoConformes + na
             },
             equipment: { name: row['Equipamento'] || '', nr: row['NR'] || '' },
-            items: row['Itens Detalhados'] ? JSON.parse(row['Itens Detalhados']) : {},
+            items: itemsParsed,
             synced: true
         };
     }

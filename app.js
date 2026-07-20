@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v78';
+const APP_VERSION = 'v79';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -5548,9 +5548,9 @@ async function realizarLogin() {
             
             if (colab.senha === hashedInput) {
                 authenticated = true;
-                userRole = colab.nivelAcesso || 'Tecnico';
+                userRole = normalizarNivelAcesso(colab.nivelAcesso);
                 userName = colab.nome;
-                userMatricula = colab.matricula;
+                userMatricula = colab.matricula || colab.id;
             } else {
                 if (navigator.onLine && getSyncUrl()) {
                     console.log('Senha incorreta localmente. Rodando sync de colaboradores...');
@@ -5559,9 +5559,9 @@ async function realizarLogin() {
                     const colabAtualizado = await getFromIndexedDB('colaboradores', colab.id);
                     if (colabAtualizado && colabAtualizado.senha === hashedInput) {
                         authenticated = true;
-                        userRole = colabAtualizado.nivelAcesso || 'Tecnico';
+                        userRole = normalizarNivelAcesso(colabAtualizado.nivelAcesso);
                         userName = colabAtualizado.nome;
-                        userMatricula = colabAtualizado.matricula;
+                        userMatricula = colabAtualizado.matricula || colabAtualizado.id;
                     }
                 }
             }
@@ -5581,9 +5581,9 @@ async function realizarLogin() {
                     const hashedInput = await sha256(senha);
                     if (colabAtualizado.senha === hashedInput) {
                         authenticated = true;
-                        userRole = colabAtualizado.nivelAcesso || 'Tecnico';
+                        userRole = normalizarNivelAcesso(colabAtualizado.nivelAcesso);
                         userName = colabAtualizado.nome;
-                        userMatricula = colabAtualizado.matricula;
+                        userMatricula = colabAtualizado.matricula || colabAtualizado.id;
                     }
                 }
             }
@@ -5974,17 +5974,57 @@ function updateWelcomeBanner() {
     }
 }
 
+async function forcarAtualizacaoAcessoSessao() {
+    showToast('🔄 Verificando permissões no Google Sheets...');
+    if (!navigator.onLine || !getSyncUrl()) {
+        showToast('⚠️ Você está offline. Não foi possível conectar ao Google Sheets.');
+        return;
+    }
+
+    try {
+        await sincronizarStoreEspecifico('Colaboradores', 'colaboradores');
+        await verificarEAtualizarPapelSessao();
+        const sessionStr = localStorage.getItem('active_session');
+        if (sessionStr) {
+            const session = JSON.parse(sessionStr);
+            const roleNorm = normalizarNivelAcesso(session.role);
+            showToast(`✅ Permissões atualizadas! Seu nível atual: ${roleNorm === 'Admin' ? 'ADMINISTRADOR' : 'TÉCNICO'}`);
+        }
+    } catch (e) {
+        console.error('Erro ao forçar atualização de acesso:', e);
+        showToast('❌ Falha ao conectar ao Google Sheets.');
+    }
+}
+
 async function verificarEAtualizarPapelSessao() {
     const sessionStr = localStorage.getItem('active_session');
     if (!sessionStr) return;
     try {
         const session = JSON.parse(sessionStr);
-        const colaboradores = await getAllFromIndexedDB('colaboradores');
         const sessMat = String(session.matricula || '').trim().toUpperCase();
-        
+        const sessNome = String(session.nome || '').trim().toUpperCase();
+
+        // Tentar baixar colaboradores mais recentes da planilha online antes da verificação
+        if (navigator.onLine && getSyncUrl()) {
+            try {
+                const response = await fetch(getSyncUrl() + '?store=Colaboradores');
+                const result = await response.json();
+                if (result.success && result.data && Array.isArray(result.data)) {
+                    for (const row of result.data) {
+                        const item = converterParaApp('colaboradores', row);
+                        if (item) {
+                            await saveToIndexedDB('colaboradores', item, true);
+                        }
+                    }
+                }
+            } catch (netErr) {
+                console.warn('Erro ao checar papel online:', netErr);
+            }
+        }
+
+        const colaboradores = await getAllFromIndexedDB('colaboradores');
         let colab = colaboradores.find(c => String(c.matricula || c.id || '').trim().toUpperCase() === sessMat);
-        if (!colab && session.nome) {
-            const sessNome = String(session.nome).trim().toUpperCase();
+        if (!colab && sessNome) {
             colab = colaboradores.find(c => String(c.nome || '').trim().toUpperCase() === sessNome);
         }
 
@@ -6002,11 +6042,14 @@ async function verificarEAtualizarPapelSessao() {
                 session.nome = colab.nome;
                 changed = true;
             }
-            if (changed) {
+            if (changed || targetRole === 'Admin') {
+                session.role = targetRole;
                 localStorage.setItem('active_session', JSON.stringify(session));
                 updateNavigationForRole(session.role);
                 updateWelcomeBanner();
-                showToast('🔑 Seu nível de acesso foi atualizado para ' + (targetRole === 'Admin' ? 'ADMINISTRADOR' : 'TÉCNICO') + '!');
+                if (changed) {
+                    showToast('🔑 Seu nível de acesso foi atualizado para ' + (targetRole === 'Admin' ? 'ADMINISTRADOR' : 'TÉCNICO') + '!');
+                }
             }
         }
     } catch (e) {

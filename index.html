@@ -909,7 +909,12 @@
                     <div style="font-size: 10px; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Conectado como</div>
                     <div id="welcomeUser" style="font-size: 15px; font-weight: 700; margin-top: 2px;">—</div>
                 </div>
-                <div id="welcomeRoleBadge" style="background: rgba(255,255,255,0.2); font-size: 9px; font-weight: 700; padding: 4px 8px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em;">TÉCNICO</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button onclick="forcarAtualizacaoAcessoSessao()" title="Atualizar Nível de Acesso" style="background: rgba(255,255,255,0.25); border: none; color: white; font-size: 11px; font-weight: 600; padding: 5px 9px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        🔄 Permissões
+                    </button>
+                    <div id="welcomeRoleBadge" style="background: rgba(255,255,255,0.2); font-size: 9px; font-weight: 700; padding: 4px 8px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em;">TÉCNICO</div>
+                </div>
             </div>
             <div class="quick-actions">
                 <a class="action-btn" id="btnHomeCadastro" onclick="showPage('pageCadastro')">

@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v79';
+const APP_VERSION = 'v80';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -1939,6 +1939,13 @@ function saveChecklist() {
         patrimonioSelect.focus();
         return;
     }
+
+    const operadorVal = (document.getElementById('checklistOperador').value || '').trim();
+    if (!operadorVal) {
+        showToast('⚠️ Por favor, informe o Operador/Responsável pelo equipamento.');
+        document.getElementById('checklistOperador').focus();
+        return;
+    }
     
     // Verificar se pelo menos 1 item foi preenchido
     const items = Object.keys(checklistData).filter(k => k !== '_form');
@@ -2921,8 +2928,19 @@ async function viewChecklist(id) {
                 <div>📅 ${date}</div>
                 <div>📋 Patrimônio: ${checklist.patrimonio}</div>
                 <div>🏢 ${checklist.empresa || '—'}</div>
-                <div>👤 ${checklist.operador || '—'}</div>
-                <div style="margin-top: 8px;">
+                
+                <!-- Operador / Responsável Editável -->
+                <div style="margin-top: 8px; padding: 8px; background: var(--bg); border-radius: 8px; border: 1px solid var(--border);">
+                    <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">OPERADOR / RESPONSÁVEL:</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="text" id="editDetailOperador_${checklist.id}" value="${checklist.operador || ''}" placeholder="Digite o operador/responsável..." style="flex: 1; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; font-weight: 600; color: var(--text); background: white;">
+                        <button onclick="salvarOperadorChecklist('${checklist.id}')" style="background: #27ae60; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 11.5px; font-weight: 700; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 4px;">
+                            💾 Salvar
+                        </button>
+                    </div>
+                </div>
+
+                <div style="margin-top: 10px;">
                     <span style="color: var(--success);">✓ ${checklist.stats.conformes} Conformes</span> • 
                     <span style="color: var(--danger);">✗ ${checklist.stats.naoConformes} Não Conformes</span> • 
                     <span style="color: var(--text-light);">— ${checklist.stats.na} N/A</span>
@@ -2973,6 +2991,114 @@ async function viewChecklist(id) {
     showPage('pageChecklistDetail');
 }
 
+async function salvarOperadorChecklist(id) {
+    const input = document.getElementById(`editDetailOperador_${id}`);
+    if (!input) return;
+    const newOperador = input.value.trim();
+    if (!newOperador) {
+        showToast('⚠️ Informe o nome do operador/responsável');
+        return;
+    }
+
+    let checklist = await getFromIndexedDB('checklists', id);
+    if (!checklist && !isNaN(Number(id))) {
+        checklist = await getFromIndexedDB('checklists', Number(id));
+    }
+    if (!checklist) {
+        showToast('Checklist não encontrado');
+        return;
+    }
+
+    checklist.operador = newOperador;
+    checklist.synced = false;
+
+    await saveToIndexedDB('checklists', checklist);
+
+    if (navigator.onLine && getSyncUrl()) {
+        try {
+            showToast('Sincronizando operador na planilha...');
+            await syncToGoogleSheets('checklists', checklist);
+        } catch (e) {
+            console.error('Erro ao sincronizar operador do checklist:', e);
+        }
+    }
+
+    showToast('✅ Operador/Responsável salvo com sucesso!');
+    viewChecklist(id);
+}
+
+function encontrarEquipamentoParaChecklist(checklist) {
+    if (!checklist) return null;
+
+    // 1. Tentar por equipment.tipo e equipment.id
+    if (checklist.equipment && checklist.equipment.tipo && checklist.equipment.id) {
+        const cat = checklist.equipment.tipo;
+        const eqId = checklist.equipment.id;
+        if (EQUIPMENT_TYPES[cat]) {
+            const found = EQUIPMENT_TYPES[cat].find(e => e.id === eqId);
+            if (found) return found;
+        }
+    }
+
+    // 2. Tentar por equipment.category e equipment.id
+    if (checklist.equipment && checklist.equipment.category && checklist.equipment.id) {
+        const cat = checklist.equipment.category;
+        const eqId = checklist.equipment.id;
+        if (EQUIPMENT_TYPES[cat]) {
+            const found = EQUIPMENT_TYPES[cat].find(e => e.id === eqId);
+            if (found) return found;
+        }
+    }
+
+    // 3. Procurar em todos os EQUIPMENT_TYPES por nome ou id exatos
+    const targetName = String(checklist.nome || checklist.equipment?.name || '').trim().toUpperCase();
+
+    for (const [catKey, list] of Object.entries(EQUIPMENT_TYPES)) {
+        if (!Array.isArray(list)) continue;
+        for (const eq of list) {
+            const eqName = String(eq.name || '').trim().toUpperCase();
+            const eqId = String(eq.id || '').trim().toUpperCase();
+
+            if (targetName && (eqName === targetName || eqId === targetName)) {
+                return eq;
+            }
+        }
+    }
+
+    // 4. Se não achou por nome exato, tentar correspondência por palavra-chave
+    if (targetName) {
+        for (const [catKey, list] of Object.entries(EQUIPMENT_TYPES)) {
+            if (!Array.isArray(list)) continue;
+            for (const eq of list) {
+                const eqName = String(eq.name || '').trim().toUpperCase();
+                const eqId = String(eq.id || '').trim().toUpperCase();
+
+                if (targetName.includes('CAÇAMBA') || targetName.includes('CACAMBA')) {
+                    if (eqName.includes('CAÇAMBA') || eqName.includes('CACAMBA') || eqId.includes('CACAMBA')) return eq;
+                }
+                if (targetName.includes('TRATOR') && targetName.includes('ESTEIRA')) {
+                    if (eqName.includes('TRATOR DE ESTEIRA') || eqId.includes('TRATOR_ESTEIRA')) return eq;
+                }
+                if (targetName.includes('TRATOR') && (targetName.includes('AGRÍCOLA') || targetName.includes('AGRICOLA'))) {
+                    if (eqName.includes('TRATOR AGRÍCOLA') || eqId.includes('TRATOR_AGRICOLA')) return eq;
+                }
+                if (targetName.includes('ESCAVADEIRA')) {
+                    if (eqName.includes('ESCAVADEIRA') || eqId.includes('ESCAVADEIRA')) return eq;
+                }
+                if (targetName.includes('CAMINHÃO') || targetName.includes('CAMINHAO')) {
+                    if (eqName.includes('CAMINHÃO') || eqName.includes('CAMINHAO') || eqId.includes('CAMINHAO')) return eq;
+                }
+
+                if (targetName.includes(eqName) || eqName.includes(targetName)) {
+                    return eq;
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
 async function reinspecionarChecklist(id) {
     let original = await getFromIndexedDB('checklists', id);
     if (!original) {
@@ -2981,35 +3107,48 @@ async function reinspecionarChecklist(id) {
             original = await getFromIndexedDB('checklists', numId);
         }
     }
-    if (!original) return;
-    
-    const category = original.equipment?.tipo || original.equipment?.category || '';
-    const equipmentId = original.equipment?.id || '';
-    
-    if (!category || !equipmentId) {
-        showToast('Erro: Não foi possível determinar o tipo do equipamento.');
+    if (!original) {
+        showToast('Checklist não encontrado.');
         return;
     }
     
-    const equipment = EQUIPMENT_TYPES[category].find(e => e.id === equipmentId);
+    const equipment = encontrarEquipamentoParaChecklist(original);
+    
     if (!equipment) {
-        showToast('Erro: Tipo de equipamento não cadastrado.');
+        showToast('Erro: Não foi possível determinar o tipo do equipamento.');
         return;
     }
     
     currentEquipment = equipment;
     currentCadastro = null;
     
+    showPage('pageNewChecklist');
+    
+    const categorySelect = document.getElementById('checklistCategory');
+    if (categorySelect && equipment.category) {
+        categorySelect.value = equipment.category;
+        if (typeof onCategoryChange === 'function') onCategoryChange();
+    }
+    
+    const typeSelect = document.getElementById('checklistType');
+    if (typeSelect && equipment.id) {
+        typeSelect.value = equipment.id;
+        if (typeof onTypeChange === 'function') onTypeChange();
+    }
+    
     document.getElementById('checklistDate').value = new Date().toISOString().split('T')[0];
     document.getElementById('checklistPatrimonio').value = original.patrimonio || '';
     
     const nomeInput = document.getElementById('checklistNome');
     const empresaInput = document.getElementById('checklistEmpresa');
-    nomeInput.value = original.nome || '';
-    empresaInput.value = original.empresa || '';
+    if (nomeInput) nomeInput.value = original.nome || equipment.name || '';
+    if (empresaInput) empresaInput.value = original.empresa || '';
     
-    document.getElementById('checklistOperador').value = original.operador || '';
-    document.getElementById('checklistObservacoes').value = `Reinspeção baseada no checklist #${original.id}. ` + (original.observacoes || '');
+    const opInput = document.getElementById('checklistOperador');
+    if (opInput) opInput.value = original.operador || '';
+    
+    const obsInput = document.getElementById('checklistObservacoes');
+    if (obsInput) obsInput.value = `Reinspeção baseada no checklist #${original.id}. ` + (original.observacoes || '');
     
     const sstInput = document.getElementById('checklistSSTSelect');
     if (sstInput) sstInput.value = original.sst || '';
@@ -3019,14 +3158,20 @@ async function reinspecionarChecklist(id) {
     
     lockEquipmentFields(!!original.patrimonio);
     
-    await loadCadastroSelect(category);
-    await loadResponsavelSelect();
+    const category = equipment.category || original.equipment?.tipo || original.equipment?.category || '';
+    if (category && typeof loadCadastroSelect === 'function') {
+        await loadCadastroSelect(category);
+    }
+    if (typeof loadResponsavelSelect === 'function') {
+        await loadResponsavelSelect();
+    }
     
-    // Store previous failures/NC items to highlight in the UI
     itensComFalhaAnterior = [];
-    for (const [itemId, itemData] of Object.entries(original.items)) {
-        if (itemData.status === 'NC') {
-            itensComFalhaAnterior.push(itemId);
+    if (original.items) {
+        for (const [itemId, itemData] of Object.entries(original.items)) {
+            if (itemData && itemData.status === 'NC') {
+                itensComFalhaAnterior.push(itemId);
+            }
         }
     }
     

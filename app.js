@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v76';
+const APP_VERSION = 'v77';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2122,19 +2122,60 @@ async function getAllFromIndexedDB(storeName) {
 }
 
 async function getFromIndexedDB(storeName, id) {
+    if (id === undefined || id === null) return null;
     const db = await openDB();
-    const tx = db.transaction(storeName, 'readonly');
-    const request = tx.objectStore(storeName).get(id);
-    return new Promise((resolve, reject) => {
-        request.onsuccess = (e) => resolve(e.target.result);
-        request.onerror = (e) => reject(e.target.error);
+    
+    // 1. Tentar busca com o ID exatamente como recebido
+    let res = await new Promise((resolve) => {
+        const tx = db.transaction(storeName, 'readonly');
+        const req = tx.objectStore(storeName).get(id);
+        req.onsuccess = (e) => resolve(e.target.result);
+        req.onerror = () => resolve(null);
     });
+
+    // 2. Se for string numérica, tentar busca como Number
+    if (!res && typeof id === 'string' && id.trim() !== '' && !isNaN(Number(id))) {
+        res = await new Promise((resolve) => {
+            const tx = db.transaction(storeName, 'readonly');
+            const req = tx.objectStore(storeName).get(Number(id));
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = () => resolve(null);
+        });
+    }
+
+    // 3. Se for number, tentar busca como String
+    if (!res && typeof id === 'number') {
+        res = await new Promise((resolve) => {
+            const tx = db.transaction(storeName, 'readonly');
+            const req = tx.objectStore(storeName).get(String(id));
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = () => resolve(null);
+        });
+    }
+
+    // 4. Se ainda não achou, varredura flexível em todos os registros do store
+    if (!res) {
+        const all = await getAllFromIndexedDB(storeName);
+        const targetStr = String(id).trim().toUpperCase();
+        res = all.find(item => String(item.id || '').trim().toUpperCase() === targetStr) || null;
+    }
+
+    return res;
 }
 
 async function deleteFromIndexedDB(storeName, id) {
+    if (id === undefined || id === null) return;
     const db = await openDB();
     const tx = db.transaction(storeName, 'readwrite');
-    tx.objectStore(storeName).delete(id);
+    const store = tx.objectStore(storeName);
+    
+    store.delete(id);
+    if (typeof id === 'string' && !isNaN(Number(id))) {
+        store.delete(Number(id));
+    } else if (typeof id === 'number') {
+        store.delete(String(id));
+    }
+    
     return new Promise((resolve, reject) => {
         tx.oncomplete = () => resolve();
         tx.onerror = (e) => reject(e.target.error);
@@ -3751,12 +3792,17 @@ async function loadReports() {
 
                     <!-- Alteração de Status em Tempo Real -->
                     <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 10px;">
-                        <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">ALTERAR STATUS DO RELATO:</label>
-                        <select onchange="updateIssueStatus('${i.id}', this.value, event)" onclick="event.stopPropagation()" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border); font-weight: 600; font-size: 12px; background: white; cursor: pointer;">
-                            <option value="aberto" ${statusVal === 'aberto' || statusVal === 'pendente' ? 'selected' : ''}>🔴 Aberto (Pendente)</option>
-                            <option value="em_andamento" ${isEmAndamento ? 'selected' : ''}>🟡 Em Andamento (Em Tratamento)</option>
-                            <option value="resolvido" ${isResolvido ? 'selected' : ''}>🟢 Encerrado (Resolvido)</option>
-                        </select>
+                        <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 6px;">ALTERAR STATUS DO RELATO:</label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <select id="select_status_${i.id}" onclick="event.stopPropagation()" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--border); font-weight: 600; font-size: 12px; background: white; cursor: pointer;">
+                                <option value="aberto" ${statusVal === 'aberto' || statusVal === 'pendente' ? 'selected' : ''}>🔴 Aberto (Pendente)</option>
+                                <option value="em_andamento" ${isEmAndamento ? 'selected' : ''}>🟡 Em Andamento (Em Tratamento)</option>
+                                <option value="resolvido" ${isResolvido ? 'selected' : ''}>🟢 Encerrado (Resolvido)</option>
+                            </select>
+                            <button onclick="updateIssueStatus('${i.id}', document.getElementById('select_status_${i.id}').value, event)" style="background: #27ae60; color: white; border: none; border-radius: 6px; padding: 8px 14px; font-weight: 700; font-size: 12px; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 4px;">
+                                💾 Salvar Status
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Botões de Ação: Editar e Excluir -->
@@ -3779,7 +3825,10 @@ async function loadReports() {
 async function updateIssueStatus(id, newStatus, event) {
     if (event) event.stopPropagation();
     const issue = await getFromIndexedDB('issues', id);
-    if (!issue) return;
+    if (!issue) {
+        showToast('❌ Erro: Relato não encontrado no banco local');
+        return;
+    }
 
     issue.status = newStatus;
     issue.synced = false;
@@ -3801,7 +3850,7 @@ async function updateIssueStatus(id, newStatus, event) {
         'resolvido': '🟢 Encerrado (Resolvido)'
     };
 
-    showToast(`Status atualizado para: ${statusLabels[newStatus] || newStatus}`);
+    showToast(`✅ Status alterado para ${statusLabels[newStatus] || newStatus}`);
     renderReports();
 }
 

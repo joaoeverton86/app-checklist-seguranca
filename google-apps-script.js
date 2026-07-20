@@ -38,7 +38,23 @@ function setup() {
         'Email', 'ResetCode', 'ResetCodeExpires'
     ]);
     criarABASeNaoExisteOuAtualizar(ss, ITEMS_SHEET);
-    Logger.log('Setup concluído!');
+    limparValidacoesDeDados(ss);
+    Logger.log('Setup concluído e validações limpas!');
+}
+
+function limparValidacoesDeDados(ss) {
+    if (!ss) ss = SpreadsheetApp.getActiveSpreadsheet();
+    const abas = [NC_SHEET, CHECKLIST_SHEET, ISSUES_SHEET, CADASTROS_SHEET, COLABORADORES_SHEET, ITEMS_SHEET];
+    abas.forEach(function(nomeAba) {
+        const aba = ss.getSheetByName(nomeAba);
+        if (aba) {
+            const lastRow = aba.getLastRow();
+            const lastCol = aba.getLastColumn();
+            if (lastRow > 1 && lastCol > 0) {
+                aba.getRange(2, 1, lastRow - 1, lastCol).clearDataValidations();
+            }
+        }
+    });
 }
 
 function criarABASeNaoExisteOuAtualizar(ss, nomeAba) {
@@ -351,6 +367,9 @@ function salvarChecklist(record) {
             } else if (linhaNC !== -1) {
                 abaNC.deleteRow(linhaNC);
             }
+        }
+        if (abaNC.getLastRow() > 1) {
+            abaNC.getRange(2, 1, abaNC.getLastRow() - 1, abaNC.getLastColumn()).clearDataValidations();
         }
     }
 }

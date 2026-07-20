@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v75';
+const APP_VERSION = 'v76';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2574,7 +2574,7 @@ async function sincronizacaoBidirecional() {
                     if (local.synced !== true) {
                         syncToGoogleSheets(store, local);
                         totalAtualizados++;
-                    } else if (store === 'cadastros' || store === 'colaboradores') {
+                    } else if (store === 'cadastros' || store === 'colaboradores' || store === 'issues') {
                         if (!remoteMap[local.id]) {
                             await deleteFromIndexedDB(store, local.id);
                             totalAtualizados++;
@@ -3710,34 +3710,229 @@ async function loadReports() {
                 <div class="text">Nenhum relato de problema</div>
             </div>`;
     } else {
-        issuesContainer.innerHTML = issues.slice(0, 10).map(i => `
-            <div class="risk-list-item" onclick="toggleIssueDetails(this)" style="cursor: pointer; display: block; border-left-color: var(--warning);">
+        issuesContainer.innerHTML = issues.slice(0, 50).map(i => {
+            const statusVal = String(i.status || 'aberto').toLowerCase().trim();
+            const isResolvido = statusVal === 'resolvido' || statusVal === 'encerrado';
+            const isEmAndamento = statusVal === 'em_andamento' || statusVal === 'em andamento';
+            
+            const borderColor = isResolvido ? 'var(--success)' : isEmAndamento ? '#f39c12' : 'var(--danger)';
+            const statusBadgeHtml = isResolvido ?
+                `<span style="font-size: 10px; padding: 2px 8px; border-radius: 8px; background: #d5f5e3; color: #1e8449; font-weight: 700;">🟢 Encerrado</span>` :
+                isEmAndamento ?
+                `<span style="font-size: 10px; padding: 2px 8px; border-radius: 8px; background: #fef9e7; color: #d4ac0d; font-weight: 700;">🟡 Em Andamento</span>` :
+                `<span style="font-size: 10px; padding: 2px 8px; border-radius: 8px; background: #fadbd8; color: #c0392b; font-weight: 700;">🔴 Aberto</span>`;
+
+            return `
+            <div class="risk-list-item" onclick="toggleIssueDetails(this)" style="cursor: pointer; display: block; border-left-color: ${borderColor}; margin-bottom: 8px;">
                 <div style="display: flex; justify-content: space-between; align-items: start; width: 100%;">
-                    <div class="risk-info" style="overflow: hidden;">
-                        <div class="risk-item-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100vw - 80px);">${CATEGORY_ICONS[i.type] || '📦'} ${i.description}</div>
-                        <div class="risk-count">${i.reporter} • ${formatSimpleDate(i.date)}</div>
+                    <div class="risk-info" style="overflow: hidden; flex: 1;">
+                        <div class="risk-item-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100vw - 120px); font-weight: 600;">${CATEGORY_ICONS[i.type] || '📦'} ${i.description}</div>
+                        <div class="risk-count" style="margin-top: 2px;">${i.reporter || 'Anônimo'} • ${formatSimpleDate(i.date)}</div>
                     </div>
-                    <div class="chevron-icon" style="font-size: 11px; color: var(--text-light); transition: transform 0.2s; margin-left: 8px; margin-top: 4px;">▼</div>
+                    <div style="display: flex; align-items: center; gap: 6px; margin-left: 8px;">
+                        ${statusBadgeHtml}
+                        <div class="chevron-icon" style="font-size: 11px; color: var(--text-light); transition: transform 0.2s;">▼</div>
+                    </div>
                 </div>
                 
-                <!-- Detalhes ocultos -->
+                <!-- Detalhes expandidos -->
                 <div class="issue-details" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px;">
-                    <p style="margin: 0 0 6px; font-weight: 600;">Descrição Completa:</p>
-                    <p style="margin: 0 0 12px; color: var(--text-light); line-height: 1.45; white-space: pre-wrap; font-size: 12.5px;">${i.description}</p>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11.5px; background: var(--bg); padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                        <div><strong>Tipo:</strong> ${i.type}</div>
+                    <p style="margin: 0 0 6px; font-weight: 600; color: var(--text);">Descrição Completa:</p>
+                    <p style="margin: 0 0 12px; color: var(--text-light); line-height: 1.45; white-space: pre-wrap; font-size: 12.5px; background: #fdfdfd; padding: 8px; border-radius: 6px; border: 1px solid #eee;">${i.description}</p>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11.5px; background: var(--bg); padding: 10px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 12px;">
+                        <div><strong>Tipo:</strong> ${i.type || 'N/A'}</div>
                         <div><strong>Identificação:</strong> ${i.identificacao || 'N/A'}</div>
-                        <div><strong>Relatado por:</strong> ${i.reporter}</div>
+                        <div><strong>Relatado por:</strong> ${i.reporter || 'N/A'}</div>
                         <div><strong>Cargo/Função:</strong> ${i.role || 'N/A'}</div>
-                        <div><strong>Status:</strong> <span style="font-weight: 600; color: ${i.status === 'Resolvido' ? 'var(--success)' : 'var(--danger)'}">${i.status || 'Pendente'}</span></div>
                         <div><strong>Data Registro:</strong> ${formatSimpleDate(i.date)}</div>
+                        <div><strong>Status Atual:</strong> ${statusBadgeHtml}</div>
+                    </div>
+
+                    <!-- Alteração de Status em Tempo Real -->
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 10px;">
+                        <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">ALTERAR STATUS DO RELATO:</label>
+                        <select onchange="updateIssueStatus('${i.id}', this.value, event)" onclick="event.stopPropagation()" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border); font-weight: 600; font-size: 12px; background: white; cursor: pointer;">
+                            <option value="aberto" ${statusVal === 'aberto' || statusVal === 'pendente' ? 'selected' : ''}>🔴 Aberto (Pendente)</option>
+                            <option value="em_andamento" ${isEmAndamento ? 'selected' : ''}>🟡 Em Andamento (Em Tratamento)</option>
+                            <option value="resolvido" ${isResolvido ? 'selected' : ''}>🟢 Encerrado (Resolvido)</option>
+                        </select>
+                    </div>
+
+                    <!-- Botões de Ação: Editar e Excluir -->
+                    <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
+                        <button onclick="editIssueModal('${i.id}', event)" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 8px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                            ✏️ Editar
+                        </button>
+                        <button onclick="deleteIssuePermanente('${i.id}', event)" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 8px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                            🗑️ Excluir
+                        </button>
                     </div>
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
     }
 
     renderDashboardCharts();
+}
+
+async function updateIssueStatus(id, newStatus, event) {
+    if (event) event.stopPropagation();
+    const issue = await getFromIndexedDB('issues', id);
+    if (!issue) return;
+
+    issue.status = newStatus;
+    issue.synced = false;
+
+    await saveToIndexedDB('issues', issue);
+
+    if (navigator.onLine && getSyncUrl()) {
+        try {
+            showToast('Sincronizando status na planilha...');
+            await syncToGoogleSheets('issues', issue);
+        } catch (e) {
+            console.error('Erro ao atualizar status do relato na planilha:', e);
+        }
+    }
+
+    const statusLabels = {
+        'aberto': '🔴 Aberto (Pendente)',
+        'em_andamento': '🟡 Em Andamento',
+        'resolvido': '🟢 Encerrado (Resolvido)'
+    };
+
+    showToast(`Status atualizado para: ${statusLabels[newStatus] || newStatus}`);
+    renderReports();
+}
+
+async function editIssueModal(id, event) {
+    if (event) event.stopPropagation();
+    const issue = await getFromIndexedDB('issues', id);
+    if (!issue) {
+        showToast('Relato não encontrado');
+        return;
+    }
+
+    const statusVal = String(issue.status || 'aberto').toLowerCase().trim();
+
+    const html = `
+        <div style="padding: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <h3 style="margin: 0; font-size: 16px; color: var(--primary);">✏️ Editar Relato de Problema</h3>
+                <button onclick="closeModal()" style="background: none; border: none; font-size: 20px; cursor: pointer;">✕</button>
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label" style="font-size: 12px; font-weight: bold;">Tipo de Relato</label>
+                <select id="editIssueType" class="form-select" style="width: 100%; padding: 8px; border-radius: 6px;">
+                    <option value="infraestrutura" ${issue.type === 'infraestrutura' ? 'selected' : ''}>🧱 Infraestrutura / Acessos</option>
+                    <option value="equipamento" ${issue.type === 'equipamento' ? 'selected' : ''}>🚜 Equipamento / Veículo</option>
+                    <option value="epi" ${issue.type === 'epi' ? 'selected' : ''}>🦺 EPI / EPC</option>
+                    <option value="comportamental" ${issue.type === 'comportamental' ? 'selected' : ''}>⚠️ Atóxico / Comportamental</option>
+                    <option value="outro" ${issue.type === 'outro' ? 'selected' : ''}>📦 Outros</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label" style="font-size: 12px; font-weight: bold;">Identificação / Local</label>
+                <input type="text" id="editIssueIdentificacao" class="form-input" style="width: 100%; padding: 8px; border-radius: 6px;" value="${issue.identificacao || ''}">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label" style="font-size: 12px; font-weight: bold;">Descrição do Problema *</label>
+                <textarea id="editIssueDescription" class="form-textarea" style="width: 100%; padding: 8px; border-radius: 6px; min-height: 80px;">${issue.description || ''}</textarea>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label" style="font-size: 12px; font-weight: bold;">Status da Ocorrência</label>
+                <select id="editIssueStatus" class="form-select" style="width: 100%; padding: 8px; border-radius: 6px; font-weight: bold;">
+                    <option value="aberto" ${statusVal === 'aberto' || statusVal === 'pendente' ? 'selected' : ''}>🔴 Aberto (Pendente)</option>
+                    <option value="em_andamento" ${statusVal === 'em_andamento' || statusVal === 'em andamento' ? 'selected' : ''}>🟡 Em Andamento (Em Tratamento)</option>
+                    <option value="resolvido" ${statusVal === 'resolvido' || statusVal === 'encerrado' ? 'selected' : ''}>🟢 Encerrado (Resolvido)</option>
+                </select>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 16px;">
+                <button onclick="saveIssueEdit('${id}')" class="save-btn" style="flex: 1; padding: 10px; font-weight: bold;">Salvar Alterações</button>
+                <button onclick="closeModal()" class="save-btn" style="background: #95a5a6; padding: 10px;">Cancelar</button>
+            </div>
+        </div>
+    `;
+
+    showModal(html);
+}
+
+async function saveIssueEdit(id) {
+    const issue = await getFromIndexedDB('issues', id);
+    if (!issue) return;
+
+    const newType = document.getElementById('editIssueType').value;
+    const newIdentificacao = document.getElementById('editIssueIdentificacao').value.trim();
+    const newDesc = document.getElementById('editIssueDescription').value.trim();
+    const newStatus = document.getElementById('editIssueStatus').value;
+
+    if (!newDesc) {
+        showToast('Preencha a descrição do problema');
+        return;
+    }
+
+    issue.type = newType;
+    issue.identificacao = newIdentificacao;
+    issue.description = newDesc;
+    issue.status = newStatus;
+    issue.synced = false;
+
+    await saveToIndexedDB('issues', issue);
+
+    if (navigator.onLine && getSyncUrl()) {
+        try {
+            showToast('Atualizando na planilha...');
+            await syncToGoogleSheets('issues', issue);
+        } catch (e) {
+            console.error('Erro ao sincronizar relato editado:', e);
+        }
+    }
+
+    closeModal();
+    showToast('Relato de problema atualizado!');
+    renderReports();
+}
+
+async function deleteIssuePermanente(id, event) {
+    if (event) event.stopPropagation();
+    const issue = await getFromIndexedDB('issues', id);
+    const descText = issue ? `"${issue.description || ''}"` : id;
+
+    if (!confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o relato ${descText} da planilha Google e do aplicativo?`)) return;
+
+    if (navigator.onLine && getSyncUrl()) {
+        try {
+            showToast('Excluindo da planilha...');
+            const SCRIPT_URL = getSyncUrl();
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({
+                    store: 'delete_record',
+                    aba: 'Relatos',
+                    id: String(id)
+                })
+            });
+            const result = await response.json();
+            if (!result.success) {
+                console.warn('Erro ao deletar relato na planilha:', result.error);
+            }
+        } catch (err) {
+            console.error('Falha ao conectar para deletar relato:', err);
+        }
+    } else {
+        showToast('Offline: Deletado apenas deste aparelho.');
+    }
+
+    await deleteFromIndexedDB('issues', id);
+    showToast('Relato de problema excluído com sucesso');
+    renderReports();
 }
 
 // ============================================

@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v91';
+const APP_VERSION = 'v92';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -5276,6 +5276,21 @@ function converterParaSupabase(store, item) {
             status: item.status || 'aberto'
         };
     }
+    if (store === 'checklist_items') {
+        return {
+            id: String(item.id).trim(),
+            id_equipamento: item.idEquipamento || '',
+            nome_equipamento: item.nomeEquipamento || '',
+            icone_equipamento: item.iconeEquipamento || '',
+            categoria_equipamento: item.categoriaEquipamento || '',
+            texto_item: item.textoItem || '',
+            nr: item.nr || '',
+            risco: item.risco || 'medium',
+            secao: item.secao || '',
+            ordem: item.ordem !== undefined ? Number(item.ordem) : 0,
+            ativo: item.ativo !== false ? 'Sim' : 'Não'
+        };
+    }
     return item;
 }
 
@@ -5332,6 +5347,23 @@ function converterParaAppFromSupabase(table, row) {
             equipment: row.equipment,
             items: row.items || {},
             synced: true
+        };
+    }
+    if (table === 'checklist_items') {
+        return {
+            id: row.id,
+            idEquipamento: row.id_equipamento || '',
+            nomeEquipamento: row.nome_equipamento || '',
+            iconeEquipamento: row.icone_equipamento || '',
+            categoriaEquipamento: row.categoria_equipamento || '',
+            textoItem: row.texto_item || '',
+            nr: row.nr || '',
+            risco: row.risco || 'medium',
+            secao: row.secao || '',
+            ordem: row.ordem !== undefined ? Number(row.ordem) : 0,
+            ativo: row.ativo !== 'Não',
+            synced: true,
+            supabase_synced: true
         };
     }
     if (table === 'relatos') {

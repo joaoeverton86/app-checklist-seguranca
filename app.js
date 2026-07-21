@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v86';
+const APP_VERSION = 'v87';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2507,12 +2507,15 @@ async function saveItemGerencia() {
 // CONEXÃO & SINCRONIZAÇÃO COM SUPABASE (POSTGRESQL)
 // ============================================
 
+const DEFAULT_SUPABASE_URL = 'https://qqtcwxvjmybyzubocgd.supabase.co';
+const DEFAULT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxdGN3eHZiam15Ynl6dWJvY2dkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1ODczNDUsImV4cCI6MjEwMDE2MzM0NX0.T6Nm-lUD2I_mRULsEXCDQBkJe2cEpl6_z7hUNR30yTk';
+
 function getSupabaseUrl() {
-    return (localStorage.getItem('supabase_url') || '').trim().replace(/\/$/, '');
+    return (localStorage.getItem('supabase_url') || DEFAULT_SUPABASE_URL).trim().replace(/\/$/, '');
 }
 
 function getSupabaseKey() {
-    return (localStorage.getItem('supabase_key') || '').trim();
+    return (localStorage.getItem('supabase_key') || DEFAULT_SUPABASE_KEY).trim();
 }
 
 function isSupabaseConfigured() {

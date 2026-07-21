@@ -43,6 +43,7 @@
                 }).then(function() {
                     status.textContent = 'Limpando banco de dados local...';
                     return new Promise(function(resolve) {
+                        indexedDB.deleteDatabase('ChecklistSeguranca');
                         var req = indexedDB.deleteDatabase('checklist_db');
                         req.onsuccess = function() { resolve(); };
                         req.onerror = function() { resolve(); };
@@ -58,6 +59,7 @@
                 });
             } else {
                 localStorage.clear();
+                indexedDB.deleteDatabase('ChecklistSeguranca');
                 indexedDB.deleteDatabase('checklist_db');
                 status.className = 'status ok';
                 status.textContent = 'Cache limpo! Redirecionando...';

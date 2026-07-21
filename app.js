@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v87';
+const APP_VERSION = 'v88';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2507,11 +2507,19 @@ async function saveItemGerencia() {
 // CONEXÃO & SINCRONIZAÇÃO COM SUPABASE (POSTGRESQL)
 // ============================================
 
-const DEFAULT_SUPABASE_URL = 'https://qqtcwxvjmybyzubocgd.supabase.co';
+const DEFAULT_SUPABASE_URL = 'https://qqtcwxvbjmybyzubocgd.supabase.co';
 const DEFAULT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxdGN3eHZiam15Ynl6dWJvY2dkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1ODczNDUsImV4cCI6MjEwMDE2MzM0NX0.T6Nm-lUD2I_mRULsEXCDQBkJe2cEpl6_z7hUNR30yTk';
 
+function cleanSupabaseUrl(url) {
+    if (!url) return '';
+    let cleaned = url.trim();
+    cleaned = cleaned.replace(/\/rest\/v1\/?$/i, '').replace(/\/+$/, '');
+    return cleaned;
+}
+
 function getSupabaseUrl() {
-    return (localStorage.getItem('supabase_url') || DEFAULT_SUPABASE_URL).trim().replace(/\/$/, '');
+    const stored = localStorage.getItem('supabase_url');
+    return cleanSupabaseUrl(stored || DEFAULT_SUPABASE_URL);
 }
 
 function getSupabaseKey() {
@@ -2523,7 +2531,7 @@ function isSupabaseConfigured() {
 }
 
 function setSupabaseConfig(url, key) {
-    localStorage.setItem('supabase_url', (url || '').trim().replace(/\/$/, ''));
+    localStorage.setItem('supabase_url', cleanSupabaseUrl(url));
     localStorage.setItem('supabase_key', (key || '').trim());
 }
 

@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v89';
+const APP_VERSION = 'v90';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -275,8 +275,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     updatePendingBadge();
 
 
-    if (navigator.onLine && getSyncUrl()) {
-        setTimeout(function() { sincronizacaoBidirecional(); }, 2000);
+    if (navigator.onLine) {
+        if (isSupabaseConfigured()) {
+            setTimeout(function() {
+                sincronizarComSupabase().then(() => {
+                    renderEquipmentGrids();
+                    if (currentPage === 'pageCadastro') switchGestaoTab(gestaoTab);
+                });
+            }, 500);
+        }
+        if (getSyncUrl()) {
+            setTimeout(function() { sincronizacaoBidirecional(); }, 2000);
+        }
     }
     const sessionStr = localStorage.getItem('active_session');
     if (sessionStr) {
@@ -615,7 +625,15 @@ function showPage(pageId) {
         renderDeadlineAlerts();
         loadTopRisks();
     } else if (pageId === 'pageCadastro') {
-        switchGestaoTab(gestaoTab);
+        if (isSupabaseConfigured() && navigator.onLine) {
+            sincronizarComSupabase().then(() => switchGestaoTab(gestaoTab));
+        } else {
+            switchGestaoTab(gestaoTab);
+        }
+    } else if (pageId === 'pageNewChecklist') {
+        if (isSupabaseConfigured() && navigator.onLine) {
+            sincronizarComSupabase().then(() => renderEquipmentGrids());
+        }
     } else if (pageId === 'pageReports') {
         loadReports();
     } else if (pageId === 'pageHistory') {
@@ -3017,8 +3035,15 @@ async function sincronizarStoreEspecifico(aba, store) {
 function iniciarSyncPeriodica() {
     if (syncIntervalId) clearInterval(syncIntervalId);
     syncIntervalId = setInterval(function() {
-        if (navigator.onLine && getSyncUrl()) {
-            sincronizacaoBidirecional();
+        if (navigator.onLine) {
+            if (isSupabaseConfigured()) {
+                sincronizarComSupabase().then(() => {
+                    if (currentPage === 'pageCadastro') loadGestao();
+                });
+            }
+            if (getSyncUrl()) {
+                sincronizacaoBidirecional();
+            }
         }
     }, 5 * 60 * 1000);
 }

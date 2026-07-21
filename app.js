@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v84';
+const APP_VERSION = 'v85';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2633,7 +2633,9 @@ async function sincronizacaoBidirecional() {
         const storesParaSync = [
             { aba: 'Cadastros', store: 'cadastros' },
             { aba: 'Colaboradores', store: 'colaboradores' },
-            { aba: 'Itens Checklist', store: 'checklist_items' }
+            { aba: 'Itens Checklist', store: 'checklist_items' },
+            { aba: 'Checklists', store: 'checklists' },
+            { aba: 'Relatos', store: 'issues' }
         ];
 
         let totalAtualizados = 0;
@@ -2798,6 +2800,17 @@ async function sincronizacaoBidirecional() {
             }
         }
 
+        // Buscar aba Não Conformidades e vincular itens aos checklists locais
+        try {
+            const ncResp = await fetch(SCRIPT_URL + '?store=' + encodeURIComponent('Não Conformidades'));
+            const ncResult = await ncResp.json();
+            if (ncResult && ncResult.success && Array.isArray(ncResult.data) && ncResult.data.length > 0) {
+                await sincronizarNaoConformidadesComChecklists(ncResult.data);
+            }
+        } catch (ncErr) {
+            console.log('Erro ao baixar Não Conformidades:', ncErr.message);
+        }
+
         if (statusEl) {
             if (totalAtualizados > 0) {
                 statusEl.textContent = '● Sync concluída (' + totalAtualizados + ' atualizados)';
@@ -2814,6 +2827,68 @@ async function sincronizacaoBidirecional() {
         syncBidirecionalEmAndamento = false;
         verificarEAtualizarPapelSessao();
     }
+}
+
+function hashCode(str) {
+    let hash = 0;
+    if (!str || str.length === 0) return hash;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash |= 0;
+    }
+    return hash;
+}
+
+async function sincronizarNaoConformidadesComChecklists(ncRows) {
+    if (!Array.isArray(ncRows) || ncRows.length === 0) return;
+    
+    const checklists = await getAllFromIndexedDB('checklists');
+    if (checklists.length === 0) return;
+
+    const checklistMap = {};
+    checklists.forEach(c => {
+        if (c.id) checklistMap[String(c.id).trim()] = c;
+        if (c.patrimonio) checklistMap[String(c.patrimonio).trim().toUpperCase()] = c;
+    });
+
+    let count = 0;
+    for (const row of ncRows) {
+        const idChecklist = String(row['ID Checklist'] || row['ID_Checklist'] || row['ID'] || '').trim();
+        const patrimonio = String(row['Patrimônio'] || row['Patrimonio'] || '').trim().toUpperCase();
+        const itemText = String(row['Item'] || '').trim();
+        const obs = String(row['Observação'] || row['Observacao'] || '').trim();
+        const risco = String(row['Risco'] || 'high').trim().toLowerCase();
+
+        if (!itemText) continue;
+
+        let target = checklistMap[idChecklist] || checklistMap[patrimonio];
+        if (!target && patrimonio) {
+            target = checklists.find(c => String(c.patrimonio || '').toUpperCase() === patrimonio);
+        }
+
+        if (target) {
+            if (!target.items || typeof target.items !== 'object') {
+                target.items = {};
+            }
+
+            const itemId = 'nc_import_' + Math.abs(hashCode(itemText));
+            target.items[itemId] = {
+                status: 'NC',
+                observation: obs,
+                customText: itemText,
+                risk: risco
+            };
+
+            const stats = recalcularStatsChecklist(target);
+            target.stats = stats;
+            target.statusChecklist = normalizarStatusChecklist(target.statusChecklist, target);
+
+            await saveToIndexedDB('checklists', target, true);
+            count++;
+        }
+    }
+    console.log(`✅ ${count} Não Conformidades vinculadas aos checklists locais.`);
 }
 
 async function sincronizarStoreEspecifico(aba, store) {

@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v83';
+const APP_VERSION = 'v84';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -3753,11 +3753,12 @@ function clearReportFilters() {
 
 function getDateRange() {
     const now = new Date();
+    const fimAjustado = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
     if (reportFilter === 'semana') {
         const inicio = new Date(now);
         inicio.setDate(now.getDate() - 7);
         inicio.setHours(0, 0, 0, 0);
-        return { inicio, fim: now };
+        return { inicio, fim: fimAjustado };
     }
     if (reportFilter === 'custom' && reportFilterCustomFrom && reportFilterCustomTo) {
         const inicio = new Date(reportFilterCustomFrom + 'T00:00:00');
@@ -3765,9 +3766,9 @@ function getDateRange() {
         return { inicio, fim };
     }
     if (reportFilter === 'todos') {
-        return { inicio: new Date(2000, 0, 1), fim: now };
+        return { inicio: new Date(2000, 0, 1), fim: fimAjustado };
     }
-    return { inicio: new Date(now.getFullYear(), now.getMonth(), 1), fim: now };
+    return { inicio: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0), fim: fimAjustado };
 }
 
 // ============================================
@@ -3783,12 +3784,17 @@ async function showStatusDetails(status) {
     const { inicio, fim } = getDateRange();
     const targetStatus = normalizarStatusChecklist(status);
     
-    const checklistsMes = checklists.filter(c => {
+    let checklistsMes = checklists.filter(c => {
         const d = parseLocalDate(c.date);
         const inDate = d >= inicio && d <= fim;
         const normStatus = normalizarStatusChecklist(c.statusChecklist, c);
         return inDate && normStatus === targetStatus;
     });
+
+    // Se o filtro de data retornou 0 mas existem registros no banco, buscar TODOS do status
+    if (checklistsMes.length === 0) {
+        checklistsMes = checklists.filter(c => normalizarStatusChecklist(c.statusChecklist, c) === targetStatus);
+    }
     
     const statusLabels = {
         interditado: { title: '🚫 Interditados', color: 'var(--danger)', bg: '#fadbd8' },
@@ -3796,12 +3802,12 @@ async function showStatusDetails(status) {
         liberado: { title: '✅ Liberados', color: 'var(--success)', bg: '#d5f5e3' }
     };
     
-    const info = statusLabels[status];
+    const info = statusLabels[targetStatus] || statusLabels.interditado;
     
     let html = `
         <div style="background: ${info.bg}; padding: 16px; border-radius: 12px; margin-bottom: 16px;">
             <h3 style="color: ${info.color}; margin: 0;">${info.title}</h3>
-            <p style="color: var(--text-light); margin: 4px 0 0;">${checklistsMes.length} checklist(s) este mês</p>
+            <p style="color: var(--text-light); margin: 4px 0 0;">${checklistsMes.length} checklist(s) encontrado(s)</p>
         </div>
     `;
     
@@ -5295,6 +5301,9 @@ function converterParaApp(storeName, row) {
             }
         }
 
+        const statusRaw = row['Status'] || '';
+        const statusNorm = normalizarStatusChecklist(statusRaw, { items: itemsParsed, stats: { conformes, naoConformes, na } });
+
         return {
             id: row['ID'] || '',
             timestamp: row['Data Hora Registro'] || new Date().toISOString(),
@@ -5304,7 +5313,7 @@ function converterParaApp(storeName, row) {
             empresa: row['Empresa'] || '',
             operador: row['Operador'] || '',
             observacoes: row['Observações'] || '',
-            statusChecklist: row['Status'] || '',
+            statusChecklist: statusNorm || statusRaw || '',
             prazoAdequacao: row['Prazo Adequação'] || '',
             stats: {
                 conformes: conformes,

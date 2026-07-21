@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v82';
+const APP_VERSION = 'v83';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -90,14 +90,75 @@ function toggleIssueDetails(element) {
 
 function parseLocalDate(dateStr) {
     if (!dateStr) return new Date();
-    if (dateStr.includes('T')) {
-        return new Date(dateStr);
+    if (typeof dateStr !== 'string') {
+        const d = new Date(dateStr);
+        return isNaN(d.getTime()) ? new Date() : d;
     }
-    const parts = dateStr.split('-');
-    if (parts.length === 3) {
-        return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+
+    const str = dateStr.trim();
+    if (str.includes('T')) {
+        const d = new Date(str);
+        if (!isNaN(d.getTime())) return d;
     }
-    return new Date(dateStr);
+
+    // Formato BR: DD/MM/YYYY ou DD/MM/YYYY HH:mm
+    if (str.includes('/')) {
+        const parts = str.split(' ')[0].split('/');
+        if (parts.length === 3) {
+            const day = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const year = parseInt(parts[2], 10);
+            const d = new Date(year, month, day);
+            if (!isNaN(d.getTime())) return d;
+        }
+    }
+
+    // Formato ISO: YYYY-MM-DD
+    if (str.includes('-')) {
+        const parts = str.split('T')[0].split('-');
+        if (parts.length === 3) {
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const day = parseInt(parts[2], 10);
+            const d = new Date(year, month, day);
+            if (!isNaN(d.getTime())) return d;
+        }
+    }
+
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? new Date() : d;
+}
+
+function normalizarStatusChecklist(val, checklist) {
+    let str = String(val || '').toLowerCase().trim();
+
+    if (str.includes('interditad') || str.includes('interdicao') || str.includes('interdição')) {
+        return 'interditado';
+    }
+    if (str.includes('restri') || str.includes('restrica')) {
+        return 'liberado_restricao';
+    }
+    if (str.includes('liberad') || str.includes('conforme') || str.includes('ok')) {
+        return 'liberado';
+    }
+
+    if (checklist) {
+        const stats = recalcularStatsChecklist(checklist);
+        if (stats.naoConformes > 0) {
+            if (checklist.items) {
+                const hasHighRiskNC = Object.entries(checklist.items).some(([k, v]) => {
+                    if (k === '_form' || !v || v.status !== 'NC') return false;
+                    const eqItem = checklist.equipment?.items?.find(i => i.id === k);
+                    return eqItem?.risk === 'high' || k.includes('interdicao') || k.includes('freio') || k.includes('cinto');
+                });
+                if (hasHighRiskNC) return 'interditado';
+            }
+            return 'liberado_restricao';
+        }
+        return 'liberado';
+    }
+
+    return 'liberado';
 }
 
 let currentPage = 'pageHome';
@@ -2888,12 +2949,16 @@ function renderHistoryFiltered() {
         const matchMonth = !selectedMonth || (!isNaN(parsedDate.getTime()) && parsedDate.getMonth().toString() === selectedMonth);
         
         let matchStatus = true;
+        const stats = recalcularStatsChecklist(c);
+        c.stats = stats;
+        const normStatus = normalizarStatusChecklist(c.statusChecklist, c);
+
         if (status === 'conforme') {
-            matchStatus = c.stats.naoConformes === 0 && c.statusChecklist !== 'interditado';
+            matchStatus = stats.naoConformes === 0 && normStatus !== 'interditado';
         } else if (status === 'NC') {
-            matchStatus = c.stats.naoConformes > 0;
+            matchStatus = stats.naoConformes > 0;
         } else if (status === 'interditado') {
-            matchStatus = c.statusChecklist === 'interditado';
+            matchStatus = normStatus === 'interditado';
         }
         
         return matchSearch && matchYear && matchMonth && matchStatus;
@@ -3716,10 +3781,13 @@ function getDateRange() {
 async function showStatusDetails(status) {
     const checklists = await getAllFromIndexedDB('checklists');
     const { inicio, fim } = getDateRange();
+    const targetStatus = normalizarStatusChecklist(status);
     
     const checklistsMes = checklists.filter(c => {
         const d = parseLocalDate(c.date);
-        return d >= inicio && d <= fim && c.statusChecklist === status;
+        const inDate = d >= inicio && d <= fim;
+        const normStatus = normalizarStatusChecklist(c.statusChecklist, c);
+        return inDate && normStatus === targetStatus;
     });
     
     const statusLabels = {
@@ -3973,17 +4041,19 @@ async function loadReports() {
     const statusCounts = { interditado: 0, liberado_restricao: 0, liberado: 0 };
     
     checklistsFiltrados.forEach(c => {
-        totalC += c.stats.conformes;
-        totalNC += c.stats.naoConformes;
+        const stats = recalcularStatsChecklist(c);
+        c.stats = stats;
+
+        totalC += stats.conformes;
+        totalNC += stats.naoConformes;
         
         // Contar por tipo
-        const type = c.equipment?.name || 'Desconhecido';
+        const type = c.equipment?.name || c.nome || 'Desconhecido';
         typeCounts[type] = (typeCounts[type] || 0) + 1;
         
         // Contar status de interdição
-        if (c.statusChecklist) {
-            statusCounts[c.statusChecklist] = (statusCounts[c.statusChecklist] || 0) + 1;
-        }
+        const stNorm = normalizarStatusChecklist(c.statusChecklist, c);
+        statusCounts[stNorm] = (statusCounts[stNorm] || 0) + 1;
         
         // Contar não conformidades por item
         for (const [itemId, data] of Object.entries(c.items)) {

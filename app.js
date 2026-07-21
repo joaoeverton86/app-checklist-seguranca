@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v95';
+const APP_VERSION = 'v96';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2627,10 +2627,8 @@ async function supabaseFetch(table, options = {}) {
 // SINCRONIZAÇÃO COM GOOGLE SHEETS
 // ============================================
 
-const DEFAULT_SYNC_URL = 'https://script.google.com/macros/s/AKfycbzhFCnB2VLSH4i7i_JNZajCc_88UgQEWdeHtgzHtcJGaS_kHQd7ixffVab2F9zHiMWFZQ/exec';
-
 function getSyncUrl() {
-    return localStorage.getItem('sync_script_url') || DEFAULT_SYNC_URL;
+    return "";
 }
 
 function setSyncUrl(url) {

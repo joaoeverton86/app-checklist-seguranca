@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v90';
+const APP_VERSION = 'v91';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -1254,6 +1254,9 @@ async function saveCadastroEdit(id) {
             return;
         }
         await deleteFromIndexedDB('cadastros', id);
+        if (isSupabaseConfigured()) {
+            await supabaseFetch('cadastros', { method: 'DELETE', query: '?id=eq.' + encodeURIComponent(id) });
+        }
     }
 
     const statusVal = document.getElementById('cadastroStatus') ? document.getElementById('cadastroStatus').value : 'ativo';
@@ -1263,6 +1266,8 @@ async function saveCadastroEdit(id) {
         ...oldCadastro,
         id: newPatrimonio,
         patrimonio: newPatrimonio,
+        tipo: document.getElementById('cadastroTipo')?.value || oldCadastro.tipo || '',
+        categoria: document.getElementById('cadastroCategoria')?.value || oldCadastro.categoria || '',
         nome: document.getElementById('cadastroNome').value.trim(),
         empresa: document.getElementById('cadastroEmpresa').value.trim(),
         setor: document.getElementById('cadastroSetor').value.trim(),
@@ -1272,7 +1277,12 @@ async function saveCadastroEdit(id) {
     };
 
     await saveToIndexedDB('cadastros', cadastro);
-    showToast(isAtivo ? 'Equipamento atualizado!' : 'Equipamento desmobilizado!');
+
+    if (isSupabaseConfigured()) {
+        await sincronizarItemIndividualSupabase('cadastros', cadastro);
+    }
+
+    showToast(isAtivo ? 'Equipamento atualizado com sucesso!' : 'Equipamento desmobilizado!');
 
     const btn = document.querySelector('#pageNovoEquipamento .save-btn[onclick^="saveCadastroEdit"]');
     if (btn) {
@@ -1292,6 +1302,8 @@ async function saveCadastroEdit(id) {
     document.getElementById('cadastroEmpresa').value = '';
     document.getElementById('cadastroSetor').value = '';
     document.getElementById('cadastroObs').value = '';
+
+    showPage('pageCadastro');
 }
 
 async function editColaborador(id) {
@@ -1395,13 +1407,25 @@ async function deleteCadastroPermanente(id) {
     const cadastro = await getFromIndexedDB('cadastros', id);
     const label = cadastro ? `${cadastro.patrimonio || ''} ${cadastro.nome ? '(' + cadastro.nome + ')' : ''}` : id;
 
-    if (!confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o equipamento "${label.trim()}" da planilha Google e do aplicativo?`)) return;
+    if (!confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o equipamento "${label.trim()}" do banco de dados e do aplicativo?`)) return;
+
+    if (isSupabaseConfigured()) {
+        try {
+            await supabaseFetch('cadastros', {
+                method: 'DELETE',
+                query: '?id=eq.' + encodeURIComponent(id)
+            });
+            console.log('⚡ [Supabase] Cadastro excluído definitivamente:', id);
+        } catch (spErr) {
+            console.error('Erro ao excluir cadastro do Supabase:', spErr);
+        }
+    }
 
     if (navigator.onLine && getSyncUrl()) {
         try {
             showToast('Excluindo da planilha...');
             const SCRIPT_URL = getSyncUrl();
-            const response = await fetch(SCRIPT_URL, {
+            await fetch(SCRIPT_URL, {
                 method: 'POST',
                 mode: 'cors',
                 headers: { 'Content-Type': 'text/plain' },
@@ -1411,15 +1435,9 @@ async function deleteCadastroPermanente(id) {
                     id: String(id)
                 })
             });
-            const result = await response.json();
-            if (!result.success) {
-                console.warn('Erro ao deletar na planilha, deletando apenas local:', result.error);
-            }
         } catch (err) {
             console.error('Falha de conexão ao deletar da planilha:', err);
         }
-    } else {
-        showToast('Offline: Deletado apenas deste aparelho.');
     }
 
     await deleteFromIndexedDB('cadastros', id);
@@ -1435,13 +1453,25 @@ async function deleteColaboradorPermanente(id) {
     const colab = await getFromIndexedDB('colaboradores', id);
     const label = colab ? `${colab.nome || ''} (Matrícula: ${colab.matricula || id})` : id;
 
-    if (!confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o colaborador "${label.trim()}" da planilha Google e do aplicativo?`)) return;
+    if (!confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o colaborador "${label.trim()}" do banco de dados e do aplicativo?`)) return;
+
+    if (isSupabaseConfigured()) {
+        try {
+            await supabaseFetch('colaboradores', {
+                method: 'DELETE',
+                query: '?id=eq.' + encodeURIComponent(id)
+            });
+            console.log('⚡ [Supabase] Colaborador excluído definitivamente:', id);
+        } catch (spErr) {
+            console.error('Erro ao excluir colaborador do Supabase:', spErr);
+        }
+    }
 
     if (navigator.onLine && getSyncUrl()) {
         try {
             showToast('Excluindo da planilha...');
             const SCRIPT_URL = getSyncUrl();
-            const response = await fetch(SCRIPT_URL, {
+            await fetch(SCRIPT_URL, {
                 method: 'POST',
                 mode: 'cors',
                 headers: { 'Content-Type': 'text/plain' },
@@ -3721,12 +3751,28 @@ async function updateChecklistPrazo(checklistId, newPrazo) {
 async function deleteChecklist(id) {
     if (!confirm('Tem certeza que deseja excluir este checklist?')) return;
     
-    // Tentar deletar online se estiver conectado
+    // Deletar no Supabase se estiver configurado
+    if (isSupabaseConfigured()) {
+        try {
+            await supabaseFetch('checklists', {
+                method: 'DELETE',
+                query: '?id=eq.' + encodeURIComponent(id)
+            });
+            await supabaseFetch('nao_conformidades', {
+                method: 'DELETE',
+                query: '?checklist_id=eq.' + encodeURIComponent(id)
+            });
+            console.log('⚡ [Supabase] Checklist excluído definitivamente:', id);
+        } catch (spErr) {
+            console.error('Erro ao deletar checklist no Supabase:', spErr);
+        }
+    }
+
+    // Deletar na planilha Google se estiver conectado
     if (navigator.onLine && getSyncUrl()) {
         try {
-            showToast('Excluindo da planilha...');
             const SCRIPT_URL = getSyncUrl();
-            const response = await fetch(SCRIPT_URL, {
+            await fetch(SCRIPT_URL, {
                 method: 'POST',
                 mode: 'cors',
                 headers: { 'Content-Type': 'text/plain' },
@@ -3736,15 +3782,9 @@ async function deleteChecklist(id) {
                     id: String(id)
                 })
             });
-            const result = await response.json();
-            if (!result.success) {
-                console.warn('Erro ao deletar na planilha, deletando apenas local:', result.error);
-            }
         } catch (err) {
             console.error('Falha de conexão ao deletar da planilha:', err);
         }
-    } else {
-        showToast('Offline: Deletado apenas deste aparelho.');
     }
     
     await deleteFromIndexedDB('checklists', id);
@@ -3756,7 +3796,7 @@ async function deleteChecklist(id) {
     // Remover do cache local para atualização imediata
     historyChecklistsCache = historyChecklistsCache.filter(c => String(c.id) !== String(id));
     
-    showToast('Checklist excluído');
+    showToast('Checklist excluído definitivamente');
     renderHistoryFiltered();
     showPage('pageHistory');
 }

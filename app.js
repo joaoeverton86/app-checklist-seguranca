@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v85';
+const APP_VERSION = 'v86';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2274,8 +2274,13 @@ async function saveToIndexedDB(storeName, data, skipSync = false) {
     return new Promise((resolve, reject) => {
         tx.oncomplete = () => {
             resolve();
-            if (!skipSync && navigator.onLine && getSyncUrl()) {
-                syncToGoogleSheets(storeName, data);
+            if (!skipSync && navigator.onLine) {
+                if (isSupabaseConfigured()) {
+                    sincronizarItemIndividualSupabase(storeName, data);
+                }
+                if (getSyncUrl()) {
+                    syncToGoogleSheets(storeName, data);
+                }
             }
         };
         tx.onerror = (e) => reject(e.target.error);
@@ -2496,6 +2501,61 @@ async function saveItemGerencia() {
     
     localStorage.setItem('custom_type_settings', JSON.stringify(settings));
     showToast('Itens do tipo de equipamento atualizados!');
+}
+
+// ============================================
+// CONEXÃO & SINCRONIZAÇÃO COM SUPABASE (POSTGRESQL)
+// ============================================
+
+function getSupabaseUrl() {
+    return (localStorage.getItem('supabase_url') || '').trim().replace(/\/$/, '');
+}
+
+function getSupabaseKey() {
+    return (localStorage.getItem('supabase_key') || '').trim();
+}
+
+function isSupabaseConfigured() {
+    return !!(getSupabaseUrl() && getSupabaseKey());
+}
+
+function setSupabaseConfig(url, key) {
+    localStorage.setItem('supabase_url', (url || '').trim().replace(/\/$/, ''));
+    localStorage.setItem('supabase_key', (key || '').trim());
+}
+
+async function supabaseFetch(table, options = {}) {
+    const url = getSupabaseUrl();
+    const key = getSupabaseKey();
+    if (!url || !key) return { success: false, error: 'Supabase não configurado' };
+
+    const endpoint = `${url}/rest/v1/${table}${options.query || ''}`;
+    const headers = {
+        'apikey': key,
+        'Authorization': `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        'Prefer': options.prefer || 'return=representation'
+    };
+
+    try {
+        const fetchOptions = {
+            method: options.method || 'GET',
+            headers: headers
+        };
+        if (options.body) {
+            fetchOptions.body = JSON.stringify(options.body);
+        }
+        const response = await fetch(endpoint, fetchOptions);
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errText}`);
+        }
+        const data = await response.json();
+        return { success: true, data: data };
+    } catch (err) {
+        console.error(`Erro na requisição Supabase (${table}):`, err.message);
+        return { success: false, error: err.message };
+    }
 }
 
 // ============================================
@@ -4981,11 +5041,37 @@ function loadConfigPage() {
     const versionEl = document.getElementById('versionDisplay');
     if (versionEl) versionEl.textContent = APP_VERSION;
 
+    // Configurações Supabase
+    const spUrl = getSupabaseUrl();
+    const spKey = getSupabaseKey();
+    const spUrlInput = document.getElementById('supabaseUrlInput');
+    const spKeyInput = document.getElementById('supabaseKeyInput');
+    if (spUrlInput) spUrlInput.value = spUrl;
+    if (spKeyInput) spKeyInput.value = spKey;
+
+    const spStatusCard = document.getElementById('supabaseStatusCard');
+    const spStatusText = document.getElementById('supabaseStatusText');
+    const spStatusDetail = document.getElementById('supabaseStatusDetail');
+
+    if (spStatusCard && spStatusText) {
+        if (isSupabaseConfigured()) {
+            spStatusCard.style.background = '#d1fae5';
+            spStatusText.textContent = '⚡ Supabase Configurado & Ativo';
+            spStatusText.style.color = '#065f46';
+            const lastSpSync = localStorage.getItem('last_supabase_sync');
+            const lastSpStr = lastSpSync ? new Date(lastSpSync).toLocaleString('pt-BR') : 'Nunca';
+            if (spStatusDetail) spStatusDetail.textContent = `Banco PostgreSQL Ativo | Última Sync: ${lastSpStr}`;
+        } else {
+            spStatusCard.style.background = '#fef3c7';
+            spStatusText.textContent = '⚠️ Supabase Pendente de Configuração';
+            spStatusText.style.color = '#92400e';
+            if (spStatusDetail) spStatusDetail.textContent = 'Insira a URL e a Anon Key do seu projeto Supabase acima.';
+        }
+    }
+
     const url = getSyncUrl();
     const urlInput = document.getElementById('syncUrlInput');
     if (urlInput) urlInput.value = url;
-    
-
     
     const status = getSyncStatus();
     const statusCard = document.getElementById('syncStatusCard');
@@ -5017,6 +5103,342 @@ function loadConfigPage() {
     if (btnColab && !btnColab.getAttribute('onclick').includes('Edit')) {
         btnColab.textContent = '💾 Cadastrar Colaborador';
         btnColab.setAttribute('onclick', 'saveColaborador()');
+    }
+}
+
+async function saveSupabaseConfig() {
+    const url = document.getElementById('supabaseUrlInput')?.value.trim();
+    const key = document.getElementById('supabaseKeyInput')?.value.trim();
+    if (!url || !key) {
+        showToast('Preencha a URL e a Anon Key do Supabase');
+        return;
+    }
+    setSupabaseConfig(url, key);
+    showToast('Configuração do Supabase salva com sucesso!');
+    loadConfigPage();
+}
+
+async function testSupabaseConnection() {
+    if (!isSupabaseConfigured()) {
+        showToast('Configure a URL e a Key do Supabase primeiro');
+        return;
+    }
+    showToast('Testando conexão com o Supabase...');
+    const res = await supabaseFetch('cadastros', { query: '?select=count' });
+    if (res.success) {
+        showToast('✅ Conexão com Supabase estabelecida com sucesso!');
+    } else {
+        showToast('❌ Erro na conexão Supabase: ' + res.error);
+    }
+}
+
+function converterParaSupabase(store, item) {
+    if (store === 'cadastros') {
+        return {
+            id: String(item.id || item.patrimonio || '').trim().toUpperCase(),
+            tipo: item.tipo || '',
+            categoria: item.categoria || '',
+            nome: item.nome || '',
+            patrimonio: String(item.patrimonio || item.id || '').toUpperCase(),
+            empresa: item.empresa || '',
+            setor: item.setor || '',
+            obs: item.obs || '',
+            ativo: item.ativo !== false
+        };
+    }
+    if (store === 'colaboradores') {
+        return {
+            id: String(item.id || item.matricula || '').trim().toUpperCase(),
+            nome: item.nome || '',
+            funcao: item.funcao || '',
+            setor: item.setor || '',
+            empresa: item.empresa || '',
+            matricula: String(item.matricula || item.id || ''),
+            validade_aso: item.validadeAso || '',
+            ativo: item.ativo !== false,
+            senha: item.senha || '',
+            nivel_acesso: item.nivelAcesso || 'Técnico',
+            email: item.email || ''
+        };
+    }
+    if (store === 'checklists') {
+        const stats = recalcularStatsChecklist(item);
+        const normStatus = normalizarStatusChecklist(item.statusChecklist, item);
+        return {
+            id: String(item.id).trim(),
+            date: item.date || '',
+            patrimonio: String(item.patrimonio || '').toUpperCase(),
+            nome: item.nome || item.equipment?.name || '',
+            empresa: item.empresa || '',
+            operador: item.operador || '',
+            observacoes: item.observacoes || '',
+            status_checklist: normStatus,
+            prazo_adequacao: item.prazoAdequacao || '',
+            conformes: stats.conformes,
+            nao_conformes: stats.naoConformes,
+            na: stats.na,
+            total: stats.total,
+            equipment: item.equipment || null,
+            items: item.items || {}
+        };
+    }
+    if (store === 'relatos' || store === 'issues') {
+        return {
+            id: String(item.id).trim(),
+            date: item.date || new Date().toISOString(),
+            tipo: item.type || item.tipo || '',
+            identificacao: item.identificacao || '',
+            description: item.description || '',
+            reporter: item.reporter || '',
+            role: item.role || '',
+            status: item.status || 'aberto'
+        };
+    }
+    return item;
+}
+
+function converterParaAppFromSupabase(table, row) {
+    if (table === 'cadastros') {
+        return {
+            id: row.id,
+            tipo: row.tipo,
+            categoria: row.categoria,
+            nome: row.nome,
+            patrimonio: row.patrimonio,
+            empresa: row.empresa,
+            setor: row.setor,
+            obs: row.obs,
+            ativo: row.ativo,
+            synced: true
+        };
+    }
+    if (table === 'colaboradores') {
+        return {
+            id: row.id,
+            nome: row.nome,
+            funcao: row.funcao,
+            setor: row.setor,
+            empresa: row.empresa,
+            matricula: row.matricula,
+            validadeAso: row.validade_aso,
+            ativo: row.ativo,
+            senha: row.senha,
+            nivelAcesso: row.nivel_acesso,
+            email: row.email,
+            synced: true
+        };
+    }
+    if (table === 'checklists') {
+        const stats = {
+            conformes: parseInt(row.conformes) || 0,
+            naoConformes: parseInt(row.nao_conformes) || 0,
+            na: parseInt(row.na) || 0,
+            total: parseInt(row.total) || 0
+        };
+        const normStatus = normalizarStatusChecklist(row.status_checklist, { items: row.items, stats });
+        return {
+            id: row.id,
+            date: row.date,
+            patrimonio: row.patrimonio,
+            nome: row.nome,
+            empresa: row.empresa,
+            operador: row.operador,
+            observacoes: row.observacoes,
+            statusChecklist: normStatus,
+            prazoAdequacao: row.prazo_adequacao,
+            stats: stats,
+            equipment: row.equipment,
+            items: row.items || {},
+            synced: true
+        };
+    }
+    if (table === 'relatos') {
+        return {
+            id: row.id,
+            date: row.date,
+            type: row.tipo,
+            identificacao: row.identificacao,
+            description: row.description,
+            reporter: row.reporter,
+            role: row.role,
+            status: row.status,
+            synced: true
+        };
+    }
+    return row;
+}
+
+async function sincronizarItemIndividualSupabase(storeName, data) {
+    if (!isSupabaseConfigured() || !data) return;
+    try {
+        const tableMap = {
+            'cadastros': 'cadastros',
+            'colaboradores': 'colaboradores',
+            'checklists': 'checklists',
+            'issues': 'relatos',
+            'checklist_items': 'checklist_items'
+        };
+        const table = tableMap[storeName];
+        if (!table) return;
+
+        const spObj = converterParaSupabase(storeName, data);
+        const res = await supabaseFetch(table, {
+            method: 'POST',
+            query: '?on_conflict=id',
+            prefer: 'resolution=merge-duplicates',
+            body: spObj
+        });
+
+        if (res.success) {
+            data.synced = true;
+            console.log(`⚡ [Supabase] ${storeName} sincronizado com sucesso:`, data.id);
+        }
+
+        if (storeName === 'checklists' && data.items) {
+            const ncRows = [];
+            for (const [k, v] of Object.entries(data.items)) {
+                if (k === '_form' || !v || v.status !== 'NC') continue;
+                const itemNome = ITEM_NAMES[k] || v.customText || k;
+                ncRows.push({
+                    checklist_id: String(data.id).trim(),
+                    date: data.date || '',
+                    patrimonio: (data.patrimonio || '').toUpperCase(),
+                    item_text: itemNome,
+                    nr: v.nr || '',
+                    risco: v.risk || 'high',
+                    observacao: v.observation || ''
+                });
+            }
+            if (ncRows.length > 0) {
+                await supabaseFetch('nao_conformidades', {
+                    method: 'POST',
+                    body: ncRows
+                });
+            }
+        }
+    } catch (err) {
+        console.error(`Erro ao sincronizar ${storeName} com Supabase:`, err.message);
+    }
+}
+
+async function sincronizarComSupabase() {
+    if (!isSupabaseConfigured()) return;
+    try {
+        console.log('⚡ Iniciando sincronização com Supabase...');
+
+        const tablesMap = [
+            { table: 'cadastros', store: 'cadastros' },
+            { table: 'colaboradores', store: 'colaboradores' },
+            { table: 'checklists', store: 'checklists' },
+            { table: 'relatos', store: 'issues' },
+            { table: 'checklist_items', store: 'checklist_items' }
+        ];
+
+        for (const { table, store } of tablesMap) {
+            const res = await supabaseFetch(table, { query: '?select=*' });
+            if (res.success && Array.isArray(res.data)) {
+                for (const row of res.data) {
+                    const appObj = converterParaAppFromSupabase(table, row);
+                    if (appObj && appObj.id) {
+                        await saveToIndexedDB(store, appObj, true);
+                    }
+                }
+            }
+
+            const locais = await getAllFromIndexedDB(store);
+            for (const local of locais) {
+                if (!local.synced) {
+                    const spObj = converterParaSupabase(store, local);
+                    const upsertRes = await supabaseFetch(table, {
+                        method: 'POST',
+                        query: '?on_conflict=id',
+                        prefer: 'resolution=merge-duplicates',
+                        body: spObj
+                    });
+                    if (upsertRes.success) {
+                        local.synced = true;
+                        await saveToIndexedDB(store, local, true);
+                    }
+
+                    if (store === 'checklists' && local.items) {
+                        const ncRows = [];
+                        for (const [k, v] of Object.entries(local.items)) {
+                            if (k === '_form' || !v || v.status !== 'NC') continue;
+                            const itemNome = ITEM_NAMES[k] || v.customText || k;
+                            ncRows.push({
+                                checklist_id: String(local.id).trim(),
+                                date: local.date || '',
+                                patrimonio: (local.patrimonio || '').toUpperCase(),
+                                item_text: itemNome,
+                                nr: v.nr || '',
+                                risco: v.risk || 'high',
+                                observacao: v.observation || ''
+                            });
+                        }
+                        if (ncRows.length > 0) {
+                            await supabaseFetch('nao_conformidades', {
+                                method: 'POST',
+                                body: ncRows
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        localStorage.setItem('last_supabase_sync', new Date().toISOString());
+        console.log('✅ Sincronização Supabase concluída com sucesso!');
+    } catch (err) {
+        console.error('Erro ao sincronizar com Supabase:', err.message);
+    }
+}
+
+async function migrarDadosLocaisParaSupabase() {
+    if (!isSupabaseConfigured()) {
+        showToast('Configure a URL e a Anon Key do Supabase primeiro');
+        return;
+    }
+
+    showToast('🚀 Migrando todos os dados locais para o Supabase...');
+
+    try {
+        const stores = [
+            { store: 'cadastros', table: 'cadastros' },
+            { store: 'colaboradores', table: 'colaboradores' },
+            { store: 'checklists', table: 'checklists' },
+            { store: 'issues', table: 'relatos' },
+            { store: 'checklist_items', table: 'checklist_items' }
+        ];
+
+        let totalEnviados = 0;
+
+        for (const { store, table } of stores) {
+            const itens = await getAllFromIndexedDB(store);
+            if (!itens || itens.length === 0) continue;
+
+            const payload = itens.map(i => converterParaSupabase(store, i)).filter(i => i && i.id);
+            if (payload.length === 0) continue;
+
+            const res = await supabaseFetch(table, {
+                method: 'POST',
+                query: '?on_conflict=id',
+                prefer: 'resolution=merge-duplicates',
+                body: payload
+            });
+
+            if (res.success) {
+                totalEnviados += payload.length;
+                for (const item of itens) {
+                    item.synced = true;
+                    await saveToIndexedDB(store, item, true);
+                }
+            }
+        }
+
+        showToast(`✅ Migração concluída! ${totalEnviados} registro(s) enviados ao Supabase.`);
+        loadConfigPage();
+    } catch (err) {
+        showToast('❌ Erro na migração: ' + err.message);
     }
 }
 

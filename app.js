@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v88';
+const APP_VERSION = 'v89';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -2091,7 +2091,7 @@ async function loadResponsavelSelect() {
 // SALVAR CHECKLIST
 // ============================================
 
-function saveChecklist() {
+async function saveChecklist() {
     saveFormData();
     
     const formData = checklistData._form || {};
@@ -2144,25 +2144,26 @@ function saveChecklist() {
     }
     
     const prazo = document.getElementById('checklistPrazo')?.value || null;
+    const dateVal = formData.date || (document.getElementById('checklistDate')?.value) || new Date().toISOString().split('T')[0];
     
     const checklist = {
         id: Date.now().toString(),
         timestamp: new Date().toISOString(),
-        date: formData.date,
-        patrimonio: formData.patrimonio,
-        nome: formData.nome,
-        empresa: formData.empresa,
-        operador: formData.operador,
-        observacoes: formData.observacoes,
-        responsavel: formData.responsavel,
-        sst: formData.sst,
+        date: dateVal,
+        patrimonio: formData.patrimonio || '',
+        nome: formData.nome || currentEquipment?.name || '',
+        empresa: formData.empresa || '',
+        operador: operadorVal,
+        observacoes: formData.observacoes || '',
+        responsavel: formData.responsavel || '',
+        sst: formData.sst || '',
         statusChecklist: statusFinal,
         prazoAdequacao: prazo,
         equipment: {
-            id: currentEquipment.id,
-            name: currentEquipment.name,
-            icon: currentEquipment.icon,
-            nr: currentEquipment.nr
+            id: currentEquipment?.id || '',
+            name: currentEquipment?.name || '',
+            icon: currentEquipment?.icon || '📦',
+            nr: currentEquipment?.nr || ''
         },
         items: checklistData,
         stats: { conformes, naoConformes, na, total: items.length },
@@ -2172,16 +2173,21 @@ function saveChecklist() {
     };
     
     // Salvar no IndexedDB
-    saveToIndexedDB('checklists', checklist);
+    await saveToIndexedDB('checklists', checklist);
     
+    if (isSupabaseConfigured()) {
+        sincronizarItemIndividualSupabase('checklists', checklist);
+    }
+
     // Atualizar último checklist no cadastro
     updateCadastroLastChecklist(formData.patrimonio);
     
-    showToast('Checklist salvo com sucesso!');
+    showToast('✅ Checklist salvo com sucesso!');
     
-    // Voltar para home
+    // Voltar para home e recarregar histórico
     setTimeout(() => {
         currentStatusChecklist = null;
+        loadHistory();
         showPage('pageHome');
     }, 1000);
 }
@@ -5358,7 +5364,7 @@ async function sincronizarComSupabase() {
 
             const locais = await getAllFromIndexedDB(store);
             for (const local of locais) {
-                if (!local.synced) {
+                if (!local.supabase_synced) {
                     const spObj = converterParaSupabase(store, local);
                     const upsertRes = await supabaseFetch(table, {
                         method: 'POST',
@@ -5368,6 +5374,7 @@ async function sincronizarComSupabase() {
                     });
                     if (upsertRes.success) {
                         local.synced = true;
+                        local.supabase_synced = true;
                         await saveToIndexedDB(store, local, true);
                     }
 
@@ -5395,6 +5402,24 @@ async function sincronizarComSupabase() {
                     }
                 }
             }
+        }
+
+        // Baixar não conformidades do Supabase e mesclar aos checklists locais
+        try {
+            const ncRes = await supabaseFetch('nao_conformidades', { query: '?select=*' });
+            if (ncRes.success && Array.isArray(ncRes.data) && ncRes.data.length > 0) {
+                const spNcRows = ncRes.data.map(r => ({
+                    'ID Checklist': r.checklist_id,
+                    'Patrimônio': r.patrimonio,
+                    'Item': r.item_text,
+                    'NR': r.nr,
+                    'Risco': r.risco,
+                    'Observação': r.observacao
+                }));
+                await sincronizarNaoConformidadesComChecklists(spNcRows);
+            }
+        } catch (ncErr) {
+            console.log('Erro ao mesclar não conformidades do Supabase:', ncErr.message);
         }
 
         localStorage.setItem('last_supabase_sync', new Date().toISOString());

@@ -1545,67 +1545,7 @@
                 </button>
             </div>
 
-            <div class="card">
-                <div class="card-title"><span class="icon">☁️</span> Sincronização Google Sheets</div>
-                <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
-                    Configure a URL do Google Apps Script para sincronizar dados automaticamente com sua planilha.
-                </p>
 
-                <div id="syncStatusCard" style="padding: 12px; border-radius: 8px; margin-bottom: 12px; background: #f0f2f5;">
-                    <div style="font-size: 13px; font-weight: 600;" id="syncStatusText">Verificando...</div>
-                    <div style="font-size: 11px; color: var(--text-light); margin-top: 4px;" id="syncStatusDetail"></div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">URL do Google Apps Script</label>
-                    <input type="url" class="form-input" id="syncUrlInput"
-                           placeholder="https://script.google.com/macros/s/XXX/exec">
-                    <p style="font-size: 10px; color: var(--text-light); margin-top: 4px;">
-                        Cole a URL do deploy do seu Google Apps Script aqui
-                    </p>
-                </div>
-
-                <div style="display: flex; gap: 10px;">
-                    <button class="save-btn" style="flex: 1; background: var(--primary);" onclick="saveSyncUrl()">
-                        💾 Salvar URL
-                    </button>
-                    <button class="save-btn" style="flex: 1; background: var(--warning);" onclick="testSync()">
-                        🧪 Testar Conexão
-                    </button>
-                </div>
-
-                <button class="save-btn" style="background: var(--success); margin-top: 10px;" onclick="syncAllPending()">
-                    🔄 Enviar Dados Pendentes
-                </button>
-
-                <button class="save-btn" style="background: #2980b9; margin-top: 10px;" onclick="sincronizacaoBidirecional().then(function(){ loadConfigPage(); showToast('Sincronização concluída!'); })">
-                    🔃 Sincronizar Agora (Bidirecional)
-                </button>
-
-                <button class="save-btn" style="background: var(--primary); margin-top: 10px;" onclick="downloadFromSheets()">
-                    ⬇️ Baixar Dados da Planilha
-                </button>
-
-                <button class="save-btn" style="background: var(--danger); margin-top: 10px; font-size: 12px;" onclick="clearAndReimport()">
-                    🗑️ Limpar Cadastros e Reimportar
-                </button>
-            </div>
-
-
-
-            <div class="card">
-                <div class="card-title"><span class="icon">📋</span> Como Configurar</div>
-                <div style="font-size: 12px; color: var(--text-light); line-height: 1.8;">
-                    <strong>1.</strong> Crie uma planilha no Google Sheets<br>
-                    <strong>2.</strong> Vá em Extensões → Apps Script<br>
-                    <strong>3.</strong> Cole o código do arquivo <code>google-apps-script.js</code><br>
-                    <strong>4.</strong> Execute a função <code>setup()</code> uma vez<br>
-                    <strong>5.</strong> Clique em "Implantar" → "Nova implantação"<br>
-                    <strong>6.</strong> Tipo: Aplicativo da Web → Execute como: Eu<br>
-                    <strong>7.</strong> Quem acessa: Qualquer pessoa<br>
-                    <strong>8.</strong> Copie a URL e cole acima
-                </div>
-            </div>
 
             <div class="card">
                 <div class="card-title"><span class="icon">🗑️</span> Dados Locais</div>

@@ -96,7 +96,10 @@ function doGet(e) {
             'Checklists': CHECKLIST_SHEET,
             'Cadastros': CADASTROS_SHEET,
             'Relatos': ISSUES_SHEET,
-            'Colaboradores': COLABORADORES_SHEET
+            'Colaboradores': COLABORADORES_SHEET,
+            'Não Conformidades': NC_SHEET,
+            'Nao Conformidades': NC_SHEET,
+            'Itens Checklist': ITEMS_SHEET
         };
         
         const nomeAba = storeMap[storeParam] || storeParam;

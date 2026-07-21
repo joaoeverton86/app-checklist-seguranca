@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS public.cadastros (
 );
 
 -- 2. Tabela de Colaboradores (Usuários / Operadores / Técnicos)
-CREATE TABLE IF NOT EXISTS public.colaboradores (
+CREATE TABLE IF NOT EXISTS public.colaboradores_checklist (
     id TEXT PRIMARY KEY,
     nome TEXT,
     funcao TEXT,
@@ -97,21 +97,21 @@ CREATE TABLE IF NOT EXISTS public.checklist_items (
 
 -- Habilitar Row Level Security (RLS) permissivo para o App (Leitura/Escrita via Anon API Key)
 ALTER TABLE public.cadastros ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.colaboradores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.colaboradores_checklist ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.checklists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.nao_conformidades ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.relatos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.checklist_items ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Acesso total aos cadastros" ON public.cadastros;
-DROP POLICY IF EXISTS "Acesso total aos colaboradores" ON public.colaboradores;
+DROP POLICY IF EXISTS "Acesso total aos colaboradores" ON public.colaboradores_checklist;
 DROP POLICY IF EXISTS "Acesso total aos checklists" ON public.checklists;
 DROP POLICY IF EXISTS "Acesso total às não conformidades" ON public.nao_conformidades;
 DROP POLICY IF EXISTS "Acesso total aos relatos" ON public.relatos;
 DROP POLICY IF EXISTS "Acesso total aos itens de checklist" ON public.checklist_items;
 
 CREATE POLICY "Acesso total aos cadastros" ON public.cadastros FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Acesso total aos colaboradores" ON public.colaboradores FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Acesso total aos colaboradores" ON public.colaboradores_checklist FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso total aos checklists" ON public.checklists FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso total às não conformidades" ON public.nao_conformidades FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Acesso total aos relatos" ON public.relatos FOR ALL USING (true) WITH CHECK (true);

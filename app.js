@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v93';
+const APP_VERSION = 'v94';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -1457,7 +1457,7 @@ async function deleteColaboradorPermanente(id) {
 
     if (isSupabaseConfigured()) {
         try {
-            await supabaseFetch('colaboradores', {
+            await supabaseFetch('colaboradores_checklist', {
                 method: 'DELETE',
                 query: '?id=eq.' + encodeURIComponent(id)
             });
@@ -5309,7 +5309,7 @@ function converterParaAppFromSupabase(table, row) {
             synced: true
         };
     }
-    if (table === 'colaboradores') {
+    if (table === 'colaboradores' || table === 'colaboradores_checklist') {
         return {
             id: row.id,
             nome: row.nome,
@@ -5387,7 +5387,7 @@ async function sincronizarItemIndividualSupabase(storeName, data) {
     try {
         const tableMap = {
             'cadastros': 'cadastros',
-            'colaboradores': 'colaboradores',
+            'colaboradores': 'colaboradores_checklist',
             'checklists': 'checklists',
             'issues': 'relatos',
             'checklist_items': 'checklist_items'
@@ -5442,7 +5442,7 @@ async function sincronizarComSupabase() {
 
         const tablesMap = [
             { table: 'cadastros', store: 'cadastros' },
-            { table: 'colaboradores', store: 'colaboradores' },
+            { table: 'colaboradores_checklist', store: 'colaboradores' },
             { table: 'checklists', store: 'checklists' },
             { table: 'relatos', store: 'issues' },
             { table: 'checklist_items', store: 'checklist_items' }
@@ -5537,7 +5537,7 @@ async function migrarDadosLocaisParaSupabase() {
     try {
         const stores = [
             { store: 'cadastros', table: 'cadastros' },
-            { store: 'colaboradores', table: 'colaboradores' },
+            { store: 'colaboradores', table: 'colaboradores_checklist' },
             { store: 'checklists', table: 'checklists' },
             { store: 'issues', table: 'relatos' },
             { store: 'checklist_items', table: 'checklist_items' }
@@ -6528,6 +6528,28 @@ async function sha256(message) {
     return sha256Fallback(message);
 }
 
+async function buscarColaboradorOnline(loginVal) {
+    if (!isSupabaseConfigured()) return null;
+    const loginUpper = loginVal.toUpperCase();
+    const loginLower = loginVal.toLowerCase();
+    try {
+        const res = await supabaseFetch('colaboradores_checklist', {
+            query: `?or=(matricula.eq.${encodeURIComponent(loginUpper)},email.eq.${encodeURIComponent(loginLower)})`
+        });
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+            const row = res.data[0];
+            const appObj = converterParaAppFromSupabase('colaboradores_checklist', row);
+            if (appObj && appObj.id) {
+                await saveToIndexedDB('colaboradores', appObj, true);
+                return appObj;
+            }
+        }
+    } catch (e) {
+        console.error('Erro ao buscar colaborador online:', e);
+    }
+    return null;
+}
+
 async function realizarLogin() {
     const matriculaInput = document.getElementById('loginMatricula');
     const senhaInput = document.getElementById('loginSenha');
@@ -6562,7 +6584,7 @@ async function realizarLogin() {
     } else {
         // Buscar no IndexedDB
         console.log('Tentativa de login para:', loginVal);
-        const colaboradores = await getAllFromIndexedDB('colaboradores');
+        let colaboradores = await getAllFromIndexedDB('colaboradores');
         
         // 1. Procurar por Matrícula
         let colab = colaboradores.find(c => String(c.matricula || '').trim().toUpperCase() === loginUpper);
@@ -6571,6 +6593,50 @@ async function realizarLogin() {
         if (!colab) {
             const loginLower = loginVal.toLowerCase();
             colab = colaboradores.find(c => String(c.email || '').trim().toLowerCase() === loginLower);
+        }
+        
+        const hashedInput = await sha256(senha);
+
+        // Se não encontrou localmente ou não tem senha localmente, buscar online
+        if (!colab) {
+            if (navigator.onLine) {
+                if (isSupabaseConfigured()) {
+                    showToast('Buscando credenciais online...');
+                    const onlineColab = await buscarColaboradorOnline(loginVal);
+                    if (onlineColab) {
+                        colab = onlineColab;
+                    }
+                } else if (getSyncUrl()) {
+                    showToast('Buscando colaborador na base online...');
+                    await sincronizarStoreEspecifico('Colaboradores', 'colaboradores');
+                    const colaboradoresAtualizados = await getAllFromIndexedDB('colaboradores');
+                    let colabAtualizado = colaboradoresAtualizados.find(c => String(c.matricula || '').trim().toUpperCase() === loginUpper);
+                    if (!colabAtualizado) {
+                        const loginLower = loginVal.toLowerCase();
+                        colabAtualizado = colaboradoresAtualizados.find(c => String(c.email || '').trim().toLowerCase() === loginLower);
+                    }
+                    if (colabAtualizado) {
+                        colab = colabAtualizado;
+                    }
+                }
+            }
+        } else if (!colab.senha) {
+            if (navigator.onLine) {
+                if (isSupabaseConfigured()) {
+                    showToast('Buscando senha online...');
+                    const onlineColab = await buscarColaboradorOnline(loginVal);
+                    if (onlineColab) {
+                        colab = onlineColab;
+                    }
+                } else if (getSyncUrl()) {
+                    showToast('Buscando credenciais online...');
+                    await sincronizarStoreEspecifico('Colaboradores', 'colaboradores');
+                    const colabAtualizado = await getFromIndexedDB('colaboradores', colab.id);
+                    if (colabAtualizado) {
+                        colab = colabAtualizado;
+                    }
+                }
+            }
         }
         
         if (colab) {
@@ -6583,66 +6649,32 @@ async function realizarLogin() {
                 return;
             }
             
-            const hashedInput = await sha256(senha);
-            
-            if (!colab.senha) {
-                if (navigator.onLine && getSyncUrl()) {
-                    console.log('Sem senha localmente. Rodando sync de colaboradores...');
-                    showToast('Buscando credenciais online...');
-                    await sincronizarStoreEspecifico('Colaboradores', 'colaboradores');
-                    const colabAtualizado = await getFromIndexedDB('colaboradores', colab.id);
-                    if (colabAtualizado && colabAtualizado.senha === hashedInput) {
-                        colab = colabAtualizado;
-                    }
-                }
-                
-                if (!colab.senha) {
-                    if (errorDiv) {
-                        errorDiv.textContent = '❌ Colaborador não possui senha configurada.';
-                        errorDiv.style.display = 'block';
-                    }
-                    return;
-                }
-            }
-            
             if (colab.senha === hashedInput) {
                 authenticated = true;
                 userRole = normalizarNivelAcesso(colab.nivelAcesso);
                 userName = colab.nome;
                 userMatricula = colab.matricula || colab.id;
             } else {
-                if (navigator.onLine && getSyncUrl()) {
-                    console.log('Senha incorreta localmente. Rodando sync de colaboradores...');
-                    showToast('Verificando credenciais atualizadas...');
-                    await sincronizarStoreEspecifico('Colaboradores', 'colaboradores');
-                    const colabAtualizado = await getFromIndexedDB('colaboradores', colab.id);
-                    if (colabAtualizado && colabAtualizado.senha === hashedInput) {
-                        authenticated = true;
-                        userRole = normalizarNivelAcesso(colabAtualizado.nivelAcesso);
-                        userName = colabAtualizado.nome;
-                        userMatricula = colabAtualizado.matricula || colabAtualizado.id;
-                    }
-                }
-            }
-        } else {
-            if (navigator.onLine && getSyncUrl()) {
-                console.log('Colaborador não encontrado localmente. Rodando sync...');
-                showToast('Buscando colaborador na base online...');
-                await sincronizarStoreEspecifico('Colaboradores', 'colaboradores');
-                const colaboradoresAtualizados = await getAllFromIndexedDB('colaboradores');
-                let colabAtualizado = colaboradoresAtualizados.find(c => String(c.matricula || '').trim().toUpperCase() === loginUpper);
-                if (!colabAtualizado) {
-                    const loginLower = loginVal.toLowerCase();
-                    colabAtualizado = colaboradoresAtualizados.find(c => String(c.email || '').trim().toLowerCase() === loginLower);
-                }
-                
-                if (colabAtualizado) {
-                    const hashedInput = await sha256(senha);
-                    if (colabAtualizado.senha === hashedInput) {
-                        authenticated = true;
-                        userRole = normalizarNivelAcesso(colabAtualizado.nivelAcesso);
-                        userName = colabAtualizado.nome;
-                        userMatricula = colabAtualizado.matricula || colabAtualizado.id;
+                // Senha incorreta localmente, tentar buscar nova senha online
+                if (navigator.onLine) {
+                    if (isSupabaseConfigured()) {
+                        const onlineColab = await buscarColaboradorOnline(loginVal);
+                        if (onlineColab && onlineColab.senha === hashedInput) {
+                            authenticated = true;
+                            userRole = normalizarNivelAcesso(onlineColab.nivelAcesso);
+                            userName = onlineColab.nome;
+                            userMatricula = onlineColab.matricula || onlineColab.id;
+                        }
+                    } else if (getSyncUrl()) {
+                        showToast('Verificando credenciais atualizadas...');
+                        await sincronizarStoreEspecifico('Colaboradores', 'colaboradores');
+                        const colabAtualizado = await getFromIndexedDB('colaboradores', colab.id);
+                        if (colabAtualizado && colabAtualizado.senha === hashedInput) {
+                            authenticated = true;
+                            userRole = normalizarNivelAcesso(colabAtualizado.nivelAcesso);
+                            userName = colabAtualizado.nome;
+                            userMatricula = colabAtualizado.matricula || colabAtualizado.id;
+                        }
                     }
                 }
             }

@@ -1504,6 +1504,47 @@
                 Versão: <strong id="versionDisplay">...</strong>
             </div>
 
+            <div class="card" style="border: 2px solid #10b981; background: #f4fcf8;">
+                <div class="card-title" style="color: #047857;"><span class="icon">⚡</span> Banco de Dados Supabase (PostgreSQL)</div>
+                <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
+                    Conexão profissional via REST API nativa do Supabase (Sincronização instantânea relacional).
+                </p>
+
+                <div id="supabaseStatusCard" style="padding: 12px; border-radius: 8px; margin-bottom: 12px; background: #e6f4ea;">
+                    <div style="font-size: 13px; font-weight: 600; color: #1e8449;" id="supabaseStatusText">Verificando Supabase...</div>
+                    <div style="font-size: 11px; color: var(--text-light); margin-top: 4px;" id="supabaseStatusDetail">Configure a URL e a Anon Key do seu projeto Supabase</div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 10px;">
+                    <label class="form-label" style="font-size: 11px; font-weight: bold;">URL do Projeto Supabase</label>
+                    <input type="url" class="form-input" id="supabaseUrlInput"
+                           placeholder="https://xyzxyzxyz.supabase.co">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label class="form-label" style="font-size: 11px; font-weight: bold;">Chave Pública Supabase (anon key)</label>
+                    <input type="text" class="form-input" id="supabaseKeyInput"
+                           placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <button class="save-btn" style="flex: 1; background: #10b981;" onclick="saveSupabaseConfig()">
+                        💾 Salvar Supabase
+                    </button>
+                    <button class="save-btn" style="flex: 1; background: var(--warning);" onclick="testSupabaseConnection()">
+                        🧪 Testar Supabase
+                    </button>
+                </div>
+
+                <button class="save-btn" style="background: #059669; width: 100%; margin-bottom: 10px;" onclick="sincronizarComSupabase().then(function(){ loadConfigPage(); showToast('Sincronização Supabase concluída!'); })">
+                    ⚡ Sincronizar Agora com Supabase (Bidirecional)
+                </button>
+
+                <button class="save-btn" style="background: #2563eb; width: 100%; font-size: 12px;" onclick="migrarDadosLocaisParaSupabase()">
+                    🚀 Enviar Todos os Dados Locais para o Supabase
+                </button>
+            </div>
+
             <div class="card">
                 <div class="card-title"><span class="icon">☁️</span> Sincronização Google Sheets</div>
                 <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">

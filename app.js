@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v97';
+const APP_VERSION = 'v98';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -327,6 +327,25 @@ async function initApp() {
     const verEl = document.getElementById('loginVersion');
     if (verEl) verEl.textContent = 'Versão ' + APP_VERSION;
     await initDynamicEquipmentTypes();
+    await limparChecklistsDeJunhoLocais();
+}
+
+async function limparChecklistsDeJunhoLocais() {
+    try {
+        const checklists = await getAllFromIndexedDB('checklists');
+        for (const c of checklists) {
+            if (c.date && String(c.date).startsWith('2026-06')) {
+                await deleteFromIndexedDB('checklists', c.id);
+                const numId = Number(c.id);
+                if (!isNaN(numId)) {
+                    await deleteFromIndexedDB('checklists', numId);
+                }
+                console.log('⚡ [Auto-Clean] Checklist de teste de junho excluído localmente:', c.id);
+            }
+        }
+    } catch (e) {
+        console.error('Erro no auto-clean de junho:', e);
+    }
 }
 
 async function cleanDuplicateCadastros() {
@@ -5160,20 +5179,26 @@ function loadConfigPage() {
     const statusText = document.getElementById('syncStatusText');
     const statusDetail = document.getElementById('syncStatusDetail');
     
-    if (status.configurado) {
-        statusCard.style.background = '#d5f5e3';
-        statusText.textContent = '✅ Configurado - Sync Automática Ativa';
-        statusText.style.color = '#1e8449';
-        const lastSync = localStorage.getItem('last_bidirectional_sync');
-        const lastSyncStr = lastSync ? new Date(lastSync).toLocaleString('pt-BR') : 'Nunca';
-        statusDetail.textContent = status.pendentes > 0 ?
-            `${status.pendentes} item(ns) pendente(s) | Última sync: ${lastSyncStr}` :
-            `Sync bidirecional ativa (a cada 5 min) | Última: ${lastSyncStr}`;
-    } else {
-        statusCard.style.background = '#fadbd8';
-        statusText.textContent = '⚠️ Não configurado';
-        statusText.style.color = '#c0392b';
-        statusDetail.textContent = 'Configure a URL do Google Apps Script para sincronizar';
+    if (statusCard && statusText) {
+        if (status.configurado) {
+            statusCard.style.background = '#d5f5e3';
+            statusText.textContent = '✅ Configurado - Sync Automática Ativa';
+            statusText.style.color = '#1e8449';
+            const lastSync = localStorage.getItem('last_bidirectional_sync');
+            const lastSyncStr = lastSync ? new Date(lastSync).toLocaleString('pt-BR') : 'Nunca';
+            if (statusDetail) {
+                statusDetail.textContent = status.pendentes > 0 ?
+                    `${status.pendentes} item(ns) pendente(s) | Última sync: ${lastSyncStr}` :
+                    `Sync bidirecional ativa (a cada 5 min) | Última: ${lastSyncStr}`;
+            }
+        } else {
+            statusCard.style.background = '#fadbd8';
+            statusText.textContent = '⚠️ Não configurado';
+            statusText.style.color = '#c0392b';
+            if (statusDetail) {
+                statusDetail.textContent = 'Configure a URL do Google Apps Script para sincronizar';
+            }
+        }
     }
 
     const btnEqp = document.querySelector('#pageConfig .save-btn[onclick^="saveCadastro"]');

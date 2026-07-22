@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v100';
+const APP_VERSION = 'v101';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -3475,6 +3475,17 @@ async function salvarOperadorChecklist(id) {
     viewChecklist(id);
 }
 
+
+function encontrarCategoriaDoEquipamento(equipment) {
+    if (!equipment) return '';
+    for (const [catKey, list] of Object.entries(EQUIPMENT_TYPES)) {
+        if (list.some(e => e.id === equipment.id)) {
+            return catKey;
+        }
+    }
+    return '';
+}
+
 function encontrarEquipamentoParaChecklist(checklist) {
     if (!checklist) return null;
 
@@ -3676,7 +3687,7 @@ async function reinspecionarChecklist(id) {
     
     lockEquipmentFields(!!original.patrimonio);
     
-    const category = equipment.category || original.equipment?.tipo || original.equipment?.category || '';
+    const category = encontrarCategoriaDoEquipamento(equipment) || equipment.category || original.equipment?.tipo || original.equipment?.category || '';
     if (category && typeof loadCadastroSelect === 'function') {
         await loadCadastroSelect(category);
     }

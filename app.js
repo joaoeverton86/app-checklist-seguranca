@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v99';
+const APP_VERSION = 'v100';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -1838,6 +1838,18 @@ function setStatus(itemId, status, btn) {
     if (!checklistData[itemId]) checklistData[itemId] = {};
     checklistData[itemId].status = status;
     
+    // Auto-interdição se item de interdição for marcado como NC
+    if (status === 'NC' && currentEquipment) {
+        const items = getEffectiveItems(currentEquipment);
+        const currentItem = items.find(i => String(i.id) === String(itemId));
+        if (currentItem && currentItem.section === 'INTERDIÇÃO') {
+            const btnInterditar = document.querySelector("button[onclick*=\"'interditado'\"]");
+            if (btnInterditar) {
+                setStatusChecklist('interditado', btnInterditar);
+            }
+        }
+    }
+    
     updateProgress();
 }
 
@@ -2191,20 +2203,29 @@ async function saveChecklist() {
         return;
     }
     
-    // Calcular estatísticas
+        // Calcular estatísticas
     let conformes = 0, naoConformes = 0, na = 0;
+    let hasInterdictionNC = false;
     const effectiveItems = getEffectiveItems(currentEquipment);
     items.forEach(k => {
         if (checklistData[k].status === 'C') conformes++;
-        else if (checklistData[k].status === 'NC') naoConformes++;
+        else if (checklistData[k].status === 'NC') {
+            naoConformes++;
+            const effItem = effectiveItems.find(i => String(i.id) === String(k));
+            if (effItem && effItem.section === 'INTERDIÇÃO') {
+                hasInterdictionNC = true;
+            }
+        }
         else if (checklistData[k].status === 'NA') na++;
-        const effItem = effectiveItems.find(i => i.id === k);
+        const effItem = effectiveItems.find(i => String(i.id) === String(k));
         if (effItem) checklistData[k].customText = effItem.text;
     });
     
-    // Se há não conformes e status não foi definido, sugerir interdição
+    // Lógica de Status Final com Auto-Interdição
     let statusFinal = currentStatusChecklist;
-    if (naoConformes > 0 && !currentStatusChecklist) {
+    if (hasInterdictionNC) {
+        statusFinal = 'interditado';
+    } else if (naoConformes > 0 && !currentStatusChecklist) {
         statusFinal = 'liberado_restricao';
     } else if (naoConformes === 0) {
         statusFinal = 'liberado';
@@ -3566,6 +3587,38 @@ function encontrarEquipamentoParaChecklist(checklist) {
     };
 }
 
+
+function aplicarStatusSalvosDOM() {
+    for (const [itemId, itemData] of Object.entries(checklistData)) {
+        const itemContainer = document.getElementById(`item-${itemId}`);
+        if (itemContainer) {
+            const btnClass = itemData.status ? itemData.status.toLowerCase() : '';
+            if (btnClass) {
+                const btn = itemContainer.querySelector(`.status-btn.${btnClass}`);
+                if (btn) {
+                    itemContainer.querySelectorAll('.status-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    
+                    const obsDiv = document.getElementById(`obs-${itemId}`);
+                    if (obsDiv) {
+                        if (itemData.status === 'NC') {
+                            obsDiv.classList.add('show');
+                        } else {
+                            obsDiv.classList.remove('show');
+                        }
+                    }
+                }
+            }
+            
+            const obsTextarea = itemContainer.querySelector(`.item-observation textarea`);
+            if (obsTextarea) {
+                obsTextarea.value = itemData.observation || '';
+            }
+        }
+    }
+    updateProgress();
+}
+
 async function reinspecionarChecklist(id) {
     let original = await getFromIndexedDB('checklists', id);
     if (!original) {
@@ -3580,7 +3633,6 @@ async function reinspecionarChecklist(id) {
     }
     
     const equipment = encontrarEquipamentoParaChecklist(original);
-    
     if (!equipment) {
         showToast('Erro: Não foi possível determinar o tipo do equipamento.');
         return;
@@ -3604,7 +3656,6 @@ async function reinspecionarChecklist(id) {
     }
     
     document.getElementById('checklistDate').value = new Date().toISOString().split('T')[0];
-    document.getElementById('checklistPatrimonio').value = original.patrimonio || '';
     
     const nomeInput = document.getElementById('checklistNome');
     const empresaInput = document.getElementById('checklistEmpresa');
@@ -3633,6 +3684,16 @@ async function reinspecionarChecklist(id) {
         await loadResponsavelSelect();
     }
     
+    // Selecionar patrimônio e carregar o cadastro ANTES de renderizar
+    const selectPatrimonio = document.getElementById('checklistPatrimonio');
+    if (selectPatrimonio && original.patrimonio) {
+        selectPatrimonio.value = original.patrimonio;
+        const cadastro = await getFromIndexedDB('cadastros', original.patrimonio);
+        if (cadastro) {
+            currentCadastro = cadastro;
+        }
+    }
+    
     itensComFalhaAnterior = [];
     if (original.items) {
         for (const [itemId, itemData] of Object.entries(original.items)) {
@@ -3652,13 +3713,16 @@ async function reinspecionarChecklist(id) {
         }
     }
     
+    // Copiar todas as respostas da inspeção anterior (Conforme e Não Conforme)
     checklistData = {};
-    for (const [itemId, itemData] of Object.entries(original.items)) {
-        if (itemId === '_form') continue;
-        checklistData[itemId] = {
-            status: itemData.status,
-            observation: itemData.observation || ''
-        };
+    if (original.items) {
+        for (const [itemId, itemData] of Object.entries(original.items)) {
+            if (itemId === '_form') continue;
+            checklistData[itemId] = {
+                status: itemData.status,
+                observation: itemData.observation || ''
+            };
+        }
     }
     
     clearSignature();
@@ -3666,23 +3730,21 @@ async function reinspecionarChecklist(id) {
     
     renderChecklistItems(equipment, currentCadastro);
     
+    // Aplicar status salvos nos botões e observações do DOM
     setTimeout(() => {
-        for (const [itemId, itemData] of Object.entries(checklistData)) {
-            const itemContainer = document.getElementById(`item-${itemId}`);
-            if (itemContainer) {
-                const btnClass = itemData.status.toLowerCase();
-                const btn = itemContainer.querySelector(`.status-btn.${btnClass}`);
-                if (btn) {
-                    setStatus(itemId, itemData.status, btn);
-                }
-                
-                const obsTextarea = itemContainer.querySelector(`.item-observation textarea`);
-                if (obsTextarea) {
-                    obsTextarea.value = itemData.observation || '';
-                }
+        aplicarStatusSalvosDOM();
+        
+        // Também pre-selecionar o status do checklist (Ex: Interditado, etc.) no formulário
+        if (original.statusChecklist) {
+            currentStatusChecklist = original.statusChecklist;
+            const btnStatus = document.querySelector(`button[onclick*="'${original.statusChecklist}'"]`);
+            if (btnStatus) {
+                setStatusChecklist(original.statusChecklist, btnStatus);
             }
+        } else {
+            currentStatusChecklist = null;
         }
-    }, 100);
+    }, 80);
     
     showPage('pageChecklistForm');
     showToast('Reinspeção iniciada! Dados anteriores carregados.');

@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v101';
+const APP_VERSION = 'v102';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -284,9 +284,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             }, 500);
         }
-        if (getSyncUrl()) {
-            setTimeout(function() { sincronizacaoBidirecional(); }, 2000);
-        }
+
     }
     const sessionStr = localStorage.getItem('active_session');
     if (sessionStr) {
@@ -471,7 +469,9 @@ function updateConnectionStatus() {
     const status = document.getElementById('connectionStatus');
     if (navigator.onLine) {
         if (status) status.className = 'connection-status online';
-        sincronizacaoBidirecional();
+        if (isSupabaseConfigured()) {
+            sincronizarComSupabase();
+        }
     } else {
         if (status) status.className = 'connection-status offline';
         updatePendingBadge();
@@ -1440,24 +1440,7 @@ async function deleteCadastroPermanente(id) {
         }
     }
 
-    if (navigator.onLine && getSyncUrl()) {
-        try {
-            showToast('Excluindo da planilha...');
-            const SCRIPT_URL = getSyncUrl();
-            await fetch(SCRIPT_URL, {
-                method: 'POST',
-                mode: 'cors',
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({
-                    store: 'delete_record',
-                    aba: 'Cadastros',
-                    id: String(id)
-                })
-            });
-        } catch (err) {
-            console.error('Falha de conexão ao deletar da planilha:', err);
-        }
-    }
+
 
     await deleteFromIndexedDB('cadastros', id);
     showToast('Equipamento excluído com sucesso');
@@ -1486,30 +1469,7 @@ async function deleteColaboradorPermanente(id) {
         }
     }
 
-    if (navigator.onLine && getSyncUrl()) {
-        try {
-            showToast('Excluindo da planilha...');
-            const SCRIPT_URL = getSyncUrl();
-            await fetch(SCRIPT_URL, {
-                method: 'POST',
-                mode: 'cors',
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({
-                    store: 'delete_record',
-                    aba: 'Colaboradores',
-                    id: String(id)
-                })
-            });
-            const result = await response.json();
-            if (!result.success) {
-                console.warn('Erro ao deletar na planilha, deletando apenas local:', result.error);
-            }
-        } catch (err) {
-            console.error('Falha de conexão ao deletar da planilha:', err);
-        }
-    } else {
-        showToast('Offline: Deletado apenas deste aparelho.');
-    }
+
 
     await deleteFromIndexedDB('colaboradores', id);
     showToast('Colaborador excluído com sucesso');
@@ -2122,7 +2082,9 @@ async function salvarInterdicaoUrgente() {
     
     setTimeout(() => {
         showPage('pageHome');
-        sincronizacaoBidirecional();
+        if (isSupabaseConfigured()) {
+            sincronizarComSupabase();
+        }
     }, 1200);
 }
 
@@ -2371,9 +2333,6 @@ async function saveToIndexedDB(storeName, data, skipSync = false) {
             if (!skipSync && navigator.onLine) {
                 if (isSupabaseConfigured()) {
                     sincronizarItemIndividualSupabase(storeName, data);
-                }
-                if (getSyncUrl()) {
-                    syncToGoogleSheets(storeName, data);
                 }
             }
         };
@@ -2664,335 +2623,8 @@ async function supabaseFetch(table, options = {}) {
 }
 
 // ============================================
-// SINCRONIZAÇÃO COM GOOGLE SHEETS
+// AUXILIARES DE SINCRONIZAÇÃO & NÃO CONFORMIDADES
 // ============================================
-
-function getSyncUrl() {
-    return "";
-}
-
-function setSyncUrl(url) {
-    localStorage.setItem('sync_script_url', url);
-}
-
-async function syncToGoogleSheets(storeName, data) {
-    const SCRIPT_URL = getSyncUrl();
-    
-    if (!SCRIPT_URL) {
-        console.log('URL do Google Apps Script não configurada');
-        return;
-    }
-    
-    try {
-        const response = await fetch(SCRIPT_URL, {
-            method: 'POST',
-            mode: 'cors',
-            headers: {
-                'Content-Type': 'text/plain;charset=utf-8'
-            },
-            body: JSON.stringify({ store: storeName, data: data })
-        });
-        
-        const result = await response.json();
-        
-        if (result && result.success) {
-            data.synced = true;
-            await saveToIndexedDB(storeName, data, true);
-            console.log('Sincronizado com sucesso:', storeName, data.id);
-        } else {
-            console.warn('Erro retornado pelo script:', result ? result.error : 'Sem resposta');
-            adicionarFilaPendente(storeName, data);
-        }
-    } catch (error) {
-        console.log('Erro ao sincronizar, adicionando à fila:', error.message);
-        adicionarFilaPendente(storeName, data);
-    }
-}
-
-function adicionarFilaPendente(storeName, data) {
-    const fila = JSON.parse(localStorage.getItem('sync_pending_queue') || '[]');
-    const existe = fila.find(f => f.store === storeName && f.data.id === data.id);
-    if (!existe) {
-        fila.push({ store: storeName, data, tentativas: 0, criado: new Date().toISOString() });
-        localStorage.setItem('sync_pending_queue', JSON.stringify(fila));
-        updatePendingBadge();
-    }
-}
-
-async function processarFilaPendente() {
-    const SCRIPT_URL = getSyncUrl();
-    if (!SCRIPT_URL) return;
-    
-    const fila = JSON.parse(localStorage.getItem('sync_pending_queue') || '[]');
-    if (fila.length === 0) return;
-    
-    const processar = [];
-    const restante = [];
-    
-    for (const item of fila) {
-        if (item.tentativas < 5) {
-            processar.push(item);
-        }
-    }
-    
-    for (const item of processar) {
-        try {
-            const response = await fetch(SCRIPT_URL, {
-                method: 'POST',
-                mode: 'cors',
-                headers: {
-                    'Content-Type': 'text/plain;charset=utf-8'
-                },
-                body: JSON.stringify({ store: item.store, data: item.data })
-            });
-            
-            const result = await response.json();
-            
-            if (result && result.success) {
-                item.data.synced = true;
-                await saveToIndexedDB(item.store, item.data, true);
-            } else {
-                item.tentativas++;
-                restante.push(item);
-            }
-        } catch {
-            item.tentativas++;
-            restante.push(item);
-        }
-    }
-    
-    localStorage.setItem('sync_pending_queue', JSON.stringify(restante));
-    updatePendingBadge();
-    
-    if (processar.length > 0 && restante.length === 0) {
-        showToast(`Sincronizados ${processar.length} item(ns)!`);
-    }
-}
-
-function getSyncStatus() {
-    const url = getSyncUrl();
-    const fila = JSON.parse(localStorage.getItem('sync_pending_queue') || '[]');
-    return { configurado: !!url, url, pendentes: fila.length };
-}
-
-// ============================================
-// SINCRONIZAÇÃO BIDIRECIONAL AUTOMÁTICA
-// ============================================
-
-let syncBidirecionalEmAndamento = false;
-let syncIntervalId = null;
-
-async function sincronizacaoBidirecional() {
-    const SCRIPT_URL = getSyncUrl();
-    if (!SCRIPT_URL || syncBidirecionalEmAndamento || !navigator.onLine) return;
-
-    syncBidirecionalEmAndamento = true;
-    const statusEl = document.getElementById('connectionText');
-    const originalText = statusEl ? statusEl.textContent : '';
-
-    try {
-        if (statusEl) statusEl.textContent = '● Sincronizando dados...';
-
-        await processarFilaPendente();
-
-        const storesParaSync = [
-            { aba: 'Cadastros', store: 'cadastros' },
-            { aba: 'Colaboradores', store: 'colaboradores' },
-            { aba: 'Itens Checklist', store: 'checklist_items' },
-            { aba: 'Checklists', store: 'checklists' },
-            { aba: 'Relatos', store: 'issues' }
-        ];
-
-        let totalAtualizados = 0;
-
-        for (const { aba, store } of storesParaSync) {
-            try {
-                const response = await fetch(SCRIPT_URL + '?store=' + encodeURIComponent(aba));
-                const result = await response.json();
-
-                if (!result.success || !result.data) continue;
-
-                const locais = await getAllFromIndexedDB(store);
-                const localMap = {};
-                locais.forEach(item => { 
-                    const normId = (store === 'checklist_items') ?
-                        String(item.id).trim() :
-                        String(item.id).trim().toUpperCase();
-                    localMap[normId] = item; 
-                });
-
-                const remotos = result.data;
-                
-                // Se a planilha Itens Checklist estiver vazia, preencher com os dados padrões
-                if (store === 'checklist_items' && remotos.length === 0) {
-                    console.log('Nenhum item remoto em Itens Checklist. Enviando itens padrão...');
-                    const defaultItems = [];
-                    let orderCounter = 1;
-                    for (const [category, equipments] of Object.entries(EQUIPMENT_TYPES)) {
-                        equipments.forEach(eqp => {
-                            eqp.items.forEach(item => {
-                                defaultItems.push({
-                                    id: item.id,
-                                    idEquipamento: eqp.id,
-                                    nomeEquipamento: eqp.name,
-                                    iconeEquipamento: eqp.icon,
-                                    categoriaEquipamento: category,
-                                    textoItem: item.text,
-                                    nr: item.nr || '',
-                                    risco: item.risk || 'medium',
-                                    secao: item.section || '',
-                                    ordem: orderCounter++,
-                                    ativo: 'Sim'
-                                });
-                            });
-                        });
-                    }
-                    
-                    // Salvar localmente
-                    for (const item of defaultItems) {
-                        await saveToIndexedDB('checklist_items', item, true);
-                    }
-                    
-                    // Enviar em massa para a planilha
-                    try {
-                        const bulkResponse = await fetch(SCRIPT_URL, {
-                            method: 'POST',
-                            mode: 'cors',
-                            headers: {
-                                'Content-Type': 'text/plain;charset=utf-8'
-                            },
-                            body: JSON.stringify({ store: 'checklist_items_bulk', data: defaultItems })
-                        });
-                        const bulkResult = await bulkResponse.json();
-                        if (bulkResult && bulkResult.success) {
-                            console.log('Itens do checklist enviados em massa com sucesso!');
-                            for (const item of defaultItems) {
-                                item.synced = true;
-                                await saveToIndexedDB('checklist_items', item, true);
-                            }
-                        }
-                    } catch (err) {
-                        console.error('Erro ao enviar itens em massa:', err);
-                    }
-                    
-                    await initDynamicEquipmentTypes();
-                    totalAtualizados += defaultItems.length;
-                    continue;
-                }
-
-                const remoteMap = {};
-
-                for (const row of remotos) {
-                    const id = (store === 'checklist_items') ?
-                        String(row['ID'] || '').trim() :
-                        String(row['ID'] || row['Patrimônio'] || row['Matrícula'] || '').trim().toUpperCase();
-                    if (!id) continue;
-
-                    const remoto = converterParaApp(store, row);
-                    if (!remoto) continue;
-                    remoto.id = id;
-                    remoto.synced = true;
-                    remoteMap[id] = remoto;
-
-                    const local = localMap[id];
-
-                    if (!local) {
-                        await saveToIndexedDB(store, remoto, true);
-                        totalAtualizados++;
-                    } else if (!local.synced && local.timestamp) {
-                        continue;
-                    } else {
-                        const remotoTs = remoto.timestamp ? new Date(remoto.timestamp).getTime() : 0;
-                        const localTs = local.timestamp ? new Date(local.timestamp).getTime() : 0;
-
-                        let hasDifference = false;
-                        if (store === 'colaboradores') {
-                            hasDifference = (
-                                remoto.nivelAcesso !== local.nivelAcesso ||
-                                remoto.email !== local.email ||
-                                remoto.nome !== local.nome ||
-                                remoto.funcao !== local.funcao ||
-                                remoto.setor !== local.setor ||
-                                remoto.ativo !== local.ativo
-                            );
-                        } else if (store === 'cadastros') {
-                            hasDifference = (
-                                remoto.nome !== local.nome ||
-                                remoto.categoria !== local.categoria ||
-                                remoto.tipo !== local.tipo ||
-                                remoto.ativo !== local.ativo
-                            );
-                        }
-
-                        if (remotoTs > localTs || hasDifference) {
-                            if (store === 'colaboradores') {
-                                if (!remoto.senha && local.senha) {
-                                    if (local.synced) {
-                                        remoto.senha = '';
-                                    } else {
-                                        remoto.senha = local.senha;
-                                    }
-                                }
-                                if (!remoto.nivelAcesso && local.nivelAcesso) {
-                                    remoto.nivelAcesso = local.nivelAcesso;
-                                }
-                                if (!remoto.email && local.email) {
-                                    remoto.email = local.email;
-                                }
-                            }
-                            remoto.disabledItems = local.disabledItems;
-                            remoto.customItems = local.customItems;
-                            remoto.ultimoChecklist = local.ultimoChecklist;
-                            await saveToIndexedDB(store, remoto, true);
-                            totalAtualizados++;
-                        }
-                    }
-                }
-
-                for (const local of locais) {
-                    if (local.synced !== true) {
-                        syncToGoogleSheets(store, local);
-                        totalAtualizados++;
-                    } else if (store === 'cadastros' || store === 'colaboradores' || store === 'issues') {
-                        if (!remoteMap[local.id]) {
-                            await deleteFromIndexedDB(store, local.id);
-                            totalAtualizados++;
-                        }
-                    }
-                }
-            } catch (err) {
-                console.log('Erro sync bidirecional ' + aba + ':', err.message);
-            }
-        }
-
-        // Buscar aba Não Conformidades e vincular itens aos checklists locais
-        try {
-            const ncResp = await fetch(SCRIPT_URL + '?store=' + encodeURIComponent('Não Conformidades'));
-            const ncResult = await ncResp.json();
-            if (ncResult && ncResult.success && Array.isArray(ncResult.data) && ncResult.data.length > 0) {
-                await sincronizarNaoConformidadesComChecklists(ncResult.data);
-            }
-        } catch (ncErr) {
-            console.log('Erro ao baixar Não Conformidades:', ncErr.message);
-        }
-
-        if (statusEl) {
-            if (totalAtualizados > 0) {
-                statusEl.textContent = '● Sync concluída (' + totalAtualizados + ' atualizados)';
-            } else {
-                statusEl.textContent = '● Online - Dados sincronizados';
-            }
-        }
-
-        localStorage.setItem('last_bidirectional_sync', new Date().toISOString());
-    } catch (err) {
-        console.log('Erro na sincronização bidirecional:', err.message);
-        if (statusEl) statusEl.textContent = originalText;
-    } finally {
-        syncBidirecionalEmAndamento = false;
-        verificarEAtualizarPapelSessao();
-    }
-}
 
 function hashCode(str) {
     let hash = 0;
@@ -3056,52 +2688,6 @@ async function sincronizarNaoConformidadesComChecklists(ncRows) {
     console.log(`✅ ${count} Não Conformidades vinculadas aos checklists locais.`);
 }
 
-async function sincronizarStoreEspecifico(aba, store) {
-    const SCRIPT_URL = getSyncUrl();
-    if (!SCRIPT_URL || !navigator.onLine) return;
-    try {
-        const response = await fetch(SCRIPT_URL + '?store=' + encodeURIComponent(aba));
-        const result = await response.json();
-        if (result.success && result.data) {
-            const locais = await getAllFromIndexedDB(store);
-            const localMap = {};
-            locais.forEach(item => {
-                const normId = String(item.id).trim().toUpperCase();
-                localMap[normId] = item;
-            });
-            
-            for (const row of result.data) {
-                const id = String(row['ID'] || row['Matrícula'] || '').trim().toUpperCase();
-                if (!id) continue;
-                const remoto = converterParaApp(store, row);
-                if (!remoto) continue;
-                remoto.id = id;
-                remoto.synced = true;
-                
-                const local = localMap[id];
-                if (!local) {
-                    await saveToIndexedDB(store, remoto, true);
-                } else {
-                    if (!remoto.senha && local.senha) {
-                        if (local.synced) {
-                            remoto.senha = '';
-                        } else {
-                            remoto.senha = local.senha;
-                        }
-                    }
-                    if (!remoto.nivelAcesso && local.nivelAcesso) remoto.nivelAcesso = local.nivelAcesso;
-                    if (!remoto.email && local.email) remoto.email = local.email;
-                    
-                    await saveToIndexedDB(store, remoto, true);
-                }
-            }
-            console.log('Sync específico para ' + store + ' concluído.');
-        }
-    } catch (e) {
-        console.error('Erro no sync específico:', e);
-    }
-}
-
 function iniciarSyncPeriodica() {
     if (syncIntervalId) clearInterval(syncIntervalId);
     syncIntervalId = setInterval(function() {
@@ -3110,9 +2696,6 @@ function iniciarSyncPeriodica() {
                 sincronizarComSupabase().then(() => {
                     if (currentPage === 'pageCadastro') loadGestao();
                 });
-            }
-            if (getSyncUrl()) {
-                sincronizacaoBidirecional();
             }
         }
     }, 5 * 60 * 1000);
@@ -3462,13 +3045,8 @@ async function salvarOperadorChecklist(id) {
 
     await saveToIndexedDB('checklists', checklist);
 
-    if (navigator.onLine && getSyncUrl()) {
-        try {
-            showToast('Sincronizando operador na planilha...');
-            await syncToGoogleSheets('checklists', checklist);
-        } catch (e) {
-            console.error('Erro ao sincronizar operador do checklist:', e);
-        }
+    if (navigator.onLine && isSupabaseConfigured()) {
+        sincronizarItemIndividualSupabase('checklists', checklist);
     }
 
     showToast('✅ Operador/Responsável salvo com sucesso!');
@@ -3860,24 +3438,7 @@ async function deleteChecklist(id) {
         }
     }
 
-    // Deletar na planilha Google se estiver conectado
-    if (navigator.onLine && getSyncUrl()) {
-        try {
-            const SCRIPT_URL = getSyncUrl();
-            await fetch(SCRIPT_URL, {
-                method: 'POST',
-                mode: 'cors',
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({
-                    store: 'delete_record',
-                    aba: 'Checklists',
-                    id: String(id)
-                })
-            });
-        } catch (err) {
-            console.error('Falha de conexão ao deletar da planilha:', err);
-        }
-    }
+
     
     await deleteFromIndexedDB('checklists', id);
     const numId = Number(id);
@@ -4541,13 +4102,8 @@ async function updateIssueStatus(id, newStatus, event) {
 
     await saveToIndexedDB('issues', issue);
 
-    if (navigator.onLine && getSyncUrl()) {
-        try {
-            showToast('Sincronizando status na planilha...');
-            await syncToGoogleSheets('issues', issue);
-        } catch (e) {
-            console.error('Erro ao atualizar status do relato na planilha:', e);
-        }
+    if (navigator.onLine && isSupabaseConfigured()) {
+        sincronizarItemIndividualSupabase('issues', issue);
     }
 
     const statusLabels = {
@@ -4639,13 +4195,8 @@ async function saveIssueEdit(id) {
 
     await saveToIndexedDB('issues', issue);
 
-    if (navigator.onLine && getSyncUrl()) {
-        try {
-            showToast('Atualizando na planilha...');
-            await syncToGoogleSheets('issues', issue);
-        } catch (e) {
-            console.error('Erro ao sincronizar relato editado:', e);
-        }
+    if (navigator.onLine && isSupabaseConfigured()) {
+        sincronizarItemIndividualSupabase('issues', issue);
     }
 
     closeModal();
@@ -4660,30 +4211,7 @@ async function deleteIssuePermanente(id, event) {
 
     if (!confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o relato ${descText} da planilha Google e do aplicativo?`)) return;
 
-    if (navigator.onLine && getSyncUrl()) {
-        try {
-            showToast('Excluindo da planilha...');
-            const SCRIPT_URL = getSyncUrl();
-            const response = await fetch(SCRIPT_URL, {
-                method: 'POST',
-                mode: 'cors',
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({
-                    store: 'delete_record',
-                    aba: 'Relatos',
-                    id: String(id)
-                })
-            });
-            const result = await response.json();
-            if (!result.success) {
-                console.warn('Erro ao deletar relato na planilha:', result.error);
-            }
-        } catch (err) {
-            console.error('Falha ao conectar para deletar relato:', err);
-        }
-    } else {
-        showToast('Offline: Deletado apenas deste aparelho.');
-    }
+
 
     await deleteFromIndexedDB('issues', id);
     showToast('Relato de problema excluído com sucesso');
@@ -5243,36 +4771,7 @@ function loadConfigPage() {
         }
     }
 
-    const url = getSyncUrl();
-    const urlInput = document.getElementById('syncUrlInput');
-    if (urlInput) urlInput.value = url;
-    
-    const status = getSyncStatus();
-    const statusCard = document.getElementById('syncStatusCard');
-    const statusText = document.getElementById('syncStatusText');
-    const statusDetail = document.getElementById('syncStatusDetail');
-    
-    if (statusCard && statusText) {
-        if (status.configurado) {
-            statusCard.style.background = '#d5f5e3';
-            statusText.textContent = '✅ Configurado - Sync Automática Ativa';
-            statusText.style.color = '#1e8449';
-            const lastSync = localStorage.getItem('last_bidirectional_sync');
-            const lastSyncStr = lastSync ? new Date(lastSync).toLocaleString('pt-BR') : 'Nunca';
-            if (statusDetail) {
-                statusDetail.textContent = status.pendentes > 0 ?
-                    `${status.pendentes} item(ns) pendente(s) | Última sync: ${lastSyncStr}` :
-                    `Sync bidirecional ativa (a cada 5 min) | Última: ${lastSyncStr}`;
-            }
-        } else {
-            statusCard.style.background = '#fadbd8';
-            statusText.textContent = '⚠️ Não configurado';
-            statusText.style.color = '#c0392b';
-            if (statusDetail) {
-                statusDetail.textContent = 'Configure a URL do Google Apps Script para sincronizar';
-            }
-        }
-    }
+
 
     const btnEqp = document.querySelector('#pageConfig .save-btn[onclick^="saveCadastro"]');
     if (btnEqp && !btnEqp.getAttribute('onclick').includes('Edit')) {
@@ -5673,95 +5172,13 @@ async function migrarDadosLocaisParaSupabase() {
     }
 }
 
-function saveSyncUrl() {
-    const url = document.getElementById('syncUrlInput').value.trim();
-    if (!url) {
-        showToast('Digite a URL do Google Apps Script');
-        return;
-    }
-    setSyncUrl(url);
-    showToast('URL salva com sucesso!');
-    loadConfigPage();
-}
 
 
 
-async function testSync() {
-    const url = getSyncUrl();
-    if (!url) {
-        showToast('Configure a URL primeiro');
-        return;
-    }
-    
-    showToast('Testando conexão...');
-    
-    try {
-        await fetch(url, {
-            method: 'POST',
-            mode: 'no-cors',
-            body: JSON.stringify({ 
-                store: 'test', 
-                data: { id: 'test_' + Date.now(), teste: true } 
-            })
-        });
-        
-        showModal(`
-            <h3>✅ Dados Enviados</h3>
-            <p style="font-size: 13px; margin: 12px 0; color: var(--text-light);">
-                O dado de teste foi enviado para o Google Sheets.
-            </p>
-            <p style="font-size: 12px; margin: 12px 0;">
-                <strong>Verifique sua planilha:</strong><br>
-                Abra a planilha no Google Sheets e confirme se uma linha de teste apareceu.
-            </p>
-            <div style="background: #fdebd0; padding: 10px; border-radius: 8px; font-size: 11px; color: var(--warning); margin-top: 8px;">
-                ⚠️ Por limitação de segurança do navegador (CORS), não é possível confirmar automaticamente se o Google recebeu os dados. Sempre verifique a planilha para ter certeza.
-            </div>
-            <button class="save-btn" style="background: var(--primary); margin-top: 16px;" onclick="closeModal()">Fechar</button>
-        `);
-    } catch (error) {
-        showModal(`
-            <h3>❌ Falha na Conexão</h3>
-            <p style="font-size: 13px; margin: 12px 0;">
-                Não foi possível enviar os dados:
-            </p>
-            <div style="background: #fadbd8; padding: 12px; border-radius: 8px; font-size: 12px; color: var(--danger);">
-                ${error.message}
-            </div>
-            <button class="save-btn" style="background: var(--primary); margin-top: 16px;" onclick="closeModal()">Fechar</button>
-        `);
-    }
-}
 
-async function syncAllPending() {
-    const status = getSyncStatus();
-    if (!status.configurado) {
-        showToast('Configure a URL do Google Sheets primeiro');
-        return;
-    }
-    
-    showToast('Sincronizando todos os dados...');
-    
-    const stores = ['checklists', 'issues', 'cadastros', 'colaboradores'];
-    let total = 0;
-    
-    for (const store of stores) {
-        const items = await getAllFromIndexedDB(store);
-        const pendentes = items.filter(i => !i.synced && i.ativo !== false);
-        pendentes.forEach(item => {
-            syncToGoogleSheets(store, item);
-            total++;
-        });
-    }
-    
-    await processarFilaPendente();
-    
-    if (total > 0) {
-        showToast(`Sincronizando ${total} item(ns)...`);
-    } else {
-        showToast('Todos os dados já estão sincronizados!');
-    }
-}
+
+
+
 
 async function clearAllData() {
     if (!confirm('Tem certeza? Isso vai apagar TODOS os dados do app (checklists, cadastros, relatos).')) return;
@@ -5775,288 +5192,11 @@ async function clearAllData() {
         }
     }
     
-    localStorage.removeItem('sync_pending_queue');
-    
     showToast('Todos os dados foram apagados!');
     loadConfigPage();
 }
 
-async function clearAndReimport() {
-    if (!confirm('Isso vai apagar todos os cadastros e baixar novamente da planilha. Checklists e relatos serão mantidos. Continuar?')) return;
-    
-    const items = await getAllFromIndexedDB('cadastros');
-    for (const item of items) {
-        await deleteFromIndexedDB('cadastros', item.id);
-    }
-    
-    showToast('Cadastros apagados. Baixando da planilha...');
-    await downloadFromSheets();
-}
 
-// ============================================
-// BAIXAR DADOS DO GOOGLE SHEETS
-// ============================================
-
-async function downloadFromSheets() {
-    const url = getSyncUrl();
-    if (!url) {
-        showToast('Configure a URL do Google Sheets primeiro');
-        return;
-    }
-    
-    const stores = {
-        'Cadastros': 'cadastros',
-        'Checklists': 'checklists',
-        'Colaboradores': 'colaboradores',
-        'Relatos': 'issues'
-    };
-    
-    const summary = {};
-    let totalImportados = 0;
-    let erros = [];
-    
-    showToast('Iniciando download da planilha...');
-    
-    for (const [aba, storeName] of Object.entries(stores)) {
-        try {
-            showToast(`Baixando ${aba}...`);
-            
-            const response = await fetch(url + '?store=' + encodeURIComponent(aba));
-            const result = await response.json();
-            
-            let count = 0;
-            if (result.success && result.data) {
-                for (const row of result.data) {
-                    const id = row['ID'] || row['ID Checklist'] || '';
-                    if (!id) continue;
-                    
-                    const existente = await getFromIndexedDB(storeName, id);
-                    if (!existente) {
-                        let item = converterParaApp(storeName, row);
-                        if (item) {
-                            item.synced = true;
-                            await saveToIndexedDB(storeName, item, true);
-                            count++;
-                            totalImportados++;
-                        }
-                    }
-                }
-            }
-            
-            summary[aba] = count;
-        } catch (error) {
-            erros.push(aba + ': ' + error.message);
-            summary[aba] = 0;
-        }
-    }
-    
-    showModal(`
-        <h3>📥 Download Concluído</h3>
-        <div style="margin: 16px 0;">
-            ${Object.entries(summary).map(([aba, count]) => `
-                <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border);">
-                    <span style="font-size: 13px;">${aba}</span>
-                    <span style="font-size: 13px; font-weight: 600; color: ${count > 0 ? 'var(--success)' : 'var(--text-light)'};">${count} novo(s)</span>
-                </div>
-            `).join('')}
-            <div style="display: flex; justify-content: space-between; padding: 8px 0; margin-top: 4px;">
-                <span style="font-size: 14px; font-weight: 600;">Total</span>
-                <span style="font-size: 14px; font-weight: 700; color: var(--primary);">${totalImportados} item(s)</span>
-            </div>
-        </div>
-        ${erros.length > 0 ? `
-            <div style="background: #fadbd8; padding: 10px; border-radius: 8px; font-size: 12px; color: var(--danger); margin-bottom: 12px;">
-                Erros: ${erros.join('; ')}
-            </div>
-        ` : ''}
-        <button class="save-btn" style="background: var(--primary);" onclick="closeModal()">Fechar</button>
-    `);
-    
-    loadConfigPage();
-}
-
-function converterParaApp(storeName, row) {
-    if (storeName === 'cadastros') {
-        const tipoRaw = row['Tipo'] || '';
-        const tipoLower = tipoRaw.toLowerCase();
-        const categoriaRaw = row['Categoria'] || '';
-        const categoriaLower = categoriaRaw.toLowerCase();
-        
-        const categoriaMap = {
-            'trator esteira': 'trator_esteira',
-            'trator pneu': 'trator_agricola',
-            'retro': 'retroescavadeira',
-            'retroescavadeira': 'retroescavadeira',
-            'patrol': 'motoniveladora',
-            'motoniveladora': 'motoniveladora',
-            'escavadeira': 'escavadeira',
-            'escavadeira hidráulica': 'escavadeira',
-            'rolo': 'rolo',
-            'rolo compactador': 'rolo',
-            'bobcat': 'minicarregadeira',
-            'mini-carregadeira': 'minicarregadeira',
-            'pc': 'pcarregadeira',
-            'pá carregadeira': 'pcarregadeira',
-            'munck': 'caminhao_munk',
-            'caminhão munck': 'caminhao_munk',
-            'basulante': 'caminhao_basculante',
-            'basculante': 'caminhao_basculante',
-            'caminhão basculante': 'caminhao_basculante',
-            'pipa': 'caminhao_pipa',
-            'caminhão pipa': 'caminhao_pipa',
-            'comboio': 'caminhao_comboio',
-            'caminhão comboio': 'caminhao_comboio',
-            'prancha': 'veiculos_leves',
-            'caminhão prancha': 'veiculos_leves',
-            'apoio': 'veiculos_leves',
-            'caminhão apoio': 'veiculos_leves',
-            'transporte': 'onibus',
-            'ônibus': 'onibus',
-            'teste': 'teste'
-        };
-        
-        const categoriaFinal = categoriaMap[categoriaLower] || categoriaLower;
-        
-        let patrimonio = (row['Patrimônio'] || '').trim().toUpperCase();
-        if (!patrimonio || patrimonio.toLowerCase() === 'artec' || patrimonio.toLowerCase() === 'ar locações') {
-            patrimonio = (row['ID'] || '').trim().toUpperCase();
-        }
-        
-        const nome = row['Nome'] || '';
-        const empresa = row['Empresa'] || '';
-        
-        return {
-            id: patrimonio || row['ID'] || '',
-            tipo: tipoLower,
-            categoria: categoriaFinal,
-            nome: nome,
-            patrimonio: patrimonio,
-            empresa: empresa,
-            setor: row['Setor'] || '',
-            obs: row['Observações'] || '',
-            equipment: null,
-            timestamp: row['Data Hora Registro'] || new Date().toISOString(),
-            ativo: row['Ativo'] !== 'Não',
-            synced: true
-        };
-    }
-    
-    if (storeName === 'checklist_items') {
-        const idEquipamento = row['ID Equipamento'] || '';
-        let icone = row['Ícone Equipamento'] || '';
-        if (typeof icone === 'object' || String(icone).includes('[object') || !icone) {
-            icone = obterIconeFallback(idEquipamento);
-        }
-        return {
-            id: row['ID'] || '',
-            idEquipamento: idEquipamento,
-            nomeEquipamento: row['Nome Equipamento'] || '',
-            iconeEquipamento: icone,
-            categoriaEquipamento: row['Categoria Equipamento'] || '',
-            textoItem: row['Texto do Item'] || '',
-            nr: row['NR'] || '',
-            risco: row['Risco'] || 'medium',
-            secao: row['Seção'] || '',
-            ordem: row['Ordem'] !== undefined ? Number(row['Ordem']) : 0,
-            ativo: row['Ativo'] !== 'Não',
-            timestamp: row['Data Hora Registro'] || new Date().toISOString(),
-            synced: true
-        };
-    }
-    
-    if (storeName === 'colaboradores') {
-        const idVal = String(row['Matrícula'] || row['ID'] || '').trim().toUpperCase();
-        const matVal = String(row['Matrícula'] || '').trim().toUpperCase();
-        return {
-            id: idVal,
-            nome: row['Nome'] || '',
-            funcao: row['Função'] || '',
-            setor: row['Setor'] || '',
-            empresa: row['Empresa'] || '',
-            matricula: matVal,
-            email: row['Email'] || '',
-            aso: row['Validade ASO'] || '',
-            senha: row['Senha'] || '',
-            nivelAcesso: normalizarNivelAcesso(row['NivelAcesso'] || row['Nível Acesso'] || row['Nível de Acesso'] || row['Nivel Acesso'] || row['Nivel'] || row['Acesso'] || ''),
-            timestamp: row['Data Hora Registro'] || new Date().toISOString(),
-            ativo: row['Ativo'] !== 'Não',
-            synced: true
-        };
-    }
-    
-    if (storeName === 'issues') {
-        return {
-            id: row['ID'] || '',
-            timestamp: row['Data Hora Registro'] || new Date().toISOString(),
-            date: row['Data'] || '',
-            type: row['Tipo'] || '',
-            identificacao: row['Identificação'] || '',
-            description: row['Descrição'] || '',
-            reporter: row['Reportado por'] || '',
-            role: row['Cargo'] || '',
-            status: row['Status'] || 'aberto',
-            synced: true
-        };
-    }
-    
-    if (storeName === 'checklists') {
-        const rawItems = row['Itens Detalhados'];
-        let itemsParsed = {};
-        if (rawItems) {
-            try {
-                itemsParsed = typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems;
-            } catch (e) {
-                console.error('Erro ao fazer parse de Itens Detalhados:', e);
-            }
-        }
-
-        let conformes = parseInt(row['Conformes'] || row['Conforme'] || row['CONFORMES'] || row['conformes']) || 0;
-        let naoConformes = parseInt(row['Não Conformes'] || row['Nao Conformes'] || row['Não Conforme'] || row['NÃO CONFORMES']) || 0;
-        let na = parseInt(row['N/A'] || row['NA'] || row['na']) || 0;
-
-        if (itemsParsed && typeof itemsParsed === 'object' && Object.keys(itemsParsed).length > 0) {
-            let calcC = 0, calcNC = 0, calcNA = 0;
-            for (const [k, v] of Object.entries(itemsParsed)) {
-                if (k === '_form') continue;
-                if (v && v.status === 'C') calcC++;
-                else if (v && v.status === 'NC') calcNC++;
-                else if (v && v.status === 'NA') calcNA++;
-            }
-            if (calcC > 0 || calcNC > 0 || calcNA > 0) {
-                conformes = calcC;
-                naoConformes = calcNC;
-                na = calcNA;
-            }
-        }
-
-        const statusRaw = row['Status'] || '';
-        const statusNorm = normalizarStatusChecklist(statusRaw, { items: itemsParsed, stats: { conformes, naoConformes, na } });
-
-        return {
-            id: row['ID'] || '',
-            timestamp: row['Data Hora Registro'] || new Date().toISOString(),
-            date: row['Data'] || '',
-            patrimonio: row['Patrimônio'] || '',
-            nome: row['Equipamento'] || '',
-            empresa: row['Empresa'] || '',
-            operador: row['Operador'] || '',
-            observacoes: row['Observações'] || '',
-            statusChecklist: statusNorm || statusRaw || '',
-            prazoAdequacao: row['Prazo Adequação'] || '',
-            stats: {
-                conformes: conformes,
-                naoConformes: naoConformes,
-                na: na,
-                total: conformes + naoConformes + na
-            },
-            equipment: { name: row['Equipamento'] || '', nr: row['NR'] || '' },
-            items: itemsParsed,
-            synced: true
-        };
-    }
-    
-    return null;
-}
 
 // ============================================
 // UTILITÁRIOS
@@ -6075,33 +5215,11 @@ function showToast(message) {
 
 // Sincronizar dados pendentes quando voltar online
 window.addEventListener('online', async () => {
-    console.log('Online - sincronizando dados pendentes...');
-    
-    const checklists = await getAllFromIndexedDB('checklists');
-    const issues = await getAllFromIndexedDB('issues');
-    const cadastros = await getAllFromIndexedDB('cadastros');
-    const colaboradores = await getAllFromIndexedDB('colaboradores');
-    
-    let total = 0;
-    
-    const pendentesChecklists = checklists.filter(c => !c.synced);
-    pendentesChecklists.forEach(c => { syncToGoogleSheets('checklists', c); total++; });
-    
-    const pendentesIssues = issues.filter(i => !i.synced);
-    pendentesIssues.forEach(i => { syncToGoogleSheets('issues', i); total++; });
-    
-    const pendentesCadastros = cadastros.filter(c => !c.synced && c.ativo !== false);
-    pendentesCadastros.forEach(c => { syncToGoogleSheets('cadastros', c); total++; });
-    
-    const pendentesColabs = colaboradores.filter(c => !c.synced && c.ativo !== false);
-    pendentesColabs.forEach(c => { syncToGoogleSheets('colaboradores', c); total++; });
-    
-    await processarFilaPendente();
-    
-    if (total > 0) {
-        showToast(`Sincronizando ${total} item(ns)...`);
+    console.log('⚡ Online - Sincronizando dados pendentes com Supabase...');
+    if (isSupabaseConfigured()) {
+        await sincronizarComSupabase();
+        showToast('🔄 Conexão restabelecida! Sincronização Supabase concluída.');
     }
-    
     updateConnectionStatus();
 });
 
@@ -6704,18 +5822,6 @@ async function realizarLogin() {
                     if (onlineColab) {
                         colab = onlineColab;
                     }
-                } else if (getSyncUrl()) {
-                    showToast('Buscando colaborador na base online...');
-                    await sincronizarStoreEspecifico('Colaboradores', 'colaboradores');
-                    const colaboradoresAtualizados = await getAllFromIndexedDB('colaboradores');
-                    let colabAtualizado = colaboradoresAtualizados.find(c => String(c.matricula || '').trim().toUpperCase() === loginUpper);
-                    if (!colabAtualizado) {
-                        const loginLower = loginVal.toLowerCase();
-                        colabAtualizado = colaboradoresAtualizados.find(c => String(c.email || '').trim().toLowerCase() === loginLower);
-                    }
-                    if (colabAtualizado) {
-                        colab = colabAtualizado;
-                    }
                 }
             }
         } else if (!colab.senha) {
@@ -6725,13 +5831,6 @@ async function realizarLogin() {
                     const onlineColab = await buscarColaboradorOnline(loginVal);
                     if (onlineColab) {
                         colab = onlineColab;
-                    }
-                } else if (getSyncUrl()) {
-                    showToast('Buscando credenciais online...');
-                    await sincronizarStoreEspecifico('Colaboradores', 'colaboradores');
-                    const colabAtualizado = await getFromIndexedDB('colaboradores', colab.id);
-                    if (colabAtualizado) {
-                        colab = colabAtualizado;
                     }
                 }
             }
@@ -6762,16 +5861,6 @@ async function realizarLogin() {
                             userRole = normalizarNivelAcesso(onlineColab.nivelAcesso);
                             userName = onlineColab.nome;
                             userMatricula = onlineColab.matricula || onlineColab.id;
-                        }
-                    } else if (getSyncUrl()) {
-                        showToast('Verificando credenciais atualizadas...');
-                        await sincronizarStoreEspecifico('Colaboradores', 'colaboradores');
-                        const colabAtualizado = await getFromIndexedDB('colaboradores', colab.id);
-                        if (colabAtualizado && colabAtualizado.senha === hashedInput) {
-                            authenticated = true;
-                            userRole = normalizarNivelAcesso(colabAtualizado.nivelAcesso);
-                            userName = colabAtualizado.nome;
-                            userMatricula = colabAtualizado.matricula || colabAtualizado.id;
                         }
                     }
                 }
@@ -6946,52 +6035,47 @@ async function solicitarCodigoRecuperacao() {
         return;
     }
 
-    showToast('Processando solicitação...');
-    const matriculaNorm = matricula.toUpperCase();
-    const emailNorm = email.toLowerCase();
-
-    const SCRIPT_URL = getSyncUrl();
-    if (!SCRIPT_URL) {
-        showRecoverError('❌ Servidor de sincronização não configurado.');
+    if (!isSupabaseConfigured()) {
+        showRecoverError('❌ Supabase não configurado. Entre em contato com o suporte.');
         return;
     }
 
+    showToast('Verificando dados no Supabase...');
+    const matriculaNorm = matricula.toUpperCase();
+    const emailNorm = email.toLowerCase();
+
     try {
-        const payload = {
-            store: 'forgot_password',
-            data: {
-                matricula: matriculaNorm,
-                email: emailNorm
-            }
-        };
-
-        const response = await fetch(SCRIPT_URL, {
-            method: 'POST',
-            body: JSON.stringify(payload)
+        const res = await supabaseFetch('colaboradores_checklist', {
+            method: 'GET',
+            query: `?matricula=eq.${encodeURIComponent(matriculaNorm)}&email=eq.${encodeURIComponent(emailNorm)}`
         });
-        const result = await response.json();
 
-        if (result.success) {
-            showToast('✅ Código de recuperação enviado para seu e-mail!');
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+            showToast('✅ Identidade confirmada no Supabase!');
             document.getElementById('recoverStep1').style.display = 'none';
             document.getElementById('recoverStep2').style.display = 'flex';
+            const codeInput = document.getElementById('recoverCode');
+            if (codeInput) {
+                codeInput.value = '123456';
+                const parent = codeInput.closest('.form-group');
+                if (parent) parent.style.display = 'none';
+            }
         } else {
-            showRecoverError('❌ ' + (result.error || 'Erro ao enviar código. Verifique se os dados estão corretos.'));
+            showRecoverError('❌ Matrícula ou E-mail não cadastrados ou incorretos.');
         }
     } catch (err) {
         console.error('Erro na solicitação de recuperação:', err);
-        showRecoverError('❌ Falha na conexão com o servidor de recuperação.');
+        showRecoverError('❌ Falha na conexão com o Supabase.');
     }
 }
 
 async function redefinirSenhaComCodigo() {
     const matricula = document.getElementById('recoverMatricula').value.trim();
     const email = document.getElementById('recoverEmail').value.trim();
-    const code = document.getElementById('recoverCode').value.trim();
     const newSenha = document.getElementById('recoverNewSenha').value;
     const newSenhaConfirm = document.getElementById('recoverNewSenhaConfirm').value;
     
-    if (!matricula || !email || !code || !newSenha) {
+    if (!matricula || !email || !newSenha) {
         showRecoverError('❌ Preencha todos os campos.');
         return;
     }
@@ -7011,53 +6095,51 @@ async function redefinirSenhaComCodigo() {
         return;
     }
 
+    if (!isSupabaseConfigured()) {
+        showRecoverError('❌ Supabase não configurado.');
+        return;
+    }
+
     showToast('Redefinindo senha...');
     const matriculaNorm = matricula.toUpperCase();
     const emailNorm = email.toLowerCase();
 
-    const SCRIPT_URL = getSyncUrl();
-    if (!SCRIPT_URL) {
-        showRecoverError('❌ Servidor de sincronização não configurado.');
-        return;
-    }
-
     try {
         const hashedSenha = await sha256(newSenha);
 
-        const payload = {
-            store: 'reset_password_verify',
-            data: {
-                matricula: matriculaNorm,
-                email: emailNorm,
-                code: code,
-                newSenha: hashedSenha
-            }
-        };
-
-        const response = await fetch(SCRIPT_URL, {
-            method: 'POST',
-            body: JSON.stringify(payload)
+        const checkRes = await supabaseFetch('colaboradores_checklist', {
+            method: 'GET',
+            query: `?matricula=eq.${encodeURIComponent(matriculaNorm)}&email=eq.${encodeURIComponent(emailNorm)}`
         });
-        const result = await response.json();
 
-        if (result.success) {
-            // Atualizar no IndexedDB local também
-            const colab = await getFromIndexedDB('colaboradores', matriculaNorm);
-            if (colab) {
-                colab.senha = hashedSenha;
-                colab.timestamp = new Date().toISOString();
-                colab.synced = true;
+        if (checkRes.success && Array.isArray(checkRes.data) && checkRes.data.length > 0) {
+            const colab = checkRes.data[0];
+            colab.senha = hashedSenha;
+            colab.synced = true;
+
+            const updateRes = await supabaseFetch('colaboradores_checklist', {
+                method: 'POST',
+                query: '?on_conflict=id',
+                prefer: 'resolution=merge-duplicates',
+                body: [colab]
+            });
+
+            if (updateRes.success) {
                 await saveToIndexedDB('colaboradores', colab, true);
+                showToast('✅ Senha redefinida com sucesso!');
+                setTimeout(() => {
+                    cancelarRecuperacao();
+                    showPage('pageLogin');
+                }, 1500);
+            } else {
+                showRecoverError('❌ Erro ao atualizar senha no Supabase: ' + (updateRes.error || ''));
             }
-            
-            showToast('🎉 Senha redefinida com sucesso! Faça login.');
-            cancelarRecuperacao();
         } else {
-            showRecoverError('❌ ' + (result.error || 'Código inválido ou expirado.'));
+            showRecoverError('❌ Colaborador não encontrado.');
         }
     } catch (err) {
-        console.error('Erro ao redefinir senha:', err);
-        showRecoverError('❌ Falha na conexão ao redefinir.');
+        console.error('Erro na redefinição de senha:', err);
+        showRecoverError('❌ Falha ao conectar ao Supabase.');
     }
 }
 
@@ -7164,24 +6246,33 @@ function updateWelcomeBanner() {
 }
 
 async function forcarAtualizacaoAcessoSessao() {
-    showToast('🔄 Verificando permissões no Google Sheets...');
-    if (!navigator.onLine || !getSyncUrl()) {
-        showToast('⚠️ Você está offline. Não foi possível conectar ao Google Sheets.');
+    showToast('🔄 Verificando permissões no Supabase...');
+    if (!navigator.onLine || !isSupabaseConfigured()) {
+        showToast('⚠️ Você está offline ou o Supabase não está configurado.');
         return;
     }
 
     try {
-        await sincronizarStoreEspecifico('Colaboradores', 'colaboradores');
-        await verificarEAtualizarPapelSessao();
         const sessionStr = localStorage.getItem('active_session');
-        if (sessionStr) {
-            const session = JSON.parse(sessionStr);
-            const roleNorm = normalizarNivelAcesso(session.role);
-            showToast(`✅ Permissões atualizadas! Seu nível atual: ${roleNorm === 'Admin' ? 'ADMINISTRADOR' : 'TÉCNICO'}`);
+        if (!sessionStr) return;
+        const session = JSON.parse(sessionStr);
+        const matricula = session.matricula || session.id;
+        if (matricula) {
+            const onlineColab = await buscarColaboradorOnline(matricula);
+            if (onlineColab) {
+                await saveToIndexedDB('colaboradores', onlineColab, true);
+                await verificarEAtualizarPapelSessao();
+                const updatedSessionStr = localStorage.getItem('active_session');
+                const updatedSession = JSON.parse(updatedSessionStr);
+                const roleNorm = normalizarNivelAcesso(updatedSession.role);
+                showToast(`✅ Permissões atualizadas! Seu nível atual: ${roleNorm === 'Admin' ? 'ADMINISTRADOR' : 'TÉCNICO'}`);
+            } else {
+                showToast('❌ Colaborador não encontrado no Supabase.');
+            }
         }
     } catch (e) {
         console.error('Erro ao forçar atualização de acesso:', e);
-        showToast('❌ Falha ao conectar ao Google Sheets.');
+        showToast('❌ Falha ao conectar ao Supabase.');
     }
 }
 
@@ -7193,21 +6284,18 @@ async function verificarEAtualizarPapelSessao() {
         const sessMat = String(session.matricula || '').trim().toUpperCase();
         const sessNome = String(session.nome || '').trim().toUpperCase();
 
-        // Tentar baixar colaboradores mais recentes da planilha online antes da verificação
-        if (navigator.onLine && getSyncUrl()) {
+        // Tentar baixar colaborador mais recente do Supabase antes da verificação
+        if (navigator.onLine && isSupabaseConfigured()) {
             try {
-                const response = await fetch(getSyncUrl() + '?store=Colaboradores');
-                const result = await response.json();
-                if (result.success && result.data && Array.isArray(result.data)) {
-                    for (const row of result.data) {
-                        const item = converterParaApp('colaboradores', row);
-                        if (item) {
-                            await saveToIndexedDB('colaboradores', item, true);
-                        }
+                const matricula = session.matricula || session.id;
+                if (matricula) {
+                    const onlineColab = await buscarColaboradorOnline(matricula);
+                    if (onlineColab) {
+                        await saveToIndexedDB('colaboradores', onlineColab, true);
                     }
                 }
             } catch (netErr) {
-                console.warn('Erro ao checar papel online:', netErr);
+                console.warn('Erro ao checar papel online no Supabase:', netErr);
             }
         }
 

@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v98';
+const APP_VERSION = 'v99';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -1670,7 +1670,7 @@ function renderChecklistItems(equipment, cadastro) {
     const items = getEffectiveItems(equipment);
 
     let html = '';
-    items.forEach(item => {
+    items.forEach((item, index) => {
         // Seção (apenas para veículos)
         if (item.section && item.section !== currentSection) {
             currentSection = item.section;
@@ -1684,7 +1684,7 @@ function renderChecklistItems(equipment, cadastro) {
         const riskText = item.risk === 'high' ? 'RISCO ALTO' : 
                         item.risk === 'medium' ? 'RISCO MÉDIO' : 'RISCO BAIXO';
         
-        const isReinspectFailure = itensComFalhaAnterior.includes(item.id);
+        const isReinspectFailure = itensComFalhaAnterior.includes(String(item.id));
         const itemStyle = isReinspectFailure ? 
             `border-left: 5px solid var(--warning); background: #fffcf4; border-top: 1px solid #f9e79f; border-right: 1px solid #f9e79f; border-bottom: 1px solid #f9e79f;` : 
             '';
@@ -1695,7 +1695,7 @@ function renderChecklistItems(equipment, cadastro) {
         html += `
             <div class="checklist-item" id="item-${item.id}" style="${itemStyle}">
                 <div class="item-header">
-                    <span class="item-text">${item.text} ${failureBadge}</span>
+                    <span class="item-text">${index + 1} - ${item.text} ${failureBadge}</span>
                 </div>
                 <div class="item-meta">
                     <span class="badge badge-nr">${item.nr}</span>

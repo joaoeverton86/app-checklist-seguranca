@@ -591,7 +591,7 @@ function showPage(pageId) {
         if (header) header.style.display = 'none';
         if (bottomNav) bottomNav.style.display = 'none';
     } else {
-        if (header) header.style.display = 'block';
+        if (header) header.style.display = 'flex';
         if (bottomNav) bottomNav.style.display = 'flex';
         // Assegurar que o botão de logout esteja visível
         if (sessionStr) {

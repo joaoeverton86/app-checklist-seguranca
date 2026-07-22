@@ -584,15 +584,21 @@ function showPage(pageId) {
         document.getElementById(navMap[pageId]).classList.add('active');
     }
     
-    // Ocultar/exibir header e nav inferior se for login
+    // Ocultar/exibir header, nav inferior e status de conexão se for login
     const header = document.querySelector('.header');
     const bottomNav = document.querySelector('.bottom-nav');
+    const connectionStatus = document.getElementById('connectionStatus');
+    
     if (pageId === 'pageLogin' || pageId === 'pageSignUp' || pageId === 'pageForgotPassword') {
+        document.body.classList.remove('has-bottom-nav');
         if (header) header.style.display = 'none';
         if (bottomNav) bottomNav.style.display = 'none';
+        if (connectionStatus) connectionStatus.style.display = 'none';
     } else {
+        document.body.classList.add('has-bottom-nav');
         if (header) header.style.display = 'flex';
         if (bottomNav) bottomNav.style.display = 'flex';
+        if (connectionStatus) connectionStatus.style.display = 'flex';
         // Assegurar que o botão de logout esteja visível
         if (sessionStr) {
             const session = JSON.parse(sessionStr);

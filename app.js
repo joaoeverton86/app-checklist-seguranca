@@ -3658,7 +3658,7 @@ function clearReportFilters() {
 
 function getDateRange() {
     const now = new Date();
-    const fimAjustado = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const fimAjustado = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2, 23, 59, 59, 999);
     if (reportFilter === 'semana') {
         const inicio = new Date(now);
         inicio.setDate(now.getDate() - 7);

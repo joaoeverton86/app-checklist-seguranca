@@ -189,7 +189,7 @@ async function initDynamicEquipmentTypes() {
             dbItems.sort((a, b) => (Number(a.ordem) || 0) - (Number(b.ordem) || 0));
             
             dbItems.forEach(item => {
-                if (item.ativo === 'Não') return;
+                if (item.ativo === false || item.ativo === 'Não') return;
                 
                 const cat = item.categoriaEquipamento || 'maquinas';
                 const eqpId = item.idEquipamento;
@@ -5311,6 +5311,9 @@ async function loadCadastroSuggestions(category) {
         if (!c.categoria) return true;
         const cat = c.categoria.toLowerCase();
         const eqId = equipment.id.toLowerCase();
+        if ((cat === 'retroescavadeira' && eqId === 'escavadeira') || (cat === 'escavadeira' && eqId === 'retroescavadeira')) {
+            return false;
+        }
         return cat === eqId || cat.includes(eqId) || eqId.includes(cat);
     });
     
@@ -5351,6 +5354,9 @@ async function filterCadastros(category, query) {
         if (!c.categoria) return true;
         const cat = c.categoria.toLowerCase();
         const eqId = equipment.id.toLowerCase();
+        if ((cat === 'retroescavadeira' && eqId === 'escavadeira') || (cat === 'escavadeira' && eqId === 'retroescavadeira')) {
+            return false;
+        }
         return cat === eqId || cat.includes(eqId) || eqId.includes(cat);
     });
     

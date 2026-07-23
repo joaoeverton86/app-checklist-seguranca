@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v106';
+const APP_VERSION = 'v107';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -1309,6 +1309,52 @@ async function saveCadastroEdit(id) {
     };
 
     await saveToIndexedDB('cadastros', cadastro);
+
+    // Se o nome ou o patrimônio mudou, atualizar os checklists históricos correspondentes
+    const oldNome = oldCadastro.nome;
+    const oldPatr = oldCadastro.patrimonio;
+    const newNome = cadastro.nome;
+    const newPatr = cadastro.patrimonio;
+
+    if (oldNome !== newNome || oldPatr !== newPatr) {
+        try {
+            const checklists = await getAllFromIndexedDB('checklists');
+            for (const c of checklists) {
+                const matchPatr = (c.patrimonio && (c.patrimonio.toUpperCase() === oldPatr.toUpperCase() || c.patrimonio.toUpperCase() === newPatr.toUpperCase()));
+                const matchPlaca = (c.patrimonio && (
+                    (oldCadastro.placa && c.patrimonio.toUpperCase() === oldCadastro.placa.toUpperCase()) ||
+                    (cadastro.placa && c.patrimonio.toUpperCase() === cadastro.placa.toUpperCase()) ||
+                    (oldCadastro.setor && c.patrimonio.toUpperCase() === oldCadastro.setor.toUpperCase())
+                ));
+
+                if (matchPatr || matchPlaca) {
+                    let changed = false;
+                    if (c.nome !== newNome) {
+                        c.nome = newNome;
+                        changed = true;
+                    }
+                    if (c.patrimonio !== newPatr) {
+                        c.patrimonio = newPatr;
+                        changed = true;
+                    }
+                    if (c.equipment && c.equipment.name !== newNome) {
+                        c.equipment.name = newNome;
+                        changed = true;
+                    }
+
+                    if (changed) {
+                        c.synced = false;
+                        await saveToIndexedDB('checklists', c);
+                        if (isSupabaseConfigured()) {
+                            sincronizarItemIndividualSupabase('checklists', c);
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Erro ao atualizar checklists vinculados:', e);
+        }
+    }
 
     if (isSupabaseConfigured()) {
         await sincronizarItemIndividualSupabase('cadastros', cadastro);

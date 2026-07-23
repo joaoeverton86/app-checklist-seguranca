@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v104';
+const APP_VERSION = 'v105';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -132,6 +132,9 @@ function parseLocalDate(dateStr) {
 function normalizarStatusChecklist(val, checklist) {
     let str = String(val || '').toLowerCase().trim();
 
+    if (str.includes('reinspecionad') || str.includes('resolvido')) {
+        return 'reinspecionado';
+    }
     if (str.includes('interditad') || str.includes('interdicao') || str.includes('interdição')) {
         return 'interditado';
     }
@@ -168,9 +171,11 @@ let currentCadastro = null;
 let checklistData = {};
 let signaturePad = null;
 let itensComFalhaAnterior = [];
+let currentReinspectionOriginalId = null;
 
 function clearReinspectionState() {
     itensComFalhaAnterior = [];
+    currentReinspectionOriginalId = null;
     const banner = document.getElementById('reinspectionBanner');
     if (banner) banner.style.display = 'none';
 }
@@ -2233,6 +2238,25 @@ async function saveChecklist() {
     // Salvar no IndexedDB
     await saveToIndexedDB('checklists', checklist);
     
+    // Se for uma reinspeção concluída, atualizar o status do checklist original para "reinspecionado"
+    if (currentReinspectionOriginalId) {
+        try {
+            const originalChecklist = await getFromIndexedDB('checklists', currentReinspectionOriginalId);
+            if (originalChecklist) {
+                originalChecklist.statusChecklist = 'reinspecionado';
+                originalChecklist.synced = false;
+                await saveToIndexedDB('checklists', originalChecklist);
+                
+                if (isSupabaseConfigured()) {
+                    sincronizarItemIndividualSupabase('checklists', originalChecklist);
+                }
+            }
+        } catch (e) {
+            console.error('Erro ao atualizar status do checklist original:', e);
+        }
+        currentReinspectionOriginalId = null; // Limpar estado
+    }
+    
     if (isSupabaseConfigured()) {
         sincronizarItemIndividualSupabase('checklists', checklist);
     }
@@ -2824,11 +2848,15 @@ function renderHistoryFiltered() {
     
     container.innerHTML = groupKeys.map(key => {
         const itemsHtml = groups[key].map(c => {
+            const normStatus = normalizarStatusChecklist(c.statusChecklist, c);
             const statusClass = c.stats.naoConformes > 0 ? 'status-alert' : 'status-ok';
             let statusText = 'Conforme';
             let badgeClass = statusClass;
             
-            if (c.statusChecklist === 'interditado') {
+            if (normStatus === 'reinspecionado') {
+                statusText = 'Reinspecionado';
+                badgeClass = 'status-reinspecionado';
+            } else if (c.statusChecklist === 'interditado') {
                 statusText = 'Interditado';
                 badgeClass = 'status-alert';
             } else if (c.stats.naoConformes > 0) {
@@ -3238,6 +3266,8 @@ async function reinspecionarChecklist(id) {
         showToast('Checklist não encontrado.');
         return;
     }
+    
+    currentReinspectionOriginalId = original.id;
     
     let equipment = encontrarEquipamentoParaChecklist(original);
     if (!equipment && original.patrimonio) {

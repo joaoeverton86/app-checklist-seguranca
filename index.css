@@ -450,6 +450,7 @@ body.has-bottom-nav {
     font-weight: 600;
 }
 .status-ok { background: #e2fbf0; color: #10b981; }
+.status-reinspecionado { background: #e0f2fe; color: #0284c7; }
 .status-alert { background: #fee2e2; color: #ef4444; }
 
 /* Bottom Nav */

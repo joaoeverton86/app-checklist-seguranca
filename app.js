@@ -3100,10 +3100,10 @@ function encontrarEquipamentoParaChecklist(checklist) {
         'PATROL': 'motoniveladora',
         'PATROLA': 'motoniveladora',
         'MOTONIVELADORA': 'motoniveladora',
-        'CAÇAMBA': 'cacamba',
-        'CACAMBA': 'cacamba',
-        'CAMINHÃO CAÇAMBA': 'cacamba',
-        'CAMINHAO CACAMBA': 'cacamba',
+        'CAÇAMBA': 'caminhao_basculante',
+        'CACAMBA': 'caminhao_basculante',
+        'CAMINHÃO CAÇAMBA': 'caminhao_basculante',
+        'CAMINHAO CACAMBA': 'caminhao_basculante',
         'COMBOIO': 'caminhao_comboio',
         'CAMINHÃO COMBOIO': 'caminhao_comboio',
         'CAMINHAO COMBOIO': 'caminhao_comboio',
@@ -3293,7 +3293,20 @@ async function reinspecionarChecklist(id) {
     if (original.items) {
         for (const [itemId, itemData] of Object.entries(original.items)) {
             if (itemData && itemData.status === 'NC') {
-                itensComFalhaAnterior.push(itemId);
+                let resolvedId = itemId;
+                if (itemId.startsWith('nc_import_') && itemData.customText) {
+                    const targetText = String(itemData.customText).trim().toUpperCase();
+                    const allEqItems = equipment.items || [];
+                    const matchedItem = allEqItems.find(eqItem => {
+                        const ncDesc = getNCDescription(eqItem.text, eqItem.id).trim().toUpperCase();
+                        const normalDesc = String(eqItem.text).trim().toUpperCase();
+                        return ncDesc === targetText || normalDesc === targetText;
+                    });
+                    if (matchedItem) {
+                        resolvedId = matchedItem.id;
+                    }
+                }
+                itensComFalhaAnterior.push(resolvedId);
             }
         }
     }
@@ -3313,7 +3326,23 @@ async function reinspecionarChecklist(id) {
     if (original.items) {
         for (const [itemId, itemData] of Object.entries(original.items)) {
             if (itemId === '_form') continue;
-            checklistData[itemId] = {
+            
+            let resolvedId = itemId;
+            if (itemId.startsWith('nc_import_') && itemData.customText) {
+                const targetText = String(itemData.customText).trim().toUpperCase();
+                const allEqItems = equipment.items || [];
+                const matchedItem = allEqItems.find(eqItem => {
+                    const ncDesc = getNCDescription(eqItem.text, eqItem.id).trim().toUpperCase();
+                    const normalDesc = String(eqItem.text).trim().toUpperCase();
+                    return ncDesc === targetText || normalDesc === targetText;
+                });
+                if (matchedItem) {
+                    resolvedId = matchedItem.id;
+                    console.log(`Reinspeção: Mapeou item importado "${itemId}" para o item do formulário "${resolvedId}"`);
+                }
+            }
+            
+            checklistData[resolvedId] = {
                 status: itemData.status,
                 observation: itemData.observation || ''
             };

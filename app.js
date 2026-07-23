@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v103';
+const APP_VERSION = 'v104';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -3075,7 +3075,17 @@ function encontrarCategoriaDoEquipamento(equipment) {
 function encontrarEquipamentoParaChecklist(checklist) {
     if (!checklist) return null;
 
-    // 1. Tentar por equipment.tipo e equipment.id
+    // 1. Tentar por ID do equipamento direto (busca global)
+    if (checklist.equipment && checklist.equipment.id) {
+        const eqId = checklist.equipment.id;
+        for (const [catKey, list] of Object.entries(EQUIPMENT_TYPES)) {
+            if (!Array.isArray(list)) continue;
+            const found = list.find(e => e.id === eqId);
+            if (found) return found;
+        }
+    }
+
+    // 2. Tentar por equipment.tipo e equipment.id
     if (checklist.equipment && checklist.equipment.tipo && checklist.equipment.id) {
         const cat = checklist.equipment.tipo;
         const eqId = checklist.equipment.id;
@@ -3085,7 +3095,7 @@ function encontrarEquipamentoParaChecklist(checklist) {
         }
     }
 
-    // 2. Tentar por equipment.category e equipment.id
+    // 3. Tentar por equipment.category e equipment.id
     if (checklist.equipment && checklist.equipment.category && checklist.equipment.id) {
         const cat = checklist.equipment.category;
         const eqId = checklist.equipment.id;
@@ -3229,7 +3239,23 @@ async function reinspecionarChecklist(id) {
         return;
     }
     
-    const equipment = encontrarEquipamentoParaChecklist(original);
+    let equipment = encontrarEquipamentoParaChecklist(original);
+    if (!equipment && original.patrimonio) {
+        // Tentar obter pelo cadastro do patrimônio de forma assíncrona
+        const cadastro = await getFromIndexedDB('cadastros', original.patrimonio);
+        if (cadastro && cadastro.categoria) {
+            for (const [catKey, list] of Object.entries(EQUIPMENT_TYPES)) {
+                if (Array.isArray(list)) {
+                    const found = list.find(e => e.id === cadastro.categoria);
+                    if (found) {
+                        equipment = found;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
     if (!equipment) {
         showToast('Erro: Não foi possível determinar o tipo do equipamento.');
         return;
@@ -3374,6 +3400,54 @@ async function reinspecionarChecklist(id) {
     
     showPage('pageChecklistForm');
     showToast('Reinspeção iniciada! Dados anteriores carregados.');
+}
+
+async function quickResolveReinspection(mode) {
+    if (!currentEquipment) return;
+    
+    const items = getEffectiveItems(currentEquipment);
+    let resolvedCount = 0;
+    
+    items.forEach(item => {
+        const itemId = item.id;
+        let shouldResolve = false;
+        
+        if (mode === 'all') {
+            shouldResolve = true;
+        } else if (mode === 'nc_only') {
+            if (itensComFalhaAnterior.includes(String(itemId))) {
+                shouldResolve = true;
+            }
+        }
+        
+        if (shouldResolve) {
+            checklistData[itemId] = {
+                status: 'C',
+                observation: ''
+            };
+            resolvedCount++;
+        }
+    });
+    
+    // Atualizar DOM
+    aplicarStatusSalvosDOM();
+    
+    // Auto-definir o status do checklist como "Liberado" se não sobrou nenhuma NC
+    let temNC = false;
+    for (const [id, data] of Object.entries(checklistData)) {
+        if (data.status === 'NC') {
+            temNC = true;
+            break;
+        }
+    }
+    
+    const statusVal = temNC ? 'interditado' : 'liberado';
+    const btnStatus = document.querySelector(`button[onclick*="'${statusVal}'"]`);
+    if (btnStatus) {
+        setStatusChecklist(statusVal, btnStatus);
+    }
+    
+    showToast(`🔄 Reinspeção: ${resolvedCount} item(ns) marcado(s) como Conforme.`);
 }
 
 let pendingItemUpdate = null;

@@ -387,9 +387,13 @@
             <!-- Reinspection Alert Banner -->
             <div id="reinspectionBanner" style="display: none; padding: 12px 16px; background: #fff9e6; border: 1px solid #ffe8a1; border-radius: 8px; margin-bottom: 12px; font-size: 13px; color: #7d5a00; line-height: 1.4; display: flex; align-items: flex-start; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <span style="font-size: 18px;">🔄</span>
-                <div>
+                <div style="width: 100%;">
                     <strong style="color: #b78a00;">Modo Reinspeção Ativo</strong><br>
                     <span id="reinspectionBannerDetail">Esta reinspeção é baseada em falhas anteriores. Os itens que estavam irregulares estão destacados com bordas e selos amarelos para fácil identificação.</span>
+                    <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" onclick="quickResolveReinspection('all')" style="background: #27ae60; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">✅ Corrigir Tudo (Liberar)</button>
+                        <button type="button" onclick="quickResolveReinspection('nc_only')" style="background: #f39c12; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">🔧 Corrigir Falhas Anteriores</button>
+                    </div>
                 </div>
             </div>
 

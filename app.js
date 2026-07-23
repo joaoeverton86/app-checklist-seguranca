@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v102';
+const APP_VERSION = 'v103';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -857,8 +857,8 @@ async function saveCadastro() {
     const categoria = document.getElementById('cadastroCategoria').value;
     const nome = document.getElementById('cadastroNome').value.trim();
     const patrimonio = document.getElementById('cadastroPatrimonio').value.trim();
+    const placa = document.getElementById('cadastroPlaca')?.value.trim() || '';
     const empresa = document.getElementById('cadastroEmpresa').value.trim();
-    const setor = document.getElementById('cadastroSetor')?.value.trim() || '';
     const obs = document.getElementById('cadastroObs').value.trim();
     
     if (!tipo || !categoria || !nome || !patrimonio) {
@@ -881,7 +881,8 @@ async function saveCadastro() {
         existing.ativo = true;
         existing.nome = nome;
         existing.empresa = empresa;
-        existing.setor = setor;
+        existing.placa = placa;
+        existing.setor = '';
         existing.obs = obs;
         existing.equipment = EQUIPMENT_TYPES[tipo].find(e => e.id === categoria) || null;
         await saveToIndexedDB('cadastros', existing);
@@ -891,8 +892,8 @@ async function saveCadastro() {
         document.getElementById('cadastroCategoria').innerHTML = '<option value="">Selecione o tipo primeiro...</option>';
         document.getElementById('cadastroNome').value = '';
         document.getElementById('cadastroPatrimonio').value = '';
+        if (document.getElementById('cadastroPlaca')) document.getElementById('cadastroPlaca').value = '';
         document.getElementById('cadastroEmpresa').value = '';
-        if (document.getElementById('cadastroSetor')) document.getElementById('cadastroSetor').value = '';
         document.getElementById('cadastroObs').value = '';
         
         setTimeout(() => showPage('pageCadastro'), 800);
@@ -907,8 +908,9 @@ async function saveCadastro() {
         categoria,
         nome,
         patrimonio: patrimonioNorm,
+        placa,
         empresa,
-        setor,
+        setor: '',
         obs,
         equipment: equipment ? { id: equipment.id, name: equipment.name, icon: equipment.icon, nr: equipment.nr } : null,
         timestamp: new Date().toISOString(),
@@ -922,8 +924,8 @@ async function saveCadastro() {
     document.getElementById('cadastroCategoria').innerHTML = '<option value="">Selecione o tipo primeiro...</option>';
     document.getElementById('cadastroNome').value = '';
     document.getElementById('cadastroPatrimonio').value = '';
+    if (document.getElementById('cadastroPlaca')) document.getElementById('cadastroPlaca').value = '';
     document.getElementById('cadastroEmpresa').value = '';
-    if (document.getElementById('cadastroSetor')) document.getElementById('cadastroSetor').value = '';
     document.getElementById('cadastroObs').value = '';
     
     showToast('Equipamento cadastrado!');
@@ -1115,7 +1117,7 @@ async function loadGestao(search = '') {
                 (c.patrimonio && c.patrimonio.toLowerCase().includes(query)) ||
                 (c.nome && c.nome.toLowerCase().includes(query)) ||
                 (c.empresa && c.empresa.toLowerCase().includes(query)) ||
-                (c.setor && c.setor.toLowerCase().includes(query))
+                (c.placa && c.placa.toLowerCase().includes(query))
             );
         }
 
@@ -1139,10 +1141,9 @@ async function loadGestao(search = '') {
             return `
                 <div class="history-item" style="flex-wrap: wrap; ${opacityStyle}">
                     <div class="history-info">
-                        <div class="history-title">${c.patrimonio}</div>
+                        <div class="history-title">${c.patrimonio}${c.placa ? ' [' + c.placa + ']' : ''}</div>
                         <div class="history-date">${c.nome || ''}</div>
                         <div class="history-date">${c.empresa || ''}</div>
-                        <div class="history-date">${c.setor || ''}</div>
                         <div style="margin-top: 4px;">${statusBadge}</div>
                     </div>
                     <div style="display: flex; gap: 4px; align-items: center;">
@@ -1243,8 +1244,8 @@ async function editCadastro(id) {
         }, 50);
         document.getElementById('cadastroNome').value = cadastro.nome || '';
         document.getElementById('cadastroPatrimonio').value = cadastro.patrimonio || '';
+        if (document.getElementById('cadastroPlaca')) document.getElementById('cadastroPlaca').value = cadastro.placa || '';
         document.getElementById('cadastroEmpresa').value = cadastro.empresa || '';
-        document.getElementById('cadastroSetor').value = cadastro.setor || '';
         document.getElementById('cadastroObs').value = cadastro.obs || '';
 
         const statusGroup = document.getElementById('groupCadastroStatus');
@@ -1294,8 +1295,9 @@ async function saveCadastroEdit(id) {
         tipo: document.getElementById('cadastroTipo')?.value || oldCadastro.tipo || '',
         categoria: document.getElementById('cadastroCategoria')?.value || oldCadastro.categoria || '',
         nome: document.getElementById('cadastroNome').value.trim(),
+        placa: document.getElementById('cadastroPlaca')?.value.trim() || '',
         empresa: document.getElementById('cadastroEmpresa').value.trim(),
-        setor: document.getElementById('cadastroSetor').value.trim(),
+        setor: '',
         obs: document.getElementById('cadastroObs').value.trim(),
         ativo: isAtivo,
         synced: false
@@ -1324,8 +1326,8 @@ async function saveCadastroEdit(id) {
     document.getElementById('cadastroCategoria').innerHTML = '<option value="">Selecione o tipo primeiro...</option>';
     document.getElementById('cadastroNome').value = '';
     document.getElementById('cadastroPatrimonio').value = '';
+    if (document.getElementById('cadastroPlaca')) document.getElementById('cadastroPlaca').value = '';
     document.getElementById('cadastroEmpresa').value = '';
-    document.getElementById('cadastroSetor').value = '';
     document.getElementById('cadastroObs').value = '';
 
     showPage('pageCadastro');
@@ -1575,7 +1577,7 @@ async function loadCadastroSelect(category) {
     cadastrosUnicos.forEach(c => {
         const option = document.createElement('option');
         option.value = c.patrimonio;
-        option.textContent = `${c.patrimonio} - ${c.nome} (${c.empresa || 'Sem empresa'})`;
+        option.textContent = `${c.patrimonio}${c.placa ? ' [' + c.placa + ']' : ''} - ${c.nome} (${c.empresa || 'Sem empresa'})`;
         option.dataset.nome = c.nome || '';
         option.dataset.empresa = c.empresa || '';
         select.appendChild(option);
@@ -3889,7 +3891,7 @@ async function loadReports() {
         sortedEquips.forEach(eq => {
             const opt = document.createElement('option');
             opt.value = eq.patrimonio;
-            opt.textContent = `${eq.patrimonio} - ${eq.nome}`;
+            opt.textContent = `${eq.patrimonio}${eq.placa ? ' [' + eq.placa + ']' : ''} - ${eq.nome}`;
             selectPatrimonio.appendChild(opt);
         });
         selectPatrimonio.value = valAnterior;
@@ -4506,6 +4508,9 @@ async function exportToCSV() {
 async function exportChecklist(id) {
     const c = await getFromIndexedDB('checklists', id);
     if (!c) return;
+    
+    const cad = c.patrimonio ? await getFromIndexedDB('cadastros', c.patrimonio) : null;
+    const placa = cad ? cad.placa : '';
 
     if (typeof jspdf === 'undefined' && typeof window.jspdf === 'undefined') {
         showToast('Biblioteca PDF não carregada. Tente novamente.');
@@ -4549,7 +4554,7 @@ async function exportChecklist(id) {
     drawField('Equipamento: ', c.nome, 20, innerY + 6);
     drawField('Patrimônio: ', c.patrimonio, 20, innerY + 12);
     drawField('Empresa: ', c.empresa, 20, innerY + 18);
-    drawField('Setor: ', c.setor || 'N/A', 20, innerY + 24);
+    drawField('Placa: ', placa || 'N/A', 20, innerY + 24);
 
     const col2X = pageWidth / 2 + 10;
     drawField('Operador: ', c.operador, col2X, innerY);
@@ -4855,7 +4860,7 @@ function converterParaSupabase(store, item) {
             nome: item.nome || '',
             patrimonio: String(item.patrimonio || item.id || '').toUpperCase(),
             empresa: item.empresa || '',
-            setor: item.setor || '',
+            setor: item.placa || '',
             obs: item.obs || '',
             ativo: item.ativo !== false
         };
@@ -4934,8 +4939,9 @@ function converterParaAppFromSupabase(table, row) {
             categoria: row.categoria,
             nome: row.nome,
             patrimonio: row.patrimonio,
+            placa: row.setor || '',
             empresa: row.empresa,
-            setor: row.setor,
+            setor: '',
             obs: row.obs,
             ativo: row.ativo,
             synced: true
@@ -5337,7 +5343,7 @@ async function loadCadastroSuggestions(category) {
              style="border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px;">
             <div class="item-info">
                 <div class="item-name" style="font-size: 13px;">${c.patrimonio} - ${c.nome}</div>
-                <div class="item-nr" style="font-size: 11px;">${c.empresa || 'Sem empresa'} ${c.setor ? '• ' + c.setor : ''}</div>
+                <div class="item-nr" style="font-size: 11px;">${c.empresa || 'Sem empresa'} ${c.placa ? '• Placa: ' + c.placa : ''}</div>
             </div>
             <span style="color: var(--text-light); font-size: 18px;">›</span>
         </div>
@@ -5369,7 +5375,8 @@ async function filterCadastros(category, query) {
     const filtered = filtradosBase.filter(item => 
         (item.patrimonio && item.patrimonio.toLowerCase().includes(queryLower)) ||
         (item.nome && item.nome.toLowerCase().includes(queryLower)) ||
-        (item.empresa && item.empresa.toLowerCase().includes(queryLower))
+        (item.empresa && item.empresa.toLowerCase().includes(queryLower)) ||
+        (item.placa && item.placa.toLowerCase().includes(queryLower))
     );
     
     if (filtered.length === 0) {
@@ -5395,7 +5402,7 @@ async function filterCadastros(category, query) {
              style="border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px;">
             <div class="item-info">
                 <div class="item-name" style="font-size: 13px;">${c.patrimonio} - ${c.nome}</div>
-                <div class="item-nr" style="font-size: 11px;">${c.empresa || 'Sem empresa'} ${c.setor ? '• ' + c.setor : ''}</div>
+                <div class="item-nr" style="font-size: 11px;">${c.empresa || 'Sem empresa'} ${c.placa ? '• Placa: ' + c.placa : ''}</div>
             </div>
             <span style="color: var(--text-light); font-size: 18px;">›</span>
         </div>

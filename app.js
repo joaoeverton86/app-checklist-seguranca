@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v105';
+const APP_VERSION = 'v106';
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -1260,7 +1260,7 @@ async function editCadastro(id) {
             statusSelect.value = cadastro.ativo !== false ? 'ativo' : 'inativo';
         }
 
-        const btn = document.querySelector('#pageNovoEquipamento .save-btn[onclick="saveCadastro()"]');
+        const btn = document.querySelector('#pageNovoEquipamento .save-btn');
         if (btn) {
             btn.textContent = 'Atualizar Equipamento';
             btn.setAttribute('onclick', `saveCadastroEdit('${id}')`);
@@ -1316,7 +1316,7 @@ async function saveCadastroEdit(id) {
 
     showToast(isAtivo ? 'Equipamento atualizado com sucesso!' : 'Equipamento desmobilizado!');
 
-    const btn = document.querySelector('#pageNovoEquipamento .save-btn[onclick^="saveCadastroEdit"]');
+    const btn = document.querySelector('#pageNovoEquipamento .save-btn');
     if (btn) {
         btn.textContent = 'Cadastrar Equipamento';
         btn.setAttribute('onclick', 'saveCadastro()');

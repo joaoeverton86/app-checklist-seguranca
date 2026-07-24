@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v109';
+const APP_VERSION = 'v110';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -987,7 +987,14 @@ async function saveColaborador() {
             existing.nivelAcesso = nivelAcesso;
             await saveToIndexedDB('colaboradores', existing);
             showToast('Colaborador reativado!');
-            
+
+            if (normalizarNivelAcesso(nivelAcesso) === 'Admin') {
+                const rpcRes = await alterarNivelAcessoOnlineSupabase(existing.id, nivelAcesso);
+                if (!rpcRes.success) {
+                    showToast('⚠️ Nível de acesso salvo localmente, mas não foi possível sincronizar com o servidor: ' + (rpcRes.error || 'sem conexão'));
+                }
+            }
+
             document.getElementById('colabNome').value = '';
             document.getElementById('colabFuncao').value = '';
             document.getElementById('colabSetor').value = '';
@@ -1026,7 +1033,18 @@ async function saveColaborador() {
         showToast('❌ Erro ao salvar localmente: ' + err.message);
         return;
     }
-    
+
+    if (normalizarNivelAcesso(nivelAcesso) === 'Admin') {
+        // Garante que a linha já existe no Supabase antes de tentar promover via RPC
+        if (navigator.onLine && isSupabaseConfigured()) {
+            await sincronizarItemIndividualSupabase('colaboradores', colaborador);
+        }
+        const rpcRes = await alterarNivelAcessoOnlineSupabase(colaborador.id, nivelAcesso);
+        if (!rpcRes.success) {
+            showToast('⚠️ Nível de acesso salvo localmente, mas não foi possível sincronizar com o servidor: ' + (rpcRes.error || 'sem conexão'));
+        }
+    }
+
     document.getElementById('colabNome').value = '';
     document.getElementById('colabFuncao').value = '';
     document.getElementById('colabSetor').value = '';
@@ -1466,6 +1484,13 @@ async function saveColaboradorEdit(id) {
         console.error('Erro ao atualizar colaborador no IndexedDB:', err);
         showToast('❌ Erro ao salvar localmente: ' + err.message);
         return;
+    }
+
+    if (normalizarNivelAcesso(newNivelAcesso) !== normalizarNivelAcesso(oldColab.nivelAcesso)) {
+        const rpcRes = await alterarNivelAcessoOnlineSupabase(colab.id, newNivelAcesso);
+        if (!rpcRes.success) {
+            showToast('⚠️ Nível de acesso salvo localmente, mas não foi possível sincronizar com o servidor: ' + (rpcRes.error || 'sem conexão'));
+        }
     }
 
     const btn = document.getElementById('btnSaveColaborador');
@@ -3000,14 +3025,14 @@ async function viewChecklist(id) {
         
         const isResolved = data.resolved;
         const resolvedInfo = isResolved ? 
-            `<div style="font-size: 10px; color: var(--success); margin-top: 2px;">✓ Resolvido ${data.resolvedAt ? 'em ' + new Date(data.resolvedAt).toLocaleDateString('pt-BR') : ''} ${data.resolvedBy ? 'por ' + data.resolvedBy : ''}</div>` : '';
+            `<div style="font-size: 10px; color: var(--success); margin-top: 2px;">✓ Resolvido ${data.resolvedAt ? 'em ' + new Date(data.resolvedAt).toLocaleDateString('pt-BR') : ''} ${data.resolvedBy ? 'por ' + escapeHTML(data.resolvedBy) : ''}</div>` : '';
         
         itemsHtml += `
             <div class="checklist-item" style="margin-bottom: 8px;">
                 <div style="font-size: 13px; font-weight: 500;">${itemText}</div>
-                ${data.observation ? `<div style="font-size: 11px; color: var(--text-light); margin-top: 4px;">Obs: ${data.observation}</div>` : ''}
+                ${data.observation ? `<div style="font-size: 11px; color: var(--text-light); margin-top: 4px;">Obs: ${escapeHTML(data.observation)}</div>` : ''}
                 ${resolvedInfo}
-                ${data.resolutionNote ? `<div style="font-size: 11px; color: var(--success); margin-top: 2px;">Resolução: ${data.resolutionNote}</div>` : ''}
+                ${data.resolutionNote ? `<div style="font-size: 11px; color: var(--success); margin-top: 2px;">Resolução: ${escapeHTML(data.resolutionNote)}</div>` : ''}
                 <div class="status-buttons" style="margin-top: 8px;">
                     <button class="status-btn c ${data.status === 'C' ? 'selected' : ''}" 
                             onclick="updateChecklistItem('${checklist.id}', '${itemId}', 'C', this)">✓ Conforme</button>
@@ -3043,17 +3068,17 @@ async function viewChecklist(id) {
 
     container.innerHTML = `
         <div class="card">
-            <div class="card-title"><span class="icon">${icon}</span> ${checklist.nome}</div>
+            <div class="card-title"><span class="icon">${icon}</span> ${escapeHTML(checklist.nome)}</div>
             <div style="font-size: 13px; color: var(--text-light);">
                 <div>📅 ${date}</div>
-                <div>📋 Patrimônio: ${checklist.patrimonio}</div>
-                <div>🏢 ${checklist.empresa || '—'}</div>
-                
+                <div>📋 Patrimônio: ${escapeHTML(checklist.patrimonio)}</div>
+                <div>🏢 ${escapeHTML(checklist.empresa || '—')}</div>
+
                 <!-- Operador / Responsável Editável -->
                 <div style="margin-top: 8px; padding: 8px; background: var(--bg); border-radius: 8px; border: 1px solid var(--border);">
                     <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">OPERADOR / RESPONSÁVEL:</label>
                     <div style="display: flex; gap: 8px; align-items: center;">
-                        <input type="text" id="editDetailOperador_${checklist.id}" value="${checklist.operador || ''}" placeholder="Digite o operador/responsável..." style="flex: 1; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; font-weight: 600; color: var(--text); background: white;">
+                        <input type="text" id="editDetailOperador_${checklist.id}" value="${escapeHTML(checklist.operador || '')}" placeholder="Digite o operador/responsável..." style="flex: 1; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; font-weight: 600; color: var(--text); background: white;">
                         <button onclick="salvarOperadorChecklist('${checklist.id}')" style="background: #27ae60; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 11.5px; font-weight: 700; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 4px;">
                             💾 Salvar
                         </button>
@@ -3072,7 +3097,7 @@ async function viewChecklist(id) {
         ${checklist.observacoes ? `
             <div class="card">
                 <div class="card-title">📝 Observações</div>
-                <p style="font-size: 13px;">${checklist.observacoes}</p>
+                <p style="font-size: 13px;">${escapeHTML(checklist.observacoes)}</p>
             </div>` : ''}
         
         <div class="card">
@@ -3084,15 +3109,15 @@ async function viewChecklist(id) {
         ${checklist.signature ? `
             <div class="card">
                 <div class="card-title">✍️ Responsável de Segurança do Trabalho</div>
-                ${checklist.sst ? `<div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">${checklist.sst}</div>` : ''}
-                <img src="${checklist.signature}" style="width: 100%; border: 1px solid var(--border); border-radius: 8px;">
+                ${checklist.sst ? `<div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">${escapeHTML(checklist.sst)}</div>` : ''}
+                <img src="${escapeHTML(checklist.signature)}" style="width: 100%; border: 1px solid var(--border); border-radius: 8px;">
             </div>` : ''}
 
         ${checklist.signatureResponsavel ? `
             <div class="card">
                 <div class="card-title">✍️ Encarregado / Responsável</div>
-                ${checklist.responsavel ? `<div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">${checklist.responsavel}</div>` : ''}
-                <img src="${checklist.signatureResponsavel}" style="width: 100%; border: 1px solid var(--border); border-radius: 8px;">
+                ${checklist.responsavel ? `<div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">${escapeHTML(checklist.responsavel)}</div>` : ''}
+                <img src="${escapeHTML(checklist.signatureResponsavel)}" style="width: 100%; border: 1px solid var(--border); border-radius: 8px;">
             </div>` : ''}
         
         <div style="display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap;">
@@ -4228,8 +4253,8 @@ async function loadReports() {
             <div class="risk-list-item" onclick="toggleIssueDetails(this)" style="cursor: pointer; display: block; border-left-color: ${borderColor}; margin-bottom: 8px;">
                 <div style="display: flex; justify-content: space-between; align-items: start; width: 100%;">
                     <div class="risk-info" style="overflow: hidden; flex: 1;">
-                        <div class="risk-item-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100vw - 120px); font-weight: 600;">${CATEGORY_ICONS[i.type] || '📦'} ${i.description}</div>
-                        <div class="risk-count" style="margin-top: 2px;">${i.reporter || 'Anônimo'} • ${formatSimpleDate(i.date)}</div>
+                        <div class="risk-item-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100vw - 120px); font-weight: 600;">${CATEGORY_ICONS[i.type] || '📦'} ${escapeHTML(i.description)}</div>
+                        <div class="risk-count" style="margin-top: 2px;">${escapeHTML(i.reporter || 'Anônimo')} • ${formatSimpleDate(i.date)}</div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px; margin-left: 8px;">
                         ${statusBadgeHtml}
@@ -4240,13 +4265,13 @@ async function loadReports() {
                 <!-- Detalhes expandidos -->
                 <div class="issue-details" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px;">
                     <p style="margin: 0 0 6px; font-weight: 600; color: var(--text);">Descrição Completa:</p>
-                    <p style="margin: 0 0 12px; color: var(--text-light); line-height: 1.45; white-space: pre-wrap; font-size: 12.5px; background: #fdfdfd; padding: 8px; border-radius: 6px; border: 1px solid #eee;">${i.description}</p>
-                    
+                    <p style="margin: 0 0 12px; color: var(--text-light); line-height: 1.45; white-space: pre-wrap; font-size: 12.5px; background: #fdfdfd; padding: 8px; border-radius: 6px; border: 1px solid #eee;">${escapeHTML(i.description)}</p>
+
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11.5px; background: var(--bg); padding: 10px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 12px;">
-                        <div><strong>Tipo:</strong> ${i.type || 'N/A'}</div>
-                        <div><strong>Identificação:</strong> ${i.identificacao || 'N/A'}</div>
-                        <div><strong>Relatado por:</strong> ${i.reporter || 'N/A'}</div>
-                        <div><strong>Cargo/Função:</strong> ${i.role || 'N/A'}</div>
+                        <div><strong>Tipo:</strong> ${escapeHTML(i.type || 'N/A')}</div>
+                        <div><strong>Identificação:</strong> ${escapeHTML(i.identificacao || 'N/A')}</div>
+                        <div><strong>Relatado por:</strong> ${escapeHTML(i.reporter || 'N/A')}</div>
+                        <div><strong>Cargo/Função:</strong> ${escapeHTML(i.role || 'N/A')}</div>
                         <div><strong>Data Registro:</strong> ${formatSimpleDate(i.date)}</div>
                         <div><strong>Status Atual:</strong> ${statusBadgeHtml}</div>
                     </div>
@@ -5023,6 +5048,9 @@ function converterParaSupabase(store, item) {
         };
     }
     if (store === 'colaboradores') {
+        // ATENÇÃO: 'senha' e 'nivel_acesso' propositalmente NÃO são incluídos aqui.
+        // Essas colunas foram bloqueadas para escrita direta via API (anon key) no Supabase
+        // e só podem ser alteradas pelas RPCs seguras cadastrar_conta / alterar_nivel_acesso.
         return {
             id: String(item.id || item.matricula || '').trim().toUpperCase(),
             nome: item.nome || '',
@@ -5032,8 +5060,6 @@ function converterParaSupabase(store, item) {
             matricula: String(item.matricula || item.id || ''),
             validade_aso: item.validadeAso || '',
             ativo: item.ativo !== false,
-            senha: item.senha || '',
-            nivel_acesso: item.nivelAcesso || 'Técnico',
             email: item.email || ''
         };
     }
@@ -5230,10 +5256,31 @@ async function sincronizarItemIndividualSupabase(storeName, data) {
     }
 }
 
+async function sincronizarSenhasPendentes() {
+    try {
+        const colaboradoresLocais = await getAllFromIndexedDB('colaboradores');
+        for (const c of colaboradoresLocais) {
+            if (!c.senhaPendenteSync || !c.senha) continue;
+            const rpcRes = await cadastrarContaOnlineSupabase({
+                nome: c.nome, email: c.email, matricula: c.matricula || c.id,
+                funcao: c.funcao, setor: c.setor, senhaHash: c.senha
+            });
+            if (rpcRes.success) {
+                c.senhaPendenteSync = false;
+                await saveToIndexedDB('colaboradores', c, true);
+            }
+        }
+    } catch (e) {
+        console.warn('Erro ao reenviar senhas pendentes de cadastro:', e);
+    }
+}
+
 async function sincronizarComSupabase() {
     if (!isSupabaseConfigured()) return;
     try {
         console.log('⚡ Iniciando sincronização com Supabase...');
+
+        await sincronizarSenhasPendentes();
 
         const tablesMap = [
             { table: 'cadastros', store: 'cadastros' },
@@ -5244,11 +5291,22 @@ async function sincronizarComSupabase() {
         ];
 
         for (const { table, store } of tablesMap) {
-            const res = await supabaseFetch(table, { query: '?select=*' });
+            // A coluna 'senha' foi bloqueada para SELECT direto via API (anon key) por segurança,
+            // então para colaboradores_checklist listamos as colunas explicitamente sem ela.
+            const selectQuery = table === 'colaboradores_checklist'
+                ? '?select=id,nome,funcao,setor,empresa,matricula,validade_aso,ativo,nivel_acesso,email,created_at'
+                : '?select=*';
+            const res = await supabaseFetch(table, { query: selectQuery });
             if (res.success && Array.isArray(res.data)) {
                 for (const row of res.data) {
                     const appObj = converterParaAppFromSupabase(table, row);
                     if (appObj && appObj.id) {
+                        if (store === 'colaboradores' && !appObj.senha) {
+                            // Preserva o hash de senha já em cache local (necessário para login offline),
+                            // já que o servidor não retorna mais essa coluna.
+                            const local = await getFromIndexedDB('colaboradores', appObj.id);
+                            if (local && local.senha) appObj.senha = local.senha;
+                        }
                         await saveToIndexedDB(store, appObj, true);
                     }
                 }
@@ -5985,18 +6043,90 @@ async function loginOnlineSupabase(loginVal, hashedInput) {
     return null;
 }
 
+async function cadastrarContaOnlineSupabase(payload) {
+    if (!isSupabaseConfigured() || !navigator.onLine) return { success: false, offline: true };
+    const url = getSupabaseUrl() + '/rest/v1/rpc/cadastrar_conta';
+    const key = getSupabaseKey();
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'apikey': key,
+                'Authorization': `Bearer ${key}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                p_nome: payload.nome,
+                p_email: payload.email,
+                p_matricula: payload.matricula,
+                p_funcao: payload.funcao,
+                p_setor: payload.setor,
+                p_senha_hash: payload.senhaHash
+            })
+        });
+        if (res.status === 200) return { success: true };
+        const errBody = await res.json().catch(() => ({}));
+        return { success: false, error: errBody.message || `HTTP ${res.status}` };
+    } catch (e) {
+        console.error('Erro ao cadastrar conta online via RPC:', e);
+        return { success: false, error: e.message };
+    }
+}
+
+async function alterarNivelAcessoOnlineSupabase(targetId, novoNivel) {
+    if (!isSupabaseConfigured() || !navigator.onLine) return { success: false, offline: true };
+    const sessionStr = localStorage.getItem('active_session');
+    if (!sessionStr) return { success: false, error: 'Sessão não encontrada' };
+    const session = JSON.parse(sessionStr);
+    const adminColab = await getFromIndexedDB('colaboradores', String(session.matricula || '').trim().toUpperCase());
+    if (!adminColab || !adminColab.senha) return { success: false, error: 'Credenciais do administrador não disponíveis localmente' };
+
+    const url = getSupabaseUrl() + '/rest/v1/rpc/alterar_nivel_acesso';
+    const key = getSupabaseKey();
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'apikey': key,
+                'Authorization': `Bearer ${key}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                p_admin_matricula: adminColab.matricula || adminColab.id,
+                p_admin_senha_hash: adminColab.senha,
+                p_target_id: targetId,
+                p_novo_nivel: novoNivel
+            })
+        });
+        if (res.status === 200) {
+            const data = await res.json().catch(() => null);
+            return { success: data === true, error: data === true ? null : 'Requisição negada pelo servidor' };
+        }
+        return { success: false, error: `HTTP ${res.status}` };
+    } catch (e) {
+        console.error('Erro ao alterar nível de acesso online via RPC:', e);
+        return { success: false, error: e.message };
+    }
+}
+
 async function buscarColaboradorOnline(loginVal) {
     if (!isSupabaseConfigured()) return null;
     const loginUpper = loginVal.toUpperCase();
     const loginLower = loginVal.toLowerCase();
     try {
         const res = await supabaseFetch('colaboradores_checklist', {
-            query: `?or=(matricula.eq.${encodeURIComponent(loginUpper)},email.eq.${encodeURIComponent(loginLower)})`
+            // 'senha' foi bloqueada para SELECT direto via API por segurança; selecionamos as demais colunas.
+            query: `?select=id,nome,funcao,setor,empresa,matricula,validade_aso,ativo,nivel_acesso,email,created_at&or=(matricula.eq.${encodeURIComponent(loginUpper)},email.eq.${encodeURIComponent(loginLower)})`
         });
         if (res.success && Array.isArray(res.data) && res.data.length > 0) {
             const row = res.data[0];
             const appObj = converterParaAppFromSupabase('colaboradores_checklist', row);
             if (appObj && appObj.id) {
+                if (!appObj.senha) {
+                    // Preserva o hash de senha já em cache local (necessário para login offline)
+                    const local = await getFromIndexedDB('colaboradores', appObj.id);
+                    if (local && local.senha) appObj.senha = local.senha;
+                }
                 await saveToIndexedDB('colaboradores', appObj, true);
                 return appObj;
             }
@@ -6196,9 +6326,23 @@ async function realizarCadastroConta() {
             };
         }
 
+        // A senha é sincronizada via RPC segura (cadastrar_conta), não pelo sync genérico
+        // (a coluna 'senha' foi bloqueada para escrita direta via API por segurança).
+        const rpcRes = await cadastrarContaOnlineSupabase({
+            nome: colabObj.nome,
+            email: colabObj.email,
+            matricula: colabObj.matricula,
+            funcao: colabObj.funcao,
+            setor: colabObj.setor,
+            senhaHash: colabObj.senha
+        });
+        if (!rpcRes.success) {
+            console.warn('Falha ao sincronizar senha do cadastro via RPC, será tentado novamente ao reconectar:', rpcRes.error);
+            colabObj.senhaPendenteSync = true;
+        }
         await saveToIndexedDB('colaboradores', colabObj);
         showToast('🎉 Conta criada com sucesso! Faça login.');
-        
+
         // Limpar inputs
         document.getElementById('signUpNome').value = '';
         document.getElementById('signUpEmail').value = '';
@@ -6208,8 +6352,8 @@ async function realizarCadastroConta() {
         document.getElementById('signUpSenha').value = '';
         document.getElementById('signUpSenhaConfirm').value = '';
 
-        // Sincronizar em background
-        syncColecao('colaboradores').catch(err => console.error('Erro no sync do cadastro:', err));
+        // Sincronizar demais campos (nome, email, funcao...) em background
+        sincronizarItemIndividualSupabase('colaboradores', colabObj).catch(err => console.error('Erro no sync do cadastro:', err));
 
         // Redirecionar para login
         setTimeout(() => {
@@ -6282,6 +6426,9 @@ async function solicitarCodigoRecuperacao() {
 }
 
 async function redefinirSenhaComCodigo() {
+    showRecoverError('⚠️ Recuperação de senha temporariamente desativada. Fale com o administrador para redefinir sua senha.');
+    return;
+    // eslint-disable-next-line no-unreachable
     const matricula = document.getElementById('recoverMatricula').value.trim();
     const email = document.getElementById('recoverEmail').value.trim();
     const newSenha = document.getElementById('recoverNewSenha').value;

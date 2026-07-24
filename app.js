@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v108';
+const APP_VERSION = 'v109';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -1153,9 +1153,9 @@ async function loadGestao(search = '') {
             return `
                 <div class="history-item" style="flex-wrap: wrap; ${opacityStyle}">
                     <div class="history-info">
-                        <div class="history-title">${c.patrimonio}${c.placa ? ' [' + c.placa + ']' : ''}</div>
-                        <div class="history-date">${c.nome || ''}</div>
-                        <div class="history-date">${c.empresa || ''}</div>
+                        <div class="history-title">${escapeHTML(c.patrimonio)}${c.placa ? ' [' + escapeHTML(c.placa) + ']' : ''}</div>
+                        <div class="history-date">${escapeHTML(c.nome || '')}</div>
+                        <div class="history-date">${escapeHTML(c.empresa || '')}</div>
                         <div style="margin-top: 4px;">${statusBadge}</div>
                     </div>
                     <div style="display: flex; gap: 4px; align-items: center;">
@@ -1224,9 +1224,9 @@ async function loadGestao(search = '') {
             return `
                 <div class="history-item" style="flex-wrap: wrap; ${opacityStyle}">
                     <div class="history-info">
-                        <div class="history-title">${icon} ${c.nome}</div>
-                        <div class="history-date" style="font-weight: 550; color: var(--primary);">${c.funcao || ''}</div>
-                        <div class="history-date">Matrícula: ${c.matricula || 'N/A'} • Nível: ${c.nivelAcesso || 'Tecnico'}</div>
+                        <div class="history-title">${icon} ${escapeHTML(c.nome)}</div>
+                        <div class="history-date" style="font-weight: 550; color: var(--primary);">${escapeHTML(c.funcao || '')}</div>
+                        <div class="history-date">Matrícula: ${escapeHTML(c.matricula || 'N/A')} • Nível: ${escapeHTML(c.nivelAcesso || 'Tecnico')}</div>
                         <div style="margin-top: 4px;">${statusBadge}</div>
                     </div>
                     <div style="display: flex; gap: 4px; align-items: center;">
@@ -5949,6 +5949,42 @@ async function sha256(message) {
     return sha256Fallback(message);
 }
 
+async function loginOnlineSupabase(loginVal, hashedInput) {
+    if (!isSupabaseConfigured()) return null;
+    const url = getSupabaseUrl() + '/rest/v1/rpc/verificar_login';
+    const key = getSupabaseKey();
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'apikey': key,
+                'Authorization': `Bearer ${key}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                p_login: loginVal,
+                p_senha_hash: hashedInput
+            })
+        });
+        
+        if (res.status === 200) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+                const row = data[0];
+                const appObj = converterParaAppFromSupabase('colaboradores_checklist', row);
+                if (appObj && appObj.id) {
+                    appObj.senha = hashedInput; // Save the hash locally for offline logins!
+                    await saveToIndexedDB('colaboradores', appObj, true);
+                    return appObj;
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Erro ao verificar login online via RPC:', e);
+    }
+    return null;
+}
+
 async function buscarColaboradorOnline(loginVal) {
     if (!isSupabaseConfigured()) return null;
     const loginUpper = loginVal.toUpperCase();
@@ -5995,47 +6031,38 @@ async function realizarLogin() {
     let userMatricula = '';
     
     const loginUpper = loginVal.toUpperCase();
+    const hashedInput = await sha256(senha);
     
-    // Buscar no IndexedDB
-    console.log('Tentativa de login para:', loginVal);
+    // 1. Se estiver online e Supabase estiver configurado, verificar direto no banco via RPC (SECURITY DEFINER)
+    if (navigator.onLine && isSupabaseConfigured()) {
+        showToast('Verificando credenciais online...');
+        const onlineColab = await loginOnlineSupabase(loginVal, hashedInput);
+        if (onlineColab) {
+            if (onlineColab.ativo === false || onlineColab.ativo === 'Não') {
+                if (errorDiv) {
+                    errorDiv.textContent = '❌ Este colaborador está inativo/desmobilizado.';
+                    errorDiv.style.display = 'block';
+                }
+                return;
+            }
+            authenticated = true;
+            userRole = normalizarNivelAcesso(onlineColab.nivelAcesso);
+            userName = onlineColab.nome;
+            userMatricula = onlineColab.matricula || onlineColab.id;
+        }
+    }
+    
+    // 2. Fallback local (IndexedDB) para offline ou se o login online falhou temporariamente
+    if (!authenticated) {
+        console.log('Tentando login local/offline...');
         let colaboradores = await getAllFromIndexedDB('colaboradores');
-        
-        // 1. Procurar por Matrícula
         let colab = colaboradores.find(c => String(c.matricula || '').trim().toUpperCase() === loginUpper);
-        
-        // 2. Se não achou, procurar por E-mail
         if (!colab) {
             const loginLower = loginVal.toLowerCase();
             colab = colaboradores.find(c => String(c.email || '').trim().toLowerCase() === loginLower);
         }
         
-        const hashedInput = await sha256(senha);
-
-        // Se não encontrou localmente ou não tem senha localmente, buscar online
-        if (!colab) {
-            if (navigator.onLine) {
-                if (isSupabaseConfigured()) {
-                    showToast('Buscando credenciais online...');
-                    const onlineColab = await buscarColaboradorOnline(loginVal);
-                    if (onlineColab) {
-                        colab = onlineColab;
-                    }
-                }
-            }
-        } else if (!colab.senha) {
-            if (navigator.onLine) {
-                if (isSupabaseConfigured()) {
-                    showToast('Buscando senha online...');
-                    const onlineColab = await buscarColaboradorOnline(loginVal);
-                    if (onlineColab) {
-                        colab = onlineColab;
-                    }
-                }
-            }
-        }
-        
         if (colab) {
-            console.log('Colaborador encontrado:', colab.nome);
             if (colab.ativo === false || colab.ativo === 'Não') {
                 if (errorDiv) {
                     errorDiv.textContent = '❌ Este colaborador está inativo/desmobilizado.';
@@ -6049,21 +6076,9 @@ async function realizarLogin() {
                 userRole = normalizarNivelAcesso(colab.nivelAcesso);
                 userName = colab.nome;
                 userMatricula = colab.matricula || colab.id;
-            } else {
-                // Senha incorreta localmente, tentar buscar nova senha online
-                if (navigator.onLine) {
-                    if (isSupabaseConfigured()) {
-                        const onlineColab = await buscarColaboradorOnline(loginVal);
-                        if (onlineColab && onlineColab.senha === hashedInput) {
-                            authenticated = true;
-                            userRole = normalizarNivelAcesso(onlineColab.nivelAcesso);
-                            userName = onlineColab.nome;
-                            userMatricula = onlineColab.matricula || onlineColab.id;
-                        }
-                    }
-                }
             }
         }
+    }
     
     if (authenticated) {
         if (errorDiv) errorDiv.style.display = 'none';

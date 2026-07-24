@@ -2,7 +2,14 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v107';
+const APP_VERSION = 'v108';
+
+function escapeHTML(str) {
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+    );
+}
 
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
@@ -5989,15 +5996,8 @@ async function realizarLogin() {
     
     const loginUpper = loginVal.toUpperCase();
     
-    // 1. Fallback admin/admin
-    if (loginUpper === 'ADMIN' && senha === 'admin') {
-        authenticated = true;
-        userRole = 'Admin';
-        userName = 'Administrador Padrão';
-        userMatricula = 'ADMIN';
-    } else {
-        // Buscar no IndexedDB
-        console.log('Tentativa de login para:', loginVal);
+    // Buscar no IndexedDB
+    console.log('Tentativa de login para:', loginVal);
         let colaboradores = await getAllFromIndexedDB('colaboradores');
         
         // 1. Procurar por Matrícula
@@ -6064,7 +6064,6 @@ async function realizarLogin() {
                 }
             }
         }
-    }
     
     if (authenticated) {
         if (errorDiv) errorDiv.style.display = 'none';

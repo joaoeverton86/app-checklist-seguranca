@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v110';
+const APP_VERSION = 'v111';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -2756,23 +2756,22 @@ async function sincronizarNaoConformidadesComChecklists(ncRows) {
     const checklistMap = {};
     checklists.forEach(c => {
         if (c.id) checklistMap[String(c.id).trim()] = c;
-        if (c.patrimonio) checklistMap[String(c.patrimonio).trim().toUpperCase()] = c;
     });
 
     let count = 0;
     for (const row of ncRows) {
         const idChecklist = String(row['ID Checklist'] || row['ID_Checklist'] || row['ID'] || '').trim();
-        const patrimonio = String(row['Patrimônio'] || row['Patrimonio'] || '').trim().toUpperCase();
         const itemText = String(row['Item'] || '').trim();
         const obs = String(row['Observação'] || row['Observacao'] || '').trim();
         const risco = String(row['Risco'] || 'high').trim().toLowerCase();
 
-        if (!itemText) continue;
+        if (!itemText || !idChecklist) continue;
 
-        let target = checklistMap[idChecklist] || checklistMap[patrimonio];
-        if (!target && patrimonio) {
-            target = checklists.find(c => String(c.patrimonio || '').toUpperCase() === patrimonio);
-        }
+        // IMPORTANTE: o vínculo deve ser feito só pelo ID exato do checklist.
+        // Um equipamento pode ter vários checklists (inspeções e reinspeções) com o
+        // mesmo patrimônio, então um fallback por patrimônio pode colar a não conformidade
+        // no checklist errado (ex: no checklist original em vez da reinspeção correta).
+        const target = checklistMap[idChecklist];
 
         if (target) {
             if (!target.items || typeof target.items !== 'object') {

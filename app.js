@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v111';
+const APP_VERSION = 'v112';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -1520,18 +1520,21 @@ async function deleteCadastroPermanente(id) {
     if (!confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o equipamento "${label.trim()}" do banco de dados e do aplicativo?`)) return;
 
     if (isSupabaseConfigured()) {
-        try {
-            await supabaseFetch('cadastros', {
-                method: 'DELETE',
-                query: '?id=eq.' + encodeURIComponent(id)
-            });
-            console.log('⚡ [Supabase] Cadastro excluído definitivamente:', id);
-        } catch (spErr) {
-            console.error('Erro ao excluir cadastro do Supabase:', spErr);
+        if (!navigator.onLine) {
+            showToast('⚠️ Você está offline. Conecte-se à internet para excluir definitivamente (evita que o item volte na próxima sincronização).');
+            return;
         }
+        const delRes = await supabaseFetch('cadastros', {
+            method: 'DELETE',
+            query: '?id=eq.' + encodeURIComponent(id)
+        });
+        if (!delRes.success) {
+            console.error('Erro ao excluir cadastro do Supabase:', delRes.error);
+            showToast('❌ Não foi possível excluir no servidor (' + (delRes.error || 'erro desconhecido') + '). O item não foi removido para evitar que volte sozinho.');
+            return;
+        }
+        console.log('⚡ [Supabase] Cadastro excluído definitivamente:', id);
     }
-
-
 
     await deleteFromIndexedDB('cadastros', id);
     showToast('Equipamento excluído com sucesso');
@@ -1549,18 +1552,21 @@ async function deleteColaboradorPermanente(id) {
     if (!confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o colaborador "${label.trim()}" do banco de dados e do aplicativo?`)) return;
 
     if (isSupabaseConfigured()) {
-        try {
-            await supabaseFetch('colaboradores_checklist', {
-                method: 'DELETE',
-                query: '?id=eq.' + encodeURIComponent(id)
-            });
-            console.log('⚡ [Supabase] Colaborador excluído definitivamente:', id);
-        } catch (spErr) {
-            console.error('Erro ao excluir colaborador do Supabase:', spErr);
+        if (!navigator.onLine) {
+            showToast('⚠️ Você está offline. Conecte-se à internet para excluir definitivamente (evita que o item volte na próxima sincronização).');
+            return;
         }
+        const delRes = await supabaseFetch('colaboradores_checklist', {
+            method: 'DELETE',
+            query: '?id=eq.' + encodeURIComponent(id)
+        });
+        if (!delRes.success) {
+            console.error('Erro ao excluir colaborador do Supabase:', delRes.error);
+            showToast('❌ Não foi possível excluir no servidor (' + (delRes.error || 'erro desconhecido') + '). O item não foi removido para evitar que volte sozinho.');
+            return;
+        }
+        console.log('⚡ [Supabase] Colaborador excluído definitivamente:', id);
     }
-
-
 
     await deleteFromIndexedDB('colaboradores', id);
     showToast('Colaborador excluído com sucesso');
@@ -3641,23 +3647,27 @@ async function deleteChecklist(id) {
     
     // Deletar no Supabase se estiver configurado
     if (isSupabaseConfigured()) {
-        try {
-            await supabaseFetch('checklists', {
-                method: 'DELETE',
-                query: '?id=eq.' + encodeURIComponent(id)
-            });
-            await supabaseFetch('nao_conformidades', {
-                method: 'DELETE',
-                query: '?checklist_id=eq.' + encodeURIComponent(id)
-            });
-            console.log('⚡ [Supabase] Checklist excluído definitivamente:', id);
-        } catch (spErr) {
-            console.error('Erro ao deletar checklist no Supabase:', spErr);
+        if (!navigator.onLine) {
+            showToast('⚠️ Você está offline. Conecte-se à internet para excluir definitivamente (evita que o item volte na próxima sincronização).');
+            return;
         }
+        const delRes = await supabaseFetch('checklists', {
+            method: 'DELETE',
+            query: '?id=eq.' + encodeURIComponent(id)
+        });
+        if (!delRes.success) {
+            console.error('Erro ao deletar checklist no Supabase:', delRes.error);
+            showToast('❌ Não foi possível excluir no servidor (' + (delRes.error || 'erro desconhecido') + '). O item não foi removido para evitar que volte sozinho.');
+            return;
+        }
+        await supabaseFetch('nao_conformidades', {
+            method: 'DELETE',
+            query: '?checklist_id=eq.' + encodeURIComponent(id)
+        });
+        console.log('⚡ [Supabase] Checklist excluído definitivamente:', id);
     }
 
 
-    
     await deleteFromIndexedDB('checklists', id);
     const numId = Number(id);
     if (!isNaN(numId)) {

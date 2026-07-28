@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v113';
+const APP_VERSION = 'v114';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -1312,6 +1312,7 @@ async function saveCadastroEdit(id) {
         await deleteFromIndexedDB('cadastros', id);
         if (isSupabaseConfigured()) {
             await supabaseFetch('cadastros', { method: 'DELETE', query: '?id=eq.' + encodeURIComponent(id) });
+            await registrarExclusaoRemota('cadastros', id);
         }
     }
 
@@ -1534,6 +1535,7 @@ async function deleteCadastroPermanente(id) {
             return;
         }
         console.log('⚡ [Supabase] Cadastro excluído definitivamente:', id);
+        await registrarExclusaoRemota('cadastros', id);
     }
 
     await deleteFromIndexedDB('cadastros', id);
@@ -1566,6 +1568,7 @@ async function deleteColaboradorPermanente(id) {
             return;
         }
         console.log('⚡ [Supabase] Colaborador excluído definitivamente:', id);
+        await registrarExclusaoRemota('colaboradores_checklist', id);
     }
 
     await deleteFromIndexedDB('colaboradores', id);
@@ -2742,6 +2745,41 @@ async function supabaseFetch(table, options = {}) {
 // AUXILIARES DE SINCRONIZAÇÃO & NÃO CONFORMIDADES
 // ============================================
 
+// Registra uma exclusão definitiva como "lápide" (tombstone) no Supabase, para que
+// TODOS os outros aparelhos removam sua cópia local na próxima sincronização e nunca
+// a reenviem de volta. Sem isso, um aparelho que ainda tem o registro em cache local
+// (nunca soube da exclusão) acaba "ressuscitando" o item ao sincronizar.
+async function registrarExclusaoRemota(tableName, recordId) {
+    if (!isSupabaseConfigured() || recordId === undefined || recordId === null) return;
+    try {
+        await supabaseFetch('deleted_records', {
+            method: 'POST',
+            body: { record_id: String(recordId), table_name: tableName }
+        });
+    } catch (e) {
+        console.error('Erro ao registrar exclusão remota (tombstone):', e);
+    }
+}
+
+// Aplica as lápides baixadas do Supabase: remove do IndexedDB local qualquer registro
+// que já foi excluído definitivamente em outro aparelho, antes que o passo de envio
+// da sincronização tenha chance de reenviá-lo por engano.
+async function aplicarExclusoesRemotas(storeByTable) {
+    if (!isSupabaseConfigured()) return;
+    try {
+        const res = await supabaseFetch('deleted_records', { query: '?select=record_id,table_name' });
+        if (!res.success || !Array.isArray(res.data)) return;
+        for (const row of res.data) {
+            const store = storeByTable[row.table_name];
+            if (store && row.record_id) {
+                await deleteFromIndexedDB(store, row.record_id);
+            }
+        }
+    } catch (e) {
+        console.error('Erro ao aplicar exclusões remotas (tombstones):', e);
+    }
+}
+
 function hashCode(str) {
     let hash = 0;
     if (!str || str.length === 0) return hash;
@@ -3664,6 +3702,7 @@ async function deleteChecklist(id) {
             method: 'DELETE',
             query: '?checklist_id=eq.' + encodeURIComponent(id)
         });
+        await registrarExclusaoRemota('checklists', id);
         console.log('⚡ [Supabase] Checklist excluído definitivamente:', id);
     }
 
@@ -5298,6 +5337,12 @@ async function sincronizarComSupabase() {
             { table: 'relatos', store: 'issues' },
             { table: 'checklist_items', store: 'checklist_items' }
         ];
+
+        // Remove localmente qualquer registro já excluído definitivamente em outro
+        // aparelho, ANTES do passo de envio abaixo, para não reenviá-lo por engano.
+        const storeByTable = {};
+        tablesMap.forEach(({ table, store }) => { storeByTable[table] = store; });
+        await aplicarExclusoesRemotas(storeByTable);
 
         for (const { table, store } of tablesMap) {
             // A coluna 'senha' foi bloqueada para SELECT direto via API (anon key) por segurança,

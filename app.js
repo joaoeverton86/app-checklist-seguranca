@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v112';
+const APP_VERSION = 'v113';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -5391,6 +5391,10 @@ async function sincronizarComSupabase() {
 async function migrarDadosLocaisParaSupabase() {
     if (!isSupabaseConfigured()) {
         showToast('Configure a URL e a Anon Key do Supabase primeiro');
+        return;
+    }
+
+    if (!confirm('Isso reenvia TODOS os dados guardados neste aparelho para o Supabase, mesmo os que você já excluiu pelo app (se ainda estiverem em cache local, eles voltam). Use apenas para migração/recuperação. Deseja continuar?')) {
         return;
     }
 

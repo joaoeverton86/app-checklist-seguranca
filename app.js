@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v114';
+const APP_VERSION = 'v115';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -1767,8 +1767,15 @@ function renderChecklistItems(equipment, cadastro) {
                     <button class="status-btn na" onclick="setStatus('${item.id}', 'NA', this)">— N/A</button>
                 </div>
                 <div class="item-observation" id="obs-${item.id}">
-                    <textarea placeholder="Observação sobre este item..." 
+                    <textarea placeholder="Observação sobre este item..."
                               onchange="setObservation('${item.id}', this.value)"></textarea>
+                </div>
+                <div class="item-foto" style="margin-top: 8px;">
+                    <input type="file" accept="image/*" capture="environment" id="fotoInput-${item.id}" style="display:none" onchange="onFotoItemSelecionada('${item.id}', this)">
+                    <button type="button" onclick="capturarFotoItem('${item.id}')" style="background: #f0f0f5; border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; vertical-align: middle;">
+                        📷 Anexar foto
+                    </button>
+                    <span id="fotoPreview-${item.id}" style="display: inline-block; vertical-align: middle;"></span>
                 </div>
             </div>
         `;
@@ -1916,6 +1923,161 @@ function setStatus(itemId, status, btn) {
 function setObservation(itemId, value) {
     if (!checklistData[itemId]) checklistData[itemId] = {};
     checklistData[itemId].observation = value;
+}
+
+// ============================================
+// FOTOS DE EVIDÊNCIA DOS ITENS DE CHECKLIST
+// ============================================
+// Fluxo: a foto é comprimida e guardada como Blob no IndexedDB local (funciona 100%
+// offline). Se houver internet, o envio ao Supabase Storage já é tentado na hora;
+// senão fica pendente e sincronizarFotosPendentes() tenta de novo no próximo sync.
+// O checklist guarda só uma referência leve (fotoLocalId e, depois, fotoUrl) — nunca
+// a imagem inteira — para o sync de dados continuar rápido e leve.
+
+function comprimirFotoParaBlob(file, maxWidth = 1280, quality = 0.7) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = (e) => { img.src = e.target.result; };
+        reader.onerror = () => reject(new Error('Falha ao ler a imagem'));
+        img.onload = () => {
+            let { width, height } = img;
+            if (width > maxWidth) {
+                height = Math.round(height * (maxWidth / width));
+                width = maxWidth;
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+            canvas.toBlob(blob => {
+                if (blob) resolve(blob); else reject(new Error('Falha ao comprimir a imagem'));
+            }, 'image/jpeg', quality);
+        };
+        img.onerror = () => reject(new Error('Arquivo de imagem inválido'));
+        reader.readAsDataURL(file);
+    });
+}
+
+function capturarFotoItem(itemId) {
+    const input = document.getElementById('fotoInput-' + itemId);
+    if (input) input.click();
+}
+
+async function onFotoItemSelecionada(itemId, inputEl) {
+    const file = inputEl.files && inputEl.files[0];
+    inputEl.value = '';
+    if (!file) return;
+
+    showToast('📷 Processando foto...');
+    try {
+        const blob = await comprimirFotoParaBlob(file);
+        const fotoId = 'foto_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        await saveToIndexedDB('fotos', { id: fotoId, blob, uploaded: false, createdAt: new Date().toISOString() }, true);
+
+        if (!checklistData[itemId]) checklistData[itemId] = {};
+        checklistData[itemId].fotoLocalId = fotoId;
+        delete checklistData[itemId].fotoUrl;
+
+        renderFotoPreviewItem(itemId, blob);
+        showToast('📷 Foto anexada!');
+
+        if (navigator.onLine && isSupabaseConfigured()) {
+            uploadFotoParaSupabase(fotoId, blob).then(publicUrl => {
+                if (publicUrl && checklistData[itemId] && checklistData[itemId].fotoLocalId === fotoId) {
+                    checklistData[itemId].fotoUrl = publicUrl;
+                }
+            });
+        }
+    } catch (e) {
+        console.error('Erro ao processar foto:', e);
+        showToast('❌ Não foi possível processar a foto.');
+    }
+}
+
+function renderFotoPreviewItem(itemId, blobOrUrl) {
+    const container = document.getElementById('fotoPreview-' + itemId);
+    if (!container) return;
+    const src = blobOrUrl instanceof Blob ? URL.createObjectURL(blobOrUrl) : blobOrUrl;
+    container.innerHTML = `
+        <div style="position: relative; display: inline-block; margin-left: 8px; vertical-align: middle;">
+            <img src="${escapeHTML(src)}" style="width: 44px; height: 44px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); cursor: pointer;" onclick="ampliarFoto('${escapeHTML(src)}')">
+            <button type="button" onclick="removerFotoItem('${itemId}')" title="Remover foto" style="position: absolute; top: -6px; right: -6px; background: var(--danger); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; cursor: pointer; line-height: 1;">✕</button>
+        </div>`;
+}
+
+function removerFotoItem(itemId) {
+    if (checklistData[itemId]) {
+        delete checklistData[itemId].fotoLocalId;
+        delete checklistData[itemId].fotoUrl;
+    }
+    const container = document.getElementById('fotoPreview-' + itemId);
+    if (container) container.innerHTML = '';
+}
+
+function ampliarFoto(src) {
+    showModal(`<div style="text-align:center;"><img src="${escapeHTML(src)}" style="max-width:100%; border-radius: 8px;"></div>`);
+}
+
+async function uploadFotoParaSupabase(fotoId, blob) {
+    if (!isSupabaseConfigured()) return null;
+    const url = getSupabaseUrl();
+    const key = getSupabaseKey();
+    const path = fotoId + '.jpg';
+    try {
+        const res = await fetch(`${url}/storage/v1/object/nc-fotos/${path}`, {
+            method: 'POST',
+            headers: {
+                'apikey': key,
+                'Authorization': `Bearer ${key}`,
+                'Content-Type': 'image/jpeg',
+                'x-upsert': 'true'
+            },
+            body: blob
+        });
+        if (!res.ok) {
+            console.error('Erro ao enviar foto:', await res.text());
+            return null;
+        }
+        const publicUrl = `${url}/storage/v1/object/public/nc-fotos/${path}`;
+        const foto = await getFromIndexedDB('fotos', fotoId);
+        if (foto) {
+            foto.uploaded = true;
+            foto.url = publicUrl;
+            await saveToIndexedDB('fotos', foto, true);
+        }
+        return publicUrl;
+    } catch (e) {
+        console.error('Erro ao enviar foto para o Supabase Storage:', e);
+        return null;
+    }
+}
+
+async function sincronizarFotosPendentes() {
+    if (!isSupabaseConfigured() || !navigator.onLine) return;
+    try {
+        const checklists = await getAllFromIndexedDB('checklists');
+        for (const checklist of checklists) {
+            if (!checklist.items) continue;
+            let mudou = false;
+            for (const [itemId, data] of Object.entries(checklist.items)) {
+                if (itemId === '_form' || !data || !data.fotoLocalId || data.fotoUrl) continue;
+                const foto = await getFromIndexedDB('fotos', data.fotoLocalId);
+                if (!foto || !foto.blob) continue;
+                const publicUrl = await uploadFotoParaSupabase(data.fotoLocalId, foto.blob);
+                if (publicUrl) {
+                    data.fotoUrl = publicUrl;
+                    mudou = true;
+                }
+            }
+            if (mudou) {
+                await saveToIndexedDB('checklists', checklist, true);
+                await sincronizarItemIndividualSupabase('checklists', checklist);
+            }
+        }
+    } catch (e) {
+        console.warn('Erro ao sincronizar fotos pendentes:', e);
+    }
 }
 
 function updateProgress() {
@@ -2418,7 +2580,7 @@ function saveIssue() {
 
 function openDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open('ChecklistSeguranca', 4);
+        const request = indexedDB.open('ChecklistSeguranca', 5);
         request.onupgradeneeded = (e) => {
             const db = e.target.result;
             if (!db.objectStoreNames.contains('checklists')) {
@@ -2435,6 +2597,11 @@ function openDB() {
             }
             if (!db.objectStoreNames.contains('checklist_items')) {
                 db.createObjectStore('checklist_items', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('fotos')) {
+                // Fotos de evidência de item de checklist. Guardadas como Blob (bem mais
+                // leve que base64) até serem enviadas ao Supabase Storage.
+                db.createObjectStore('fotos', { keyPath: 'id' });
             }
         };
         request.onsuccess = (e) => resolve(e.target.result);
@@ -3067,13 +3234,25 @@ async function viewChecklist(id) {
         if (data.status === 'NC') hasNC = true;
         
         const isResolved = data.resolved;
-        const resolvedInfo = isResolved ? 
+        const resolvedInfo = isResolved ?
             `<div style="font-size: 10px; color: var(--success); margin-top: 2px;">✓ Resolvido ${data.resolvedAt ? 'em ' + new Date(data.resolvedAt).toLocaleDateString('pt-BR') : ''} ${data.resolvedBy ? 'por ' + escapeHTML(data.resolvedBy) : ''}</div>` : '';
-        
+
+        let fotoHtml = '';
+        if (data.fotoUrl) {
+            fotoHtml = `<div style="margin-top:6px;"><img src="${escapeHTML(data.fotoUrl)}" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;" onclick="ampliarFoto('${escapeHTML(data.fotoUrl)}')"></div>`;
+        } else if (data.fotoLocalId) {
+            const fotoLocal = await getFromIndexedDB('fotos', data.fotoLocalId);
+            if (fotoLocal && fotoLocal.blob) {
+                const localUrl = URL.createObjectURL(fotoLocal.blob);
+                fotoHtml = `<div style="margin-top:6px;"><img src="${escapeHTML(localUrl)}" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;" onclick="ampliarFoto('${escapeHTML(localUrl)}')"><span style="font-size:10px;color:var(--text-light);display:block;">⏳ Aguardando envio</span></div>`;
+            }
+        }
+
         itemsHtml += `
             <div class="checklist-item" style="margin-bottom: 8px;">
                 <div style="font-size: 13px; font-weight: 500;">${itemText}</div>
                 ${data.observation ? `<div style="font-size: 11px; color: var(--text-light); margin-top: 4px;">Obs: ${escapeHTML(data.observation)}</div>` : ''}
+                ${fotoHtml}
                 ${resolvedInfo}
                 ${data.resolutionNote ? `<div style="font-size: 11px; color: var(--success); margin-top: 2px;">Resolução: ${escapeHTML(data.resolutionNote)}</div>` : ''}
                 <div class="status-buttons" style="margin-top: 8px;">
@@ -3344,7 +3523,7 @@ function encontrarEquipamentoParaChecklist(checklist) {
 }
 
 
-function aplicarStatusSalvosDOM() {
+async function aplicarStatusSalvosDOM() {
     for (const [itemId, itemData] of Object.entries(checklistData)) {
         const itemContainer = document.getElementById(`item-${itemId}`);
         if (itemContainer) {
@@ -3354,7 +3533,7 @@ function aplicarStatusSalvosDOM() {
                 if (btn) {
                     itemContainer.querySelectorAll('.status-btn').forEach(b => b.classList.remove('selected'));
                     btn.classList.add('selected');
-                    
+
                     const obsDiv = document.getElementById(`obs-${itemId}`);
                     if (obsDiv) {
                         if (itemData.status === 'NC') {
@@ -3365,10 +3544,17 @@ function aplicarStatusSalvosDOM() {
                     }
                 }
             }
-            
+
             const obsTextarea = itemContainer.querySelector(`.item-observation textarea`);
             if (obsTextarea) {
                 obsTextarea.value = itemData.observation || '';
+            }
+
+            if (itemData.fotoUrl) {
+                renderFotoPreviewItem(itemId, itemData.fotoUrl);
+            } else if (itemData.fotoLocalId) {
+                const foto = await getFromIndexedDB('fotos', itemData.fotoLocalId);
+                if (foto && foto.blob) renderFotoPreviewItem(itemId, foto.blob);
             }
         }
     }
@@ -5329,6 +5515,7 @@ async function sincronizarComSupabase() {
         console.log('⚡ Iniciando sincronização com Supabase...');
 
         await sincronizarSenhasPendentes();
+        await sincronizarFotosPendentes();
 
         const tablesMap = [
             { table: 'cadastros', store: 'cadastros' },

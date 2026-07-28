@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v115';
+const APP_VERSION = 'v116';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -5361,7 +5361,8 @@ function converterParaAppFromSupabase(table, row) {
             setor: '',
             obs: row.obs,
             ativo: row.ativo,
-            synced: true
+            synced: true,
+            supabase_synced: true
         };
     }
     if (table === 'colaboradores' || table === 'colaboradores_checklist') {
@@ -5377,7 +5378,8 @@ function converterParaAppFromSupabase(table, row) {
             senha: row.senha,
             nivelAcesso: row.nivel_acesso,
             email: row.email,
-            synced: true
+            synced: true,
+            supabase_synced: true
         };
     }
     if (table === 'checklists') {
@@ -5401,7 +5403,8 @@ function converterParaAppFromSupabase(table, row) {
             stats: stats,
             equipment: row.equipment,
             items: row.items || {},
-            synced: true
+            synced: true,
+            supabase_synced: true
         };
     }
     if (table === 'checklist_items') {
@@ -5431,7 +5434,8 @@ function converterParaAppFromSupabase(table, row) {
             reporter: row.reporter,
             role: row.role,
             status: row.status,
-            synced: true
+            synced: true,
+            supabase_synced: true
         };
     }
     return row;

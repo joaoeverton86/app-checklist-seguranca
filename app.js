@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v126';
+const APP_VERSION = 'v127';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -915,7 +915,6 @@ async function saveCadastro() {
         existing.nome = nome;
         existing.empresa = empresa;
         existing.placa = placa;
-        existing.setor = '';
         existing.obs = obs;
         existing.equipment = EQUIPMENT_TYPES[tipo].find(e => e.id === categoria) || null;
         await saveToIndexedDB('cadastros', existing);
@@ -5420,7 +5419,7 @@ function converterParaSupabase(store, item) {
             nome: item.nome || '',
             patrimonio: String(item.patrimonio || item.id || '').toUpperCase(),
             empresa: item.empresa || '',
-            setor: item.placa || '',
+            placa: item.placa || '',
             obs: item.obs || '',
             ativo: item.ativo !== false
         };
@@ -5500,9 +5499,8 @@ function converterParaAppFromSupabase(table, row) {
             categoria: row.categoria,
             nome: row.nome,
             patrimonio: row.patrimonio,
-            placa: row.setor || '',
+            placa: row.placa || '',
             empresa: row.empresa,
-            setor: '',
             obs: row.obs,
             ativo: row.ativo,
             synced: true,

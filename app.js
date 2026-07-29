@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v127';
+const APP_VERSION = 'v128';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -3975,27 +3975,20 @@ async function renderDashboardCharts() {
     const cadastros = await getAllFromIndexedDB('cadastros');
     const { inicio, fim } = getDateRange();
     
-    const selectedSetor = document.getElementById('reportFilterSetor')?.value || '';
     const selectedCategoria = document.getElementById('reportFilterCategoria')?.value || '';
     const selectedPatrimonio = document.getElementById('reportFilterPatrimonio')?.value || '';
-    
-    // Map patrimonio -> setor e categoria
+
+    // Map patrimonio -> categoria
     const cadastroByPatr = {};
     cadastros.forEach(c => {
         if (c.patrimonio) {
             cadastroByPatr[c.patrimonio.toUpperCase()] = c;
         }
     });
-    
+
     // Helper function to apply filters to a list of checklists
     function filterChecklistArray(arr) {
         let result = arr;
-        if (selectedSetor) {
-            result = result.filter(c => {
-                const cad = c.patrimonio ? cadastroByPatr[c.patrimonio.toUpperCase()] : null;
-                return cad && cad.setor && cad.setor.trim() === selectedSetor;
-            });
-        }
         if (selectedCategoria) {
             result = result.filter(c => {
                 const cad = c.patrimonio ? cadastroByPatr[c.patrimonio.toUpperCase()] : null;
@@ -4108,11 +4101,9 @@ function applyReportPatrimonioFilter() {
 }
 
 function clearReportFilters() {
-    const selectSetor = document.getElementById('reportFilterSetor');
     const selectCategoria = document.getElementById('reportFilterCategoria');
     const selectPatrimonio = document.getElementById('reportFilterPatrimonio');
-    
-    if (selectSetor) selectSetor.value = "";
+
     if (selectCategoria) selectCategoria.value = "";
     if (selectPatrimonio) selectPatrimonio.value = "";
     
@@ -4280,31 +4271,10 @@ async function loadReports() {
     
     const equipamentosAtivos = cadastros.filter(c => c.ativo !== false && c.tipo !== 'colaborador');
     
-    const selectSetor = document.getElementById('reportFilterSetor');
     const selectCategoria = document.getElementById('reportFilterCategoria');
     const selectPatrimonio = document.getElementById('reportFilterPatrimonio');
-    
-    // 1. Popular Setor Select
-    if (selectSetor) {
-        const valAnterior = selectSetor.value;
-        selectSetor.innerHTML = '<option value="">Todos os Setores...</option>';
-        
-        const setores = new Set();
-        equipamentosAtivos.forEach(c => {
-            if (c.setor) setores.add(c.setor.trim());
-        });
-        const sortedSetores = Array.from(setores).sort();
-        sortedSetores.forEach(setor => {
-            const opt = document.createElement('option');
-            opt.value = setor;
-            opt.textContent = setor;
-            selectSetor.appendChild(opt);
-        });
-        selectSetor.value = valAnterior;
-        if (selectSetor.value !== valAnterior) selectSetor.value = "";
-    }
-    
-    // 2. Popular Categoria Select
+
+    // Popular Categoria Select
     if (selectCategoria) {
         const valAnterior = selectCategoria.value;
         selectCategoria.innerHTML = '<option value="">Todas as Categorias...</option>';
@@ -4333,14 +4303,10 @@ async function loadReports() {
         if (selectCategoria.value !== valAnterior) selectCategoria.value = "";
     }
     
-    const selectedSetor = selectSetor ? selectSetor.value : '';
     const selectedCategoria = selectCategoria ? selectCategoria.value : '';
-    
-    // 3. Popular Patrimonio Select (filtrado por Setor e Categoria se selecionados)
+
+    // Popular Patrimonio Select (filtrado por Categoria se selecionada)
     let filteredEquipsForSelect = [...equipamentosAtivos];
-    if (selectedSetor) {
-        filteredEquipsForSelect = filteredEquipsForSelect.filter(c => c.setor && c.setor.trim() === selectedSetor);
-    }
     if (selectedCategoria) {
         filteredEquipsForSelect = filteredEquipsForSelect.filter(c => c.categoria === selectedCategoria);
     }
@@ -4366,9 +4332,6 @@ async function loadReports() {
     
     // Filtrar equipamentos ativos para cálculos de pendentes/realizados
     let filteredEquips = [...equipamentosAtivos];
-    if (selectedSetor) {
-        filteredEquips = filteredEquips.filter(e => e.setor && e.setor.trim() === selectedSetor);
-    }
     if (selectedCategoria) {
         filteredEquips = filteredEquips.filter(e => e.categoria === selectedCategoria);
     }
@@ -4392,12 +4355,6 @@ async function loadReports() {
     
     // Filtrar checklists do período
     let checklistsFiltrados = checklistsMes;
-    if (selectedSetor) {
-        checklistsFiltrados = checklistsFiltrados.filter(c => {
-            const cad = c.patrimonio ? cadastroByPatr[c.patrimonio.toUpperCase()] : null;
-            return cad && cad.setor && cad.setor.trim() === selectedSetor;
-        });
-    }
     if (selectedCategoria) {
         checklistsFiltrados = checklistsFiltrados.filter(c => {
             const cad = c.patrimonio ? cadastroByPatr[c.patrimonio.toUpperCase()] : null;

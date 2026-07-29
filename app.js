@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v122';
+const APP_VERSION = 'v123';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -300,21 +300,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
     }
+    console.log('[DEBUG] before session check, reached line 303');
     const sessionStr = localStorage.getItem('active_session');
+    console.log('[DEBUG] sessionStr present:', !!sessionStr);
     if (sessionStr) {
         try {
             const session = JSON.parse(sessionStr);
+            console.log('[DEBUG] session parsed ok, role:', session.role);
             updateNavigationForRole(session.role);
+            console.log('[DEBUG] updateNavigationForRole done');
             updateWelcomeBanner();
+            console.log('[DEBUG] updateWelcomeBanner done');
             showPage('pageHome');
+            console.log('[DEBUG] showPage(pageHome) done, active now:', document.querySelector('.page.active')?.id);
             verificarEAtualizarPapelSessao();
         } catch (e) {
+            console.log('[DEBUG] CAUGHT ERROR in session restore:', e.message, e.stack);
             localStorage.removeItem('active_session');
             showPage('pageLogin');
         }
     } else {
         showPage('pageLogin');
     }
+    console.log('[DEBUG] end of DOMContentLoaded session block, active now:', document.querySelector('.page.active')?.id);
     
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js')

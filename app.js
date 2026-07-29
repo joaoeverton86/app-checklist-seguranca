@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v121';
+const APP_VERSION = 'v122';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -258,15 +258,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const savedVersion = localStorage.getItem('app_version');
     if (savedVersion && savedVersion !== APP_VERSION) {
         localStorage.setItem('app_version', APP_VERSION);
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(regs => {
-                regs.forEach(r => r.unregister());
-            });
-        }
-        caches.keys().then(names => {
-            Promise.all(names.map(n => caches.delete(n))).then(() => {
-                window.location.reload(true);
-            });
+        // Espera desregistrar o Service Worker E limpar o cache ANTES de recarregar
+        // (antes rodavam em paralelo sem se esperar, o que podia recarregar a página
+        // enquanto o SW antigo ainda estava sendo desregistrado, servindo conteúdo
+        // desatualizado de novo e causando recarregamentos em cadeia).
+        const swUnregisterPromise = ('serviceWorker' in navigator)
+            ? navigator.serviceWorker.getRegistrations().then(regs => Promise.all(regs.map(r => r.unregister())))
+            : Promise.resolve();
+        const cachesClearPromise = caches.keys().then(names => Promise.all(names.map(n => caches.delete(n))));
+        Promise.all([swUnregisterPromise, cachesClearPromise]).then(() => {
+            window.location.reload(true);
         });
         return;
     }
@@ -559,7 +560,6 @@ async function updatePendingBadge() {
 // ============================================
 
 function showPage(pageId) {
-    if (localStorage.getItem('debug_showpage')) console.log('[DEBUG] showPage(' + pageId + ') stack:\n' + new Error().stack);
     // Router guard
     const sessionStr = localStorage.getItem('active_session');
     const publicPages = ['pageLogin', 'pageSignUp', 'pageForgotPassword'];

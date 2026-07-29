@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v117';
+const APP_VERSION = 'v118';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -5429,6 +5429,7 @@ function converterParaAppFromSupabase(table, row) {
             stats: stats,
             equipment: row.equipment,
             items: row.items || {},
+            timestamp: row.created_at || row.date,
             synced: true,
             supabase_synced: true
         };

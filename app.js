@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v124';
+const APP_VERSION = 'v125';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -179,6 +179,7 @@ let checklistData = {};
 let signaturePad = null;
 let itensComFalhaAnterior = [];
 let currentReinspectionOriginalId = null;
+let syncIntervalId = null;
 
 function clearReinspectionState() {
     itensComFalhaAnterior = [];
@@ -274,32 +275,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     localStorage.setItem('app_version', APP_VERSION);
     
     await initApp();
+    // Protegido por try/catch: um erro em qualquer chamada aqui não pode impedir a
+    // restauração da sessão logo abaixo (já aconteceu antes com iniciarSyncPeriodica).
     try {
         initSignaturePad();
-        console.log('[DEBUG] initSignaturePad ok');
         initConnectionStatus();
-        console.log('[DEBUG] initConnectionStatus ok');
         initDateDefaults();
-        console.log('[DEBUG] initDateDefaults ok');
         initCadastroSelects();
-        console.log('[DEBUG] initCadastroSelects ok');
         loadRecentChecklists();
-        console.log('[DEBUG] loadRecentChecklists called');
         renderDeadlineAlerts();
-        console.log('[DEBUG] renderDeadlineAlerts called');
         loadTopRisks();
-        console.log('[DEBUG] loadTopRisks called');
         renderEquipmentGrids();
-        console.log('[DEBUG] renderEquipmentGrids ok');
         iniciarSyncPeriodica();
-        console.log('[DEBUG] iniciarSyncPeriodica ok');
     } catch (initErr) {
-        console.log('[DEBUG] CAUGHT INIT ERROR:', initErr.message, initErr.stack);
+        console.error('Erro ao inicializar componentes da página:', initErr);
     }
 
     cleanDuplicateCadastros();
     updatePendingBadge();
-
 
     if (navigator.onLine) {
         if (isSupabaseConfigured()) {
@@ -311,32 +304,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             }, 500);
         }
-
     }
-    console.log('[DEBUG] before session check, reached line 303');
+
     const sessionStr = localStorage.getItem('active_session');
-    console.log('[DEBUG] sessionStr present:', !!sessionStr);
     if (sessionStr) {
         try {
             const session = JSON.parse(sessionStr);
-            console.log('[DEBUG] session parsed ok, role:', session.role);
             updateNavigationForRole(session.role);
-            console.log('[DEBUG] updateNavigationForRole done');
             updateWelcomeBanner();
-            console.log('[DEBUG] updateWelcomeBanner done');
             showPage('pageHome');
-            console.log('[DEBUG] showPage(pageHome) done, active now:', document.querySelector('.page.active')?.id);
             verificarEAtualizarPapelSessao();
         } catch (e) {
-            console.log('[DEBUG] CAUGHT ERROR in session restore:', e.message, e.stack);
+            console.error('Erro ao restaurar sessão:', e);
             localStorage.removeItem('active_session');
             showPage('pageLogin');
         }
     } else {
         showPage('pageLogin');
     }
-    console.log('[DEBUG] end of DOMContentLoaded session block, active now:', document.querySelector('.page.active')?.id);
-    
+
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js')
             .then(reg => {

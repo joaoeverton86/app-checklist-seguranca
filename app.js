@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v130';
+const APP_VERSION = 'v131';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -5646,6 +5646,12 @@ async function sincronizarItemIndividualSupabase(storeName, data) {
 
         if (res.success) {
             data.synced = true;
+            data.supabase_synced = true;
+            // Sem isso, a confirmação de sucesso só existia na memória e nunca voltava
+            // pro IndexedDB - o item ficava marcado "pendente" pra sempre (mesmo já
+            // salvo certinho no Supabase) até uma sincronização completa por acaso
+            // corrigir sozinha ao puxar o registro de volta do servidor.
+            await saveToIndexedDB(storeName, data, true);
             console.log(`⚡ [Supabase] ${storeName} sincronizado com sucesso:`, data.id);
         }
 

@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v119';
+const APP_VERSION = 'v120';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -559,6 +559,7 @@ async function updatePendingBadge() {
 // ============================================
 
 function showPage(pageId) {
+    if (localStorage.getItem('debug_showpage')) console.trace('[DEBUG] showPage called with', pageId);
     // Router guard
     const sessionStr = localStorage.getItem('active_session');
     const publicPages = ['pageLogin', 'pageSignUp', 'pageForgotPassword'];

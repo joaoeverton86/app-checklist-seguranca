@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v123';
+const APP_VERSION = 'v124';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -274,16 +274,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     localStorage.setItem('app_version', APP_VERSION);
     
     await initApp();
-    initSignaturePad();
-    initConnectionStatus();
-    initDateDefaults();
-    initCadastroSelects();
-    loadRecentChecklists();
-    renderDeadlineAlerts();
-    loadTopRisks();
-    renderEquipmentGrids();
-    iniciarSyncPeriodica();
-    
+    try {
+        initSignaturePad();
+        console.log('[DEBUG] initSignaturePad ok');
+        initConnectionStatus();
+        console.log('[DEBUG] initConnectionStatus ok');
+        initDateDefaults();
+        console.log('[DEBUG] initDateDefaults ok');
+        initCadastroSelects();
+        console.log('[DEBUG] initCadastroSelects ok');
+        loadRecentChecklists();
+        console.log('[DEBUG] loadRecentChecklists called');
+        renderDeadlineAlerts();
+        console.log('[DEBUG] renderDeadlineAlerts called');
+        loadTopRisks();
+        console.log('[DEBUG] loadTopRisks called');
+        renderEquipmentGrids();
+        console.log('[DEBUG] renderEquipmentGrids ok');
+        iniciarSyncPeriodica();
+        console.log('[DEBUG] iniciarSyncPeriodica ok');
+    } catch (initErr) {
+        console.log('[DEBUG] CAUGHT INIT ERROR:', initErr.message, initErr.stack);
+    }
+
     cleanDuplicateCadastros();
     updatePendingBadge();
 

@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v118';
+const APP_VERSION = 'v119';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -3083,6 +3083,15 @@ async function loadHistory() {
     renderHistoryFiltered();
 }
 
+function filterHistoryByPatrimonio(patrimonio) {
+    showPage('pageHistory');
+    setTimeout(() => {
+        const searchEl = document.getElementById('historySearch');
+        if (searchEl) searchEl.value = patrimonio;
+        renderHistoryFiltered();
+    }, 80);
+}
+
 function renderHistoryFiltered() {
     const container = document.getElementById('historyList');
     if (!container) return;
@@ -4391,22 +4400,24 @@ async function loadReports() {
     const itemCounts = {};
     const typeCounts = {};
     const statusCounts = { interditado: 0, liberado_restricao: 0, liberado: 0 };
-    
+    const equipCounts = {}; // NC por patrimônio (equipamento específico)
+    const empresaCounts = {}; // NC por empresa/subcontratada
+
     checklistsFiltrados.forEach(c => {
         const stats = recalcularStatsChecklist(c);
         c.stats = stats;
 
         totalC += stats.conformes;
         totalNC += stats.naoConformes;
-        
+
         // Contar por tipo
         const type = c.equipment?.name || c.nome || 'Desconhecido';
         typeCounts[type] = (typeCounts[type] || 0) + 1;
-        
+
         // Contar status de interdição
         const stNorm = normalizarStatusChecklist(c.statusChecklist, c);
         statusCounts[stNorm] = (statusCounts[stNorm] || 0) + 1;
-        
+
         // Contar não conformidades por item
         for (const [itemId, data] of Object.entries(c.items)) {
             if (itemId === '_form') continue;
@@ -4415,6 +4426,18 @@ async function loadReports() {
                 const itemName = getNCDescription(itemNameRaw, itemId);
                 itemCounts[itemName] = (itemCounts[itemName] || 0) + 1;
             }
+        }
+
+        // Ranking por equipamento e por empresa (para priorizar manutenção)
+        if (stats.naoConformes > 0) {
+            const patrKey = (c.patrimonio || 'Sem patrimônio').toUpperCase();
+            if (!equipCounts[patrKey]) {
+                equipCounts[patrKey] = { count: 0, nome: c.nome || '', empresa: c.empresa || '' };
+            }
+            equipCounts[patrKey].count += stats.naoConformes;
+
+            const empresaKey = (c.empresa || 'Sem empresa').trim() || 'Sem empresa';
+            empresaCounts[empresaKey] = (empresaCounts[empresaKey] || 0) + stats.naoConformes;
         }
     });
     
@@ -4474,7 +4497,49 @@ async function loadReports() {
             </div>
         `).join('');
     }
-    
+
+    // Ranking de equipamentos com mais NC (priorizar manutenção)
+    const equipContainer = document.getElementById('equipRankingList');
+    const equipSorted = Object.entries(equipCounts).sort((a, b) => b[1].count - a[1].count).slice(0, 10);
+    if (equipSorted.length === 0) {
+        equipContainer.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">✅</div>
+                <div class="text">Nenhuma não conformidade registrada</div>
+            </div>`;
+    } else {
+        equipContainer.innerHTML = equipSorted.map(([patrimonio, info]) => `
+            <div class="risk-list-item" style="cursor: pointer;" onclick="filterHistoryByPatrimonio('${escapeHTML(patrimonio)}')">
+                <div class="risk-info">
+                    <div class="risk-item-name">${escapeHTML(patrimonio)} ${info.nome ? '- ' + escapeHTML(info.nome) : ''}</div>
+                    <div class="risk-count">${escapeHTML(info.empresa || 'Sem empresa')} • ${info.count} não conformidade${info.count > 1 ? 's' : ''}</div>
+                </div>
+                <span class="risk-badge">${info.count}</span>
+            </div>
+        `).join('');
+    }
+
+    // Ranking de empresas/subcontratadas com mais NC
+    const empresaContainer = document.getElementById('empresaRankingList');
+    const empresaSorted = Object.entries(empresaCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    if (empresaSorted.length === 0) {
+        empresaContainer.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">✅</div>
+                <div class="text">Nenhuma não conformidade registrada</div>
+            </div>`;
+    } else {
+        empresaContainer.innerHTML = empresaSorted.map(([empresa, count]) => `
+            <div class="risk-list-item">
+                <div class="risk-info">
+                    <div class="risk-item-name">${escapeHTML(empresa)}</div>
+                    <div class="risk-count">${count} não conformidade${count > 1 ? 's' : ''}</div>
+                </div>
+                <span class="risk-badge">${count}</span>
+            </div>
+        `).join('');
+    }
+
     // Checklists por tipo
     const typeContainer = document.getElementById('typeReportList');
     const typeSorted = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
@@ -4947,6 +5012,31 @@ async function exportToCSV() {
     showToast('Dados exportados com sucesso!');
 }
 
+function blobParaDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+async function obterFotoDataUrlParaPDF(data) {
+    try {
+        if (data.fotoUrl) {
+            const res = await fetch(data.fotoUrl);
+            if (res.ok) return await blobParaDataUrl(await res.blob());
+        }
+        if (data.fotoLocalId) {
+            const foto = await getFromIndexedDB('fotos', data.fotoLocalId);
+            if (foto && foto.blob) return await blobParaDataUrl(foto.blob);
+        }
+    } catch (e) {
+        console.warn('Não foi possível carregar a foto do item para o PDF:', e);
+    }
+    return null;
+}
+
 async function exportChecklist(id) {
     const c = await getFromIndexedDB('checklists', id);
     if (!c) return;
@@ -5044,15 +5134,20 @@ async function exportChecklist(id) {
     for (const [itemId, data] of Object.entries(c.items)) {
         if (itemId === '_form') continue;
 
+        const fotoDataUrl = (data.fotoUrl || data.fotoLocalId) ? await obterFotoDataUrlParaPDF(data) : null;
+
         const itemName = ITEM_NAMES[itemId] || data.customText || itemId;
         const itemLines = doc.splitTextToSize(itemName, pageWidth - 70);
         let rowHeight = itemLines.length * 4.5 + 4;
-        
+
         if (data.observation) {
             rowHeight += 5;
         }
         if (data.resolved) {
             rowHeight += 4;
+        }
+        if (fotoDataUrl) {
+            rowHeight += 26;
         }
 
         if (y + rowHeight > 275) {
@@ -5112,6 +5207,15 @@ async function exportChecklist(id) {
             doc.setFontSize(8);
             const resText = `✓ Resolvido${data.resolvedAt ? ' em ' + new Date(data.resolvedAt).toLocaleDateString('pt-BR') : ''}${data.resolvedBy ? ' por ' + data.resolvedBy : ''}`;
             doc.text(resText, 22, innerYItem);
+            innerYItem += 4;
+        }
+
+        if (fotoDataUrl) {
+            try {
+                doc.addImage(fotoDataUrl, 'JPEG', 22, innerYItem, 24, 24);
+            } catch (e) {
+                console.warn('Não foi possível inserir a foto do item no PDF:', e);
+            }
         }
 
         y += rowHeight;

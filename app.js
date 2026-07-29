@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v129';
+const APP_VERSION = 'v130';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -942,7 +942,6 @@ async function saveCadastro() {
         patrimonio: patrimonioNorm,
         placa,
         empresa,
-        setor: '',
         obs,
         equipment: equipment ? { id: equipment.id, name: equipment.name, icon: equipment.icon, nr: equipment.nr } : null,
         timestamp: new Date().toISOString(),
@@ -951,7 +950,8 @@ async function saveCadastro() {
     };
     
     await saveToIndexedDB('cadastros', cadastro);
-    
+    registrarAuditoria('create', 'cadastros', cadastro.id, `${cadastro.patrimonio} (${cadastro.nome})`);
+
     document.getElementById('cadastroTipo').value = '';
     document.getElementById('cadastroCategoria').innerHTML = '<option value="">Selecione o tipo primeiro...</option>';
     document.getElementById('cadastroNome').value = '';
@@ -959,7 +959,7 @@ async function saveCadastro() {
     if (document.getElementById('cadastroPlaca')) document.getElementById('cadastroPlaca').value = '';
     document.getElementById('cadastroEmpresa').value = '';
     document.getElementById('cadastroObs').value = '';
-    
+
     showToast('Equipamento cadastrado!');
     setTimeout(() => showPage('pageCadastro'), 800);
 }
@@ -1048,6 +1048,7 @@ async function saveColaborador() {
     try {
         await saveToIndexedDB('colaboradores', colaborador);
         showToast('Colaborador cadastrado!');
+        registrarAuditoria('create', 'colaboradores_checklist', colaborador.id, `${colaborador.nome} (Mat. ${colaborador.matricula})`, `Nível: ${nivelAcesso}`);
     } catch (err) {
         console.error('Erro ao cadastrar colaborador no IndexedDB:', err);
         showToast('❌ Erro ao salvar localmente: ' + err.message);
@@ -1339,6 +1340,7 @@ async function saveCadastroEdit(id) {
         if (isSupabaseConfigured()) {
             await supabaseFetch('cadastros', { method: 'DELETE', query: '?id=eq.' + encodeURIComponent(id) });
             await registrarExclusaoRemota('cadastros', id);
+            registrarAuditoria('update', 'cadastros', newPatrimonio, `Patrimônio renomeado de "${id}" para "${newPatrimonio}"`);
         }
     }
 
@@ -1354,13 +1356,13 @@ async function saveCadastroEdit(id) {
         nome: document.getElementById('cadastroNome').value.trim(),
         placa: document.getElementById('cadastroPlaca')?.value.trim() || '',
         empresa: document.getElementById('cadastroEmpresa').value.trim(),
-        setor: '',
         obs: document.getElementById('cadastroObs').value.trim(),
         ativo: isAtivo,
         synced: false
     };
 
     await saveToIndexedDB('cadastros', cadastro);
+    registrarAuditoria('update', 'cadastros', cadastro.id, `${cadastro.patrimonio} (${cadastro.nome})`);
 
     // Se o nome ou o patrimônio mudou, atualizar os checklists históricos correspondentes
     const oldNome = oldCadastro.nome;
@@ -1507,6 +1509,7 @@ async function saveColaboradorEdit(id) {
     try {
         await saveToIndexedDB('colaboradores', colab);
         showToast('Colaborador atualizado!');
+        registrarAuditoria('update', 'colaboradores_checklist', colab.id, `${colab.nome} (Mat. ${colab.matricula})`);
     } catch (err) {
         console.error('Erro ao atualizar colaborador no IndexedDB:', err);
         showToast('❌ Erro ao salvar localmente: ' + err.message);
@@ -1517,6 +1520,8 @@ async function saveColaboradorEdit(id) {
         const rpcRes = await alterarNivelAcessoOnlineSupabase(colab.id, newNivelAcesso);
         if (!rpcRes.success) {
             showToast('⚠️ Nível de acesso salvo localmente, mas não foi possível sincronizar com o servidor: ' + (rpcRes.error || 'sem conexão'));
+        } else {
+            registrarAuditoria('update', 'colaboradores_checklist', colab.id, `${colab.nome} (Mat. ${colab.matricula})`, `Nível de acesso alterado de "${oldColab.nivelAcesso || 'Tecnico'}" para "${newNivelAcesso}"`);
         }
     }
 
@@ -1562,6 +1567,7 @@ async function deleteCadastroPermanente(id) {
         }
         console.log('⚡ [Supabase] Cadastro excluído definitivamente:', id);
         await registrarExclusaoRemota('cadastros', id);
+        await registrarAuditoria('delete', 'cadastros', id, label.trim());
     }
 
     await deleteFromIndexedDB('cadastros', id);
@@ -1595,6 +1601,7 @@ async function deleteColaboradorPermanente(id) {
         }
         console.log('⚡ [Supabase] Colaborador excluído definitivamente:', id);
         await registrarExclusaoRemota('colaboradores_checklist', id);
+        await registrarAuditoria('delete', 'colaboradores_checklist', id, label.trim());
     }
 
     await deleteFromIndexedDB('colaboradores', id);
@@ -2956,6 +2963,77 @@ async function supabaseFetch(table, options = {}) {
 // AUXILIARES DE SINCRONIZAÇÃO & NÃO CONFORMIDADES
 // ============================================
 
+// Log de auditoria: quem criou/editou/excluiu um equipamento, colaborador ou checklist.
+// Melhor esforço: só registra se estiver online (não fica pendente igual outros dados,
+// pra não complicar o modelo de sync por algo que é só um registro de histórico).
+async function registrarAuditoria(action, tableName, recordId, recordLabel, details) {
+    if (!isSupabaseConfigured() || !navigator.onLine) return;
+    try {
+        const sessionStr = localStorage.getItem('active_session');
+        const session = sessionStr ? JSON.parse(sessionStr) : null;
+        await supabaseFetch('audit_log', {
+            method: 'POST',
+            body: {
+                actor_matricula: session?.matricula || null,
+                actor_nome: session?.nome || null,
+                action: action,
+                table_name: tableName,
+                record_id: recordId !== undefined && recordId !== null ? String(recordId) : null,
+                record_label: recordLabel || null,
+                details: details || null
+            }
+        });
+    } catch (e) {
+        console.warn('Erro ao registrar auditoria:', e);
+    }
+}
+
+async function abrirLogAuditoria() {
+    if (!isSupabaseConfigured()) {
+        showToast('Configure o Supabase para ver o log de auditoria.');
+        return;
+    }
+    if (!navigator.onLine) {
+        showToast('⚠️ Log de auditoria exige conexão com a internet.');
+        return;
+    }
+
+    showModal('<div style="text-align:center; padding: 30px;">Carregando log de auditoria...</div>');
+
+    const res = await supabaseFetch('audit_log', { query: '?select=*&order=created_at.desc&limit=100' });
+    if (!res.success || !Array.isArray(res.data)) {
+        showModal('<div style="padding:20px; text-align:center;">❌ Erro ao carregar o log de auditoria.</div>');
+        return;
+    }
+
+    const actionLabels = { create: '🟢 Criou', update: '🟡 Editou', delete: '🔴 Excluiu' };
+    const tableLabels = { cadastros: 'Equipamento', colaboradores_checklist: 'Colaborador', checklists: 'Checklist' };
+
+    const itemsHtml = res.data.length === 0
+        ? '<div class="empty-state"><div class="icon">📜</div><div class="text">Nenhum registro de auditoria ainda</div></div>'
+        : res.data.map(entry => `
+            <div style="padding: 10px 4px; border-bottom: 1px solid var(--border); font-size: 12.5px;">
+                <div style="font-weight: 600;">${actionLabels[entry.action] || escapeHTML(entry.action)} ${tableLabels[entry.table_name] || escapeHTML(entry.table_name)}</div>
+                <div style="color: var(--text); margin-top: 2px;">${escapeHTML(entry.record_label || entry.record_id || '')}</div>
+                ${entry.details ? `<div style="color: var(--text-light); font-style: italic; margin-top: 2px;">${escapeHTML(entry.details)}</div>` : ''}
+                <div style="color: var(--text-light); font-size: 11px; margin-top: 4px;">
+                    ${escapeHTML(entry.actor_nome || 'Desconhecido')} (${escapeHTML(entry.actor_matricula || '-')}) • ${entry.created_at ? new Date(entry.created_at).toLocaleString('pt-BR') : ''}
+                </div>
+            </div>
+        `).join('');
+
+    showModal(`
+        <div style="padding: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="margin: 0; font-size: 16px; color: var(--primary);">📜 Log de Auditoria</h3>
+                <button onclick="closeModal()" style="background: none; border: none; font-size: 20px; cursor: pointer;">✕</button>
+            </div>
+            <p style="font-size: 11.5px; color: var(--text-light); margin: 0 0 10px;">Últimos ${res.data.length} registros (equipamentos, colaboradores e checklists)</p>
+            <div style="max-height: 60vh; overflow-y: auto;">${itemsHtml}</div>
+        </div>
+    `);
+}
+
 // Registra uma exclusão definitiva como "lápide" (tombstone) no Supabase, para que
 // TODOS os outros aparelhos removam sua cópia local na próxima sincronização e nunca
 // a reenviem de volta. Sem isso, um aparelho que ainda tem o registro em cache local
@@ -3913,7 +3991,10 @@ async function updateChecklistPrazo(checklistId, newPrazo) {
 
 async function deleteChecklist(id) {
     if (!confirm('Tem certeza que deseja excluir este checklist?')) return;
-    
+
+    const checklistParaLog = await getFromIndexedDB('checklists', id);
+    const labelChecklist = checklistParaLog ? `${checklistParaLog.patrimonio || ''} - ${formatSimpleDate(checklistParaLog.date)}` : id;
+
     // Deletar no Supabase se estiver configurado
     if (isSupabaseConfigured()) {
         if (!navigator.onLine) {
@@ -3934,6 +4015,7 @@ async function deleteChecklist(id) {
             query: '?checklist_id=eq.' + encodeURIComponent(id)
         });
         await registrarExclusaoRemota('checklists', id);
+        await registrarAuditoria('delete', 'checklists', id, labelChecklist);
         console.log('⚡ [Supabase] Checklist excluído definitivamente:', id);
     }
 

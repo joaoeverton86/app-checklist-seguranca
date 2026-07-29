@@ -1,0 +1,24 @@
+{
+  "root": true,
+  "env": {
+    "browser": true,
+    "es2021": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2021,
+    "sourceType": "script"
+  },
+  "globals": {
+    "EQUIPMENT_TYPES": "readonly",
+    "ITEM_NAMES": "readonly",
+    "CATEGORY_ICONS": "readonly",
+    "jspdf": "readonly",
+    "Chart": "readonly",
+    "jsQR": "readonly",
+    "sendPrompt": "readonly"
+  },
+  "rules": {
+    "no-undef": "error",
+    "no-unused-vars": "off"
+  }
+}

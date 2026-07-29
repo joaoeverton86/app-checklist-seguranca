@@ -1,6 +1,12 @@
 {
+  "scripts": {
+    "lint:undef": "eslint --no-eslintrc -c .eslintrc.undef-check.json app.js data.js"
+  },
   "dependencies": {
     "node-forge": "^1.4.0",
     "selfsigned": "^5.5.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1"
   }
 }

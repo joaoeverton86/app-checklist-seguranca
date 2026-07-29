@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v125';
+const APP_VERSION = 'v126';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -1900,7 +1900,7 @@ async function confirmarAdicionarItemCustomChecklist() {
         if (savePermanently && currentEquipment.id) {
             try {
                 if (typeof saveCustomItem === 'function') {
-                    const category = currentCategory || currentEquipment.category || currentEquipment.tipo || 'veiculos';
+                    const category = currentEquipment.category || currentEquipment.tipo || 'veiculos';
                     await saveCustomItem(category, currentEquipment.id, newItem);
                 }
             } catch (e) {
@@ -2856,6 +2856,24 @@ function removeCustomItem(index) {
     renderItemGerenciaLists();
 }
 
+// Persiste um item adicionado durante o preenchimento de um checklist ("Adicionar Item
+// Extra") para que ele passe a aparecer em TODOS os futuros checklists desse tipo de
+// equipamento. Usa o mesmo mecanismo (custom_type_settings no localStorage) já usado
+// pela tela "Gerenciar Itens" — getEffectiveItems() lê daqui na hora de montar o checklist.
+async function saveCustomItem(category, equipmentId, item) {
+    if (!equipmentId) return;
+    const settings = JSON.parse(localStorage.getItem('custom_type_settings') || '{}');
+    if (!settings[equipmentId]) settings[equipmentId] = { disabledItems: [], customItems: [] };
+    if (!settings[equipmentId].customItems) settings[equipmentId].customItems = [];
+    settings[equipmentId].customItems.push({
+        id: item.id,
+        text: item.text,
+        nr: item.nr || '',
+        risk: item.risk || 'medium'
+    });
+    localStorage.setItem('custom_type_settings', JSON.stringify(settings));
+}
+
 async function saveItemGerencia() {
     if (!itemGerenciaTypeId) return;
     
@@ -3642,19 +3660,7 @@ async function reinspecionarChecklist(id) {
     currentCadastro = null;
     
     showPage('pageNewChecklist');
-    
-    const categorySelect = document.getElementById('checklistCategory');
-    if (categorySelect && equipment.category) {
-        categorySelect.value = equipment.category;
-        if (typeof onCategoryChange === 'function') onCategoryChange();
-    }
-    
-    const typeSelect = document.getElementById('checklistType');
-    if (typeSelect && equipment.id) {
-        typeSelect.value = equipment.id;
-        if (typeof onTypeChange === 'function') onTypeChange();
-    }
-    
+
     document.getElementById('checklistDate').value = new Date().toISOString().split('T')[0];
     
     const nomeInput = document.getElementById('checklistNome');
@@ -4662,7 +4668,7 @@ async function updateIssueStatus(id, newStatus, event) {
     };
 
     showToast(`✅ Status alterado para ${statusLabels[newStatus] || newStatus}`);
-    renderReports();
+    loadReports();
 }
 
 async function editIssueModal(id, event) {
@@ -4750,7 +4756,7 @@ async function saveIssueEdit(id) {
 
     closeModal();
     showToast('Relato de problema atualizado!');
-    renderReports();
+    loadReports();
 }
 
 async function deleteIssuePermanente(id, event) {
@@ -4764,7 +4770,7 @@ async function deleteIssuePermanente(id, event) {
 
     await deleteFromIndexedDB('issues', id);
     showToast('Relato de problema excluído com sucesso');
-    renderReports();
+    loadReports();
 }
 
 // ============================================

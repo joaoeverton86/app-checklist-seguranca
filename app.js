@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v116';
+const APP_VERSION = 'v117';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -293,6 +293,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 sincronizarComSupabase().then(() => {
                     renderEquipmentGrids();
                     if (currentPage === 'pageCadastro') switchGestaoTab(gestaoTab);
+                    updatePendingBadge();
                 });
             }, 500);
         }
@@ -482,7 +483,9 @@ function updateConnectionStatus() {
     if (navigator.onLine) {
         if (status) status.className = 'connection-status online';
         if (isSupabaseConfigured()) {
-            sincronizarComSupabase();
+            sincronizarComSupabase().then(updatePendingBadge);
+        } else {
+            updatePendingBadge();
         }
     } else {
         if (status) status.className = 'connection-status offline';
@@ -490,8 +493,18 @@ function updateConnectionStatus() {
     }
 }
 
+async function getSyncStatus() {
+    const stores = ['cadastros', 'colaboradores', 'checklists', 'issues', 'checklist_items'];
+    let pendentes = 0;
+    for (const store of stores) {
+        const items = await getAllFromIndexedDB(store);
+        pendentes += items.filter(i => !i.supabase_synced).length;
+    }
+    return { pendentes };
+}
+
 async function updatePendingBadge() {
-    const status = getSyncStatus();
+    const status = await getSyncStatus();
     const count = status.pendentes;
     
     const text = document.getElementById('connectionText');
@@ -1167,14 +1180,17 @@ async function loadGestao(search = '') {
                 `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #f2f3f4; color: #7f8c8d; font-weight: 600;">🔴 Desmobilizado</span>`;
                 
             const opacityStyle = isAtivo ? '' : 'opacity: 0.65; background: #f8f9f9;';
-                
+            const pendingBadge = !c.supabase_synced
+                ? `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #fff3cd; color: #9a7d0a; font-weight: 600; margin-left: 4px;" title="Ainda não sincronizado com o servidor">⏳ Pendente</span>`
+                : '';
+
             return `
                 <div class="history-item" style="flex-wrap: wrap; ${opacityStyle}">
                     <div class="history-info">
                         <div class="history-title">${escapeHTML(c.patrimonio)}${c.placa ? ' [' + escapeHTML(c.placa) + ']' : ''}</div>
                         <div class="history-date">${escapeHTML(c.nome || '')}</div>
                         <div class="history-date">${escapeHTML(c.empresa || '')}</div>
-                        <div style="margin-top: 4px;">${statusBadge}</div>
+                        <div style="margin-top: 4px;">${statusBadge}${pendingBadge}</div>
                     </div>
                     <div style="display: flex; gap: 4px; align-items: center;">
                         <button onclick="editCadastro('${c.id}')" title="Editar" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>
@@ -1238,6 +1254,9 @@ async function loadGestao(search = '') {
                 `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #d5f5e3; color: #1e8449; font-weight: 600;">🟢 Ativo</span>` :
                 `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #f2f3f4; color: #7f8c8d; font-weight: 600;">🔴 Inativo</span>`;
             const opacityStyle = isAtivo ? '' : 'opacity: 0.65; background: #f8f9f9;';
+            const pendingBadge = !c.supabase_synced
+                ? `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #fff3cd; color: #9a7d0a; font-weight: 600; margin-left: 4px;" title="Ainda não sincronizado com o servidor">⏳ Pendente</span>`
+                : '';
 
             return `
                 <div class="history-item" style="flex-wrap: wrap; ${opacityStyle}">
@@ -1245,7 +1264,7 @@ async function loadGestao(search = '') {
                         <div class="history-title">${icon} ${escapeHTML(c.nome)}</div>
                         <div class="history-date" style="font-weight: 550; color: var(--primary);">${escapeHTML(c.funcao || '')}</div>
                         <div class="history-date">Matrícula: ${escapeHTML(c.matricula || 'N/A')} • Nível: ${escapeHTML(c.nivelAcesso || 'Tecnico')}</div>
-                        <div style="margin-top: 4px;">${statusBadge}</div>
+                        <div style="margin-top: 4px;">${statusBadge}${pendingBadge}</div>
                     </div>
                     <div style="display: flex; gap: 4px; align-items: center;">
                         <button onclick="editColaborador('${c.id}')" title="Editar" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>
@@ -3015,6 +3034,7 @@ function iniciarSyncPeriodica() {
             if (isSupabaseConfigured()) {
                 sincronizarComSupabase().then(() => {
                     if (currentPage === 'pageCadastro') loadGestao();
+                    updatePendingBadge();
                 });
             }
         }
@@ -3152,12 +3172,15 @@ function renderHistoryFiltered() {
             }
             
             const date = formatSimpleDate(c.date);
+            const pendingBadge = !c.supabase_synced
+                ? `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #fff3cd; color: #9a7d0a; font-weight: 600; margin-left: 6px;" title="Ainda não sincronizado com o servidor">⏳ Pendente</span>`
+                : '';
             return `
                 <div class="history-item" onclick="viewChecklist('${c.id}')" style="margin-bottom: 8px;">
                     <div class="history-info">
-                        <div class="history-title">${c.patrimonio || 'Sem patrimônio'}</div>
-                        <div class="history-date">${c.nome || ''}</div>
-                        <div class="history-date">${date} • ${c.empresa || ''}</div>
+                        <div class="history-title">${escapeHTML(c.patrimonio || 'Sem patrimônio')}${pendingBadge}</div>
+                        <div class="history-date">${escapeHTML(c.nome || '')}</div>
+                        <div class="history-date">${date} • ${escapeHTML(c.empresa || '')}</div>
                     </div>
                     <span class="history-status ${badgeClass}">${statusText}</span>
                 </div>`;
@@ -4695,14 +4718,17 @@ async function loadRecentChecklists() {
     container.innerHTML = recent.map(c => {
         const date = formatSimpleDate(c.date);
         const statusClass = c.stats.naoConformes > 0 ? 'status-alert' : 'status-ok';
-        const statusText = c.stats.naoConformes > 0 ? 
+        const statusText = c.stats.naoConformes > 0 ?
             `${c.stats.naoConformes} NC` : 'OK';
-        
+        const pendingBadge = !c.supabase_synced
+            ? `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #fff3cd; color: #9a7d0a; font-weight: 600; margin-left: 6px;" title="Ainda não sincronizado com o servidor">⏳ Pendente</span>`
+            : '';
+
         return `
             <div class="history-item" onclick="viewChecklist('${c.id}')">
                 <div class="history-info">
-                    <div class="history-title">${c.patrimonio || 'Sem patrimônio'}</div>
-                    <div class="history-date">${c.nome || ''}</div>
+                    <div class="history-title">${escapeHTML(c.patrimonio || 'Sem patrimônio')}${pendingBadge}</div>
+                    <div class="history-date">${escapeHTML(c.nome || '')}</div>
                     <div class="history-date">${date}</div>
                 </div>
                 <span class="history-status ${statusClass}">${statusText}</span>

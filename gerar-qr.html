@@ -113,7 +113,11 @@
 
         async function carregarDoIndexedDB() {
             try {
-                const request = indexedDB.open('ChecklistSeguranca', 3);
+                // Sem número de versão: abre a base como ela estiver agora, sem risco de
+                // VersionError quando o app principal já tiver evoluído o schema (já
+                // aconteceu - essa página ficava presa numa versão antiga e caía no
+                // fallback da planilha do Google, mostrando dados desatualizados).
+                const request = indexedDB.open('ChecklistSeguranca');
                 request.onsuccess = function(e) {
                     const db = e.target.result;
                     const tx = db.transaction('cadastros', 'readonly');

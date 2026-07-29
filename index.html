@@ -857,6 +857,16 @@
 
 
 
+            <div class="card" style="border: 2px solid var(--primary); background: #f0f4fc;">
+                <div class="card-title"><span class="icon">🏷️</span> QR Code dos Equipamentos</div>
+                <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
+                    Gere e imprima o QR Code de cada equipamento cadastrado. Colado no equipamento, ele pode ser escaneado direto na tela "Novo Checklist" para identificar o equipamento sem precisar de internet.
+                </p>
+                <button class="save-btn" style="background: var(--primary); width: 100%;" onclick="window.open('gerar-qr.html?v=' + Date.now(), '_blank')">
+                    🏷️ Abrir Gerador de QR Code
+                </button>
+            </div>
+
             <div class="card">
                 <div class="card-title"><span class="icon">🗑️</span> Dados Locais</div>
                 <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
@@ -1182,7 +1192,7 @@
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="data.js?v=128"></script>
-    <script src="app.js?v=128"></script>
+    <script src="data.js?v=129"></script>
+    <script src="app.js?v=129"></script>
 </body>
 </html>

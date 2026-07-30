@@ -1,4 +1,4 @@
-const CACHE_NAME = 'checklist-v133';
+const CACHE_NAME = 'checklist-v134';
 const SHELL_URLS = [
     './',
     './index.html',
@@ -34,6 +34,13 @@ self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
 
     if (url.hostname === 'script.google.com' || url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
+        return;
+    }
+
+    // API do Supabase é dado dinâmico (mesma URL "?select=*" sempre) - com cache-first isso
+    // travava a resposta da PRIMEIRA consulta pra sempre no cache do SW, escondendo tudo que
+    // era sincronizado depois em outro aparelho até o próximo deploy trocar o CACHE_NAME.
+    if (url.hostname.endsWith('.supabase.co')) {
         return;
     }
 

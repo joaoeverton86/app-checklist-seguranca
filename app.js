@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v131';
+const APP_VERSION = 'v132';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -2951,7 +2951,11 @@ async function supabaseFetch(table, options = {}) {
             const errText = await response.text();
             throw new Error(`HTTP ${response.status}: ${errText}`);
         }
-        const data = await response.json();
+        // Prefer sem "return=representation" (ex: resolution=merge-duplicates puro) faz o
+        // PostgREST responder 204 com corpo vazio - response.json() lança exceção nesse caso
+        // e o caller nunca via "success: true", mesmo a escrita tendo funcionado no banco.
+        const text = await response.text();
+        const data = text ? JSON.parse(text) : null;
         return { success: true, data: data };
     } catch (err) {
         console.error(`Erro na requisição Supabase (${table}):`, err.message);

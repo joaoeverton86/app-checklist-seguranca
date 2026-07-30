@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v132';
+const APP_VERSION = 'v133';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -693,9 +693,17 @@ function showPage(pageId) {
             sincronizarComSupabase().then(() => renderEquipmentGrids());
         }
     } else if (pageId === 'pageReports') {
-        loadReports();
+        if (isSupabaseConfigured() && navigator.onLine) {
+            sincronizarComSupabase().then(() => loadReports());
+        } else {
+            loadReports();
+        }
     } else if (pageId === 'pageHistory') {
-        loadHistory();
+        if (isSupabaseConfigured() && navigator.onLine) {
+            sincronizarComSupabase().then(() => loadHistory());
+        } else {
+            loadHistory();
+        }
     } else if (pageId === 'pageConfig') {
         loadConfigPage();
     } else if (pageId === 'pageGerenciarItens') {
@@ -3141,6 +3149,8 @@ function iniciarSyncPeriodica() {
             if (isSupabaseConfigured()) {
                 sincronizarComSupabase().then(() => {
                     if (currentPage === 'pageCadastro') loadGestao();
+                    else if (currentPage === 'pageReports') loadReports();
+                    else if (currentPage === 'pageHistory') loadHistory();
                     updatePendingBadge();
                 });
             }

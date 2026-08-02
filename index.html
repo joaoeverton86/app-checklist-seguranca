@@ -64,7 +64,7 @@
 
             <!-- Links for Recovery and Sign Up -->
             <div style="margin-top: 25px; display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
-                <a onclick="showToast('⚠️ Recuperação de senha temporariamente desativada. Fale com o administrador.')" style="color: rgba(255, 255, 255, 0.5); text-decoration: underline; cursor: pointer;">Esqueci minha senha</a>
+                <a onclick="showPage('pageForgotPassword')" style="color: rgba(255, 255, 255, 0.7); text-decoration: underline; cursor: pointer;">Esqueci minha senha</a>
                 <a onclick="showPage('pageSignUp')" style="color: #2ecc71; font-weight: 600; text-decoration: underline; cursor: pointer;">Não tem conta? Cadastre-se</a>
             </div>
         </div>
@@ -145,15 +145,11 @@
             <!-- Passo 1: Solicitar Código -->
             <div id="recoverStep1" style="text-align: left; display: flex; flex-direction: column; gap: 15px;">
                 <p style="font-size: 13px; color: rgba(255, 255, 255, 0.8); line-height: 1.5; margin: 0 0 10px 0;">
-                    Insira sua matrícula e o e-mail cadastrado. Enviaremos um código de verificação de 6 dígitos para o seu e-mail.
+                    Insira sua matrícula ou e-mail cadastrado. Enviaremos um código de verificação de 6 dígitos para o seu e-mail.
                 </p>
                 <div class="form-group">
-                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 6px; display: block;">Matrícula *</label>
-                    <input type="text" class="form-input" id="recoverMatricula" placeholder="Digite sua matrícula" autocomplete="off" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 12px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
-                </div>
-                <div class="form-group">
-                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 6px; display: block;">E-mail *</label>
-                    <input type="email" class="form-input" id="recoverEmail" placeholder="Digite seu e-mail cadastrado" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 12px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                    <label class="form-label" style="color: rgba(255, 255, 255, 0.8); font-size: 12px; font-weight: 600; margin-bottom: 6px; display: block;">Matrícula ou E-mail *</label>
+                    <input type="text" class="form-input" id="recoverMatricula" placeholder="Digite sua matrícula ou e-mail" autocomplete="off" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 12px; font-size: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;">
                 </div>
                 <button class="save-btn" onclick="solicitarCodigoRecuperacao()" style="margin-top: 15px; width: 100%; padding: 14px; background: #2980b9; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background 0.2s;">
                     📩 Enviar Código
@@ -1202,7 +1198,7 @@
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="data.js?v=134"></script>
-    <script src="app.js?v=134"></script>
+    <script src="data.js?v=135"></script>
+    <script src="app.js?v=135"></script>
 </body>
 </html>

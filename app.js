@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v134';
+const APP_VERSION = 'v135';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -6825,15 +6825,29 @@ function showSignUpError(msg) {
     }
 }
 
+async function chamarEdgeFunction(nome, payload) {
+    const url = `${getSupabaseUrl()}/functions/v1/${nome}`;
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'apikey': getSupabaseKey(),
+            'Authorization': `Bearer ${getSupabaseKey()}`
+        },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, ...data };
+}
+
 async function solicitarCodigoRecuperacao() {
     const matricula = document.getElementById('recoverMatricula').value.trim();
-    const email = document.getElementById('recoverEmail').value.trim();
     const errorEl = document.getElementById('recoverError');
-    
+
     if (errorEl) errorEl.style.display = 'none';
 
-    if (!matricula || !email) {
-        showRecoverError('❌ Preencha a Matrícula e o E-mail.');
+    if (!matricula) {
+        showRecoverError('❌ Preencha a Matrícula ou E-mail.');
         return;
     }
 
@@ -6847,45 +6861,31 @@ async function solicitarCodigoRecuperacao() {
         return;
     }
 
-    showToast('Verificando dados no Supabase...');
-    const matriculaNorm = matricula.toUpperCase();
-    const emailNorm = email.toLowerCase();
+    showToast('Enviando código...');
 
     try {
-        const res = await supabaseFetch('colaboradores_checklist', {
-            method: 'GET',
-            query: `?matricula=eq.${encodeURIComponent(matriculaNorm)}&email=eq.${encodeURIComponent(emailNorm)}`
-        });
+        const res = await chamarEdgeFunction('solicitar-recuperacao-senha', { login: matricula });
 
-        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
-            showToast('✅ Identidade confirmada no Supabase!');
+        if (res.ok && res.success) {
+            showToast('✅ Se os dados estiverem corretos, um código chegará no seu e-mail em instantes.');
             document.getElementById('recoverStep1').style.display = 'none';
             document.getElementById('recoverStep2').style.display = 'flex';
-            const codeInput = document.getElementById('recoverCode');
-            if (codeInput) {
-                codeInput.value = '123456';
-                const parent = codeInput.closest('.form-group');
-                if (parent) parent.style.display = 'none';
-            }
         } else {
-            showRecoverError('❌ Matrícula ou E-mail não cadastrados ou incorretos.');
+            showRecoverError('❌ ' + (res.error || 'Falha ao solicitar o código.'));
         }
     } catch (err) {
         console.error('Erro na solicitação de recuperação:', err);
-        showRecoverError('❌ Falha na conexão com o Supabase.');
+        showRecoverError('❌ Falha na conexão com o servidor.');
     }
 }
 
 async function redefinirSenhaComCodigo() {
-    showRecoverError('⚠️ Recuperação de senha temporariamente desativada. Fale com o administrador para redefinir sua senha.');
-    return;
-    // eslint-disable-next-line no-unreachable
     const matricula = document.getElementById('recoverMatricula').value.trim();
-    const email = document.getElementById('recoverEmail').value.trim();
+    const code = document.getElementById('recoverCode').value.trim();
     const newSenha = document.getElementById('recoverNewSenha').value;
     const newSenhaConfirm = document.getElementById('recoverNewSenhaConfirm').value;
-    
-    if (!matricula || !email || !newSenha) {
+
+    if (!matricula || !code || !newSenha) {
         showRecoverError('❌ Preencha todos os campos.');
         return;
     }
@@ -6911,45 +6911,27 @@ async function redefinirSenhaComCodigo() {
     }
 
     showToast('Redefinindo senha...');
-    const matriculaNorm = matricula.toUpperCase();
-    const emailNorm = email.toLowerCase();
 
     try {
         const hashedSenha = await sha256(newSenha);
-
-        const checkRes = await supabaseFetch('colaboradores_checklist', {
-            method: 'GET',
-            query: `?matricula=eq.${encodeURIComponent(matriculaNorm)}&email=eq.${encodeURIComponent(emailNorm)}`
+        const res = await chamarEdgeFunction('confirmar-recuperacao-senha', {
+            login: matricula,
+            otp: code,
+            nova_senha_hash: hashedSenha
         });
 
-        if (checkRes.success && Array.isArray(checkRes.data) && checkRes.data.length > 0) {
-            const colab = checkRes.data[0];
-            colab.senha = hashedSenha;
-            colab.synced = true;
-
-            const updateRes = await supabaseFetch('colaboradores_checklist', {
-                method: 'POST',
-                query: '?on_conflict=id',
-                prefer: 'resolution=merge-duplicates',
-                body: [colab]
-            });
-
-            if (updateRes.success) {
-                await saveToIndexedDB('colaboradores', colab, true);
-                showToast('✅ Senha redefinida com sucesso!');
-                setTimeout(() => {
-                    cancelarRecuperacao();
-                    showPage('pageLogin');
-                }, 1500);
-            } else {
-                showRecoverError('❌ Erro ao atualizar senha no Supabase: ' + (updateRes.error || ''));
-            }
+        if (res.ok && res.success) {
+            showToast('✅ Senha redefinida com sucesso!');
+            setTimeout(() => {
+                cancelarRecuperacao();
+                showPage('pageLogin');
+            }, 1500);
         } else {
-            showRecoverError('❌ Colaborador não encontrado.');
+            showRecoverError('❌ ' + (res.error || 'Não foi possível redefinir a senha.'));
         }
     } catch (err) {
         console.error('Erro na redefinição de senha:', err);
-        showRecoverError('❌ Falha ao conectar ao Supabase.');
+        showRecoverError('❌ Falha ao conectar ao servidor.');
     }
 }
 
@@ -6963,7 +6945,6 @@ function showRecoverError(msg) {
 
 function cancelarRecuperacao() {
     document.getElementById('recoverMatricula').value = '';
-    document.getElementById('recoverEmail').value = '';
     document.getElementById('recoverCode').value = '';
     document.getElementById('recoverNewSenha').value = '';
     document.getElementById('recoverNewSenhaConfirm').value = '';

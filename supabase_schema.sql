@@ -387,6 +387,44 @@ CREATE POLICY "Exclusao de fotos nc via anon" ON storage.objects
     FOR DELETE USING (bucket_id = 'nc-fotos');
 
 -- ============================================================
+-- RECUPERAÇÃO DE SENHA (OTP por e-mail)
+-- ============================================================
+
+-- Códigos de recuperação de senha (OTP de 6 dígitos). Sem policy de RLS para
+-- anon/authenticated: só as Edge Functions abaixo (com a service_role key) leem/
+-- escrevem aqui, então nem precisa de policy permissiva - RLS habilitado sem
+-- nenhuma policy já bloqueia o anon key por completo.
+CREATE TABLE IF NOT EXISTS public.password_resets (
+    id BIGSERIAL PRIMARY KEY,
+    colaborador_id TEXT NOT NULL REFERENCES public.colaboradores_checklist(id) ON DELETE CASCADE,
+    otp_hash TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used BOOLEAN NOT NULL DEFAULT false,
+    attempts INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_resets_colaborador ON public.password_resets(colaborador_id, created_at DESC);
+
+ALTER TABLE public.password_resets ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON public.password_resets FROM anon, authenticated;
+
+-- Duas Edge Functions (código em supabase/functions/, deployadas via painel/CLI do
+-- Supabase - não são SQL, por isso só documentadas aqui):
+--   - solicitar-recuperacao-senha: recebe { login } (matrícula ou e-mail), gera um
+--     OTP de 6 dígitos, guarda o hash SHA-256 em password_resets (expira em 10 min,
+--     limite de 1 pedido/min por colaborador) e envia por e-mail via Resend. Sempre
+--     responde a mesma mensagem genérica de sucesso, exista ou não a conta, pra não
+--     vazar quais matrículas/e-mails estão cadastrados.
+--   - confirmar-recuperacao-senha: recebe { login, otp, nova_senha_hash }, valida o
+--     código mais recente não usado (máx. 5 tentativas, expira em 10 min) e, se
+--     bater, atualiza colaboradores_checklist.senha.
+-- Ambas rodam com a service_role key (bypassa RLS e os GRANTs de coluna de
+-- "senha"), então precisam do secret RESEND_API_KEY configurado no projeto
+-- (Project Settings > Edge Functions > Secrets) para o envio de e-mail funcionar.
+
+-- ============================================================
 -- RISCOS RESIDUAIS CONHECIDOS (documentados, não corrigidos nesta versão)
 -- ============================================================
 -- 1. cadastros, checklists, relatos, checklist_items e nao_conformidades continuam

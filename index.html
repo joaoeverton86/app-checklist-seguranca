@@ -229,6 +229,10 @@
                     <span class="icon" style="color: var(--danger);">🚫</span>
                     <span class="label" style="color: var(--danger); font-weight: 600;">Interdição Rápida</span>
                 </a>
+                <a class="action-btn" onclick="showPage('pageExtintores')">
+                    <span class="icon">🧯</span>
+                    <span class="label">Extintores</span>
+                </a>
             </div>
             
             <!-- Correction Deadlines Card -->
@@ -796,6 +800,90 @@
         </div>
     </div>
 
+    <!-- Page: Extintores (lista) -->
+    <div class="page" id="pageExtintores">
+        <div class="content">
+            <div class="section-title">🧯 Extintores de Incêndio</div>
+
+            <div class="search-container" style="margin-bottom: 12px;">
+                <input type="text" class="search-input" id="extintorSearch"
+                       placeholder="Buscar por ID, tipo, setor..."
+                       oninput="filterExtintores(this.value)" autocomplete="off">
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span style="font-size: 12px; color: var(--text-light);" id="extintorCount">0 itens</span>
+                <button id="btnNovoExtintor" onclick="openNovoExtintor()" style="background: var(--primary); color: white; border: none; border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer;">+ Novo Extintor</button>
+            </div>
+
+            <div id="extintorList">
+                <div class="empty-state">
+                    <div class="icon">🧯</div>
+                    <div class="text">Nenhum extintor cadastrado</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page: Novo Extintor -->
+    <div class="page" id="pageNovoExtintor">
+        <div class="content">
+            <div class="section-title">Novo Extintor</div>
+            <div class="card">
+                <div class="form-group">
+                    <label class="form-label">ID/Tag do Extintor *</label>
+                    <input type="text" class="form-input" id="extintorId" placeholder="Ex: EXT-001">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tipo *</label>
+                    <select class="form-select" id="extintorTipo">
+                        <option value="">Selecione...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Capacidade</label>
+                    <input type="text" class="form-input" id="extintorCapacidade" placeholder="Ex: 6 kg">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Setor</label>
+                    <input type="text" class="form-input" id="extintorSetor" placeholder="Ex: Canteiro Central">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Localização</label>
+                    <input type="text" class="form-input" id="extintorLocalizacao" placeholder="Ex: Corredor próximo ao almoxarifado">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Data de Fabricação</label>
+                    <input type="date" class="form-input" id="extintorFabricacao">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Última Recarga</label>
+                    <input type="date" class="form-input" id="extintorUltimaRecarga">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Próxima Recarga (Vencimento)</label>
+                    <input type="date" class="form-input" id="extintorProximaRecarga">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Próximo Teste Hidrostático</label>
+                    <input type="date" class="form-input" id="extintorProximoTesteHidrostatico">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Observações</label>
+                    <textarea class="form-textarea" id="extintorObs" placeholder="Informações adicionais..."></textarea>
+                </div>
+                <div class="form-group" id="groupExtintorStatus" style="display: none;">
+                    <label class="form-label">Status</label>
+                    <select class="form-select" id="extintorStatus">
+                        <option value="ativo" selected>🟢 Ativo</option>
+                        <option value="inativo">🔴 Inativo</option>
+                    </select>
+                </div>
+                <button class="save-btn" onclick="saveExtintor()">Cadastrar Extintor</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Page: Checklist Detail -->
     <div class="page" id="pageChecklistDetail">
         <div class="content" id="checklistDetailContent"></div>
@@ -1198,7 +1286,8 @@
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="data.js?v=135"></script>
-    <script src="app.js?v=135"></script>
+    <script src="qrcode.min.js?v=2"></script>
+    <script src="data.js?v=136"></script>
+    <script src="app.js?v=136"></script>
 </body>
 </html>

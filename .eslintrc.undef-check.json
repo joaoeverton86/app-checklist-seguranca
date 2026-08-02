@@ -12,9 +12,12 @@
     "EQUIPMENT_TYPES": "readonly",
     "ITEM_NAMES": "readonly",
     "CATEGORY_ICONS": "readonly",
+    "EXTINTOR_TIPOS": "readonly",
+    "EXTINTOR_INSPECTION_ITEMS": "readonly",
     "jspdf": "readonly",
     "Chart": "readonly",
     "jsQR": "readonly",
+    "qrcode": "readonly",
     "sendPrompt": "readonly"
   },
   "rules": {

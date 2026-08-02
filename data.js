@@ -1098,3 +1098,29 @@ const CATEGORY_ICONS = {
     epi: '🦺',
     outro: '📦'
 };
+
+// ============================================
+// MÓDULO DE EXTINTORES (isolado de EQUIPMENT_TYPES/ITEM_NAMES por pedido)
+// ============================================
+
+const EXTINTOR_TIPOS = [
+    { id: 'pqs', label: 'Pó Químico Seco (PQS)' },
+    { id: 'co2', label: 'CO2 (Gás Carbônico)' },
+    { id: 'agua', label: 'Água Pressurizada' },
+    { id: 'espuma', label: 'Espuma Mecânica' },
+    { id: 'outro', label: 'Outro' }
+];
+
+// Inspeção visual mensal (NBR 12962 / NR-23) - mesma lista pra qualquer tipo de
+// agente extintor, já que a norma não varia o procedimento por tipo, só as
+// especificações do equipamento em si (usado na Fase 2).
+const EXTINTOR_INSPECTION_ITEMS = [
+    { id: 'ext_manometro', text: 'Manômetro indicando pressão na faixa correta (zona verde)', nr: 'NBR 12962', risk: 'high' },
+    { id: 'ext_lacre', text: 'Lacre e pino de segurança intactos', nr: 'NBR 12962', risk: 'high' },
+    { id: 'ext_mangueira', text: 'Mangueira/difusor sem rachaduras, obstruções ou danos', nr: 'NBR 12962', risk: 'high' },
+    { id: 'ext_corpo', text: 'Corpo do extintor sem amassados, corrosão ou vazamentos', nr: 'NBR 12962', risk: 'high' },
+    { id: 'ext_rotulo', text: 'Rótulo/etiqueta legível com instruções de uso', nr: 'NBR 12962', risk: 'medium' },
+    { id: 'ext_sinalizacao', text: 'Sinalização visível e acesso desobstruído', nr: 'NR-23', risk: 'high' },
+    { id: 'ext_suporte', text: 'Suporte/altura de fixação conforme norma', nr: 'NBR 12962', risk: 'medium' },
+    { id: 'ext_validade', text: 'Extintor dentro do prazo de recarga', nr: 'NBR 12962', risk: 'high' }
+];

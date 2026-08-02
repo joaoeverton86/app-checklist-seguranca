@@ -425,6 +425,36 @@ REVOKE ALL ON public.password_resets FROM anon, authenticated;
 -- (Project Settings > Edge Functions > Secrets) para o envio de e-mail funcionar.
 
 -- ============================================================
+-- MÓDULO DE EXTINTORES (Fase 1 - cadastro; sem relação com cadastros/checklists
+-- de equipamento, por pedido explícito de manter esse domínio isolado)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.extintores (
+    id TEXT PRIMARY KEY,                  -- ID/tag único, normalizado UPPERCASE (payload do QR Code)
+    tipo TEXT,                            -- PQS / CO2 / Água / Espuma / etc.
+    capacidade TEXT,                      -- ex: "6 kg", "10 L"
+    setor TEXT,
+    localizacao TEXT,                     -- descrição livre do ponto de fixação
+    fabricacao TEXT,
+    ultima_recarga TEXT,
+    proxima_recarga TEXT,                 -- "vencimento" usado nos alertas (Fase 3)
+    proximo_teste_hidrostatico TEXT,      -- ciclo de 5 anos, opcional
+    ativo BOOLEAN DEFAULT true,
+    obs TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.extintores ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acesso total aos extintores" ON public.extintores;
+CREATE POLICY "Acesso total aos extintores" ON public.extintores FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON public.extintores TO anon;
+
+-- Fase 2 (inspeção mensal via QR Code) adicionará public.inspecoes_extintores
+-- quando for implementada.
+
+-- ============================================================
 -- RISCOS RESIDUAIS CONHECIDOS (documentados, não corrigidos nesta versão)
 -- ============================================================
 -- 1. cadastros, checklists, relatos, checklist_items e nao_conformidades continuam

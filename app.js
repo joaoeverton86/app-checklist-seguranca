@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v135';
+const APP_VERSION = 'v136';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -502,7 +502,7 @@ function updateConnectionStatus() {
 }
 
 async function getSyncStatus() {
-    const stores = ['cadastros', 'colaboradores', 'checklists', 'issues', 'checklist_items'];
+    const stores = ['cadastros', 'colaboradores', 'checklists', 'issues', 'checklist_items', 'extintores'];
     let pendentes = 0;
     for (const store of stores) {
         const items = await getAllFromIndexedDB(store);
@@ -579,7 +579,7 @@ function showPage(pageId) {
     if (sessionStr) {
         const session = JSON.parse(sessionStr);
         if (session.role === 'Tecnico') {
-            const forbiddenPages = ['pageCadastro', 'pageGerenciarItens', 'pageNovoEquipamento', 'pageNovoColaborador'];
+            const forbiddenPages = ['pageCadastro', 'pageGerenciarItens', 'pageNovoEquipamento', 'pageNovoColaborador', 'pageNovoExtintor'];
             if (forbiddenPages.includes(pageId)) {
                 showToast('🚫 Acesso restrito a administradores.');
                 showPage('pageHome');
@@ -611,7 +611,9 @@ function showPage(pageId) {
         'pageNovoColaborador': 'navConfig',
         'pageGerenciarItens': 'navConfig',
         'pageInterdicao': 'navHome',
-        'pageLogin': 'navHome'
+        'pageLogin': 'navHome',
+        'pageExtintores': 'navHome',
+        'pageNovoExtintor': 'navHome'
     };
     if (navMap[pageId] && document.getElementById(navMap[pageId])) {
         document.getElementById(navMap[pageId]).classList.add('active');
@@ -657,7 +659,9 @@ function showPage(pageId) {
         'pageNovoEquipamento': ['Novo Equipamento', 'Cadastrar equipamento/veículo'],
         'pageNovoColaborador': ['Novo Colaborador', 'Cadastrar colaborador'],
         'pageGerenciarItens': ['Gerenciar Itens', 'Itens de verificação'],
-        'pageInterdicao': ['Interdição Rápida', 'Bloqueio imediato de equipamento']
+        'pageInterdicao': ['Interdição Rápida', 'Bloqueio imediato de equipamento'],
+        'pageExtintores': ['Extintores', 'Cadastro de extintores de incêndio'],
+        'pageNovoExtintor': ['Novo Extintor', 'Cadastrar extintor']
     };
     
     if (titles[pageId]) {
@@ -711,6 +715,12 @@ function showPage(pageId) {
     } else if (pageId === 'pageInterdicao') {
         loadInterdicaoEquipments();
         setTimeout(() => initInterdicaoSignatures(), 50);
+    } else if (pageId === 'pageExtintores') {
+        if (isSupabaseConfigured() && navigator.onLine) {
+            sincronizarComSupabase().then(() => loadExtintores(extintorSearchQuery));
+        } else {
+            loadExtintores(extintorSearchQuery);
+        }
     }
 }
 
@@ -1628,6 +1638,274 @@ async function getAllCadastros() {
 
 async function getAllColaboradores() {
     return await getAllFromIndexedDB('colaboradores');
+}
+
+// ============================================
+// MÓDULO DE EXTINTORES (Fase 1 - cadastro)
+// Funções isoladas de propósito: não reaproveitam a lógica de cadastros/checklists
+// de equipamento (só a infraestrutura genérica: saveToIndexedDB, supabaseFetch etc).
+// ============================================
+
+let extintorSearchQuery = '';
+
+function populateExtintorTipoSelect(selectedId) {
+    const select = document.getElementById('extintorTipo');
+    if (!select) return;
+    select.innerHTML = '<option value="">Selecione...</option>' +
+        EXTINTOR_TIPOS.map(t => `<option value="${t.id}">${escapeHTML(t.label)}</option>`).join('');
+    if (selectedId) select.value = selectedId;
+}
+
+function openNovoExtintor() {
+    populateExtintorTipoSelect();
+    document.getElementById('extintorId').value = '';
+    document.getElementById('extintorCapacidade').value = '';
+    document.getElementById('extintorSetor').value = '';
+    document.getElementById('extintorLocalizacao').value = '';
+    document.getElementById('extintorFabricacao').value = '';
+    document.getElementById('extintorUltimaRecarga').value = '';
+    document.getElementById('extintorProximaRecarga').value = '';
+    document.getElementById('extintorProximoTesteHidrostatico').value = '';
+    document.getElementById('extintorObs').value = '';
+    document.getElementById('groupExtintorStatus').style.display = 'none';
+
+    const btn = document.querySelector('#pageNovoExtintor .save-btn');
+    if (btn) {
+        btn.textContent = 'Cadastrar Extintor';
+        btn.setAttribute('onclick', 'saveExtintor()');
+    }
+    showPage('pageNovoExtintor');
+}
+
+async function saveExtintor() {
+    const id = document.getElementById('extintorId').value.trim().toUpperCase();
+    const tipo = document.getElementById('extintorTipo').value;
+
+    if (!id || !tipo) {
+        showToast('Preencha o ID e o Tipo do extintor');
+        return;
+    }
+
+    const existing = await getFromIndexedDB('extintores', id);
+    if (existing && existing.ativo !== false) {
+        showToast('⚠️ Já existe um extintor com ID "' + id + '"');
+        return;
+    }
+
+    const extintor = {
+        id,
+        tipo,
+        capacidade: document.getElementById('extintorCapacidade').value.trim(),
+        setor: document.getElementById('extintorSetor').value.trim(),
+        localizacao: document.getElementById('extintorLocalizacao').value.trim(),
+        fabricacao: document.getElementById('extintorFabricacao').value,
+        ultimaRecarga: document.getElementById('extintorUltimaRecarga').value,
+        proximaRecarga: document.getElementById('extintorProximaRecarga').value,
+        proximoTesteHidrostatico: document.getElementById('extintorProximoTesteHidrostatico').value,
+        obs: document.getElementById('extintorObs').value.trim(),
+        timestamp: new Date().toISOString(),
+        ativo: true,
+        synced: false
+    };
+
+    await saveToIndexedDB('extintores', extintor);
+    registrarAuditoria('create', 'extintores', extintor.id, `${extintor.id} (${extintor.tipo})`);
+
+    showToast('Extintor cadastrado!');
+    setTimeout(() => showPage('pageExtintores'), 800);
+}
+
+async function editExtintor(id) {
+    const extintor = await getFromIndexedDB('extintores', id);
+    if (!extintor) return;
+
+    showPage('pageNovoExtintor');
+
+    setTimeout(() => {
+        populateExtintorTipoSelect(extintor.tipo);
+        document.getElementById('extintorId').value = extintor.id || '';
+        document.getElementById('extintorCapacidade').value = extintor.capacidade || '';
+        document.getElementById('extintorSetor').value = extintor.setor || '';
+        document.getElementById('extintorLocalizacao').value = extintor.localizacao || '';
+        document.getElementById('extintorFabricacao').value = extintor.fabricacao || '';
+        document.getElementById('extintorUltimaRecarga').value = extintor.ultimaRecarga || '';
+        document.getElementById('extintorProximaRecarga').value = extintor.proximaRecarga || '';
+        document.getElementById('extintorProximoTesteHidrostatico').value = extintor.proximoTesteHidrostatico || '';
+        document.getElementById('extintorObs').value = extintor.obs || '';
+
+        const statusGroup = document.getElementById('groupExtintorStatus');
+        statusGroup.style.display = 'block';
+        document.getElementById('extintorStatus').value = extintor.ativo !== false ? 'ativo' : 'inativo';
+
+        const btn = document.querySelector('#pageNovoExtintor .save-btn');
+        if (btn) {
+            btn.textContent = 'Atualizar Extintor';
+            btn.setAttribute('onclick', `saveExtintorEdit('${id}')`);
+        }
+    }, 50);
+}
+
+async function saveExtintorEdit(id) {
+    const oldExtintor = await getFromIndexedDB('extintores', id);
+    if (!oldExtintor) return;
+
+    const newId = document.getElementById('extintorId').value.trim().toUpperCase();
+    if (!newId) {
+        showToast('Preencha o ID do extintor');
+        return;
+    }
+
+    if (newId !== id.toUpperCase()) {
+        const existing = await getFromIndexedDB('extintores', newId);
+        if (existing && existing.ativo !== false) {
+            showToast('⚠️ Já existe um extintor com ID "' + newId + '"');
+            return;
+        }
+        await deleteFromIndexedDB('extintores', id);
+        if (isSupabaseConfigured()) {
+            await supabaseFetch('extintores', { method: 'DELETE', query: '?id=eq.' + encodeURIComponent(id) });
+            await registrarExclusaoRemota('extintores', id);
+        }
+    }
+
+    const statusVal = document.getElementById('extintorStatus').value || 'ativo';
+
+    const extintor = {
+        ...oldExtintor,
+        id: newId,
+        tipo: document.getElementById('extintorTipo').value,
+        capacidade: document.getElementById('extintorCapacidade').value.trim(),
+        setor: document.getElementById('extintorSetor').value.trim(),
+        localizacao: document.getElementById('extintorLocalizacao').value.trim(),
+        fabricacao: document.getElementById('extintorFabricacao').value,
+        ultimaRecarga: document.getElementById('extintorUltimaRecarga').value,
+        proximaRecarga: document.getElementById('extintorProximaRecarga').value,
+        proximoTesteHidrostatico: document.getElementById('extintorProximoTesteHidrostatico').value,
+        obs: document.getElementById('extintorObs').value.trim(),
+        ativo: statusVal === 'ativo',
+        synced: false
+    };
+
+    await saveToIndexedDB('extintores', extintor);
+    registrarAuditoria('update', 'extintores', extintor.id, `${extintor.id} (${extintor.tipo})`);
+
+    showToast('Extintor atualizado!');
+    setTimeout(() => showPage('pageExtintores'), 800);
+}
+
+async function deleteExtintorPermanente(id) {
+    const extintor = await getFromIndexedDB('extintores', id);
+    const label = extintor ? `${extintor.id} (${extintor.tipo || ''})` : id;
+
+    if (!confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o extintor "${label}"?`)) return;
+
+    if (isSupabaseConfigured()) {
+        if (!navigator.onLine) {
+            showToast('⚠️ Você está offline. Conecte-se à internet para excluir definitivamente.');
+            return;
+        }
+        const delRes = await supabaseFetch('extintores', {
+            method: 'DELETE',
+            query: '?id=eq.' + encodeURIComponent(id)
+        });
+        if (!delRes.success) {
+            showToast('❌ Não foi possível excluir no servidor (' + (delRes.error || 'erro desconhecido') + ').');
+            return;
+        }
+        await registrarExclusaoRemota('extintores', id);
+        await registrarAuditoria('delete', 'extintores', id, label);
+    }
+
+    await deleteFromIndexedDB('extintores', id);
+    showToast('Extintor excluído com sucesso');
+    loadExtintores();
+}
+
+function filterExtintores(query) {
+    extintorSearchQuery = query || '';
+    loadExtintores(extintorSearchQuery);
+}
+
+async function loadExtintores(search = '') {
+    const container = document.getElementById('extintorList');
+    const countEl = document.getElementById('extintorCount');
+    const query = (search || '').toLowerCase().trim();
+
+    const extintores = await getAllFromIndexedDB('extintores');
+    let items = [...extintores];
+    items.sort((a, b) => {
+        const aAtivo = a.ativo !== false;
+        const bAtivo = b.ativo !== false;
+        if (aAtivo === bAtivo) return 0;
+        return aAtivo ? -1 : 1;
+    });
+
+    if (query) {
+        items = items.filter(e =>
+            (e.id && e.id.toLowerCase().includes(query)) ||
+            (e.tipo && e.tipo.toLowerCase().includes(query)) ||
+            (e.setor && e.setor.toLowerCase().includes(query))
+        );
+    }
+
+    countEl.textContent = `${items.length} extintor(es)`;
+
+    if (items.length === 0) {
+        container.innerHTML = `<div class="empty-state"><div class="icon">🧯</div><div class="text">${query ? 'Nenhum resultado para "' + escapeHTML(query) + '"' : 'Nenhum extintor cadastrado'}</div></div>`;
+        return;
+    }
+
+    container.innerHTML = items.map(e => {
+        const isAtivo = e.ativo !== false;
+        const tipoLabel = (EXTINTOR_TIPOS.find(t => t.id === e.tipo) || {}).label || e.tipo || '';
+        const statusBadge = isAtivo
+            ? `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #d5f5e3; color: #1e8449; font-weight: 600;">🟢 Ativo</span>`
+            : `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #f2f3f4; color: #7f8c8d; font-weight: 600;">🔴 Inativo</span>`;
+        const opacityStyle = isAtivo ? '' : 'opacity: 0.65; background: #f8f9f9;';
+        const pendingBadge = !e.supabase_synced
+            ? `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #fff3cd; color: #9a7d0a; font-weight: 600; margin-left: 4px;" title="Ainda não sincronizado com o servidor">⏳ Pendente</span>`
+            : '';
+
+        return `
+            <div class="history-item" style="flex-wrap: wrap; ${opacityStyle}">
+                <div class="history-info">
+                    <div class="history-title">🧯 ${escapeHTML(e.id)}</div>
+                    <div class="history-date">${escapeHTML(tipoLabel)}${e.capacidade ? ' • ' + escapeHTML(e.capacidade) : ''}</div>
+                    <div class="history-date">${escapeHTML(e.setor || '')}</div>
+                    <div style="margin-top: 4px;">${statusBadge}${pendingBadge}</div>
+                </div>
+                <div style="display: flex; gap: 4px; align-items: center;">
+                    <button onclick="gerarQRExtintor('${e.id}')" title="Gerar QR Code" style="background: #6b21a8; color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🏷️</button>
+                    <button onclick="editExtintor('${e.id}')" title="Editar" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>
+                    <button onclick="deleteExtintorPermanente('${e.id}')" title="Excluir Definitivamente" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🗑️</button>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+function gerarQRExtintor(id) {
+    try {
+        const qr = qrcode(0, 'M');
+        qr.addData(id);
+        qr.make();
+        const imgTag = qr.createImgTag(6, 4);
+        showModal(`
+            <h3 style="margin-top:0;">🏷️ QR Code - ${escapeHTML(id)}</h3>
+            <div style="text-align:center; padding: 16px; background: white; border-radius: 8px;">${imgTag}</div>
+            <button class="save-btn" style="margin-top: 12px;" onclick="baixarQRExtintor('${id}')">Baixar Imagem</button>
+        `);
+    } catch (err) {
+        showToast('Erro ao gerar QR Code: ' + err.message);
+    }
+}
+
+function baixarQRExtintor(id) {
+    const img = document.querySelector('#modalContent img');
+    if (!img) return;
+    const link = document.createElement('a');
+    link.download = id + '.png';
+    link.href = img.src;
+    link.click();
 }
 
 // ============================================
@@ -2621,7 +2899,7 @@ function saveIssue() {
 
 function openDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open('ChecklistSeguranca', 5);
+        const request = indexedDB.open('ChecklistSeguranca', 6);
         request.onupgradeneeded = (e) => {
             const db = e.target.result;
             if (!db.objectStoreNames.contains('checklists')) {
@@ -2643,6 +2921,10 @@ function openDB() {
                 // Fotos de evidência de item de checklist. Guardadas como Blob (bem mais
                 // leve que base64) até serem enviadas ao Supabase Storage.
                 db.createObjectStore('fotos', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('extintores')) {
+                // Módulo de extintores (Fase 1) - isolado de cadastros/checklists por pedido.
+                db.createObjectStore('extintores', { keyPath: 'id' });
             }
         };
         request.onsuccess = (e) => resolve(e.target.result);
@@ -5541,6 +5823,21 @@ function converterParaSupabase(store, item) {
             ativo: item.ativo !== false ? 'Sim' : 'Não'
         };
     }
+    if (store === 'extintores') {
+        return {
+            id: String(item.id || '').trim().toUpperCase(),
+            tipo: item.tipo || '',
+            capacidade: item.capacidade || '',
+            setor: item.setor || '',
+            localizacao: item.localizacao || '',
+            fabricacao: item.fabricacao || '',
+            ultima_recarga: item.ultimaRecarga || '',
+            proxima_recarga: item.proximaRecarga || '',
+            proximo_teste_hidrostatico: item.proximoTesteHidrostatico || '',
+            obs: item.obs || '',
+            ativo: item.ativo !== false
+        };
+    }
     return item;
 }
 
@@ -5634,6 +5931,23 @@ function converterParaAppFromSupabase(table, row) {
             supabase_synced: true
         };
     }
+    if (table === 'extintores') {
+        return {
+            id: row.id,
+            tipo: row.tipo,
+            capacidade: row.capacidade,
+            setor: row.setor,
+            localizacao: row.localizacao,
+            fabricacao: row.fabricacao,
+            ultimaRecarga: row.ultima_recarga,
+            proximaRecarga: row.proxima_recarga,
+            proximoTesteHidrostatico: row.proximo_teste_hidrostatico,
+            obs: row.obs,
+            ativo: row.ativo,
+            synced: true,
+            supabase_synced: true
+        };
+    }
     return row;
 }
 
@@ -5645,7 +5959,8 @@ async function sincronizarItemIndividualSupabase(storeName, data) {
             'colaboradores': 'colaboradores_checklist',
             'checklists': 'checklists',
             'issues': 'relatos',
-            'checklist_items': 'checklist_items'
+            'checklist_items': 'checklist_items',
+            'extintores': 'extintores'
         };
         const table = tableMap[storeName];
         if (!table) return;
@@ -5728,7 +6043,8 @@ async function sincronizarComSupabase() {
             { table: 'colaboradores_checklist', store: 'colaboradores' },
             { table: 'checklists', store: 'checklists' },
             { table: 'relatos', store: 'issues' },
-            { table: 'checklist_items', store: 'checklist_items' }
+            { table: 'checklist_items', store: 'checklist_items' },
+            { table: 'extintores', store: 'extintores' }
         ];
 
         // Remove localmente qualquer registro já excluído definitivamente em outro
@@ -5844,7 +6160,8 @@ async function migrarDadosLocaisParaSupabase() {
             { store: 'colaboradores', table: 'colaboradores_checklist' },
             { store: 'checklists', table: 'checklists' },
             { store: 'issues', table: 'relatos' },
-            { store: 'checklist_items', table: 'checklist_items' }
+            { store: 'checklist_items', table: 'checklist_items' },
+            { store: 'extintores', table: 'extintores' }
         ];
 
         let totalEnviados = 0;
@@ -6986,23 +7303,27 @@ function updateNavigationForRole(role) {
     const navCadastro = document.getElementById('navCadastro');
     const navConfig = document.getElementById('navConfig');
     const btnHomeCadastro = document.getElementById('btnHomeCadastro');
+    const btnNovoExtintor = document.getElementById('btnNovoExtintor');
     const logoutBtn = document.getElementById('logoutBtn');
-    
+
     const normRole = normalizarNivelAcesso(role);
-    
+
     if (normRole === 'Admin') {
         if (navCadastro) navCadastro.style.display = 'inline-flex';
         if (navConfig) navConfig.style.display = 'inline-flex';
         if (btnHomeCadastro) btnHomeCadastro.style.display = 'flex';
+        if (btnNovoExtintor) btnNovoExtintor.style.display = 'inline-flex';
     } else if (role) {
         if (navCadastro) navCadastro.style.display = 'none';
         if (navConfig) navConfig.style.display = 'none';
         if (btnHomeCadastro) btnHomeCadastro.style.display = 'none';
+        if (btnNovoExtintor) btnNovoExtintor.style.display = 'none';
     } else {
         // Ninguém logado (ou deslogando)
         if (navCadastro) navCadastro.style.display = 'none';
         if (navConfig) navConfig.style.display = 'none';
         if (btnHomeCadastro) btnHomeCadastro.style.display = 'none';
+        if (btnNovoExtintor) btnNovoExtintor.style.display = 'none';
     }
     
     // Exibir/ocultar botão de logout no header

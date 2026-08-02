@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v137';
+const APP_VERSION = 'v138';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -690,6 +690,7 @@ function showPage(pageId) {
         loadRecentChecklists();
         renderDeadlineAlerts();
         loadTopRisks();
+        renderExtintorAlerts();
     } else if (pageId === 'pageCadastro') {
         if (isSupabaseConfigured() && navigator.onLine) {
             sincronizarComSupabase().then(() => switchGestaoTab(gestaoTab));
@@ -1835,6 +1836,8 @@ async function loadExtintores(search = '') {
     const countEl = document.getElementById('extintorCount');
     const query = (search || '').toLowerCase().trim();
 
+    atualizarPendentesMesExtintores();
+
     const extintores = await getAllFromIndexedDB('extintores');
     let items = [...extintores];
     items.sort((a, b) => {
@@ -2115,6 +2118,126 @@ async function abrirExtintorDetail(id) {
 
     document.getElementById('extintorDetailContent').innerHTML = html;
     showPage('pageExtintorDetail');
+}
+
+// ============================================
+// MÓDULO DE EXTINTORES (Fase 3 - painel de vencimento)
+// Espelha renderDeadlineAlerts() (app.js), mas como card separado lendo
+// extintores/proximaRecarga em vez de checklists/prazoAdequacao - por pedido,
+// os dois domínios não se misturam mesmo na tela de alertas.
+// ============================================
+
+async function renderExtintorAlerts() {
+    const container = document.getElementById('extintorAlertsList');
+    const card = document.getElementById('extintorAlertsCard');
+    if (!container || !card) return;
+
+    try {
+        const extintores = await getAllFromIndexedDB('extintores');
+        const ativos = extintores.filter(e => e.ativo !== false);
+
+        if (ativos.length === 0) {
+            card.style.display = 'none';
+            return;
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const alerts = [];
+        ativos.forEach(extintor => {
+            if (!extintor.proximaRecarga) return;
+            const deadline = parseLocalDate(extintor.proximaRecarga);
+            deadline.setHours(0, 0, 0, 0);
+            const diffDays = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            if (diffDays <= 3) {
+                alerts.push({ extintor, diffDays });
+            }
+        });
+
+        if (alerts.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state" style="padding: 15px 0;">
+                    <div class="icon" style="font-size: 24px; margin-bottom: 5px;">✅</div>
+                    <div class="text" style="font-size: 13px; color: var(--text-light);">Nenhum extintor com recarga vencida ou próxima</div>
+                </div>`;
+            card.style.display = 'block';
+            return;
+        }
+
+        alerts.sort((a, b) => a.diffDays - b.diffDays);
+
+        container.innerHTML = alerts.map(({ extintor, diffDays }) => {
+            const tipoLabel = (EXTINTOR_TIPOS.find(t => t.id === extintor.tipo) || {}).label || extintor.tipo || '';
+            const color = diffDays < 0 ? '#e74c3c' : (diffDays === 0 ? '#e74c3c' : (diffDays === 1 ? '#f39c12' : '#3498db'));
+            const bg = diffDays < 0 ? '#fdf2f2' : (diffDays === 0 ? '#fdf2f2' : (diffDays === 1 ? '#fef9e7' : '#ebf5fb'));
+            const border = diffDays < 0 ? '#f5b7b1' : (diffDays === 0 ? '#f5b7b1' : (diffDays === 1 ? '#f9e79f' : '#a9cce3'));
+            const icon = diffDays < 0 ? '🚫' : (diffDays === 0 ? '🔴' : (diffDays === 1 ? '🟡' : '🔵'));
+
+            let messageText = '';
+            if (diffDays < 0) {
+                messageText = `⚠️ <strong>Recarga Vencida!</strong> Venceu há ${Math.abs(diffDays)} dia(s).`;
+            } else if (diffDays === 0) {
+                messageText = `🔴 <strong>Vence Hoje!</strong>`;
+            } else if (diffDays === 1) {
+                messageText = `🟡 <strong>Vence Amanhã!</strong>`;
+            } else {
+                messageText = `🔵 <strong>Vence em breve:</strong> Restam ${diffDays} dias.`;
+            }
+
+            return `
+                <div style="padding: 14px; background: ${bg}; border-left: 5px solid ${color}; border-top: 1px solid ${border}; border-right: 1px solid ${border}; border-bottom: 1px solid ${border}; border-radius: 8px; font-size: 13px; color: #2c3e50; line-height: 1.5; display: flex; align-items: flex-start; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                    <div style="font-size: 18px; line-height: 1; padding-top: 2px;">${icon}</div>
+                    <div style="flex: 1;">
+                        <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; margin-bottom: 4px;">
+                            <span style="font-weight: 700; color: #2c3e50; font-size: 14px;">${escapeHTML(extintor.id)} (${escapeHTML(tipoLabel)})</span>
+                            <span style="font-size: 11px; background: rgba(255,255,255,0.7); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.05); font-weight: 500;">Recarga: ${formatSimpleDate(extintor.proximaRecarga)}</span>
+                        </div>
+                        <div style="font-size: 12px; color: #34495e; margin-bottom: 4px;">${messageText}</div>
+                        <div style="font-size: 11px; color: #95a5a6; margin-top: 4px;">Setor: ${escapeHTML(extintor.setor || '—')}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        card.style.display = 'block';
+    } catch (e) {
+        console.error('Erro ao renderizar alertas de extintores:', e);
+        card.style.display = 'none';
+    }
+}
+
+async function atualizarPendentesMesExtintores() {
+    const el = document.getElementById('extintorPendentesMes');
+    if (!el) return;
+
+    const extintores = await getAllFromIndexedDB('extintores');
+    const ativos = extintores.filter(e => e.ativo !== false);
+
+    if (ativos.length === 0) {
+        el.style.display = 'none';
+        return;
+    }
+
+    const inspecoes = await getAllFromIndexedDB('inspecoes_extintores');
+    const now = new Date();
+    const anoMes = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+
+    const inspecionadosEsteMes = new Set(
+        inspecoes
+            .filter(i => (i.date || '').startsWith(anoMes))
+            .map(i => i.extintorId)
+    );
+
+    const pendentes = ativos.filter(e => !inspecionadosEsteMes.has(e.id));
+
+    if (pendentes.length === 0) {
+        el.style.display = 'block';
+        el.innerHTML = `<div style="padding: 10px 12px; background: #d5f5e3; border-radius: 8px; color: #1e8449; font-size: 12px; font-weight: 600;">✅ Todos os extintores foram inspecionados este mês!</div>`;
+    } else {
+        el.style.display = 'block';
+        el.innerHTML = `<div style="padding: 10px 12px; background: #fff3cd; border-radius: 8px; color: #9a7d0a; font-size: 12px; font-weight: 600;">⏳ ${pendentes.length} extintor(es) pendente(s) de inspeção este mês</div>`;
+    }
 }
 
 // ============================================

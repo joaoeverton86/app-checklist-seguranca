@@ -243,6 +243,14 @@
                 </div>
             </div>
 
+            <!-- Extinguisher Recharge Deadlines Card -->
+            <div class="card" id="extintorAlertsCard" style="display: none;">
+                <div class="card-title" style="color: var(--danger);"><span class="icon">🧯</span> Extintores - Recarga Vencendo</div>
+                <div id="extintorAlertsList" style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Alerts will be inserted dynamically -->
+                </div>
+            </div>
+
             <div class="card">
                 <div class="card-title"><span class="icon">📋</span> Últimos Checklists</div>
                 <div id="recentChecklists">
@@ -809,6 +817,8 @@
                 📷 Escanear QR Code para Inspecionar
             </button>
 
+            <div id="extintorPendentesMes" style="display: none; margin-bottom: 12px;"></div>
+
             <div class="search-container" style="margin-bottom: 12px;">
                 <input type="text" class="search-input" id="extintorSearch"
                        placeholder="Buscar por ID, tipo, setor..."
@@ -1329,7 +1339,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="qrcode.min.js?v=2"></script>
-    <script src="data.js?v=137"></script>
-    <script src="app.js?v=137"></script>
+    <script src="data.js?v=138"></script>
+    <script src="app.js?v=138"></script>
 </body>
 </html>

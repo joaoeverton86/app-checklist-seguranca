@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v136';
+const APP_VERSION = 'v137';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -502,7 +502,7 @@ function updateConnectionStatus() {
 }
 
 async function getSyncStatus() {
-    const stores = ['cadastros', 'colaboradores', 'checklists', 'issues', 'checklist_items', 'extintores'];
+    const stores = ['cadastros', 'colaboradores', 'checklists', 'issues', 'checklist_items', 'extintores', 'inspecoes_extintores'];
     let pendentes = 0;
     for (const store of stores) {
         const items = await getAllFromIndexedDB(store);
@@ -613,7 +613,9 @@ function showPage(pageId) {
         'pageInterdicao': 'navHome',
         'pageLogin': 'navHome',
         'pageExtintores': 'navHome',
-        'pageNovoExtintor': 'navHome'
+        'pageNovoExtintor': 'navHome',
+        'pageInspecaoExtintor': 'navHome',
+        'pageExtintorDetail': 'navHome'
     };
     if (navMap[pageId] && document.getElementById(navMap[pageId])) {
         document.getElementById(navMap[pageId]).classList.add('active');
@@ -661,7 +663,9 @@ function showPage(pageId) {
         'pageGerenciarItens': ['Gerenciar Itens', 'Itens de verificação'],
         'pageInterdicao': ['Interdição Rápida', 'Bloqueio imediato de equipamento'],
         'pageExtintores': ['Extintores', 'Cadastro de extintores de incêndio'],
-        'pageNovoExtintor': ['Novo Extintor', 'Cadastrar extintor']
+        'pageNovoExtintor': ['Novo Extintor', 'Cadastrar extintor'],
+        'pageInspecaoExtintor': ['Inspeção de Extintor', currentExtintor?.id || ''],
+        'pageExtintorDetail': ['Histórico do Extintor', '']
     };
     
     if (titles[pageId]) {
@@ -1874,7 +1878,9 @@ async function loadExtintores(search = '') {
                     <div class="history-date">${escapeHTML(e.setor || '')}</div>
                     <div style="margin-top: 4px;">${statusBadge}${pendingBadge}</div>
                 </div>
-                <div style="display: flex; gap: 4px; align-items: center;">
+                <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                    <button onclick="startInspecaoExtintor('${e.id}')" title="Inspecionar" style="background: #1e8449; color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🔍</button>
+                    <button onclick="abrirExtintorDetail('${e.id}')" title="Histórico" style="background: #2980b9; color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">📋</button>
                     <button onclick="gerarQRExtintor('${e.id}')" title="Gerar QR Code" style="background: #6b21a8; color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🏷️</button>
                     <button onclick="editExtintor('${e.id}')" title="Editar" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>
                     <button onclick="deleteExtintorPermanente('${e.id}')" title="Excluir Definitivamente" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🗑️</button>
@@ -1906,6 +1912,209 @@ function baixarQRExtintor(id) {
     link.download = id + '.png';
     link.href = img.src;
     link.click();
+}
+
+// ============================================
+// MÓDULO DE EXTINTORES (Fase 2 - inspeção mensal via QR Code)
+// Funções isoladas de propósito: não reaproveitam startChecklist/renderChecklistItems/
+// setStatus/saveChecklist (essas têm regras de interdição de veículo que não se aplicam
+// aqui), só a infraestrutura genérica (saveToIndexedDB, supabaseFetch etc).
+// ============================================
+
+let currentExtintor = null;
+let inspecaoExtintorData = {};
+
+async function startInspecaoExtintor(extintorId) {
+    const extintor = await getFromIndexedDB('extintores', extintorId);
+    if (!extintor || extintor.ativo === false) {
+        showToast('Extintor "' + extintorId + '" não encontrado ou inativo.');
+        return;
+    }
+
+    currentExtintor = extintor;
+    inspecaoExtintorData = {};
+
+    const tipoLabel = (EXTINTOR_TIPOS.find(t => t.id === extintor.tipo) || {}).label || extintor.tipo || '';
+    document.getElementById('inspecaoExtintorInfo').textContent = `${extintor.id} — ${tipoLabel}${extintor.setor ? ' • ' + extintor.setor : ''}`;
+    document.getElementById('inspecaoExtintorDate').value = new Date().toISOString().split('T')[0];
+
+    const sessionStr = localStorage.getItem('active_session');
+    const session = sessionStr ? JSON.parse(sessionStr) : null;
+    document.getElementById('inspecaoExtintorInspetor').value = session?.nome || '';
+    document.getElementById('inspecaoExtintorObs').value = '';
+
+    renderInspecaoExtintorItems();
+    showPage('pageInspecaoExtintor');
+}
+
+function renderInspecaoExtintorItems() {
+    const container = document.getElementById('inspecaoExtintorItems');
+    let html = '';
+
+    EXTINTOR_INSPECTION_ITEMS.forEach((item, index) => {
+        const riskClass = item.risk === 'high' ? 'badge-risk-high' :
+                         item.risk === 'medium' ? 'badge-risk-medium' : 'badge-risk-low';
+        const riskText = item.risk === 'high' ? 'RISCO ALTO' :
+                        item.risk === 'medium' ? 'RISCO MÉDIO' : 'RISCO BAIXO';
+
+        html += `
+            <div class="checklist-item" id="item-ext-${item.id}">
+                <div class="item-header">
+                    <span class="item-text">${index + 1} - ${escapeHTML(item.text)}</span>
+                </div>
+                <div class="item-meta">
+                    <span class="badge badge-nr">${escapeHTML(item.nr)}</span>
+                    <span class="badge ${riskClass}">${riskText}</span>
+                </div>
+                <div class="status-buttons">
+                    <button class="status-btn c" onclick="setStatusExtintor('${item.id}', 'C', this)">✓ Conforme</button>
+                    <button class="status-btn nc" onclick="setStatusExtintor('${item.id}', 'NC', this)">✗ Não Conforme</button>
+                    <button class="status-btn na" onclick="setStatusExtintor('${item.id}', 'NA', this)">— N/A</button>
+                </div>
+                <div class="item-observation" id="obs-ext-${item.id}">
+                    <textarea placeholder="Observação sobre este item..."
+                              onchange="setObservationExtintor('${item.id}', this.value)"></textarea>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function setStatusExtintor(itemId, status, btn) {
+    const item = btn.closest('.checklist-item');
+    item.querySelectorAll('.status-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+
+    const obsDiv = document.getElementById(`obs-ext-${itemId}`);
+    if (status === 'NC') {
+        obsDiv.classList.add('show');
+    } else {
+        obsDiv.classList.remove('show');
+    }
+
+    if (!inspecaoExtintorData[itemId]) inspecaoExtintorData[itemId] = {};
+    inspecaoExtintorData[itemId].status = status;
+
+    updateProgressExtintor();
+}
+
+function setObservationExtintor(itemId, value) {
+    if (!inspecaoExtintorData[itemId]) inspecaoExtintorData[itemId] = {};
+    inspecaoExtintorData[itemId].observation = value;
+}
+
+function updateProgressExtintor() {
+    const total = EXTINTOR_INSPECTION_ITEMS.length;
+    const filled = Object.keys(inspecaoExtintorData).filter(k => inspecaoExtintorData[k].status).length;
+    const pct = Math.round((filled / total) * 100);
+    document.getElementById('progressFillExtintor').style.width = `${pct}%`;
+}
+
+async function saveInspecaoExtintor() {
+    if (!currentExtintor) return;
+
+    const inspetor = document.getElementById('inspecaoExtintorInspetor').value.trim();
+    const date = document.getElementById('inspecaoExtintorDate').value;
+
+    if (!inspetor) {
+        showToast('Preencha o nome do inspetor');
+        return;
+    }
+
+    const totalItens = EXTINTOR_INSPECTION_ITEMS.length;
+    const preenchidos = Object.keys(inspecaoExtintorData).filter(k => inspecaoExtintorData[k].status).length;
+    if (preenchidos < totalItens) {
+        showToast('Preencha todos os ' + totalItens + ' itens de verificação');
+        return;
+    }
+
+    let conformes = 0, naoConformes = 0, na = 0;
+    Object.values(inspecaoExtintorData).forEach(v => {
+        if (v.status === 'C') conformes++;
+        else if (v.status === 'NC') naoConformes++;
+        else if (v.status === 'NA') na++;
+    });
+
+    const inspecao = {
+        id: Date.now().toString(),
+        extintorId: currentExtintor.id,
+        date,
+        inspetor,
+        statusGeral: naoConformes > 0 ? 'nao_conforme' : 'conforme',
+        stats: { conformes, naoConformes, na, total: totalItens },
+        items: inspecaoExtintorData,
+        observacoes: document.getElementById('inspecaoExtintorObs').value.trim(),
+        timestamp: new Date().toISOString(),
+        synced: false
+    };
+
+    await saveToIndexedDB('inspecoes_extintores', inspecao);
+    registrarAuditoria('create', 'inspecoes_extintores', inspecao.id, `Inspeção de ${currentExtintor.id} (${inspecao.statusGeral})`);
+
+    showToast(naoConformes > 0 ? '⚠️ Inspeção salva com não conformidades!' : '✅ Inspeção salva - extintor conforme!');
+    setTimeout(() => showPage('pageExtintores'), 1000);
+}
+
+async function iniciarInspecaoPorQRExtintor(id) {
+    const extintor = await getFromIndexedDB('extintores', id.trim().toUpperCase());
+    if (extintor && extintor.ativo !== false) {
+        startInspecaoExtintor(extintor.id);
+    } else {
+        showToast('Extintor "' + id + '" não cadastrado no app.');
+    }
+}
+
+async function abrirExtintorDetail(id) {
+    const extintor = await getFromIndexedDB('extintores', id);
+    if (!extintor) return;
+
+    const todasInspecoes = await getAllFromIndexedDB('inspecoes_extintores');
+    const inspecoes = todasInspecoes
+        .filter(i => i.extintorId === id)
+        .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+    const tipoLabel = (EXTINTOR_TIPOS.find(t => t.id === extintor.tipo) || {}).label || extintor.tipo || '';
+
+    let html = `
+        <div class="card">
+            <div class="card-title">🧯 ${escapeHTML(extintor.id)}</div>
+            <div style="font-size: 13px; color: var(--text-light); line-height: 1.6;">
+                <div><strong>Tipo:</strong> ${escapeHTML(tipoLabel)}</div>
+                ${extintor.capacidade ? `<div><strong>Capacidade:</strong> ${escapeHTML(extintor.capacidade)}</div>` : ''}
+                ${extintor.setor ? `<div><strong>Setor:</strong> ${escapeHTML(extintor.setor)}</div>` : ''}
+                ${extintor.localizacao ? `<div><strong>Localização:</strong> ${escapeHTML(extintor.localizacao)}</div>` : ''}
+                ${extintor.proximaRecarga ? `<div><strong>Próxima Recarga:</strong> ${formatSimpleDate(extintor.proximaRecarga)}</div>` : ''}
+            </div>
+            <button class="save-btn" style="margin-top: 12px;" onclick="startInspecaoExtintor('${extintor.id}')">🧯 Nova Inspeção</button>
+        </div>
+
+        <div class="section-title">Histórico de Inspeções (${inspecoes.length})</div>
+    `;
+
+    if (inspecoes.length === 0) {
+        html += `<div class="empty-state"><div class="icon">📋</div><div class="text">Nenhuma inspeção registrada ainda</div></div>`;
+    } else {
+        html += inspecoes.map(i => {
+            const isConforme = i.statusGeral !== 'nao_conforme';
+            const badge = isConforme
+                ? `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #d5f5e3; color: #1e8449; font-weight: 600;">✅ Conforme</span>`
+                : `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #fadbd8; color: #c0392b; font-weight: 600;">⚠️ Não Conforme</span>`;
+            return `
+                <div class="history-item" style="flex-wrap: wrap;">
+                    <div class="history-info">
+                        <div class="history-title">${formatSimpleDate(i.date)}</div>
+                        <div class="history-date">Inspetor: ${escapeHTML(i.inspetor || '')}</div>
+                        <div class="history-date">${i.stats?.conformes || 0} conforme(s), ${i.stats?.naoConformes || 0} não conforme(s), ${i.stats?.na || 0} N/A</div>
+                        <div style="margin-top: 4px;">${badge}</div>
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    document.getElementById('extintorDetailContent').innerHTML = html;
+    showPage('pageExtintorDetail');
 }
 
 // ============================================
@@ -2899,7 +3108,7 @@ function saveIssue() {
 
 function openDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open('ChecklistSeguranca', 6);
+        const request = indexedDB.open('ChecklistSeguranca', 7);
         request.onupgradeneeded = (e) => {
             const db = e.target.result;
             if (!db.objectStoreNames.contains('checklists')) {
@@ -2925,6 +3134,10 @@ function openDB() {
             if (!db.objectStoreNames.contains('extintores')) {
                 // Módulo de extintores (Fase 1) - isolado de cadastros/checklists por pedido.
                 db.createObjectStore('extintores', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('inspecoes_extintores')) {
+                // Módulo de extintores (Fase 2) - inspeções mensais via QR Code.
+                db.createObjectStore('inspecoes_extintores', { keyPath: 'id' });
             }
         };
         request.onsuccess = (e) => resolve(e.target.result);
@@ -5838,6 +6051,21 @@ function converterParaSupabase(store, item) {
             ativo: item.ativo !== false
         };
     }
+    if (store === 'inspecoes_extintores') {
+        return {
+            id: String(item.id).trim(),
+            extintor_id: item.extintorId || '',
+            date: item.date || '',
+            inspetor: item.inspetor || '',
+            status_geral: item.statusGeral || 'conforme',
+            conformes: item.stats?.conformes || 0,
+            nao_conformes: item.stats?.naoConformes || 0,
+            na: item.stats?.na || 0,
+            total: item.stats?.total || 0,
+            items: item.items || {},
+            observacoes: item.observacoes || ''
+        };
+    }
     return item;
 }
 
@@ -5948,6 +6176,26 @@ function converterParaAppFromSupabase(table, row) {
             supabase_synced: true
         };
     }
+    if (table === 'inspecoes_extintores') {
+        return {
+            id: row.id,
+            extintorId: row.extintor_id,
+            date: row.date,
+            inspetor: row.inspetor,
+            statusGeral: row.status_geral,
+            stats: {
+                conformes: parseInt(row.conformes) || 0,
+                naoConformes: parseInt(row.nao_conformes) || 0,
+                na: parseInt(row.na) || 0,
+                total: parseInt(row.total) || 0
+            },
+            items: row.items || {},
+            observacoes: row.observacoes,
+            timestamp: row.created_at || row.date,
+            synced: true,
+            supabase_synced: true
+        };
+    }
     return row;
 }
 
@@ -5960,7 +6208,8 @@ async function sincronizarItemIndividualSupabase(storeName, data) {
             'checklists': 'checklists',
             'issues': 'relatos',
             'checklist_items': 'checklist_items',
-            'extintores': 'extintores'
+            'extintores': 'extintores',
+            'inspecoes_extintores': 'inspecoes_extintores'
         };
         const table = tableMap[storeName];
         if (!table) return;
@@ -6044,7 +6293,8 @@ async function sincronizarComSupabase() {
             { table: 'checklists', store: 'checklists' },
             { table: 'relatos', store: 'issues' },
             { table: 'checklist_items', store: 'checklist_items' },
-            { table: 'extintores', store: 'extintores' }
+            { table: 'extintores', store: 'extintores' },
+            { table: 'inspecoes_extintores', store: 'inspecoes_extintores' }
         ];
 
         // Remove localmente qualquer registro já excluído definitivamente em outro
@@ -6161,7 +6411,8 @@ async function migrarDadosLocaisParaSupabase() {
             { store: 'checklists', table: 'checklists' },
             { store: 'issues', table: 'relatos' },
             { store: 'checklist_items', table: 'checklist_items' },
-            { store: 'extintores', table: 'extintores' }
+            { store: 'extintores', table: 'extintores' },
+            { store: 'inspecoes_extintores', table: 'inspecoes_extintores' }
         ];
 
         let totalEnviados = 0;
@@ -6591,6 +6842,8 @@ function onQRScanSuccess(decodedText) {
         selectPatrimonioByQR(decodedText);
     } else if (currentQRCategory === 'global') {
         iniciarChecklistPorQRGlobal(decodedText);
+    } else if (currentQRCategory === 'extintor') {
+        iniciarInspecaoPorQRExtintor(decodedText);
     } else {
         const input = document.getElementById('cadastroInput' + capitalize(currentQRCategory));
         if (input) {

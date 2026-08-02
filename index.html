@@ -805,6 +805,10 @@
         <div class="content">
             <div class="section-title">🧯 Extintores de Incêndio</div>
 
+            <button onclick="openQRScanner('extintor')" style="width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 12px;">
+                📷 Escanear QR Code para Inspecionar
+            </button>
+
             <div class="search-container" style="margin-bottom: 12px;">
                 <input type="text" class="search-input" id="extintorSearch"
                        placeholder="Buscar por ID, tipo, setor..."
@@ -882,6 +886,44 @@
                 <button class="save-btn" onclick="saveExtintor()">Cadastrar Extintor</button>
             </div>
         </div>
+    </div>
+
+    <!-- Page: Inspeção Mensal de Extintor -->
+    <div class="page" id="pageInspecaoExtintor">
+        <div class="content">
+            <div class="progress-bar">
+                <div class="fill" id="progressFillExtintor" style="width: 0%"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon">🧯</span> <span id="inspecaoExtintorInfo">—</span></div>
+                <div class="form-group">
+                    <label class="form-label">Data</label>
+                    <input type="date" class="form-input" id="inspecaoExtintorDate">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Inspetor</label>
+                    <input type="text" class="form-input" id="inspecaoExtintorInspetor" placeholder="Nome do inspetor">
+                </div>
+            </div>
+
+            <div class="section-title">Itens de Verificação</div>
+            <div id="inspecaoExtintorItems"></div>
+
+            <div class="card">
+                <div class="card-title"><span class="icon">📝</span> Observações Gerais</div>
+                <textarea class="form-textarea" id="inspecaoExtintorObs" placeholder="Observações adicionais..."></textarea>
+            </div>
+
+            <button class="save-btn" onclick="saveInspecaoExtintor()">
+                💾 Salvar Inspeção
+            </button>
+        </div>
+    </div>
+
+    <!-- Page: Histórico do Extintor -->
+    <div class="page" id="pageExtintorDetail">
+        <div class="content" id="extintorDetailContent"></div>
     </div>
 
     <!-- Page: Checklist Detail -->
@@ -1287,7 +1329,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="qrcode.min.js?v=2"></script>
-    <script src="data.js?v=136"></script>
-    <script src="app.js?v=136"></script>
+    <script src="data.js?v=137"></script>
+    <script src="app.js?v=137"></script>
 </body>
 </html>

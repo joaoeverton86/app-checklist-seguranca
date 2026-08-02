@@ -451,8 +451,31 @@ CREATE POLICY "Acesso total aos extintores" ON public.extintores FOR ALL USING (
 
 GRANT ALL ON public.extintores TO anon;
 
--- Fase 2 (inspeção mensal via QR Code) adicionará public.inspecoes_extintores
--- quando for implementada.
+-- Fase 2: inspeção mensal (registro de cada inspeção visual feita via QR Code).
+CREATE TABLE IF NOT EXISTS public.inspecoes_extintores (
+    id TEXT PRIMARY KEY,                  -- Date.now().toString(), igual ao padrão de checklists.id
+    extintor_id TEXT REFERENCES public.extintores(id) ON DELETE CASCADE,
+    date TEXT,
+    inspetor TEXT,
+    status_geral TEXT DEFAULT 'conforme', -- conforme | nao_conforme
+    conformes INTEGER DEFAULT 0,
+    nao_conformes INTEGER DEFAULT 0,
+    na INTEGER DEFAULT 0,
+    total INTEGER DEFAULT 0,
+    items JSONB,                          -- mesmo formato de checklists.items: {itemId: {status, observation}}
+    observacoes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_inspecoes_extintores_extintor_id ON public.inspecoes_extintores(extintor_id);
+
+ALTER TABLE public.inspecoes_extintores ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acesso total às inspeções de extintores" ON public.inspecoes_extintores;
+CREATE POLICY "Acesso total às inspeções de extintores" ON public.inspecoes_extintores FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON public.inspecoes_extintores TO anon;
+
+-- Fase 3 (painel de vencimento) ainda não implementada.
 
 -- ============================================================
 -- RISCOS RESIDUAIS CONHECIDOS (documentados, não corrigidos nesta versão)

@@ -750,13 +750,21 @@ async function importarTreinamentosCSV() {
         for (let li = 1; li < lines.length; li++) {
             const parts = lines[li].split(';');
             const matricula = col(parts, 'MATRICULA').toUpperCase();
-            const cod = col(parts, 'COD');
             const treinamento = col(parts, 'TREINAMENTO');
             const dataTreino = parseDataBR(col(parts, 'Data do Treinamento'));
 
-            if (!matricula || !cod || !treinamento || !dataTreino) {
+            if (!matricula || !treinamento || !dataTreino) {
                 puladas++;
                 continue;
+            }
+
+            // Nem toda sessão de DDS tem código atribuído na planilha (~3.700 linhas reais
+            // da base atual estão nesse caso) - sem isso, essas sessões (com matrícula, nome
+            // e data completos) eram descartadas do relatório de HHT por engano. Quando falta
+            // o código, usa o próprio nome do treinamento, normalizado, como identificador.
+            let cod = col(parts, 'COD');
+            if (!cod) {
+                cod = 'NOME_' + treinamento.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]+/g, '_').slice(0, 60);
             }
 
             const cargaH = parseFloat((col(parts, 'CARGA_H') || '0').replace(',', '.')) || 0;

@@ -233,6 +233,10 @@
                     <span class="icon">🧯</span>
                     <span class="label">Extintores</span>
                 </a>
+                <a class="action-btn" onclick="showPage('pageTreinamentosVerificacao')">
+                    <span class="icon">🎓</span>
+                    <span class="label">Treinamentos</span>
+                </a>
             </div>
             
             <!-- Correction Deadlines Card -->
@@ -937,6 +941,35 @@
         <div class="content" id="extintorDetailContent"></div>
     </div>
 
+    <!-- Page: Treinamentos - Verificação de Validade -->
+    <div class="page" id="pageTreinamentosVerificacao">
+        <div class="content">
+            <div class="section-title">🎓 Situação de Treinamentos</div>
+
+            <button onclick="openQRScanner('colaborador-treinamento')" style="width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 12px;">
+                📷 Escanear QR do Colaborador
+            </button>
+
+            <div class="search-container" style="margin-bottom: 12px;">
+                <input type="text" class="search-input" id="treinamentosColabSearch"
+                       placeholder="Ou busque por nome ou matrícula..."
+                       oninput="filterTreinamentosColaboradores(this.value)" autocomplete="off">
+            </div>
+
+            <div id="treinamentosColabList">
+                <div class="empty-state">
+                    <div class="icon">👥</div>
+                    <div class="text">Escaneie o QR Code ou digite para buscar um colaborador</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page: Treinamentos - Situação do Colaborador -->
+    <div class="page" id="pageTreinamentosColaborador">
+        <div class="content" id="treinamentosColaboradorContent"></div>
+    </div>
+
     <!-- Page: Checklist Detail -->
     <div class="page" id="pageChecklistDetail">
         <div class="content" id="checklistDetailContent"></div>
@@ -1340,7 +1373,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="qrcode.min.js?v=2"></script>
-    <script src="data.js?v=141"></script>
-    <script src="app.js?v=141"></script>
+    <script src="data.js?v=142"></script>
+    <script src="app.js?v=142"></script>
 </body>
 </html>

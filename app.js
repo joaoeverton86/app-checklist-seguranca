@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v141';
+const APP_VERSION = 'v142';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -615,7 +615,9 @@ function showPage(pageId) {
         'pageExtintores': 'navHome',
         'pageNovoExtintor': 'navHome',
         'pageInspecaoExtintor': 'navHome',
-        'pageExtintorDetail': 'navHome'
+        'pageExtintorDetail': 'navHome',
+        'pageTreinamentosVerificacao': 'navHome',
+        'pageTreinamentosColaborador': 'navHome'
     };
     if (navMap[pageId] && document.getElementById(navMap[pageId])) {
         document.getElementById(navMap[pageId]).classList.add('active');
@@ -665,7 +667,9 @@ function showPage(pageId) {
         'pageExtintores': ['Extintores', 'Cadastro de extintores de incêndio'],
         'pageNovoExtintor': ['Novo Extintor', 'Cadastrar extintor'],
         'pageInspecaoExtintor': ['Inspeção de Extintor', currentExtintor?.id || ''],
-        'pageExtintorDetail': ['Histórico do Extintor', '']
+        'pageExtintorDetail': ['Histórico do Extintor', ''],
+        'pageTreinamentosVerificacao': ['Treinamentos', 'Situação de validade por colaborador'],
+        'pageTreinamentosColaborador': ['Situação de Treinamentos', '']
     };
     
     if (titles[pageId]) {
@@ -726,6 +730,11 @@ function showPage(pageId) {
         } else {
             loadExtintores(extintorSearchQuery);
         }
+    } else if (pageId === 'pageTreinamentosVerificacao') {
+        const searchInput = document.getElementById('treinamentosColabSearch');
+        if (searchInput) searchInput.value = '';
+        filterTreinamentosColaboradores('');
+        sincronizarTreinamentosStatusIncremental();
     }
 }
 
@@ -1299,6 +1308,8 @@ async function loadGestao(search = '') {
                         <div style="margin-top: 4px;">${statusBadge}${pendingBadge}</div>
                     </div>
                     <div style="display: flex; gap: 4px; align-items: center;">
+                        ${c.matricula ? `<button onclick="verTreinamentosColaborador('${escapeHTML(c.matricula)}')" title="Ver Treinamentos" style="background: #1e8449; color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🎓</button>
+                        <button onclick="gerarQRColaborador('${escapeHTML(c.matricula)}')" title="Gerar QR Code" style="background: #6b21a8; color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🏷️</button>` : ''}
                         <button onclick="editColaborador('${c.id}')" title="Editar" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>
                         <button onclick="deleteColaboradorPermanente('${c.id}')" title="Excluir Definitivamente" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🗑️</button>
                     </div>
@@ -1914,6 +1925,28 @@ function gerarQRExtintor(id) {
             <h3 style="margin-top:0;">🏷️ QR Code - ${escapeHTML(id)}</h3>
             <div style="text-align:center; padding: 16px; background: white; border-radius: 8px;">${imgTag}</div>
             <button class="save-btn" style="margin-top: 12px;" onclick="baixarQRExtintor('${id}')">Baixar Imagem</button>
+        `);
+    } catch (err) {
+        showToast('Erro ao gerar QR Code: ' + err.message);
+    }
+}
+
+async function gerarQRColaborador(matricula) {
+    if (!matricula) {
+        showToast('Colaborador sem matrícula cadastrada — não é possível gerar QR Code.');
+        return;
+    }
+    try {
+        const colaboradores = await getAllFromIndexedDB('colaboradores');
+        const colaborador = colaboradores.find(c => c.matricula === matricula);
+        const qr = qrcode(0, 'M');
+        qr.addData(matricula);
+        qr.make();
+        const imgTag = qr.createImgTag(6, 4);
+        showModal(`
+            <h3 style="margin-top:0;">🏷️ QR Code - ${escapeHTML(colaborador?.nome || matricula)}</h3>
+            <div style="text-align:center; padding: 16px; background: white; border-radius: 8px;">${imgTag}</div>
+            <button class="save-btn" style="margin-top: 12px;" onclick="baixarQRExtintor('${escapeHTML(matricula)}')">Baixar Imagem</button>
         `);
     } catch (err) {
         showToast('Erro ao gerar QR Code: ' + err.message);
@@ -3261,7 +3294,7 @@ function saveIssue() {
 
 function openDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open('ChecklistSeguranca', 7);
+        const request = indexedDB.open('ChecklistSeguranca', 8);
         request.onupgradeneeded = (e) => {
             const db = e.target.result;
             if (!db.objectStoreNames.contains('checklists')) {
@@ -3291,6 +3324,13 @@ function openDB() {
             if (!db.objectStoreNames.contains('inspecoes_extintores')) {
                 // Módulo de extintores (Fase 2) - inspeções mensais via QR Code.
                 db.createObjectStore('inspecoes_extintores', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('treinamentos_status')) {
+                // Módulo de treinamentos (Fase 2) - só "status atual" por colaborador+
+                // treinamento (id = matricula_cod), nunca o histórico completo. Sincroniza
+                // de forma incremental (sincronizarTreinamentosStatusIncremental), não pelo
+                // motor padrão - é só leitura, o app de campo nunca escreve aqui.
+                db.createObjectStore('treinamentos_status', { keyPath: 'id' });
             }
         };
         request.onsuccess = (e) => resolve(e.target.result);
@@ -3586,6 +3626,7 @@ async function supabaseFetch(table, options = {}) {
     const key = getSupabaseKey();
     if (!url || !key) return { success: false, error: 'Supabase não configurado' };
 
+    const method = options.method || 'GET';
     const endpoint = `${url}/rest/v1/${table}${options.query || ''}`;
     const headers = {
         'apikey': key,
@@ -3595,10 +3636,37 @@ async function supabaseFetch(table, options = {}) {
     };
 
     try {
-        const fetchOptions = {
-            method: options.method || 'GET',
-            headers: headers
-        };
+        if (method === 'GET') {
+            // Pagina automaticamente via Range/Content-Range. O PostgREST corta em 1000
+            // linhas por padrão - sem isso, qualquer tabela/view que passe desse tamanho
+            // (ex: a view treinamentos_status, com dezenas de milhares de linhas) ficaria
+            // com sincronização incompleta em silêncio, sem erro nenhum - mesmo bug já
+            // encontrado e corrigido no Painel Gerencial. Tabelas pequenas (a maioria hoje)
+            // seguem fazendo exatamente 1 requisição, sem custo extra.
+            const PAGE_SIZE = 1000;
+            let allRows = [];
+            let offset = 0;
+            while (true) {
+                const response = await fetch(endpoint, {
+                    method: 'GET',
+                    headers: { ...headers, 'Range': `${offset}-${offset + PAGE_SIZE - 1}` }
+                });
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errText}`);
+                }
+                const text = await response.text();
+                const page = text ? JSON.parse(text) : [];
+                allRows = allRows.concat(page);
+                const contentRange = response.headers.get('content-range');
+                const total = contentRange && contentRange.includes('/') ? parseInt(contentRange.split('/')[1], 10) : null;
+                offset += PAGE_SIZE;
+                if (page.length < PAGE_SIZE || (total !== null && allRows.length >= total)) break;
+            }
+            return { success: true, data: allRows };
+        }
+
+        const fetchOptions = { method, headers };
         if (options.body) {
             fetchOptions.body = JSON.stringify(options.body);
         }
@@ -3801,9 +3869,200 @@ function iniciarSyncPeriodica() {
                     else if (currentPage === 'pageHistory') loadHistory();
                     updatePendingBadge();
                 });
+                // Fora do motor padrão de propósito: treinamentos_status é uma view
+                // só-leitura (o app de campo nunca escreve nela) e grande demais (dezenas
+                // de milhares de linhas de histórico por trás) pra baixar por inteiro a
+                // cada ciclo, então sincroniza de forma incremental - ver função abaixo.
+                sincronizarTreinamentosStatusIncremental();
             }
         }
     }, 5 * 60 * 1000);
+}
+
+// Módulo de Treinamentos (Fase 2) - sincronização incremental, só leitura. Guarda a
+// data/hora do registro mais recente já visto em localStorage e só busca o que mudou
+// desde então, em vez de baixar a view inteira (~11 mil+ linhas mesmo só com
+// colaboradores ativos) a cada ciclo, como o motor padrão faria com as outras tabelas.
+async function sincronizarTreinamentosStatusIncremental() {
+    if (!isSupabaseConfigured() || !navigator.onLine) return;
+    try {
+        const lastSync = localStorage.getItem('last_sync_treinamentos_status');
+        let query = '?select=*';
+        if (lastSync) {
+            query += '&created_at=gt.' + encodeURIComponent(lastSync);
+        }
+
+        const res = await supabaseFetch('treinamentos_status', { query });
+        if (!res.success || !Array.isArray(res.data)) return;
+
+        let maxCreatedAt = lastSync || null;
+        for (const row of res.data) {
+            const appObj = {
+                id: row.id,
+                matricula: row.matricula,
+                nome: row.nome,
+                funcao: row.funcao,
+                setor: row.setor,
+                statusColaborador: row.status_colaborador,
+                treinamentoCod: row.treinamento_cod,
+                treinamentoNome: row.treinamento_nome,
+                cargaHoraria: row.carga_horaria,
+                dataTreinamento: row.data_treinamento,
+                mesesValidade: row.meses_validade,
+                dataProximaReciclagem: row.data_proxima_reciclagem,
+                createdAt: row.created_at,
+                synced: true,
+                supabase_synced: true
+            };
+            await saveToIndexedDB('treinamentos_status', appObj, true);
+            if (row.created_at && (!maxCreatedAt || row.created_at > maxCreatedAt)) {
+                maxCreatedAt = row.created_at;
+            }
+        }
+
+        if (maxCreatedAt) {
+            localStorage.setItem('last_sync_treinamentos_status', maxCreatedAt);
+        }
+        if (res.data.length > 0) {
+            console.log(`⚡ [Treinamentos] Sincronização incremental: ${res.data.length} registro(s) atualizado(s).`);
+        }
+    } catch (e) {
+        console.error('Erro na sincronização incremental de treinamentos:', e);
+    }
+}
+
+// ============================================
+// MÓDULO DE TREINAMENTOS (Fase 2 - verificação offline em campo)
+// Só leitura: cruza a store treinamentos_status (sincronizada de forma incremental,
+// ver função acima) com colaboradores. Nenhuma função aqui grava dado nenhum -
+// requisito explícito, o app de campo não edita treinamentos.
+// ============================================
+
+async function filterTreinamentosColaboradores(query) {
+    const container = document.getElementById('treinamentosColabList');
+    const q = (query || '').toLowerCase().trim();
+
+    if (q.length < 2) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">👥</div>
+                <div class="text">Escaneie o QR Code ou digite para buscar um colaborador</div>
+            </div>`;
+        return;
+    }
+
+    const colaboradores = await getAllFromIndexedDB('colaboradores');
+    const items = colaboradores.filter(c =>
+        c.ativo !== false && c.matricula &&
+        ((c.nome && c.nome.toLowerCase().includes(q)) || c.matricula.toLowerCase().includes(q))
+    ).slice(0, 30);
+
+    if (items.length === 0) {
+        container.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><div class="text">Nenhum colaborador encontrado para "${escapeHTML(query)}"</div></div>`;
+        return;
+    }
+
+    container.innerHTML = items.map(c => `
+        <div class="history-item" style="flex-wrap: wrap; cursor: pointer;" onclick="verTreinamentosColaborador('${escapeHTML(c.matricula)}')">
+            <div class="history-info">
+                <div class="history-title">${escapeHTML(c.nome || '')}</div>
+                <div class="history-date">${escapeHTML(c.funcao || '')}</div>
+                <div class="history-date">Matrícula: ${escapeHTML(c.matricula)}</div>
+            </div>
+            <div style="font-size: 20px;">🎓</div>
+        </div>`).join('');
+}
+
+async function verTreinamentosColaborador(matricula) {
+    if (!matricula) return;
+
+    const colaboradores = await getAllFromIndexedDB('colaboradores');
+    const colaborador = colaboradores.find(c => c.matricula === matricula);
+
+    const todosStatus = await getAllFromIndexedDB('treinamentos_status');
+    const registros = todosStatus.filter(t => t.matricula === matricula);
+
+    if (!colaborador && registros.length === 0) {
+        showToast(`Nenhum colaborador ou treinamento encontrado para a matrícula "${matricula}".`);
+        return;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const buckets = registros.map(t => {
+        let diffDays = null;
+        if (t.dataProximaReciclagem) {
+            const deadline = parseLocalDate(t.dataProximaReciclagem);
+            deadline.setHours(0, 0, 0, 0);
+            diffDays = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        }
+        let status;
+        if (diffDays === null) status = 'sem_validade';
+        else if (diffDays < 0) status = 'vencido';
+        else if (diffDays <= 30) status = 'vencendo';
+        else status = 'valido';
+        return { ...t, diffDays, status };
+    });
+
+    const ordem = { vencido: 0, vencendo: 1, sem_validade: 2, valido: 3 };
+    buckets.sort((a, b) => {
+        if (ordem[a.status] !== ordem[b.status]) return ordem[a.status] - ordem[b.status];
+        return (a.diffDays ?? 9999) - (b.diffDays ?? 9999);
+    });
+
+    const counts = { vencido: 0, vencendo: 0, valido: 0, sem_validade: 0 };
+    buckets.forEach(b => counts[b.status]++);
+
+    const nome = colaborador?.nome || registros[0]?.nome || matricula;
+    const funcao = colaborador?.funcao || registros[0]?.funcao || '';
+    const setor = colaborador?.setor || registros[0]?.setor || '';
+
+    let html = `
+        <div class="card">
+            <div class="card-title">🎓 ${escapeHTML(nome)}</div>
+            <div style="font-size: 13px; color: var(--text-light); line-height: 1.6;">
+                ${funcao ? `<div><strong>Função:</strong> ${escapeHTML(funcao)}</div>` : ''}
+                ${setor ? `<div><strong>Setor:</strong> ${escapeHTML(setor)}</div>` : ''}
+                <div><strong>Matrícula:</strong> ${escapeHTML(matricula)}</div>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;">
+                <span style="font-size: 11px; padding: 4px 10px; border-radius: 8px; background: #fdf2f2; color: #c0392b; font-weight: 700;">🔴 ${counts.vencido} vencido(s)</span>
+                <span style="font-size: 11px; padding: 4px 10px; border-radius: 8px; background: #fef9e7; color: #9a7d0a; font-weight: 700;">🟡 ${counts.vencendo} vencendo</span>
+                <span style="font-size: 11px; padding: 4px 10px; border-radius: 8px; background: #d5f5e3; color: #1e8449; font-weight: 700;">🟢 ${counts.valido} válido(s)</span>
+                ${counts.sem_validade > 0 ? `<span style="font-size: 11px; padding: 4px 10px; border-radius: 8px; background: #ebf5fb; color: #2980b9; font-weight: 700;">🔵 ${counts.sem_validade} sem validade</span>` : ''}
+            </div>
+        </div>
+
+        <div class="section-title">Treinamentos (${buckets.length})</div>
+    `;
+
+    if (buckets.length === 0) {
+        html += `<div class="empty-state"><div class="icon">📋</div><div class="text">Nenhum treinamento registrado para este colaborador${!navigator.onLine ? ' (verifique se os dados já foram sincronizados)' : ''}</div></div>`;
+    } else {
+        html += buckets.map(b => {
+            const color = b.status === 'vencido' ? '#e74c3c' : b.status === 'vencendo' ? '#f39c12' : b.status === 'sem_validade' ? '#3498db' : '#1e8449';
+            const bg = b.status === 'vencido' ? '#fdf2f2' : b.status === 'vencendo' ? '#fef9e7' : b.status === 'sem_validade' ? '#ebf5fb' : '#f4fcf8';
+            const icon = b.status === 'vencido' ? '🔴' : b.status === 'vencendo' ? '🟡' : b.status === 'sem_validade' ? '🔵' : '🟢';
+            let statusText;
+            if (b.status === 'vencido') statusText = `Venceu há ${Math.abs(b.diffDays)} dia(s)`;
+            else if (b.status === 'vencendo') statusText = b.diffDays === 0 ? 'Vence hoje' : `Vence em ${b.diffDays} dia(s)`;
+            else if (b.status === 'sem_validade') statusText = 'Sem validade / não recicla';
+            else statusText = `Válido (${b.diffDays} dias restantes)`;
+
+            return `
+                <div style="padding: 12px; background: ${bg}; border-left: 4px solid ${color}; border-radius: 8px; margin-bottom: 8px; font-size: 13px;">
+                    <div style="display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap;">
+                        <span style="font-weight: 700; color: #2c3e50;">${icon} ${escapeHTML(b.treinamentoNome || b.treinamentoCod || '')}</span>
+                    </div>
+                    <div style="font-size: 12px; color: #34495e; margin-top: 2px;">${statusText}</div>
+                    <div style="font-size: 11px; color: #95a5a6; margin-top: 2px;">Última realização: ${b.dataTreinamento ? formatSimpleDate(b.dataTreinamento) : '—'}${b.dataProximaReciclagem ? ' • Válido até: ' + formatSimpleDate(b.dataProximaReciclagem) : ''}</div>
+                </div>`;
+        }).join('');
+    }
+
+    document.getElementById('treinamentosColaboradorContent').innerHTML = html;
+    showPage('pageTreinamentosColaborador');
 }
 
 // ============================================
@@ -6997,6 +7256,8 @@ function onQRScanSuccess(decodedText) {
         iniciarChecklistPorQRGlobal(decodedText);
     } else if (currentQRCategory === 'extintor') {
         iniciarInspecaoPorQRExtintor(decodedText);
+    } else if (currentQRCategory === 'colaborador-treinamento') {
+        verTreinamentosColaborador(decodedText.trim());
     } else {
         const input = document.getElementById('cadastroInput' + capitalize(currentQRCategory));
         if (input) {

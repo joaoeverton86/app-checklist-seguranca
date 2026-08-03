@@ -1,4 +1,4 @@
-const CACHE_NAME = 'checklist-v139';
+const CACHE_NAME = 'checklist-v140';
 const SHELL_URLS = [
     './',
     './index.html',
@@ -41,6 +41,15 @@ self.addEventListener('fetch', event => {
     // travava a resposta da PRIMEIRA consulta pra sempre no cache do SW, escondendo tudo que
     // era sincronizado depois em outro aparelho até o próximo deploy trocar o CACHE_NAME.
     if (url.hostname.endsWith('.supabase.co')) {
+        return;
+    }
+
+    // /dashboard/ é um site à parte (painel gerencial, sem PWA/offline próprio) - não deve
+    // ficar sob o cache deste Service Worker. Sem essa exclusão, qualquer atualização do
+    // dashboard.css/dashboard.js só aparecia pra quem já tinha aberto o app principal nesse
+    // navegador depois do próximo deploy do app (que troca o CACHE_NAME), mesmo sem nenhuma
+    // relação real entre as duas coisas.
+    if (url.pathname.includes('/dashboard/')) {
         return;
     }
 

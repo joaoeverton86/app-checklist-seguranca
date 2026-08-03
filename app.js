@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v139';
+const APP_VERSION = 'v140';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';

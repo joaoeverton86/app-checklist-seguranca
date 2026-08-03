@@ -243,7 +243,7 @@
 
                 <div class="db-charts-grid">
                     <div class="db-chart-card">
-                        <div class="db-chart-title">HHT por Mês (Últimos 12 Meses)</div>
+                        <div class="db-chart-title">HHT por Mês (Histórico Completo)</div>
                         <div class="db-chart-canvas-wrap"><canvas id="chartTreinHHTMes"></canvas></div>
                     </div>
                     <div class="db-chart-card">
@@ -271,6 +271,15 @@
                     <input type="file" id="efetivoFileInput" accept=".csv" style="margin-bottom: 10px;">
                     <button class="db-apply-btn" onclick="importarEfetivoCSV()">Importar</button>
                     <div id="efetivoImportStatus" style="margin-top: 10px; font-size: 12.5px; color: var(--text-light);"></div>
+                </div>
+
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">🔍 Buscar Colaborador</div>
+                    <input type="text" id="efetivoSearchInput" placeholder="Buscar por nome ou matrícula..."
+                           oninput="filterEfetivoColaboradores(this.value)"
+                           style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; margin-bottom: 12px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                    <div id="efetivoSearchResults" class="db-list" style="max-height: 220px;"></div>
+                    <div id="efetivoColabDetail" style="display:none; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);"></div>
                 </div>
 
                 <div class="db-kpi-grid">
@@ -324,6 +333,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=6"></script>
+    <script src="dashboard.js?v=7"></script>
 </body>
 </html>

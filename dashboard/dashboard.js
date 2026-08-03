@@ -681,20 +681,26 @@ function renderTreinamentosPanel() {
     if (chartInstances.treinSetor) chartInstances.treinSetor.destroy();
     if (chartInstances.treinTopTemas) chartInstances.treinTopTemas.destroy();
 
-    // HHT por mês (12 meses)
+    // HHT por mês - histórico completo, da primeira sessão registrada até hoje (não só
+    // os últimos 12 meses: com "Todos" selecionado o usuário espera ver 2024 também).
     const meses = [], horasPorMes = [];
     const now = new Date();
-    for (let i = 11; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        meses.push(d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
-        const ini = new Date(d.getFullYear(), d.getMonth(), 1);
-        const fimMes = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    const datasTreino = allTreinamentosRealizados.filter(r => r.data_treinamento).map(r => parseLocalDate(r.data_treinamento));
+    const primeiraDataTreino = datasTreino.length > 0 ? new Date(Math.min(...datasTreino.map(d => d.getTime()))) : now;
+    let cursorMes = new Date(primeiraDataTreino.getFullYear(), primeiraDataTreino.getMonth(), 1);
+    const limiteMes = new Date(now.getFullYear(), now.getMonth(), 1);
+    while (cursorMes <= limiteMes) {
+        const ano = cursorMes.getFullYear(), mes = cursorMes.getMonth();
+        meses.push(cursorMes.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
+        const ini = new Date(ano, mes, 1);
+        const fimMes = new Date(ano, mes + 1, 0);
         const sublist = allTreinamentosRealizados.filter(r => {
             if (!r.data_treinamento) return false;
             const dt = parseLocalDate(r.data_treinamento);
             return dt >= ini && dt <= fimMes;
         });
         horasPorMes.push(sublist.reduce((sum, r) => sum + (parseFloat(r.carga_horaria) || 0), 0));
+        cursorMes = new Date(ano, mes + 1, 1);
     }
     chartInstances.treinHHTMes = new Chart(document.getElementById('chartTreinHHTMes'), {
         type: 'bar',
@@ -861,6 +867,143 @@ async function loadEfetivoData() {
         console.error('Erro ao carregar dados de efetivo:', err);
         if (statusEl) statusEl.textContent = '❌ Falha ao carregar dados de efetivo.';
     }
+}
+
+// ============================================
+// EFETIVO - busca de colaborador (ativo/inativo, admissão/demissão, tempo de casa,
+// aniversário e situação de treinamentos), a pedido do cliente.
+// ============================================
+
+function filterEfetivoColaboradores(query) {
+    const container = document.getElementById('efetivoSearchResults');
+    const detail = document.getElementById('efetivoColabDetail');
+    const q = (query || '').toLowerCase().trim();
+
+    if (q.length < 2) {
+        container.innerHTML = '';
+        detail.style.display = 'none';
+        detail.innerHTML = '';
+        return;
+    }
+
+    const matches = allEfetivo.filter(e =>
+        (e.nome && e.nome.toLowerCase().includes(q)) || (e.id && e.id.toLowerCase().includes(q))
+    ).slice(0, 20);
+
+    if (matches.length === 0) {
+        container.innerHTML = `<div class="db-list-empty">Nenhum colaborador encontrado para "${escapeHTML(query)}"</div>`;
+        return;
+    }
+
+    container.innerHTML = matches.map(e => {
+        const ativo = e.dt_admissao && !e.dt_demissao;
+        const cls = ativo ? '' : 'db-item-danger';
+        return `<div class="db-list-item ${cls}" style="cursor:pointer;" onclick="mostrarDetalheColaborador('${escapeHTML(e.id)}')">
+            <div class="db-list-item-title">${escapeHTML(e.nome || '(sem nome)')}</div>
+            <div class="db-list-item-sub">Matrícula ${escapeHTML(e.id)} — ${escapeHTML(e.funcao || '')}${ativo ? '' : ' (Inativo)'}</div>
+        </div>`;
+    }).join('');
+}
+
+function calcularIdade(dataNascimento, hoje) {
+    let idade = hoje.getFullYear() - dataNascimento.getFullYear();
+    const aindaNaoFezAniversario = (hoje.getMonth() < dataNascimento.getMonth()) ||
+        (hoje.getMonth() === dataNascimento.getMonth() && hoje.getDate() < dataNascimento.getDate());
+    if (aindaNaoFezAniversario) idade--;
+    return idade;
+}
+
+function diasProximoAniversario(dataNascimento, hoje) {
+    let prox = new Date(hoje.getFullYear(), dataNascimento.getMonth(), dataNascimento.getDate());
+    if (prox < hoje) prox = new Date(hoje.getFullYear() + 1, dataNascimento.getMonth(), dataNascimento.getDate());
+    return Math.ceil((prox.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function mostrarDetalheColaborador(matricula) {
+    const e = allEfetivo.find(x => x.id === matricula);
+    if (!e) return;
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    const admissao = e.dt_admissao ? parseLocalDate(e.dt_admissao) : null;
+    const demissao = e.dt_demissao ? parseLocalDate(e.dt_demissao) : null;
+    const ativo = admissao && !demissao;
+
+    const statusBadge = ativo
+        ? `<span style="font-size: 11px; padding: 3px 10px; border-radius: 8px; background: #d1fae5; color: #047857; font-weight: 700;">🟢 ATIVO</span>`
+        : `<span style="font-size: 11px; padding: 3px 10px; border-radius: 8px; background: #fee2e2; color: #b91c1c; font-weight: 700;">🔴 ${escapeHTML(e.status || 'INATIVO')}</span>`;
+
+    let tempoCasaTxt = '—';
+    if (admissao) {
+        const fimRef = demissao || hoje;
+        const totalMeses = Math.floor((fimRef.getTime() - admissao.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
+        const anos = Math.floor(totalMeses / 12);
+        const mesesResto = totalMeses % 12;
+        tempoCasaTxt = anos > 0 ? `${anos} ano(s) e ${mesesResto} mês(es)` : `${mesesResto} mês(es)`;
+        if (demissao) tempoCasaTxt += ' (até a demissão)';
+    }
+
+    let aniversarioTxt = '—';
+    if (e.dt_nascimento) {
+        const dn = parseLocalDate(e.dt_nascimento);
+        const idade = calcularIdade(dn, hoje);
+        const diffDias = diasProximoAniversario(dn, hoje);
+        aniversarioTxt = `${dn.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })} (${idade} anos)`;
+        if (diffDias === 0) aniversarioTxt += ' — 🎂 é hoje!';
+        else if (diffDias <= 30) aniversarioTxt += ` — 🎂 em ${diffDias} dia(s)`;
+    }
+
+    // Situação de treinamentos, se já carregada (loadEfetivoData sempre garante o carregamento).
+    let treinHtml = '';
+    const regs = allTreinamentosStatus.filter(t => t.matricula === matricula);
+    if (regs.length > 0) {
+        let vencidos = 0, vencendo = 0, validos = 0;
+        regs.forEach(t => {
+            if (!t.data_proxima_reciclagem) return;
+            const d = parseLocalDate(t.data_proxima_reciclagem);
+            const diff = Math.ceil((d.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+            if (diff < 0) vencidos++;
+            else if (diff <= 30) vencendo++;
+            else validos++;
+        });
+        treinHtml = `
+            <div style="margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border);">
+                <div style="font-size: 11px; color: var(--text-light); font-weight: 700; text-transform: uppercase; margin-bottom: 6px;">Situação de Treinamentos (${regs.length})</div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <span style="font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #fee2e2; color: #b91c1c; font-weight: 600;">🔴 ${vencidos} vencido(s)</span>
+                    <span style="font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #fef3c7; color: #92400e; font-weight: 600;">🟡 ${vencendo} vencendo</span>
+                    <span style="font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #d1fae5; color: #047857; font-weight: 600;">🟢 ${validos} válido(s)</span>
+                </div>
+            </div>`;
+    }
+
+    const detail = document.getElementById('efetivoColabDetail');
+    detail.innerHTML = `
+        <div style="display:flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
+            <div>
+                <div style="font-size: 16px; font-weight: 700;">${escapeHTML(e.nome || '')}</div>
+                <div style="font-size: 12px; color: var(--text-light); margin-top: 2px;">${escapeHTML(e.funcao || '')}${e.setor ? ' — ' + escapeHTML(e.setor) : ''}</div>
+            </div>
+            ${statusBadge}
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 14px; font-size: 12.5px;">
+            <div><strong>Matrícula:</strong> ${escapeHTML(e.id)}</div>
+            <div><strong>Admissão:</strong> ${admissao ? formatSimpleDate(e.dt_admissao) : '—'}</div>
+            <div><strong>Demissão:</strong> ${demissao ? formatSimpleDate(e.dt_demissao) : '—'}</div>
+            <div><strong>Tempo de casa:</strong> ${tempoCasaTxt}</div>
+            <div><strong>Aniversário:</strong> ${aniversarioTxt}</div>
+            <div><strong>Responsável:</strong> ${escapeHTML(e.responsavel || '—')}</div>
+            <div><strong>Cidade/UF:</strong> ${escapeHTML(e.cidade || '—')}${e.estado ? '/' + escapeHTML(e.estado) : ''}</div>
+            <div><strong>Estabilidade:</strong> ${escapeHTML(e.estabilidade || '—')}</div>
+            <div><strong>GHE:</strong> ${escapeHTML(e.ghe || '—')}</div>
+            <div><strong>CPF:</strong> ${escapeHTML(e.cpf || '—')}</div>
+            <div><strong>Uniforme:</strong> Calça ${escapeHTML(e.calca || '—')} / Camisa ${escapeHTML(e.camisa || '—')} / Bota ${escapeHTML(e.bota || '—')}</div>
+            <div><strong>Sexo:</strong> ${escapeHTML(e.sexo || '—')}</div>
+        </div>
+        ${treinHtml}
+    `;
+    detail.style.display = 'block';
+    detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function headcountAsOf(dateEnd) {

@@ -1,11 +1,24 @@
-const CACHE_NAME = 'checklist-v140';
+const CACHE_NAME = 'checklist-v141';
 const SHELL_URLS = [
     './',
     './index.html',
     './app.js',
     './data.js',
     './index.css',
-    './manifest.json'
+    './manifest.json',
+    './qrcode.min.js'
+];
+
+// Bibliotecas de terceiro (CDN) usadas pelo app - leitura de QR Code, gráficos e
+// exportação de PDF. Antes só ficavam em cache depois do primeiro carregamento
+// ONLINE bem-sucedido; se o primeiro acesso de alguém acontecesse com internet ruim
+// (o cenário mais comum em campo, que é exatamente o problema que este app existe pra
+// resolver), a câmera do leitor de QR abria normal mas nunca decodificava nada, porque
+// jsQR simplesmente não existia - sem nenhum erro visível pra quem estava usando.
+const CDN_URLS = [
+    'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
+    'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
 ];
 
 self.addEventListener('install', event => {
@@ -15,7 +28,12 @@ self.addEventListener('install', event => {
                 names.filter(n => n !== CACHE_NAME).map(n => caches.delete(n))
             );
         }).then(() => caches.open(CACHE_NAME))
-        .then(cache => cache.addAll(SHELL_URLS))
+        .then(cache => cache.addAll(SHELL_URLS).then(() =>
+            // Melhor esforço: um CDN fora do ar não pode derrubar a instalação do app
+            // inteiro (diferente do addAll acima, que é tudo-ou-nada de propósito só
+            // pros arquivos essenciais do próprio site).
+            Promise.allSettled(CDN_URLS.map(url => cache.add(url)))
+        ))
         .then(() => self.skipWaiting())
     );
 });

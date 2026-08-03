@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v140';
+const APP_VERSION = 'v141';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -2801,6 +2801,11 @@ function initSignaturePad() {
 function setupCanvas(canvasId) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
+    if (canvas.dataset.canvasSetup === 'true') return;
+    // Sem essa guarda, toda vez que a página do checklist reabre (ex: sair e voltar,
+    // reinspeção) initSignaturePad() rodava de novo e empilhava um novo conjunto de
+    // listeners de desenho/resize em cima dos antigos, sem nunca remover os velhos.
+    canvas.dataset.canvasSetup = 'true';
 
     const ctx = canvas.getContext('2d');
     let drawing = false;
@@ -2811,29 +2816,30 @@ function setupCanvas(canvasId) {
         const rect = canvas.getBoundingClientRect();
         const newWidth = Math.round(rect.width);
         const newHeight = Math.round(rect.height);
-        
-        if (canvas.width === newWidth && canvas.height === newHeight) {
+
+        if ((canvas.width === newWidth && canvas.height === newHeight) || newWidth === 0 || newHeight === 0) {
             return;
         }
 
-        let tempImg = null;
-        try {
-            // Verificar se o canvas não está vazio antes de fazer backup
-            // (Evita redesenhar canvas em branco desnecessariamente)
-            tempImg = canvas.toDataURL();
-        } catch (e) {
-            console.log('Erro ao salvar imagem do canvas:', e);
+        // Backup síncrono via canvas offscreen (drawImage), não via toDataURL()+Image
+        // assíncrono. O jeito antigo tinha uma janela de corrida real: no celular, fechar
+        // o teclado ao tocar em "Salvar" dispara resize, canvas.width=novo já LIMPA o
+        // desenho na hora, e só depois (assíncrono, no onload da Image) a assinatura
+        // voltava - se getSignatureImage() rodasse nesse intervalo, capturava um canvas
+        // em branco mesmo a pessoa tendo assinado de verdade.
+        let backupCanvas = null;
+        if (canvas.width > 0 && canvas.height > 0) {
+            backupCanvas = document.createElement('canvas');
+            backupCanvas.width = canvas.width;
+            backupCanvas.height = canvas.height;
+            backupCanvas.getContext('2d').drawImage(canvas, 0, 0);
         }
 
         canvas.width = newWidth;
         canvas.height = newHeight;
 
-        if (tempImg) {
-            const img = new Image();
-            img.onload = () => {
-                ctx.drawImage(img, 0, 0, newWidth, newHeight);
-            };
-            img.src = tempImg;
+        if (backupCanvas) {
+            ctx.drawImage(backupCanvas, 0, 0, backupCanvas.width, backupCanvas.height, 0, 0, newWidth, newHeight);
         }
     }
 
@@ -2893,13 +2899,11 @@ function clearSignatureResponsavel() {
 }
 
 function getSignatureImage() {
-    const canvas = document.getElementById('signatureCanvas');
-    return canvas ? canvas.toDataURL() : null;
+    return getSignatureCanvasImage('signatureCanvas');
 }
 
 function getSignatureResponsavelImage() {
-    const canvas = document.getElementById('signatureCanvasResponsavel');
-    return canvas ? canvas.toDataURL() : null;
+    return getSignatureCanvasImage('signatureCanvasResponsavel');
 }
 
 function clearSignatureCanvas(canvasId) {

@@ -954,12 +954,14 @@ function mostrarDetalheColaborador(matricula) {
     }
 
     // Situação de treinamentos, se já carregada (loadEfetivoData sempre garante o carregamento).
+    // Nem todo treinamento tem validade (DDS pontuais têm meses_validade nulo) - esses
+    // entram no bucket "sem validade" pra não sumir da contagem total.
     let treinHtml = '';
     const regs = allTreinamentosStatus.filter(t => t.matricula === matricula);
     if (regs.length > 0) {
-        let vencidos = 0, vencendo = 0, validos = 0;
+        let vencidos = 0, vencendo = 0, validos = 0, semValidade = 0;
         regs.forEach(t => {
-            if (!t.data_proxima_reciclagem) return;
+            if (!t.data_proxima_reciclagem) { semValidade++; return; }
             const d = parseLocalDate(t.data_proxima_reciclagem);
             const diff = Math.ceil((d.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
             if (diff < 0) vencidos++;
@@ -973,6 +975,7 @@ function mostrarDetalheColaborador(matricula) {
                     <span style="font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #fee2e2; color: #b91c1c; font-weight: 600;">🔴 ${vencidos} vencido(s)</span>
                     <span style="font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #fef3c7; color: #92400e; font-weight: 600;">🟡 ${vencendo} vencendo</span>
                     <span style="font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #d1fae5; color: #047857; font-weight: 600;">🟢 ${validos} válido(s)</span>
+                    <span style="font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #e0e7ff; color: #3730a3; font-weight: 600;">🔵 ${semValidade} sem validade</span>
                 </div>
             </div>`;
     }

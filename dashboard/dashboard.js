@@ -10,15 +10,36 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
 
+// Pagina automaticamente via Range/Content-Range. O PostgREST corta em 1000 linhas por
+// padrão - sem isso, o relatório de treinamentos (13 mil+ linhas de histórico) mostrava
+// só a primeira página em silêncio, sem erro nenhum (achado testando com a planilha real).
+// Pra tabelas com poucas linhas isso não muda nada (uma página só, mesmo custo de antes).
 async function supabaseFetch(table, query = '') {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${query}`, {
-        headers: {
-            apikey: SUPABASE_KEY,
-            Authorization: `Bearer ${SUPABASE_KEY}`
-        }
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ao buscar ${table}`);
-    return res.json();
+    const PAGE_SIZE = 1000;
+    let allRows = [];
+    let offset = 0;
+
+    while (true) {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${query}`, {
+            headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${SUPABASE_KEY}`,
+                Range: `${offset}-${offset + PAGE_SIZE - 1}`,
+                Prefer: 'count=exact'
+            }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status} ao buscar ${table}`);
+        const page = await res.json();
+        allRows = allRows.concat(page);
+
+        const contentRange = res.headers.get('content-range');
+        const total = contentRange && contentRange.includes('/') ? parseInt(contentRange.split('/')[1], 10) : null;
+        offset += PAGE_SIZE;
+
+        if (page.length < PAGE_SIZE || (total !== null && allRows.length >= total)) break;
+    }
+
+    return allRows;
 }
 
 async function supabaseUpsert(table, rows) {

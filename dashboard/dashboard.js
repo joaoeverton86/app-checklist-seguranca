@@ -840,6 +840,216 @@ async function importarTreinamentosCSV() {
 }
 
 // ============================================
+// EFETIVO (Parte B) - replica as fórmulas já usadas na aba TBs_DINAMICAS da
+// planilha TREINAMENTOS_EFETIVO.xlsx: admissões/demissões por COUNTIF de mês,
+// efetivo real como headcount na data, índice = HHT do mês ÷ efetivo do mês × 100.
+// ============================================
+
+let allEfetivo = [];
+let efetivoLoaded = false;
+
+async function loadEfetivoData() {
+    const statusEl = document.getElementById('efetivoImportStatus');
+    try {
+        allEfetivo = await supabaseFetch('colaboradores_efetivo', '?select=*');
+        if (!treinamentosLoaded) {
+            treinamentosLoaded = true;
+            await loadTreinamentosData();
+        }
+        renderEfetivoPanel();
+    } catch (err) {
+        console.error('Erro ao carregar dados de efetivo:', err);
+        if (statusEl) statusEl.textContent = '❌ Falha ao carregar dados de efetivo.';
+    }
+}
+
+function headcountAsOf(dateEnd) {
+    return allEfetivo.filter(e => {
+        if (!e.dt_admissao) return false;
+        if (parseLocalDate(e.dt_admissao) > dateEnd) return false;
+        if (!e.dt_demissao) return true;
+        return parseLocalDate(e.dt_demissao) > dateEnd;
+    }).length;
+}
+
+function hhtDoMes(ano, mesIndex0) {
+    const ini = new Date(ano, mesIndex0, 1);
+    const fim = new Date(ano, mesIndex0 + 1, 0);
+    return allTreinamentosRealizados
+        .filter(r => { if (!r.data_treinamento) return false; const d = parseLocalDate(r.data_treinamento); return d >= ini && d <= fim; })
+        .reduce((sum, r) => sum + (parseFloat(r.carga_horaria) || 0), 0);
+}
+
+function renderEfetivoPanel() {
+    if (allEfetivo.length === 0) return;
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    const efetivoAtual = headcountAsOf(hoje);
+    document.getElementById('kpiEfetivoAtual').textContent = efetivoAtual;
+
+    const doze = new Date(hoje.getFullYear(), hoje.getMonth() - 11, 1);
+    const admissoes12 = allEfetivo.filter(e => e.dt_admissao && parseLocalDate(e.dt_admissao) >= doze).length;
+    const demissoes12 = allEfetivo.filter(e => e.dt_demissao && parseLocalDate(e.dt_demissao) >= doze).length;
+    document.getElementById('kpiEfetivoAdmissoes').textContent = admissoes12;
+    document.getElementById('kpiEfetivoDemissoes').textContent = demissoes12;
+
+    const efetivoHa12Meses = headcountAsOf(new Date(doze.getFullYear(), doze.getMonth(), 0));
+    const efetivoMedio12 = (efetivoAtual + efetivoHa12Meses) / 2;
+    const turnover = efetivoMedio12 > 0 ? (demissoes12 / efetivoMedio12 * 100) : 0;
+    document.getElementById('kpiEfetivoTurnover').textContent = turnover.toFixed(1) + '%';
+
+    const ativosAgora = allEfetivo.filter(e => e.dt_admissao && (!e.dt_demissao || parseLocalDate(e.dt_demissao) > hoje));
+    let tempoCasaTotalMeses = 0;
+    ativosAgora.forEach(e => {
+        const adm = parseLocalDate(e.dt_admissao);
+        tempoCasaTotalMeses += (hoje.getTime() - adm.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+    });
+    document.getElementById('kpiEfetivoTempoCasa').textContent = ativosAgora.length > 0 ? Math.round(tempoCasaTotalMeses / ativosAgora.length) : 0;
+
+    // Evolução mensal desde a primeira admissão registrada até o mês atual
+    const datasAdmissao = allEfetivo.filter(e => e.dt_admissao).map(e => parseLocalDate(e.dt_admissao));
+    const primeiraData = datasAdmissao.length > 0 ? new Date(Math.min(...datasAdmissao.map(d => d.getTime()))) : hoje;
+    const meses = [], admissoesPorMes = [], demissoesPorMes = [], efetivoPorMes = [], indicePorMes = [];
+    let cursor = new Date(primeiraData.getFullYear(), primeiraData.getMonth(), 1);
+    const limite = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    while (cursor <= limite) {
+        const ano = cursor.getFullYear(), mes = cursor.getMonth();
+        const inicioMes = new Date(ano, mes, 1);
+        const fimMes = new Date(ano, mes + 1, 0);
+        meses.push(cursor.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
+        const adm = allEfetivo.filter(e => e.dt_admissao && parseLocalDate(e.dt_admissao) >= inicioMes && parseLocalDate(e.dt_admissao) <= fimMes).length;
+        const dem = allEfetivo.filter(e => e.dt_demissao && parseLocalDate(e.dt_demissao) >= inicioMes && parseLocalDate(e.dt_demissao) <= fimMes).length;
+        const eft = headcountAsOf(fimMes);
+        const hht = hhtDoMes(ano, mes);
+        admissoesPorMes.push(adm);
+        demissoesPorMes.push(dem);
+        efetivoPorMes.push(eft);
+        indicePorMes.push(eft > 0 ? Math.round((hht / eft) * 100) : 0);
+        cursor = new Date(ano, mes + 1, 1);
+    }
+
+    if (typeof Chart === 'undefined') return;
+    if (chartInstances.efetivoEvolucao) chartInstances.efetivoEvolucao.destroy();
+    if (chartInstances.efetivoIndice) chartInstances.efetivoIndice.destroy();
+    if (chartInstances.efetivoSetor) chartInstances.efetivoSetor.destroy();
+    if (chartInstances.efetivoFuncao) chartInstances.efetivoFuncao.destroy();
+
+    chartInstances.efetivoEvolucao = new Chart(document.getElementById('chartEfetivoEvolucao'), {
+        type: 'line',
+        data: {
+            labels: meses,
+            datasets: [
+                { label: 'Efetivo', data: efetivoPorMes, borderColor: '#4f46e5', backgroundColor: 'rgba(79,70,229,0.08)', fill: true, tension: 0.25, yAxisID: 'y' },
+                { label: 'Admissões', data: admissoesPorMes, borderColor: '#10b981', backgroundColor: 'transparent', tension: 0.25, yAxisID: 'y1' },
+                { label: 'Demissões', data: demissoesPorMes, borderColor: '#ef4444', backgroundColor: 'transparent', tension: 0.25, yAxisID: 'y1' }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: {
+                y: { position: 'left', beginAtZero: true, title: { display: true, text: 'Efetivo' } },
+                y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'Adm/Dem' } }
+            }
+        }
+    });
+
+    chartInstances.efetivoIndice = new Chart(document.getElementById('chartEfetivoIndice'), {
+        type: 'bar',
+        data: { labels: meses, datasets: [{ label: 'Índice HHT/Efetivo × 100', data: indicePorMes, backgroundColor: '#818cf8', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    const setorCounts = {};
+    ativosAgora.forEach(e => { const s = e.setor || 'Sem setor'; setorCounts[s] = (setorCounts[s] || 0) + 1; });
+    const setorSorted = Object.entries(setorCounts).sort((a, b) => b[1] - a[1]);
+    chartInstances.efetivoSetor = new Chart(document.getElementById('chartEfetivoSetor'), {
+        type: 'bar',
+        data: { labels: setorSorted.map(s => s[0]), datasets: [{ label: 'Efetivo', data: setorSorted.map(s => s[1]), backgroundColor: '#10b981', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+
+    const funcaoCounts = {};
+    ativosAgora.forEach(e => { const f = e.funcao || 'Sem função'; funcaoCounts[f] = (funcaoCounts[f] || 0) + 1; });
+    const funcaoSorted = Object.entries(funcaoCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    chartInstances.efetivoFuncao = new Chart(document.getElementById('chartEfetivoFuncao'), {
+        type: 'bar',
+        data: { labels: funcaoSorted.map(f => f[0]), datasets: [{ label: 'Efetivo', data: funcaoSorted.map(f => f[1]), backgroundColor: '#f59e0b', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+}
+
+async function importarEfetivoCSV() {
+    const input = document.getElementById('efetivoFileInput');
+    const statusEl = document.getElementById('efetivoImportStatus');
+    if (!input.files || !input.files[0]) {
+        statusEl.textContent = '❌ Selecione um arquivo CSV primeiro.';
+        return;
+    }
+
+    statusEl.textContent = 'Lendo arquivo...';
+    try {
+        const file = input.files[0];
+        const rawText = await file.text();
+        const text = rawText.replace(/^﻿/, '');
+        const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+        if (lines.length < 2) {
+            statusEl.textContent = '❌ Arquivo vazio ou sem linhas de dados.';
+            return;
+        }
+
+        const headers = lines[0].split(';').map(h => h.trim().toUpperCase());
+        const idx = {};
+        headers.forEach((h, i) => { idx[h] = i; });
+        function col(parts, name) {
+            const i = idx[name.toUpperCase()];
+            return i !== undefined ? (parts[i] || '').trim() : '';
+        }
+
+        const efetivoMap = new Map();
+        let puladas = 0;
+        for (let li = 1; li < lines.length; li++) {
+            const parts = lines[li].split(';');
+            const matricula = col(parts, 'MATRICULA').toUpperCase();
+            const nome = col(parts, 'NOME');
+            if (!matricula || !nome) { puladas++; continue; }
+
+            efetivoMap.set(matricula, {
+                id: matricula,
+                status: col(parts, 'STATUS'),
+                cpf: col(parts, 'CPF'),
+                nome,
+                funcao: col(parts, 'FUNCAO'),
+                setor: col(parts, 'SETOR'),
+                responsavel: col(parts, 'RESPONSAVEL'),
+                dt_admissao: parseDataBR(col(parts, 'DT_ADMISSAO')),
+                dt_demissao: parseDataBR(col(parts, 'DT_DEMISSAO')),
+                dt_nascimento: parseDataBR(col(parts, 'DT_NASCIMENTO')),
+                cidade: col(parts, 'CIDADE'),
+                estado: col(parts, 'ESTADO'),
+                estabilidade: col(parts, 'ESTABILIDADE'),
+                ghe: col(parts, 'GHE'),
+                calca: col(parts, 'CALCA'),
+                camisa: col(parts, 'CAMISA'),
+                bota: col(parts, 'BOTA'),
+                sexo: col(parts, 'SEXO')
+            });
+        }
+
+        const efetivoArr = Array.from(efetivoMap.values());
+        statusEl.textContent = `Enviando ${efetivoArr.length} colaboradores...`;
+        await supabaseUpsert('colaboradores_efetivo', efetivoArr);
+
+        statusEl.textContent = `✅ Importação concluída! ${efetivoArr.length} colaboradores importados/atualizados. ${puladas} linha(s) pulada(s) por dado incompleto.`;
+        efetivoLoaded = true;
+        await loadEfetivoData();
+    } catch (err) {
+        console.error('Erro ao importar planilha de efetivo:', err);
+        statusEl.textContent = '❌ Erro na importação: ' + err.message;
+    }
+}
+
+// ============================================
 // NAVEGAÇÃO ENTRE PÁGINAS (barra lateral)
 // ============================================
 
@@ -847,7 +1057,8 @@ const DB_PAGE_TITLES = {
     checklists: 'Checklists',
     extintores: 'Extintores',
     relatos: 'Relatos de Problemas',
-    treinamentos: 'Treinamentos'
+    treinamentos: 'Treinamentos',
+    efetivo: 'Efetivo'
 };
 
 function showDbPage(pageId) {
@@ -855,7 +1066,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', efetivo: 'navEfetivo' };
     document.getElementById(navMap[pageId])?.classList.add('active');
 
     document.getElementById('pageTitle').textContent = DB_PAGE_TITLES[pageId] || '';
@@ -863,6 +1074,10 @@ function showDbPage(pageId) {
     if (pageId === 'treinamentos' && !treinamentosLoaded) {
         treinamentosLoaded = true;
         loadTreinamentosData();
+    }
+    if (pageId === 'efetivo' && !efetivoLoaded) {
+        efetivoLoaded = true;
+        loadEfetivoData();
     }
 }
 

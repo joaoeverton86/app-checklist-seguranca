@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v138';
+const APP_VERSION = 'v139';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -1134,6 +1134,7 @@ function switchGestaoTab(tab) {
 
 function openNovoCadastro() {
     if (gestaoTab === 'equipamentos') {
+        loadEmpresaDatalist();
         // Clear equipment form fields
         document.getElementById('cadastroTipo').value = '';
         document.getElementById('cadastroCategoria').innerHTML = '<option value="">Selecione o tipo primeiro...</option>';
@@ -1314,6 +1315,7 @@ async function editCadastro(id) {
     const cadastro = await getFromIndexedDB('cadastros', id);
     if (!cadastro) return;
 
+    loadEmpresaDatalist();
     showPage('pageNovoEquipamento');
 
     setTimeout(() => {
@@ -1387,13 +1389,19 @@ async function saveCadastroEdit(id) {
     await saveToIndexedDB('cadastros', cadastro);
     registrarAuditoria('update', 'cadastros', cadastro.id, `${cadastro.patrimonio} (${cadastro.nome})`);
 
-    // Se o nome ou o patrimônio mudou, atualizar os checklists históricos correspondentes
+    // Se o nome, o patrimônio ou a empresa mudou, atualizar os checklists históricos
+    // correspondentes - sem isso, um checklist antigo fica preso pra sempre com o texto
+    // de empresa que existia quando foi criado, mesmo depois do cadastro ser corrigido
+    // (foi exatamente essa lacuna que fez "AR LOCAÇOES" e "AR-LOCAÇOES" aparecerem como
+    // duas empresas diferentes nos rankings de não conformidade).
     const oldNome = oldCadastro.nome;
     const oldPatr = oldCadastro.patrimonio;
+    const oldEmpresa = oldCadastro.empresa || '';
     const newNome = cadastro.nome;
     const newPatr = cadastro.patrimonio;
+    const newEmpresa = cadastro.empresa || '';
 
-    if (oldNome !== newNome || oldPatr !== newPatr) {
+    if (oldNome !== newNome || oldPatr !== newPatr || oldEmpresa !== newEmpresa) {
         try {
             const checklists = await getAllFromIndexedDB('checklists');
             for (const c of checklists) {
@@ -1412,6 +1420,10 @@ async function saveCadastroEdit(id) {
                     }
                     if (c.patrimonio !== newPatr) {
                         c.patrimonio = newPatr;
+                        changed = true;
+                    }
+                    if ((c.empresa || '') === oldEmpresa && oldEmpresa !== newEmpresa) {
+                        c.empresa = newEmpresa;
                         changed = true;
                     }
                     if (c.equipment && c.equipment.name !== newNome) {
@@ -2294,6 +2306,7 @@ function startChecklist(category, equipmentId) {
     // Carregar cadastros deste tipo
     loadCadastroSelect(category);
     loadResponsavelSelect();
+    loadEmpresaDatalist();
 
     clearSignature();
     clearSignatureResponsavel();
@@ -3037,6 +3050,19 @@ async function loadResponsavelSelect() {
             listOperadores.appendChild(opt);
         });
     }
+}
+
+// Sugere empresas já cadastradas ao digitar, pra evitar variações do mesmo nome
+// (ex: "AR LOCAÇOES" vs "AR-LOCAÇOES" digitados em cadastros diferentes, que
+// faziam a mesma empresa aparecer duplicada nos rankings de não conformidade).
+async function loadEmpresaDatalist() {
+    const list = document.getElementById('listaEmpresas');
+    if (!list) return;
+    const cadastros = await getAllFromIndexedDB('cadastros');
+    const empresas = Array.from(new Set(
+        cadastros.map(c => (c.empresa || '').trim()).filter(Boolean)
+    )).sort();
+    list.innerHTML = empresas.map(e => `<option value="${escapeHTML(e)}">`).join('');
 }
 
 // Removidos selecionadores antigos de SST/Responsável

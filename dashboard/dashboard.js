@@ -21,6 +21,21 @@ async function supabaseFetch(table, query = '') {
     return res.json();
 }
 
+async function supabaseUpsert(table, rows) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?on_conflict=id`, {
+        method: 'POST',
+        headers: {
+            apikey: SUPABASE_KEY,
+            Authorization: `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json',
+            Prefer: 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify(rows)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    return true;
+}
+
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
     if (dateStr.includes('T')) {
@@ -532,13 +547,278 @@ function renderRelatosPanel() {
 }
 
 // ============================================
+// TREINAMENTOS (Fase 1 - importação + relatório de HHT)
+// Tabelas isoladas (treinamentos_catalogo/treinamentos_realizados/treinamentos_status),
+// só lidas aqui no painel - o histórico completo nunca vai pro app de campo (ver plano).
+// Carregado sob demanda (só quando a página é aberta), já que são ~14 mil linhas de
+// histórico - nada a ver com o app mobile, mas não faz sentido puxar isso a cada 5 min
+// em segundo plano se ninguém está olhando a página.
+// ============================================
+
+let allTreinamentosRealizados = [];
+let allTreinamentosCatalogo = [];
+let allTreinamentosStatus = [];
+let treinamentosFilter = 'mes';
+let treinamentosLoaded = false;
+
+const NR_PATTERN = /\bNR[\s.]?\d/i;
+
+function getTreinamentosDateRange() {
+    const now = new Date();
+    const fim = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59, 999);
+    if (treinamentosFilter === 'trimestre') {
+        return { inicio: new Date(now.getFullYear(), now.getMonth() - 2, 1), fim };
+    }
+    if (treinamentosFilter === 'ano') {
+        return { inicio: new Date(now.getFullYear(), 0, 1), fim };
+    }
+    if (treinamentosFilter === 'todos') {
+        return { inicio: new Date(2000, 0, 1), fim };
+    }
+    return { inicio: new Date(now.getFullYear(), now.getMonth(), 1), fim };
+}
+
+function setTreinamentosFilter(filter) {
+    treinamentosFilter = filter;
+    ['btnFiltroTreinMes', 'btnFiltroTreinTrimestre', 'btnFiltroTreinAno', 'btnFiltroTreinTodos'].forEach(id => {
+        document.getElementById(id)?.classList.remove('active');
+    });
+    const map = { mes: 'btnFiltroTreinMes', trimestre: 'btnFiltroTreinTrimestre', ano: 'btnFiltroTreinAno', todos: 'btnFiltroTreinTodos' };
+    document.getElementById(map[filter])?.classList.add('active');
+    renderTreinamentosPanel();
+}
+
+async function loadTreinamentosData() {
+    const statusEl = document.getElementById('treinamentosImportStatus');
+    try {
+        const [realizados, catalogo, status] = await Promise.all([
+            supabaseFetch('treinamentos_realizados', '?select=*'),
+            supabaseFetch('treinamentos_catalogo', '?select=*'),
+            supabaseFetch('treinamentos_status', '?select=*')
+        ]);
+        allTreinamentosRealizados = realizados;
+        allTreinamentosCatalogo = catalogo;
+        allTreinamentosStatus = status;
+        renderTreinamentosPanel();
+    } catch (err) {
+        console.error('Erro ao carregar dados de treinamentos:', err);
+        if (statusEl) statusEl.textContent = '❌ Falha ao carregar dados de treinamentos.';
+    }
+}
+
+function renderTreinamentosPanel() {
+    const { inicio, fim } = getTreinamentosDateRange();
+    const periodo = allTreinamentosRealizados.filter(r => {
+        if (!r.data_treinamento) return false;
+        const d = parseLocalDate(r.data_treinamento);
+        return d >= inicio && d <= fim;
+    });
+
+    document.getElementById('kpiTreinSessoes').textContent = periodo.length;
+    const totalHoras = periodo.reduce((sum, r) => sum + (parseFloat(r.carga_horaria) || 0), 0);
+    document.getElementById('kpiTreinHHT').textContent = totalHoras.toLocaleString('pt-BR');
+    document.getElementById('kpiTreinColaboradores').textContent = new Set(periodo.map(r => r.matricula)).size;
+
+    // NRs vencidas/vencendo - baseado no status atual (não no período filtrado acima,
+    // que é só pra sessões realizadas), só colaboradores ativos, só treinamentos que
+    // parecem NR formal (nome contém "NR" + número - heurística simples).
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const nrAlerts = [];
+    const matriculasComNRVencida = new Set();
+    allTreinamentosStatus.forEach(s => {
+        if (s.status_colaborador !== 'ATIVO') return;
+        if (!NR_PATTERN.test(s.treinamento_nome || '')) return;
+        if (!s.data_proxima_reciclagem) return;
+        const deadline = parseLocalDate(s.data_proxima_reciclagem);
+        deadline.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays <= 30) {
+            nrAlerts.push({ s, diffDays });
+            if (diffDays < 0) matriculasComNRVencida.add(s.matricula);
+        }
+    });
+    document.getElementById('kpiTreinVencidos').textContent = matriculasComNRVencida.size;
+
+    nrAlerts.sort((a, b) => a.diffDays - b.diffDays);
+    const listEl = document.getElementById('listTreinVencendo');
+    if (nrAlerts.length === 0) {
+        listEl.innerHTML = '<div class="db-list-empty">✅ Nenhuma NR vencida ou vencendo nos próximos 30 dias</div>';
+    } else {
+        listEl.innerHTML = nrAlerts.slice(0, 30).map(({ s, diffDays }) => {
+            const cls = diffDays < 0 ? 'db-item-danger' : 'db-item-warning';
+            const msg = diffDays < 0 ? `Vencida há ${Math.abs(diffDays)} dia(s)` : (diffDays === 0 ? 'Vence hoje' : `Vence em ${diffDays} dia(s)`);
+            return `<div class="db-list-item ${cls}">
+                <div class="db-list-item-title">${escapeHTML(s.nome || s.matricula)}</div>
+                <div class="db-list-item-sub">${escapeHTML(s.treinamento_nome || '')} — ${msg}</div>
+            </div>`;
+        }).join('');
+    }
+
+    if (typeof Chart === 'undefined') return;
+    if (chartInstances.treinHHTMes) chartInstances.treinHHTMes.destroy();
+    if (chartInstances.treinSetor) chartInstances.treinSetor.destroy();
+    if (chartInstances.treinTopTemas) chartInstances.treinTopTemas.destroy();
+
+    // HHT por mês (12 meses)
+    const meses = [], horasPorMes = [];
+    const now = new Date();
+    for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        meses.push(d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
+        const ini = new Date(d.getFullYear(), d.getMonth(), 1);
+        const fimMes = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        const sublist = allTreinamentosRealizados.filter(r => {
+            if (!r.data_treinamento) return false;
+            const dt = parseLocalDate(r.data_treinamento);
+            return dt >= ini && dt <= fimMes;
+        });
+        horasPorMes.push(sublist.reduce((sum, r) => sum + (parseFloat(r.carga_horaria) || 0), 0));
+    }
+    chartInstances.treinHHTMes = new Chart(document.getElementById('chartTreinHHTMes'), {
+        type: 'bar',
+        data: { labels: meses, datasets: [{ label: 'HHT', data: horasPorMes, backgroundColor: '#4f46e5', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    // HHT por setor no período filtrado
+    const setorCounts = {};
+    periodo.forEach(r => { const s = r.setor || 'Sem setor'; setorCounts[s] = (setorCounts[s] || 0) + (parseFloat(r.carga_horaria) || 0); });
+    const setorSorted = Object.entries(setorCounts).sort((a, b) => b[1] - a[1]);
+    chartInstances.treinSetor = new Chart(document.getElementById('chartTreinSetor'), {
+        type: 'bar',
+        data: { labels: setorSorted.map(s => s[0]), datasets: [{ label: 'HHT', data: setorSorted.map(s => s[1]), backgroundColor: '#818cf8', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+    });
+
+    // Top 10 temas mais realizados no período filtrado
+    const temaCounts = {};
+    periodo.forEach(r => { const t = r.treinamento_nome || 'Desconhecido'; temaCounts[t] = (temaCounts[t] || 0) + 1; });
+    const temaSorted = Object.entries(temaCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    chartInstances.treinTopTemas = new Chart(document.getElementById('chartTreinTopTemas'), {
+        type: 'bar',
+        data: { labels: temaSorted.map(t => t[0]), datasets: [{ label: 'Sessões', data: temaSorted.map(t => t[1]), backgroundColor: '#10b981', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+}
+
+// ============================================
+// IMPORTAÇÃO DA PLANILHA (CSV no formato atual)
+// ============================================
+
+function parseDataBR(str) {
+    if (!str) return null;
+    const parts = str.trim().split('/');
+    if (parts.length !== 3) return null;
+    const [d, m, y] = parts;
+    if (!d || !m || !y || y.length < 4) return null;
+    return `${y.padStart(4, '0')}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+}
+
+async function importarTreinamentosCSV() {
+    const input = document.getElementById('treinamentosFileInput');
+    const statusEl = document.getElementById('treinamentosImportStatus');
+    if (!input.files || !input.files[0]) {
+        statusEl.textContent = '❌ Selecione um arquivo CSV primeiro.';
+        return;
+    }
+
+    statusEl.textContent = 'Lendo arquivo...';
+    try {
+        const file = input.files[0];
+        const rawText = await file.text();
+        const text = rawText.replace(/^﻿/, ''); // remove BOM
+        const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+        if (lines.length < 2) {
+            statusEl.textContent = '❌ Arquivo vazio ou sem linhas de dados.';
+            return;
+        }
+
+        const headers = lines[0].split(';').map(h => h.trim().toUpperCase());
+        const idx = {};
+        headers.forEach((h, i) => { idx[h] = i; });
+
+        function col(parts, name) {
+            const i = idx[name.toUpperCase()];
+            return i !== undefined ? (parts[i] || '').trim() : '';
+        }
+
+        const catalogoMap = new Map();
+        const realizadosMap = new Map();
+        let puladas = 0;
+
+        for (let li = 1; li < lines.length; li++) {
+            const parts = lines[li].split(';');
+            const matricula = col(parts, 'MATRICULA').toUpperCase();
+            const cod = col(parts, 'COD');
+            const treinamento = col(parts, 'TREINAMENTO');
+            const dataTreino = parseDataBR(col(parts, 'Data do Treinamento'));
+
+            if (!matricula || !cod || !treinamento || !dataTreino) {
+                puladas++;
+                continue;
+            }
+
+            const cargaH = parseFloat((col(parts, 'CARGA_H') || '0').replace(',', '.')) || 0;
+            const mesesStr = col(parts, 'Meses');
+            const meses = mesesStr ? parseInt(mesesStr, 10) : null;
+            const dataReciclagem = parseDataBR(col(parts, 'Data da Próxima Reciclagem'));
+
+            if (!catalogoMap.has(cod)) {
+                catalogoMap.set(cod, { id: cod, nome: treinamento, carga_horaria: cargaH, meses_validade: meses });
+            }
+
+            const id = `${matricula}_${cod}_${dataTreino}`;
+            realizadosMap.set(id, {
+                id,
+                matricula,
+                nome: col(parts, 'NOME'),
+                funcao: col(parts, 'FUNCAO'),
+                setor: col(parts, 'SETOR'),
+                status_colaborador: col(parts, 'STATUS'),
+                treinamento_cod: cod,
+                treinamento_nome: treinamento,
+                carga_horaria: cargaH,
+                data_treinamento: dataTreino,
+                meses_validade: meses,
+                data_proxima_reciclagem: dataReciclagem,
+                observacoes: col(parts, 'Obs.')
+            });
+        }
+
+        const catalogoArr = Array.from(catalogoMap.values());
+        const realizadosArr = Array.from(realizadosMap.values());
+
+        statusEl.textContent = `Enviando ${catalogoArr.length} tipos de treinamento...`;
+        await supabaseUpsert('treinamentos_catalogo', catalogoArr);
+
+        const BATCH_SIZE = 500;
+        let enviados = 0;
+        for (let i = 0; i < realizadosArr.length; i += BATCH_SIZE) {
+            const batch = realizadosArr.slice(i, i + BATCH_SIZE);
+            await supabaseUpsert('treinamentos_realizados', batch);
+            enviados += batch.length;
+            statusEl.textContent = `Enviando sessões... ${enviados}/${realizadosArr.length}`;
+        }
+
+        statusEl.textContent = `✅ Importação concluída! ${enviados} sessões e ${catalogoArr.length} tipos de treinamento importados/atualizados. ${puladas} linha(s) pulada(s) por dado incompleto (matrícula, código, treinamento ou data faltando).`;
+        treinamentosLoaded = true;
+        await loadTreinamentosData();
+    } catch (err) {
+        console.error('Erro ao importar planilha de treinamentos:', err);
+        statusEl.textContent = '❌ Erro na importação: ' + err.message;
+    }
+}
+
+// ============================================
 // NAVEGAÇÃO ENTRE PÁGINAS (barra lateral)
 // ============================================
 
 const DB_PAGE_TITLES = {
     checklists: 'Checklists',
     extintores: 'Extintores',
-    relatos: 'Relatos de Problemas'
+    relatos: 'Relatos de Problemas',
+    treinamentos: 'Treinamentos'
 };
 
 function showDbPage(pageId) {
@@ -546,10 +826,15 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos' };
     document.getElementById(navMap[pageId])?.classList.add('active');
 
     document.getElementById('pageTitle').textContent = DB_PAGE_TITLES[pageId] || '';
+
+    if (pageId === 'treinamentos' && !treinamentosLoaded) {
+        treinamentosLoaded = true;
+        loadTreinamentosData();
+    }
 }
 
 // ============================================

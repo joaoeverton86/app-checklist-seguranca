@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Painel Gerencial - Checklist Segurança</title>
-    <link rel="stylesheet" href="dashboard.css?v=2">
+    <link rel="stylesheet" href="dashboard.css?v=3">
 </head>
 <body>
 
@@ -30,6 +30,9 @@
                 </button>
                 <button class="db-nav-item" id="navRelatos" onclick="showDbPage('relatos')">
                     <span class="db-nav-icon">⚠️</span> Relatos de Problemas
+                </button>
+                <button class="db-nav-item" id="navTreinamentos" onclick="showDbPage('treinamentos')">
+                    <span class="db-nav-icon">🎓</span> Treinamentos
                 </button>
             </div>
             <div class="db-sidebar-footer">Somente leitura — atualiza a cada 5 min</div>
@@ -195,6 +198,66 @@
                 </div>
             </section>
 
+            <!-- Página: Treinamentos -->
+            <section class="db-page" id="page-treinamentos">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">📥 Importar Planilha de Treinamentos</div>
+                    <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
+                        Envie o CSV no mesmo formato usado hoje (MATRICULA;STATUS;NOME;FUNCAO;SETOR;COD;TREINAMENTO;CARGA_H;Data do Treinamento;Meses;...). Pode reenviar a mesma planilha depois sem duplicar - a importação é idempotente por matrícula+treinamento+data.
+                    </p>
+                    <input type="file" id="treinamentosFileInput" accept=".csv" style="margin-bottom: 10px;">
+                    <button class="db-apply-btn" onclick="importarTreinamentosCSV()">Importar</button>
+                    <div id="treinamentosImportStatus" style="margin-top: 10px; font-size: 12.5px; color: var(--text-light);"></div>
+                </div>
+
+                <div class="db-filters">
+                    <div class="db-filter-buttons">
+                        <button id="btnFiltroTreinMes" class="db-filter-btn active" onclick="setTreinamentosFilter('mes')">Este Mês</button>
+                        <button id="btnFiltroTreinTrimestre" class="db-filter-btn" onclick="setTreinamentosFilter('trimestre')">Últimos 3 Meses</button>
+                        <button id="btnFiltroTreinAno" class="db-filter-btn" onclick="setTreinamentosFilter('ano')">Este Ano</button>
+                        <button id="btnFiltroTreinTodos" class="db-filter-btn" onclick="setTreinamentosFilter('todos')">Todos</button>
+                    </div>
+                </div>
+
+                <div class="db-kpi-grid">
+                    <div class="db-kpi-card">
+                        <div class="db-kpi-value" id="kpiTreinSessoes">0</div>
+                        <div class="db-kpi-label">Sessões no Período</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-primary">
+                        <div class="db-kpi-value" id="kpiTreinHHT">0</div>
+                        <div class="db-kpi-label">HHT no Período (horas)</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-success">
+                        <div class="db-kpi-value" id="kpiTreinColaboradores">0</div>
+                        <div class="db-kpi-label">Colaboradores Treinados</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-danger">
+                        <div class="db-kpi-value" id="kpiTreinVencidos">0</div>
+                        <div class="db-kpi-label">Colaboradores c/ NR Vencida</div>
+                    </div>
+                </div>
+
+                <div class="db-charts-grid">
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">HHT por Mês (Últimos 12 Meses)</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartTreinHHTMes"></canvas></div>
+                    </div>
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">HHT por Setor no Período</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartTreinSetor"></canvas></div>
+                    </div>
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">Top 10 Treinamentos Mais Realizados no Período</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartTreinTopTemas"></canvas></div>
+                    </div>
+                    <div class="db-chart-card db-list-card">
+                        <div class="db-chart-title">NRs Vencidas ou Vencendo (por colaborador)</div>
+                        <div id="listTreinVencendo" class="db-list"></div>
+                    </div>
+                </div>
+            </section>
+
             <footer class="db-footer">
                 Painel somente leitura — atualiza automaticamente a cada 5 minutos. Dados sincronizados do mesmo banco do app de campo.
             </footer>
@@ -203,6 +266,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=2"></script>
+    <script src="dashboard.js?v=3"></script>
 </body>
 </html>

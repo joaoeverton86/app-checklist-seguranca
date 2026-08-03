@@ -1004,7 +1004,10 @@ function mostrarDetalheColaborador(matricula) {
                 <div style="font-size: 16px; font-weight: 700;">${escapeHTML(e.nome || '')}</div>
                 <div style="font-size: 12px; color: var(--text-light); margin-top: 2px;">${escapeHTML(e.funcao || '')}${e.setor ? ' — ' + escapeHTML(e.setor) : ''}</div>
             </div>
-            ${statusBadge}
+            <div style="display:flex; gap:8px; align-items:center;">
+                ${statusBadge}
+                <button class="db-clear-btn" onclick="abrirFormEfetivo('${escapeHTML(matricula)}')">✏️ Editar</button>
+            </div>
         </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 14px; font-size: 12.5px;">
             <div><strong>Matrícula:</strong> ${escapeHTML(e.id)}</div>
@@ -1024,6 +1027,112 @@ function mostrarDetalheColaborador(matricula) {
     `;
     detail.style.display = 'block';
     detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Cadastro/edição manual de colaborador, complementando a importação em massa por CSV -
+// depois que a base estiver preenchida, o dia a dia (admissão/demissão/correção pontual)
+// não precisa mais passar por planilha.
+function abrirFormEfetivo(matricula) {
+    const form = document.getElementById('efetivoFormCard');
+    const title = document.getElementById('efetivoFormTitle');
+    const matriculaInput = document.getElementById('efForm_matricula');
+    document.getElementById('efetivoFormStatus').textContent = '';
+
+    if (matricula) {
+        const e = allEfetivo.find(x => x.id === matricula);
+        if (!e) return;
+        title.textContent = '✏️ Editar Colaborador';
+        matriculaInput.value = e.id || '';
+        matriculaInput.readOnly = true;
+        matriculaInput.style.background = 'var(--bg)';
+        document.getElementById('efForm_nome').value = e.nome || '';
+        document.getElementById('efForm_status').value = e.status || 'ATIVO';
+        document.getElementById('efForm_funcao').value = e.funcao || '';
+        document.getElementById('efForm_setor').value = e.setor || '';
+        document.getElementById('efForm_responsavel').value = e.responsavel || '';
+        document.getElementById('efForm_dt_admissao').value = e.dt_admissao || '';
+        document.getElementById('efForm_dt_demissao').value = e.dt_demissao || '';
+        document.getElementById('efForm_dt_nascimento').value = e.dt_nascimento || '';
+        document.getElementById('efForm_cpf').value = e.cpf || '';
+        document.getElementById('efForm_cidade').value = e.cidade || '';
+        document.getElementById('efForm_estado').value = e.estado || '';
+        document.getElementById('efForm_estabilidade').value = e.estabilidade || 'NÃO';
+        document.getElementById('efForm_ghe').value = e.ghe || '';
+        document.getElementById('efForm_sexo').value = e.sexo || 'MASCULINO';
+        document.getElementById('efForm_calca').value = e.calca || '';
+        document.getElementById('efForm_camisa').value = e.camisa || '';
+        document.getElementById('efForm_bota').value = e.bota || '';
+    } else {
+        title.textContent = '👤 Novo Colaborador';
+        ['matricula', 'nome', 'funcao', 'setor', 'responsavel', 'dt_admissao', 'dt_demissao', 'dt_nascimento', 'cpf', 'cidade', 'estado', 'ghe', 'calca', 'camisa', 'bota']
+            .forEach(f => { const el = document.getElementById('efForm_' + f); if (el) el.value = ''; });
+        document.getElementById('efForm_status').value = 'ATIVO';
+        document.getElementById('efForm_estabilidade').value = 'NÃO';
+        document.getElementById('efForm_sexo').value = 'MASCULINO';
+        matriculaInput.readOnly = false;
+        matriculaInput.style.background = '';
+    }
+
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function fecharFormEfetivo() {
+    document.getElementById('efetivoFormCard').style.display = 'none';
+}
+
+async function salvarColaboradorEfetivo() {
+    const statusEl = document.getElementById('efetivoFormStatus');
+    const matricula = document.getElementById('efForm_matricula').value.trim();
+    const nome = document.getElementById('efForm_nome').value.trim();
+
+    if (!matricula || !nome) {
+        statusEl.textContent = '❌ Matrícula e nome são obrigatórios.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const row = {
+        id: matricula,
+        status: document.getElementById('efForm_status').value,
+        nome,
+        funcao: document.getElementById('efForm_funcao').value.trim(),
+        setor: document.getElementById('efForm_setor').value.trim(),
+        responsavel: document.getElementById('efForm_responsavel').value.trim(),
+        dt_admissao: document.getElementById('efForm_dt_admissao').value || null,
+        dt_demissao: document.getElementById('efForm_dt_demissao').value || null,
+        dt_nascimento: document.getElementById('efForm_dt_nascimento').value || null,
+        cpf: document.getElementById('efForm_cpf').value.trim(),
+        cidade: document.getElementById('efForm_cidade').value.trim(),
+        estado: document.getElementById('efForm_estado').value.trim(),
+        estabilidade: document.getElementById('efForm_estabilidade').value,
+        ghe: document.getElementById('efForm_ghe').value.trim(),
+        sexo: document.getElementById('efForm_sexo').value,
+        calca: document.getElementById('efForm_calca').value.trim(),
+        camisa: document.getElementById('efForm_camisa').value.trim(),
+        bota: document.getElementById('efForm_bota').value.trim()
+    };
+
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('colaboradores_efetivo', [row]);
+        const idx = allEfetivo.findIndex(e => e.id === matricula);
+        if (idx >= 0) allEfetivo[idx] = { ...allEfetivo[idx], ...row };
+        else allEfetivo.push(row);
+
+        statusEl.textContent = '✅ Salvo com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        renderEfetivoPanel();
+        setTimeout(() => {
+            fecharFormEfetivo();
+            mostrarDetalheColaborador(matricula);
+        }, 600);
+    } catch (err) {
+        console.error('Erro ao salvar colaborador:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
 }
 
 function headcountAsOf(dateEnd) {

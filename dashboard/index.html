@@ -274,12 +274,107 @@
                 </div>
 
                 <div class="db-chart-card" style="margin-bottom: 16px;">
-                    <div class="db-chart-title">🔍 Buscar Colaborador</div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" style="margin-bottom: 0;">🔍 Buscar Colaborador</div>
+                        <button class="db-apply-btn" onclick="abrirFormEfetivo()">+ Novo Colaborador</button>
+                    </div>
                     <input type="text" id="efetivoSearchInput" placeholder="Buscar por nome ou matrícula..."
                            oninput="filterEfetivoColaboradores(this.value)"
                            style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; margin-bottom: 12px; box-sizing: border-box; background: var(--card); color: var(--text);">
                     <div id="efetivoSearchResults" class="db-list" style="max-height: 220px;"></div>
                     <div id="efetivoColabDetail" style="display:none; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);"></div>
+                </div>
+
+                <div class="db-chart-card" id="efetivoFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                    <div class="db-chart-title" id="efetivoFormTitle">👤 Novo Colaborador</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Matrícula *</label>
+                            <input type="text" id="efForm_matricula" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Nome *</label>
+                            <input type="text" id="efForm_nome" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Status</label>
+                            <select id="efForm_status" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="ATIVO">ATIVO</option>
+                                <option value="DEMITIDO">DEMITIDO</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Função</label>
+                            <input type="text" id="efForm_funcao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Setor</label>
+                            <input type="text" id="efForm_setor" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Responsável</label>
+                            <input type="text" id="efForm_responsavel" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data de Admissão</label>
+                            <input type="date" id="efForm_dt_admissao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data de Demissão</label>
+                            <input type="date" id="efForm_dt_demissao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data de Nascimento</label>
+                            <input type="date" id="efForm_dt_nascimento" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">CPF</label>
+                            <input type="text" id="efForm_cpf" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Cidade</label>
+                            <input type="text" id="efForm_cidade" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Estado</label>
+                            <input type="text" id="efForm_estado" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Estabilidade</label>
+                            <select id="efForm_estabilidade" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="NÃO">NÃO</option>
+                                <option value="SIM">SIM</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">GHE</label>
+                            <input type="text" id="efForm_ghe" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Sexo</label>
+                            <select id="efForm_sexo" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="MASCULINO">MASCULINO</option>
+                                <option value="FEMININO">FEMININO</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Calça</label>
+                            <input type="text" id="efForm_calca" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Camisa</label>
+                            <input type="text" id="efForm_camisa" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Bota</label>
+                            <input type="text" id="efForm_bota" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                    </div>
+                    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center;">
+                        <button class="db-apply-btn" onclick="salvarColaboradorEfetivo()">💾 Salvar</button>
+                        <button class="db-clear-btn" onclick="fecharFormEfetivo()">Cancelar</button>
+                        <span id="efetivoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
                 </div>
 
                 <div class="db-kpi-grid">
@@ -333,6 +428,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=7"></script>
+    <script src="dashboard.js?v=8"></script>
 </body>
 </html>

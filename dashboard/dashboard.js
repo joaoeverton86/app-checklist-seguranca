@@ -620,6 +620,12 @@ async function loadTreinamentosData() {
         allTreinamentosRealizados = realizados;
         allTreinamentosCatalogo = catalogo;
         allTreinamentosStatus = status;
+        // Precisa do efetivo pra saber quem realmente está ativo hoje (ver comentário
+        // em renderTreinamentosPanel) - carrega mesmo se o usuário nunca abriu a página
+        // Efetivo nesta sessão.
+        if (allEfetivo.length === 0) {
+            allEfetivo = await supabaseFetch('colaboradores_efetivo', '?select=*');
+        }
         renderTreinamentosPanel();
     } catch (err) {
         console.error('Erro ao carregar dados de treinamentos:', err);
@@ -643,12 +649,23 @@ function renderTreinamentosPanel() {
     // NRs vencidas/vencendo - baseado no status atual (não no período filtrado acima,
     // que é só pra sessões realizadas), só colaboradores ativos, só treinamentos que
     // parecem NR formal (nome contém "NR" + número - heurística simples).
+    //
+    // "Ativo" aqui usa o cadastro de efetivo (colaboradores_efetivo.dt_demissao) como
+    // fonte de verdade, não o status_colaborador de treinamentos_status - esse último é
+    // só uma foto do status no momento em que a sessão de treinamento foi lançada, então
+    // fica desatualizado assim que alguém é demitido depois do último treinamento
+    // registrado (achado real: colaborador demitido em 2026-05 continuava aparecendo
+    // como "ATIVO" nessa lista porque o treinamento dele foi lançado antes da demissão).
+    // Cai de volta pro status_colaborador só se a matrícula não existir no efetivo.
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const efetivoPorMatricula = new Map(allEfetivo.map(e => [e.id, e]));
     const nrAlerts = [];
     const matriculasComNRVencida = new Set();
     allTreinamentosStatus.forEach(s => {
-        if (s.status_colaborador !== 'ATIVO') return;
+        const efetivo = efetivoPorMatricula.get(s.matricula);
+        const estaAtivo = efetivo ? (!!efetivo.dt_admissao && !efetivo.dt_demissao) : (s.status_colaborador === 'ATIVO');
+        if (!estaAtivo) return;
         if (!NR_PATTERN.test(s.treinamento_nome || '')) return;
         if (!s.data_proxima_reciclagem) return;
         const deadline = parseLocalDate(s.data_proxima_reciclagem);

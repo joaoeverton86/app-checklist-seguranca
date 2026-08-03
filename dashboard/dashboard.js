@@ -1330,7 +1330,8 @@ const DB_PAGE_TITLES = {
     extintores: 'Extintores',
     relatos: 'Relatos de Problemas',
     treinamentos: 'Treinamentos',
-    efetivo: 'Efetivo'
+    efetivo: 'Efetivo',
+    config: 'Configurações'
 };
 
 function showDbPage(pageId) {
@@ -1338,7 +1339,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', efetivo: 'navEfetivo' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', efetivo: 'navEfetivo', config: 'navConfig' };
     document.getElementById(navMap[pageId])?.classList.add('active');
 
     document.getElementById('pageTitle').textContent = DB_PAGE_TITLES[pageId] || '';

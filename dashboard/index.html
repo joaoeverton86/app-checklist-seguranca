@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Painel Gerencial - Checklist Segurança</title>
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+
+    <header class="db-header">
+        <div class="db-header-title">
+            <h1>🛡️ Painel Gerencial</h1>
+            <div class="db-subtitle">PISF Ramal do Agreste — Checklist de Segurança</div>
+        </div>
+        <div class="db-header-status">
+            <span id="statusText">Carregando...</span>
+            <button onclick="loadData()" title="Atualizar agora">🔄</button>
+        </div>
+    </header>
+
+    <div class="db-filters">
+        <div class="db-filter-buttons">
+            <button id="btnFiltroMes" class="db-filter-btn active" onclick="setReportFilter('mes')">Este Mês</button>
+            <button id="btnFiltroSemana" class="db-filter-btn" onclick="setReportFilter('semana')">Última Semana</button>
+            <button id="btnFiltroTodos" class="db-filter-btn" onclick="setReportFilter('todos')">Todos</button>
+            <button id="btnFiltroCustom" class="db-filter-btn" onclick="setReportFilter('custom')">Personalizado</button>
+        </div>
+        <div id="customDateRange" class="db-custom-range" style="display: none;">
+            <input type="date" id="filterDateFrom">
+            <span>até</span>
+            <input type="date" id="filterDateTo">
+            <button class="db-apply-btn" onclick="applyCustomRange()">Aplicar</button>
+        </div>
+        <div class="db-filter-selects">
+            <select id="filterCategoria" onchange="renderAll()">
+                <option value="">Todas as Categorias</option>
+            </select>
+            <select id="filterEmpresa" onchange="renderAll()">
+                <option value="">Todas as Empresas</option>
+            </select>
+            <button class="db-clear-btn" onclick="clearFilters()">Limpar Filtros</button>
+        </div>
+    </div>
+
+    <div class="db-periodo-titulo">📊 Período: <span id="periodoTitulo">—</span></div>
+
+    <div class="db-kpi-grid">
+        <div class="db-kpi-card">
+            <div class="db-kpi-value" id="kpiEquipamentos">0</div>
+            <div class="db-kpi-label">Equipamentos Ativos</div>
+        </div>
+        <div class="db-kpi-card db-kpi-primary">
+            <div class="db-kpi-value" id="kpiConformidade">0%</div>
+            <div class="db-kpi-label">Conformidade</div>
+        </div>
+        <div class="db-kpi-card db-kpi-danger">
+            <div class="db-kpi-value" id="kpiInterditados">0</div>
+            <div class="db-kpi-label">Interditados</div>
+        </div>
+        <div class="db-kpi-card db-kpi-warning">
+            <div class="db-kpi-value" id="kpiRestricao">0</div>
+            <div class="db-kpi-label">Liberados c/ Restrição</div>
+        </div>
+        <div class="db-kpi-card db-kpi-success">
+            <div class="db-kpi-value" id="kpiLiberados">0</div>
+            <div class="db-kpi-label">Liberados</div>
+        </div>
+        <div class="db-kpi-card db-kpi-warning">
+            <div class="db-kpi-value" id="kpiPendentes">0</div>
+            <div class="db-kpi-label">Pendentes no Período</div>
+        </div>
+        <div class="db-kpi-card db-kpi-success">
+            <div class="db-kpi-value" id="kpiRealizados">0</div>
+            <div class="db-kpi-label">Realizados no Período</div>
+        </div>
+    </div>
+
+    <div class="db-charts-grid">
+        <div class="db-chart-card">
+            <div class="db-chart-title">Conformidade Geral</div>
+            <div class="db-chart-canvas-wrap"><canvas id="chartConformidade"></canvas></div>
+        </div>
+        <div class="db-chart-card">
+            <div class="db-chart-title">Volume de Checklists (Últimos 6 Meses)</div>
+            <div class="db-chart-canvas-wrap"><canvas id="chartPorMes"></canvas></div>
+        </div>
+        <div class="db-chart-card">
+            <div class="db-chart-title">Checklists por Tipo de Equipamento</div>
+            <div class="db-chart-canvas-wrap"><canvas id="chartPorTipo"></canvas></div>
+        </div>
+        <div class="db-chart-card">
+            <div class="db-chart-title">Top 10 Itens com Mais Não Conformidade</div>
+            <div class="db-chart-canvas-wrap"><canvas id="chartItensNC"></canvas></div>
+        </div>
+        <div class="db-chart-card">
+            <div class="db-chart-title">Top 10 Equipamentos com Mais Não Conformidade</div>
+            <div class="db-chart-canvas-wrap"><canvas id="chartEquipNC"></canvas></div>
+        </div>
+        <div class="db-chart-card">
+            <div class="db-chart-title">Top Empresas com Mais Não Conformidade</div>
+            <div class="db-chart-canvas-wrap"><canvas id="chartEmpresaNC"></canvas></div>
+        </div>
+    </div>
+
+    <footer class="db-footer">
+        Painel somente leitura — atualiza automaticamente a cada 5 minutos. Dados sincronizados do mesmo banco do app de campo.
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="../data.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>

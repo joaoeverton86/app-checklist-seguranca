@@ -478,6 +478,99 @@ GRANT ALL ON public.inspecoes_extintores TO anon;
 -- Fase 3 (painel de vencimento) ainda não implementada.
 
 -- ============================================================
+-- MÓDULO DE TREINAMENTOS (verificação de validade de treinamento/DDS por
+-- colaborador - inclui TODOS os temas, não só NRs formais, porque a contagem
+-- de DDS entra no índice HHT/Efetivo exigido pelo cliente)
+-- ============================================================
+
+-- Catálogo oficial de treinamentos (fonte: CADASTRO_TREINAMENTOS.xlsx do cliente).
+CREATE TABLE IF NOT EXISTS public.treinamentos_catalogo (
+    id TEXT PRIMARY KEY,                  -- código oficial ("Nº" da planilha)
+    nome TEXT NOT NULL,
+    carga_horaria NUMERIC,                -- horas
+    meses_validade INTEGER,               -- NULL = sem validade/não recicla (ex: DDS pontual)
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.treinamentos_catalogo ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acesso total ao catálogo de treinamentos" ON public.treinamentos_catalogo;
+CREATE POLICY "Acesso total ao catálogo de treinamentos" ON public.treinamentos_catalogo FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON public.treinamentos_catalogo TO anon;
+
+-- Histórico completo de sessões realizadas (importado da planilha mensal de campo -
+-- listas de presença assinadas em papel, lançadas depois pela web). id determinístico
+-- (matrícula_código_data) + upsert por on_conflict torna a reimportação idempotente.
+CREATE TABLE IF NOT EXISTS public.treinamentos_realizados (
+    id TEXT PRIMARY KEY,
+    matricula TEXT NOT NULL,
+    nome TEXT,
+    funcao TEXT,
+    setor TEXT,
+    status_colaborador TEXT,
+    treinamento_cod TEXT,                 -- FK "solta" pra treinamentos_catalogo.id (sem FK real por causa de códigos sintéticos residuais)
+    treinamento_nome TEXT,
+    carga_horaria NUMERIC,
+    data_treinamento DATE,
+    meses_validade INTEGER,               -- copiado do catálogo no momento da importação
+    data_proxima_reciclagem DATE,         -- data_treinamento + meses_validade, calculado na importação
+    observacoes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.treinamentos_realizados ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acesso total aos treinamentos realizados" ON public.treinamentos_realizados;
+CREATE POLICY "Acesso total aos treinamentos realizados" ON public.treinamentos_realizados FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON public.treinamentos_realizados TO anon;
+
+-- View de "status atual": última sessão de cada (matrícula, treinamento), usada pelo
+-- app de campo (sincronização incremental, nunca a tabela cheia) e pelo painel.
+CREATE OR REPLACE VIEW public.treinamentos_status AS
+SELECT DISTINCT ON (matricula, treinamento_cod)
+    matricula || '_' || treinamento_cod AS id,
+    matricula, nome, funcao, setor, status_colaborador,
+    treinamento_cod, treinamento_nome, carga_horaria,
+    data_treinamento, meses_validade, data_proxima_reciclagem, created_at
+FROM public.treinamentos_realizados
+WHERE treinamento_cod IS NOT NULL
+ORDER BY matricula, treinamento_cod, data_treinamento DESC NULLS LAST, created_at DESC;
+
+-- Efetivo (cadastro de RH - fonte: TREINAMENTOS_EFETIVO.xlsx, aba EFETIVO_COP_RAMAL_DO_AGRESTE).
+-- Inclui CPF e data de nascimento por decisão explícita do cliente, ciente de que o
+-- acesso é via chave pública (anon), sem autenticação real no banco.
+CREATE TABLE IF NOT EXISTS public.colaboradores_efetivo (
+    id TEXT PRIMARY KEY,                  -- matrícula
+    status TEXT,
+    cpf TEXT,
+    nome TEXT,
+    funcao TEXT,
+    setor TEXT,
+    responsavel TEXT,
+    dt_admissao DATE,
+    dt_demissao DATE,
+    dt_nascimento DATE,
+    cidade TEXT,
+    estado TEXT,
+    estabilidade TEXT,
+    ghe TEXT,
+    calca TEXT,
+    camisa TEXT,
+    bota TEXT,
+    sexo TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.colaboradores_efetivo ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acesso total ao efetivo" ON public.colaboradores_efetivo;
+CREATE POLICY "Acesso total ao efetivo" ON public.colaboradores_efetivo FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON public.colaboradores_efetivo TO anon;
+
+-- ============================================================
 -- RISCOS RESIDUAIS CONHECIDOS (documentados, não corrigidos nesta versão)
 -- ============================================================
 -- 1. cadastros, checklists, relatos, checklist_items e nao_conformidades continuam

@@ -532,6 +532,27 @@ function renderRelatosPanel() {
 }
 
 // ============================================
+// NAVEGAÇÃO ENTRE PÁGINAS (barra lateral)
+// ============================================
+
+const DB_PAGE_TITLES = {
+    checklists: 'Checklists',
+    extintores: 'Extintores',
+    relatos: 'Relatos de Problemas'
+};
+
+function showDbPage(pageId) {
+    document.querySelectorAll('.db-page').forEach(el => el.classList.remove('active'));
+    document.getElementById('page-' + pageId)?.classList.add('active');
+
+    document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos' };
+    document.getElementById(navMap[pageId])?.classList.add('active');
+
+    document.getElementById('pageTitle').textContent = DB_PAGE_TITLES[pageId] || '';
+}
+
+// ============================================
 // INICIALIZAÇÃO
 // ============================================
 

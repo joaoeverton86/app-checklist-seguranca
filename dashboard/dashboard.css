@@ -20,13 +20,79 @@ body {
     font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: var(--bg);
     color: var(--text);
-    padding: 20px 28px 40px;
-    max-width: 1500px;
-    margin: 0 auto;
 }
 
-/* Header */
-.db-header {
+/* Layout: sidebar + main content */
+.db-layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* Sidebar */
+.db-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+}
+.db-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 20px 18px;
+    border-bottom: 1px solid var(--border);
+}
+.db-brand-icon { font-size: 26px; }
+.db-brand-title { font-size: 15px; font-weight: 700; line-height: 1.2; }
+.db-brand-sub { font-size: 11px; color: var(--text-light); }
+
+.db-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px 12px;
+}
+.db-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: none;
+    border: none;
+    text-align: left;
+    padding: 11px 12px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-light);
+    cursor: pointer;
+    font-family: inherit;
+}
+.db-nav-item:hover { background: var(--bg); color: var(--text); }
+.db-nav-item.active { background: var(--primary); color: white; }
+.db-nav-icon { font-size: 16px; }
+
+.db-sidebar-footer {
+    margin-top: auto;
+    padding: 16px 18px;
+    font-size: 10.5px;
+    color: var(--text-light);
+    border-top: 1px solid var(--border);
+}
+
+/* Main content */
+.db-main {
+    flex: 1;
+    min-width: 0;
+    padding: 20px 28px 40px;
+    max-width: 1400px;
+}
+
+.db-topbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -34,14 +100,9 @@ body {
     gap: 12px;
     margin-bottom: 20px;
 }
-.db-header-title h1 {
-    font-size: 24px;
+.db-topbar-title {
+    font-size: 22px;
     font-weight: 700;
-}
-.db-subtitle {
-    font-size: 13px;
-    color: var(--text-light);
-    margin-top: 2px;
 }
 .db-header-status {
     display: flex;
@@ -62,6 +123,10 @@ body {
 .db-header-status button:hover {
     background: var(--bg);
 }
+
+/* Pages */
+.db-page { display: none; }
+.db-page.active { display: block; }
 
 /* Filters */
 .db-filters {
@@ -201,14 +266,6 @@ body {
     height: 280px;
 }
 
-.db-section-title {
-    font-size: 18px;
-    font-weight: 700;
-    margin: 32px 0 14px;
-    padding-bottom: 8px;
-    border-bottom: 2px solid var(--border);
-}
-
 .db-list-card .db-chart-canvas-wrap { display: none; }
 .db-list {
     display: flex;
@@ -239,8 +296,31 @@ body {
     border-top: 1px solid var(--border);
 }
 
+@media (max-width: 900px) {
+    .db-layout { flex-direction: column; }
+    .db-sidebar {
+        width: 100%;
+        height: auto;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    .db-brand { border-bottom: none; border-right: 1px solid var(--border); }
+    .db-nav {
+        flex-direction: row;
+        flex: 1;
+        overflow-x: auto;
+        padding: 10px 12px;
+    }
+    .db-nav-item { white-space: nowrap; }
+    .db-sidebar-footer { display: none; }
+    .db-main { padding: 16px 16px 30px; max-width: none; }
+}
+
 @media (max-width: 700px) {
-    body { padding: 14px 14px 30px; }
     .db-filter-selects { margin-left: 0; width: 100%; }
     .db-charts-grid { grid-template-columns: 1fr; }
 }

@@ -1152,39 +1152,114 @@ function hhtDoMes(ano, mesIndex0) {
         .reduce((sum, r) => sum + (parseFloat(r.carga_horaria) || 0), 0);
 }
 
+let efetivoFiltroAno = '';
+let efetivoFiltroMes = '';
+
+// Popula o select de anos com base nos dados reais (admissão/demissão), não uma lista
+// fixa - "dinâmico" a pedido do usuário, então acompanha a base automaticamente.
+function popularFiltroAnoEfetivo() {
+    const sel = document.getElementById('efetivoFiltroAno');
+    if (!sel || sel.options.length > 1) return;
+    const anos = new Set([new Date().getFullYear()]);
+    allEfetivo.forEach(e => {
+        if (e.dt_admissao) anos.add(parseLocalDate(e.dt_admissao).getFullYear());
+        if (e.dt_demissao) anos.add(parseLocalDate(e.dt_demissao).getFullYear());
+    });
+    Array.from(anos).sort((a, b) => b - a).forEach(ano => {
+        const opt = document.createElement('option');
+        opt.value = ano;
+        opt.textContent = ano;
+        sel.appendChild(opt);
+    });
+}
+
+function onEfetivoFiltroChange() {
+    efetivoFiltroAno = document.getElementById('efetivoFiltroAno').value;
+    efetivoFiltroMes = document.getElementById('efetivoFiltroMes').value;
+    renderEfetivoPanel();
+}
+
+function limparFiltroEfetivo() {
+    document.getElementById('efetivoFiltroAno').value = '';
+    document.getElementById('efetivoFiltroMes').value = '';
+    efetivoFiltroAno = '';
+    efetivoFiltroMes = '';
+    renderEfetivoPanel();
+}
+
 function renderEfetivoPanel() {
     if (allEfetivo.length === 0) return;
+    popularFiltroAnoEfetivo();
+
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
-    const efetivoAtual = headcountAsOf(hoje);
+    // Mês sem ano selecionado não tem sentido sozinho (mês de qual ano?), então só
+    // entra em vigor quando o ano também está selecionado.
+    const anoSel = efetivoFiltroAno ? parseInt(efetivoFiltroAno, 10) : null;
+    const mesSel = (anoSel !== null && efetivoFiltroMes !== '') ? parseInt(efetivoFiltroMes, 10) : null;
+    const nomesMeses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+    // periodoInicio/periodoFim definem a janela usada nos KPIs de admissões/demissões/
+    // turnover; dataRef é o "hoje" usado pro efetivo atual e tempo de casa - sem filtro,
+    // os dois continuam exatamente como antes (hoje / últimos 12 meses).
+    let periodoInicio, periodoFim, dataRef, tituloPeriodo;
+    if (anoSel !== null && mesSel !== null) {
+        periodoInicio = new Date(anoSel, mesSel, 1);
+        const fimMesCalc = new Date(anoSel, mesSel + 1, 0);
+        periodoFim = fimMesCalc > hoje ? hoje : fimMesCalc;
+        dataRef = periodoFim;
+        tituloPeriodo = `${nomesMeses[mesSel]} de ${anoSel}`;
+    } else if (anoSel !== null) {
+        periodoInicio = new Date(anoSel, 0, 1);
+        const fimAnoCalc = new Date(anoSel, 11, 31);
+        periodoFim = fimAnoCalc > hoje ? hoje : fimAnoCalc;
+        dataRef = periodoFim;
+        tituloPeriodo = `Ano de ${anoSel}`;
+    } else {
+        periodoInicio = new Date(hoje.getFullYear(), hoje.getMonth() - 11, 1);
+        periodoFim = hoje;
+        dataRef = hoje;
+        tituloPeriodo = 'Últimos 12 meses';
+    }
+    const periodoTituloEl = document.getElementById('efetivoPeriodoTitulo');
+    if (periodoTituloEl) periodoTituloEl.textContent = tituloPeriodo;
+
+    const efetivoAtual = headcountAsOf(dataRef);
     document.getElementById('kpiEfetivoAtual').textContent = efetivoAtual;
 
-    const doze = new Date(hoje.getFullYear(), hoje.getMonth() - 11, 1);
-    const admissoes12 = allEfetivo.filter(e => e.dt_admissao && parseLocalDate(e.dt_admissao) >= doze).length;
-    const demissoes12 = allEfetivo.filter(e => e.dt_demissao && parseLocalDate(e.dt_demissao) >= doze).length;
-    document.getElementById('kpiEfetivoAdmissoes').textContent = admissoes12;
-    document.getElementById('kpiEfetivoDemissoes').textContent = demissoes12;
+    const admissoesPeriodo = allEfetivo.filter(e => e.dt_admissao && parseLocalDate(e.dt_admissao) >= periodoInicio && parseLocalDate(e.dt_admissao) <= periodoFim).length;
+    const demissoesPeriodo = allEfetivo.filter(e => e.dt_demissao && parseLocalDate(e.dt_demissao) >= periodoInicio && parseLocalDate(e.dt_demissao) <= periodoFim).length;
+    document.getElementById('kpiEfetivoAdmissoes').textContent = admissoesPeriodo;
+    document.getElementById('kpiEfetivoDemissoes').textContent = demissoesPeriodo;
 
-    const efetivoHa12Meses = headcountAsOf(new Date(doze.getFullYear(), doze.getMonth(), 0));
-    const efetivoMedio12 = (efetivoAtual + efetivoHa12Meses) / 2;
-    const turnover = efetivoMedio12 > 0 ? (demissoes12 / efetivoMedio12 * 100) : 0;
+    const efetivoInicioPeriodo = headcountAsOf(new Date(periodoInicio.getFullYear(), periodoInicio.getMonth(), 0));
+    const efetivoMedioPeriodo = (efetivoAtual + efetivoInicioPeriodo) / 2;
+    const turnover = efetivoMedioPeriodo > 0 ? (demissoesPeriodo / efetivoMedioPeriodo * 100) : 0;
     document.getElementById('kpiEfetivoTurnover').textContent = turnover.toFixed(1) + '%';
 
-    const ativosAgora = allEfetivo.filter(e => e.dt_admissao && (!e.dt_demissao || parseLocalDate(e.dt_demissao) > hoje));
+    const ativosNaData = allEfetivo.filter(e => e.dt_admissao && parseLocalDate(e.dt_admissao) <= dataRef && (!e.dt_demissao || parseLocalDate(e.dt_demissao) > dataRef));
     let tempoCasaTotalMeses = 0;
-    ativosAgora.forEach(e => {
+    ativosNaData.forEach(e => {
         const adm = parseLocalDate(e.dt_admissao);
-        tempoCasaTotalMeses += (hoje.getTime() - adm.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+        tempoCasaTotalMeses += (dataRef.getTime() - adm.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
     });
-    document.getElementById('kpiEfetivoTempoCasa').textContent = ativosAgora.length > 0 ? Math.round(tempoCasaTotalMeses / ativosAgora.length) : 0;
+    document.getElementById('kpiEfetivoTempoCasa').textContent = ativosNaData.length > 0 ? Math.round(tempoCasaTotalMeses / ativosNaData.length) : 0;
 
-    // Evolução mensal desde a primeira admissão registrada até o mês atual
-    const datasAdmissao = allEfetivo.filter(e => e.dt_admissao).map(e => parseLocalDate(e.dt_admissao));
-    const primeiraData = datasAdmissao.length > 0 ? new Date(Math.min(...datasAdmissao.map(d => d.getTime()))) : hoje;
+    // Evolução mensal: com um ano selecionado, mostra só os 12 meses daquele ano (ou até
+    // o mês atual, se for o ano corrente); sem filtro, mantém o histórico completo de
+    // sempre (da primeira admissão registrada até hoje).
     const meses = [], admissoesPorMes = [], demissoesPorMes = [], efetivoPorMes = [], indicePorMes = [];
-    let cursor = new Date(primeiraData.getFullYear(), primeiraData.getMonth(), 1);
-    const limite = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    let cursor, limite;
+    if (anoSel !== null) {
+        cursor = new Date(anoSel, 0, 1);
+        limite = anoSel === hoje.getFullYear() ? new Date(hoje.getFullYear(), hoje.getMonth(), 1) : new Date(anoSel, 11, 1);
+    } else {
+        const datasAdmissao = allEfetivo.filter(e => e.dt_admissao).map(e => parseLocalDate(e.dt_admissao));
+        const primeiraData = datasAdmissao.length > 0 ? new Date(Math.min(...datasAdmissao.map(d => d.getTime()))) : hoje;
+        cursor = new Date(primeiraData.getFullYear(), primeiraData.getMonth(), 1);
+        limite = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    }
     while (cursor <= limite) {
         const ano = cursor.getFullYear(), mes = cursor.getMonth();
         const inicioMes = new Date(ano, mes, 1);
@@ -1233,7 +1308,7 @@ function renderEfetivoPanel() {
     });
 
     const setorCounts = {};
-    ativosAgora.forEach(e => { const s = e.setor || 'Sem setor'; setorCounts[s] = (setorCounts[s] || 0) + 1; });
+    ativosNaData.forEach(e => { const s = e.setor || 'Sem setor'; setorCounts[s] = (setorCounts[s] || 0) + 1; });
     const setorSorted = Object.entries(setorCounts).sort((a, b) => b[1] - a[1]);
     chartInstances.efetivoSetor = new Chart(document.getElementById('chartEfetivoSetor'), {
         type: 'bar',
@@ -1242,7 +1317,7 @@ function renderEfetivoPanel() {
     });
 
     const funcaoCounts = {};
-    ativosAgora.forEach(e => { const f = e.funcao || 'Sem função'; funcaoCounts[f] = (funcaoCounts[f] || 0) + 1; });
+    ativosNaData.forEach(e => { const f = e.funcao || 'Sem função'; funcaoCounts[f] = (funcaoCounts[f] || 0) + 1; });
     const funcaoSorted = Object.entries(funcaoCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
     chartInstances.efetivoFuncao = new Chart(document.getElementById('chartEfetivoFuncao'), {
         type: 'bar',
@@ -1344,13 +1419,20 @@ function showDbPage(pageId) {
 
     document.getElementById('pageTitle').textContent = DB_PAGE_TITLES[pageId] || '';
 
-    if (pageId === 'treinamentos' && !treinamentosLoaded) {
-        treinamentosLoaded = true;
-        loadTreinamentosData();
+    // Sempre re-renderiza os gráficos ao entrar na página (não só na primeira vez) -
+    // se o Chart.js criou os gráficos em algum momento em que o canvas ainda não tinha
+    // um tamanho real (ex: troca de aba muito rápida logo após o carregamento), eles
+    // ficam em branco pra sempre até a página ser recarregada, já que nada mais dispara
+    // um redesenho depois disso. Recriar o gráfico do zero a cada visita é barato (não
+    // busca nada de novo no Supabase, só usa os dados já carregados em memória) e
+    // corrige isso sozinho.
+    if (pageId === 'treinamentos') {
+        if (!treinamentosLoaded) { treinamentosLoaded = true; loadTreinamentosData(); }
+        else renderTreinamentosPanel();
     }
-    if (pageId === 'efetivo' && !efetivoLoaded) {
-        efetivoLoaded = true;
-        loadEfetivoData();
+    if (pageId === 'efetivo') {
+        if (!efetivoLoaded) { efetivoLoaded = true; loadEfetivoData(); }
+        else renderEfetivoPanel();
     }
 }
 

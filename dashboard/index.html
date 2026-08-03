@@ -360,6 +360,32 @@
                     </div>
                 </div>
 
+                <div class="db-filters" style="margin-bottom: 16px;">
+                    <div class="db-filter-selects" style="margin-left: 0;">
+                        <select id="efetivoFiltroAno" onchange="onEfetivoFiltroChange()">
+                            <option value="">Todos os Anos</option>
+                        </select>
+                        <select id="efetivoFiltroMes" onchange="onEfetivoFiltroChange()">
+                            <option value="">Todos os Meses</option>
+                            <option value="0">Janeiro</option>
+                            <option value="1">Fevereiro</option>
+                            <option value="2">Março</option>
+                            <option value="3">Abril</option>
+                            <option value="4">Maio</option>
+                            <option value="5">Junho</option>
+                            <option value="6">Julho</option>
+                            <option value="7">Agosto</option>
+                            <option value="8">Setembro</option>
+                            <option value="9">Outubro</option>
+                            <option value="10">Novembro</option>
+                            <option value="11">Dezembro</option>
+                        </select>
+                        <button class="db-clear-btn" onclick="limparFiltroEfetivo()">Limpar Filtro</button>
+                    </div>
+                </div>
+
+                <div class="db-periodo-titulo">📊 Período: <span id="efetivoPeriodoTitulo">Últimos 12 meses</span></div>
+
                 <div class="db-kpi-grid">
                     <div class="db-kpi-card db-kpi-primary">
                         <div class="db-kpi-value" id="kpiEfetivoAtual">0</div>
@@ -434,6 +460,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=9"></script>
+    <script src="dashboard.js?v=10"></script>
 </body>
 </html>

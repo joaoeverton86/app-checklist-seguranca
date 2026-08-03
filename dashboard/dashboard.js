@@ -21,6 +21,16 @@ async function supabaseFetch(table, query = '') {
     return res.json();
 }
 
+function formatSimpleDate(dateStr) {
+    if (!dateStr) return '—';
+    if (dateStr.includes('T')) {
+        try { return new Date(dateStr).toLocaleDateString('pt-BR'); }
+        catch (e) { dateStr = dateStr.split('T')[0]; }
+    }
+    const parts = dateStr.split('-');
+    return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
+}
+
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
     return String(str).replace(/[&<>'"]/g,
@@ -107,6 +117,9 @@ function normalizarStatusChecklist(val, checklist) {
 
 let allChecklists = [];
 let allCadastros = [];
+let allExtintores = [];
+let allInspecoesExtintores = [];
+let allRelatos = [];
 let reportFilter = 'mes';
 let customFrom = null;
 let customTo = null;
@@ -168,14 +181,22 @@ function clearFilters() {
 async function loadData() {
     setStatus('Carregando dados...');
     try {
-        const [checklists, cadastros] = await Promise.all([
+        const [checklists, cadastros, extintores, inspecoes, relatos] = await Promise.all([
             supabaseFetch('checklists', '?select=*'),
-            supabaseFetch('cadastros', '?select=*')
+            supabaseFetch('cadastros', '?select=*'),
+            supabaseFetch('extintores', '?select=*'),
+            supabaseFetch('inspecoes_extintores', '?select=*'),
+            supabaseFetch('relatos', '?select=*')
         ]);
         allChecklists = checklists;
         allCadastros = cadastros;
+        allExtintores = extintores;
+        allInspecoesExtintores = inspecoes;
+        allRelatos = relatos;
         populateFilterOptions();
         renderAll();
+        renderExtintorPanel();
+        renderRelatosPanel();
         setStatus('Atualizado às ' + new Date().toLocaleTimeString('pt-BR'));
     } catch (err) {
         console.error('Erro ao carregar dados do Supabase:', err);
@@ -393,6 +414,121 @@ function renderCharts(checklistsPeriodo, filterChecklistArray) {
         data: { labels: empresaSorted.map(e => e[0]), datasets: [{ label: 'Não Conformidades', data: empresaSorted.map(e => e[1]), backgroundColor: colors.warning || '#f59e0b', borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     });
+}
+
+// ============================================
+// EXTINTORES (Fase 2)
+// Espelha os cálculos de renderExtintorAlerts()/atualizarPendentesMesExtintores()
+// do app.js, lendo direto do Supabase em vez do IndexedDB.
+// ============================================
+
+function renderExtintorPanel() {
+    const ativos = allExtintores.filter(e => e.ativo !== false);
+    document.getElementById('kpiExtintoresAtivos').textContent = ativos.length;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let vencidos = 0, vencendo = 0;
+    const alertList = [];
+    ativos.forEach(e => {
+        if (!e.proxima_recarga) return;
+        const deadline = parseLocalDate(e.proxima_recarga);
+        deadline.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) { vencidos++; alertList.push({ e, diffDays }); }
+        else if (diffDays <= 30) { vencendo++; alertList.push({ e, diffDays }); }
+    });
+    document.getElementById('kpiExtintoresVencidos').textContent = vencidos;
+    document.getElementById('kpiExtintoresVencendo').textContent = vencendo;
+
+    alertList.sort((a, b) => a.diffDays - b.diffDays);
+    const listEl = document.getElementById('listExtintorVencendo');
+    if (alertList.length === 0) {
+        listEl.innerHTML = '<div class="db-list-empty">✅ Nenhum extintor vencido ou vencendo nos próximos 30 dias</div>';
+    } else {
+        listEl.innerHTML = alertList.map(({ e, diffDays }) => {
+            const cls = diffDays < 0 ? 'db-item-danger' : 'db-item-warning';
+            const msg = diffDays < 0 ? `Vencido há ${Math.abs(diffDays)} dia(s)` : (diffDays === 0 ? 'Vence hoje' : `Vence em ${diffDays} dia(s)`);
+            return `<div class="db-list-item ${cls}">
+                <div class="db-list-item-title">${escapeHTML(e.id)} (${escapeHTML(e.tipo || '')})</div>
+                <div class="db-list-item-sub">${escapeHTML(e.setor || '—')} — ${msg}</div>
+            </div>`;
+        }).join('');
+    }
+
+    // Última inspeção deste mês por extintor (dedupe), pra conformidade + pendentes do mês
+    const now = new Date();
+    const anoMes = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    const ultimaInspecaoMes = {};
+    allInspecoesExtintores.forEach(i => {
+        if (!(i.date || '').startsWith(anoMes)) return;
+        const existing = ultimaInspecaoMes[i.extintor_id];
+        if (!existing || new Date(i.created_at || 0) > new Date(existing.created_at || 0)) {
+            ultimaInspecaoMes[i.extintor_id] = i;
+        }
+    });
+
+    let conf = 0, naoConf = 0, pendentes = 0;
+    ativos.forEach(e => {
+        const insp = ultimaInspecaoMes[e.id];
+        if (!insp) pendentes++;
+        else if (insp.status_geral === 'nao_conforme') naoConf++;
+        else conf++;
+    });
+    document.getElementById('kpiExtintoresInspecionados').textContent = conf + naoConf;
+    document.getElementById('kpiExtintoresPendentes').textContent = pendentes;
+
+    if (typeof Chart !== 'undefined') {
+        chartInstances.extintorInspecao = new Chart(document.getElementById('chartExtintorInspecao'), {
+            type: 'doughnut',
+            data: { labels: ['Conforme', 'Não Conforme', 'Pendente'], datasets: [{ data: [conf, naoConf, pendentes], backgroundColor: ['#10b981', '#ef4444', '#94a3b8'], borderWidth: 2, borderColor: '#fff' }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, cutout: '55%' }
+        });
+    }
+}
+
+// ============================================
+// RELATOS DE PROBLEMAS (Fase 2)
+// ============================================
+
+function renderRelatosPanel() {
+    const counts = { aberto: 0, em_andamento: 0, resolvido: 0 };
+    allRelatos.forEach(r => {
+        const st = (r.status || 'aberto').toLowerCase();
+        if (counts[st] !== undefined) counts[st]++;
+    });
+    document.getElementById('kpiRelatosAbertos').textContent = counts.aberto;
+    document.getElementById('kpiRelatosAndamento').textContent = counts.em_andamento;
+    document.getElementById('kpiRelatosResolvidos').textContent = counts.resolvido;
+
+    const tipoCounts = {};
+    allRelatos.forEach(r => { const t = r.tipo || 'Outro'; tipoCounts[t] = (tipoCounts[t] || 0) + 1; });
+    const tipoSorted = Object.entries(tipoCounts).sort((a, b) => b[1] - a[1]);
+    if (typeof Chart !== 'undefined') {
+        chartInstances.relatosTipo = new Chart(document.getElementById('chartRelatosTipo'), {
+            type: 'bar',
+            data: { labels: tipoSorted.map(t => t[0]), datasets: [{ label: 'Relatos', data: tipoSorted.map(t => t[1]), backgroundColor: '#818cf8', borderRadius: 6 }] },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        });
+    }
+
+    const abertos = allRelatos
+        .filter(r => (r.status || 'aberto').toLowerCase() !== 'resolvido')
+        .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+        .slice(0, 15);
+    const listEl = document.getElementById('listRelatosAbertos');
+    if (abertos.length === 0) {
+        listEl.innerHTML = '<div class="db-list-empty">✅ Nenhum relato aberto ou em andamento</div>';
+    } else {
+        listEl.innerHTML = abertos.map(r => {
+            const cls = (r.status || '').toLowerCase() === 'em_andamento' ? 'db-item-warning' : 'db-item-danger';
+            return `<div class="db-list-item ${cls}">
+                <div class="db-list-item-title">${escapeHTML(r.identificacao || r.tipo || 'Relato')}</div>
+                <div class="db-list-item-sub">${escapeHTML(r.reporter || '—')} — ${formatSimpleDate(r.date)}</div>
+            </div>`;
+        }).join('');
+    }
 }
 
 // ============================================

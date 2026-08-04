@@ -627,6 +627,8 @@ async function loadTreinamentosData() {
             allEfetivo = await supabaseFetch('colaboradores_efetivo', '?select=*');
         }
         renderTreinamentosPanel();
+        renderCatalogoResumo();
+        filterCatalogoTreinamentos(document.getElementById('catalogoSearchInput')?.value || '');
     } catch (err) {
         console.error('Erro ao carregar dados de treinamentos:', err);
         if (statusEl) statusEl.textContent = '❌ Falha ao carregar dados de treinamentos.';
@@ -1104,20 +1106,33 @@ async function salvarLancamentoTreinamento() {
 // devem sumir do catálogo.
 // ============================================
 
+// Visão geral: total cadastrado, quantos têm validade (reciclagem) x quantos não
+// (DDS pontuais) e a carga horária somada de todo o catálogo.
+function renderCatalogoResumo() {
+    const el = document.getElementById('catalogoResumo');
+    if (!el) return;
+    const total = allTreinamentosCatalogo.length;
+    const comValidade = allTreinamentosCatalogo.filter(c => c.meses_validade).length;
+    const cargaTotal = allTreinamentosCatalogo.reduce((sum, c) => sum + (parseFloat(c.carga_horaria) || 0), 0);
+    el.textContent = total === 0 ? '' :
+        `${total} treinamento(s) cadastrado(s) — ${comValidade} com validade (reciclagem), ${total - comValidade} sem validade — ${cargaTotal.toLocaleString('pt-BR')}h de carga horária somada`;
+}
+
 function filterCatalogoTreinamentos(query) {
     const container = document.getElementById('catalogoSearchResults');
     const q = (query || '').toLowerCase().trim();
-    if (q.length < 2) {
-        container.innerHTML = '';
-        return;
-    }
 
-    const matches = allTreinamentosCatalogo.filter(c =>
-        (c.nome && c.nome.toLowerCase().includes(q)) || (c.id && c.id.toLowerCase().includes(q))
-    ).sort((a, b) => (a.nome || '').localeCompare(b.nome || '')).slice(0, 30);
+    // Sem busca, mostra o catálogo inteiro (visão geral) em vez de ficar vazio até o
+    // usuário digitar algo - a busca só entra pra estreitar a lista.
+    const base = q.length < 2
+        ? allTreinamentosCatalogo
+        : allTreinamentosCatalogo.filter(c => (c.nome && c.nome.toLowerCase().includes(q)) || (c.id && c.id.toLowerCase().includes(q)));
+    const matches = base.slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
     if (matches.length === 0) {
-        container.innerHTML = `<div class="db-list-empty">Nenhum treinamento encontrado para "${escapeHTML(query)}"</div>`;
+        container.innerHTML = q.length < 2
+            ? '<div class="db-list-empty">Nenhum treinamento cadastrado ainda</div>'
+            : `<div class="db-list-empty">Nenhum treinamento encontrado para "${escapeHTML(query)}"</div>`;
         return;
     }
     container.innerHTML = matches.map(c => `
@@ -1199,6 +1214,7 @@ async function salvarCatalogoTreinamento() {
 
         refreshCatalogoDatalist();
         filterCatalogoTreinamentos(document.getElementById('catalogoSearchInput').value);
+        renderCatalogoResumo();
 
         statusEl.textContent = '✅ Salvo com sucesso.';
         statusEl.style.color = 'var(--success)';

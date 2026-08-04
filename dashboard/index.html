@@ -263,6 +263,45 @@
                     </div>
                 </div>
 
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" style="margin-bottom: 0;">📋 Catálogo de Treinamentos</div>
+                        <button class="db-apply-btn" onclick="abrirFormCatalogoTreinamento()">+ Novo Treinamento</button>
+                    </div>
+                    <input type="text" id="catalogoSearchInput" placeholder="Buscar por nome ou código..."
+                           oninput="filterCatalogoTreinamentos(this.value)"
+                           style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; margin-bottom: 12px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                    <div id="catalogoSearchResults" class="db-list" style="max-height: 260px;"></div>
+                </div>
+
+                <div class="db-chart-card" id="catalogoFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                    <div class="db-chart-title" id="catalogoFormTitle">🎓 Novo Treinamento</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Código *</label>
+                            <input type="text" id="catForm_codigo" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div style="grid-column: span 2;">
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Nome do Treinamento *</label>
+                            <input type="text" id="catForm_nome" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Carga Horária (h) *</label>
+                            <input type="number" id="catForm_cargaHoraria" min="0" step="0.5" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Validade (meses)</label>
+                            <input type="number" id="catForm_mesesValidade" min="0" step="1" placeholder="Deixe em branco = sem validade"
+                                   style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                    </div>
+                    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center;">
+                        <button class="db-apply-btn" onclick="salvarCatalogoTreinamento()">💾 Salvar</button>
+                        <button class="db-clear-btn" onclick="fecharFormCatalogoTreinamento()">Cancelar</button>
+                        <span id="catalogoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
+
                 <div class="db-filters">
                     <div class="db-filter-buttons">
                         <button id="btnFiltroTreinMes" class="db-filter-btn active" onclick="setTreinamentosFilter('mes')">Este Mês</button>
@@ -517,6 +556,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=11"></script>
+    <script src="dashboard.js?v=12"></script>
 </body>
 </html>

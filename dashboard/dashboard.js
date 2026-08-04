@@ -896,14 +896,21 @@ function fecharFormLancarTreinamento() {
     document.getElementById('lancTreinFormCard').style.display = 'none';
 }
 
-function popularCatalogoDatalist() {
+function refreshCatalogoDatalist() {
     const dl = document.getElementById('lancTreinCatalogoList');
-    if (!dl || dl.options.length > 0) return;
+    if (!dl) return;
+    dl.innerHTML = '';
     allTreinamentosCatalogo.slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || '')).forEach(c => {
         const opt = document.createElement('option');
         opt.value = `${c.id} - ${c.nome}`;
         dl.appendChild(opt);
     });
+}
+
+function popularCatalogoDatalist() {
+    const dl = document.getElementById('lancTreinCatalogoList');
+    if (!dl || dl.options.length > 0) return;
+    refreshCatalogoDatalist();
 }
 
 function popularResponsavelSelect() {
@@ -1085,6 +1092,120 @@ async function salvarLancamentoTreinamento() {
     } catch (err) {
         console.error('Erro ao lançar treinamento:', err);
         statusEl.textContent = '❌ Falha ao lançar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// ============================================
+// CATÁLOGO DE TREINAMENTOS - cadastro/edição de tipo de treinamento (código, nome,
+// carga horária, validade). Sem isso, a única forma de criar um código era a
+// importação por CSV; agora dá pra criar/corrigir um treinamento direto no painel.
+// Sem exclusão de propósito - códigos já usados em treinamentos_realizados/status não
+// devem sumir do catálogo.
+// ============================================
+
+function filterCatalogoTreinamentos(query) {
+    const container = document.getElementById('catalogoSearchResults');
+    const q = (query || '').toLowerCase().trim();
+    if (q.length < 2) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const matches = allTreinamentosCatalogo.filter(c =>
+        (c.nome && c.nome.toLowerCase().includes(q)) || (c.id && c.id.toLowerCase().includes(q))
+    ).sort((a, b) => (a.nome || '').localeCompare(b.nome || '')).slice(0, 30);
+
+    if (matches.length === 0) {
+        container.innerHTML = `<div class="db-list-empty">Nenhum treinamento encontrado para "${escapeHTML(query)}"</div>`;
+        return;
+    }
+    container.innerHTML = matches.map(c => `
+        <div class="db-list-item" style="cursor:pointer;" onclick="abrirFormCatalogoTreinamento('${escapeHTML(c.id)}')">
+            <div class="db-list-item-title">${escapeHTML(c.nome || '')}</div>
+            <div class="db-list-item-sub">Código ${escapeHTML(c.id)} — ${c.carga_horaria || 0}h — ${c.meses_validade ? c.meses_validade + ' meses de validade' : 'sem validade'}</div>
+        </div>`).join('');
+}
+
+function abrirFormCatalogoTreinamento(codigo) {
+    const form = document.getElementById('catalogoFormCard');
+    const title = document.getElementById('catalogoFormTitle');
+    const codigoInput = document.getElementById('catForm_codigo');
+    document.getElementById('catalogoFormStatus').textContent = '';
+
+    if (codigo) {
+        const c = allTreinamentosCatalogo.find(x => x.id === codigo);
+        if (!c) return;
+        title.textContent = '✏️ Editar Treinamento';
+        codigoInput.value = c.id || '';
+        codigoInput.readOnly = true;
+        codigoInput.style.background = 'var(--bg)';
+        document.getElementById('catForm_nome').value = c.nome || '';
+        document.getElementById('catForm_cargaHoraria').value = c.carga_horaria != null ? c.carga_horaria : '';
+        document.getElementById('catForm_mesesValidade').value = c.meses_validade != null ? c.meses_validade : '';
+    } else {
+        title.textContent = '🎓 Novo Treinamento';
+        codigoInput.value = '';
+        codigoInput.readOnly = false;
+        codigoInput.style.background = '';
+        document.getElementById('catForm_nome').value = '';
+        document.getElementById('catForm_cargaHoraria').value = '';
+        document.getElementById('catForm_mesesValidade').value = '';
+    }
+
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function fecharFormCatalogoTreinamento() {
+    document.getElementById('catalogoFormCard').style.display = 'none';
+}
+
+async function salvarCatalogoTreinamento() {
+    const statusEl = document.getElementById('catalogoFormStatus');
+    const codigoInput = document.getElementById('catForm_codigo');
+    const codigo = codigoInput.value.trim();
+    const nome = document.getElementById('catForm_nome').value.trim();
+    const cargaStr = document.getElementById('catForm_cargaHoraria').value;
+    const mesesStr = document.getElementById('catForm_mesesValidade').value;
+
+    if (!codigo || !nome || cargaStr === '') {
+        statusEl.textContent = '❌ Código, nome e carga horária são obrigatórios.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const isNovo = !codigoInput.readOnly;
+    if (isNovo && allTreinamentosCatalogo.some(c => c.id === codigo)) {
+        statusEl.textContent = '❌ Já existe um treinamento com esse código - busque por ele na lista acima pra editar.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const row = {
+        id: codigo,
+        nome,
+        carga_horaria: parseFloat(cargaStr),
+        meses_validade: mesesStr !== '' ? parseInt(mesesStr, 10) : null
+    };
+
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('treinamentos_catalogo', [row]);
+        const idx = allTreinamentosCatalogo.findIndex(c => c.id === codigo);
+        if (idx >= 0) allTreinamentosCatalogo[idx] = { ...allTreinamentosCatalogo[idx], ...row };
+        else allTreinamentosCatalogo.push(row);
+
+        refreshCatalogoDatalist();
+        filterCatalogoTreinamentos(document.getElementById('catalogoSearchInput').value);
+
+        statusEl.textContent = '✅ Salvo com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => fecharFormCatalogoTreinamento(), 900);
+    } catch (err) {
+        console.error('Erro ao salvar treinamento no catálogo:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
         statusEl.style.color = 'var(--danger)';
     }
 }

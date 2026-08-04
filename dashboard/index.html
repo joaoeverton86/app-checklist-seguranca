@@ -206,6 +206,63 @@
 
             <!-- Página: Treinamentos -->
             <section class="db-page" id="page-treinamentos">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" style="margin-bottom: 0;">📝 Lançar Treinamento</div>
+                        <button class="db-apply-btn" onclick="abrirFormLancarTreinamento()">+ Lançar Treinamento</button>
+                    </div>
+                </div>
+
+                <div class="db-chart-card" id="lancTreinFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                    <div class="db-chart-title">📝 Lançar Treinamento</div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px; margin-bottom: 14px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Código do Treinamento *</label>
+                            <input type="text" id="lancTreinCodigo" list="lancTreinCatalogoList" placeholder="Digite o código..."
+                                   oninput="onLancTreinCodigoChange()"
+                                   style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <datalist id="lancTreinCatalogoList"></datalist>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data do Treinamento *</label>
+                            <input type="date" id="lancTreinData" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                    </div>
+
+                    <div id="lancTreinInfo" style="display:none; font-size: 12.5px; background: var(--bg); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px;"></div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px; margin-bottom: 10px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Carregar equipe do Responsável</label>
+                            <select id="lancTreinResponsavel" onchange="carregarEquipeResponsavel()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="">— Selecione —</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Adicionar colaborador avulso</label>
+                            <input type="text" id="lancTreinAddColab" placeholder="Buscar por nome ou matrícula..."
+                                   oninput="filterAddColabLista(this.value)"
+                                   style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <div id="lancTreinAddColabResults" class="db-list" style="max-height: 160px; margin-top: 6px;"></div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 12px; color: var(--text-light); font-weight: 600;">Lista de Presença</span>
+                        <span style="font-size: 12px; color: var(--text-light);"><span id="lancTreinContagem">0</span> selecionado(s)</span>
+                    </div>
+                    <div id="lancTreinEquipeList" class="db-list" style="max-height: 320px;">
+                        <div class="db-list-empty">Selecione um responsável ou adicione colaboradores avulsos acima</div>
+                    </div>
+
+                    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="salvarLancamentoTreinamento()">📤 Lançar Treinamento</button>
+                        <button class="db-clear-btn" onclick="fecharFormLancarTreinamento()">Cancelar</button>
+                        <span id="lancTreinStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
+
                 <div class="db-filters">
                     <div class="db-filter-buttons">
                         <button id="btnFiltroTreinMes" class="db-filter-btn active" onclick="setTreinamentosFilter('mes')">Este Mês</button>
@@ -460,6 +517,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=10"></script>
+    <script src="dashboard.js?v=11"></script>
 </body>
 </html>

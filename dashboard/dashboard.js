@@ -863,6 +863,233 @@ async function importarTreinamentosCSV() {
 }
 
 // ============================================
+// LANÇAMENTO EM MASSA DE TREINAMENTO - substitui o fluxo atual do usuário em Excel
+// (digitar matrícula → nome/função/setor aparecem via VLOOKUP, digitar código →
+// tema aparece, digitar data). Aqui: escolhe o treinamento (código com carga horária
+// e validade já vindos do catálogo) e a data uma única vez, depois marca/desmarca
+// presença numa lista - "carregar equipe do responsável" resolve o caso comum descrito
+// pelo usuário (cada lista já é uma equipe fixa por encarregado, só tira quem faltou).
+// ============================================
+
+let lancTreinEquipe = new Map(); // matricula -> {nome, funcao, setor, checked}
+
+function abrirFormLancarTreinamento() {
+    document.getElementById('lancTreinFormCard').style.display = 'block';
+    document.getElementById('lancTreinCodigo').value = '';
+    document.getElementById('lancTreinData').value = new Date().toISOString().split('T')[0];
+    document.getElementById('lancTreinInfo').style.display = 'none';
+    document.getElementById('lancTreinStatus').textContent = '';
+    document.getElementById('lancTreinAddColab').value = '';
+    document.getElementById('lancTreinAddColabResults').innerHTML = '';
+    document.getElementById('lancTreinResponsavel').value = '';
+
+    popularCatalogoDatalist();
+    popularResponsavelSelect();
+
+    lancTreinEquipe = new Map();
+    renderListaPresencaEquipe();
+
+    document.getElementById('lancTreinFormCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function fecharFormLancarTreinamento() {
+    document.getElementById('lancTreinFormCard').style.display = 'none';
+}
+
+function popularCatalogoDatalist() {
+    const dl = document.getElementById('lancTreinCatalogoList');
+    if (!dl || dl.options.length > 0) return;
+    allTreinamentosCatalogo.slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || '')).forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = `${c.id} - ${c.nome}`;
+        dl.appendChild(opt);
+    });
+}
+
+function popularResponsavelSelect() {
+    const sel = document.getElementById('lancTreinResponsavel');
+    if (!sel || sel.options.length > 1) return;
+    const responsaveis = new Set();
+    allEfetivo.forEach(e => { if (e.status === 'ATIVO' && e.responsavel) responsaveis.add(e.responsavel); });
+    Array.from(responsaveis).sort().forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r;
+        opt.textContent = r;
+        sel.appendChild(opt);
+    });
+}
+
+// Datalist devolve "CODIGO - Nome do treinamento" quando escolhido da lista, mas
+// aceita digitar só o código direto (fluxo que o usuário já usa no Excel) - o split
+// pega sempre o primeiro pedaço, então funciona mesmo se o nome do treinamento tiver
+// " - " no meio (ex: "NR.10 - SEGURANÇA...").
+function extrairCodigoTreinamento(raw) {
+    return raw.includes(' - ') ? raw.split(' - ')[0].trim() : raw.trim();
+}
+
+function onLancTreinCodigoChange() {
+    const codigo = extrairCodigoTreinamento(document.getElementById('lancTreinCodigo').value);
+    const infoEl = document.getElementById('lancTreinInfo');
+    if (!codigo) { infoEl.style.display = 'none'; return; }
+
+    const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+    infoEl.style.display = 'block';
+    if (!cat) {
+        infoEl.style.color = 'var(--danger)';
+        infoEl.innerHTML = '❌ Código não encontrado no catálogo de treinamentos.';
+        return;
+    }
+    infoEl.style.color = 'var(--text)';
+    infoEl.innerHTML = `<strong>${escapeHTML(cat.nome)}</strong> — Carga horária: ${cat.carga_horaria || 0}h — ${cat.meses_validade ? `Validade: ${cat.meses_validade} meses` : 'Sem validade (não recicla)'}`;
+}
+
+function carregarEquipeResponsavel() {
+    const responsavel = document.getElementById('lancTreinResponsavel').value;
+    if (!responsavel) return;
+    allEfetivo.filter(e => e.status === 'ATIVO' && e.responsavel === responsavel).forEach(e => {
+        if (!lancTreinEquipe.has(e.id)) {
+            lancTreinEquipe.set(e.id, { nome: e.nome, funcao: e.funcao, setor: e.setor, checked: true });
+        }
+    });
+    renderListaPresencaEquipe();
+}
+
+function filterAddColabLista(query) {
+    const container = document.getElementById('lancTreinAddColabResults');
+    const q = (query || '').toLowerCase().trim();
+    if (q.length < 2) { container.innerHTML = ''; return; }
+
+    const matches = allEfetivo.filter(e =>
+        e.status === 'ATIVO' && !lancTreinEquipe.has(e.id) &&
+        ((e.nome && e.nome.toLowerCase().includes(q)) || (e.id && e.id.toLowerCase().includes(q)))
+    ).slice(0, 15);
+
+    if (matches.length === 0) {
+        container.innerHTML = '<div class="db-list-empty">Nenhum colaborador encontrado</div>';
+        return;
+    }
+    container.innerHTML = matches.map(e => `
+        <div class="db-list-item" style="cursor:pointer;" onclick="adicionarColabAvulso('${escapeHTML(e.id)}')">
+            <div class="db-list-item-title">${escapeHTML(e.nome || '')}</div>
+            <div class="db-list-item-sub">${escapeHTML(e.funcao || '')} — Matrícula ${escapeHTML(e.id)}</div>
+        </div>`).join('');
+}
+
+function adicionarColabAvulso(matricula) {
+    const e = allEfetivo.find(x => x.id === matricula);
+    if (!e) return;
+    lancTreinEquipe.set(matricula, { nome: e.nome, funcao: e.funcao, setor: e.setor, checked: true });
+    document.getElementById('lancTreinAddColab').value = '';
+    document.getElementById('lancTreinAddColabResults').innerHTML = '';
+    renderListaPresencaEquipe();
+}
+
+function removerColabLista(matricula) {
+    lancTreinEquipe.delete(matricula);
+    renderListaPresencaEquipe();
+}
+
+function toggleColabPresenca(matricula, checked) {
+    const c = lancTreinEquipe.get(matricula);
+    if (c) c.checked = checked;
+    atualizarContagemPresenca();
+}
+
+function atualizarContagemPresenca() {
+    const count = Array.from(lancTreinEquipe.values()).filter(c => c.checked).length;
+    document.getElementById('lancTreinContagem').textContent = count;
+}
+
+function renderListaPresencaEquipe() {
+    const container = document.getElementById('lancTreinEquipeList');
+    if (lancTreinEquipe.size === 0) {
+        container.innerHTML = '<div class="db-list-empty">Selecione um responsável ou adicione colaboradores avulsos acima</div>';
+        atualizarContagemPresenca();
+        return;
+    }
+    const entries = Array.from(lancTreinEquipe.entries()).sort((a, b) => (a[1].nome || '').localeCompare(b[1].nome || ''));
+    container.innerHTML = entries.map(([matricula, c]) => `
+        <div class="db-list-item" style="display:flex; align-items:center; gap:10px;">
+            <input type="checkbox" ${c.checked ? 'checked' : ''} onchange="toggleColabPresenca('${escapeHTML(matricula)}', this.checked)" style="width:17px; height:17px; flex-shrink:0; cursor:pointer;">
+            <div style="flex:1;">
+                <div class="db-list-item-title">${escapeHTML(c.nome || '')}</div>
+                <div class="db-list-item-sub">${escapeHTML(c.funcao || '')}${c.setor ? ' — ' + escapeHTML(c.setor) : ''} — Matrícula ${escapeHTML(matricula)}</div>
+            </div>
+            <button onclick="removerColabLista('${escapeHTML(matricula)}')" title="Remover da lista" style="background:none; border:none; color: var(--danger); cursor:pointer; font-size: 16px; padding: 4px;">✕</button>
+        </div>`).join('');
+    atualizarContagemPresenca();
+}
+
+async function salvarLancamentoTreinamento() {
+    const statusEl = document.getElementById('lancTreinStatus');
+    const codigo = extrairCodigoTreinamento(document.getElementById('lancTreinCodigo').value);
+    const data = document.getElementById('lancTreinData').value;
+
+    const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+    if (!cat) {
+        statusEl.textContent = '❌ Informe um código de treinamento válido do catálogo.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    if (!data) {
+        statusEl.textContent = '❌ Informe a data do treinamento.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const selecionados = Array.from(lancTreinEquipe.entries()).filter(([, c]) => c.checked);
+    if (selecionados.length === 0) {
+        statusEl.textContent = '❌ Selecione ao menos um colaborador na lista de presença.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    // Próxima reciclagem = data + meses_validade do catálogo, calculado aqui (sem
+    // planilha por trás desta vez) - monta a string manualmente a partir dos
+    // componentes locais da data pra não arriscar um deslocamento de fuso horário
+    // que toISOString() poderia introduzir.
+    let dataProximaReciclagem = null;
+    if (cat.meses_validade) {
+        const d = parseLocalDate(data);
+        const alvo = new Date(d.getFullYear(), d.getMonth() + cat.meses_validade, d.getDate());
+        dataProximaReciclagem = `${alvo.getFullYear()}-${String(alvo.getMonth() + 1).padStart(2, '0')}-${String(alvo.getDate()).padStart(2, '0')}`;
+    }
+
+    const rows = selecionados.map(([matricula, c]) => {
+        const efetivo = allEfetivo.find(e => e.id === matricula);
+        return {
+            id: `${matricula}_${codigo}_${data}`,
+            matricula,
+            nome: c.nome,
+            funcao: c.funcao,
+            setor: c.setor,
+            status_colaborador: efetivo ? efetivo.status : 'ATIVO',
+            treinamento_cod: codigo,
+            treinamento_nome: cat.nome,
+            carga_horaria: cat.carga_horaria,
+            data_treinamento: data,
+            meses_validade: cat.meses_validade,
+            data_proxima_reciclagem: dataProximaReciclagem,
+            observacoes: ''
+        };
+    });
+
+    statusEl.textContent = `Enviando ${rows.length} registro(s)...`;
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('treinamentos_realizados', rows);
+        statusEl.textContent = `✅ ${rows.length} colaborador(es) lançado(s) em "${cat.nome}" (${formatSimpleDate(data)}).`;
+        statusEl.style.color = 'var(--success)';
+        treinamentosLoaded = true;
+        await loadTreinamentosData();
+        setTimeout(() => fecharFormLancarTreinamento(), 1800);
+    } catch (err) {
+        console.error('Erro ao lançar treinamento:', err);
+        statusEl.textContent = '❌ Falha ao lançar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// ============================================
 // EFETIVO (Parte B) - replica as fórmulas já usadas na aba TBs_DINAMICAS da
 // planilha TREINAMENTOS_EFETIVO.xlsx: admissões/demissões por COUNTIF de mês,
 // efetivo real como headcount na data, índice = HHT do mês ÷ efetivo do mês × 100.

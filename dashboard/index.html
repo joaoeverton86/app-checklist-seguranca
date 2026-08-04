@@ -271,7 +271,10 @@
                     <div id="catalogoResumo" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px;"></div>
                     <input type="text" id="catalogoSearchInput" placeholder="Buscar por nome ou código... (em branco mostra todos)"
                            oninput="filterCatalogoTreinamentos(this.value)"
-                           style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; margin-bottom: 12px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                           style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; margin-bottom: 10px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                    <div style="text-align: right; margin-bottom: 6px;">
+                        <button class="db-clear-btn" id="btnExpandirCatalogo" onclick="toggleExpandirCatalogo()">⛶ Expandir Lista</button>
+                    </div>
                     <div id="catalogoSearchResults" class="db-list" style="max-height: 420px;"></div>
                 </div>
 
@@ -296,10 +299,22 @@
                                    style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
                         </div>
                     </div>
-                    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center;">
+                    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <button class="db-apply-btn" onclick="salvarCatalogoTreinamento()">💾 Salvar</button>
                         <button class="db-clear-btn" onclick="fecharFormCatalogoTreinamento()">Cancelar</button>
+                        <button id="catForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="iniciarExclusaoCatalogo()">🗑️ Excluir</button>
                         <span id="catalogoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+
+                    <div id="catForm_mesclarPanel" style="display:none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border);">
+                        <div style="font-size: 12.5px; margin-bottom: 8px;" id="catForm_mesclarAviso"></div>
+                        <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600; font-size: 12.5px;">Migrar sessões para:</label>
+                        <input type="text" id="catForm_mesclarAlvo" list="lancTreinCatalogoList" placeholder="Digite o código do treinamento de destino..."
+                               style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; margin-bottom: 10px;">
+                        <div style="display:flex; gap:8px;">
+                            <button class="db-apply-btn" style="background: var(--danger);" onclick="confirmarMesclarExcluir()">Mesclar e Excluir</button>
+                            <button class="db-clear-btn" onclick="document.getElementById('catForm_mesclarPanel').style.display='none';">Cancelar</button>
+                        </div>
                     </div>
                 </div>
 
@@ -557,6 +572,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=13"></script>
+    <script src="dashboard.js?v=14"></script>
 </body>
 </html>

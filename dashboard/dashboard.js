@@ -57,6 +57,15 @@ async function supabaseUpsert(table, rows) {
     return true;
 }
 
+async function supabaseDelete(table, id) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    return true;
+}
+
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
     if (dateStr.includes('T')) {
@@ -1146,7 +1155,9 @@ function abrirFormCatalogoTreinamento(codigo) {
     const form = document.getElementById('catalogoFormCard');
     const title = document.getElementById('catalogoFormTitle');
     const codigoInput = document.getElementById('catForm_codigo');
+    const btnExcluir = document.getElementById('catForm_btnExcluir');
     document.getElementById('catalogoFormStatus').textContent = '';
+    document.getElementById('catForm_mesclarPanel').style.display = 'none';
 
     if (codigo) {
         const c = allTreinamentosCatalogo.find(x => x.id === codigo);
@@ -1158,6 +1169,7 @@ function abrirFormCatalogoTreinamento(codigo) {
         document.getElementById('catForm_nome').value = c.nome || '';
         document.getElementById('catForm_cargaHoraria').value = c.carga_horaria != null ? c.carga_horaria : '';
         document.getElementById('catForm_mesesValidade').value = c.meses_validade != null ? c.meses_validade : '';
+        btnExcluir.style.display = 'inline-block';
     } else {
         title.textContent = '🎓 Novo Treinamento';
         codigoInput.value = '';
@@ -1166,6 +1178,7 @@ function abrirFormCatalogoTreinamento(codigo) {
         document.getElementById('catForm_nome').value = '';
         document.getElementById('catForm_cargaHoraria').value = '';
         document.getElementById('catForm_mesesValidade').value = '';
+        btnExcluir.style.display = 'none';
     }
 
     form.style.display = 'block';
@@ -1174,6 +1187,116 @@ function abrirFormCatalogoTreinamento(codigo) {
 
 function fecharFormCatalogoTreinamento() {
     document.getElementById('catalogoFormCard').style.display = 'none';
+    document.getElementById('catForm_mesclarPanel').style.display = 'none';
+}
+
+function toggleExpandirCatalogo() {
+    const el = document.getElementById('catalogoSearchResults');
+    const btn = document.getElementById('btnExpandirCatalogo');
+    const expandido = el.style.maxHeight === 'none';
+    el.style.maxHeight = expandido ? '420px' : 'none';
+    btn.textContent = expandido ? '⛶ Expandir Lista' : '⛶ Recolher Lista';
+}
+
+// Exclusão (a pedido do usuário, após um caso real de código duplicado por erro de
+// digitação: "79" e "128" com o mesmo conteúdo). Se o código nunca foi usado em nenhuma
+// sessão, exclui direto. Se já foi usado, não dá pra simplesmente apagar - migra as
+// sessões pro treinamento de destino escolhido primeiro (mesmo padrão da reconciliação
+// de códigos sintéticos feita manualmente antes), senão o histórico dessas sessões
+// ficaria com um treinamento_cod órfão, sem entrada correspondente no catálogo.
+function iniciarExclusaoCatalogo() {
+    const codigo = document.getElementById('catForm_codigo').value.trim();
+    const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+    if (!cat) return;
+    const emUso = allTreinamentosRealizados.filter(r => r.treinamento_cod === codigo).length;
+
+    if (emUso === 0) {
+        if (!confirm(`Excluir "${cat.nome}" (código ${codigo}) do catálogo? Essa ação não pode ser desfeita.`)) return;
+        excluirCatalogoDireto(codigo);
+        return;
+    }
+
+    document.getElementById('catForm_mesclarAviso').innerHTML =
+        `⚠️ <strong>"${escapeHTML(cat.nome)}"</strong> tem ${emUso} sessão(ões) já registrada(s). Pra excluir, escolha outro treinamento do catálogo pra migrar essas sessões antes (ex: se cadastrou duplicado por engano, migre pro código correto).`;
+    document.getElementById('catForm_mesclarAlvo').value = '';
+    document.getElementById('catForm_mesclarPanel').style.display = 'block';
+}
+
+async function excluirCatalogoDireto(codigo) {
+    const statusEl = document.getElementById('catalogoFormStatus');
+    statusEl.textContent = 'Excluindo...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseDelete('treinamentos_catalogo', codigo);
+        allTreinamentosCatalogo = allTreinamentosCatalogo.filter(c => c.id !== codigo);
+        refreshCatalogoDatalist();
+        renderCatalogoResumo();
+        filterCatalogoTreinamentos(document.getElementById('catalogoSearchInput').value);
+        statusEl.textContent = '✅ Excluído com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => fecharFormCatalogoTreinamento(), 900);
+    } catch (err) {
+        console.error('Erro ao excluir treinamento do catálogo:', err);
+        statusEl.textContent = '❌ Falha ao excluir: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function confirmarMesclarExcluir() {
+    const statusEl = document.getElementById('catalogoFormStatus');
+    const origCodigo = document.getElementById('catForm_codigo').value.trim();
+    const alvoCodigo = extrairCodigoTreinamento(document.getElementById('catForm_mesclarAlvo').value);
+
+    if (!alvoCodigo || alvoCodigo === origCodigo) {
+        statusEl.textContent = '❌ Escolha um treinamento de destino diferente do atual.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const catAlvo = allTreinamentosCatalogo.find(c => c.id === alvoCodigo);
+    if (!catAlvo) {
+        statusEl.textContent = '❌ Treinamento de destino não encontrado no catálogo.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const afetadas = allTreinamentosRealizados.filter(r => r.treinamento_cod === origCodigo);
+    const linhasAtualizadas = afetadas.map(r => {
+        let novaReciclagem = null;
+        if (catAlvo.meses_validade && r.data_treinamento) {
+            const d = parseLocalDate(r.data_treinamento);
+            const alvo = new Date(d.getFullYear(), d.getMonth() + catAlvo.meses_validade, d.getDate());
+            novaReciclagem = `${alvo.getFullYear()}-${String(alvo.getMonth() + 1).padStart(2, '0')}-${String(alvo.getDate()).padStart(2, '0')}`;
+        }
+        return {
+            ...r,
+            treinamento_cod: alvoCodigo,
+            treinamento_nome: catAlvo.nome,
+            carga_horaria: catAlvo.carga_horaria,
+            meses_validade: catAlvo.meses_validade,
+            data_proxima_reciclagem: novaReciclagem
+        };
+    });
+
+    statusEl.textContent = `Migrando ${linhasAtualizadas.length} sessão(ões)...`;
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        if (linhasAtualizadas.length > 0) {
+            await supabaseUpsert('treinamentos_realizados', linhasAtualizadas);
+        }
+        await supabaseDelete('treinamentos_catalogo', origCodigo);
+
+        document.getElementById('catForm_mesclarPanel').style.display = 'none';
+        statusEl.textContent = `✅ ${linhasAtualizadas.length} sessão(ões) migrada(s) para "${catAlvo.nome}" e treinamento antigo excluído.`;
+        statusEl.style.color = 'var(--success)';
+
+        treinamentosLoaded = true;
+        await loadTreinamentosData();
+        setTimeout(() => fecharFormCatalogoTreinamento(), 1800);
+    } catch (err) {
+        console.error('Erro ao mesclar/excluir treinamento:', err);
+        statusEl.textContent = '❌ Falha ao mesclar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
 }
 
 async function salvarCatalogoTreinamento() {

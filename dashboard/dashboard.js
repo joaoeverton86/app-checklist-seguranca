@@ -2215,3 +2215,33 @@ function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+// Depois de um tempo sem interação, o navegador pode limitar (throttle) o loop de
+// desenho do Chart.js numa aba parada, e o gráfico fica com o canvas em branco até
+// algo forçar um novo desenho - mesma classe de bug já corrigida pra troca de página/
+// aba interna (self-heal a cada visita), agora também disparada quando a aba volta a
+// ficar visível ou em foco, sem depender do usuário clicar em nada.
+function rerenderGraficosDaPaginaAtiva() {
+    const paginaAtivaBtn = document.querySelector('.db-nav-item.active');
+    const paginaAtiva = paginaAtivaBtn ? paginaAtivaBtn.id : null;
+    if (paginaAtiva === 'navChecklists') {
+        renderAll();
+    } else if (paginaAtiva === 'navExtintores') {
+        renderExtintorPanel();
+    } else if (paginaAtiva === 'navRelatos') {
+        renderRelatosPanel();
+    } else if (paginaAtiva === 'navTreinamentos') {
+        if (document.getElementById('treinSubtabBtn-visao')?.classList.contains('active')) {
+            renderTreinamentosPanel();
+        }
+    } else if (paginaAtiva === 'navEfetivo') {
+        if (document.getElementById('efetivoSubtabBtn-visao')?.classList.contains('active')) {
+            renderEfetivoPanel();
+        }
+    }
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') rerenderGraficosDaPaginaAtiva();
+});
+window.addEventListener('focus', rerenderGraficosDaPaginaAtiva);

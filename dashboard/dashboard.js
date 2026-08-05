@@ -693,19 +693,40 @@ let treinamentosLoaded = false;
 const NR_PATTERN = /\bNR[\s.]?\d/i;
 const NOMES_MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-// Ano/mês específico pra comparar períodos distantes (ex: 2024 vs 2026) - os botões
-// rápidos (Este Mês/Últimos 3 Meses/Este Ano/Todos) só cobrem janelas relativas a hoje.
-function popularFiltroAnoTreinamentos() {
-    const sel = document.getElementById('treinFiltroAno');
-    if (!sel || sel.options.length > 1) return;
-    const anos = new Set([new Date().getFullYear()]);
-    allTreinamentosRealizados.forEach(r => { if (r.data_treinamento) anos.add(parseLocalDate(r.data_treinamento).getFullYear()); });
-    Array.from(anos).sort((a, b) => b - a).forEach(ano => {
+// Reconstrói as opções de ano de um <select> a partir do conjunto de anos calculado,
+// preservando a seleção atual quando ela continua válida. Só reconstrói quando o
+// conjunto de anos realmente mudou (evita perder foco/seleção à toa a cada render).
+// Existe porque um "só popula uma vez" (guarda por options.length) é frágil quando os
+// dados ainda estão chegando de forma paginada (ex: 13k+ linhas de treinamentos, várias
+// idas ao Supabase) - se esse popular acontecer cedo demais (ex: usuário revisita a
+// página enquanto o carregamento anterior ainda está em andamento), a lista fica presa
+// incompleta pro resto da sessão.
+function popularSelectAnos(selectId, anosSet) {
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+    const anosOrdenados = Array.from(anosSet).sort((a, b) => b - a);
+    const anosAtuais = Array.from(sel.options).slice(1).map(o => o.value);
+    const jaCompleto = anosAtuais.length === anosOrdenados.length && anosAtuais.every((v, i) => Number(v) === anosOrdenados[i]);
+    if (jaCompleto) return;
+    const valorSelecionado = sel.value;
+    sel.innerHTML = '<option value="">Ano específico...</option>';
+    anosOrdenados.forEach(ano => {
         const opt = document.createElement('option');
         opt.value = ano;
         opt.textContent = ano;
         sel.appendChild(opt);
     });
+    if (valorSelecionado && anosOrdenados.some(a => String(a) === valorSelecionado)) {
+        sel.value = valorSelecionado;
+    }
+}
+
+// Ano/mês específico pra comparar períodos distantes (ex: 2024 vs 2026) - os botões
+// rápidos (Este Mês/Últimos 3 Meses/Este Ano/Todos) só cobrem janelas relativas a hoje.
+function popularFiltroAnoTreinamentos() {
+    const anos = new Set([new Date().getFullYear()]);
+    allTreinamentosRealizados.forEach(r => { if (r.data_treinamento) anos.add(parseLocalDate(r.data_treinamento).getFullYear()); });
+    popularSelectAnos('treinFiltroAno', anos);
 }
 
 function getTreinamentosDateRange() {
@@ -1917,19 +1938,12 @@ let efetivoFiltroMes = '';
 // Popula o select de anos com base nos dados reais (admissão/demissão), não uma lista
 // fixa - "dinâmico" a pedido do usuário, então acompanha a base automaticamente.
 function popularFiltroAnoEfetivo() {
-    const sel = document.getElementById('efetivoFiltroAno');
-    if (!sel || sel.options.length > 1) return;
     const anos = new Set([new Date().getFullYear()]);
     allEfetivo.forEach(e => {
         if (e.dt_admissao) anos.add(parseLocalDate(e.dt_admissao).getFullYear());
         if (e.dt_demissao) anos.add(parseLocalDate(e.dt_demissao).getFullYear());
     });
-    Array.from(anos).sort((a, b) => b - a).forEach(ano => {
-        const opt = document.createElement('option');
-        opt.value = ano;
-        opt.textContent = ano;
-        sel.appendChild(opt);
-    });
+    popularSelectAnos('efetivoFiltroAno', anos);
 }
 
 function onEfetivoFiltroChange() {
@@ -2249,17 +2263,10 @@ let hhtDiasTrabalhadosMap = {}; // 'YYYY-MM' -> { dias_trabalhados, horas_por_di
 // configurados em hht_dias_trabalhados (cobre todo o histórico do contrato) em vez de só
 // os anos com acidente registrado, já que "ver 2024" deve funcionar mesmo com 0 acidentes.
 function popularFiltroAnoAcidentes() {
-    const sel = document.getElementById('acidFiltroAno');
-    if (!sel || sel.options.length > 1) return;
     const anos = new Set([new Date().getFullYear()]);
     Object.values(hhtDiasTrabalhadosMap).forEach(c => anos.add(c.ano));
     allAcidentes.forEach(a => { if (a.data_acidente) anos.add(parseLocalDate(a.data_acidente).getFullYear()); });
-    Array.from(anos).sort((a, b) => b - a).forEach(ano => {
-        const opt = document.createElement('option');
-        opt.value = ano;
-        opt.textContent = ano;
-        sel.appendChild(opt);
-    });
+    popularSelectAnos('acidFiltroAno', anos);
 }
 
 // HHT de Exposição real (Efetivo × Dias Trabalhados no Mês × Horas por Dia), igual à

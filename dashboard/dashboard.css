@@ -248,13 +248,20 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
     gap: 16px;
-    align-items: start;
+    /* align-items padrão (stretch): cards da mesma linha ficam com a mesma altura -
+       combinado com .db-chart-card em flex-column + .db-chart-canvas-wrap com
+       flex:1, o gráfico mais curto da linha cresce pra preencher em vez de sobrar um
+       vão em branco atrás dele. Gráficos com altura calculada dinamicamente
+       (ajustarAlturaBarrasHorizontais) travam flex-grow/shrink em 0 pra não serem
+       esticados além do que já foi calculado pra eles. */
 }
 .db-chart-card {
     background: var(--card);
     border-radius: 12px;
     padding: 18px;
     box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
 }
 .db-chart-title {
     font-size: 13px;
@@ -265,6 +272,8 @@ body {
 .db-chart-canvas-wrap {
     position: relative;
     height: 280px;
+    flex: 1 1 auto;
+    min-height: 280px;
 }
 
 .db-list-card .db-chart-canvas-wrap { display: none; }
@@ -272,7 +281,9 @@ body {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-height: 280px;
+    flex: 1 1 auto;
+    min-height: 280px;
+    max-height: 480px;
     overflow-y: auto;
 }
 .db-list-item {

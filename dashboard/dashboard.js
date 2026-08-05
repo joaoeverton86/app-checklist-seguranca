@@ -133,6 +133,14 @@ function ajustarAlturaBarrasHorizontais(canvasId, labels) {
     const outerWrap = canvas ? canvas.closest('.db-chart-canvas-wrap') : null;
     if (!outerWrap) return;
 
+    // .db-chart-canvas-wrap normalmente cresce (flex-grow) pra acompanhar um card
+    // vizinho mais alto na mesma linha do grid (evita vão em branco) - mas esse
+    // gráfico já tem uma altura calculada especificamente pro conteúdo dele, então
+    // trava flex-grow/shrink em 0 pra não ser esticado nem comprimido além do que foi
+    // calculado aqui.
+    outerWrap.style.flexGrow = '0';
+    outerWrap.style.flexShrink = '0';
+
     const maxLinhas = labels.reduce((max, l) => Math.max(max, Array.isArray(l) ? l.length : 1), 1);
     const alturaPorBarra = Math.max(28, maxLinhas * 15 + 14);
     const alturaNecessaria = Math.max(280, labels.length * alturaPorBarra + 40);

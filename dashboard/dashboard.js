@@ -3337,16 +3337,278 @@ function buscarColaboradorPorInput(inputId) {
     return { matricula, colab: allEfetivo.find(e => e.id === matricula) };
 }
 
-// Periodicidade do exame periódico por GHE, extraída do PCMSO assinado (Setembro/2025,
-// seção 8 - Periodicidade dos Exames Clínicos): todos os 26 grupos de risco são de 12
-// meses, exceto Administrativo e Medicina do Trabalho, que são de 24 meses. Isso NÃO é
-// uma regra genérica da NR-07 (a periodicidade varia por documento/empresa, a critério
-// do médico responsável) - é a tabela real e específica deste PCMSO, então se o PCMSO for
-// revisado com novos prazos, esta lista precisa ser atualizada junto.
-const PCMSO_SETORES_24_MESES = new Set(['ADMINISTRATIVO', 'MEDICINA DO TRABALHO']);
+// ============================================
+// EXAMES EXIGIDOS POR GHE, extraídos do relatório oficial da clínica responsável pelo
+// PCMSO (Clinica Engmed, "EXAMES RECOMENDADOS" por Cargo/Função - fonte mais granular e
+// precisa que o próprio corpo do PCMSO, que só mostra a tabela agregada por grupo).
+// Conferido cargo a cargo dentro de cada grupo: dentro do mesmo GHE, todo cargo faz a
+// mesma lista de exames (a tabela é por grupo de risco, não por cargo individual) -
+// confirmado comparando vários cargos do mesmo grupo entre si. `periodicidade` em
+// meses (null = só no admissional, sem ciclo periódico próprio). `demissional` indica
+// se o exame também é exigido no desligamento. Validado ainda contra um ASO real
+// emitido (Grupo 13 - Engenheiro de segurança do trabalho: Avaliação clínica +
+// Audiometria + Glicose + Hemograma, todos 12 meses) - bateu exatamente.
+// ============================================
 
-function periodicidadeAsoPorSetor(setor) {
-    return PCMSO_SETORES_24_MESES.has((setor || '').trim().toUpperCase()) ? 24 : 12;
+const PCMSO_EXAMES_POR_GHE = {
+    G01: { nome: 'Vigilância Patrimonial', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true }
+    ]},
+    G02: { nome: 'Almoxarifado', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true }
+    ]},
+    G03: { nome: 'Administrativo', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 24, demissional: true }
+    ]},
+    G04: { nome: 'Analista de Sistemas Mecânicos e Elétricos', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Glicose', periodicidade: 12, demissional: true }
+    ]},
+    G05: { nome: 'Manutenção Elétrica', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Eletrocardiograma (ECG)', periodicidade: 12, demissional: true },
+        { nome: 'Espirometria', periodicidade: 24, demissional: true },
+        { nome: 'Avaliação Psicossocial', periodicidade: 12, demissional: false },
+        { nome: 'Glicose', periodicidade: 12, demissional: true },
+        { nome: 'Raio X da Coluna Lombo Sacra', periodicidade: 24, demissional: false }
+    ]},
+    G06: { nome: 'Manutenção Mecânica', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Eletrocardiograma (ECG)', periodicidade: 12, demissional: true },
+        { nome: 'Espirometria', periodicidade: 24, demissional: true },
+        { nome: 'Avaliação Psicossocial', periodicidade: 12, demissional: false },
+        { nome: 'Glicose', periodicidade: 12, demissional: true },
+        { nome: 'Raio X da Coluna Lombo Sacra', periodicidade: 24, demissional: false }
+    ]},
+    G07: { nome: 'Manutenção Civil', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Eletrocardiograma (ECG)', periodicidade: 12, demissional: true },
+        { nome: 'Espirometria', periodicidade: 24, demissional: true },
+        { nome: 'Avaliação Psicossocial', periodicidade: 12, demissional: false },
+        { nome: 'Glicose', periodicidade: 12, demissional: true },
+        { nome: 'Raio X da Coluna Lombo Sacra', periodicidade: 24, demissional: false },
+        { nome: 'IgE Específica - Abelha', periodicidade: null, demissional: false }
+    ]},
+    G08: { nome: 'Motosserras e Roçadeiras', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Eletrocardiograma (ECG)', periodicidade: 12, demissional: true },
+        { nome: 'Espirometria', periodicidade: 24, demissional: true },
+        { nome: 'Avaliação Psicossocial', periodicidade: 12, demissional: false },
+        { nome: 'Glicose', periodicidade: 12, demissional: true },
+        { nome: 'Raio X da Coluna Lombo Sacra', periodicidade: 24, demissional: false },
+        { nome: 'IgE Específica - Abelha', periodicidade: null, demissional: false }
+    ]},
+    G09: { nome: 'Motorista de Veículos Leve', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Glicose', periodicidade: 12, demissional: true }
+    ]},
+    G10: { nome: 'Operador de Sistemas Hídricos', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Eletrocardiograma (ECG)', periodicidade: 12, demissional: true },
+        { nome: 'Espirometria', periodicidade: 24, demissional: true },
+        { nome: 'Avaliação Psicossocial', periodicidade: 12, demissional: false },
+        { nome: 'Glicose', periodicidade: 12, demissional: true }
+    ]},
+    G11: { nome: 'Operador de Máquinas', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Espirometria', periodicidade: 24, demissional: true },
+        { nome: 'Glicose', periodicidade: 12, demissional: true },
+        { nome: 'Raio X da Coluna Lombo Sacra', periodicidade: null, demissional: false }
+    ]},
+    G12: { nome: 'Motorista Pesado', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Acuidade Visual', periodicidade: 12, demissional: false },
+        { nome: 'Espirometria', periodicidade: 24, demissional: true },
+        { nome: 'Glicose', periodicidade: 12, demissional: true },
+        { nome: 'Raio X da Coluna Lombo Sacra', periodicidade: null, demissional: false }
+    ]},
+    G13: { nome: 'Segurança do Trabalho', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Glicose', periodicidade: 12, demissional: true }
+    ]},
+    G14: { nome: 'Serviços Gerais', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Glicose', periodicidade: 12, demissional: true }
+    ]},
+    G15: { nome: 'Motorista de Caminhão Comboio', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Eletrocardiograma (ECG)', periodicidade: 12, demissional: true },
+        { nome: 'Espirometria', periodicidade: 24, demissional: true },
+        { nome: 'Glicose', periodicidade: 12, demissional: true },
+        { nome: 'Raio X da Coluna Lombo Sacra', periodicidade: 24, demissional: true }
+    ]},
+    G16: { nome: 'Medicina do Trabalho', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 24, demissional: true }
+    ]},
+    G17: { nome: 'Lava Jato', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Glicose', periodicidade: 12, demissional: true }
+    ]},
+    G18: { nome: 'Oficina de Pintura', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Glicose', periodicidade: 12, demissional: true }
+    ]},
+    G19: { nome: 'Carpintaria', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Eletrocardiograma (ECG)', periodicidade: 12, demissional: true },
+        { nome: 'Espirometria', periodicidade: 24, demissional: true },
+        { nome: 'Glicose', periodicidade: 12, demissional: true },
+        { nome: 'Raio X da Coluna Lombo Sacra', periodicidade: 12, demissional: true },
+        { nome: 'Raio X de Tórax (Padrão OIT)', periodicidade: 60, demissional: true }
+    ]},
+    G20: { nome: 'Segurança de Barragem', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Glicose', periodicidade: 12, demissional: true }
+    ]},
+    G21: { nome: 'Topografia', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Espirometria', periodicidade: 24, demissional: true },
+        { nome: 'Glicose', periodicidade: 12, demissional: true }
+    ]},
+    G22: { nome: 'PCM', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true }
+    ]},
+    G23: { nome: 'Planejamento Civil', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true }
+    ]},
+    G24: { nome: 'Sala Técnica', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true }
+    ]},
+    G25: { nome: 'Operador de Subestação', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Eletrocardiograma (ECG)', periodicidade: 12, demissional: true },
+        { nome: 'Espirometria', periodicidade: 24, demissional: true },
+        { nome: 'Avaliação Psicossocial', periodicidade: 12, demissional: false },
+        { nome: 'Glicose', periodicidade: 12, demissional: true }
+    ]},
+    G26: { nome: 'Conservação e Limpeza Substação e Faixa de Servidão', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Eletrocardiograma (ECG)', periodicidade: 12, demissional: true },
+        { nome: 'Espirometria', periodicidade: 24, demissional: true },
+        { nome: 'Avaliação Psicossocial', periodicidade: 12, demissional: false },
+        { nome: 'Glicose', periodicidade: 12, demissional: true },
+        { nome: 'Raio X da Coluna Lombo Sacra', periodicidade: 24, demissional: true }
+    ]}
+};
+
+// Mapa (setor + função reais do cadastro de efetivo) -> GHE do PCMSO. Não dá pra
+// resolver isso só pelo campo "setor": setores como "OPERAÇÃO" e "TRANSPORTE" no
+// cadastro do efetivo, na prática, misturam colaboradores de GHEs bem diferentes do
+// PCMSO (ex: "OPERAÇÃO" tem tanto Operador de Sistemas Hídricos quanto Operador de
+// Subestação - grupos com exames diferentes) - confirmado cruzando setor+função reais
+// via SQL antes de montar este mapa. Chave normalizada "SETOR||FUNÇÃO" (maiúsculas).
+const PCMSO_SETOR_FUNCAO_GHE = {
+    'ADMINISTRATIVO||AUX. ADMINISTRATIVO': 'G03',
+    'ADMINISTRATIVO||AUX. SERVIÇOS GERAIS': 'G03',
+    'ADMINISTRATIVO||AUXILIAR DE ALMOXARIFADO': 'G02',
+    'ADMINISTRATIVO||AUXILIAR DE INFORMÁTICA': 'G03',
+    'ADMINISTRATIVO||SECRETARIA': 'G03',
+    'ANALISTA DE SISTEMAS MECÂNICOS E ELÉTRICOS||ENGENHEIRO MECÂNICO': 'G04',
+    'CONSERVAÇÃO E LIMPEZA||ENCARREGADO DE CAMPO': 'G26',
+    'CONSERVAÇÃO E LIMPEZA||MOTORISTA DE VEICULO PESADO': 'G12',
+    'CONSERVAÇÃO E LIMPEZA||OPERADOR DE MOTOSSERRA': 'G08',
+    'CONSERVAÇÃO E LIMPEZA||SERVENTE': 'G26',
+    'MANUTENÇÃO CIVIL||ENC. DE CAMPO': 'G07',
+    'MANUTENÇÃO CIVIL||ENCARREGADO DE CAMPO': 'G07',
+    'MANUTENÇÃO CIVIL||ENGENHEIRO CIVIL': 'G23',
+    'MANUTENÇÃO CIVIL||MOTORISTA DE VEICULO PESADO': 'G12',
+    'MANUTENÇÃO CIVIL||OPERADOR DE MAQUINAS': 'G11',
+    'MANUTENÇÃO CIVIL||PEDREIRO': 'G07',
+    'MANUTENÇÃO CIVIL||SERVENTE': 'G07',
+    'MANUTENÇÃO ELÉTRICA||ASSISTENTE DE CAMPO': 'G05',
+    'MANUTENÇÃO ELÉTRICA||SERVENTE': 'G05',
+    'MANUTENÇÃO ELÉTRICA||TÉCNICO DE MANUTENÇÃO ELÉTRICA': 'G05',
+    'MANUTENÇÃO MECÂNICA||ASSISTENTE DE CAMPO': 'G06',
+    'MANUTENÇÃO MECÂNICA||ENC. DE MANUTENÇÃO MECÂNICA': 'G06',
+    'MANUTENÇÃO MECÂNICA||TÉCNICO DE MANUTENÇÃO ELÉTRICA': 'G06',
+    'MANUTENÇÃO MECÂNICA||TECNICO MANUTENÇÃO MECÂNICA': 'G06',
+    'MEDICINA DO TRABALHO||TEC. ENFERMEIRO DO TRABALHO': 'G16',
+    'OPERAÇÃO||ENC. DE OPERAÇÃO': 'G10',
+    'OPERAÇÃO||OPERADOR DE SISTEMAS HIDRICOS': 'G10',
+    'OPERAÇÃO||OPERADOR DE SUBESTAÇÃO': 'G25',
+    'OPERADOR DE SISTEMAS HIDRICOS||OPERADOR DE SISTEMAS HIDRICOS': 'G10',
+    'OPERADOR DE SUBESTAÇÃO||OPERADOR DE SUBESTAÇÃO': 'G25',
+    'PCM||ANALISTA DE SISTEMAS ELÉTRICOS': 'G22',
+    'PCM||ASSISTENTE DE CAMPO': 'G22',
+    'PCM||TECNICO': 'G22',
+    'PLANEJAMENTO||ANALISTA DE PLANEJAMENTO JUNIOR': 'G23',
+    'PLANEJAMENTO||ENGENHEIRO CIVIL': 'G23',
+    'SALA TECNICA||TECNICO': 'G24',
+    'SEG. BARRAGEM||ASSISTENTE SOCIAL': 'G20',
+    'SEG. BARRAGEM||AUXILIAR DE TOPOGRAFIA': 'G20',
+    'SEG. BARRAGEM||LEITURISTA': 'G20',
+    'SEGURANÇA DO TRABALHO||ASSISTENTE DE CAMPO': 'G13',
+    'SEGURANÇA DO TRABALHO||ENGENHEIRO DE SEGURANÇA DO TRABALHO': 'G13',
+    'SEGURANÇA DO TRABALHO||TÉC. SEG. TRABALHO': 'G13',
+    'TOPOGRAFIA||AUXILIAR DE TOPOGRAFIA': 'G21',
+    'TOPOGRAFIA||LEITURISTA': 'G21',
+    'TOPOGRAFIA||TOPÓGRAFO': 'G21',
+    'TRANSPORTE||MOTORISTA DE VEICULO PESADO': 'G12',
+    'TRANSPORTE||OPERADOR DE MAQUINAS': 'G11',
+    'VIGILÂNCIA||VIGIA - DIURNO': 'G01',
+    'VIGILÂNCIA||VIGIA - NOTURNO': 'G01'
+};
+
+// Resolve os exames exigidos pelo PCMSO pra um colaborador (por setor+função reais do
+// cadastro de efetivo). Retorna null quando a combinação setor+função não está mapeada
+// ainda (colaborador novo com cargo/setor não visto antes) - nesse caso a tela deve
+// avisar que precisa mapear manualmente, não fabricar um GHE genérico.
+function examesGheColaborador(colab) {
+    if (!colab) return null;
+    const chave = `${(colab.setor || '').trim().toUpperCase()}||${(colab.funcao || '').trim().toUpperCase()}`;
+    const grupoId = PCMSO_SETOR_FUNCAO_GHE[chave];
+    if (!grupoId) return null;
+    return { grupoId, ...PCMSO_EXAMES_POR_GHE[grupoId] };
+}
+
+// Periodicidade do exame periódico (Avaliação clínica ocupacional) pro colaborador -
+// resolve pela lista de exames do GHE dele quando setor+função estão mapeados
+// (PCMSO_SETOR_FUNCAO_GHE); cai no fallback binário (24 meses só pra Administrativo e
+// Medicina do Trabalho, 12 pro resto) quando a combinação setor+função ainda não foi
+// mapeada - evitando travar o formulário pra um colaborador novo com cargo/setor não
+// visto antes, mas sem fingir uma precisão que não existe nesse caso.
+function periodicidadeAsoPeriodico(colab) {
+    const ghe = examesGheColaborador(colab);
+    if (ghe) {
+        const avalClinica = ghe.exames.find(e => e.nome === 'Avaliação clínica ocupacional');
+        if (avalClinica && avalClinica.periodicidade) return avalClinica.periodicidade;
+    }
+    const setor = (colab?.setor || '').trim().toUpperCase();
+    return (setor === 'ADMINISTRATIVO' || setor === 'MEDICINA DO TRABALHO') ? 24 : 12;
 }
 
 function addMeses(dataStr, meses) {
@@ -3359,7 +3621,30 @@ function addMeses(dataStr, meses) {
 function onAsoColaboradorChange() {
     const { colab } = buscarColaboradorPorInput('asoForm_matricula');
     document.getElementById('asoForm_colabPreview').textContent = colab ? `✓ ${colab.nome} — ${colab.funcao || ''} — ${colab.setor || ''}` : '';
+    renderExamesExigidosAso(colab);
     onAsoTipoOuDataChange();
+}
+
+// Mostra a lista completa de exames que o PCMSO exige pro GHE/função do colaborador
+// selecionado (não só a Avaliação clínica) - ajuda o admin a saber quais exames
+// complementares pedir/conferir ao agendar o ASO, não só a data de vencimento.
+function renderExamesExigidosAso(colab) {
+    const el = document.getElementById('asoForm_examesExigidos');
+    if (!el) return;
+    if (!colab) { el.innerHTML = ''; return; }
+    const ghe = examesGheColaborador(colab);
+    if (!ghe) {
+        el.innerHTML = `<div style="font-size:11.5px; color:var(--warning);">⚠️ GHE não identificado pra "${escapeHTML(colab.setor || '—')} / ${escapeHTML(colab.funcao || '—')}" - lista de exames do PCMSO não disponível pra esse cargo ainda.</div>`;
+        return;
+    }
+    const linhas = ghe.exames.map(e => {
+        const periodicidadeTxt = e.periodicidade ? `a cada ${e.periodicidade} meses` : 'só no admissional';
+        return `<div>• ${escapeHTML(e.nome)} (${periodicidadeTxt}${e.demissional ? ', também no demissional' : ''})</div>`;
+    }).join('');
+    el.innerHTML = `<div style="font-size:11.5px; color:var(--text-light); margin-top:6px; padding:8px 10px; background:var(--bg); border-radius:8px;">
+        <strong>📋 Exames exigidos pelo PCMSO — GHE ${escapeHTML(ghe.grupoId)}: ${escapeHTML(ghe.nome)}</strong>
+        <div style="margin-top:4px;">${linhas}</div>
+    </div>`;
 }
 
 // Sugere a data de vencimento (próximo exame devido) automaticamente a partir da
@@ -3380,9 +3665,12 @@ function onAsoTipoOuDataChange() {
         if (hintEl) hintEl.textContent = '';
         return;
     }
-    const meses = periodicidadeAsoPorSetor(colab.setor);
+    const meses = periodicidadeAsoPeriodico(colab);
     document.getElementById('asoForm_dataVencimento').value = addMeses(dataExame, meses);
-    if (hintEl) hintEl.textContent = `GHE "${colab.setor || '—'}": periodicidade de ${meses} meses (PCMSO)`;
+    const ghe = examesGheColaborador(colab);
+    hintEl && (hintEl.textContent = ghe
+        ? `GHE ${ghe.grupoId} - ${ghe.nome}: periodicidade de ${meses} meses (PCMSO)`
+        : `GHE não mapeado pra "${colab.setor || '—'}" - usando periodicidade padrão de ${meses} meses`);
 }
 
 function onAtestadoColaboradorChange() {
@@ -3587,6 +3875,7 @@ function abrirFormAso(id) {
     const btnExcluir = document.getElementById('asoForm_btnExcluir');
     document.getElementById('asoFormStatus').textContent = '';
     document.getElementById('asoForm_colabPreview').textContent = '';
+    document.getElementById('asoForm_examesExigidos').innerHTML = '';
     popularSaudeColabDatalists();
 
     if (id) {

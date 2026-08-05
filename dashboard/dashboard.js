@@ -686,32 +686,83 @@ let allTreinamentosRealizados = [];
 let allTreinamentosCatalogo = [];
 let allTreinamentosStatus = [];
 let treinamentosFilter = 'mes';
+let treinamentosFiltroAno = '';
+let treinamentosFiltroMes = '';
 let treinamentosLoaded = false;
 
 const NR_PATTERN = /\bNR[\s.]?\d/i;
+const NOMES_MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+// Ano/mês específico pra comparar períodos distantes (ex: 2024 vs 2026) - os botões
+// rápidos (Este Mês/Últimos 3 Meses/Este Ano/Todos) só cobrem janelas relativas a hoje.
+function popularFiltroAnoTreinamentos() {
+    const sel = document.getElementById('treinFiltroAno');
+    if (!sel || sel.options.length > 1) return;
+    const anos = new Set([new Date().getFullYear()]);
+    allTreinamentosRealizados.forEach(r => { if (r.data_treinamento) anos.add(parseLocalDate(r.data_treinamento).getFullYear()); });
+    Array.from(anos).sort((a, b) => b - a).forEach(ano => {
+        const opt = document.createElement('option');
+        opt.value = ano;
+        opt.textContent = ano;
+        sel.appendChild(opt);
+    });
+}
 
 function getTreinamentosDateRange() {
+    const tituloEl = document.getElementById('treinPeriodoTitulo');
+    if (treinamentosFiltroAno) {
+        const ano = parseInt(treinamentosFiltroAno, 10);
+        if (treinamentosFiltroMes !== '') {
+            const mes = parseInt(treinamentosFiltroMes, 10);
+            if (tituloEl) tituloEl.textContent = `${NOMES_MESES[mes]}/${ano}`;
+            return { inicio: new Date(ano, mes, 1), fim: new Date(ano, mes + 1, 0, 23, 59, 59, 999) };
+        }
+        if (tituloEl) tituloEl.textContent = `Ano ${ano} (completo)`;
+        return { inicio: new Date(ano, 0, 1), fim: new Date(ano, 11, 31, 23, 59, 59, 999) };
+    }
+
     const now = new Date();
     const fim = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59, 999);
+    let inicio, titulo;
     if (treinamentosFilter === 'trimestre') {
-        return { inicio: new Date(now.getFullYear(), now.getMonth() - 2, 1), fim };
+        inicio = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+        titulo = 'Últimos 3 meses';
+    } else if (treinamentosFilter === 'ano') {
+        inicio = new Date(now.getFullYear(), 0, 1);
+        titulo = `Ano ${now.getFullYear()} (até hoje)`;
+    } else if (treinamentosFilter === 'todos') {
+        inicio = new Date(2000, 0, 1);
+        titulo = 'Todo o histórico';
+    } else {
+        inicio = new Date(now.getFullYear(), now.getMonth(), 1);
+        titulo = 'Este mês';
     }
-    if (treinamentosFilter === 'ano') {
-        return { inicio: new Date(now.getFullYear(), 0, 1), fim };
-    }
-    if (treinamentosFilter === 'todos') {
-        return { inicio: new Date(2000, 0, 1), fim };
-    }
-    return { inicio: new Date(now.getFullYear(), now.getMonth(), 1), fim };
+    if (tituloEl) tituloEl.textContent = titulo;
+    return { inicio, fim };
 }
 
 function setTreinamentosFilter(filter) {
     treinamentosFilter = filter;
+    treinamentosFiltroAno = '';
+    treinamentosFiltroMes = '';
+    const anoSel = document.getElementById('treinFiltroAno'); if (anoSel) anoSel.value = '';
+    const mesSel = document.getElementById('treinFiltroMes'); if (mesSel) mesSel.value = '';
     ['btnFiltroTreinMes', 'btnFiltroTreinTrimestre', 'btnFiltroTreinAno', 'btnFiltroTreinTodos'].forEach(id => {
         document.getElementById(id)?.classList.remove('active');
     });
     const map = { mes: 'btnFiltroTreinMes', trimestre: 'btnFiltroTreinTrimestre', ano: 'btnFiltroTreinAno', todos: 'btnFiltroTreinTodos' };
     document.getElementById(map[filter])?.classList.add('active');
+    renderTreinamentosPanel();
+}
+
+function onTreinamentosFiltroAnoMesChange() {
+    treinamentosFiltroAno = document.getElementById('treinFiltroAno').value;
+    treinamentosFiltroMes = document.getElementById('treinFiltroMes').value;
+    if (treinamentosFiltroAno) {
+        ['btnFiltroTreinMes', 'btnFiltroTreinTrimestre', 'btnFiltroTreinAno', 'btnFiltroTreinTodos'].forEach(id => {
+            document.getElementById(id)?.classList.remove('active');
+        });
+    }
     renderTreinamentosPanel();
 }
 
@@ -761,6 +812,7 @@ function showTreinSubtab(tab) {
 }
 
 function renderTreinamentosPanel() {
+    popularFiltroAnoTreinamentos();
     const { inicio, fim } = getTreinamentosDateRange();
     const periodo = allTreinamentosRealizados.filter(r => {
         if (!r.data_treinamento) return false;
@@ -2188,43 +2240,100 @@ async function importarEfetivoCSV() {
 let allAcidentes = [];
 let acidentesLoaded = false;
 let acidentesFilter = 'mes';
+let acidentesFiltroAno = '';
+let acidentesFiltroMes = '';
 let hhtDiasTrabalhadosMap = {}; // 'YYYY-MM' -> { dias_trabalhados, horas_por_dia }
+
+// Ano/mês específico pra comparar períodos distantes - mesmo raciocínio do filtro
+// equivalente em Treinamentos ([[popularFiltroAnoTreinamentos]]). Usa os anos já
+// configurados em hht_dias_trabalhados (cobre todo o histórico do contrato) em vez de só
+// os anos com acidente registrado, já que "ver 2024" deve funcionar mesmo com 0 acidentes.
+function popularFiltroAnoAcidentes() {
+    const sel = document.getElementById('acidFiltroAno');
+    if (!sel || sel.options.length > 1) return;
+    const anos = new Set([new Date().getFullYear()]);
+    Object.values(hhtDiasTrabalhadosMap).forEach(c => anos.add(c.ano));
+    allAcidentes.forEach(a => { if (a.data_acidente) anos.add(parseLocalDate(a.data_acidente).getFullYear()); });
+    Array.from(anos).sort((a, b) => b - a).forEach(ano => {
+        const opt = document.createElement('option');
+        opt.value = ano;
+        opt.textContent = ano;
+        sel.appendChild(opt);
+    });
+}
 
 // HHT de Exposição real (Efetivo × Dias Trabalhados no Mês × Horas por Dia), igual à
 // planilha oficial "Índices de Segurança e Saúde Ocupacional" do usuário - mais precisa
 // que o hht220DoMes() (aproximação fixa) usado no painel Efetivo. Retorna null quando o
-// mês ainda não foi configurado em hhtDiasTrabalhadosMap (não dá pra calcular TF/TG sem
-// esse dado, então melhor mostrar "indisponível" do que um número fabricado).
+// mês TEM efetivo mas ainda não foi configurado em hhtDiasTrabalhadosMap (não dá pra
+// calcular TF/TG sem esse dado, então melhor mostrar "indisponível" do que um número
+// fabricado) - mas retorna 0 (não null) quando o efetivo do mês é zero (mês anterior ao
+// início do contrato, por exemplo), já que aí não há exposição real a configurar e isso
+// não deve travar o cálculo de um período maior que inclua esse mês.
 function hhtExposicaoDoMes(ano, mesIndex0) {
+    const headcount = headcountAsOf(new Date(ano, mesIndex0 + 1, 0));
+    if (headcount === 0) return 0;
     const key = `${ano}-${String(mesIndex0 + 1).padStart(2, '0')}`;
     const config = hhtDiasTrabalhadosMap[key];
     if (!config || !config.dias_trabalhados) return null;
-    const headcount = headcountAsOf(new Date(ano, mesIndex0 + 1, 0));
     return headcount * config.dias_trabalhados * (config.horas_por_dia || 8);
 }
 
 function getAcidentesDateRange() {
+    const tituloEl = document.getElementById('acidPeriodoTitulo');
+    if (acidentesFiltroAno) {
+        const ano = parseInt(acidentesFiltroAno, 10);
+        if (acidentesFiltroMes !== '') {
+            const mes = parseInt(acidentesFiltroMes, 10);
+            if (tituloEl) tituloEl.textContent = `${NOMES_MESES[mes]}/${ano}`;
+            return { inicio: new Date(ano, mes, 1), fim: new Date(ano, mes + 1, 0, 23, 59, 59, 999) };
+        }
+        if (tituloEl) tituloEl.textContent = `Ano ${ano} (completo)`;
+        return { inicio: new Date(ano, 0, 1), fim: new Date(ano, 11, 31, 23, 59, 59, 999) };
+    }
+
     const now = new Date();
     const fim = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59, 999);
+    let inicio, titulo;
     if (acidentesFilter === 'trimestre') {
-        return { inicio: new Date(now.getFullYear(), now.getMonth() - 2, 1), fim };
+        inicio = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+        titulo = 'Últimos 3 meses';
+    } else if (acidentesFilter === 'ano') {
+        inicio = new Date(now.getFullYear(), 0, 1);
+        titulo = `Ano ${now.getFullYear()} (até hoje)`;
+    } else if (acidentesFilter === 'todos') {
+        inicio = new Date(2000, 0, 1);
+        titulo = 'Todo o histórico';
+    } else {
+        inicio = new Date(now.getFullYear(), now.getMonth(), 1);
+        titulo = 'Este mês';
     }
-    if (acidentesFilter === 'ano') {
-        return { inicio: new Date(now.getFullYear(), 0, 1), fim };
-    }
-    if (acidentesFilter === 'todos') {
-        return { inicio: new Date(2000, 0, 1), fim };
-    }
-    return { inicio: new Date(now.getFullYear(), now.getMonth(), 1), fim };
+    if (tituloEl) tituloEl.textContent = titulo;
+    return { inicio, fim };
 }
 
 function setAcidentesFilter(filter) {
     acidentesFilter = filter;
+    acidentesFiltroAno = '';
+    acidentesFiltroMes = '';
+    const anoSel = document.getElementById('acidFiltroAno'); if (anoSel) anoSel.value = '';
+    const mesSel = document.getElementById('acidFiltroMes'); if (mesSel) mesSel.value = '';
     ['btnFiltroAcidMes', 'btnFiltroAcidTrimestre', 'btnFiltroAcidAno', 'btnFiltroAcidTodos'].forEach(id => {
         document.getElementById(id)?.classList.remove('active');
     });
     const map = { mes: 'btnFiltroAcidMes', trimestre: 'btnFiltroAcidTrimestre', ano: 'btnFiltroAcidAno', todos: 'btnFiltroAcidTodos' };
     document.getElementById(map[filter])?.classList.add('active');
+    renderAcidentesPanel();
+}
+
+function onAcidentesFiltroAnoMesChange() {
+    acidentesFiltroAno = document.getElementById('acidFiltroAno').value;
+    acidentesFiltroMes = document.getElementById('acidFiltroMes').value;
+    if (acidentesFiltroAno) {
+        ['btnFiltroAcidMes', 'btnFiltroAcidTrimestre', 'btnFiltroAcidAno', 'btnFiltroAcidTodos'].forEach(id => {
+            document.getElementById(id)?.classList.remove('active');
+        });
+    }
     renderAcidentesPanel();
 }
 
@@ -2282,6 +2391,7 @@ function diasSemAcidente(comAfastamento) {
 }
 
 function renderAcidentesPanel() {
+    popularFiltroAnoAcidentes();
     const { inicio, fim } = getAcidentesDateRange();
     const periodo = allAcidentes.filter(a => {
         if (!a.data_acidente) return false;

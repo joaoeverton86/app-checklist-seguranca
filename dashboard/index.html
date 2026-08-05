@@ -340,7 +340,29 @@
                         <button id="btnFiltroTreinAno" class="db-filter-btn" onclick="setTreinamentosFilter('ano')">Este Ano</button>
                         <button id="btnFiltroTreinTodos" class="db-filter-btn" onclick="setTreinamentosFilter('todos')">Todos</button>
                     </div>
+                    <div class="db-filter-selects">
+                        <select id="treinFiltroAno" onchange="onTreinamentosFiltroAnoMesChange()">
+                            <option value="">Ano específico...</option>
+                        </select>
+                        <select id="treinFiltroMes" onchange="onTreinamentosFiltroAnoMesChange()">
+                            <option value="">Mês específico...</option>
+                            <option value="0">Janeiro</option>
+                            <option value="1">Fevereiro</option>
+                            <option value="2">Março</option>
+                            <option value="3">Abril</option>
+                            <option value="4">Maio</option>
+                            <option value="5">Junho</option>
+                            <option value="6">Julho</option>
+                            <option value="7">Agosto</option>
+                            <option value="8">Setembro</option>
+                            <option value="9">Outubro</option>
+                            <option value="10">Novembro</option>
+                            <option value="11">Dezembro</option>
+                        </select>
+                    </div>
                 </div>
+
+                <div class="db-periodo-titulo">📊 Período: <span id="treinPeriodoTitulo">Este mês</span></div>
 
                 <div class="db-kpi-grid">
                     <div class="db-kpi-card">
@@ -611,7 +633,29 @@
                         <button id="btnFiltroAcidAno" class="db-filter-btn" onclick="setAcidentesFilter('ano')">Este Ano</button>
                         <button id="btnFiltroAcidTodos" class="db-filter-btn" onclick="setAcidentesFilter('todos')">Todos</button>
                     </div>
+                    <div class="db-filter-selects">
+                        <select id="acidFiltroAno" onchange="onAcidentesFiltroAnoMesChange()">
+                            <option value="">Ano específico...</option>
+                        </select>
+                        <select id="acidFiltroMes" onchange="onAcidentesFiltroAnoMesChange()">
+                            <option value="">Mês específico...</option>
+                            <option value="0">Janeiro</option>
+                            <option value="1">Fevereiro</option>
+                            <option value="2">Março</option>
+                            <option value="3">Abril</option>
+                            <option value="4">Maio</option>
+                            <option value="5">Junho</option>
+                            <option value="6">Julho</option>
+                            <option value="7">Agosto</option>
+                            <option value="8">Setembro</option>
+                            <option value="9">Outubro</option>
+                            <option value="10">Novembro</option>
+                            <option value="11">Dezembro</option>
+                        </select>
+                    </div>
                 </div>
+
+                <div class="db-periodo-titulo">📊 Período: <span id="acidPeriodoTitulo">Este mês</span></div>
 
                 <div class="db-kpi-grid">
                     <div class="db-kpi-card db-kpi-primary">
@@ -781,6 +825,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=25"></script>
+    <script src="dashboard.js?v=26"></script>
 </body>
 </html>

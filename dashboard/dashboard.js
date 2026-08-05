@@ -638,10 +638,29 @@ async function loadTreinamentosData() {
         renderTreinamentosPanel();
         renderCatalogoResumo();
         filterCatalogoTreinamentos(document.getElementById('catalogoSearchInput')?.value || '');
+        // Popula datalist/select da aba "Lançar Treinamento" assim que os dados chegam,
+        // sem depender do usuário abrir essa aba primeiro (ambos são idempotentes -
+        // só preenchem se ainda estiverem vazios).
+        popularCatalogoDatalist();
+        popularResponsavelSelect();
     } catch (err) {
         console.error('Erro ao carregar dados de treinamentos:', err);
         if (statusEl) statusEl.textContent = '❌ Falha ao carregar dados de treinamentos.';
     }
+}
+
+// Abas da página Treinamentos (Visão Geral / Lançar Treinamento / Catálogo). Sempre
+// re-renderiza a Visão Geral ao entrar nela (mesmo raciocínio do self-heal de
+// showDbPage - se o gráfico foi criado com o canvas escondido em outra aba, sem isso
+// ficaria em branco pra sempre).
+function showTreinSubtab(tab) {
+    ['visao', 'lancar', 'catalogo'].forEach(t => {
+        const content = document.getElementById('treinSubtab-' + t);
+        const btn = document.getElementById('treinSubtabBtn-' + t);
+        if (content) content.style.display = (t === tab) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
+    if (tab === 'visao') renderTreinamentosPanel();
 }
 
 function renderTreinamentosPanel() {
@@ -884,8 +903,11 @@ async function importarTreinamentosCSV() {
 
 let lancTreinEquipe = new Map(); // matricula -> {nome, funcao, setor, checked}
 
+// A página de Treinamentos é dividida em abas (Visão Geral/Lançar/Catálogo) - esse
+// form vive sempre visível dentro da própria aba "Lançar", então essa função virou
+// puramente um reset (chamada pelo botão "Novo Lançamento" e uma vez no carregamento
+// inicial), não abre/fecha mais um card escondido.
 function abrirFormLancarTreinamento() {
-    document.getElementById('lancTreinFormCard').style.display = 'block';
     document.getElementById('lancTreinCodigo').value = '';
     document.getElementById('lancTreinData').value = new Date().toISOString().split('T')[0];
     document.getElementById('lancTreinInfo').style.display = 'none';
@@ -899,12 +921,10 @@ function abrirFormLancarTreinamento() {
 
     lancTreinEquipe = new Map();
     renderListaPresencaEquipe();
-
-    document.getElementById('lancTreinFormCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function fecharFormLancarTreinamento() {
-    document.getElementById('lancTreinFormCard').style.display = 'none';
+    showTreinSubtab('visao');
 }
 
 function refreshCatalogoDatalist() {
@@ -1367,10 +1387,24 @@ async function loadEfetivoData() {
             await loadTreinamentosData();
         }
         renderEfetivoPanel();
+        renderEfetivoResumo();
+        filterEfetivoColaboradores(document.getElementById('efetivoSearchInput')?.value || '');
     } catch (err) {
         console.error('Erro ao carregar dados de efetivo:', err);
         if (statusEl) statusEl.textContent = '❌ Falha ao carregar dados de efetivo.';
     }
+}
+
+// Abas da página Efetivo (Visão Geral / Colaboradores) - mesmo raciocínio de
+// self-heal do showTreinSubtab: sempre re-renderiza a Visão Geral ao entrar nela.
+function showEfetivoSubtab(tab) {
+    ['visao', 'colaboradores'].forEach(t => {
+        const content = document.getElementById('efetivoSubtab-' + t);
+        const btn = document.getElementById('efetivoSubtabBtn-' + t);
+        if (content) content.style.display = (t === tab) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
+    if (tab === 'visao') renderEfetivoPanel();
 }
 
 // ============================================
@@ -1378,24 +1412,32 @@ async function loadEfetivoData() {
 // aniversário e situação de treinamentos), a pedido do cliente.
 // ============================================
 
+// Resumo geral da lista de colaboradores (visão geral rápida, mesmo espírito do
+// catalogoResumo): total, quantos ativos x inativos.
+function renderEfetivoResumo() {
+    const el = document.getElementById('efetivoResumo');
+    if (!el) return;
+    const total = allEfetivo.length;
+    const ativos = allEfetivo.filter(e => e.dt_admissao && !e.dt_demissao).length;
+    el.textContent = total === 0 ? '' : `${total} colaborador(es) cadastrado(s) — ${ativos} ativo(s), ${total - ativos} inativo(s)`;
+}
+
 function filterEfetivoColaboradores(query) {
     const container = document.getElementById('efetivoSearchResults');
     const detail = document.getElementById('efetivoColabDetail');
     const q = (query || '').toLowerCase().trim();
 
-    if (q.length < 2) {
-        container.innerHTML = '';
-        detail.style.display = 'none';
-        detail.innerHTML = '';
-        return;
-    }
-
-    const matches = allEfetivo.filter(e =>
-        (e.nome && e.nome.toLowerCase().includes(q)) || (e.id && e.id.toLowerCase().includes(q))
-    ).slice(0, 20);
+    // Sem busca, mostra todo mundo (visão geral) em vez de ficar vazio - a busca só
+    // entra pra estreitar a lista, mesmo padrão já usado no Catálogo de Treinamentos.
+    const base = q.length < 2
+        ? allEfetivo
+        : allEfetivo.filter(e => (e.nome && e.nome.toLowerCase().includes(q)) || (e.id && e.id.toLowerCase().includes(q)));
+    const matches = base.slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
     if (matches.length === 0) {
-        container.innerHTML = `<div class="db-list-empty">Nenhum colaborador encontrado para "${escapeHTML(query)}"</div>`;
+        container.innerHTML = q.length < 2
+            ? '<div class="db-list-empty">Nenhum colaborador cadastrado ainda</div>'
+            : `<div class="db-list-empty">Nenhum colaborador encontrado para "${escapeHTML(query)}"</div>`;
         return;
     }
 
@@ -1611,6 +1653,8 @@ async function salvarColaboradorEfetivo() {
         statusEl.textContent = '✅ Salvo com sucesso.';
         statusEl.style.color = 'var(--success)';
         renderEfetivoPanel();
+        renderEfetivoResumo();
+        filterEfetivoColaboradores(document.getElementById('efetivoSearchInput').value);
         setTimeout(() => {
             fecharFormEfetivo();
             mostrarDetalheColaborador(matricula);

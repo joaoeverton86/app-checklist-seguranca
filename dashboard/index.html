@@ -206,15 +206,20 @@
 
             <!-- Página: Treinamentos -->
             <section class="db-page" id="page-treinamentos">
-                <div class="db-chart-card" style="margin-bottom: 16px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <div class="db-chart-title" style="margin-bottom: 0;">📝 Lançar Treinamento</div>
-                        <button class="db-apply-btn" onclick="abrirFormLancarTreinamento()">+ Lançar Treinamento</button>
+                <div class="db-filters" style="margin-bottom: 16px;">
+                    <div class="db-filter-buttons">
+                        <button id="treinSubtabBtn-visao" class="db-filter-btn active" onclick="showTreinSubtab('visao')">📊 Visão Geral</button>
+                        <button id="treinSubtabBtn-lancar" class="db-filter-btn" onclick="showTreinSubtab('lancar')">📝 Lançar Treinamento</button>
+                        <button id="treinSubtabBtn-catalogo" class="db-filter-btn" onclick="showTreinSubtab('catalogo')">📋 Catálogo</button>
                     </div>
                 </div>
 
-                <div class="db-chart-card" id="lancTreinFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
-                    <div class="db-chart-title">📝 Lançar Treinamento</div>
+                <div id="treinSubtab-lancar" style="display:none;">
+                <div class="db-chart-card" id="lancTreinFormCard" style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" style="margin-bottom: 0;">📝 Lançar Treinamento</div>
+                        <button class="db-clear-btn" onclick="abrirFormLancarTreinamento()">🔄 Novo Lançamento</button>
+                    </div>
 
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px; margin-bottom: 14px;">
                         <div>
@@ -262,7 +267,9 @@
                         <span id="lancTreinStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
                 </div>
+                </div>
 
+                <div id="treinSubtab-catalogo" style="display:none;">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
                         <div class="db-chart-title" style="margin-bottom: 0;">📋 Catálogo de Treinamentos</div>
@@ -317,7 +324,9 @@
                         </div>
                     </div>
                 </div>
+                </div>
 
+                <div id="treinSubtab-visao">
                 <div class="db-filters">
                     <div class="db-filter-buttons">
                         <button id="btnFiltroTreinMes" class="db-filter-btn active" onclick="setTreinamentosFilter('mes')">Este Mês</button>
@@ -364,15 +373,25 @@
                         <div id="listTreinVencendo" class="db-list"></div>
                     </div>
                 </div>
+                </div>
             </section>
 
             <!-- Página: Efetivo -->
             <section class="db-page" id="page-efetivo">
+                <div class="db-filters" style="margin-bottom: 16px;">
+                    <div class="db-filter-buttons">
+                        <button id="efetivoSubtabBtn-visao" class="db-filter-btn active" onclick="showEfetivoSubtab('visao')">📊 Visão Geral</button>
+                        <button id="efetivoSubtabBtn-colaboradores" class="db-filter-btn" onclick="showEfetivoSubtab('colaboradores')">👥 Colaboradores</button>
+                    </div>
+                </div>
+
+                <div id="efetivoSubtab-colaboradores" style="display:none;">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
                         <div class="db-chart-title" style="margin-bottom: 0;">🔍 Buscar Colaborador</div>
                         <button class="db-apply-btn" onclick="abrirFormEfetivo()">+ Novo Colaborador</button>
                     </div>
+                    <div id="efetivoResumo" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px;"></div>
                     <input type="text" id="efetivoSearchInput" placeholder="Buscar por nome ou matrícula..."
                            oninput="filterEfetivoColaboradores(this.value)"
                            style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; margin-bottom: 12px; box-sizing: border-box; background: var(--card); color: var(--text);">
@@ -471,7 +490,9 @@
                         <span id="efetivoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
                 </div>
+                </div>
 
+                <div id="efetivoSubtab-visao">
                 <div class="db-filters" style="margin-bottom: 16px;">
                     <div class="db-filter-selects" style="margin-left: 0;">
                         <select id="efetivoFiltroAno" onchange="onEfetivoFiltroChange()">
@@ -539,6 +560,7 @@
                         <div class="db-chart-canvas-wrap"><canvas id="chartEfetivoFuncao"></canvas></div>
                     </div>
                 </div>
+                </div>
             </section>
 
             <!-- Página: Configurações -->
@@ -572,6 +594,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=14"></script>
+    <script src="dashboard.js?v=15"></script>
 </body>
 </html>

@@ -107,6 +107,23 @@ function wrapChartLabel(label, maxCharsPerLine = 22) {
     return lines;
 }
 
+// wrapChartLabel evita cortar texto, mas rótulos de várias linhas ocupam mais altura por
+// barra - sem isso, o Chart.js (autoSkip padrão) escondia ticks inteiros pra não deixar
+// sobrepor, dando a falsa impressão de categoria faltando (achado real: "ADMINISTRATIVO"
+// sumiu do eixo do gráfico de Função). Aqui calcula a altura real necessária somando o
+// espaço de cada barra (mais linhas = mais altura) e aplica no wrapper do canvas antes de
+// criar o gráfico; os options de cada gráfico também desligam autoSkip explicitamente.
+function ajustarAlturaBarrasHorizontais(canvasId, labels) {
+    const canvas = document.getElementById(canvasId);
+    const wrap = canvas ? canvas.parentElement : null;
+    if (!wrap) return;
+    const alturaTotal = labels.reduce((soma, l) => {
+        const linhas = Array.isArray(l) ? l.length : 1;
+        return soma + Math.max(26, linhas * 14 + 10);
+    }, 0);
+    wrap.style.height = Math.max(280, alturaTotal + 40) + 'px';
+}
+
 // Portado de app.js (parseLocalDate) - mesma lógica de parsing tolerante a
 // formato ISO/BR, pra bater exatamente com o que o app de campo já mostra.
 function parseLocalDate(dateStr) {
@@ -411,10 +428,12 @@ function renderCharts(checklistsPeriodo, filterChecklistArray) {
     const typeCounts = {};
     checklistsPeriodo.forEach(c => { const t = c.equipment?.name || c.nome || 'Desconhecido'; typeCounts[t] = (typeCounts[t] || 0) + 1; });
     const typeSorted = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    const typeLabels = typeSorted.map(t => wrapChartLabel(t[0]));
+    ajustarAlturaBarrasHorizontais('chartPorTipo', typeLabels);
     chartInstances.tipo = new Chart(document.getElementById('chartPorTipo'), {
         type: 'bar',
-        data: { labels: typeSorted.map(t => wrapChartLabel(t[0])), datasets: [{ label: 'Checklists', data: typeSorted.map(t => t[1]), backgroundColor: colors.primaryLight, borderRadius: 6 }] },
-        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        data: { labels: typeLabels, datasets: [{ label: 'Checklists', data: typeSorted.map(t => t[1]), backgroundColor: colors.primaryLight, borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
     });
 
     // Volume de checklists nos últimos 6 meses
@@ -446,10 +465,12 @@ function renderCharts(checklistsPeriodo, filterChecklistArray) {
         }
     });
     const itemsSorted = Object.entries(itemCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const itemsLabels = itemsSorted.map(i => wrapChartLabel(i[0]));
+    ajustarAlturaBarrasHorizontais('chartItensNC', itemsLabels);
     chartInstances.itens = new Chart(document.getElementById('chartItensNC'), {
         type: 'bar',
-        data: { labels: itemsSorted.map(i => wrapChartLabel(i[0])), datasets: [{ label: 'Ocorrências', data: itemsSorted.map(i => i[1]), backgroundColor: itemsSorted.map((_, idx) => `rgba(239, 68, 68, ${1 - idx * 0.07})`), borderRadius: 6 }] },
-        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        data: { labels: itemsLabels, datasets: [{ label: 'Ocorrências', data: itemsSorted.map(i => i[1]), backgroundColor: itemsSorted.map((_, idx) => `rgba(239, 68, 68, ${1 - idx * 0.07})`), borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
     });
 
     // Top 10 equipamentos com mais não conformidade
@@ -462,10 +483,12 @@ function renderCharts(checklistsPeriodo, filterChecklistArray) {
         }
     });
     const equipSorted = Object.entries(equipCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const equipLabels = equipSorted.map(e => wrapChartLabel(e[0]));
+    ajustarAlturaBarrasHorizontais('chartEquipNC', equipLabels);
     chartInstances.equip = new Chart(document.getElementById('chartEquipNC'), {
         type: 'bar',
-        data: { labels: equipSorted.map(e => wrapChartLabel(e[0])), datasets: [{ label: 'Não Conformidades', data: equipSorted.map(e => e[1]), backgroundColor: colors.danger, borderRadius: 6 }] },
-        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        data: { labels: equipLabels, datasets: [{ label: 'Não Conformidades', data: equipSorted.map(e => e[1]), backgroundColor: colors.danger, borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
     });
 
     // Top empresas com mais não conformidade
@@ -478,10 +501,12 @@ function renderCharts(checklistsPeriodo, filterChecklistArray) {
         }
     });
     const empresaSorted = Object.entries(empresaCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const empresaLabels = empresaSorted.map(e => wrapChartLabel(e[0]));
+    ajustarAlturaBarrasHorizontais('chartEmpresaNC', empresaLabels);
     chartInstances.empresa = new Chart(document.getElementById('chartEmpresaNC'), {
         type: 'bar',
-        data: { labels: empresaSorted.map(e => wrapChartLabel(e[0])), datasets: [{ label: 'Não Conformidades', data: empresaSorted.map(e => e[1]), backgroundColor: colors.warning || '#f59e0b', borderRadius: 6 }] },
-        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        data: { labels: empresaLabels, datasets: [{ label: 'Não Conformidades', data: empresaSorted.map(e => e[1]), backgroundColor: colors.warning || '#f59e0b', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
     });
 }
 
@@ -575,10 +600,12 @@ function renderRelatosPanel() {
     allRelatos.forEach(r => { const t = r.tipo || 'Outro'; tipoCounts[t] = (tipoCounts[t] || 0) + 1; });
     const tipoSorted = Object.entries(tipoCounts).sort((a, b) => b[1] - a[1]);
     if (typeof Chart !== 'undefined') {
+        const tipoLabels = tipoSorted.map(t => wrapChartLabel(t[0]));
+        ajustarAlturaBarrasHorizontais('chartRelatosTipo', tipoLabels);
         chartInstances.relatosTipo = new Chart(document.getElementById('chartRelatosTipo'), {
             type: 'bar',
-            data: { labels: tipoSorted.map(t => wrapChartLabel(t[0])), datasets: [{ label: 'Relatos', data: tipoSorted.map(t => t[1]), backgroundColor: '#818cf8', borderRadius: 6 }] },
-            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+            data: { labels: tipoLabels, datasets: [{ label: 'Relatos', data: tipoSorted.map(t => t[1]), backgroundColor: '#818cf8', borderRadius: 6 }] },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
         });
     }
 
@@ -783,20 +810,24 @@ function renderTreinamentosPanel() {
     const setorCounts = {};
     periodo.forEach(r => { const s = r.setor || 'Sem setor'; setorCounts[s] = (setorCounts[s] || 0) + (parseFloat(r.carga_horaria) || 0); });
     const setorSorted = Object.entries(setorCounts).sort((a, b) => b[1] - a[1]);
+    const treinSetorLabels = setorSorted.map(s => wrapChartLabel(s[0]));
+    ajustarAlturaBarrasHorizontais('chartTreinSetor', treinSetorLabels);
     chartInstances.treinSetor = new Chart(document.getElementById('chartTreinSetor'), {
         type: 'bar',
-        data: { labels: setorSorted.map(s => wrapChartLabel(s[0])), datasets: [{ label: 'HHT', data: setorSorted.map(s => s[1]), backgroundColor: '#818cf8', borderRadius: 6 }] },
-        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+        data: { labels: treinSetorLabels, datasets: [{ label: 'HHT', data: setorSorted.map(s => s[1]), backgroundColor: '#818cf8', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true }, y: { ticks: { autoSkip: false } } } }
     });
 
     // Top 10 temas mais realizados no período filtrado
     const temaCounts = {};
     periodo.forEach(r => { const t = r.treinamento_nome || 'Desconhecido'; temaCounts[t] = (temaCounts[t] || 0) + 1; });
     const temaSorted = Object.entries(temaCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const temaLabels = temaSorted.map(t => wrapChartLabel(t[0]));
+    ajustarAlturaBarrasHorizontais('chartTreinTopTemas', temaLabels);
     chartInstances.treinTopTemas = new Chart(document.getElementById('chartTreinTopTemas'), {
         type: 'bar',
-        data: { labels: temaSorted.map(t => wrapChartLabel(t[0])), datasets: [{ label: 'Sessões', data: temaSorted.map(t => t[1]), backgroundColor: '#10b981', borderRadius: 6 }] },
-        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        data: { labels: temaLabels, datasets: [{ label: 'Sessões', data: temaSorted.map(t => t[1]), backgroundColor: '#10b981', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
     });
 }
 
@@ -1932,19 +1963,23 @@ function renderEfetivoPanel() {
     const setorCounts = {};
     ativosNaData.forEach(e => { const s = e.setor || 'Sem setor'; setorCounts[s] = (setorCounts[s] || 0) + 1; });
     const setorSorted = Object.entries(setorCounts).sort((a, b) => b[1] - a[1]);
+    const efetivoSetorLabels = setorSorted.map(s => wrapChartLabel(s[0]));
+    ajustarAlturaBarrasHorizontais('chartEfetivoSetor', efetivoSetorLabels);
     chartInstances.efetivoSetor = new Chart(document.getElementById('chartEfetivoSetor'), {
         type: 'bar',
-        data: { labels: setorSorted.map(s => wrapChartLabel(s[0])), datasets: [{ label: 'Efetivo', data: setorSorted.map(s => s[1]), backgroundColor: '#10b981', borderRadius: 6 }] },
-        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        data: { labels: efetivoSetorLabels, datasets: [{ label: 'Efetivo', data: setorSorted.map(s => s[1]), backgroundColor: '#10b981', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
     });
 
     const funcaoCounts = {};
     ativosNaData.forEach(e => { const f = e.funcao || 'Sem função'; funcaoCounts[f] = (funcaoCounts[f] || 0) + 1; });
     const funcaoSorted = Object.entries(funcaoCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const efetivoFuncaoLabels = funcaoSorted.map(f => wrapChartLabel(f[0]));
+    ajustarAlturaBarrasHorizontais('chartEfetivoFuncao', efetivoFuncaoLabels);
     chartInstances.efetivoFuncao = new Chart(document.getElementById('chartEfetivoFuncao'), {
         type: 'bar',
-        data: { labels: funcaoSorted.map(f => wrapChartLabel(f[0])), datasets: [{ label: 'Efetivo', data: funcaoSorted.map(f => f[1]), backgroundColor: '#f59e0b', borderRadius: 6 }] },
-        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        data: { labels: efetivoFuncaoLabels, datasets: [{ label: 'Efetivo', data: funcaoSorted.map(f => f[1]), backgroundColor: '#f59e0b', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
     });
 }
 

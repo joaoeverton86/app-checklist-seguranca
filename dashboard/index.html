@@ -1109,7 +1109,7 @@
                         </div>
                         <div>
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Tipo de Exame *</label>
-                            <select id="asoForm_tipo" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <select id="asoForm_tipo" onchange="onAsoTipoOuDataChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
                                 <option value="">Selecione...</option>
                                 <option value="admissional">Admissional</option>
                                 <option value="periodico">Periódico</option>
@@ -1120,11 +1120,12 @@
                         </div>
                         <div>
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data do Exame *</label>
-                            <input type="date" id="asoForm_dataExame" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <input type="date" id="asoForm_dataExame" oninput="onAsoTipoOuDataChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
                         </div>
                         <div>
-                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Próximo Exame (Vencimento)</label>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Próximo Exame (Vencimento) — auto: NR-07/GHE</label>
                             <input type="date" id="asoForm_dataVencimento" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <div id="asoForm_periodicidadeHint" style="font-size: 11px; color: var(--text-light); margin-top: 4px;"></div>
                         </div>
                         <div>
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Resultado</label>
@@ -1252,6 +1253,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=29"></script>
+    <script src="dashboard.js?v=30"></script>
 </body>
 </html>

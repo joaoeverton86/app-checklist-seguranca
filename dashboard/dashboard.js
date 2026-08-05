@@ -3337,9 +3337,52 @@ function buscarColaboradorPorInput(inputId) {
     return { matricula, colab: allEfetivo.find(e => e.id === matricula) };
 }
 
+// Periodicidade do exame periódico por GHE, extraída do PCMSO assinado (Setembro/2025,
+// seção 8 - Periodicidade dos Exames Clínicos): todos os 26 grupos de risco são de 12
+// meses, exceto Administrativo e Medicina do Trabalho, que são de 24 meses. Isso NÃO é
+// uma regra genérica da NR-07 (a periodicidade varia por documento/empresa, a critério
+// do médico responsável) - é a tabela real e específica deste PCMSO, então se o PCMSO for
+// revisado com novos prazos, esta lista precisa ser atualizada junto.
+const PCMSO_SETORES_24_MESES = new Set(['ADMINISTRATIVO', 'MEDICINA DO TRABALHO']);
+
+function periodicidadeAsoPorSetor(setor) {
+    return PCMSO_SETORES_24_MESES.has((setor || '').trim().toUpperCase()) ? 24 : 12;
+}
+
+function addMeses(dataStr, meses) {
+    if (!dataStr) return '';
+    const d = parseLocalDate(dataStr);
+    const resultado = new Date(d.getFullYear(), d.getMonth() + meses, d.getDate());
+    return resultado.toISOString().split('T')[0];
+}
+
 function onAsoColaboradorChange() {
     const { colab } = buscarColaboradorPorInput('asoForm_matricula');
     document.getElementById('asoForm_colabPreview').textContent = colab ? `✓ ${colab.nome} — ${colab.funcao || ''} — ${colab.setor || ''}` : '';
+    onAsoTipoOuDataChange();
+}
+
+// Sugere a data de vencimento (próximo exame devido) automaticamente a partir da
+// periodicidade real do GHE do colaborador - não se aplica ao demissional, que é
+// terminal (não há "próximo exame" a aguardar). O campo continua editável manualmente
+// pra cobrir os casos em que o médico responsável decidiu antecipar/postergar (a
+// própria NR-07 permite até 45 dias de ajuste a critério médico).
+function onAsoTipoOuDataChange() {
+    const tipo = document.getElementById('asoForm_tipo').value;
+    const dataExame = document.getElementById('asoForm_dataExame').value;
+    const hintEl = document.getElementById('asoForm_periodicidadeHint');
+    if (!dataExame || !tipo || tipo === 'demissional') {
+        if (hintEl) hintEl.textContent = '';
+        return;
+    }
+    const { colab } = buscarColaboradorPorInput('asoForm_matricula');
+    if (!colab) {
+        if (hintEl) hintEl.textContent = '';
+        return;
+    }
+    const meses = periodicidadeAsoPorSetor(colab.setor);
+    document.getElementById('asoForm_dataVencimento').value = addMeses(dataExame, meses);
+    if (hintEl) hintEl.textContent = `GHE "${colab.setor || '—'}": periodicidade de ${meses} meses (PCMSO)`;
 }
 
 function onAtestadoColaboradorChange() {

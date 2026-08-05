@@ -1479,6 +1479,48 @@ function diasProximoAniversario(dataNascimento, hoje) {
     return Math.ceil((prox.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+let colabTreinamentosDetalhe = [];
+let colabTreinBadgeAberto = null;
+
+// Mostra/esconde a lista de treinamentos por trás de um badge (vencido/vencendo/
+// válido/sem validade) clicado no card de detalhe do colaborador.
+function toggleTreinamentosBadge(status) {
+    const container = document.getElementById('colabTreinDetalheLista');
+    if (!container) return;
+
+    if (colabTreinBadgeAberto === status) {
+        container.style.display = 'none';
+        colabTreinBadgeAberto = null;
+        return;
+    }
+    colabTreinBadgeAberto = status;
+
+    const itens = colabTreinamentosDetalhe.filter(t => t.status === status).sort((a, b) => {
+        if (a.diff === null || b.diff === null) return (a.treinamento_nome || '').localeCompare(b.treinamento_nome || '');
+        return a.diff - b.diff;
+    });
+
+    if (itens.length === 0) {
+        container.innerHTML = '<div class="db-list-empty">Nenhum treinamento nessa categoria</div>';
+        container.style.display = 'block';
+        return;
+    }
+
+    container.innerHTML = itens.map(t => {
+        let statusTxt;
+        if (t.status === 'vencido') statusTxt = `Venceu há ${Math.abs(t.diff)} dia(s)`;
+        else if (t.status === 'vencendo') statusTxt = t.diff === 0 ? 'Vence hoje' : `Vence em ${t.diff} dia(s)`;
+        else if (t.status === 'valido') statusTxt = `Válido (${t.diff} dias restantes)`;
+        else statusTxt = 'Sem validade / não recicla';
+        return `
+            <div class="db-list-item" style="font-size: 12.5px;">
+                <div class="db-list-item-title">${escapeHTML(t.treinamento_nome || t.treinamento_cod || '')}</div>
+                <div class="db-list-item-sub">${statusTxt} — Última realização: ${t.data_treinamento ? formatSimpleDate(t.data_treinamento) : '—'}${t.data_proxima_reciclagem ? ' • Válido até: ' + formatSimpleDate(t.data_proxima_reciclagem) : ''}</div>
+            </div>`;
+    }).join('');
+    container.style.display = 'block';
+}
+
 function mostrarDetalheColaborador(matricula) {
     const e = allEfetivo.find(x => x.id === matricula);
     if (!e) return;
@@ -1515,28 +1557,39 @@ function mostrarDetalheColaborador(matricula) {
 
     // Situação de treinamentos, se já carregada (loadEfetivoData sempre garante o carregamento).
     // Nem todo treinamento tem validade (DDS pontuais têm meses_validade nulo) - esses
-    // entram no bucket "sem validade" pra não sumir da contagem total.
+    // entram no bucket "sem validade" pra não sumir da contagem total. Os badges são
+    // clicáveis (toggleTreinamentosBadge) pra mostrar quais treinamentos exatamente caem
+    // em cada categoria - antes só dava pra ver a contagem, sem saber quais.
     let treinHtml = '';
     const regs = allTreinamentosStatus.filter(t => t.matricula === matricula);
+    colabTreinamentosDetalhe = [];
+    colabTreinBadgeAberto = null;
     if (regs.length > 0) {
         let vencidos = 0, vencendo = 0, validos = 0, semValidade = 0;
         regs.forEach(t => {
-            if (!t.data_proxima_reciclagem) { semValidade++; return; }
-            const d = parseLocalDate(t.data_proxima_reciclagem);
-            const diff = Math.ceil((d.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
-            if (diff < 0) vencidos++;
-            else if (diff <= 30) vencendo++;
-            else validos++;
+            let diff = null, status;
+            if (!t.data_proxima_reciclagem) {
+                status = 'sem_validade';
+                semValidade++;
+            } else {
+                const d = parseLocalDate(t.data_proxima_reciclagem);
+                diff = Math.ceil((d.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+                if (diff < 0) { status = 'vencido'; vencidos++; }
+                else if (diff <= 30) { status = 'vencendo'; vencendo++; }
+                else { status = 'valido'; validos++; }
+            }
+            colabTreinamentosDetalhe.push({ ...t, diff, status });
         });
         treinHtml = `
             <div style="margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border);">
-                <div style="font-size: 11px; color: var(--text-light); font-weight: 700; text-transform: uppercase; margin-bottom: 6px;">Situação de Treinamentos (${regs.length})</div>
+                <div style="font-size: 11px; color: var(--text-light); font-weight: 700; text-transform: uppercase; margin-bottom: 6px;">Situação de Treinamentos (${regs.length}) <span style="font-weight: 400; text-transform: none;">— clique numa categoria pra ver quais</span></div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <span style="font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #fee2e2; color: #b91c1c; font-weight: 600;">🔴 ${vencidos} vencido(s)</span>
-                    <span style="font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #fef3c7; color: #92400e; font-weight: 600;">🟡 ${vencendo} vencendo</span>
-                    <span style="font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #d1fae5; color: #047857; font-weight: 600;">🟢 ${validos} válido(s)</span>
-                    <span style="font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #e0e7ff; color: #3730a3; font-weight: 600;">🔵 ${semValidade} sem validade</span>
+                    <button style="font-size: 11px; padding: 4px 10px; border-radius: 6px; background: #fee2e2; color: #b91c1c; font-weight: 600; border: 1px solid #fecaca; cursor: pointer;" onclick="toggleTreinamentosBadge('vencido')">🔴 ${vencidos} vencido(s)</button>
+                    <button style="font-size: 11px; padding: 4px 10px; border-radius: 6px; background: #fef3c7; color: #92400e; font-weight: 600; border: 1px solid #fde68a; cursor: pointer;" onclick="toggleTreinamentosBadge('vencendo')">🟡 ${vencendo} vencendo</button>
+                    <button style="font-size: 11px; padding: 4px 10px; border-radius: 6px; background: #d1fae5; color: #047857; font-weight: 600; border: 1px solid #a7f3d0; cursor: pointer;" onclick="toggleTreinamentosBadge('valido')">🟢 ${validos} válido(s)</button>
+                    <button style="font-size: 11px; padding: 4px 10px; border-radius: 6px; background: #e0e7ff; color: #3730a3; font-weight: 600; border: 1px solid #c7d2fe; cursor: pointer;" onclick="toggleTreinamentosBadge('sem_validade')">🔵 ${semValidade} sem validade</button>
                 </div>
+                <div id="colabTreinDetalheLista" class="db-list" style="display:none; margin-top: 10px; max-height: 280px;"></div>
             </div>`;
     }
 

@@ -437,8 +437,9 @@ CREATE TABLE IF NOT EXISTS public.extintores (
     localizacao TEXT,                     -- descrição livre do ponto de fixação
     fabricacao TEXT,
     ultima_recarga TEXT,
-    proxima_recarga TEXT,                 -- "vencimento" usado nos alertas (Fase 3)
-    proximo_teste_hidrostatico TEXT,      -- ciclo de 5 anos, opcional
+    proxima_recarga TEXT,                 -- "vencimento" usado nos alertas (Fase 3) - auto: ultima_recarga + 1 ano (painel)
+    ultimo_teste_hidrostatico TEXT,       -- data em que o teste foi de fato realizado
+    proximo_teste_hidrostatico TEXT,      -- ciclo de 5 anos (NBR 12962) - auto: ultimo_teste_hidrostatico (ou fabricacao) + 5 anos (painel)
     ativo BOOLEAN DEFAULT true,
     obs TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()

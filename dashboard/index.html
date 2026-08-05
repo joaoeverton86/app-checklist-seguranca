@@ -58,6 +58,15 @@
 
             <!-- Página: Checklists -->
             <section class="db-page active" id="page-checklists">
+                <div class="db-filters" style="margin-bottom: 16px;">
+                    <div class="db-filter-buttons">
+                        <button id="checklistsSubtabBtn-visao" class="db-filter-btn active" onclick="showChecklistsSubtab('visao')">📊 Visão Geral</button>
+                        <button id="checklistsSubtabBtn-cadastros" class="db-filter-btn" onclick="showChecklistsSubtab('cadastros')">📋 Cadastros</button>
+                        <button id="checklistsSubtabBtn-historico" class="db-filter-btn" onclick="showChecklistsSubtab('historico')">📜 Histórico</button>
+                    </div>
+                </div>
+
+                <div id="checklistsSubtab-visao">
                 <div class="db-filters">
                     <div class="db-filter-buttons">
                         <button id="btnFiltroMes" class="db-filter-btn active" onclick="setReportFilter('mes')">Este Mês</button>
@@ -141,10 +150,111 @@
                         <div class="db-chart-canvas-wrap"><canvas id="chartEmpresaNC"></canvas></div>
                     </div>
                 </div>
+                </div>
+
+                <div id="checklistsSubtab-cadastros" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" style="margin-bottom: 0;">📋 Cadastro de Equipamentos/Veículos/Ferramentas</div>
+                        <button class="db-apply-btn" onclick="abrirFormCadastro()">+ Novo Cadastro</button>
+                    </div>
+                    <div id="cadastrosResumo" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px;"></div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <input type="text" id="cadastrosSearchInput" placeholder="Buscar por patrimônio, nome ou empresa... (em branco mostra todos)"
+                               oninput="filterCadastrosLista(this.value)"
+                               style="flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                        <button class="db-clear-btn" onclick="limparBuscaCadastros()">✕ Limpar</button>
+                    </div>
+                    <div id="cadastrosSearchResults" class="db-list" style="max-height: 420px;"></div>
+                </div>
+
+                <div class="db-chart-card" id="cadastroFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" id="cadastroFormTitle" style="margin-bottom: 0;">📋 Novo Cadastro</div>
+                        <button class="db-clear-btn" onclick="abrirFormCadastro()">🔄 Novo Registro</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Tipo *</label>
+                            <select id="cadForm_tipo" onchange="onCadastroTipoChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="">Selecione...</option>
+                                <option value="maquinas">Máquina/Equipamento</option>
+                                <option value="veiculos">Veículo</option>
+                                <option value="ferramentas">Ferramenta</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Categoria (NR) *</label>
+                            <select id="cadForm_categoria" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="">Selecione o tipo primeiro...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Nome/Descrição *</label>
+                            <input type="text" id="cadForm_nome" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Patrimônio *</label>
+                            <input type="text" id="cadForm_patrimonio" placeholder="Ex: PAT-001" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Placa</label>
+                            <input type="text" id="cadForm_placa" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Empresa Responsável</label>
+                            <input type="text" id="cadForm_empresa" list="listaEmpresasCad" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <datalist id="listaEmpresasCad"></datalist>
+                        </div>
+                        <div id="cadForm_grupoStatus" style="display:none;">
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Status (Mobilização na Obra)</label>
+                            <select id="cadForm_status" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="ativo">🟢 Mobilizado (Ativo)</option>
+                                <option value="inativo">🔴 Desmobilizado (Inativo)</option>
+                            </select>
+                        </div>
+                        <div style="grid-column: 1 / -1;">
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Observações</label>
+                            <textarea id="cadForm_obs" rows="3" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-family: inherit; font-size: inherit; resize: vertical;"></textarea>
+                        </div>
+                    </div>
+                    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="salvarCadastro()">💾 Salvar</button>
+                        <button class="db-clear-btn" onclick="fecharFormCadastro()">Cancelar</button>
+                        <button id="cadForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirCadastroAtual()">🗑️ Excluir</button>
+                        <span id="cadastroFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
+                </div>
+
+                <div id="checklistsSubtab-historico" style="display:none;">
+                <div class="db-chart-card">
+                    <div class="db-chart-title" style="margin-bottom: 12px;">📜 Histórico de Checklists Realizados</div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
+                        <select id="histCategoria" onchange="renderHistoricoChecklists()" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
+                            <option value="">Todos os Tipos</option>
+                        </select>
+                        <input type="text" id="histPatrimonio" placeholder="Buscar por patrimônio..."
+                               oninput="renderHistoricoChecklists()"
+                               style="flex: 1; min-width: 160px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box;">
+                        <button class="db-clear-btn" onclick="limparFiltroHistorico()">✕ Limpar</button>
+                    </div>
+                    <div id="historicoResumo" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px;"></div>
+                    <div id="historicoChecklistsList" class="db-list" style="max-height: 620px;"></div>
+                </div>
+                </div>
             </section>
 
             <!-- Página: Extintores -->
             <section class="db-page" id="page-extintores">
+                <div class="db-filters" style="margin-bottom: 16px;">
+                    <div class="db-filter-buttons">
+                        <button id="extintoresSubtabBtn-visao" class="db-filter-btn active" onclick="showExtintoresSubtab('visao')">📊 Visão Geral</button>
+                        <button id="extintoresSubtabBtn-cadastro" class="db-filter-btn" onclick="showExtintoresSubtab('cadastro')">📋 Cadastro de Extintores</button>
+                    </div>
+                </div>
+
+                <div id="extintoresSubtab-visao">
                 <div class="db-kpi-grid">
                     <div class="db-kpi-card">
                         <div class="db-kpi-value" id="kpiExtintoresAtivos">0</div>
@@ -176,6 +286,92 @@
                         <div class="db-chart-title">Extintores com Recarga Vencida ou Vencendo</div>
                         <div id="listExtintorVencendo" class="db-list"></div>
                     </div>
+                </div>
+                </div>
+
+                <div id="extintoresSubtab-cadastro" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" style="margin-bottom: 0;">📋 Cadastro de Extintores</div>
+                        <button class="db-apply-btn" onclick="abrirFormExtintor()">+ Novo Extintor</button>
+                    </div>
+                    <div id="extCadResumo" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px;"></div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <input type="text" id="extCadSearchInput" placeholder="Buscar por ID, setor ou localização... (em branco mostra todos)"
+                               oninput="filterExtintoresCadastro(this.value)"
+                               style="flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                        <button class="db-clear-btn" onclick="limparBuscaExtCad()">✕ Limpar</button>
+                    </div>
+                    <div id="extCadSearchResults" class="db-list" style="max-height: 420px;"></div>
+                </div>
+
+                <div class="db-chart-card" id="extintorFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" id="extintorFormTitle" style="margin-bottom: 0;">🧯 Novo Extintor</div>
+                        <button class="db-clear-btn" onclick="abrirFormExtintor()">🔄 Novo Registro</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">ID/Tag do Extintor *</label>
+                            <input type="text" id="extForm_id" placeholder="Ex: EXT-001" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Tipo *</label>
+                            <select id="extForm_tipo" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="">Selecione...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Capacidade</label>
+                            <input type="text" id="extForm_capacidade" placeholder="Ex: 6 kg" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Setor</label>
+                            <input type="text" id="extForm_setor" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Localização</label>
+                            <input type="text" id="extForm_localizacao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data de Fabricação</label>
+                            <input type="date" id="extForm_fabricacao" oninput="onExtDataAnchorChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Última Recarga</label>
+                            <input type="date" id="extForm_ultimaRecarga" oninput="onExtUltimaRecargaChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Próxima Recarga (Vencimento) — auto: +1 ano</label>
+                            <input type="date" id="extForm_proximaRecarga" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Último Teste Hidrostático</label>
+                            <input type="date" id="extForm_ultimoTesteHidrostatico" oninput="onExtDataAnchorChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Próximo Teste Hidrostático — auto: +5 anos</label>
+                            <input type="date" id="extForm_proximoTesteHidrostatico" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div id="extForm_grupoStatus" style="display:none;">
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Status</label>
+                            <select id="extForm_status" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="ativo">🟢 Ativo</option>
+                                <option value="inativo">🔴 Inativo</option>
+                            </select>
+                        </div>
+                        <div style="grid-column: 1 / -1;">
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Observações</label>
+                            <textarea id="extForm_obs" rows="3" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-family: inherit; font-size: inherit; resize: vertical;"></textarea>
+                        </div>
+                    </div>
+                    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="salvarExtintorCad()">💾 Salvar</button>
+                        <button class="db-clear-btn" onclick="fecharFormExtintor()">Cancelar</button>
+                        <button id="extForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirExtintorAtual()">🗑️ Excluir</button>
+                        <span id="extintorFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
                 </div>
             </section>
 
@@ -825,6 +1021,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=27"></script>
+    <script src="dashboard.js?v=28"></script>
 </body>
 </html>

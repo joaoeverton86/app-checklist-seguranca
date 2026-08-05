@@ -447,9 +447,18 @@ function renderKPIs(filteredEquips, checklistsPeriodo) {
     document.getElementById('kpiRealizados').textContent = realizados.length;
 }
 
+// Só destrói os gráficos da própria página de Checklists (chaves abaixo) - chartInstances
+// é um objeto COMPARTILHADO por todas as páginas do painel (cada módulo grava sua chave
+// nele), então um `chartInstances = {}` genérico aqui apagaria a referência aos gráficos
+// de QUALQUER outra página já renderizada (Extintores, Treinamentos, Efetivo,
+// Acidentabilidade) mesmo que ela nem esteja visível no momento - na prática isso
+// destruía de verdade (via .destroy()) o canvas do Chart.js de outras páginas sempre que
+// um filtro era trocado aqui, deixando-as em branco na próxima visita.
+const CHECKLIST_CHART_KEYS = ['conformidade', 'tipo', 'meses', 'itens', 'equip', 'empresa'];
 function destroyCharts() {
-    Object.values(chartInstances).forEach(c => c && c.destroy());
-    chartInstances = {};
+    CHECKLIST_CHART_KEYS.forEach(k => {
+        if (chartInstances[k]) { chartInstances[k].destroy(); delete chartInstances[k]; }
+    });
 }
 
 function renderCharts(checklistsPeriodo, filterChecklistArray) {
@@ -556,6 +565,317 @@ function renderCharts(checklistsPeriodo, filterChecklistArray) {
     });
 }
 
+function showChecklistsSubtab(tab) {
+    ['visao', 'cadastros', 'historico'].forEach(t => {
+        const content = document.getElementById('checklistsSubtab-' + t);
+        const btn = document.getElementById('checklistsSubtabBtn-' + t);
+        if (content) content.style.display = (t === tab) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
+    if (tab === 'visao') renderAll();
+    if (tab === 'cadastros') {
+        popularEmpresaDatalistCad();
+        renderCadastrosResumo();
+        filterCadastrosLista(document.getElementById('cadastrosSearchInput')?.value || '');
+    }
+    if (tab === 'historico') {
+        popularHistCategoriaSelect();
+        renderHistoricoChecklists();
+    }
+}
+
+// ============================================
+// CADASTRO DE EQUIPAMENTOS/VEÍCULOS/FERRAMENTAS (CRUD, espelhando app.js
+// saveCadastro/editCadastro). Diferente do app.js, o patrimônio (chave primária) fica
+// travado ao editar em vez de permitir renomear - o app.js permite renomear e cascateia
+// a mudança pros checklists históricos (reescreve nome/patrimonio/empresa neles), uma
+// lógica bem mais arriscada que não faz sentido duplicar aqui; pra corrigir um
+// patrimônio digitado errado com correção no histórico, use o app de campo mesmo.
+// ============================================
+
+function popularEmpresaDatalistCad() {
+    const dl = document.getElementById('listaEmpresasCad');
+    if (!dl) return;
+    const empresas = Array.from(new Set(allCadastros.map(c => (c.empresa || '').trim()).filter(Boolean))).sort();
+    dl.innerHTML = empresas.map(e => `<option value="${escapeHTML(e)}"></option>`).join('');
+}
+
+function onCadastroTipoChange() {
+    const tipo = document.getElementById('cadForm_tipo').value;
+    const sel = document.getElementById('cadForm_categoria');
+    sel.innerHTML = '<option value="">Selecione...</option>';
+    if (!tipo || typeof EQUIPMENT_TYPES === 'undefined' || !EQUIPMENT_TYPES[tipo]) return;
+    EQUIPMENT_TYPES[tipo].forEach(eq => {
+        const opt = document.createElement('option');
+        opt.value = eq.id;
+        opt.textContent = `${eq.name} (${eq.nr})`;
+        sel.appendChild(opt);
+    });
+}
+
+function renderCadastrosResumo() {
+    const el = document.getElementById('cadastrosResumo');
+    if (!el) return;
+    const ativos = allCadastros.filter(c => c.ativo !== false).length;
+    const inativos = allCadastros.length - ativos;
+    el.textContent = `${allCadastros.length} cadastro(s) — ${ativos} ativo(s), ${inativos} inativo(s)`;
+}
+
+function filterCadastrosLista(query) {
+    const resultsEl = document.getElementById('cadastrosSearchResults');
+    if (!resultsEl) return;
+    const q = (query || '').trim().toLowerCase();
+    let lista = allCadastros.slice();
+    if (q.length >= 2) {
+        lista = lista.filter(c =>
+            (c.patrimonio || '').toLowerCase().includes(q) ||
+            (c.nome || '').toLowerCase().includes(q) ||
+            (c.empresa || '').toLowerCase().includes(q)
+        );
+    }
+    lista.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+
+    if (lista.length === 0) {
+        resultsEl.innerHTML = '<div class="db-list-empty">Nenhum cadastro encontrado</div>';
+        return;
+    }
+    resultsEl.innerHTML = lista.map(c => `
+        <div class="db-list-item" style="cursor:pointer;" onclick="abrirFormCadastro('${escapeHTML(c.id)}')">
+            <div class="db-list-item-title">${escapeHTML(c.nome || 'Sem nome')} ${c.ativo === false ? '🔴' : '🟢'}</div>
+            <div class="db-list-item-sub">${escapeHTML(c.patrimonio || '—')} — ${escapeHTML(c.empresa || 'Sem empresa')}</div>
+        </div>
+    `).join('');
+}
+
+function limparBuscaCadastros() {
+    const input = document.getElementById('cadastrosSearchInput');
+    if (input) { input.value = ''; input.focus(); }
+    filterCadastrosLista('');
+}
+
+function abrirFormCadastro(id) {
+    const form = document.getElementById('cadastroFormCard');
+    const title = document.getElementById('cadastroFormTitle');
+    const btnExcluir = document.getElementById('cadForm_btnExcluir');
+    const patrimonioInput = document.getElementById('cadForm_patrimonio');
+    document.getElementById('cadastroFormStatus').textContent = '';
+    popularEmpresaDatalistCad();
+
+    if (id) {
+        const c = allCadastros.find(x => x.id === id);
+        if (!c) return;
+        title.textContent = '✏️ Editar Cadastro';
+        form.dataset.editId = id;
+        document.getElementById('cadForm_tipo').value = c.tipo || '';
+        onCadastroTipoChange();
+        document.getElementById('cadForm_categoria').value = c.categoria || '';
+        document.getElementById('cadForm_nome').value = c.nome || '';
+        patrimonioInput.value = c.patrimonio || '';
+        patrimonioInput.readOnly = true;
+        document.getElementById('cadForm_placa').value = c.placa || '';
+        document.getElementById('cadForm_empresa').value = c.empresa || '';
+        document.getElementById('cadForm_obs').value = c.obs || '';
+        document.getElementById('cadForm_status').value = c.ativo === false ? 'inativo' : 'ativo';
+        document.getElementById('cadForm_grupoStatus').style.display = 'block';
+        btnExcluir.style.display = 'inline-block';
+    } else {
+        title.textContent = '📋 Novo Cadastro';
+        delete form.dataset.editId;
+        document.getElementById('cadForm_tipo').value = '';
+        onCadastroTipoChange();
+        document.getElementById('cadForm_nome').value = '';
+        patrimonioInput.value = '';
+        patrimonioInput.readOnly = false;
+        document.getElementById('cadForm_placa').value = '';
+        document.getElementById('cadForm_empresa').value = '';
+        document.getElementById('cadForm_obs').value = '';
+        document.getElementById('cadForm_grupoStatus').style.display = 'none';
+        btnExcluir.style.display = 'none';
+    }
+
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function fecharFormCadastro() {
+    document.getElementById('cadastroFormCard').style.display = 'none';
+}
+
+async function salvarCadastro() {
+    const statusEl = document.getElementById('cadastroFormStatus');
+    const form = document.getElementById('cadastroFormCard');
+    const editId = form.dataset.editId;
+    const tipo = document.getElementById('cadForm_tipo').value;
+    const categoria = document.getElementById('cadForm_categoria').value;
+    const nome = document.getElementById('cadForm_nome').value.trim();
+    const patrimonio = document.getElementById('cadForm_patrimonio').value.trim().toUpperCase();
+
+    if (!tipo || !categoria || !nome || !patrimonio) {
+        statusEl.textContent = '❌ Tipo, categoria, nome e patrimônio são obrigatórios.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    if (!editId && allCadastros.some(c => c.id === patrimonio)) {
+        statusEl.textContent = '❌ Já existe um cadastro com esse patrimônio. Use a busca acima para editá-lo.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const row = {
+        id: patrimonio,
+        tipo,
+        categoria,
+        nome,
+        patrimonio,
+        placa: document.getElementById('cadForm_placa').value.trim() || null,
+        empresa: document.getElementById('cadForm_empresa').value.trim() || null,
+        obs: document.getElementById('cadForm_obs').value.trim() || null,
+        ativo: editId ? (document.getElementById('cadForm_status').value !== 'inativo') : true
+    };
+
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('cadastros', [row]);
+        const idx = allCadastros.findIndex(c => c.id === row.id);
+        if (idx >= 0) allCadastros[idx] = { ...allCadastros[idx], ...row };
+        else allCadastros.push(row);
+
+        statusEl.textContent = '✅ Salvo com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        renderCadastrosResumo();
+        filterCadastrosLista(document.getElementById('cadastrosSearchInput')?.value || '');
+        populateFilterOptions();
+        setTimeout(() => fecharFormCadastro(), 900);
+    } catch (err) {
+        console.error('Erro ao salvar cadastro:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function excluirCadastroAtual() {
+    const form = document.getElementById('cadastroFormCard');
+    const id = form.dataset.editId;
+    if (!id) return;
+    if (!confirm(`Excluir permanentemente o cadastro "${id}"? Os checklists já realizados NÃO serão apagados, mas ficarão sem o cadastro vinculado. Essa ação não pode ser desfeita.`)) return;
+
+    const statusEl = document.getElementById('cadastroFormStatus');
+    statusEl.textContent = 'Excluindo...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseDelete('cadastros', id);
+        allCadastros = allCadastros.filter(c => c.id !== id);
+        statusEl.textContent = '✅ Excluído com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        renderCadastrosResumo();
+        filterCadastrosLista(document.getElementById('cadastrosSearchInput')?.value || '');
+        populateFilterOptions();
+        setTimeout(() => fecharFormCadastro(), 900);
+    } catch (err) {
+        console.error('Erro ao excluir cadastro:', err);
+        statusEl.textContent = '❌ Falha ao excluir: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// ============================================
+// HISTÓRICO DE CHECKLISTS (filtro por tipo de equipamento / patrimônio)
+// ============================================
+
+function popularHistCategoriaSelect() {
+    const sel = document.getElementById('histCategoria');
+    if (!sel) return;
+    const val = sel.value;
+    const categorias = Array.from(new Set(allCadastros.map(c => c.categoria).filter(Boolean))).sort();
+    sel.innerHTML = '<option value="">Todos os Tipos</option>' +
+        categorias.map(catId => {
+            let catName = catId;
+            if (typeof EQUIPMENT_TYPES !== 'undefined') {
+                for (const list of Object.values(EQUIPMENT_TYPES)) {
+                    const found = list.find(e => e.id === catId);
+                    if (found) { catName = found.name; break; }
+                }
+            }
+            return `<option value="${escapeHTML(catId)}">${escapeHTML(catName)}</option>`;
+        }).join('');
+    sel.value = val;
+}
+
+function limparFiltroHistorico() {
+    document.getElementById('histCategoria').value = '';
+    document.getElementById('histPatrimonio').value = '';
+    renderHistoricoChecklists();
+}
+
+let historicoExpandido = {};
+
+function renderHistoricoChecklists() {
+    const listaEl = document.getElementById('historicoChecklistsList');
+    const resumoEl = document.getElementById('historicoResumo');
+    if (!listaEl) return;
+
+    const categoriaFiltro = document.getElementById('histCategoria').value;
+    const patrimonioFiltro = (document.getElementById('histPatrimonio').value || '').trim().toUpperCase();
+
+    const cadastroByPatr = {};
+    allCadastros.forEach(c => { if (c.patrimonio) cadastroByPatr[c.patrimonio.toUpperCase()] = c; });
+
+    let lista = allChecklists.slice();
+    if (categoriaFiltro) {
+        lista = lista.filter(c => {
+            const cad = c.patrimonio ? cadastroByPatr[c.patrimonio.toUpperCase()] : null;
+            return cad && cad.categoria === categoriaFiltro;
+        });
+    }
+    if (patrimonioFiltro) {
+        lista = lista.filter(c => (c.patrimonio || '').toUpperCase().includes(patrimonioFiltro));
+    }
+    lista.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+    if (resumoEl) resumoEl.textContent = `${lista.length} checklist(s) encontrado(s)`;
+
+    const LIMITE = 300;
+    const listaExibida = lista.slice(0, LIMITE);
+
+    if (listaExibida.length === 0) {
+        listaEl.innerHTML = '<div class="db-list-empty">Nenhum checklist encontrado com esse filtro</div>';
+        return;
+    }
+
+    listaEl.innerHTML = listaExibida.map(c => {
+        const stats = recalcularStatsChecklist(c);
+        const st = normalizarStatusChecklist(c.status_checklist, c);
+        const cls = st === 'interditado' ? 'db-item-danger' : (st === 'liberado_restricao' ? 'db-item-warning' : '');
+        const statusLabel = st === 'interditado' ? '🔴 Interditado' : (st === 'liberado_restricao' ? '🟡 Liberado c/ Restrição' : '🟢 Liberado');
+        const expandido = historicoExpandido[c.id];
+
+        let detalheHtml = '';
+        if (expandido && c.items) {
+            const ncs = Object.entries(c.items).filter(([k, v]) => k !== '_form' && v && v.status === 'NC');
+            detalheHtml = ncs.length === 0
+                ? '<div style="margin-top:8px; font-size:11.5px; color:var(--text-light);">Nenhum item não conforme neste checklist.</div>'
+                : '<div style="margin-top:8px; display:flex; flex-direction:column; gap:4px;">' +
+                    ncs.map(([itemId, data]) => {
+                        const nomeItem = (typeof ITEM_NAMES !== 'undefined' && ITEM_NAMES[itemId]) || data.customText || itemId;
+                        return `<div style="font-size:11.5px; padding:4px 8px; background:#fef2f2; border-radius:6px;">❌ ${escapeHTML(nomeItem)}${data.obs ? ' — ' + escapeHTML(data.obs) : ''}</div>`;
+                    }).join('') +
+                  '</div>';
+        }
+
+        return `<div class="db-list-item ${cls}" style="cursor:pointer;" onclick="toggleHistoricoItem('${escapeHTML(c.id)}')">
+            <div class="db-list-item-title">${escapeHTML(c.equipment?.name || c.nome || 'Equipamento')} — ${escapeHTML(c.patrimonio || '—')}</div>
+            <div class="db-list-item-sub">${formatSimpleDate(c.date)} — ${escapeHTML(c.empresa || 'Sem empresa')} — ${statusLabel} — ${stats.conformes}✅ ${stats.naoConformes}❌ ${stats.na}➖</div>
+            ${detalheHtml}
+        </div>`;
+    }).join('') + (lista.length > LIMITE ? `<div class="db-list-empty">Mostrando os ${LIMITE} mais recentes de ${lista.length} — refine o filtro pra ver outros.</div>` : '');
+}
+
+function toggleHistoricoItem(id) {
+    historicoExpandido[id] = !historicoExpandido[id];
+    renderHistoricoChecklists();
+}
+
 // ============================================
 // EXTINTORES (Fase 2)
 // Espelha os cálculos de renderExtintorAlerts()/atualizarPendentesMesExtintores()
@@ -620,11 +940,241 @@ function renderExtintorPanel() {
     document.getElementById('kpiExtintoresPendentes').textContent = pendentes;
 
     if (typeof Chart !== 'undefined') {
+        if (chartInstances.extintorInspecao) chartInstances.extintorInspecao.destroy();
         chartInstances.extintorInspecao = new Chart(document.getElementById('chartExtintorInspecao'), {
             type: 'doughnut',
             data: { labels: ['Conforme', 'Não Conforme', 'Pendente'], datasets: [{ data: [conf, naoConf, pendentes], backgroundColor: ['#10b981', '#ef4444', '#94a3b8'], borderWidth: 2, borderColor: '#fff' }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, cutout: '55%' }
         });
+    }
+}
+
+function showExtintoresSubtab(tab) {
+    ['visao', 'cadastro'].forEach(t => {
+        const content = document.getElementById('extintoresSubtab-' + t);
+        const btn = document.getElementById('extintoresSubtabBtn-' + t);
+        if (content) content.style.display = (t === tab) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
+    if (tab === 'visao') renderExtintorPanel();
+    if (tab === 'cadastro') {
+        popularExtintorTipoSelect();
+        renderExtCadResumo();
+        filterExtintoresCadastro(document.getElementById('extCadSearchInput')?.value || '');
+    }
+}
+
+// ============================================
+// CADASTRO DE EXTINTORES (CRUD, espelhando app.js saveExtintor/editExtintor)
+// ============================================
+
+function popularExtintorTipoSelect() {
+    const sel = document.getElementById('extForm_tipo');
+    if (!sel || sel.options.length > 1 || typeof EXTINTOR_TIPOS === 'undefined') return;
+    EXTINTOR_TIPOS.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.label;
+        sel.appendChild(opt);
+    });
+}
+
+// Soma anos a uma data 'YYYY-MM-DD' preservando dia/mês - base da automação de
+// vencimento (recarga +1 ano, teste hidrostático +5 anos, conforme NBR 12962).
+function addAnos(dataStr, anos) {
+    if (!dataStr) return '';
+    const d = parseLocalDate(dataStr);
+    const resultado = new Date(d.getFullYear() + anos, d.getMonth(), d.getDate());
+    return resultado.toISOString().split('T')[0];
+}
+
+function onExtUltimaRecargaChange() {
+    const v = document.getElementById('extForm_ultimaRecarga').value;
+    if (v) document.getElementById('extForm_proximaRecarga').value = addAnos(v, 1);
+}
+
+// Teste hidrostático vence 5 anos após o último teste realizado - ou, se ainda não
+// houve nenhum teste registrado, 5 anos após a fabricação (1º ciclo, mesma regra da
+// NBR 12962). O último teste tem prioridade sobre a fabricação quando os dois existem.
+function onExtDataAnchorChange() {
+    const ultimoTeste = document.getElementById('extForm_ultimoTesteHidrostatico').value;
+    const fabricacao = document.getElementById('extForm_fabricacao').value;
+    const anchor = ultimoTeste || fabricacao;
+    if (anchor) document.getElementById('extForm_proximoTesteHidrostatico').value = addAnos(anchor, 5);
+}
+
+function renderExtCadResumo() {
+    const el = document.getElementById('extCadResumo');
+    if (!el) return;
+    const ativos = allExtintores.filter(e => e.ativo !== false).length;
+    const inativos = allExtintores.length - ativos;
+    el.textContent = `${allExtintores.length} extintor(es) cadastrado(s) — ${ativos} ativo(s), ${inativos} inativo(s)`;
+}
+
+function filterExtintoresCadastro(query) {
+    const resultsEl = document.getElementById('extCadSearchResults');
+    if (!resultsEl) return;
+    const q = (query || '').trim().toLowerCase();
+    let lista = allExtintores.slice();
+    if (q.length >= 2) {
+        lista = lista.filter(e =>
+            (e.id || '').toLowerCase().includes(q) ||
+            (e.setor || '').toLowerCase().includes(q) ||
+            (e.localizacao || '').toLowerCase().includes(q)
+        );
+    }
+    lista.sort((a, b) => (a.id || '').localeCompare(b.id || ''));
+
+    if (lista.length === 0) {
+        resultsEl.innerHTML = '<div class="db-list-empty">Nenhum extintor encontrado</div>';
+        return;
+    }
+    resultsEl.innerHTML = lista.map(e => {
+        const cls = e.ativo === false ? '' : '';
+        return `<div class="db-list-item ${cls}" style="cursor:pointer;" onclick="abrirFormExtintor('${escapeHTML(e.id)}')">
+            <div class="db-list-item-title">${escapeHTML(e.id)} ${e.ativo === false ? '🔴' : '🟢'}</div>
+            <div class="db-list-item-sub">${escapeHTML(e.tipo || '—')} — ${escapeHTML(e.setor || 'Sem setor')} — ${escapeHTML(e.localizacao || 'Sem localização')}</div>
+        </div>`;
+    }).join('');
+}
+
+function limparBuscaExtCad() {
+    const input = document.getElementById('extCadSearchInput');
+    if (input) { input.value = ''; input.focus(); }
+    filterExtintoresCadastro('');
+}
+
+function abrirFormExtintor(id) {
+    const form = document.getElementById('extintorFormCard');
+    const title = document.getElementById('extintorFormTitle');
+    const btnExcluir = document.getElementById('extForm_btnExcluir');
+    const idInput = document.getElementById('extForm_id');
+    document.getElementById('extintorFormStatus').textContent = '';
+    popularExtintorTipoSelect();
+
+    if (id) {
+        const e = allExtintores.find(x => x.id === id);
+        if (!e) return;
+        title.textContent = '✏️ Editar Extintor';
+        form.dataset.editId = id;
+        idInput.value = e.id || '';
+        idInput.readOnly = true;
+        document.getElementById('extForm_tipo').value = e.tipo || '';
+        document.getElementById('extForm_capacidade').value = e.capacidade || '';
+        document.getElementById('extForm_setor').value = e.setor || '';
+        document.getElementById('extForm_localizacao').value = e.localizacao || '';
+        document.getElementById('extForm_fabricacao').value = e.fabricacao || '';
+        document.getElementById('extForm_ultimaRecarga').value = e.ultima_recarga || '';
+        document.getElementById('extForm_proximaRecarga').value = e.proxima_recarga || '';
+        document.getElementById('extForm_ultimoTesteHidrostatico').value = e.ultimo_teste_hidrostatico || '';
+        document.getElementById('extForm_proximoTesteHidrostatico').value = e.proximo_teste_hidrostatico || '';
+        document.getElementById('extForm_obs').value = e.obs || '';
+        document.getElementById('extForm_status').value = e.ativo === false ? 'inativo' : 'ativo';
+        document.getElementById('extForm_grupoStatus').style.display = 'block';
+        btnExcluir.style.display = 'inline-block';
+    } else {
+        title.textContent = '🧯 Novo Extintor';
+        delete form.dataset.editId;
+        idInput.value = '';
+        idInput.readOnly = false;
+        document.getElementById('extForm_tipo').value = '';
+        document.getElementById('extForm_capacidade').value = '';
+        document.getElementById('extForm_setor').value = '';
+        document.getElementById('extForm_localizacao').value = '';
+        document.getElementById('extForm_fabricacao').value = '';
+        document.getElementById('extForm_ultimaRecarga').value = '';
+        document.getElementById('extForm_proximaRecarga').value = '';
+        document.getElementById('extForm_ultimoTesteHidrostatico').value = '';
+        document.getElementById('extForm_proximoTesteHidrostatico').value = '';
+        document.getElementById('extForm_obs').value = '';
+        document.getElementById('extForm_grupoStatus').style.display = 'none';
+        btnExcluir.style.display = 'none';
+    }
+
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function fecharFormExtintor() {
+    document.getElementById('extintorFormCard').style.display = 'none';
+}
+
+async function salvarExtintorCad() {
+    const statusEl = document.getElementById('extintorFormStatus');
+    const form = document.getElementById('extintorFormCard');
+    const editId = form.dataset.editId;
+    const idRaw = document.getElementById('extForm_id').value.trim().toUpperCase();
+    const tipo = document.getElementById('extForm_tipo').value;
+
+    if (!idRaw || !tipo) {
+        statusEl.textContent = '❌ ID e tipo são obrigatórios.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    if (!editId && allExtintores.some(e => e.id === idRaw)) {
+        statusEl.textContent = '❌ Já existe um extintor com esse ID. Use a busca acima para editá-lo.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const row = {
+        id: idRaw,
+        tipo,
+        capacidade: document.getElementById('extForm_capacidade').value.trim() || null,
+        setor: document.getElementById('extForm_setor').value.trim() || null,
+        localizacao: document.getElementById('extForm_localizacao').value.trim() || null,
+        fabricacao: document.getElementById('extForm_fabricacao').value || null,
+        ultima_recarga: document.getElementById('extForm_ultimaRecarga').value || null,
+        proxima_recarga: document.getElementById('extForm_proximaRecarga').value || null,
+        ultimo_teste_hidrostatico: document.getElementById('extForm_ultimoTesteHidrostatico').value || null,
+        proximo_teste_hidrostatico: document.getElementById('extForm_proximoTesteHidrostatico').value || null,
+        obs: document.getElementById('extForm_obs').value.trim() || null,
+        ativo: editId ? (document.getElementById('extForm_status').value !== 'inativo') : true
+    };
+
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('extintores', [row]);
+        const idx = allExtintores.findIndex(e => e.id === row.id);
+        if (idx >= 0) allExtintores[idx] = { ...allExtintores[idx], ...row };
+        else allExtintores.push(row);
+
+        statusEl.textContent = '✅ Salvo com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        renderExtCadResumo();
+        filterExtintoresCadastro(document.getElementById('extCadSearchInput')?.value || '');
+        renderExtintorPanel();
+        setTimeout(() => fecharFormExtintor(), 900);
+    } catch (err) {
+        console.error('Erro ao salvar extintor:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function excluirExtintorAtual() {
+    const form = document.getElementById('extintorFormCard');
+    const id = form.dataset.editId;
+    if (!id) return;
+    if (!confirm(`Excluir permanentemente o extintor "${id}"? Essa ação não pode ser desfeita.`)) return;
+
+    const statusEl = document.getElementById('extintorFormStatus');
+    statusEl.textContent = 'Excluindo...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseDelete('extintores', id);
+        allExtintores = allExtintores.filter(e => e.id !== id);
+        statusEl.textContent = '✅ Excluído com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        renderExtCadResumo();
+        filterExtintoresCadastro(document.getElementById('extCadSearchInput')?.value || '');
+        renderExtintorPanel();
+        setTimeout(() => fecharFormExtintor(), 900);
+    } catch (err) {
+        console.error('Erro ao excluir extintor:', err);
+        statusEl.textContent = '❌ Falha ao excluir: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
     }
 }
 
@@ -648,6 +1198,7 @@ function renderRelatosPanel() {
     if (typeof Chart !== 'undefined') {
         const tipoLabels = tipoSorted.map(t => wrapChartLabel(t[0]));
         ajustarAlturaBarrasHorizontais('chartRelatosTipo', tipoLabels);
+        if (chartInstances.relatosTipo) chartInstances.relatosTipo.destroy();
         chartInstances.relatosTipo = new Chart(document.getElementById('chartRelatosTipo'), {
             type: 'bar',
             data: { labels: tipoLabels, datasets: [{ label: 'Relatos', data: tipoSorted.map(t => t[1]), backgroundColor: '#818cf8', borderRadius: 6 }] },
@@ -2688,6 +3239,12 @@ function showDbPage(pageId) {
     // um redesenho depois disso. Recriar o gráfico do zero a cada visita é barato (não
     // busca nada de novo no Supabase, só usa os dados já carregados em memória) e
     // corrige isso sozinho.
+    if (pageId === 'checklists') {
+        if (document.getElementById('checklistsSubtabBtn-visao')?.classList.contains('active')) renderAll();
+    }
+    if (pageId === 'extintores') {
+        if (document.getElementById('extintoresSubtabBtn-visao')?.classList.contains('active')) renderExtintorPanel();
+    }
     if (pageId === 'treinamentos') {
         if (!treinamentosLoaded) { treinamentosLoaded = true; loadTreinamentosData(); }
         else renderTreinamentosPanel();
@@ -2788,9 +3345,13 @@ function rerenderGraficosDaPaginaAtiva() {
     const paginaAtivaBtn = document.querySelector('.db-nav-item.active');
     const paginaAtiva = paginaAtivaBtn ? paginaAtivaBtn.id : null;
     if (paginaAtiva === 'navChecklists') {
-        renderAll();
+        if (document.getElementById('checklistsSubtabBtn-visao')?.classList.contains('active')) {
+            renderAll();
+        }
     } else if (paginaAtiva === 'navExtintores') {
-        renderExtintorPanel();
+        if (document.getElementById('extintoresSubtabBtn-visao')?.classList.contains('active')) {
+            renderExtintorPanel();
+        }
     } else if (paginaAtiva === 'navRelatos') {
         renderRelatosPanel();
     } else if (paginaAtiva === 'navTreinamentos') {

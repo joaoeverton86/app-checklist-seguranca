@@ -88,7 +88,7 @@ function escapeHTML(str) {
 // longos. Devolver um array de strings em vez de uma string faz o Chart.js desenhar
 // cada item como uma linha própria do tick, então isso quebra o texto em várias linhas
 // curtas ao invés de cortar. Usado em todo gráfico de barra horizontal (indexAxis: 'y').
-function wrapChartLabel(label, maxCharsPerLine = 22) {
+function wrapChartLabel(label, maxCharsPerLine = 28) {
     const str = String(label || '');
     if (str.length <= maxCharsPerLine) return str;
     const words = str.split(' ');
@@ -113,15 +113,53 @@ function wrapChartLabel(label, maxCharsPerLine = 22) {
 // sumiu do eixo do gráfico de Função). Aqui calcula a altura real necessária somando o
 // espaço de cada barra (mais linhas = mais altura) e aplica no wrapper do canvas antes de
 // criar o gráfico; os options de cada gráfico também desligam autoSkip explicitamente.
+//
+// Duas correções sobre a primeira tentativa (achadas ao vivo pelo usuário):
+// 1) O Chart.js divide a altura do canvas em bandas IGUAIS entre as categorias - não
+//    proporcional ao tamanho de cada rótulo. Somar alturas variáveis por barra
+//    sub-dimensionava a banda das barras com rótulo mais longo, e o texto ficava
+//    sobreposto ao da barra vizinha mesmo a altura total "parecendo" suficiente. Agora
+//    usa a MESMA altura (baseada no rótulo com mais linhas) pra todas as barras.
+// 2) Sem limite, um gráfico com muitas categorias (ex: 19 setores) esticava a LINHA
+//    INTEIRA do grid (o Chart.js Grid/CSS Grid alinha a altura da linha pela maior
+//    célula, align-items:start só evita esticar os itens mais curtos DENTRO da linha,
+//    não evita a linha em si crescer) - sobrava um vão em branco enorme nos cards
+//    vizinhos mais curtos. Acima de um teto, em vez de crescer o card, o gráfico passa
+//    a rolar por dentro (um "sizer" interno com a altura total real, dentro de um
+//    wrapper com altura travada e overflow-y:auto) - nada fica escondido, só passa a
+//    precisar de scroll dentro do próprio card.
 function ajustarAlturaBarrasHorizontais(canvasId, labels) {
     const canvas = document.getElementById(canvasId);
-    const wrap = canvas ? canvas.parentElement : null;
-    if (!wrap) return;
-    const alturaTotal = labels.reduce((soma, l) => {
-        const linhas = Array.isArray(l) ? l.length : 1;
-        return soma + Math.max(26, linhas * 14 + 10);
-    }, 0);
-    wrap.style.height = Math.max(280, alturaTotal + 40) + 'px';
+    const outerWrap = canvas ? canvas.closest('.db-chart-canvas-wrap') : null;
+    if (!outerWrap) return;
+
+    const maxLinhas = labels.reduce((max, l) => Math.max(max, Array.isArray(l) ? l.length : 1), 1);
+    const alturaPorBarra = Math.max(28, maxLinhas * 15 + 14);
+    const alturaNecessaria = Math.max(280, labels.length * alturaPorBarra + 40);
+    const ALTURA_MAX_VISIVEL = 480;
+
+    if (alturaNecessaria > ALTURA_MAX_VISIVEL) {
+        outerWrap.style.height = ALTURA_MAX_VISIVEL + 'px';
+        outerWrap.style.overflowY = 'auto';
+        outerWrap.style.overflowX = 'hidden';
+        let sizer = canvas.parentElement;
+        if (sizer === outerWrap) {
+            sizer = document.createElement('div');
+            sizer.className = 'db-chart-inner-sizer';
+            sizer.style.position = 'relative';
+            sizer.style.width = '100%';
+            outerWrap.appendChild(sizer);
+            sizer.appendChild(canvas);
+        }
+        sizer.style.height = alturaNecessaria + 'px';
+    } else {
+        outerWrap.style.height = alturaNecessaria + 'px';
+        outerWrap.style.overflowY = 'visible';
+        const sizer = canvas.parentElement;
+        if (sizer !== outerWrap && sizer.classList.contains('db-chart-inner-sizer')) {
+            sizer.style.height = '100%';
+        }
+    }
 }
 
 // Portado de app.js (parseLocalDate) - mesma lógica de parsing tolerante a

@@ -616,6 +616,60 @@ CREATE POLICY "Acesso total ao hht dias trabalhados" ON public.hht_dias_trabalha
 GRANT ALL ON public.hht_dias_trabalhados TO anon;
 
 -- ============================================================
+-- SAÚDE OCUPACIONAL (NR-07 / PCMSO)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.aso_exames (
+    id TEXT PRIMARY KEY,
+    matricula TEXT,
+    nome_colaborador TEXT,
+    funcao TEXT,
+    setor TEXT,
+    tipo_aso TEXT,                        -- admissional | periodico | demissional | retorno_trabalho | mudanca_risco
+    data_exame DATE NOT NULL,
+    data_vencimento DATE,                 -- validade deste exame / próximo exame devido - preenchido manualmente
+                                           -- (periodicidade da NR-07 varia por grau de risco/GHE, não é um intervalo fixo)
+    resultado TEXT,                       -- apto | apto_restricao | inapto
+    medico_responsavel TEXT,
+    obs TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.aso_exames ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acesso total aos exames ASO" ON public.aso_exames;
+CREATE POLICY "Acesso total aos exames ASO" ON public.aso_exames FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON public.aso_exames TO anon;
+
+CREATE INDEX IF NOT EXISTS idx_aso_matricula ON public.aso_exames(matricula);
+CREATE INDEX IF NOT EXISTS idx_aso_data_exame ON public.aso_exames(data_exame);
+
+CREATE TABLE IF NOT EXISTS public.atestados_ocupacionais (
+    id TEXT PRIMARY KEY,
+    matricula TEXT,
+    nome_colaborador TEXT,
+    funcao TEXT,
+    setor TEXT,
+    data_inicio DATE NOT NULL,
+    data_fim DATE,
+    dias_afastamento INTEGER DEFAULT 0,
+    motivo TEXT,                          -- descrição curta da doença ocupacional (sem CID)
+    obs TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.atestados_ocupacionais ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acesso total aos atestados ocupacionais" ON public.atestados_ocupacionais;
+CREATE POLICY "Acesso total aos atestados ocupacionais" ON public.atestados_ocupacionais FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON public.atestados_ocupacionais TO anon;
+
+CREATE INDEX IF NOT EXISTS idx_atest_matricula ON public.atestados_ocupacionais(matricula);
+CREATE INDEX IF NOT EXISTS idx_atest_data_inicio ON public.atestados_ocupacionais(data_inicio);
+
+-- ============================================================
 -- RISCOS RESIDUAIS CONHECIDOS (documentados, não corrigidos nesta versão)
 -- ============================================================
 -- 1. cadastros, checklists, relatos, checklist_items e nao_conformidades continuam

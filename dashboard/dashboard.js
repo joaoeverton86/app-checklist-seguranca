@@ -3209,6 +3209,607 @@ async function excluirAcidenteAtual() {
 }
 
 // ============================================
+// SAÚDE OCUPACIONAL (NR-07 / PCMSO) - Controle de ASO (vencido/vencendo/em dia/sem
+// registro, calculado a partir do exame mais recente de cada colaborador ativo) e Taxa
+// de Absenteísmo Ocupacional (horas perdidas por atestado de doença ocupacional OU
+// acidente de trabalho, sobre a mesma HHT de exposição já usada em Acidentabilidade).
+// ============================================
+
+let allAsoExames = [];
+let allAtestadosOcupacionais = [];
+let saudeLoaded = false;
+let saudeFilter = 'mes';
+let saudeFiltroAno = '';
+let saudeFiltroMes = '';
+
+const ASO_TIPO_LABELS = {
+    admissional: 'Admissional',
+    periodico: 'Periódico',
+    demissional: 'Demissional',
+    retorno_trabalho: 'Retorno ao Trabalho',
+    mudanca_risco: 'Mudança de Risco'
+};
+
+function popularFiltroAnoSaude() {
+    const anos = new Set([new Date().getFullYear()]);
+    Object.values(hhtDiasTrabalhadosMap).forEach(c => anos.add(c.ano));
+    allAsoExames.forEach(a => { if (a.data_exame) anos.add(parseLocalDate(a.data_exame).getFullYear()); });
+    popularSelectAnos('saudeFiltroAno', anos);
+}
+
+function getSaudeDateRange() {
+    const tituloEl = document.getElementById('saudePeriodoTitulo');
+    if (saudeFiltroAno) {
+        const ano = parseInt(saudeFiltroAno, 10);
+        if (saudeFiltroMes !== '') {
+            const mes = parseInt(saudeFiltroMes, 10);
+            if (tituloEl) tituloEl.textContent = `${NOMES_MESES[mes]}/${ano}`;
+            return { inicio: new Date(ano, mes, 1), fim: new Date(ano, mes + 1, 0, 23, 59, 59, 999) };
+        }
+        if (tituloEl) tituloEl.textContent = `Ano ${ano} (completo)`;
+        return { inicio: new Date(ano, 0, 1), fim: new Date(ano, 11, 31, 23, 59, 59, 999) };
+    }
+
+    const now = new Date();
+    const fim = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59, 999);
+    let inicio, titulo;
+    if (saudeFilter === 'trimestre') {
+        inicio = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+        titulo = 'Últimos 3 meses';
+    } else if (saudeFilter === 'ano') {
+        inicio = new Date(now.getFullYear(), 0, 1);
+        titulo = `Ano ${now.getFullYear()} (até hoje)`;
+    } else if (saudeFilter === 'todos') {
+        inicio = new Date(2000, 0, 1);
+        titulo = 'Todo o histórico';
+    } else {
+        inicio = new Date(now.getFullYear(), now.getMonth(), 1);
+        titulo = 'Este mês';
+    }
+    if (tituloEl) tituloEl.textContent = titulo;
+    return { inicio, fim };
+}
+
+function setSaudeFilter(filter) {
+    saudeFilter = filter;
+    saudeFiltroAno = '';
+    saudeFiltroMes = '';
+    const anoSel = document.getElementById('saudeFiltroAno'); if (anoSel) anoSel.value = '';
+    const mesSel = document.getElementById('saudeFiltroMes'); if (mesSel) mesSel.value = '';
+    ['btnFiltroSaudeMes', 'btnFiltroSaudeTrimestre', 'btnFiltroSaudeAno', 'btnFiltroSaudeTodos'].forEach(id => {
+        document.getElementById(id)?.classList.remove('active');
+    });
+    const map = { mes: 'btnFiltroSaudeMes', trimestre: 'btnFiltroSaudeTrimestre', ano: 'btnFiltroSaudeAno', todos: 'btnFiltroSaudeTodos' };
+    document.getElementById(map[filter])?.classList.add('active');
+    renderSaudePanel();
+}
+
+function onSaudeFiltroAnoMesChange() {
+    saudeFiltroAno = document.getElementById('saudeFiltroAno').value;
+    saudeFiltroMes = document.getElementById('saudeFiltroMes').value;
+    if (saudeFiltroAno) {
+        ['btnFiltroSaudeMes', 'btnFiltroSaudeTrimestre', 'btnFiltroSaudeAno', 'btnFiltroSaudeTodos'].forEach(id => {
+            document.getElementById(id)?.classList.remove('active');
+        });
+    }
+    renderSaudePanel();
+}
+
+async function loadSaudeData() {
+    try {
+        const [asoRows, atestadoRows] = await Promise.all([
+            supabaseFetch('aso_exames', '?select=*'),
+            supabaseFetch('atestados_ocupacionais', '?select=*')
+        ]);
+        allAsoExames = asoRows;
+        allAtestadosOcupacionais = atestadoRows;
+        // Precisa do efetivo (quem está ativo hoje), da configuração de dias trabalhados
+        // (denominador da HHT) e dos acidentes (dias perdidos por acidente também contam
+        // no absenteísmo ocupacional) - carrega tudo que ainda não tiver sido carregado.
+        if (allEfetivo.length === 0) allEfetivo = await supabaseFetch('colaboradores_efetivo', '?select=*');
+        if (Object.keys(hhtDiasTrabalhadosMap).length === 0) {
+            const diasTrabalhadosRows = await supabaseFetch('hht_dias_trabalhados', '?select=*');
+            diasTrabalhadosRows.forEach(r => { hhtDiasTrabalhadosMap[r.id] = r; });
+        }
+        if (allAcidentes.length === 0) allAcidentes = await supabaseFetch('acidentes', '?select=*');
+        popularSaudeColabDatalists();
+        renderSaudePanel();
+    } catch (err) {
+        console.error('Erro ao carregar dados de saúde ocupacional:', err);
+    }
+}
+
+function popularSaudeColabDatalists() {
+    ['asoColabList', 'atestadoColabList'].forEach(dlId => {
+        const dl = document.getElementById(dlId);
+        if (!dl || dl.options.length > 0) return;
+        allEfetivo.filter(e => e.status === 'ATIVO').sort((a, b) => (a.nome || '').localeCompare(b.nome || '')).forEach(e => {
+            const opt = document.createElement('option');
+            opt.value = `${e.id} - ${e.nome}`;
+            dl.appendChild(opt);
+        });
+    });
+}
+
+function buscarColaboradorPorInput(inputId) {
+    const raw = document.getElementById(inputId).value;
+    const matricula = raw.includes(' - ') ? raw.split(' - ')[0].trim() : raw.trim();
+    return { matricula, colab: allEfetivo.find(e => e.id === matricula) };
+}
+
+function onAsoColaboradorChange() {
+    const { colab } = buscarColaboradorPorInput('asoForm_matricula');
+    document.getElementById('asoForm_colabPreview').textContent = colab ? `✓ ${colab.nome} — ${colab.funcao || ''} — ${colab.setor || ''}` : '';
+}
+
+function onAtestadoColaboradorChange() {
+    const { colab } = buscarColaboradorPorInput('atestadoForm_matricula');
+    document.getElementById('atestadoForm_colabPreview').textContent = colab ? `✓ ${colab.nome} — ${colab.funcao || ''} — ${colab.setor || ''}` : '';
+}
+
+function onAtestadoDatasChange() {
+    const inicio = document.getElementById('atestadoForm_dataInicio').value;
+    const fim = document.getElementById('atestadoForm_dataFim').value;
+    if (!inicio || !fim) return;
+    const dIni = parseLocalDate(inicio), dFim = parseLocalDate(fim);
+    const dias = Math.round((dFim.getTime() - dIni.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    if (dias > 0) document.getElementById('atestadoForm_dias').value = dias;
+}
+
+// Status de ASO do colaborador = calculado a partir do exame mais recente (qualquer
+// tipo) por data_exame. "sem_registro" cobre tanto quem nunca teve exame lançado quanto
+// quem tem exame mas sem data de vencimento preenchida (não dá pra avaliar sem isso).
+function calcularStatusAsoColaborador(matricula) {
+    const exames = allAsoExames.filter(a => a.matricula === matricula && a.data_exame);
+    if (exames.length === 0) return { status: 'sem_registro', ultimoExame: null, diffDays: null };
+    const ultimo = exames.reduce((max, a) => parseLocalDate(a.data_exame) > parseLocalDate(max.data_exame) ? a : max, exames[0]);
+    if (!ultimo.data_vencimento) return { status: 'sem_registro', ultimoExame: ultimo, diffDays: null };
+
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const venc = parseLocalDate(ultimo.data_vencimento); venc.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((venc.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+    const status = diffDays < 0 ? 'vencido' : (diffDays <= 30 ? 'vencendo' : 'em_dia');
+    return { status, ultimoExame: ultimo, diffDays };
+}
+
+// Taxa de Absenteísmo Ocupacional = horas perdidas (atestados de doença ocupacional +
+// dias_perdidos de acidentes com afastamento) × 1.000.000/... não, aqui é simplesmente
+// horas perdidas / HHT do período × 100 (percentual, não taxa por milhão como TF/TG).
+function calcularAbsenteismoPeriodo(inicio, fim) {
+    let horasPerdidas = 0;
+    let hhtPeriodo = 0;
+    let periodoCompleto = true;
+    let cursor = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
+    const limite = new Date(fim.getFullYear(), fim.getMonth(), 1);
+    while (cursor <= limite) {
+        const ano = cursor.getFullYear(), mes = cursor.getMonth();
+        const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+        const config = hhtDiasTrabalhadosMap[key];
+        const horasPorDia = config ? (config.horas_por_dia || 8) : 8;
+        const inicioMes = new Date(ano, mes, 1);
+        const fimMes = new Date(ano, mes + 1, 0);
+
+        const diasAtestados = allAtestadosOcupacionais
+            .filter(a => a.data_inicio && parseLocalDate(a.data_inicio) >= inicioMes && parseLocalDate(a.data_inicio) <= fimMes)
+            .reduce((s, a) => s + (parseInt(a.dias_afastamento, 10) || 0), 0);
+        const diasAcidentes = allAcidentes
+            .filter(a => a.com_afastamento && a.data_acidente && parseLocalDate(a.data_acidente) >= inicioMes && parseLocalDate(a.data_acidente) <= fimMes)
+            .reduce((s, a) => s + (parseInt(a.dias_perdidos, 10) || 0), 0);
+        horasPerdidas += (diasAtestados + diasAcidentes) * horasPorDia;
+
+        const hhtMes = hhtExposicaoDoMes(ano, mes);
+        if (hhtMes === null) periodoCompleto = false;
+        else hhtPeriodo += hhtMes;
+
+        cursor = new Date(ano, mes + 1, 1);
+    }
+    const disponivel = periodoCompleto && hhtPeriodo > 0;
+    return { taxa: disponivel ? (horasPerdidas / hhtPeriodo * 100) : null, horasPerdidas, hhtPeriodo, disponivel };
+}
+
+function renderSaudePanel() {
+    popularFiltroAnoSaude();
+    const { inicio, fim } = getSaudeDateRange();
+
+    const ativos = allEfetivo.filter(e => e.status === 'ATIVO');
+    let vencidos = 0, vencendo = 0, emDia = 0, semRegistro = 0;
+    const alertList = [];
+    ativos.forEach(e => {
+        const r = calcularStatusAsoColaborador(e.id);
+        if (r.status === 'vencido') { vencidos++; alertList.push({ e, r }); }
+        else if (r.status === 'vencendo') { vencendo++; alertList.push({ e, r }); }
+        else if (r.status === 'em_dia') emDia++;
+        else semRegistro++;
+    });
+
+    document.getElementById('kpiAsoVencidos').textContent = vencidos;
+    document.getElementById('kpiAsoVencendo').textContent = vencendo;
+    document.getElementById('kpiAsoEmDia').textContent = emDia;
+    document.getElementById('kpiAsoSemRegistro').textContent = semRegistro;
+
+    const absen = calcularAbsenteismoPeriodo(inicio, fim);
+    document.getElementById('kpiAbsenteismo').textContent = absen.disponivel ? absen.taxa.toFixed(2) + '%' : '—';
+
+    alertList.sort((a, b) => (a.r.diffDays ?? -99999) - (b.r.diffDays ?? -99999));
+    const listaEl = document.getElementById('listAsoVencendo');
+    if (alertList.length === 0) {
+        listaEl.innerHTML = '<div class="db-list-empty">✅ Nenhum ASO vencido ou vencendo nos próximos 30 dias</div>';
+    } else {
+        listaEl.innerHTML = alertList.map(({ e, r }) => {
+            const cls = r.status === 'vencido' ? 'db-item-danger' : 'db-item-warning';
+            const msg = r.status === 'vencido' ? `Vencido há ${Math.abs(r.diffDays)} dia(s)` : (r.diffDays === 0 ? 'Vence hoje' : `Vence em ${r.diffDays} dia(s)`);
+            const tipoLabel = ASO_TIPO_LABELS[r.ultimoExame?.tipo_aso] || r.ultimoExame?.tipo_aso || '—';
+            return `<div class="db-list-item ${cls}">
+                <div class="db-list-item-title">${escapeHTML(e.nome || e.id)}</div>
+                <div class="db-list-item-sub">${escapeHTML(e.setor || '—')} — ${escapeHTML(tipoLabel)} — ${msg}</div>
+            </div>`;
+        }).join('');
+    }
+
+    if (typeof Chart === 'undefined') return;
+    if (chartInstances.asoStatus) chartInstances.asoStatus.destroy();
+    if (chartInstances.asoTipo) chartInstances.asoTipo.destroy();
+    if (chartInstances.absenteismoMes) chartInstances.absenteismoMes.destroy();
+
+    chartInstances.asoStatus = new Chart(document.getElementById('chartAsoStatus'), {
+        type: 'doughnut',
+        data: {
+            labels: ['Vencidos', 'Vencendo (30d)', 'Em Dia', 'Sem Registro'],
+            datasets: [{ data: [vencidos, vencendo, emDia, semRegistro], backgroundColor: ['#ef4444', '#f59e0b', '#10b981', '#94a3b8'], borderWidth: 2, borderColor: '#fff' }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, cutout: '55%' }
+    });
+
+    const tipoCounts = {};
+    allAsoExames.forEach(a => { const t = ASO_TIPO_LABELS[a.tipo_aso] || a.tipo_aso || 'Não especificado'; tipoCounts[t] = (tipoCounts[t] || 0) + 1; });
+    const tipoSorted = Object.entries(tipoCounts).sort((a, b) => b[1] - a[1]);
+    const tipoLabels = tipoSorted.map(t => wrapChartLabel(t[0]));
+    ajustarAlturaBarrasHorizontais('chartAsoTipo', tipoLabels);
+    chartInstances.asoTipo = new Chart(document.getElementById('chartAsoTipo'), {
+        type: 'bar',
+        data: { labels: tipoLabels, datasets: [{ label: 'Exames', data: tipoSorted.map(t => t[1]), backgroundColor: '#4f46e5', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
+    });
+
+    const hoje = new Date();
+    const datasAdmissao = allEfetivo.filter(e => e.dt_admissao).map(e => parseLocalDate(e.dt_admissao));
+    const primeiraData = datasAdmissao.length > 0 ? new Date(Math.min(...datasAdmissao.map(d => d.getTime()))) : hoje;
+    const mesesAbs = [], taxaPorMes = [];
+    let cursorAbs = new Date(primeiraData.getFullYear(), primeiraData.getMonth(), 1);
+    const limiteAbs = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    while (cursorAbs <= limiteAbs) {
+        mesesAbs.push(cursorAbs.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
+        const r = calcularAbsenteismoPeriodo(cursorAbs, cursorAbs);
+        taxaPorMes.push(r.disponivel ? Math.round(r.taxa * 100) / 100 : null);
+        cursorAbs = new Date(cursorAbs.getFullYear(), cursorAbs.getMonth() + 1, 1);
+    }
+    chartInstances.absenteismoMes = new Chart(document.getElementById('chartAbsenteismoMes'), {
+        type: 'line',
+        data: { labels: mesesAbs, datasets: [{ label: 'Absenteísmo Ocupacional (%)', data: taxaPorMes, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)', fill: true, tension: 0.25 }] },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: '%' } } } }
+    });
+}
+
+function showSaudeSubtab(tab) {
+    ['visao', 'aso', 'atestado'].forEach(t => {
+        const content = document.getElementById('saudeSubtab-' + t);
+        const btn = document.getElementById('saudeSubtabBtn-' + t);
+        if (content) content.style.display = (t === tab) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
+    popularSaudeColabDatalists();
+    if (tab === 'visao') renderSaudePanel();
+    if (tab === 'aso') { renderAsoResumo(); filterAsoLista(document.getElementById('asoSearchInput')?.value || ''); }
+    if (tab === 'atestado') { renderAtestadoResumo(); filterAtestadoLista(document.getElementById('atestadoSearchInput')?.value || ''); }
+}
+
+// ---- CRUD: Exames ASO ----
+
+function renderAsoResumo() {
+    const el = document.getElementById('asoResumo');
+    if (el) el.textContent = `${allAsoExames.length} exame(s) registrado(s)`;
+}
+
+function filterAsoLista(query) {
+    const resultsEl = document.getElementById('asoSearchResults');
+    if (!resultsEl) return;
+    const q = (query || '').trim().toLowerCase();
+    let lista = allAsoExames.slice();
+    if (q.length >= 2) {
+        lista = lista.filter(a => (a.matricula || '').toLowerCase().includes(q) || (a.nome_colaborador || '').toLowerCase().includes(q));
+    }
+    lista.sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
+
+    if (lista.length === 0) {
+        resultsEl.innerHTML = '<div class="db-list-empty">Nenhum exame encontrado</div>';
+        return;
+    }
+    resultsEl.innerHTML = lista.map(a => `
+        <div class="db-list-item" style="cursor:pointer;" onclick="abrirFormAso('${escapeHTML(a.id)}')">
+            <div class="db-list-item-title">${escapeHTML(a.nome_colaborador || 'Não identificado')} — ${escapeHTML(ASO_TIPO_LABELS[a.tipo_aso] || a.tipo_aso || '—')}</div>
+            <div class="db-list-item-sub">${formatSimpleDate(a.data_exame)}${a.data_vencimento ? ' — vence ' + formatSimpleDate(a.data_vencimento) : ' — sem vencimento definido'}</div>
+        </div>
+    `).join('');
+}
+
+function limparBuscaAso() {
+    const input = document.getElementById('asoSearchInput');
+    if (input) { input.value = ''; input.focus(); }
+    filterAsoLista('');
+}
+
+function abrirFormAso(id) {
+    const form = document.getElementById('asoFormCard');
+    const title = document.getElementById('asoFormTitle');
+    const btnExcluir = document.getElementById('asoForm_btnExcluir');
+    document.getElementById('asoFormStatus').textContent = '';
+    document.getElementById('asoForm_colabPreview').textContent = '';
+    popularSaudeColabDatalists();
+
+    if (id) {
+        const a = allAsoExames.find(x => x.id === id);
+        if (!a) return;
+        title.textContent = '✏️ Editar Exame ASO';
+        form.dataset.editId = id;
+        document.getElementById('asoForm_matricula').value = a.matricula ? `${a.matricula} - ${a.nome_colaborador || ''}` : (a.nome_colaborador || '');
+        onAsoColaboradorChange();
+        document.getElementById('asoForm_tipo').value = a.tipo_aso || '';
+        document.getElementById('asoForm_dataExame').value = a.data_exame || '';
+        document.getElementById('asoForm_dataVencimento').value = a.data_vencimento || '';
+        document.getElementById('asoForm_resultado').value = a.resultado || '';
+        document.getElementById('asoForm_medico').value = a.medico_responsavel || '';
+        document.getElementById('asoForm_obs').value = a.obs || '';
+        btnExcluir.style.display = 'inline-block';
+    } else {
+        title.textContent = '🩺 Novo Exame ASO';
+        delete form.dataset.editId;
+        document.getElementById('asoForm_matricula').value = '';
+        document.getElementById('asoForm_tipo').value = '';
+        document.getElementById('asoForm_dataExame').value = new Date().toISOString().split('T')[0];
+        document.getElementById('asoForm_dataVencimento').value = '';
+        document.getElementById('asoForm_resultado').value = '';
+        document.getElementById('asoForm_medico').value = '';
+        document.getElementById('asoForm_obs').value = '';
+        btnExcluir.style.display = 'none';
+    }
+
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function fecharFormAso() {
+    document.getElementById('asoFormCard').style.display = 'none';
+}
+
+async function salvarAso() {
+    const statusEl = document.getElementById('asoFormStatus');
+    const data = document.getElementById('asoForm_dataExame').value;
+    const tipo = document.getElementById('asoForm_tipo').value;
+
+    if (!data || !tipo) {
+        statusEl.textContent = '❌ Data do exame e tipo são obrigatórios.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const { matricula, colab } = buscarColaboradorPorInput('asoForm_matricula');
+    if (!colab) {
+        statusEl.textContent = '❌ Colaborador não encontrado. Selecione um da lista.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const form = document.getElementById('asoFormCard');
+    const editId = form.dataset.editId;
+    const id = editId || ('ASO_' + Date.now());
+
+    const row = {
+        id,
+        matricula,
+        nome_colaborador: colab.nome || null,
+        funcao: colab.funcao || null,
+        setor: colab.setor || null,
+        tipo_aso: tipo,
+        data_exame: data,
+        data_vencimento: document.getElementById('asoForm_dataVencimento').value || null,
+        resultado: document.getElementById('asoForm_resultado').value || null,
+        medico_responsavel: document.getElementById('asoForm_medico').value.trim() || null,
+        obs: document.getElementById('asoForm_obs').value.trim() || null
+    };
+
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('aso_exames', [row]);
+        const idx = allAsoExames.findIndex(a => a.id === id);
+        if (idx >= 0) allAsoExames[idx] = { ...allAsoExames[idx], ...row };
+        else allAsoExames.push(row);
+
+        statusEl.textContent = '✅ Salvo com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => { fecharFormAso(); showSaudeSubtab('aso'); }, 900);
+    } catch (err) {
+        console.error('Erro ao salvar exame ASO:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function excluirAsoAtual() {
+    const form = document.getElementById('asoFormCard');
+    const id = form.dataset.editId;
+    if (!id) return;
+    if (!confirm('Excluir este exame ASO? Essa ação não pode ser desfeita.')) return;
+
+    const statusEl = document.getElementById('asoFormStatus');
+    statusEl.textContent = 'Excluindo...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseDelete('aso_exames', id);
+        allAsoExames = allAsoExames.filter(a => a.id !== id);
+        statusEl.textContent = '✅ Excluído com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => { fecharFormAso(); showSaudeSubtab('aso'); }, 900);
+    } catch (err) {
+        console.error('Erro ao excluir exame ASO:', err);
+        statusEl.textContent = '❌ Falha ao excluir: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// ---- CRUD: Atestados Ocupacionais ----
+
+function renderAtestadoResumo() {
+    const el = document.getElementById('atestadoResumo');
+    if (!el) return;
+    const totalDias = allAtestadosOcupacionais.reduce((s, a) => s + (parseInt(a.dias_afastamento, 10) || 0), 0);
+    el.textContent = `${allAtestadosOcupacionais.length} atestado(s) registrado(s) — ${totalDias} dia(s) de afastamento no total`;
+}
+
+function filterAtestadoLista(query) {
+    const resultsEl = document.getElementById('atestadoSearchResults');
+    if (!resultsEl) return;
+    const q = (query || '').trim().toLowerCase();
+    let lista = allAtestadosOcupacionais.slice();
+    if (q.length >= 2) {
+        lista = lista.filter(a => (a.matricula || '').toLowerCase().includes(q) || (a.nome_colaborador || '').toLowerCase().includes(q));
+    }
+    lista.sort((a, b) => (b.data_inicio || '').localeCompare(a.data_inicio || ''));
+
+    if (lista.length === 0) {
+        resultsEl.innerHTML = '<div class="db-list-empty">Nenhum atestado encontrado</div>';
+        return;
+    }
+    resultsEl.innerHTML = lista.map(a => `
+        <div class="db-list-item" style="cursor:pointer;" onclick="abrirFormAtestado('${escapeHTML(a.id)}')">
+            <div class="db-list-item-title">${escapeHTML(a.nome_colaborador || 'Não identificado')} — ${a.dias_afastamento || 0} dia(s)</div>
+            <div class="db-list-item-sub">${formatSimpleDate(a.data_inicio)}${a.data_fim ? ' a ' + formatSimpleDate(a.data_fim) : ''}${a.motivo ? ' — ' + escapeHTML(a.motivo) : ''}</div>
+        </div>
+    `).join('');
+}
+
+function limparBuscaAtestado() {
+    const input = document.getElementById('atestadoSearchInput');
+    if (input) { input.value = ''; input.focus(); }
+    filterAtestadoLista('');
+}
+
+function abrirFormAtestado(id) {
+    const form = document.getElementById('atestadoFormCard');
+    const title = document.getElementById('atestadoFormTitle');
+    const btnExcluir = document.getElementById('atestadoForm_btnExcluir');
+    document.getElementById('atestadoFormStatus').textContent = '';
+    document.getElementById('atestadoForm_colabPreview').textContent = '';
+    popularSaudeColabDatalists();
+
+    if (id) {
+        const a = allAtestadosOcupacionais.find(x => x.id === id);
+        if (!a) return;
+        title.textContent = '✏️ Editar Atestado';
+        form.dataset.editId = id;
+        document.getElementById('atestadoForm_matricula').value = a.matricula ? `${a.matricula} - ${a.nome_colaborador || ''}` : (a.nome_colaborador || '');
+        onAtestadoColaboradorChange();
+        document.getElementById('atestadoForm_dataInicio').value = a.data_inicio || '';
+        document.getElementById('atestadoForm_dataFim').value = a.data_fim || '';
+        document.getElementById('atestadoForm_dias').value = a.dias_afastamento || 0;
+        document.getElementById('atestadoForm_motivo').value = a.motivo || '';
+        document.getElementById('atestadoForm_obs').value = a.obs || '';
+        btnExcluir.style.display = 'inline-block';
+    } else {
+        title.textContent = '🤒 Novo Atestado';
+        delete form.dataset.editId;
+        document.getElementById('atestadoForm_matricula').value = '';
+        document.getElementById('atestadoForm_dataInicio').value = new Date().toISOString().split('T')[0];
+        document.getElementById('atestadoForm_dataFim').value = '';
+        document.getElementById('atestadoForm_dias').value = 0;
+        document.getElementById('atestadoForm_motivo').value = '';
+        document.getElementById('atestadoForm_obs').value = '';
+        btnExcluir.style.display = 'none';
+    }
+
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function fecharFormAtestado() {
+    document.getElementById('atestadoFormCard').style.display = 'none';
+}
+
+async function salvarAtestado() {
+    const statusEl = document.getElementById('atestadoFormStatus');
+    const dataInicio = document.getElementById('atestadoForm_dataInicio').value;
+
+    if (!dataInicio) {
+        statusEl.textContent = '❌ Data de início é obrigatória.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const { matricula, colab } = buscarColaboradorPorInput('atestadoForm_matricula');
+    if (!colab) {
+        statusEl.textContent = '❌ Colaborador não encontrado. Selecione um da lista.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const form = document.getElementById('atestadoFormCard');
+    const editId = form.dataset.editId;
+    const id = editId || ('ATEST_' + Date.now());
+
+    const row = {
+        id,
+        matricula,
+        nome_colaborador: colab.nome || null,
+        funcao: colab.funcao || null,
+        setor: colab.setor || null,
+        data_inicio: dataInicio,
+        data_fim: document.getElementById('atestadoForm_dataFim').value || null,
+        dias_afastamento: parseInt(document.getElementById('atestadoForm_dias').value, 10) || 0,
+        motivo: document.getElementById('atestadoForm_motivo').value.trim() || null,
+        obs: document.getElementById('atestadoForm_obs').value.trim() || null
+    };
+
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('atestados_ocupacionais', [row]);
+        const idx = allAtestadosOcupacionais.findIndex(a => a.id === id);
+        if (idx >= 0) allAtestadosOcupacionais[idx] = { ...allAtestadosOcupacionais[idx], ...row };
+        else allAtestadosOcupacionais.push(row);
+
+        statusEl.textContent = '✅ Salvo com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => { fecharFormAtestado(); showSaudeSubtab('atestado'); }, 900);
+    } catch (err) {
+        console.error('Erro ao salvar atestado:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function excluirAtestadoAtual() {
+    const form = document.getElementById('atestadoFormCard');
+    const id = form.dataset.editId;
+    if (!id) return;
+    if (!confirm('Excluir este atestado? Essa ação não pode ser desfeita.')) return;
+
+    const statusEl = document.getElementById('atestadoFormStatus');
+    statusEl.textContent = 'Excluindo...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseDelete('atestados_ocupacionais', id);
+        allAtestadosOcupacionais = allAtestadosOcupacionais.filter(a => a.id !== id);
+        statusEl.textContent = '✅ Excluído com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => { fecharFormAtestado(); showSaudeSubtab('atestado'); }, 900);
+    } catch (err) {
+        console.error('Erro ao excluir atestado:', err);
+        statusEl.textContent = '❌ Falha ao excluir: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// ============================================
 // NAVEGAÇÃO ENTRE PÁGINAS (barra lateral)
 // ============================================
 
@@ -3219,6 +3820,7 @@ const DB_PAGE_TITLES = {
     treinamentos: 'Treinamentos',
     efetivo: 'Efetivo',
     acidentes: 'Acidentabilidade',
+    saude: 'Saúde Ocupacional',
     config: 'Configurações'
 };
 
@@ -3227,7 +3829,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', efetivo: 'navEfetivo', acidentes: 'navAcidentes', config: 'navConfig' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', efetivo: 'navEfetivo', acidentes: 'navAcidentes', saude: 'navSaude', config: 'navConfig' };
     document.getElementById(navMap[pageId])?.classList.add('active');
 
     document.getElementById('pageTitle').textContent = DB_PAGE_TITLES[pageId] || '';
@@ -3256,6 +3858,10 @@ function showDbPage(pageId) {
     if (pageId === 'acidentes') {
         if (!acidentesLoaded) { acidentesLoaded = true; loadAcidentesData(); }
         else renderAcidentesPanel();
+    }
+    if (pageId === 'saude') {
+        if (!saudeLoaded) { saudeLoaded = true; loadSaudeData(); }
+        else if (document.getElementById('saudeSubtabBtn-visao')?.classList.contains('active')) renderSaudePanel();
     }
 }
 
@@ -3365,6 +3971,10 @@ function rerenderGraficosDaPaginaAtiva() {
     } else if (paginaAtiva === 'navAcidentes') {
         if (document.getElementById('acidentesSubtabBtn-visao')?.classList.contains('active')) {
             renderAcidentesPanel();
+        }
+    } else if (paginaAtiva === 'navSaude') {
+        if (document.getElementById('saudeSubtabBtn-visao')?.classList.contains('active')) {
+            renderSaudePanel();
         }
     }
 }

@@ -40,6 +40,9 @@
                 <button class="db-nav-item" id="navAcidentes" onclick="showDbPage('acidentes')">
                     <span class="db-nav-icon">🚑</span> Acidentabilidade
                 </button>
+                <button class="db-nav-item" id="navSaude" onclick="showDbPage('saude')">
+                    <span class="db-nav-icon">🩺</span> Saúde Ocupacional
+                </button>
                 <button class="db-nav-item" id="navConfig" onclick="showDbPage('config')">
                     <span class="db-nav-icon">⚙️</span> Configurações
                 </button>
@@ -990,6 +993,234 @@
                 </div>
             </section>
 
+            <!-- Página: Saúde Ocupacional (NR-07 / PCMSO) -->
+            <section class="db-page" id="page-saude">
+                <div class="db-filters" style="margin-bottom: 16px;">
+                    <div class="db-filter-buttons">
+                        <button id="saudeSubtabBtn-visao" class="db-filter-btn active" onclick="showSaudeSubtab('visao')">📊 Visão Geral</button>
+                        <button id="saudeSubtabBtn-aso" class="db-filter-btn" onclick="showSaudeSubtab('aso')">🩺 Registrar ASO</button>
+                        <button id="saudeSubtabBtn-atestado" class="db-filter-btn" onclick="showSaudeSubtab('atestado')">🤒 Registrar Atestado</button>
+                    </div>
+                </div>
+
+                <div id="saudeSubtab-visao">
+                <div class="db-filters">
+                    <div class="db-filter-buttons">
+                        <button id="btnFiltroSaudeMes" class="db-filter-btn active" onclick="setSaudeFilter('mes')">Este Mês</button>
+                        <button id="btnFiltroSaudeTrimestre" class="db-filter-btn" onclick="setSaudeFilter('trimestre')">Últimos 3 Meses</button>
+                        <button id="btnFiltroSaudeAno" class="db-filter-btn" onclick="setSaudeFilter('ano')">Este Ano</button>
+                        <button id="btnFiltroSaudeTodos" class="db-filter-btn" onclick="setSaudeFilter('todos')">Todos</button>
+                    </div>
+                    <div class="db-filter-selects">
+                        <select id="saudeFiltroAno" onchange="onSaudeFiltroAnoMesChange()">
+                            <option value="">Ano específico...</option>
+                        </select>
+                        <select id="saudeFiltroMes" onchange="onSaudeFiltroAnoMesChange()">
+                            <option value="">Mês específico...</option>
+                            <option value="0">Janeiro</option>
+                            <option value="1">Fevereiro</option>
+                            <option value="2">Março</option>
+                            <option value="3">Abril</option>
+                            <option value="4">Maio</option>
+                            <option value="5">Junho</option>
+                            <option value="6">Julho</option>
+                            <option value="7">Agosto</option>
+                            <option value="8">Setembro</option>
+                            <option value="9">Outubro</option>
+                            <option value="10">Novembro</option>
+                            <option value="11">Dezembro</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="db-periodo-titulo">📊 Período: <span id="saudePeriodoTitulo">Este mês</span></div>
+
+                <div class="db-kpi-grid">
+                    <div class="db-kpi-card db-kpi-danger">
+                        <div class="db-kpi-value" id="kpiAsoVencidos">0</div>
+                        <div class="db-kpi-label">ASO Vencidos</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-warning">
+                        <div class="db-kpi-value" id="kpiAsoVencendo">0</div>
+                        <div class="db-kpi-label">ASO Vencendo em 30 dias</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-success">
+                        <div class="db-kpi-value" id="kpiAsoEmDia">0</div>
+                        <div class="db-kpi-label">ASO Em Dia</div>
+                    </div>
+                    <div class="db-kpi-card">
+                        <div class="db-kpi-value" id="kpiAsoSemRegistro">0</div>
+                        <div class="db-kpi-label">Sem ASO Registrado</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-primary">
+                        <div class="db-kpi-value" id="kpiAbsenteismo">0%</div>
+                        <div class="db-kpi-label">Taxa de Absenteísmo Ocupacional</div>
+                    </div>
+                </div>
+
+                <div class="db-charts-grid">
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">Status de ASO (Efetivo Ativo)</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartAsoStatus"></canvas></div>
+                    </div>
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">Exames Realizados por Tipo (Histórico Completo)</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartAsoTipo"></canvas></div>
+                    </div>
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">Taxa de Absenteísmo Ocupacional por Mês (Histórico Completo)</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartAbsenteismoMes"></canvas></div>
+                    </div>
+                    <div class="db-chart-card db-list-card">
+                        <div class="db-chart-title">Colaboradores com ASO Vencido ou Vencendo</div>
+                        <div id="listAsoVencendo" class="db-list"></div>
+                    </div>
+                </div>
+                </div>
+
+                <div id="saudeSubtab-aso" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" style="margin-bottom: 0;">🩺 Exames ASO</div>
+                        <button class="db-apply-btn" onclick="abrirFormAso()">+ Novo Exame</button>
+                    </div>
+                    <div id="asoResumo" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px;"></div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <input type="text" id="asoSearchInput" placeholder="Buscar por matrícula ou nome... (em branco mostra todos)"
+                               oninput="filterAsoLista(this.value)"
+                               style="flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                        <button class="db-clear-btn" onclick="limparBuscaAso()">✕ Limpar</button>
+                    </div>
+                    <div id="asoSearchResults" class="db-list" style="max-height: 420px;"></div>
+                </div>
+
+                <div class="db-chart-card" id="asoFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" id="asoFormTitle" style="margin-bottom: 0;">🩺 Novo Exame ASO</div>
+                        <button class="db-clear-btn" onclick="abrirFormAso()">🔄 Novo Registro</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Colaborador (matrícula ou nome) *</label>
+                            <input type="text" id="asoForm_matricula" list="asoColabList" oninput="onAsoColaboradorChange()"
+                                   style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <datalist id="asoColabList"></datalist>
+                            <div id="asoForm_colabPreview" style="font-size: 11px; color: var(--text-light); margin-top: 4px;"></div>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Tipo de Exame *</label>
+                            <select id="asoForm_tipo" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="">Selecione...</option>
+                                <option value="admissional">Admissional</option>
+                                <option value="periodico">Periódico</option>
+                                <option value="demissional">Demissional</option>
+                                <option value="retorno_trabalho">Retorno ao Trabalho</option>
+                                <option value="mudanca_risco">Mudança de Risco</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data do Exame *</label>
+                            <input type="date" id="asoForm_dataExame" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Próximo Exame (Vencimento)</label>
+                            <input type="date" id="asoForm_dataVencimento" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Resultado</label>
+                            <select id="asoForm_resultado" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="">—</option>
+                                <option value="apto">Apto</option>
+                                <option value="apto_restricao">Apto com Restrição</option>
+                                <option value="inapto">Inapto</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Médico Responsável</label>
+                            <input type="text" id="asoForm_medico" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div style="grid-column: 1 / -1;">
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Observações</label>
+                            <textarea id="asoForm_obs" rows="2" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-family: inherit; font-size: inherit; resize: vertical;"></textarea>
+                        </div>
+                    </div>
+                    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="salvarAso()">💾 Salvar</button>
+                        <button class="db-clear-btn" onclick="fecharFormAso()">Cancelar</button>
+                        <button id="asoForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirAsoAtual()">🗑️ Excluir</button>
+                        <span id="asoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
+                </div>
+
+                <div id="saudeSubtab-atestado" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" style="margin-bottom: 0;">🤒 Atestados Ocupacionais</div>
+                        <button class="db-apply-btn" onclick="abrirFormAtestado()">+ Novo Atestado</button>
+                    </div>
+                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">
+                        Registre aqui apenas atestados vinculados a <strong>doença ocupacional</strong>. Afastamentos por acidente de
+                        trabalho já são contabilizados automaticamente a partir do módulo de Acidentabilidade.
+                    </p>
+                    <div id="atestadoResumo" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px;"></div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <input type="text" id="atestadoSearchInput" placeholder="Buscar por matrícula ou nome... (em branco mostra todos)"
+                               oninput="filterAtestadoLista(this.value)"
+                               style="flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                        <button class="db-clear-btn" onclick="limparBuscaAtestado()">✕ Limpar</button>
+                    </div>
+                    <div id="atestadoSearchResults" class="db-list" style="max-height: 420px;"></div>
+                </div>
+
+                <div class="db-chart-card" id="atestadoFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" id="atestadoFormTitle" style="margin-bottom: 0;">🤒 Novo Atestado</div>
+                        <button class="db-clear-btn" onclick="abrirFormAtestado()">🔄 Novo Registro</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Colaborador (matrícula ou nome) *</label>
+                            <input type="text" id="atestadoForm_matricula" list="atestadoColabList" oninput="onAtestadoColaboradorChange()"
+                                   style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <datalist id="atestadoColabList"></datalist>
+                            <div id="atestadoForm_colabPreview" style="font-size: 11px; color: var(--text-light); margin-top: 4px;"></div>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data de Início *</label>
+                            <input type="date" id="atestadoForm_dataInicio" oninput="onAtestadoDatasChange()"
+                                   style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data de Fim</label>
+                            <input type="date" id="atestadoForm_dataFim" oninput="onAtestadoDatasChange()"
+                                   style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Dias de Afastamento</label>
+                            <input type="number" id="atestadoForm_dias" min="0" step="1" value="0"
+                                   style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div style="grid-column: 1 / -1;">
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Motivo (descrição, sem CID)</label>
+                            <input type="text" id="atestadoForm_motivo" placeholder="Ex: LER/DORT, Perda auditiva induzida por ruído..."
+                                   style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div style="grid-column: 1 / -1;">
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Observações</label>
+                            <textarea id="atestadoForm_obs" rows="2" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-family: inherit; font-size: inherit; resize: vertical;"></textarea>
+                        </div>
+                    </div>
+                    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="salvarAtestado()">💾 Salvar</button>
+                        <button class="db-clear-btn" onclick="fecharFormAtestado()">Cancelar</button>
+                        <button id="atestadoForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirAtestadoAtual()">🗑️ Excluir</button>
+                        <span id="atestadoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
+                </div>
+            </section>
+
             <!-- Página: Configurações -->
             <section class="db-page" id="page-config">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
@@ -1021,6 +1252,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=28"></script>
+    <script src="dashboard.js?v=29"></script>
 </body>
 </html>

@@ -276,9 +276,12 @@
                         <button class="db-apply-btn" onclick="abrirFormCatalogoTreinamento()">+ Novo Treinamento</button>
                     </div>
                     <div id="catalogoResumo" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px;"></div>
-                    <input type="text" id="catalogoSearchInput" placeholder="Buscar por nome ou código... (em branco mostra todos)"
-                           oninput="filterCatalogoTreinamentos(this.value)"
-                           style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; margin-bottom: 10px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <input type="text" id="catalogoSearchInput" placeholder="Buscar por nome ou código... (em branco mostra todos)"
+                               oninput="filterCatalogoTreinamentos(this.value)"
+                               style="flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                        <button class="db-clear-btn" onclick="limparBuscaCatalogo()">✕ Limpar</button>
+                    </div>
                     <div style="text-align: right; margin-bottom: 6px;">
                         <button class="db-clear-btn" id="btnExpandirCatalogo" onclick="toggleExpandirCatalogo()">⛶ Expandir Lista</button>
                     </div>
@@ -392,9 +395,12 @@
                         <button class="db-apply-btn" onclick="abrirFormEfetivo()">+ Novo Colaborador</button>
                     </div>
                     <div id="efetivoResumo" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px;"></div>
-                    <input type="text" id="efetivoSearchInput" placeholder="Buscar por nome ou matrícula..."
-                           oninput="filterEfetivoColaboradores(this.value)"
-                           style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; margin-bottom: 12px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                        <input type="text" id="efetivoSearchInput" placeholder="Buscar por nome ou matrícula..."
+                               oninput="filterEfetivoColaboradores(this.value)"
+                               style="flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                        <button class="db-clear-btn" onclick="limparBuscaEfetivo()">✕ Limpar</button>
+                    </div>
                     <div id="efetivoSearchResults" class="db-list" style="max-height: 220px;"></div>
                     <div id="efetivoColabDetail" style="display:none; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);"></div>
                 </div>
@@ -594,6 +600,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=15"></script>
+    <script src="dashboard.js?v=16"></script>
 </body>
 </html>

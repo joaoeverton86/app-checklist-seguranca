@@ -1218,6 +1218,13 @@ function toggleExpandirCatalogo() {
     btn.textContent = expandido ? '⛶ Expandir Lista' : '⛶ Recolher Lista';
 }
 
+function limparBuscaCatalogo() {
+    const input = document.getElementById('catalogoSearchInput');
+    input.value = '';
+    filterCatalogoTreinamentos('');
+    input.focus();
+}
+
 // Exclusão (a pedido do usuário, após um caso real de código duplicado por erro de
 // digitação: "79" e "128" com o mesmo conteúdo). Se o código nunca foi usado em nenhuma
 // sessão, exclui direto. Se já foi usado, não dá pra simplesmente apagar - migra as
@@ -1420,6 +1427,13 @@ function renderEfetivoResumo() {
     const total = allEfetivo.length;
     const ativos = allEfetivo.filter(e => e.dt_admissao && !e.dt_demissao).length;
     el.textContent = total === 0 ? '' : `${total} colaborador(es) cadastrado(s) — ${ativos} ativo(s), ${total - ativos} inativo(s)`;
+}
+
+function limparBuscaEfetivo() {
+    const input = document.getElementById('efetivoSearchInput');
+    input.value = '';
+    filterEfetivoColaboradores('');
+    input.focus();
 }
 
 function filterEfetivoColaboradores(query) {

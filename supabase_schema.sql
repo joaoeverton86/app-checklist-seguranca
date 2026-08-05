@@ -598,6 +598,22 @@ GRANT ALL ON public.acidentes TO anon;
 CREATE INDEX IF NOT EXISTS idx_acidentes_data ON public.acidentes(data_acidente);
 CREATE INDEX IF NOT EXISTS idx_acidentes_com_afastamento ON public.acidentes(com_afastamento);
 
+CREATE TABLE IF NOT EXISTS public.hht_dias_trabalhados (
+    id TEXT PRIMARY KEY,               -- 'YYYY-MM'
+    ano INTEGER NOT NULL,
+    mes INTEGER NOT NULL,
+    dias_trabalhados INTEGER,
+    horas_por_dia INTEGER DEFAULT 8,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.hht_dias_trabalhados ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acesso total ao hht dias trabalhados" ON public.hht_dias_trabalhados;
+CREATE POLICY "Acesso total ao hht dias trabalhados" ON public.hht_dias_trabalhados FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON public.hht_dias_trabalhados TO anon;
+
 -- ============================================================
 -- RISCOS RESIDUAIS CONHECIDOS (documentados, não corrigidos nesta versão)
 -- ============================================================

@@ -2188,6 +2188,20 @@ async function importarEfetivoCSV() {
 let allAcidentes = [];
 let acidentesLoaded = false;
 let acidentesFilter = 'mes';
+let hhtDiasTrabalhadosMap = {}; // 'YYYY-MM' -> { dias_trabalhados, horas_por_dia }
+
+// HHT de Exposição real (Efetivo × Dias Trabalhados no Mês × Horas por Dia), igual à
+// planilha oficial "Índices de Segurança e Saúde Ocupacional" do usuário - mais precisa
+// que o hht220DoMes() (aproximação fixa) usado no painel Efetivo. Retorna null quando o
+// mês ainda não foi configurado em hhtDiasTrabalhadosMap (não dá pra calcular TF/TG sem
+// esse dado, então melhor mostrar "indisponível" do que um número fabricado).
+function hhtExposicaoDoMes(ano, mesIndex0) {
+    const key = `${ano}-${String(mesIndex0 + 1).padStart(2, '0')}`;
+    const config = hhtDiasTrabalhadosMap[key];
+    if (!config || !config.dias_trabalhados) return null;
+    const headcount = headcountAsOf(new Date(ano, mesIndex0 + 1, 0));
+    return headcount * config.dias_trabalhados * (config.horas_por_dia || 8);
+}
 
 function getAcidentesDateRange() {
     const now = new Date();
@@ -2217,11 +2231,14 @@ function setAcidentesFilter(filter) {
 async function loadAcidentesData() {
     try {
         allAcidentes = await supabaseFetch('acidentes', '?select=*');
-        // Precisa do efetivo pro HHT (efetivo × 220) e pra sugerir/autocompletar o
-        // colaborador no formulário - carrega mesmo se o usuário nunca abriu Efetivo.
+        // Precisa do efetivo pra calcular a HHT de exposição e pra sugerir/autocompletar
+        // o colaborador no formulário - carrega mesmo se o usuário nunca abriu Efetivo.
         if (allEfetivo.length === 0) {
             allEfetivo = await supabaseFetch('colaboradores_efetivo', '?select=*');
         }
+        const diasTrabalhadosRows = await supabaseFetch('hht_dias_trabalhados', '?select=*');
+        hhtDiasTrabalhadosMap = {};
+        diasTrabalhadosRows.forEach(r => { hhtDiasTrabalhadosMap[r.id] = r; });
         popularAcidentesColabDatalist();
         renderAcidentesPanel();
     } catch (err) {
@@ -2272,12 +2289,17 @@ function renderAcidentesPanel() {
         return d >= inicio && d <= fim;
     });
 
-    // HHT do período: soma o HHT normativo (efetivo × 220) de cada mês coberto.
+    // HHT do período: soma a HHT de exposição real (efetivo × dias trabalhados × horas/dia)
+    // de cada mês coberto. Se algum mês do período ainda não tiver dias trabalhados
+    // configurados, TF/TG ficam indisponíveis (evita fabricar um número errado).
     let hhtPeriodo = 0;
+    let periodoCompleto = true;
     let cursorHht = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
     const limiteHht = new Date(fim.getFullYear(), fim.getMonth(), 1);
     while (cursorHht <= limiteHht) {
-        hhtPeriodo += hht220DoMes(cursorHht.getFullYear(), cursorHht.getMonth());
+        const hhtMes = hhtExposicaoDoMes(cursorHht.getFullYear(), cursorHht.getMonth());
+        if (hhtMes === null) periodoCompleto = false;
+        else hhtPeriodo += hhtMes;
         cursorHht = new Date(cursorHht.getFullYear(), cursorHht.getMonth() + 1, 1);
     }
 
@@ -2285,11 +2307,12 @@ function renderAcidentesPanel() {
     const diasPerdidosTotal = periodo.reduce((s, a) => s + (parseInt(a.dias_perdidos, 10) || 0), 0);
     const diasDebitadosTotal = periodo.reduce((s, a) => s + (parseInt(a.dias_debitados, 10) || 0), 0);
 
-    const tf = hhtPeriodo > 0 ? (numAcidentes * 1000000 / hhtPeriodo) : 0;
-    const tg = hhtPeriodo > 0 ? ((diasPerdidosTotal + diasDebitadosTotal) * 1000000 / hhtPeriodo) : 0;
+    const tfDisponivel = periodoCompleto && hhtPeriodo > 0;
+    const tf = tfDisponivel ? (numAcidentes * 1000000 / hhtPeriodo) : 0;
+    const tg = tfDisponivel ? ((diasPerdidosTotal + diasDebitadosTotal) * 1000000 / hhtPeriodo) : 0;
 
-    document.getElementById('kpiAcidTF').textContent = tf.toFixed(2);
-    document.getElementById('kpiAcidTG').textContent = tg.toFixed(2);
+    document.getElementById('kpiAcidTF').textContent = tfDisponivel ? tf.toFixed(2) : '—';
+    document.getElementById('kpiAcidTG').textContent = tfDisponivel ? tg.toFixed(2) : '—';
     document.getElementById('kpiAcidTotal').textContent = numAcidentes;
 
     const diasCPT = diasSemAcidente(true);
@@ -2330,11 +2353,13 @@ function renderAcidentesPanel() {
         const fimMes = new Date(ano, mes + 1, 0);
         mesesAcid.push(cursorAcid.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
         const acidDoMes = allAcidentes.filter(a => a.data_acidente && parseLocalDate(a.data_acidente) >= inicioMes && parseLocalDate(a.data_acidente) <= fimMes);
-        const hhtMes = hht220DoMes(ano, mes);
+        const hhtMes = hhtExposicaoDoMes(ano, mes);
         const dPerdidosMes = acidDoMes.reduce((s, a) => s + (parseInt(a.dias_perdidos, 10) || 0), 0);
         const dDebitadosMes = acidDoMes.reduce((s, a) => s + (parseInt(a.dias_debitados, 10) || 0), 0);
-        tfPorMes.push(hhtMes > 0 ? Math.round((acidDoMes.length * 1000000 / hhtMes) * 100) / 100 : 0);
-        tgPorMes.push(hhtMes > 0 ? Math.round(((dPerdidosMes + dDebitadosMes) * 1000000 / hhtMes) * 100) / 100 : 0);
+        // hhtMes null = mês sem "dias trabalhados" configurado - plota como gap (null),
+        // não como 0, pra não sugerir visualmente "TF/TG medido igual a zero".
+        tfPorMes.push(hhtMes ? Math.round((acidDoMes.length * 1000000 / hhtMes) * 100) / 100 : null);
+        tgPorMes.push(hhtMes ? Math.round(((dPerdidosMes + dDebitadosMes) * 1000000 / hhtMes) * 100) / 100 : null);
         cursorAcid = new Date(ano, mes + 1, 1);
     }
 
@@ -2561,13 +2586,68 @@ function showDbPage(pageId) {
 }
 
 function showAcidentesSubtab(tab) {
-    ['visao', 'registrar'].forEach(t => {
+    ['visao', 'registrar', 'hht'].forEach(t => {
         const content = document.getElementById('acidentesSubtab-' + t);
         const btn = document.getElementById('acidentesSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
         if (btn) btn.classList.toggle('active', t === tab);
     });
     if (tab === 'visao') renderAcidentesPanel();
+    if (tab === 'hht') renderDiasTrabalhadosConfig();
+}
+
+// Contrato começou em 12/07/2024 - mês inicial fixo pra listar a configuração de "dias
+// trabalhados" desde o começo, mesmo que ainda não haja nenhum efetivo/acidente antes disso.
+const ACIDENTES_MES_INICIO_CONTRATO = { ano: 2024, mes: 6 }; // mes 0-indexado (6 = julho)
+
+function renderDiasTrabalhadosConfig() {
+    const container = document.getElementById('diasTrabalhadosLista');
+    if (!container) return;
+
+    const hoje = new Date();
+    const linhas = [];
+    let cursor = new Date(ACIDENTES_MES_INICIO_CONTRATO.ano, ACIDENTES_MES_INICIO_CONTRATO.mes, 1);
+    const limite = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    while (cursor <= limite) {
+        const ano = cursor.getFullYear(), mes = cursor.getMonth();
+        const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+        const config = hhtDiasTrabalhadosMap[key] || {};
+        const headcount = headcountAsOf(new Date(ano, mes + 1, 0));
+        const label = cursor.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+        linhas.push({ key, ano, mes, label, headcount, dias: config.dias_trabalhados ?? '', horas: config.horas_por_dia ?? 8 });
+        cursor = new Date(ano, mes + 1, 1);
+    }
+
+    // Mais recente primeiro - é o mês que normalmente precisa de atenção.
+    linhas.reverse();
+
+    container.innerHTML = linhas.map(l => `
+        <div style="display: grid; grid-template-columns: 1.4fr 0.7fr 0.7fr 0.7fr auto; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 8px; background: var(--bg); font-size: 12.5px;">
+            <div style="font-weight: 600; text-transform: capitalize;">${escapeHTML(l.label)}</div>
+            <div style="color: var(--text-light);">Efetivo: <strong>${l.headcount}</strong></div>
+            <input type="number" min="0" step="1" placeholder="Dias" value="${l.dias}" id="hhtDias_${l.key}"
+                   style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
+            <input type="number" min="0" step="1" value="${l.horas}" id="hhtHoras_${l.key}"
+                   style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
+            <button class="db-apply-btn" style="padding: 6px 12px;" onclick="salvarDiasTrabalhadoMes('${l.key}', ${l.ano}, ${l.mes + 1})">💾</button>
+        </div>
+    `).join('');
+}
+
+async function salvarDiasTrabalhadoMes(key, ano, mes) {
+    const dias = parseInt(document.getElementById(`hhtDias_${key}`).value, 10);
+    const horas = parseInt(document.getElementById(`hhtHoras_${key}`).value, 10) || 8;
+    if (!dias || dias < 0) {
+        alert('Informe um número válido de dias trabalhados.');
+        return;
+    }
+    try {
+        await supabaseUpsert('hht_dias_trabalhados', [{ id: key, ano, mes, dias_trabalhados: dias, horas_por_dia: horas }]);
+        hhtDiasTrabalhadosMap[key] = { id: key, ano, mes, dias_trabalhados: dias, horas_por_dia: horas };
+    } catch (err) {
+        console.error('Erro ao salvar dias trabalhados:', err);
+        alert('Falha ao salvar: ' + err.message);
+    }
 }
 
 // ============================================

@@ -599,6 +599,7 @@
                     <div class="db-filter-buttons">
                         <button id="acidentesSubtabBtn-visao" class="db-filter-btn active" onclick="showAcidentesSubtab('visao')">📊 Visão Geral</button>
                         <button id="acidentesSubtabBtn-registrar" class="db-filter-btn" onclick="showAcidentesSubtab('registrar')">📝 Registrar Acidente</button>
+                        <button id="acidentesSubtabBtn-hht" class="db-filter-btn" onclick="showAcidentesSubtab('hht')">📅 Dias Trabalhados/Mês</button>
                     </div>
                 </div>
 
@@ -735,6 +736,18 @@
                     </div>
                 </div>
                 </div>
+
+                <div id="acidentesSubtab-hht" style="display:none;">
+                <div class="db-chart-card">
+                    <div class="db-chart-title">📅 Dias Trabalhados no Mês (base da HHT de Exposição)</div>
+                    <p style="font-size: 12px; color: var(--text-light); margin-bottom: 14px;">
+                        Preencha aqui os dias efetivamente trabalhados em cada mês (conforme seu controle de campo/RDO).
+                        A HHT de Exposição usada no TF/TG é calculada como <strong>Efetivo × Dias Trabalhados × Horas por Dia</strong>,
+                        igual à sua planilha oficial de Índices de Segurança. Meses sem preenchimento aparecem como "—" nos indicadores.
+                    </p>
+                    <div id="diasTrabalhadosLista" style="display: flex; flex-direction: column; gap: 6px; max-height: 520px; overflow-y: auto;"></div>
+                </div>
+                </div>
             </section>
 
             <!-- Página: Configurações -->
@@ -768,6 +781,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=24"></script>
+    <script src="dashboard.js?v=25"></script>
 </body>
 </html>

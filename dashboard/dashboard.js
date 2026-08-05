@@ -1941,6 +1941,13 @@ function renderEfetivoPanel() {
     // o mês atual, se for o ano corrente); sem filtro, mantém o histórico completo de
     // sempre (da primeira admissão registrada até hoje).
     const meses = [], admissoesPorMes = [], demissoesPorMes = [], efetivoPorMes = [], indicePorMes = [];
+    // hht220PorMes: "Horas Homens Trabalhadas" no sentido normativo (efetivo do mês × 220h
+    // mês-padrão) - metrica DIFERENTE do HHT de treinamento usado no índice acima; a
+    // planilha do cliente rastreia as duas separadamente (confirmado batendo o valor de
+    // jul/2024: efetivo 35 × 220 = 7700, exatamente o que a planilha mostra).
+    // admArcoverdePorMes/admSertaniaPorMes: admissões do mês por município da ADA (Área
+    // Diretamente Afetada) - as duas únicas cidades que contam pra esse indicador.
+    const hht220PorMes = [], admArcoverdePorMes = [], admSertaniaPorMes = [];
     let cursor, limite;
     if (anoSel !== null) {
         cursor = new Date(anoSel, 0, 1);
@@ -1956,14 +1963,17 @@ function renderEfetivoPanel() {
         const inicioMes = new Date(ano, mes, 1);
         const fimMes = new Date(ano, mes + 1, 0);
         meses.push(cursor.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
-        const adm = allEfetivo.filter(e => e.dt_admissao && parseLocalDate(e.dt_admissao) >= inicioMes && parseLocalDate(e.dt_admissao) <= fimMes).length;
+        const admDoMes = allEfetivo.filter(e => e.dt_admissao && parseLocalDate(e.dt_admissao) >= inicioMes && parseLocalDate(e.dt_admissao) <= fimMes);
         const dem = allEfetivo.filter(e => e.dt_demissao && parseLocalDate(e.dt_demissao) >= inicioMes && parseLocalDate(e.dt_demissao) <= fimMes).length;
         const eft = headcountAsOf(fimMes);
         const hht = hhtDoMes(ano, mes);
-        admissoesPorMes.push(adm);
+        admissoesPorMes.push(admDoMes.length);
         demissoesPorMes.push(dem);
         efetivoPorMes.push(eft);
         indicePorMes.push(eft > 0 ? Math.round((hht / eft) * 100) : 0);
+        hht220PorMes.push(eft * 220);
+        admArcoverdePorMes.push(admDoMes.filter(e => (e.cidade || '').toUpperCase().trim() === 'ARCOVERDE').length);
+        admSertaniaPorMes.push(admDoMes.filter(e => (e.cidade || '').toUpperCase().trim() === 'SERTÂNIA').length);
         cursor = new Date(ano, mes + 1, 1);
     }
 
@@ -1972,6 +1982,10 @@ function renderEfetivoPanel() {
     if (chartInstances.efetivoIndice) chartInstances.efetivoIndice.destroy();
     if (chartInstances.efetivoSetor) chartInstances.efetivoSetor.destroy();
     if (chartInstances.efetivoFuncao) chartInstances.efetivoFuncao.destroy();
+    if (chartInstances.efetivoHHT220) chartInstances.efetivoHHT220.destroy();
+    if (chartInstances.efetivoSexo) chartInstances.efetivoSexo.destroy();
+    if (chartInstances.adaAtual) chartInstances.adaAtual.destroy();
+    if (chartInstances.adaAdmissoes) chartInstances.adaAdmissoes.destroy();
 
     chartInstances.efetivoEvolucao = new Chart(document.getElementById('chartEfetivoEvolucao'), {
         type: 'line',
@@ -2018,6 +2032,65 @@ function renderEfetivoPanel() {
         type: 'bar',
         data: { labels: efetivoFuncaoLabels, datasets: [{ label: 'Efetivo', data: funcaoSorted.map(f => f[1]), backgroundColor: '#f59e0b', borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
+    });
+
+    // Horas Homens Trabalhadas normativo (efetivo × 220h/mês) - indicador de exposição
+    // usado pra taxas de frequência/gravidade, diferente do HHT de treinamento acima.
+    chartInstances.efetivoHHT220 = new Chart(document.getElementById('chartEfetivoHHT220'), {
+        type: 'bar',
+        data: { labels: meses, datasets: [{ label: 'HHT (Efetivo × 220)', data: hht220PorMes, backgroundColor: '#4f46e5', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    const sexoCounts = { MASCULINO: 0, FEMININO: 0 };
+    ativosNaData.forEach(e => {
+        const s = (e.sexo || '').toUpperCase().trim();
+        if (sexoCounts[s] !== undefined) sexoCounts[s]++;
+    });
+    chartInstances.efetivoSexo = new Chart(document.getElementById('chartEfetivoSexo'), {
+        type: 'doughnut',
+        data: {
+            labels: ['Masculino', 'Feminino'],
+            datasets: [{ data: [sexoCounts.MASCULINO, sexoCounts.FEMININO], backgroundColor: ['#4f46e5', '#ec4899'], borderWidth: 2, borderColor: '#fff' }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, cutout: '55%' }
+    });
+
+    // ADA (Área Diretamente Afetada): as duas únicas cidades que contam pro indicador -
+    // todo o resto do efetivo (outras cidades de origem) entra em "Outros".
+    const adaCounts = { ARCOVERDE: 0, 'SERTÂNIA': 0, OUTROS: 0 };
+    ativosNaData.forEach(e => {
+        const c = (e.cidade || '').toUpperCase().trim();
+        if (c === 'ARCOVERDE') adaCounts.ARCOVERDE++;
+        else if (c === 'SERTÂNIA') adaCounts['SERTÂNIA']++;
+        else adaCounts.OUTROS++;
+    });
+    chartInstances.adaAtual = new Chart(document.getElementById('chartAdaAtual'), {
+        type: 'doughnut',
+        data: {
+            labels: ['Arcoverde', 'Sertânia', 'Outros'],
+            datasets: [{ data: [adaCounts.ARCOVERDE, adaCounts['SERTÂNIA'], adaCounts.OUTROS], backgroundColor: ['#10b981', '#f59e0b', '#94a3b8'], borderWidth: 2, borderColor: '#fff' }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, cutout: '55%' }
+    });
+
+    const totalAda = ativosNaData.length;
+    const resumoEl = document.getElementById('adaResumo');
+    if (resumoEl) {
+        const pct = n => totalAda > 0 ? ((n / totalAda) * 100).toFixed(1) : '0.0';
+        resumoEl.innerHTML = `Arcoverde: <strong>${adaCounts.ARCOVERDE}</strong> (${pct(adaCounts.ARCOVERDE)}%) — Sertânia: <strong>${adaCounts['SERTÂNIA']}</strong> (${pct(adaCounts['SERTÂNIA'])}%) — Outros: <strong>${adaCounts.OUTROS}</strong> (${pct(adaCounts.OUTROS)}%)`;
+    }
+
+    chartInstances.adaAdmissoes = new Chart(document.getElementById('chartAdaAdmissoes'), {
+        type: 'bar',
+        data: {
+            labels: meses,
+            datasets: [
+                { label: 'Arcoverde', data: admArcoverdePorMes, backgroundColor: '#10b981', borderRadius: 4 },
+                { label: 'Sertânia', data: admSertaniaPorMes, backgroundColor: '#f59e0b', borderRadius: 4 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     });
 }
 

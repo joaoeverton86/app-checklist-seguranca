@@ -565,6 +565,27 @@
                         <div class="db-chart-title">Efetivo Atual por Função (Top 10)</div>
                         <div class="db-chart-canvas-wrap"><canvas id="chartEfetivoFuncao"></canvas></div>
                     </div>
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">Horas Homens Trabalhadas (Efetivo × 220) por Mês</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartEfetivoHHT220"></canvas></div>
+                    </div>
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">Efetivo Atual por Sexo</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartEfetivoSexo"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="db-periodo-titulo" style="margin-top: 24px;">📍 ADA — Área Diretamente Afetada</div>
+                <div class="db-charts-grid">
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">Efetivo Atual por Área (ADA)</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartAdaAtual"></canvas></div>
+                        <div id="adaResumo" style="font-size: 12px; color: var(--text-light); margin-top: 10px; text-align: center;"></div>
+                    </div>
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">Admissões por Área e Mês</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartAdaAdmissoes"></canvas></div>
+                    </div>
                 </div>
                 </div>
             </section>
@@ -600,6 +621,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=20"></script>
+    <script src="dashboard.js?v=21"></script>
 </body>
 </html>

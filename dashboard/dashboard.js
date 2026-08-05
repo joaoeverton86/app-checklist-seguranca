@@ -1843,6 +1843,14 @@ function headcountAsOf(dateEnd) {
     }).length;
 }
 
+// HHT normativo (Efetivo do mês × 220h) - denominador padrão de exposição usado tanto
+// no índice HHT/Efetivo quanto nas taxas de frequência/gravidade (módulo de
+// Acidentabilidade). Extraído aqui pra ser reutilizável fora do render do Efetivo.
+function hht220DoMes(ano, mesIndex0) {
+    const fimMes = new Date(ano, mesIndex0 + 1, 0);
+    return headcountAsOf(fimMes) * 220;
+}
+
 function hhtDoMes(ano, mesIndex0) {
     const ini = new Date(ano, mesIndex0, 1);
     const fim = new Date(ano, mesIndex0 + 1, 0);
@@ -2173,6 +2181,341 @@ async function importarEfetivoCSV() {
 }
 
 // ============================================
+// ACIDENTABILIDADE (NR-01 / NBR 14280) - TF/TG usam o mesmo HHT normativo (efetivo ×
+// 220h) já usado no painel Efetivo. Tabela isolada (acidentes), só lida/escrita aqui.
+// ============================================
+
+let allAcidentes = [];
+let acidentesLoaded = false;
+let acidentesFilter = 'mes';
+
+function getAcidentesDateRange() {
+    const now = new Date();
+    const fim = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59, 999);
+    if (acidentesFilter === 'trimestre') {
+        return { inicio: new Date(now.getFullYear(), now.getMonth() - 2, 1), fim };
+    }
+    if (acidentesFilter === 'ano') {
+        return { inicio: new Date(now.getFullYear(), 0, 1), fim };
+    }
+    if (acidentesFilter === 'todos') {
+        return { inicio: new Date(2000, 0, 1), fim };
+    }
+    return { inicio: new Date(now.getFullYear(), now.getMonth(), 1), fim };
+}
+
+function setAcidentesFilter(filter) {
+    acidentesFilter = filter;
+    ['btnFiltroAcidMes', 'btnFiltroAcidTrimestre', 'btnFiltroAcidAno', 'btnFiltroAcidTodos'].forEach(id => {
+        document.getElementById(id)?.classList.remove('active');
+    });
+    const map = { mes: 'btnFiltroAcidMes', trimestre: 'btnFiltroAcidTrimestre', ano: 'btnFiltroAcidAno', todos: 'btnFiltroAcidTodos' };
+    document.getElementById(map[filter])?.classList.add('active');
+    renderAcidentesPanel();
+}
+
+async function loadAcidentesData() {
+    try {
+        allAcidentes = await supabaseFetch('acidentes', '?select=*');
+        // Precisa do efetivo pro HHT (efetivo × 220) e pra sugerir/autocompletar o
+        // colaborador no formulário - carrega mesmo se o usuário nunca abriu Efetivo.
+        if (allEfetivo.length === 0) {
+            allEfetivo = await supabaseFetch('colaboradores_efetivo', '?select=*');
+        }
+        popularAcidentesColabDatalist();
+        renderAcidentesPanel();
+    } catch (err) {
+        console.error('Erro ao carregar dados de acidentes:', err);
+    }
+}
+
+function popularAcidentesColabDatalist() {
+    const dl = document.getElementById('acidentesColabList');
+    if (!dl || dl.options.length > 0) return;
+    allEfetivo.filter(e => e.status === 'ATIVO').sort((a, b) => (a.nome || '').localeCompare(b.nome || '')).forEach(e => {
+        const opt = document.createElement('option');
+        opt.value = `${e.id} - ${e.nome}`;
+        dl.appendChild(opt);
+    });
+}
+
+function onAcidColaboradorChange() {
+    const raw = document.getElementById('acidForm_matricula').value;
+    const matricula = raw.includes(' - ') ? raw.split(' - ')[0].trim() : raw.trim();
+    const colab = allEfetivo.find(e => e.id === matricula);
+    if (colab && colab.setor) {
+        document.getElementById('acidForm_setor').value = colab.setor;
+    }
+}
+
+// Dias corridos desde o último acidente daquele tipo (com ou sem afastamento) até
+// hoje - null quando não há nenhum registro desse tipo ainda (não dá pra calcular
+// "dias sem" sem uma data de referência).
+function diasSemAcidente(comAfastamento) {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const relevantes = allAcidentes.filter(a => !!a.com_afastamento === comAfastamento && a.data_acidente);
+    if (relevantes.length === 0) return null;
+    const ultimo = relevantes.reduce((max, a) => {
+        const d = parseLocalDate(a.data_acidente);
+        return d > max ? d : max;
+    }, new Date(0));
+    ultimo.setHours(0, 0, 0, 0);
+    return Math.max(0, Math.floor((hoje.getTime() - ultimo.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
+function renderAcidentesPanel() {
+    const { inicio, fim } = getAcidentesDateRange();
+    const periodo = allAcidentes.filter(a => {
+        if (!a.data_acidente) return false;
+        const d = parseLocalDate(a.data_acidente);
+        return d >= inicio && d <= fim;
+    });
+
+    // HHT do período: soma o HHT normativo (efetivo × 220) de cada mês coberto.
+    let hhtPeriodo = 0;
+    let cursorHht = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
+    const limiteHht = new Date(fim.getFullYear(), fim.getMonth(), 1);
+    while (cursorHht <= limiteHht) {
+        hhtPeriodo += hht220DoMes(cursorHht.getFullYear(), cursorHht.getMonth());
+        cursorHht = new Date(cursorHht.getFullYear(), cursorHht.getMonth() + 1, 1);
+    }
+
+    const numAcidentes = periodo.length;
+    const diasPerdidosTotal = periodo.reduce((s, a) => s + (parseInt(a.dias_perdidos, 10) || 0), 0);
+    const diasDebitadosTotal = periodo.reduce((s, a) => s + (parseInt(a.dias_debitados, 10) || 0), 0);
+
+    const tf = hhtPeriodo > 0 ? (numAcidentes * 1000000 / hhtPeriodo) : 0;
+    const tg = hhtPeriodo > 0 ? ((diasPerdidosTotal + diasDebitadosTotal) * 1000000 / hhtPeriodo) : 0;
+
+    document.getElementById('kpiAcidTF').textContent = tf.toFixed(2);
+    document.getElementById('kpiAcidTG').textContent = tg.toFixed(2);
+    document.getElementById('kpiAcidTotal').textContent = numAcidentes;
+
+    const diasCPT = diasSemAcidente(true);
+    const diasSPT = diasSemAcidente(false);
+    document.getElementById('kpiAcidDiasSemCPT').textContent = diasCPT === null ? '—' : diasCPT;
+    document.getElementById('kpiAcidDiasSemSPT').textContent = diasSPT === null ? '—' : diasSPT;
+
+    const listaEl = document.getElementById('listAcidentesHistorico');
+    const periodoOrdenado = periodo.slice().sort((a, b) => (b.data_acidente || '').localeCompare(a.data_acidente || ''));
+    if (periodoOrdenado.length === 0) {
+        listaEl.innerHTML = '<div class="db-list-empty">✅ Nenhum acidente registrado no período</div>';
+    } else {
+        listaEl.innerHTML = periodoOrdenado.map(a => {
+            const cls = a.com_afastamento ? 'db-item-danger' : 'db-item-warning';
+            return `<div class="db-list-item ${cls}" style="cursor:pointer;" onclick="abrirFormAcidente('${escapeHTML(a.id)}')">
+                <div class="db-list-item-title">${escapeHTML(a.tipo_acidente || 'Não especificado')} ${a.com_afastamento ? '(CPT)' : '(SPT)'}</div>
+                <div class="db-list-item-sub">${escapeHTML(a.nome_colaborador || 'Não identificado')} — ${formatSimpleDate(a.data_acidente)}${a.setor ? ' — ' + escapeHTML(a.setor) : ''}</div>
+            </div>`;
+        }).join('');
+    }
+
+    if (typeof Chart === 'undefined') return;
+    if (chartInstances.acidTFTG) chartInstances.acidTFTG.destroy();
+    if (chartInstances.acidTipologia) chartInstances.acidTipologia.destroy();
+    if (chartInstances.acidSetor) chartInstances.acidSetor.destroy();
+
+    // TF/TG por mês - histórico completo desde a primeira admissão registrada (não só
+    // desde o primeiro acidente - "0 acidentes" também é um dado válido pra mostrar).
+    const hoje = new Date();
+    const datasAdmissao = allEfetivo.filter(e => e.dt_admissao).map(e => parseLocalDate(e.dt_admissao));
+    const primeiraData = datasAdmissao.length > 0 ? new Date(Math.min(...datasAdmissao.map(d => d.getTime()))) : hoje;
+    const mesesAcid = [], tfPorMes = [], tgPorMes = [];
+    let cursorAcid = new Date(primeiraData.getFullYear(), primeiraData.getMonth(), 1);
+    const limiteAcid = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    while (cursorAcid <= limiteAcid) {
+        const ano = cursorAcid.getFullYear(), mes = cursorAcid.getMonth();
+        const inicioMes = new Date(ano, mes, 1);
+        const fimMes = new Date(ano, mes + 1, 0);
+        mesesAcid.push(cursorAcid.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
+        const acidDoMes = allAcidentes.filter(a => a.data_acidente && parseLocalDate(a.data_acidente) >= inicioMes && parseLocalDate(a.data_acidente) <= fimMes);
+        const hhtMes = hht220DoMes(ano, mes);
+        const dPerdidosMes = acidDoMes.reduce((s, a) => s + (parseInt(a.dias_perdidos, 10) || 0), 0);
+        const dDebitadosMes = acidDoMes.reduce((s, a) => s + (parseInt(a.dias_debitados, 10) || 0), 0);
+        tfPorMes.push(hhtMes > 0 ? Math.round((acidDoMes.length * 1000000 / hhtMes) * 100) / 100 : 0);
+        tgPorMes.push(hhtMes > 0 ? Math.round(((dPerdidosMes + dDebitadosMes) * 1000000 / hhtMes) * 100) / 100 : 0);
+        cursorAcid = new Date(ano, mes + 1, 1);
+    }
+
+    chartInstances.acidTFTG = new Chart(document.getElementById('chartAcidTFTG'), {
+        type: 'line',
+        data: {
+            labels: mesesAcid,
+            datasets: [
+                { label: 'TF', data: tfPorMes, borderColor: '#4f46e5', backgroundColor: 'rgba(79,70,229,0.08)', fill: true, tension: 0.25, yAxisID: 'y' },
+                { label: 'TG', data: tgPorMes, borderColor: '#ef4444', backgroundColor: 'transparent', tension: 0.25, yAxisID: 'y1' }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: {
+                y: { position: 'left', beginAtZero: true, title: { display: true, text: 'TF' } },
+                y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'TG' } }
+            }
+        }
+    });
+
+    const tipoCounts = {};
+    allAcidentes.forEach(a => { const t = a.tipo_acidente || 'Não especificado'; tipoCounts[t] = (tipoCounts[t] || 0) + 1; });
+    const tipoSorted = Object.entries(tipoCounts).sort((a, b) => b[1] - a[1]);
+    const tipoLabels = tipoSorted.map(t => wrapChartLabel(t[0]));
+    ajustarAlturaBarrasHorizontais('chartAcidTipologia', tipoLabels);
+    chartInstances.acidTipologia = new Chart(document.getElementById('chartAcidTipologia'), {
+        type: 'bar',
+        data: { labels: tipoLabels, datasets: [{ label: 'Acidentes', data: tipoSorted.map(t => t[1]), backgroundColor: '#f59e0b', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
+    });
+
+    const setorCounts = {};
+    allAcidentes.forEach(a => { const s = a.setor || 'Não informado'; setorCounts[s] = (setorCounts[s] || 0) + 1; });
+    const setorSorted = Object.entries(setorCounts).sort((a, b) => b[1] - a[1]);
+    const setorLabels = setorSorted.map(s => wrapChartLabel(s[0]));
+    ajustarAlturaBarrasHorizontais('chartAcidSetor', setorLabels);
+    chartInstances.acidSetor = new Chart(document.getElementById('chartAcidSetor'), {
+        type: 'bar',
+        data: { labels: setorLabels, datasets: [{ label: 'Acidentes', data: setorSorted.map(s => s[1]), backgroundColor: '#ef4444', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
+    });
+}
+
+function abrirFormAcidente(id) {
+    const form = document.getElementById('acidenteFormCard');
+    const title = document.getElementById('acidenteFormTitle');
+    const btnExcluir = document.getElementById('acidForm_btnExcluir');
+    document.getElementById('acidenteFormStatus').textContent = '';
+    popularAcidentesColabDatalist();
+
+    if (id) {
+        const a = allAcidentes.find(x => x.id === id);
+        if (!a) return;
+        title.textContent = '✏️ Editar Acidente';
+        form.dataset.editId = id;
+        document.getElementById('acidForm_data').value = a.data_acidente || '';
+        document.getElementById('acidForm_matricula').value = a.matricula ? `${a.matricula} - ${a.nome_colaborador || ''}` : (a.nome_colaborador || '');
+        document.getElementById('acidForm_setor').value = a.setor || '';
+        document.getElementById('acidForm_tipo').value = a.tipo_acidente || '';
+        document.getElementById('acidForm_afastamento').value = a.com_afastamento ? 'sim' : 'nao';
+        document.getElementById('acidForm_diasPerdidos').value = a.dias_perdidos || 0;
+        document.getElementById('acidForm_diasDebitados').value = a.dias_debitados || 0;
+        document.getElementById('acidForm_parteCorpo').value = a.parte_corpo || '';
+        document.getElementById('acidForm_agenteCausador').value = a.agente_causador || '';
+        document.getElementById('acidForm_local').value = a.local || '';
+        document.getElementById('acidForm_descricao').value = a.descricao || '';
+        btnExcluir.style.display = 'inline-block';
+    } else {
+        title.textContent = '🚑 Registrar Acidente';
+        delete form.dataset.editId;
+        document.getElementById('acidForm_data').value = new Date().toISOString().split('T')[0];
+        document.getElementById('acidForm_matricula').value = '';
+        document.getElementById('acidForm_setor').value = '';
+        document.getElementById('acidForm_tipo').value = '';
+        document.getElementById('acidForm_afastamento').value = 'nao';
+        document.getElementById('acidForm_diasPerdidos').value = 0;
+        document.getElementById('acidForm_diasDebitados').value = 0;
+        document.getElementById('acidForm_parteCorpo').value = '';
+        document.getElementById('acidForm_agenteCausador').value = '';
+        document.getElementById('acidForm_local').value = '';
+        document.getElementById('acidForm_descricao').value = '';
+        btnExcluir.style.display = 'none';
+    }
+
+    showAcidentesSubtab('registrar');
+}
+
+function fecharFormAcidente() {
+    showAcidentesSubtab('visao');
+}
+
+async function salvarAcidente() {
+    const statusEl = document.getElementById('acidenteFormStatus');
+    const data = document.getElementById('acidForm_data').value;
+    const tipo = document.getElementById('acidForm_tipo').value;
+
+    if (!data || !tipo) {
+        statusEl.textContent = '❌ Data e tipo de acidente são obrigatórios.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const rawColab = document.getElementById('acidForm_matricula').value.trim();
+    let matricula = '', nomeColaborador = '', funcao = '';
+    if (rawColab) {
+        matricula = rawColab.includes(' - ') ? rawColab.split(' - ')[0].trim() : rawColab;
+        const colab = allEfetivo.find(e => e.id === matricula);
+        if (colab) {
+            nomeColaborador = colab.nome || '';
+            funcao = colab.funcao || '';
+        } else {
+            // Não bateu com nenhuma matrícula cadastrada - trata como nome livre
+            // (terceiro/visitante sem cadastro no efetivo).
+            nomeColaborador = rawColab;
+            matricula = '';
+        }
+    }
+
+    const form = document.getElementById('acidenteFormCard');
+    const editId = form.dataset.editId;
+    const id = editId || ('ACID_' + Date.now());
+
+    const row = {
+        id,
+        data_acidente: data,
+        matricula: matricula || null,
+        nome_colaborador: nomeColaborador || null,
+        funcao: funcao || null,
+        setor: document.getElementById('acidForm_setor').value.trim() || null,
+        tipo_acidente: tipo,
+        com_afastamento: document.getElementById('acidForm_afastamento').value === 'sim',
+        dias_perdidos: parseInt(document.getElementById('acidForm_diasPerdidos').value, 10) || 0,
+        dias_debitados: parseInt(document.getElementById('acidForm_diasDebitados').value, 10) || 0,
+        parte_corpo: document.getElementById('acidForm_parteCorpo').value.trim() || null,
+        agente_causador: document.getElementById('acidForm_agenteCausador').value.trim() || null,
+        local: document.getElementById('acidForm_local').value.trim() || null,
+        descricao: document.getElementById('acidForm_descricao').value.trim() || null
+    };
+
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('acidentes', [row]);
+        const idx = allAcidentes.findIndex(a => a.id === id);
+        if (idx >= 0) allAcidentes[idx] = { ...allAcidentes[idx], ...row };
+        else allAcidentes.push(row);
+
+        statusEl.textContent = '✅ Salvo com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => fecharFormAcidente(), 900);
+    } catch (err) {
+        console.error('Erro ao salvar acidente:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function excluirAcidenteAtual() {
+    const form = document.getElementById('acidenteFormCard');
+    const id = form.dataset.editId;
+    if (!id) return;
+    if (!confirm('Excluir este registro de acidente? Essa ação não pode ser desfeita.')) return;
+
+    const statusEl = document.getElementById('acidenteFormStatus');
+    statusEl.textContent = 'Excluindo...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseDelete('acidentes', id);
+        allAcidentes = allAcidentes.filter(a => a.id !== id);
+        statusEl.textContent = '✅ Excluído com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => fecharFormAcidente(), 900);
+    } catch (err) {
+        console.error('Erro ao excluir acidente:', err);
+        statusEl.textContent = '❌ Falha ao excluir: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// ============================================
 // NAVEGAÇÃO ENTRE PÁGINAS (barra lateral)
 // ============================================
 
@@ -2182,6 +2525,7 @@ const DB_PAGE_TITLES = {
     relatos: 'Relatos de Problemas',
     treinamentos: 'Treinamentos',
     efetivo: 'Efetivo',
+    acidentes: 'Acidentabilidade',
     config: 'Configurações'
 };
 
@@ -2190,7 +2534,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', efetivo: 'navEfetivo', config: 'navConfig' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', efetivo: 'navEfetivo', acidentes: 'navAcidentes', config: 'navConfig' };
     document.getElementById(navMap[pageId])?.classList.add('active');
 
     document.getElementById('pageTitle').textContent = DB_PAGE_TITLES[pageId] || '';
@@ -2210,6 +2554,20 @@ function showDbPage(pageId) {
         if (!efetivoLoaded) { efetivoLoaded = true; loadEfetivoData(); }
         else renderEfetivoPanel();
     }
+    if (pageId === 'acidentes') {
+        if (!acidentesLoaded) { acidentesLoaded = true; loadAcidentesData(); }
+        else renderAcidentesPanel();
+    }
+}
+
+function showAcidentesSubtab(tab) {
+    ['visao', 'registrar'].forEach(t => {
+        const content = document.getElementById('acidentesSubtab-' + t);
+        const btn = document.getElementById('acidentesSubtabBtn-' + t);
+        if (content) content.style.display = (t === tab) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
+    if (tab === 'visao') renderAcidentesPanel();
 }
 
 // ============================================
@@ -2245,6 +2603,10 @@ function rerenderGraficosDaPaginaAtiva() {
     } else if (paginaAtiva === 'navEfetivo') {
         if (document.getElementById('efetivoSubtabBtn-visao')?.classList.contains('active')) {
             renderEfetivoPanel();
+        }
+    } else if (paginaAtiva === 'navAcidentes') {
+        if (document.getElementById('acidentesSubtabBtn-visao')?.classList.contains('active')) {
+            renderAcidentesPanel();
         }
     }
 }

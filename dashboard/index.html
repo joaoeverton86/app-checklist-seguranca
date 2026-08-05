@@ -37,6 +37,9 @@
                 <button class="db-nav-item" id="navEfetivo" onclick="showDbPage('efetivo')">
                     <span class="db-nav-icon">👷</span> Efetivo
                 </button>
+                <button class="db-nav-item" id="navAcidentes" onclick="showDbPage('acidentes')">
+                    <span class="db-nav-icon">🚑</span> Acidentabilidade
+                </button>
                 <button class="db-nav-item" id="navConfig" onclick="showDbPage('config')">
                     <span class="db-nav-icon">⚙️</span> Configurações
                 </button>
@@ -590,6 +593,150 @@
                 </div>
             </section>
 
+            <!-- Página: Acidentabilidade (NR-01 / NBR 14280) -->
+            <section class="db-page" id="page-acidentes">
+                <div class="db-filters" style="margin-bottom: 16px;">
+                    <div class="db-filter-buttons">
+                        <button id="acidentesSubtabBtn-visao" class="db-filter-btn active" onclick="showAcidentesSubtab('visao')">📊 Visão Geral</button>
+                        <button id="acidentesSubtabBtn-registrar" class="db-filter-btn" onclick="showAcidentesSubtab('registrar')">📝 Registrar Acidente</button>
+                    </div>
+                </div>
+
+                <div id="acidentesSubtab-visao">
+                <div class="db-filters">
+                    <div class="db-filter-buttons">
+                        <button id="btnFiltroAcidMes" class="db-filter-btn active" onclick="setAcidentesFilter('mes')">Este Mês</button>
+                        <button id="btnFiltroAcidTrimestre" class="db-filter-btn" onclick="setAcidentesFilter('trimestre')">Últimos 3 Meses</button>
+                        <button id="btnFiltroAcidAno" class="db-filter-btn" onclick="setAcidentesFilter('ano')">Este Ano</button>
+                        <button id="btnFiltroAcidTodos" class="db-filter-btn" onclick="setAcidentesFilter('todos')">Todos</button>
+                    </div>
+                </div>
+
+                <div class="db-kpi-grid">
+                    <div class="db-kpi-card db-kpi-primary">
+                        <div class="db-kpi-value" id="kpiAcidTF">0</div>
+                        <div class="db-kpi-label">Taxa de Frequência (TF)</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-danger">
+                        <div class="db-kpi-value" id="kpiAcidTG">0</div>
+                        <div class="db-kpi-label">Taxa de Gravidade (TG)</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-success">
+                        <div class="db-kpi-value" id="kpiAcidDiasSemCPT">0</div>
+                        <div class="db-kpi-label">Dias sem Acidente c/ Afastamento (CPT)</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-warning">
+                        <div class="db-kpi-value" id="kpiAcidDiasSemSPT">0</div>
+                        <div class="db-kpi-label">Dias sem Acidente s/ Afastamento (SPT)</div>
+                    </div>
+                    <div class="db-kpi-card">
+                        <div class="db-kpi-value" id="kpiAcidTotal">0</div>
+                        <div class="db-kpi-label">Acidentes no Período</div>
+                    </div>
+                </div>
+
+                <div class="db-charts-grid">
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">TF e TG por Mês (Histórico Completo)</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartAcidTFTG"></canvas></div>
+                    </div>
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">Acidentes por Tipologia</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartAcidTipologia"></canvas></div>
+                    </div>
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">Acidentes por Setor</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartAcidSetor"></canvas></div>
+                    </div>
+                    <div class="db-chart-card db-list-card">
+                        <div class="db-chart-title">Histórico de Acidentes no Período</div>
+                        <div id="listAcidentesHistorico" class="db-list"></div>
+                    </div>
+                </div>
+                </div>
+
+                <div id="acidentesSubtab-registrar" style="display:none;">
+                <div class="db-chart-card" id="acidenteFormCard" style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" id="acidenteFormTitle" style="margin-bottom: 0;">🚑 Registrar Acidente</div>
+                        <button class="db-clear-btn" onclick="abrirFormAcidente()">🔄 Novo Registro</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data do Acidente *</label>
+                            <input type="date" id="acidForm_data" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Colaborador (matrícula ou nome)</label>
+                            <input type="text" id="acidForm_matricula" list="acidentesColabList" placeholder="Opcional - deixe em branco se for terceiro"
+                                   oninput="onAcidColaboradorChange()"
+                                   style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <datalist id="acidentesColabList"></datalist>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Setor</label>
+                            <input type="text" id="acidForm_setor" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Tipo de Acidente *</label>
+                            <select id="acidForm_tipo" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="">Selecione...</option>
+                                <option>Queda de mesmo nível</option>
+                                <option>Queda de nível diferente</option>
+                                <option>Prensamento</option>
+                                <option>Choque elétrico</option>
+                                <option>Projeção de partículas</option>
+                                <option>Corte / Perfuração</option>
+                                <option>Atropelamento / Colisão</option>
+                                <option>Esforço físico / Sobreesforço</option>
+                                <option>Contato com produto químico</option>
+                                <option>Queimadura</option>
+                                <option>Picada / Mordida de animal</option>
+                                <option>Outro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Com Afastamento?</label>
+                            <select id="acidForm_afastamento" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="nao">Não (SPT - sem perda de tempo)</option>
+                                <option value="sim">Sim (CPT - com perda de tempo)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Dias Perdidos</label>
+                            <input type="number" id="acidForm_diasPerdidos" min="0" step="1" value="0" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Dias Debitados (tabela NBR 14280)</label>
+                            <input type="number" id="acidForm_diasDebitados" min="0" step="1" value="0" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Parte do Corpo Atingida</label>
+                            <input type="text" id="acidForm_parteCorpo" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Agente Causador</label>
+                            <input type="text" id="acidForm_agenteCausador" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Local</label>
+                            <input type="text" id="acidForm_local" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div style="grid-column: 1 / -1;">
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Descrição</label>
+                            <textarea id="acidForm_descricao" rows="3" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-family: inherit; font-size: inherit; resize: vertical;"></textarea>
+                        </div>
+                    </div>
+                    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="salvarAcidente()">💾 Salvar</button>
+                        <button class="db-clear-btn" onclick="fecharFormAcidente()">Cancelar</button>
+                        <button id="acidForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirAcidenteAtual()">🗑️ Excluir</button>
+                        <span id="acidenteFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
+                </div>
+            </section>
+
             <!-- Página: Configurações -->
             <section class="db-page" id="page-config">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
@@ -621,6 +768,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=23"></script>
+    <script src="dashboard.js?v=24"></script>
 </body>
 </html>

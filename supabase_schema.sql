@@ -570,6 +570,34 @@ CREATE POLICY "Acesso total ao efetivo" ON public.colaboradores_efetivo FOR ALL 
 
 GRANT ALL ON public.colaboradores_efetivo TO anon;
 
+CREATE TABLE IF NOT EXISTS public.acidentes (
+    id TEXT PRIMARY KEY,
+    data_acidente DATE NOT NULL,
+    matricula TEXT,
+    nome_colaborador TEXT,
+    funcao TEXT,
+    setor TEXT,
+    tipo_acidente TEXT,
+    com_afastamento BOOLEAN DEFAULT false,
+    dias_perdidos INTEGER DEFAULT 0,
+    dias_debitados INTEGER DEFAULT 0,
+    parte_corpo TEXT,
+    agente_causador TEXT,
+    local TEXT,
+    descricao TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.acidentes ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acesso total aos acidentes" ON public.acidentes;
+CREATE POLICY "Acesso total aos acidentes" ON public.acidentes FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON public.acidentes TO anon;
+
+CREATE INDEX IF NOT EXISTS idx_acidentes_data ON public.acidentes(data_acidente);
+CREATE INDEX IF NOT EXISTS idx_acidentes_com_afastamento ON public.acidentes(com_afastamento);
+
 -- ============================================================
 -- RISCOS RESIDUAIS CONHECIDOS (documentados, não corrigidos nesta versão)
 -- ============================================================

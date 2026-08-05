@@ -83,6 +83,30 @@ function escapeHTML(str) {
     );
 }
 
+// Chart.js corta (não quebra nem reticências) rótulos do eixo de categoria quando não
+// cabem na largura disponível - achado real num card estreito com nomes de treinamento
+// longos. Devolver um array de strings em vez de uma string faz o Chart.js desenhar
+// cada item como uma linha própria do tick, então isso quebra o texto em várias linhas
+// curtas ao invés de cortar. Usado em todo gráfico de barra horizontal (indexAxis: 'y').
+function wrapChartLabel(label, maxCharsPerLine = 22) {
+    const str = String(label || '');
+    if (str.length <= maxCharsPerLine) return str;
+    const words = str.split(' ');
+    const lines = [];
+    let current = '';
+    words.forEach(word => {
+        const tentativa = current ? current + ' ' + word : word;
+        if (tentativa.length > maxCharsPerLine && current) {
+            lines.push(current);
+            current = word;
+        } else {
+            current = tentativa;
+        }
+    });
+    if (current) lines.push(current);
+    return lines;
+}
+
 // Portado de app.js (parseLocalDate) - mesma lógica de parsing tolerante a
 // formato ISO/BR, pra bater exatamente com o que o app de campo já mostra.
 function parseLocalDate(dateStr) {
@@ -389,7 +413,7 @@ function renderCharts(checklistsPeriodo, filterChecklistArray) {
     const typeSorted = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).slice(0, 12);
     chartInstances.tipo = new Chart(document.getElementById('chartPorTipo'), {
         type: 'bar',
-        data: { labels: typeSorted.map(t => t[0]), datasets: [{ label: 'Checklists', data: typeSorted.map(t => t[1]), backgroundColor: colors.primaryLight, borderRadius: 6 }] },
+        data: { labels: typeSorted.map(t => wrapChartLabel(t[0])), datasets: [{ label: 'Checklists', data: typeSorted.map(t => t[1]), backgroundColor: colors.primaryLight, borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     });
 
@@ -424,7 +448,7 @@ function renderCharts(checklistsPeriodo, filterChecklistArray) {
     const itemsSorted = Object.entries(itemCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
     chartInstances.itens = new Chart(document.getElementById('chartItensNC'), {
         type: 'bar',
-        data: { labels: itemsSorted.map(i => i[0]), datasets: [{ label: 'Ocorrências', data: itemsSorted.map(i => i[1]), backgroundColor: itemsSorted.map((_, idx) => `rgba(239, 68, 68, ${1 - idx * 0.07})`), borderRadius: 6 }] },
+        data: { labels: itemsSorted.map(i => wrapChartLabel(i[0])), datasets: [{ label: 'Ocorrências', data: itemsSorted.map(i => i[1]), backgroundColor: itemsSorted.map((_, idx) => `rgba(239, 68, 68, ${1 - idx * 0.07})`), borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     });
 
@@ -440,7 +464,7 @@ function renderCharts(checklistsPeriodo, filterChecklistArray) {
     const equipSorted = Object.entries(equipCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
     chartInstances.equip = new Chart(document.getElementById('chartEquipNC'), {
         type: 'bar',
-        data: { labels: equipSorted.map(e => e[0]), datasets: [{ label: 'Não Conformidades', data: equipSorted.map(e => e[1]), backgroundColor: colors.danger, borderRadius: 6 }] },
+        data: { labels: equipSorted.map(e => wrapChartLabel(e[0])), datasets: [{ label: 'Não Conformidades', data: equipSorted.map(e => e[1]), backgroundColor: colors.danger, borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     });
 
@@ -456,7 +480,7 @@ function renderCharts(checklistsPeriodo, filterChecklistArray) {
     const empresaSorted = Object.entries(empresaCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
     chartInstances.empresa = new Chart(document.getElementById('chartEmpresaNC'), {
         type: 'bar',
-        data: { labels: empresaSorted.map(e => e[0]), datasets: [{ label: 'Não Conformidades', data: empresaSorted.map(e => e[1]), backgroundColor: colors.warning || '#f59e0b', borderRadius: 6 }] },
+        data: { labels: empresaSorted.map(e => wrapChartLabel(e[0])), datasets: [{ label: 'Não Conformidades', data: empresaSorted.map(e => e[1]), backgroundColor: colors.warning || '#f59e0b', borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     });
 }
@@ -553,7 +577,7 @@ function renderRelatosPanel() {
     if (typeof Chart !== 'undefined') {
         chartInstances.relatosTipo = new Chart(document.getElementById('chartRelatosTipo'), {
             type: 'bar',
-            data: { labels: tipoSorted.map(t => t[0]), datasets: [{ label: 'Relatos', data: tipoSorted.map(t => t[1]), backgroundColor: '#818cf8', borderRadius: 6 }] },
+            data: { labels: tipoSorted.map(t => wrapChartLabel(t[0])), datasets: [{ label: 'Relatos', data: tipoSorted.map(t => t[1]), backgroundColor: '#818cf8', borderRadius: 6 }] },
             options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
         });
     }
@@ -761,7 +785,7 @@ function renderTreinamentosPanel() {
     const setorSorted = Object.entries(setorCounts).sort((a, b) => b[1] - a[1]);
     chartInstances.treinSetor = new Chart(document.getElementById('chartTreinSetor'), {
         type: 'bar',
-        data: { labels: setorSorted.map(s => s[0]), datasets: [{ label: 'HHT', data: setorSorted.map(s => s[1]), backgroundColor: '#818cf8', borderRadius: 6 }] },
+        data: { labels: setorSorted.map(s => wrapChartLabel(s[0])), datasets: [{ label: 'HHT', data: setorSorted.map(s => s[1]), backgroundColor: '#818cf8', borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
     });
 
@@ -771,7 +795,7 @@ function renderTreinamentosPanel() {
     const temaSorted = Object.entries(temaCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
     chartInstances.treinTopTemas = new Chart(document.getElementById('chartTreinTopTemas'), {
         type: 'bar',
-        data: { labels: temaSorted.map(t => t[0]), datasets: [{ label: 'Sessões', data: temaSorted.map(t => t[1]), backgroundColor: '#10b981', borderRadius: 6 }] },
+        data: { labels: temaSorted.map(t => wrapChartLabel(t[0])), datasets: [{ label: 'Sessões', data: temaSorted.map(t => t[1]), backgroundColor: '#10b981', borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     });
 }
@@ -1910,7 +1934,7 @@ function renderEfetivoPanel() {
     const setorSorted = Object.entries(setorCounts).sort((a, b) => b[1] - a[1]);
     chartInstances.efetivoSetor = new Chart(document.getElementById('chartEfetivoSetor'), {
         type: 'bar',
-        data: { labels: setorSorted.map(s => s[0]), datasets: [{ label: 'Efetivo', data: setorSorted.map(s => s[1]), backgroundColor: '#10b981', borderRadius: 6 }] },
+        data: { labels: setorSorted.map(s => wrapChartLabel(s[0])), datasets: [{ label: 'Efetivo', data: setorSorted.map(s => s[1]), backgroundColor: '#10b981', borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     });
 
@@ -1919,7 +1943,7 @@ function renderEfetivoPanel() {
     const funcaoSorted = Object.entries(funcaoCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
     chartInstances.efetivoFuncao = new Chart(document.getElementById('chartEfetivoFuncao'), {
         type: 'bar',
-        data: { labels: funcaoSorted.map(f => f[0]), datasets: [{ label: 'Efetivo', data: funcaoSorted.map(f => f[1]), backgroundColor: '#f59e0b', borderRadius: 6 }] },
+        data: { labels: funcaoSorted.map(f => wrapChartLabel(f[0])), datasets: [{ label: 'Efetivo', data: funcaoSorted.map(f => f[1]), backgroundColor: '#f59e0b', borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     });
 }

@@ -4010,6 +4010,105 @@ function calcularStatusAsoColaborador(matricula) {
     return { status, ultimoExame: ultimo, diffDays };
 }
 
+// ============================================
+// PREVISÃO DE EXAMES DO MÊS - pra responder "quantos exames e quais tipos" quando o
+// financeiro pergunta, sem precisar contar GHE por GHE na mão. Reaproveita a mesma
+// data_vencimento já usada no bucket vencido/vencendo/em_dia (calcularStatusAsoColaborador)
+// e a lista de exames por GHE (examesGheColaborador/PCMSO_EXAMES_POR_GHE) - a mesma lógica
+// que já mostra "exames exigidos" no formulário de registro de ASO, só que agregada por
+// mês em vez de por colaborador individual.
+// ============================================
+
+let previsaoExamesAno = null;
+let previsaoExamesMes = null;
+
+function popularFiltroPrevisaoExames() {
+    const hoje = new Date();
+    if (previsaoExamesAno === null) previsaoExamesAno = hoje.getFullYear();
+    if (previsaoExamesMes === null) previsaoExamesMes = hoje.getMonth();
+    const selAno = document.getElementById('previsaoExamesAno');
+    const selMes = document.getElementById('previsaoExamesMes');
+    if (selAno && !selAno.value) selAno.value = String(previsaoExamesAno);
+    if (selMes && selMes.value === '') selMes.value = String(previsaoExamesMes);
+}
+
+function onPrevisaoExamesFiltroChange() {
+    const selAno = document.getElementById('previsaoExamesAno');
+    const selMes = document.getElementById('previsaoExamesMes');
+    previsaoExamesAno = parseInt(selAno.value, 10);
+    previsaoExamesMes = parseInt(selMes.value, 10);
+    renderPrevisaoExames();
+}
+
+function renderPrevisaoExames() {
+    popularFiltroPrevisaoExames();
+    const ano = previsaoExamesAno, mes = previsaoExamesMes;
+    document.getElementById('previsaoExamesTitulo').textContent = `${NOMES_MESES[mes]} de ${ano}`;
+
+    const ativos = allEfetivo.filter(e => e.status === 'ATIVO');
+    const dueList = [];
+    ativos.forEach(colab => {
+        const { ultimoExame } = calcularStatusAsoColaborador(colab.id);
+        if (!ultimoExame || !ultimoExame.data_vencimento) return;
+        const venc = parseLocalDate(ultimoExame.data_vencimento);
+        if (venc.getFullYear() !== ano || venc.getMonth() !== mes) return;
+        const ghe = examesGheColaborador(colab);
+        dueList.push({ colab, vencimento: ultimoExame.data_vencimento, ghe });
+    });
+    dueList.sort((a, b) => (a.colab.nome || '').localeCompare(b.colab.nome || ''));
+
+    const contagemExames = {};
+    let semGheCount = 0;
+    dueList.forEach(({ ghe }) => {
+        if (!ghe) { semGheCount++; return; }
+        ghe.exames.forEach(e => { contagemExames[e.nome] = (contagemExames[e.nome] || 0) + 1; });
+    });
+    const totalExameSlots = Object.values(contagemExames).reduce((s, n) => s + n, 0);
+
+    document.getElementById('kpiPrevisaoColaboradores').textContent = dueList.length;
+    document.getElementById('kpiPrevisaoTiposExame').textContent = Object.keys(contagemExames).length;
+    document.getElementById('kpiPrevisaoTotalExames').textContent = totalExameSlots;
+
+    const tabelaEl = document.getElementById('previsaoExamesTabela');
+    const examesSorted = Object.entries(contagemExames).sort((a, b) => b[1] - a[1]);
+    if (examesSorted.length === 0) {
+        tabelaEl.innerHTML = '<div class="db-list-empty">Nenhum exame previsto para este mês.</div>';
+    } else {
+        tabelaEl.innerHTML = examesSorted.map(([nome, qtd]) => `
+            <div class="db-list-item" style="display:flex; justify-content:space-between; align-items:center;">
+                <div class="db-list-item-title" style="margin-bottom:0;">${escapeHTML(nome)}</div>
+                <div style="font-size: 16px; font-weight: 700; color: var(--primary);">${qtd}</div>
+            </div>`).join('');
+    }
+
+    const detalheEl = document.getElementById('previsaoExamesDetalhe');
+    if (dueList.length === 0) {
+        detalheEl.innerHTML = '<div class="db-list-empty">Nenhum colaborador com ASO vencendo neste mês.</div>';
+    } else {
+        detalheEl.innerHTML = dueList.map(({ colab, vencimento, ghe }) => {
+            const dataFmt = parseLocalDate(vencimento).toLocaleDateString('pt-BR');
+            if (!ghe) {
+                return `<div class="db-list-item db-item-warning">
+                    <div class="db-list-item-title">${escapeHTML(colab.nome)} — ${escapeHTML(colab.funcao || '')}</div>
+                    <div class="db-list-item-sub">Vencimento: ${dataFmt} — ⚠️ GHE não identificado, lista de exames indisponível</div>
+                </div>`;
+            }
+            const examesTxt = ghe.exames.map(e => e.nome).join(', ');
+            return `<div class="db-list-item">
+                <div class="db-list-item-title">${escapeHTML(colab.nome)} — ${escapeHTML(colab.funcao || '')}</div>
+                <div class="db-list-item-sub">Vencimento: ${dataFmt} — GHE ${escapeHTML(ghe.grupoId)}: ${escapeHTML(ghe.nome)}</div>
+                <div class="db-list-item-sub">${escapeHTML(examesTxt)}</div>
+            </div>`;
+        }).join('');
+    }
+
+    if (semGheCount > 0) {
+        document.getElementById('previsaoExamesAviso').textContent = `⚠️ ${semGheCount} colaborador(es) sem GHE identificado - não entram na contagem por tipo de exame acima, mas aparecem na lista detalhada.`;
+    } else {
+        document.getElementById('previsaoExamesAviso').textContent = '';
+    }
+}
+
 // Taxa de Absenteísmo Ocupacional = horas perdidas (atestados de doença ocupacional +
 // dias_perdidos de acidentes com afastamento) × 1.000.000/... não, aqui é simplesmente
 // horas perdidas / HHT do período × 100 (percentual, não taxa por milhão como TF/TG).
@@ -4129,7 +4228,7 @@ function renderSaudePanel() {
 }
 
 function showSaudeSubtab(tab) {
-    ['visao', 'aso', 'atestado'].forEach(t => {
+    ['visao', 'aso', 'atestado', 'previsao'].forEach(t => {
         const content = document.getElementById('saudeSubtab-' + t);
         const btn = document.getElementById('saudeSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -4139,6 +4238,7 @@ function showSaudeSubtab(tab) {
     if (tab === 'visao') renderSaudePanel();
     if (tab === 'aso') { renderAsoResumo(); filterAsoLista(document.getElementById('asoSearchInput')?.value || ''); }
     if (tab === 'atestado') { renderAtestadoResumo(); filterAtestadoLista(document.getElementById('atestadoSearchInput')?.value || ''); }
+    if (tab === 'previsao') renderPrevisaoExames();
 }
 
 // ---- CRUD: Exames ASO ----

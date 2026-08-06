@@ -1693,9 +1693,12 @@ function renderListaTreinColaboradoresPeriodo() {
     }
     el.innerHTML = linhas.map(r => {
         const dataFmt = r.data_treinamento ? parseLocalDate(r.data_treinamento).toLocaleDateString('pt-BR') : '—';
-        return `<div class="db-list-item">
-            <div class="db-list-item-title">${escapeHTML(r.nome || r.matricula)} — ${escapeHTML(r.funcao || 'Sem função')}</div>
-            <div class="db-list-item-sub">${escapeHTML(r.treinamento_nome || '')} — ${dataFmt}</div>
+        return `<div class="db-list-item" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+            <div>
+                <div class="db-list-item-title">${escapeHTML(r.nome || r.matricula)} — ${escapeHTML(r.funcao || 'Sem função')}</div>
+                <div class="db-list-item-sub">${escapeHTML(r.treinamento_nome || '')} — ${dataFmt}</div>
+            </div>
+            <button class="db-clear-btn" style="color: var(--danger); border-color: var(--danger); flex-shrink:0;" onclick="excluirTreinamentoRealizado('${escapeHTML(r.id)}')">🗑️ Excluir</button>
         </div>`;
     }).join('');
 }
@@ -1703,6 +1706,24 @@ function renderListaTreinColaboradoresPeriodo() {
 function limparBuscaTreinColabPeriodo() {
     document.getElementById('buscaTreinColabPeriodo').value = '';
     renderListaTreinColaboradoresPeriodo();
+}
+
+// Exclui um registro individual de treinamentos_realizados (ex: lançamento de teste, ou
+// um erro de digitação numa sessão) - até aqui esta tabela só tinha caminhos de escrita
+// (importação CSV, Lançar Treinamento, merge de catálogo), nenhum de exclusão.
+async function excluirTreinamentoRealizado(id) {
+    if (!confirm('Excluir este registro de treinamento? Essa ação não pode ser desfeita.')) return;
+    try {
+        await supabaseDelete('treinamentos_realizados', id);
+        allTreinamentosRealizados = allTreinamentosRealizados.filter(r => r.id !== id);
+        const buscaAtual = document.getElementById('buscaTreinColabPeriodo')?.value || '';
+        renderTreinamentosPanel();
+        const buscaEl = document.getElementById('buscaTreinColabPeriodo');
+        if (buscaEl) { buscaEl.value = buscaAtual; renderListaTreinColaboradoresPeriodo(); }
+    } catch (err) {
+        console.error('Erro ao excluir treinamento realizado:', err);
+        alert('Falha ao excluir o registro: ' + err.message);
+    }
 }
 
 // ============================================

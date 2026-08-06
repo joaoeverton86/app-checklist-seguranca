@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS public.checklists (
     items JSONB,           -- Cada item pode ter fotoUrl (Supabase Storage, bucket
                             -- nc-fotos) e/ou fotoLocalId (referência só local, nunca
                             -- sincronizada) como evidência de não conformidade.
+    signature TEXT,             -- assinatura do Resp. SST, PNG base64 (data URL)
+    signature_responsavel TEXT, -- assinatura do Encarregado/Responsável, PNG base64
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

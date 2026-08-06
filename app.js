@@ -6478,7 +6478,15 @@ function converterParaSupabase(store, item) {
             na: stats.na,
             total: stats.total,
             equipment: item.equipment || null,
-            items: item.items || {}
+            items: item.items || {},
+            // Sem essas duas colunas, a assinatura desenhada em campo (salva certinho no
+            // IndexedDB local) nunca chegava ao Supabase - e como o lado "puxar" da
+            // sincronização sobrescreve o registro local por inteiro (saveToIndexedDB usa
+            // put(), não merge), a assinatura acabava sumindo até do próprio celular assim
+            // que a primeira sincronização de volta acontecia. Ver checklists.signature /
+            // checklists.signature_responsavel no supabase_schema.sql.
+            signature: item.signature || null,
+            signature_responsavel: item.signatureResponsavel || null
         };
     }
     if (store === 'relatos' || store === 'issues') {
@@ -6596,6 +6604,8 @@ function converterParaAppFromSupabase(table, row) {
             equipment: row.equipment,
             items: row.items || {},
             timestamp: row.created_at || row.date,
+            signature: row.signature || null,
+            signatureResponsavel: row.signature_responsavel || null,
             synced: true,
             supabase_synced: true
         };

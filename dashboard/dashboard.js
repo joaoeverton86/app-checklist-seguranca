@@ -2658,6 +2658,7 @@ function renderEfetivoPanel() {
     if (chartInstances.efetivoFuncao) chartInstances.efetivoFuncao.destroy();
     if (chartInstances.efetivoHHT220) chartInstances.efetivoHHT220.destroy();
     if (chartInstances.efetivoSexo) chartInstances.efetivoSexo.destroy();
+    if (chartInstances.efetivoFaixaEtaria) chartInstances.efetivoFaixaEtaria.destroy();
     if (chartInstances.adaAtual) chartInstances.adaAtual.destroy();
     if (chartInstances.adaAdmissoes) chartInstances.adaAdmissoes.destroy();
 
@@ -2728,6 +2729,38 @@ function renderEfetivoPanel() {
             datasets: [{ data: [sexoCounts.MASCULINO, sexoCounts.FEMININO], backgroundColor: ['#4f46e5', '#ec4899'], borderWidth: 2, borderColor: '#fff' }]
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, cutout: '55%' }
+    });
+
+    // Faixa etária: idade calculada em dataRef (não "hoje" fixo, pra ficar consistente
+    // com os outros gráficos "Efetivo Atual" quando um ano/mês específico está filtrado).
+    // Colaboradores sem dt_nascimento cadastrada entram em "Não informado" em vez de
+    // serem descartados silenciosamente da contagem.
+    const FAIXAS_ETARIAS = [
+        { label: '< 25 anos', min: 0, max: 24 },
+        { label: '25-34 anos', min: 25, max: 34 },
+        { label: '35-44 anos', min: 35, max: 44 },
+        { label: '45-54 anos', min: 45, max: 54 },
+        { label: '55+ anos', min: 55, max: Infinity }
+    ];
+    const faixaEtariaCounts = FAIXAS_ETARIAS.map(() => 0);
+    let semNascimentoCount = 0;
+    ativosNaData.forEach(e => {
+        if (!e.dt_nascimento) { semNascimentoCount++; return; }
+        const nasc = parseLocalDate(e.dt_nascimento);
+        let idade = dataRef.getFullYear() - nasc.getFullYear();
+        const aniversarioAindaNaoChegou = (dataRef.getMonth() < nasc.getMonth()) ||
+            (dataRef.getMonth() === nasc.getMonth() && dataRef.getDate() < nasc.getDate());
+        if (aniversarioAindaNaoChegou) idade--;
+        const idx = FAIXAS_ETARIAS.findIndex(f => idade >= f.min && idade <= f.max);
+        if (idx >= 0) faixaEtariaCounts[idx]++;
+    });
+    const faixaEtariaLabels = FAIXAS_ETARIAS.map(f => f.label);
+    const faixaEtariaData = faixaEtariaCounts.slice();
+    if (semNascimentoCount > 0) { faixaEtariaLabels.push('Não informado'); faixaEtariaData.push(semNascimentoCount); }
+    chartInstances.efetivoFaixaEtaria = new Chart(document.getElementById('chartEfetivoFaixaEtaria'), {
+        type: 'bar',
+        data: { labels: faixaEtariaLabels, datasets: [{ label: 'Efetivo', data: faixaEtariaData, backgroundColor: '#0ea5e9', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     });
 
     // ADA (Área Diretamente Afetada): as duas únicas cidades que contam pro indicador -

@@ -670,6 +670,29 @@ CREATE INDEX IF NOT EXISTS idx_atest_matricula ON public.atestados_ocupacionais(
 CREATE INDEX IF NOT EXISTS idx_atest_data_inicio ON public.atestados_ocupacionais(data_inicio);
 
 -- ============================================================
+-- GERENCIAMENTO DE ITENS DE CHECKLIST POR TIPO DE EQUIPAMENTO
+-- ============================================================
+-- Antes desta tabela, a tela "Gerenciar Itens" do app.js gravava só no localStorage
+-- do dispositivo (custom_type_settings) - uma alteração feita no celular de um técnico
+-- não aparecia em nenhum outro aparelho, nem no site. Esta tabela vira a fonte de
+-- verdade compartilhada: uma linha por tipo de equipamento (id = EQUIPMENT_TYPES[...].id
+-- em data.js), sincronizada tanto pelo painel quanto pelo app de campo.
+CREATE TABLE IF NOT EXISTS public.checklist_item_settings (
+    id TEXT PRIMARY KEY,                        -- id do tipo de equipamento (ex: 'trator_esteira')
+    categoria TEXT NOT NULL,                    -- 'maquinas' | 'veiculos' | 'ferramentas'
+    disabled_items JSONB DEFAULT '[]'::jsonb,   -- array de ids de itens base desativados
+    custom_items JSONB DEFAULT '[]'::jsonb,     -- array de {id, text, nr, risk}
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.checklist_item_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acesso total a checklist item settings" ON public.checklist_item_settings;
+CREATE POLICY "Acesso total a checklist item settings" ON public.checklist_item_settings FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON public.checklist_item_settings TO anon;
+
+-- ============================================================
 -- RISCOS RESIDUAIS CONHECIDOS (documentados, não corrigidos nesta versão)
 -- ============================================================
 -- 1. cadastros, checklists, relatos, checklist_items e nao_conformidades continuam

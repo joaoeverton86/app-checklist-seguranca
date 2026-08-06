@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v142';
+const APP_VERSION = 'v143';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -2292,11 +2292,16 @@ async function atualizarPendentesMesExtintores() {
 function getEffectiveItems(equipment) {
     if (!equipment) return [];
     const baseItems = equipment.items || [];
-    
-    // Carrega as customizações globais do tipo do localStorage
-    const settings = JSON.parse(localStorage.getItem('custom_type_settings') || '{}');
-    const typeSettings = settings[equipment.id] || {};
-    
+
+    // Prioriza a configuração sincronizada do Supabase (gerida pelo Painel Gerencial -
+    // checklist_item_settings, atualizada por sincronizarChecklistItemSettings()) sobre
+    // o custom_type_settings antigo, local a este aparelho - que fica só como fallback
+    // pros tipos de equipamento que a fonte compartilhada ainda não cobre (ou antes da
+    // primeira sincronização num aparelho novo).
+    const syncedSettings = JSON.parse(localStorage.getItem('checklist_item_settings_synced') || '{}');
+    const localSettings = JSON.parse(localStorage.getItem('custom_type_settings') || '{}');
+    const typeSettings = syncedSettings[equipment.id] || localSettings[equipment.id] || {};
+
     const disabled = typeSettings.disabledItems || [];
     const custom = typeSettings.customItems || [];
     
@@ -3578,14 +3583,42 @@ async function saveCustomItem(category, equipmentId, item) {
 
 async function saveItemGerencia() {
     if (!itemGerenciaTypeId) return;
-    
+
     const settings = JSON.parse(localStorage.getItem('custom_type_settings') || '{}');
     settings[itemGerenciaTypeId] = {
         disabledItems: itemGerenciaDisabled,
         customItems: itemGerenciaCustom
     };
-    
     localStorage.setItem('custom_type_settings', JSON.stringify(settings));
+
+    // Também grava na fonte compartilhada (Supabase), pra essa edição feita direto no
+    // aparelho não ficar presa localmente nem ser silenciosamente sobrescrita pelo
+    // próximo sync puxando a versão do Painel Gerencial. Atualiza o cache sincronizado
+    // na hora também, pra getEffectiveItems() já refletir sem esperar o próximo ciclo.
+    if (isSupabaseConfigured() && navigator.onLine) {
+        try {
+            await supabaseFetch('checklist_item_settings', {
+                method: 'POST',
+                query: '?on_conflict=id',
+                prefer: 'resolution=merge-duplicates',
+                body: {
+                    id: itemGerenciaTypeId,
+                    categoria: itemGerenciaTypeCategory,
+                    disabled_items: itemGerenciaDisabled,
+                    custom_items: itemGerenciaCustom,
+                    updated_at: new Date().toISOString()
+                }
+            });
+            const synced = JSON.parse(localStorage.getItem('checklist_item_settings_synced') || '{}');
+            synced[itemGerenciaTypeId] = { disabledItems: itemGerenciaDisabled, customItems: itemGerenciaCustom };
+            localStorage.setItem('checklist_item_settings_synced', JSON.stringify(synced));
+        } catch (err) {
+            console.error('Erro ao sincronizar itens de checklist com o Supabase:', err);
+            showToast('Salvo neste aparelho, mas não foi possível sincronizar agora.');
+            return;
+        }
+    }
+
     showToast('Itens do tipo de equipamento atualizados!');
 }
 
@@ -3877,6 +3910,33 @@ function iniciarSyncPeriodica() {
             }
         }
     }, 5 * 60 * 1000);
+}
+
+// Gerenciamento de itens de checklist por tipo de equipamento - fonte compartilhada
+// (antes só existia no localStorage deste aparelho, sob a chave custom_type_settings;
+// uma mudança feita ali nunca chegava a outro celular nem ao Painel Gerencial). Agora
+// o Painel escreve em checklist_item_settings no Supabase e este aparelho só lê -
+// tabela pequena (uma linha por tipo de equipamento), então um pull completo a cada
+// ciclo de sync é suficiente, sem precisar do esquema incremental usado em
+// treinamentos_status. getEffectiveItems() lê o resultado (checklist_item_settings_synced)
+// com prioridade sobre o custom_type_settings antigo, que fica só como fallback pros
+// tipos que a fonte compartilhada ainda não cobre.
+async function sincronizarChecklistItemSettings() {
+    if (!isSupabaseConfigured() || !navigator.onLine) return;
+    try {
+        const res = await supabaseFetch('checklist_item_settings', { query: '?select=*' });
+        if (!res.success || !Array.isArray(res.data)) return;
+        const map = {};
+        res.data.forEach(row => {
+            map[row.id] = {
+                disabledItems: row.disabled_items || [],
+                customItems: row.custom_items || []
+            };
+        });
+        localStorage.setItem('checklist_item_settings_synced', JSON.stringify(map));
+    } catch (err) {
+        console.error('Erro ao sincronizar itens de checklist:', err);
+    }
 }
 
 // Módulo de Treinamentos (Fase 2) - sincronização incremental, só leitura. Guarda a
@@ -6698,6 +6758,7 @@ async function sincronizarComSupabase() {
 
         await sincronizarSenhasPendentes();
         await sincronizarFotosPendentes();
+        await sincronizarChecklistItemSettings();
 
         const tablesMap = [
             { table: 'cadastros', store: 'cadastros' },

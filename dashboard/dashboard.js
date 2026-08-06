@@ -566,7 +566,7 @@ function renderCharts(checklistsPeriodo, filterChecklistArray) {
 }
 
 function showChecklistsSubtab(tab) {
-    ['visao', 'cadastros', 'historico'].forEach(t => {
+    ['visao', 'cadastros', 'historico', 'itens'].forEach(t => {
         const content = document.getElementById('checklistsSubtab-' + t);
         const btn = document.getElementById('checklistsSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -581,6 +581,13 @@ function showChecklistsSubtab(tab) {
     if (tab === 'historico') {
         popularHistCategoriaSelect();
         renderHistoricoChecklists();
+    }
+    if (tab === 'itens') {
+        popularItemGerenciaSelect();
+        if (!checklistItemSettingsLoaded) {
+            checklistItemSettingsLoaded = true;
+            carregarChecklistItemSettings();
+        }
     }
 }
 
@@ -775,6 +782,162 @@ async function excluirCadastroAtual() {
     } catch (err) {
         console.error('Erro ao excluir cadastro:', err);
         statusEl.textContent = '❌ Falha ao excluir: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// ============================================
+// GERENCIAMENTO DE ITENS DE CHECKLIST POR TIPO DE EQUIPAMENTO
+//
+// Substitui o antigo esquema do app.js que gravava só no localStorage do
+// dispositivo (custom_type_settings) - uma configuração feita ali ficava presa
+// naquele aparelho específico, nunca chegava a outros técnicos nem ao painel.
+// checklist_item_settings no Supabase é a fonte de verdade compartilhada agora;
+// app.js foi atualizado pra ler dali (sincronizado, funciona offline) em vez do
+// localStorage isolado.
+// ============================================
+
+let allChecklistItemSettings = [];
+let checklistItemSettingsLoaded = false;
+let itemGerenciaTypeId = null;
+let itemGerenciaTypeCategory = null;
+let itemGerenciaDisabled = [];
+let itemGerenciaCustom = [];
+
+async function carregarChecklistItemSettings() {
+    try {
+        allChecklistItemSettings = await supabaseFetch('checklist_item_settings');
+        if (itemGerenciaTypeId) onItemGerenciaTypeChange();
+    } catch (err) {
+        console.error('Erro ao carregar configurações de itens de checklist:', err);
+    }
+}
+
+function popularItemGerenciaSelect() {
+    const select = document.getElementById('itemGerenciaSelect');
+    if (!select || typeof EQUIPMENT_TYPES === 'undefined') return;
+    if (select.options.length > 1) return; // já populado - EQUIPMENT_TYPES é estático, não precisa recriar
+    const nomesCategoria = { maquinas: 'Máquinas e Equipamentos', veiculos: 'Veículos', ferramentas: 'Ferramentas' };
+    for (const [categoriaKey, items] of Object.entries(EQUIPMENT_TYPES)) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = nomesCategoria[categoriaKey] || categoriaKey;
+        items.forEach(eq => {
+            const opt = document.createElement('option');
+            opt.value = eq.id;
+            opt.textContent = `${eq.name} (${eq.nr})`;
+            opt.dataset.categoria = categoriaKey;
+            optgroup.appendChild(opt);
+        });
+        select.appendChild(optgroup);
+    }
+}
+
+function onItemGerenciaTypeChange() {
+    const select = document.getElementById('itemGerenciaSelect');
+    const content = document.getElementById('itemGerenciaContent');
+    if (!select.value) {
+        content.style.display = 'none';
+        itemGerenciaTypeId = null;
+        return;
+    }
+    const categoriaKey = select.options[select.selectedIndex].dataset.categoria;
+    const typeId = select.value;
+    const equipment = EQUIPMENT_TYPES[categoriaKey]?.find(e => e.id === typeId);
+    if (!equipment) { content.style.display = 'none'; itemGerenciaTypeId = null; return; }
+
+    itemGerenciaTypeId = typeId;
+    itemGerenciaTypeCategory = categoriaKey;
+
+    const existente = allChecklistItemSettings.find(s => s.id === typeId);
+    itemGerenciaDisabled = [...(existente?.disabled_items || [])];
+    itemGerenciaCustom = [...(existente?.custom_items || [])];
+
+    document.getElementById('itemGerenciaStatus').textContent = '';
+    content.style.display = 'block';
+    renderItemGerenciaLists();
+}
+
+function renderItemGerenciaLists() {
+    if (!itemGerenciaTypeId) return;
+    const equipment = EQUIPMENT_TYPES[itemGerenciaTypeCategory]?.find(e => e.id === itemGerenciaTypeId);
+    if (!equipment) return;
+
+    const nomesRisco = { high: 'Risco Alto', medium: 'Risco Médio', low: 'Risco Baixo' };
+    const baseEl = document.getElementById('itemGerenciaBase');
+    baseEl.innerHTML = equipment.items.map(item => {
+        const disabled = itemGerenciaDisabled.includes(item.id);
+        return `<div class="db-list-item" style="display:flex; align-items:center; gap:10px; opacity:${disabled ? '0.55' : '1'};">
+            <input type="checkbox" ${!disabled ? 'checked' : ''} onchange="toggleItemGerenciaBase('${item.id}', this.checked)" style="width:18px; height:18px; flex-shrink:0;">
+            <div>
+                <div class="db-list-item-title">${escapeHTML(item.text)}</div>
+                <div class="db-list-item-sub">${escapeHTML(item.nr)} — ${nomesRisco[item.risk] || item.risk}</div>
+            </div>
+        </div>`;
+    }).join('');
+
+    const customEl = document.getElementById('itemGerenciaCustom');
+    if (itemGerenciaCustom.length === 0) {
+        customEl.innerHTML = '<div class="db-list-empty">Nenhum item personalizado para este tipo.</div>';
+    } else {
+        customEl.innerHTML = itemGerenciaCustom.map((item, idx) => `
+            <div class="db-list-item" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                <div>
+                    <div class="db-list-item-title">${escapeHTML(item.text)}</div>
+                    <div class="db-list-item-sub">${escapeHTML(item.nr || '—')} — ${nomesRisco[item.risk] || item.risk}</div>
+                </div>
+                <button class="db-clear-btn" style="color: var(--danger); border-color: var(--danger); flex-shrink:0;" onclick="removeItemGerenciaCustom(${idx})">Remover</button>
+            </div>`).join('');
+    }
+}
+
+function toggleItemGerenciaBase(itemId, enabled) {
+    if (enabled) {
+        itemGerenciaDisabled = itemGerenciaDisabled.filter(id => id !== itemId);
+    } else if (!itemGerenciaDisabled.includes(itemId)) {
+        itemGerenciaDisabled.push(itemId);
+    }
+    renderItemGerenciaLists();
+}
+
+function addItemGerenciaCustom() {
+    const textEl = document.getElementById('newItemGerenciaText');
+    const text = textEl.value.trim();
+    const nr = document.getElementById('newItemGerenciaNr').value.trim();
+    const risk = document.getElementById('newItemGerenciaRisk').value;
+    if (!text) { document.getElementById('itemGerenciaStatus').textContent = '❌ Digite a descrição do item.'; return; }
+    itemGerenciaCustom.push({ id: 'custom_' + Date.now(), text, nr, risk });
+    textEl.value = '';
+    document.getElementById('newItemGerenciaNr').value = '';
+    document.getElementById('itemGerenciaStatus').textContent = '';
+    renderItemGerenciaLists();
+}
+
+function removeItemGerenciaCustom(idx) {
+    itemGerenciaCustom.splice(idx, 1);
+    renderItemGerenciaLists();
+}
+
+async function salvarItemGerencia() {
+    if (!itemGerenciaTypeId) return;
+    const statusEl = document.getElementById('itemGerenciaStatus');
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    const registro = {
+        id: itemGerenciaTypeId,
+        categoria: itemGerenciaTypeCategory,
+        disabled_items: itemGerenciaDisabled,
+        custom_items: itemGerenciaCustom,
+        updated_at: new Date().toISOString()
+    };
+    try {
+        await supabaseUpsert('checklist_item_settings', [registro]);
+        const idx = allChecklistItemSettings.findIndex(s => s.id === itemGerenciaTypeId);
+        if (idx >= 0) allChecklistItemSettings[idx] = registro; else allChecklistItemSettings.push(registro);
+        statusEl.textContent = '✅ Salvo — os técnicos verão essa mudança no próximo sincronismo do app.';
+        statusEl.style.color = 'var(--success)';
+    } catch (err) {
+        console.error('Erro ao salvar item de checklist:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
         statusEl.style.color = 'var(--danger)';
     }
 }

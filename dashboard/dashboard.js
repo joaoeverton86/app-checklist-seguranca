@@ -4057,28 +4057,43 @@ function renderPrevisaoExames() {
     });
     dueList.sort((a, b) => (a.colab.nome || '').localeCompare(b.colab.nome || ''));
 
+    // periodicidade null = exame só no admissional (ex: IgE Específica - Abelha) - não se
+    // repete num ciclo periódico, então não entra na previsão de um ASO periódico.
+    // Exames com periodicidade > 12 meses (ex: Espirometria a cada 24) não vencem
+    // necessariamente TODO ciclo periódico de 12 meses - o sistema só guarda a data do ASO
+    // como um todo, não a data de cada exame individual, então não dá pra saber com certeza
+    // se esse exame específico já foi feito há menos de 24 meses. Por isso esses contam como
+    // limite superior ("pode ser necessário"), sinalizado visualmente, em vez de certeza.
     const contagemExames = {};
     let semGheCount = 0;
     dueList.forEach(({ ghe }) => {
         if (!ghe) { semGheCount++; return; }
-        ghe.exames.forEach(e => { contagemExames[e.nome] = (contagemExames[e.nome] || 0) + 1; });
+        ghe.exames.filter(e => e.periodicidade).forEach(e => {
+            if (!contagemExames[e.nome]) contagemExames[e.nome] = { count: 0, periodicidade: e.periodicidade };
+            contagemExames[e.nome].count++;
+        });
     });
-    const totalExameSlots = Object.values(contagemExames).reduce((s, n) => s + n, 0);
+    const totalExameSlots = Object.values(contagemExames).reduce((s, info) => s + info.count, 0);
 
     document.getElementById('kpiPrevisaoColaboradores').textContent = dueList.length;
     document.getElementById('kpiPrevisaoTiposExame').textContent = Object.keys(contagemExames).length;
     document.getElementById('kpiPrevisaoTotalExames').textContent = totalExameSlots;
 
     const tabelaEl = document.getElementById('previsaoExamesTabela');
-    const examesSorted = Object.entries(contagemExames).sort((a, b) => b[1] - a[1]);
+    const examesSorted = Object.entries(contagemExames).sort((a, b) => b[1].count - a[1].count);
     if (examesSorted.length === 0) {
         tabelaEl.innerHTML = '<div class="db-list-empty">Nenhum exame previsto para este mês.</div>';
     } else {
-        tabelaEl.innerHTML = examesSorted.map(([nome, qtd]) => `
-            <div class="db-list-item" style="display:flex; justify-content:space-between; align-items:center;">
-                <div class="db-list-item-title" style="margin-bottom:0;">${escapeHTML(nome)}</div>
-                <div style="font-size: 16px; font-weight: 700; color: var(--primary);">${qtd}</div>
-            </div>`).join('');
+        tabelaEl.innerHTML = examesSorted.map(([nome, info]) => {
+            const incerto = info.periodicidade > 12;
+            return `<div class="db-list-item" style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <div class="db-list-item-title" style="margin-bottom:0;">${escapeHTML(nome)}</div>
+                    ${incerto ? `<div class="db-list-item-sub" style="color:var(--warning);">Ciclo de ${info.periodicidade} meses — confirmar se já foi feito recentemente antes de agendar</div>` : ''}
+                </div>
+                <div style="font-size: 16px; font-weight: 700; color: var(--primary);">${info.count}</div>
+            </div>`;
+        }).join('');
     }
 
     const detalheEl = document.getElementById('previsaoExamesDetalhe');
@@ -4093,7 +4108,7 @@ function renderPrevisaoExames() {
                     <div class="db-list-item-sub">Vencimento: ${dataFmt} — ⚠️ GHE não identificado, lista de exames indisponível</div>
                 </div>`;
             }
-            const examesTxt = ghe.exames.map(e => e.nome).join(', ');
+            const examesTxt = ghe.exames.filter(e => e.periodicidade).map(e => e.periodicidade > 12 ? `${e.nome} (${e.periodicidade}m)` : e.nome).join(', ');
             return `<div class="db-list-item">
                 <div class="db-list-item-title">${escapeHTML(colab.nome)} — ${escapeHTML(colab.funcao || '')}</div>
                 <div class="db-list-item-sub">Vencimento: ${dataFmt} — GHE ${escapeHTML(ghe.grupoId)}: ${escapeHTML(ghe.nome)}</div>

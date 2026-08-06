@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v144';
+const APP_VERSION = 'v145';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -300,6 +300,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 sincronizarComSupabase().then(() => {
                     renderEquipmentGrids();
                     if (currentPage === 'pageCadastro') switchGestaoTab(gestaoTab);
+                    refreshHomePageContent();
                     updatePendingBadge();
                 });
             }, 500);
@@ -695,6 +696,9 @@ function showPage(pageId) {
         renderDeadlineAlerts();
         loadTopRisks();
         renderExtintorAlerts();
+        if (isSupabaseConfigured() && navigator.onLine) {
+            sincronizarComSupabase().then(refreshHomePageContent);
+        }
     } else if (pageId === 'pageCadastro') {
         if (isSupabaseConfigured() && navigator.onLine) {
             sincronizarComSupabase().then(() => switchGestaoTab(gestaoTab));
@@ -3900,6 +3904,7 @@ function iniciarSyncPeriodica() {
                     if (currentPage === 'pageCadastro') loadGestao();
                     else if (currentPage === 'pageReports') loadReports();
                     else if (currentPage === 'pageHistory') loadHistory();
+                    refreshHomePageContent();
                     updatePendingBadge();
                 });
                 // Fora do motor padrão de propósito: treinamentos_status é uma view
@@ -5832,6 +5837,21 @@ async function loadRecentChecklists() {
                 <span class="history-status ${statusClass}">${statusText}</span>
             </div>`;
     }).join('');
+}
+
+// Home (alertas de prazo, checklists recentes, itens de risco, extintores vencendo) só lê
+// do IndexedDB local - sem isso, uma sincronização que termina DEPOIS do primeiro render
+// (o normal, já que o sync roda em paralelo/atrasado) nunca aparece na tela até a próxima
+// navegação manual pra Home, e mesmo essa releitura corre contra o próximo ciclo de sync.
+// Chamado depois de qualquer sincronização (inicial, periódica, ou ao entrar na página)
+// sempre que Home é a página atual - sem isso o card de alertas fica preso num estado
+// "às vezes 2 itens, às vezes vazio" dependendo só de timing.
+function refreshHomePageContent() {
+    if (currentPage !== 'pageHome') return;
+    loadRecentChecklists();
+    renderDeadlineAlerts();
+    loadTopRisks();
+    renderExtintorAlerts();
 }
 
 async function renderDeadlineAlerts() {

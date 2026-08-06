@@ -1239,6 +1239,7 @@ let allTreinamentosStatus = [];
 let treinamentosFilter = 'mes';
 let treinamentosFiltroAno = '';
 let treinamentosFiltroMes = '';
+let treinColaboradoresPeriodoAtual = [];
 let treinamentosLoaded = false;
 
 const NR_PATTERN = /\bNR[\s.]?\d/i;
@@ -1397,6 +1398,10 @@ function renderTreinamentosPanel() {
     document.getElementById('kpiTreinHHT').textContent = totalHoras.toLocaleString('pt-BR');
     document.getElementById('kpiTreinColaboradores').textContent = new Set(periodo.map(r => r.matricula)).size;
 
+    treinColaboradoresPeriodoAtual = periodo;
+    document.getElementById('buscaTreinColabPeriodo').value = '';
+    renderListaTreinColaboradoresPeriodo();
+
     // NRs vencidas/vencendo - baseado no status atual (não no período filtrado acima,
     // que é só pra sessões realizadas), só colaboradores ativos, só treinamentos que
     // parecem NR formal (nome contém "NR" + número - heurística simples).
@@ -1499,6 +1504,42 @@ function renderTreinamentosPanel() {
         data: { labels: temaLabels, datasets: [{ label: 'Sessões', data: temaSorted.map(t => t[1]), backgroundColor: '#10b981', borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
     });
+}
+
+function renderListaTreinColaboradoresPeriodo() {
+    const el = document.getElementById('listTreinColaboradoresPeriodo');
+    if (!el) return;
+    const busca = (document.getElementById('buscaTreinColabPeriodo').value || '').trim().toUpperCase();
+    let linhas = treinColaboradoresPeriodoAtual.slice().sort((a, b) => {
+        const nomeA = (a.nome || '').localeCompare(b.nome || '');
+        if (nomeA !== 0) return nomeA;
+        return (a.data_treinamento || '').localeCompare(b.data_treinamento || '');
+    });
+    if (busca) {
+        linhas = linhas.filter(r =>
+            (r.nome || '').toUpperCase().includes(busca) ||
+            (r.matricula || '').toUpperCase().includes(busca) ||
+            (r.funcao || '').toUpperCase().includes(busca) ||
+            (r.treinamento_nome || '').toUpperCase().includes(busca)
+        );
+    }
+    document.getElementById('countTreinColabPeriodo').textContent = `${linhas.length} registro(s)`;
+    if (linhas.length === 0) {
+        el.innerHTML = '<div class="db-list-empty">Nenhum treinamento realizado nesse período.</div>';
+        return;
+    }
+    el.innerHTML = linhas.map(r => {
+        const dataFmt = r.data_treinamento ? parseLocalDate(r.data_treinamento).toLocaleDateString('pt-BR') : '—';
+        return `<div class="db-list-item">
+            <div class="db-list-item-title">${escapeHTML(r.nome || r.matricula)} — ${escapeHTML(r.funcao || 'Sem função')}</div>
+            <div class="db-list-item-sub">${escapeHTML(r.treinamento_nome || '')} — ${dataFmt}</div>
+        </div>`;
+    }).join('');
+}
+
+function limparBuscaTreinColabPeriodo() {
+    document.getElementById('buscaTreinColabPeriodo').value = '';
+    renderListaTreinColaboradoresPeriodo();
 }
 
 // ============================================

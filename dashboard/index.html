@@ -600,6 +600,19 @@
                         <div id="listTreinVencendo" class="db-list"></div>
                     </div>
                 </div>
+
+                <div class="db-chart-card db-list-card" style="margin-top: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" style="margin-bottom: 0;">👥 Colaboradores Treinados no Período</div>
+                        <span id="countTreinColabPeriodo" style="font-size: 11.5px; color: var(--text-light);"></span>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom: 10px;">
+                        <input type="text" id="buscaTreinColabPeriodo" placeholder="Buscar por nome, matrícula, função ou treinamento..." oninput="renderListaTreinColaboradoresPeriodo()"
+                               style="flex:1; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-size: 12.5px;">
+                        <button class="db-clear-btn" onclick="limparBuscaTreinColabPeriodo()">✕ Limpar</button>
+                    </div>
+                    <div id="listTreinColaboradoresPeriodo" class="db-list"></div>
+                </div>
                 </div>
             </section>
 
@@ -1256,6 +1269,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=31"></script>
+    <script src="dashboard.js?v=32"></script>
 </body>
 </html>

@@ -634,6 +634,12 @@ CREATE TABLE IF NOT EXISTS public.aso_exames (
     resultado TEXT,                       -- apto | apto_restricao | inapto
     medico_responsavel TEXT,
     obs TEXT,
+    exames_detalhe JSONB,                 -- array de {nome, periodicidade, data_vencimento} - um
+                                           -- item por exame do GHE efetivamente marcado como feito
+                                           -- nesta consulta, cada um com seu próprio vencimento.
+                                           -- Permite à Previsão de Exames calcular quando CADA exame
+                                           -- vence de verdade, em vez de assumir que todos os exames
+                                           -- do GHE vencem junto com o ciclo geral do ASO.
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

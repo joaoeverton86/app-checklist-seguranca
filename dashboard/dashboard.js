@@ -3935,6 +3935,15 @@ function onAsoColaboradorChange() {
 // Mostra a lista completa de exames que o PCMSO exige pro GHE/função do colaborador
 // selecionado (não só a Avaliação clínica) - ajuda o admin a saber quais exames
 // complementares pedir/conferir ao agendar o ASO, não só a data de vencimento.
+// Renderiza os exames exigidos pelo GHE como checklist (não só texto) - cada checkbox
+// controla se aquele exame específico entra no exames_detalhe salvo (ver salvarAso()),
+// que registra a data de vencimento de CADA exame individualmente. Sem isso, a Previsão
+// de Exames só conseguia assumir que todos os exames do GHE vencem juntos (quando na
+// prática exames com periodicidade > 12 meses, como Espirometria a cada 24, vencem no
+// próprio ciclo, não a cada ASO periódico) - usuário pediu explicitamente por isso depois
+// de ver a Previsão superestimando exames de ciclo mais longo. Todos marcados por padrão
+// (mantém o comportamento assumido até aqui); desmarque só quando um exame específico
+// não foi feito nessa consulta.
 function renderExamesExigidosAso(colab) {
     const el = document.getElementById('asoForm_examesExigidos');
     if (!el) return;
@@ -3946,12 +3955,28 @@ function renderExamesExigidosAso(colab) {
     }
     const linhas = ghe.exames.map(e => {
         const periodicidadeTxt = e.periodicidade ? `a cada ${e.periodicidade} meses` : 'só no admissional';
-        return `<div>• ${escapeHTML(e.nome)} (${periodicidadeTxt}${e.demissional ? ', também no demissional' : ''})</div>`;
+        return `<label style="display:flex; align-items:center; gap:6px; padding:2px 0; cursor:pointer;">
+            <input type="checkbox" class="asoExameCheckbox" data-nome="${escapeHTML(e.nome)}" data-periodicidade="${e.periodicidade || ''}" checked style="width:15px; height:15px; flex-shrink:0;">
+            <span>${escapeHTML(e.nome)} (${periodicidadeTxt}${e.demissional ? ', também no demissional' : ''})</span>
+        </label>`;
     }).join('');
     el.innerHTML = `<div style="font-size:11.5px; color:var(--text-light); margin-top:6px; padding:8px 10px; background:var(--bg); border-radius:8px;">
-        <strong>📋 Exames exigidos pelo PCMSO — GHE ${escapeHTML(ghe.grupoId)}: ${escapeHTML(ghe.nome)}</strong>
+        <strong>📋 Exames desta consulta — GHE ${escapeHTML(ghe.grupoId)}: ${escapeHTML(ghe.nome)}</strong>
+        <div style="font-size:10.5px; margin: 2px 0 6px;">Desmarque se algum exame não foi feito nesta consulta específica - isso ajuda a Previsão de Exames a saber exatamente quando cada um vence.</div>
         <div style="margin-top:4px;">${linhas}</div>
     </div>`;
+}
+
+// Ao editar um exame ASO já salvo com exames_detalhe (feature nova - registros antigos
+// não têm isso), desmarca as caixinhas dos exames que NÃO estavam na lista salva. Se o
+// registro é antigo (exames_detalhe null/vazio), deixa tudo marcado - mesma suposição já
+// usada antes dessa feature existir, sem regressão pros dados históricos.
+function aplicarExamesDetalheAoForm(examesDetalhe) {
+    if (!Array.isArray(examesDetalhe) || examesDetalhe.length === 0) return;
+    const nomesSalvos = new Set(examesDetalhe.map(e => e.nome));
+    document.querySelectorAll('#asoForm_examesExigidos .asoExameCheckbox').forEach(cb => {
+        cb.checked = nomesSalvos.has(cb.dataset.nome);
+    });
 }
 
 // Sugere a data de vencimento (próximo exame devido) automaticamente a partir da
@@ -4040,42 +4065,79 @@ function onPrevisaoExamesFiltroChange() {
     renderPrevisaoExames();
 }
 
+// Pra cada exame de um GHE, procura no histórico de aso_exames do colaborador (mais
+// recente primeiro) um exames_detalhe com esse nome - ou seja, uma consulta anterior onde
+// esse exame específico foi de fato marcado como realizado. Isso dá o vencimento REAL
+// daquele exame (data_exame + periodicidade dele mesmo), em vez de assumir que ele vence
+// junto com o ciclo geral do ASO. Retorna null se não há histórico detalhado ainda -
+// nesse caso quem chama cai de volta pro vencimento geral do ASO (ver renderPrevisaoExames).
+function vencimentoRealDoExame(matricula, nomeExame) {
+    const historico = allAsoExames
+        .filter(a => a.matricula === matricula && a.data_exame && Array.isArray(a.exames_detalhe))
+        .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
+    for (const registro of historico) {
+        const encontrado = registro.exames_detalhe.find(e => e.nome === nomeExame && e.data_vencimento);
+        if (encontrado) return encontrado.data_vencimento;
+    }
+    return null;
+}
+
 function renderPrevisaoExames() {
     popularFiltroPrevisaoExames();
     const ano = previsaoExamesAno, mes = previsaoExamesMes;
     document.getElementById('previsaoExamesTitulo').textContent = `${NOMES_MESES[mes]} de ${ano}`;
 
     const ativos = allEfetivo.filter(e => e.status === 'ATIVO');
-    const dueList = [];
+    const comGhe = []; // colaboradores com GHE - exames vencendo calculados individualmente
+    let semGheCount = 0;
+
     ativos.forEach(colab => {
         const { ultimoExame } = calcularStatusAsoColaborador(colab.id);
-        if (!ultimoExame || !ultimoExame.data_vencimento) return;
-        const venc = parseLocalDate(ultimoExame.data_vencimento);
-        if (venc.getFullYear() !== ano || venc.getMonth() !== mes) return;
+        const vencimentoGeral = ultimoExame?.data_vencimento || null;
         const ghe = examesGheColaborador(colab);
-        dueList.push({ colab, vencimento: ultimoExame.data_vencimento, ghe });
-    });
-    dueList.sort((a, b) => (a.colab.nome || '').localeCompare(b.colab.nome || ''));
 
-    // periodicidade null = exame só no admissional (ex: IgE Específica - Abelha) - não se
-    // repete num ciclo periódico, então não entra na previsão de um ASO periódico.
-    // Exames com periodicidade > 12 meses (ex: Espirometria a cada 24) não vencem
-    // necessariamente TODO ciclo periódico de 12 meses - o sistema só guarda a data do ASO
-    // como um todo, não a data de cada exame individual, então não dá pra saber com certeza
-    // se esse exame específico já foi feito há menos de 24 meses. Por isso esses contam como
-    // limite superior ("pode ser necessário"), sinalizado visualmente, em vez de certeza.
+        if (!ghe) {
+            // Sem GHE identificado não dá pra saber quais exames específicos aplicam - só
+            // conta pro aviso, igual antes, usando o vencimento geral do ASO como sinal de
+            // que esse colaborador tem algo pendente nesse mês.
+            if (vencimentoGeral) {
+                const venc = parseLocalDate(vencimentoGeral);
+                if (venc.getFullYear() === ano && venc.getMonth() === mes) semGheCount++;
+            }
+            return;
+        }
+
+        // periodicidade null = exame só no admissional (ex: IgE Específica - Abelha) - não
+        // se repete num ciclo periódico, não entra na previsão de um ASO periódico.
+        const examesDoMes = [];
+        ghe.exames.filter(e => e.periodicidade).forEach(exameReq => {
+            const vencReal = vencimentoRealDoExame(colab.id, exameReq.nome);
+            const vencimentoUsado = vencReal || vencimentoGeral;
+            if (!vencimentoUsado) return;
+            const venc = parseLocalDate(vencimentoUsado);
+            if (venc.getFullYear() !== ano || venc.getMonth() !== mes) return;
+            examesDoMes.push({ nome: exameReq.nome, periodicidade: exameReq.periodicidade, certeza: !!vencReal });
+        });
+
+        if (examesDoMes.length > 0) comGhe.push({ colab, ghe, exames: examesDoMes });
+    });
+    comGhe.sort((a, b) => (a.colab.nome || '').localeCompare(b.colab.nome || ''));
+
+    // certezaCount < count = pelo menos um colaborador não tem histórico detalhado desse
+    // exame específico ainda (registro antigo, ou consulta anterior sem exames_detalhe) -
+    // aí a contagem cai de volta pro vencimento geral do ASO como estimativa, sinalizada
+    // visualmente em vez de apresentada com a mesma certeza dos exames já rastreados.
     const contagemExames = {};
-    let semGheCount = 0;
-    dueList.forEach(({ ghe }) => {
-        if (!ghe) { semGheCount++; return; }
-        ghe.exames.filter(e => e.periodicidade).forEach(e => {
-            if (!contagemExames[e.nome]) contagemExames[e.nome] = { count: 0, periodicidade: e.periodicidade };
+    comGhe.forEach(({ exames }) => {
+        exames.forEach(e => {
+            if (!contagemExames[e.nome]) contagemExames[e.nome] = { count: 0, certezaCount: 0, periodicidade: e.periodicidade };
             contagemExames[e.nome].count++;
+            if (e.certeza) contagemExames[e.nome].certezaCount++;
         });
     });
     const totalExameSlots = Object.values(contagemExames).reduce((s, info) => s + info.count, 0);
 
-    document.getElementById('kpiPrevisaoColaboradores').textContent = dueList.length;
+    document.getElementById('kpiPrevisaoColaboradores').textContent = comGhe.length;
     document.getElementById('kpiPrevisaoTiposExame').textContent = Object.keys(contagemExames).length;
     document.getElementById('kpiPrevisaoTotalExames').textContent = totalExameSlots;
 
@@ -4085,11 +4147,11 @@ function renderPrevisaoExames() {
         tabelaEl.innerHTML = '<div class="db-list-empty">Nenhum exame previsto para este mês.</div>';
     } else {
         tabelaEl.innerHTML = examesSorted.map(([nome, info]) => {
-            const incerto = info.periodicidade > 12;
+            const semCerteza = info.count - info.certezaCount;
             return `<div class="db-list-item" style="display:flex; justify-content:space-between; align-items:center;">
                 <div>
                     <div class="db-list-item-title" style="margin-bottom:0;">${escapeHTML(nome)}</div>
-                    ${incerto ? `<div class="db-list-item-sub" style="color:var(--warning);">Ciclo de ${info.periodicidade} meses — confirmar se já foi feito recentemente antes de agendar</div>` : ''}
+                    ${semCerteza > 0 ? `<div class="db-list-item-sub" style="color:var(--warning);">${semCerteza} de ${info.count} sem histórico detalhado (ciclo de ${info.periodicidade} meses) — confirmar antes de agendar</div>` : ''}
                 </div>
                 <div style="font-size: 16px; font-weight: 700; color: var(--primary);">${info.count}</div>
             </div>`;
@@ -4097,28 +4159,21 @@ function renderPrevisaoExames() {
     }
 
     const detalheEl = document.getElementById('previsaoExamesDetalhe');
-    if (dueList.length === 0) {
-        detalheEl.innerHTML = '<div class="db-list-empty">Nenhum colaborador com ASO vencendo neste mês.</div>';
+    if (comGhe.length === 0 && semGheCount === 0) {
+        detalheEl.innerHTML = '<div class="db-list-empty">Nenhum colaborador com exame vencendo neste mês.</div>';
     } else {
-        detalheEl.innerHTML = dueList.map(({ colab, vencimento, ghe }) => {
-            const dataFmt = parseLocalDate(vencimento).toLocaleDateString('pt-BR');
-            if (!ghe) {
-                return `<div class="db-list-item db-item-warning">
-                    <div class="db-list-item-title">${escapeHTML(colab.nome)} — ${escapeHTML(colab.funcao || '')}</div>
-                    <div class="db-list-item-sub">Vencimento: ${dataFmt} — ⚠️ GHE não identificado, lista de exames indisponível</div>
-                </div>`;
-            }
-            const examesTxt = ghe.exames.filter(e => e.periodicidade).map(e => e.periodicidade > 12 ? `${e.nome} (${e.periodicidade}m)` : e.nome).join(', ');
+        detalheEl.innerHTML = comGhe.map(({ colab, ghe, exames }) => {
+            const examesTxt = exames.map(e => e.certeza ? e.nome : `${e.nome} (a confirmar)`).join(', ');
             return `<div class="db-list-item">
                 <div class="db-list-item-title">${escapeHTML(colab.nome)} — ${escapeHTML(colab.funcao || '')}</div>
-                <div class="db-list-item-sub">Vencimento: ${dataFmt} — GHE ${escapeHTML(ghe.grupoId)}: ${escapeHTML(ghe.nome)}</div>
+                <div class="db-list-item-sub">GHE ${escapeHTML(ghe.grupoId)}: ${escapeHTML(ghe.nome)}</div>
                 <div class="db-list-item-sub">${escapeHTML(examesTxt)}</div>
             </div>`;
         }).join('');
     }
 
     if (semGheCount > 0) {
-        document.getElementById('previsaoExamesAviso').textContent = `⚠️ ${semGheCount} colaborador(es) sem GHE identificado - não entram na contagem por tipo de exame acima, mas aparecem na lista detalhada.`;
+        document.getElementById('previsaoExamesAviso').textContent = `⚠️ ${semGheCount} colaborador(es) sem GHE identificado - não entram na contagem por tipo de exame acima.`;
     } else {
         document.getElementById('previsaoExamesAviso').textContent = '';
     }
@@ -4307,6 +4362,7 @@ function abrirFormAso(id) {
         form.dataset.editId = id;
         document.getElementById('asoForm_matricula').value = a.matricula ? `${a.matricula} - ${a.nome_colaborador || ''}` : (a.nome_colaborador || '');
         onAsoColaboradorChange();
+        aplicarExamesDetalheAoForm(a.exames_detalhe);
         document.getElementById('asoForm_tipo').value = a.tipo_aso || '';
         document.getElementById('asoForm_dataExame').value = a.data_exame || '';
         document.getElementById('asoForm_dataVencimento').value = a.data_vencimento || '';
@@ -4357,6 +4413,21 @@ async function salvarAso() {
     const editId = form.dataset.editId;
     const id = editId || ('ASO_' + Date.now());
 
+    // Um registro por exame efetivamente marcado nesta consulta, cada um com SEU PRÓPRIO
+    // vencimento (data_exame + periodicidade daquele exame específico) - é isso que permite
+    // a Previsão de Exames saber com certeza quando cada exame vence, em vez de assumir que
+    // tudo vence junto com o ciclo de 12 meses da Avaliação clínica.
+    const examesDetalhe = Array.from(document.querySelectorAll('#asoForm_examesExigidos .asoExameCheckbox'))
+        .filter(cb => cb.checked)
+        .map(cb => {
+            const periodicidade = cb.dataset.periodicidade ? parseInt(cb.dataset.periodicidade, 10) : null;
+            return {
+                nome: cb.dataset.nome,
+                periodicidade,
+                data_vencimento: periodicidade ? addMeses(data, periodicidade) : null
+            };
+        });
+
     const row = {
         id,
         matricula,
@@ -4368,7 +4439,8 @@ async function salvarAso() {
         data_vencimento: document.getElementById('asoForm_dataVencimento').value || null,
         resultado: document.getElementById('asoForm_resultado').value || null,
         medico_responsavel: document.getElementById('asoForm_medico').value.trim() || null,
-        obs: document.getElementById('asoForm_obs').value.trim() || null
+        obs: document.getElementById('asoForm_obs').value.trim() || null,
+        exames_detalhe: examesDetalhe.length > 0 ? examesDetalhe : null
     };
 
     statusEl.textContent = 'Salvando...';

@@ -2611,6 +2611,36 @@ function renderEfetivoPanel() {
     });
     document.getElementById('kpiEfetivoTempoCasa').textContent = ativosNaData.length > 0 ? Math.round(tempoCasaTotalMeses / ativosNaData.length) : 0;
 
+    // Aniversariantes do mês: usa sempre o mês corrente REAL (hoje), não o dataRef do
+    // filtro de período - é um indicador de RH pra saber quem faz aniversário agora,
+    // não um corte histórico, então não deve mudar quando o usuário filtra "Ano 2024"
+    // ou qualquer outro período no seletor acima.
+    const mesCorrente = hoje.getMonth();
+    const ativosHojeReal = allEfetivo.filter(e => e.dt_admissao && parseLocalDate(e.dt_admissao) <= hoje && (!e.dt_demissao || parseLocalDate(e.dt_demissao) > hoje));
+    const aniversariantesDoMes = ativosHojeReal
+        .filter(e => e.dt_nascimento && parseLocalDate(e.dt_nascimento).getMonth() === mesCorrente)
+        .map(e => {
+            const nasc = parseLocalDate(e.dt_nascimento);
+            return { nome: e.nome || e.id, funcao: e.funcao, dia: nasc.getDate(), idadeQueCompleta: hoje.getFullYear() - nasc.getFullYear() };
+        })
+        .sort((a, b) => a.dia - b.dia);
+
+    const tituloAnivEl = document.getElementById('tituloAniversariantesMes');
+    if (tituloAnivEl) tituloAnivEl.textContent = nomesMeses[mesCorrente];
+
+    const listAnivEl = document.getElementById('listAniversariantesMes');
+    if (listAnivEl) {
+        if (aniversariantesDoMes.length === 0) {
+            listAnivEl.innerHTML = 'Nenhum aniversariante ativo este mês.';
+        } else {
+            listAnivEl.innerHTML = aniversariantesDoMes.map(a => {
+                const dataFmt = `${String(a.dia).padStart(2, '0')}/${String(mesCorrente + 1).padStart(2, '0')}`;
+                const destaque = a.dia === hoje.getDate() ? ' 🎉 <strong>hoje!</strong>' : '';
+                return `${dataFmt} — ${escapeHTML(a.nome)} (${escapeHTML(a.funcao || 'sem função')}, completa ${a.idadeQueCompleta} anos)${destaque}`;
+            }).join('<br>');
+        }
+    }
+
     // Evolução mensal: com um ano selecionado, mostra só os 12 meses daquele ano (ou até
     // o mês atual, se for o ano corrente); sem filtro, mantém o histórico completo de
     // sempre (da primeira admissão registrada até hoje).
@@ -2659,6 +2689,7 @@ function renderEfetivoPanel() {
     if (chartInstances.efetivoHHT220) chartInstances.efetivoHHT220.destroy();
     if (chartInstances.efetivoSexo) chartInstances.efetivoSexo.destroy();
     if (chartInstances.efetivoFaixaEtaria) chartInstances.efetivoFaixaEtaria.destroy();
+    if (chartInstances.efetivoAniversariantes) chartInstances.efetivoAniversariantes.destroy();
     if (chartInstances.adaAtual) chartInstances.adaAtual.destroy();
     if (chartInstances.adaAdmissoes) chartInstances.adaAdmissoes.destroy();
 
@@ -2761,6 +2792,24 @@ function renderEfetivoPanel() {
         type: 'bar',
         data: { labels: faixaEtariaLabels, datasets: [{ label: 'Efetivo', data: faixaEtariaData, backgroundColor: '#0ea5e9', borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+
+    // Gráfico de aniversariantes: só os dias do mês corrente que realmente têm alguém
+    // fazendo aniversário (não os 31 dias em branco) - mesma convenção de "só plota
+    // categorias que existem" usada nos outros gráficos de barra deste arquivo. O
+    // tooltip mostra o(s) nome(s) daquele dia, já que a lista abaixo do gráfico
+    // (listAniversariantesMes, preenchida mais acima) cobre o detalhe completo.
+    const diasComAniversario = [...new Set(aniversariantesDoMes.map(a => a.dia))].sort((a, b) => a - b);
+    const contagemPorDia = diasComAniversario.map(d => aniversariantesDoMes.filter(a => a.dia === d).length);
+    const nomesPorDia = diasComAniversario.map(d => aniversariantesDoMes.filter(a => a.dia === d).map(a => a.nome).join(', '));
+    chartInstances.efetivoAniversariantes = new Chart(document.getElementById('chartEfetivoAniversariantes'), {
+        type: 'bar',
+        data: { labels: diasComAniversario.map(d => `dia ${d}`), datasets: [{ label: 'Aniversariantes', data: contagemPorDia, backgroundColor: '#ec4899', borderRadius: 6 }] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => nomesPorDia[ctx.dataIndex] } } },
+            scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+        }
     });
 
     // ADA (Área Diretamente Afetada): as duas únicas cidades que contam pro indicador -

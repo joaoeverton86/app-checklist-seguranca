@@ -3792,15 +3792,24 @@ function renderRegistroDocsIndividuaisList() {
         container.innerHTML = '<div class="db-list-empty">Nenhum colaborador na sessão.</div>';
         return;
     }
-    container.innerHTML = colaboradores.map(r => `
+    container.innerHTML = colaboradores.map(r => {
+        // Mesmo aviso que sai impresso na própria OS (ver textoAvisoCargoOs) - mostrado
+        // aqui também, ANTES de gerar o documento, pra não descobrir só na hora de
+        // entregar pro colaborador que a OS saiu em branco.
+        const avaliacao = avaliarCorrespondenciaCargoOs(r.matricula, r.funcao);
+        const avisoOsIcon = avaliacao.semCorrespondencia
+            ? ` <span title="${escapeHTML(textoAvisoCargoOs({ ghe: avaliacao.ghe, funcao: avaliacao.funcao, ambiguo: avaliacao.ambiguo }))}" style="cursor:help;">⚠️</span>`
+            : '';
+        return `
         <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; flex-wrap:wrap;">
             <div style="flex:1; min-width:180px; font-size:12.5px;">${escapeHTML(r.nome)} <span style="color:var(--text-light);">— ${escapeHTML(r.funcao || '')}</span></div>
             <button class="db-apply-btn" style="padding:5px 10px; font-size:11.5px;" title="OS + Lista de Presença + Certificado + Declaração de Integração + Termo de Recusa" onclick="gerarKitCompletoIntegracao('${escapeHTML(r.matricula)}')">🖨️ Kit Completo</button>
-            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarOrdemServicoIndividual('${escapeHTML(r.matricula)}')">🖨️ OS</button>
+            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarOrdemServicoIndividual('${escapeHTML(r.matricula)}')">🖨️ OS</button>${avisoOsIcon}
             <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarCertificadoIndividual('${escapeHTML(r.matricula)}')">🖨️ Certificado</button>
             <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarDeclaracaoIntegracaoIndividual('${escapeHTML(r.matricula)}')">🖨️ Declaração</button>
             <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarTermoRecusaIndividual('${escapeHTML(r.matricula)}')">🖨️ Termo de Recusa</button>
-        </div>`).join('');
+        </div>`;
+    }).join('');
 }
 
 const DOC_INDIVIDUAL_CSS = `
@@ -4183,6 +4192,67 @@ async function gerarGabaritoProva() {
     registrarEmissaoDocumento('prova_eficacia', `Gabarito — ${cat.nome} — ${formatSimpleDate(data)}`);
 }
 
+// Normaliza texto de cargo/função pra comparação tolerante: remove acentos, pontuação
+// (inclui "." de abreviações como "AUX.") e hífen/underline, colapsa espaços. Usada tanto
+// pra achar o cargo do catálogo na Ordem de Serviço quanto pra avisar quando não achar.
+function normalizarTextoCargo(s) {
+    return String(s || '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/[.\-_/,;:()]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// Acha o cargo do catálogo do GHE que corresponde à função cadastrada do colaborador.
+// 1) Igualdade exata após normalizar (mesmo comportamento de antes, só que tolerante a
+// acento/pontuação/hífen). 2) Se não achar, tenta "contém" nos dois sentidos - cobre
+// abreviação ("AUX." vs "Auxiliar") e sufixo de turno ("VIGIA - DIURNO" vs "Vigia"). Se
+// mais de um cargo do grupo bater no "contém", NÃO escolhe nenhum - devolve ambiguo:true
+// pra quem chama tratar como "sem correspondência" em vez de arriscar mostrar o
+// EPI/atividade de um cargo errado num documento de segurança (ver textoAvisoCargoOs).
+function resolverCargoInfoDoColaborador(ghe, funcaoColaborador) {
+    if (!ghe || !Array.isArray(ghe.cargos) || ghe.cargos.length === 0) return { cargoInfo: null, ambiguo: false };
+    const funcaoNorm = normalizarTextoCargo(funcaoColaborador);
+    if (!funcaoNorm) return { cargoInfo: null, ambiguo: false };
+
+    const exato = ghe.cargos.find(c => normalizarTextoCargo(c.funcao) === funcaoNorm);
+    if (exato) return { cargoInfo: exato, ambiguo: false };
+
+    const candidatos = ghe.cargos.filter(c => {
+        const cargoNorm = normalizarTextoCargo(c.funcao);
+        return cargoNorm && (funcaoNorm.includes(cargoNorm) || cargoNorm.includes(funcaoNorm));
+    });
+    if (candidatos.length === 1) return { cargoInfo: candidatos[0], ambiguo: false };
+    if (candidatos.length > 1) return { cargoInfo: null, ambiguo: true };
+    return { cargoInfo: null, ambiguo: false };
+}
+
+// Mesma resolução acima, mas já resolve o GHE do colaborador junto - usada tanto pela
+// Ordem de Serviço quanto pelo indicador ⚠️ no botão "🖨️ OS" da lista, pra avisar ANTES
+// de gerar o documento em branco silenciosamente.
+function avaliarCorrespondenciaCargoOs(matricula, funcaoFallback) {
+    const colab = allEfetivo.find(e => e.id === matricula);
+    const ghe = colab?.ghe ? allGheCatalogo.find(g => g.id === normalizarGhe(colab.ghe)) : null;
+    const funcao = colab?.funcao || funcaoFallback || '';
+    const { cargoInfo, ambiguo } = resolverCargoInfoDoColaborador(ghe, funcao);
+    return { colab, ghe, funcao, cargoInfo, ambiguo, semCorrespondencia: !ghe || !cargoInfo };
+}
+
+// Texto de aviso impresso no topo da própria Ordem de Serviço quando não foi possível
+// resolver o cargo do catálogo pra função cadastrada - fica visível no documento em vez
+// de só sair em branco, pra o usuário perceber e corrigir o cadastro antes de entregar
+// pro colaborador.
+function textoAvisoCargoOs({ ghe, funcao, ambiguo }) {
+    if (!ghe) {
+        return `⚠️ Não foi possível identificar o GHE deste colaborador (campo "GHE" vazio ou não encontrado no catálogo) - Setor, Cargo e as demais seções desta Ordem de Serviço não puderam ser preenchidas automaticamente.`;
+    }
+    if (ambiguo) {
+        return `⚠️ A função cadastrada ("${funcao}") corresponde a mais de um cargo do catálogo do GHE ${ghe.id} - por segurança, nenhum foi escolhido automaticamente. Revise em Gerenciar GHE > GRUPO ${ghe.id} e ajuste a função no cadastro do colaborador (ou os cargos do catálogo) pra eliminar a ambiguidade.`;
+    }
+    return `⚠️ Não foi encontrada correspondência entre a função cadastrada ("${funcao}") e os cargos do catálogo do GHE ${ghe.id}. Revise em Gerenciar GHE > GRUPO ${ghe.id} e associe o cargo correto.`;
+}
+
 // Ordem de Serviço de Segurança e Saúde no Trabalho (NR-01, item 1.4.1.1 "e") -
 // documento individual obrigatório informando riscos da função e EPI/EPC exigidos,
 // exigido pela empresa atual do usuário e ausente no sistema até aqui. Junta-se ao Kit
@@ -4194,9 +4264,8 @@ async function gerarGabaritoProva() {
 function construirFolhaOrdemServico(matricula, r, campos, data) {
     const colab = allEfetivo.find(e => e.id === matricula);
     const ghe = colab?.ghe ? allGheCatalogo.find(g => g.id === normalizarGhe(colab.ghe)) : null;
-    const cargoInfo = ghe && Array.isArray(ghe.cargos)
-        ? ghe.cargos.find(c => (c.funcao || '').trim().toLowerCase() === (r.funcao || '').trim().toLowerCase())
-        : null;
+    const { cargoInfo, ambiguo } = resolverCargoInfoDoColaborador(ghe, r.funcao);
+    const avisoCargo = !cargoInfo ? textoAvisoCargoOs({ ghe, funcao: r.funcao, ambiguo }) : null;
     const ag = cargoInfo?.agentes || {};
     const epis = Array.isArray(cargoInfo?.epis_necessarios) ? cargoInfo.epis_necessarios : [];
     const epcs = Array.isArray(cargoInfo?.epcs_necessarios) ? cargoInfo.epcs_necessarios : [];
@@ -4209,6 +4278,7 @@ function construirFolhaOrdemServico(matricula, r, campos, data) {
     return `<div class="folha folha-compacta">
         <div class="titulo" style="font-size:16px;">ORDEM DE SERVIÇO DE SEGURANÇA E SAÚDE NO TRABALHO</div>
         ${codigoOs ? `<div class="subtitulo">${escapeHTML(codigoOs)}</div>` : ''}
+        ${avisoCargo ? `<div style="background:#fff3cd; border:1px solid #f0ad4e; color:#7a5b00; border-radius:6px; padding:8px 10px; font-size:11px; font-weight:600; margin-bottom:10px;">${escapeHTML(avisoCargo)}</div>` : ''}
         <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:10px;">
             <tr><td style="border:1px solid #ccc; padding:4px 6px;"><b>Emissão:</b> ${formatSimpleDate(data)}</td>
                 <td style="border:1px solid #ccc; padding:4px 6px;"><b>Empresa:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</td>
@@ -5092,9 +5162,12 @@ function renderGheMapaRiscosHtml(g) {
     }).join('');
 }
 
-// Expande em linha a "Descrição das atividades" (texto oficial do CBO, extraído do
-// Mapa de Riscos) sob o cargo clicado - mesmo padrão de expandir-em-linha já usado em
-// Compras/APR, em vez de modal.
+// Expande em linha o painel de edição completo do cargo clicado (Cargo/Função/CBO,
+// Descrição das Atividades, Agentes, EPIs/EPCs, Recomendações etc.) - mesmo padrão de
+// expandir-em-linha já usado em Compras/APR, em vez de modal. Toda linha é clicável,
+// mesmo cargo recém-adicionado manualmente e ainda sem nenhum campo preenchido - antes
+// só abria quem já tinha descricao_atividade ou cbo (vindo da planilha oficial), o que
+// tornava impossível editar/criar um cargo à mão.
 let gheCargoExpandidoIdx = null;
 
 function toggleCargoGheDescricao(idx) {
@@ -5103,20 +5176,46 @@ function toggleCargoGheDescricao(idx) {
     if (g) document.getElementById('gheCargosOficiais').innerHTML = renderGheCargosHtml(g);
 }
 
+// Cargo em branco pro "+ Adicionar cargo" - mesmas chaves de um cargo vindo da
+// importação da planilha oficial, só que todas vazias pra preencher na hora.
+function cargoGheVazio() {
+    return {
+        cargo: '', funcao: '', cbo: '', quantidade: '', descricao_atividade: '',
+        agentes: { fisico: '', quimico: '', biologico: '', ergonomico: '', acidentes: '' },
+        epis_necessarios: [], epcs_necessarios: [], recomendacoes: '', procedimentos_acidentes: '', observacoes: ''
+    };
+}
+
+function adicionarCargoGhe() {
+    const g = allGheCatalogo.find(x => x.id === gheAtualGerenciado);
+    if (!g) return;
+    if (!Array.isArray(g.cargos)) g.cargos = [];
+    g.cargos.push(cargoGheVazio());
+    gheCargoExpandidoIdx = g.cargos.length - 1; // já abre expandido pra preencher na hora
+    document.getElementById('gheCargosOficiais').innerHTML = renderGheCargosHtml(g);
+    document.getElementById('gheCargosOficiais').scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
 function renderGheCargosHtml(g) {
     const cargos = Array.isArray(g.cargos) ? g.cargos : [];
-    if (cargos.length === 0) return '<div class="db-list-empty">Sem cargos cadastrados neste grupo.</div>';
+    if (cargos.length === 0) return '<div class="db-list-empty">Sem cargos cadastrados neste grupo ainda - use "+ Adicionar cargo" acima.</div>';
     const campoMini = 'padding:5px 6px; border:1px solid var(--border); border-radius:6px; font-size:11px; width:100%; box-sizing:border-box;';
     return `<table style="width:100%; border-collapse:collapse; font-size:12px;">
         <thead><tr style="text-align:left; color:var(--text-light);">
             <th style="padding:4px 4px; width:18px;"></th><th style="padding:4px 8px;">Cargo</th><th style="padding:4px 8px;">Função</th><th style="padding:4px 8px;">CBO</th><th style="padding:4px 8px;">Qtd. oficial</th>
         </tr></thead>
         <tbody>${cargos.map((c, i) => {
-            const expandivel = !!(c.descricao_atividade || c.cbo);
             const expandido = gheCargoExpandidoIdx === i;
             const ag = c.agentes || {};
             const linhaDetalhe = expandido ? `<tr><td></td><td colspan="4" style="padding:4px 8px 14px;" onclick="event.stopPropagation()">
-                ${c.descricao_atividade ? `<div style="color:var(--text-light); font-size:11.5px; margin-bottom:8px;">${escapeHTML(c.descricao_atividade)}</div>` : ''}
+                <div style="font-weight:600; font-size:11px; margin-bottom:4px;">Identificação do cargo</div>
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap:6px; margin-bottom:8px;">
+                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Cargo</label><input type="text" id="gheCargoCargo-${i}" value="${escapeHTML(c.cargo || '')}" style="${campoMini}"></div>
+                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Função (comparada com colaboradores_efetivo.funcao)</label><input type="text" id="gheCargoFuncao-${i}" value="${escapeHTML(c.funcao || '')}" style="${campoMini}"></div>
+                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">CBO</label><input type="text" id="gheCargoCbo-${i}" value="${escapeHTML(c.cbo || '')}" style="${campoMini}"></div>
+                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Qtd. oficial</label><input type="text" id="gheCargoQuantidade-${i}" value="${escapeHTML(String(c.quantidade ?? ''))}" style="${campoMini}"></div>
+                </div>
+                <div style="margin-bottom:8px;"><label style="color:var(--text-light); font-size:10.5px; display:block;">Descrição das Atividades</label><textarea id="gheCargoDescricaoAtividade-${i}" rows="2" style="${campoMini}">${escapeHTML(c.descricao_atividade || '')}</textarea></div>
                 <div style="font-weight:600; font-size:11px; margin-bottom:4px;">Agentes associados às atividades (usado na Ordem de Serviço)</div>
                 <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap:6px; margin-bottom:8px;">
                     <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Físico</label><input type="text" id="gheCargoFisico-${i}" value="${escapeHTML(ag.fisico || '')}" style="${campoMini}"></div>
@@ -5138,10 +5237,10 @@ function renderGheCargosHtml(g) {
                 <button class="db-clear-btn" onclick="salvarCargoAgentesEpi(${i})">💾 Salvar</button>
                 <span id="gheCargoStatus-${i}" style="font-size:11px; color:var(--text-light); margin-left:8px;"></span>
             </td></tr>` : '';
-            return `<tr style="border-top:1px solid var(--border); ${expandivel ? 'cursor:pointer;' : ''}" ${expandivel ? `onclick="toggleCargoGheDescricao(${i})"` : ''}>
-                <td style="padding:4px 4px; color:var(--text-light);">${expandivel ? (expandido ? '▾' : '▸') : ''}</td>
-                <td style="padding:4px 8px;">${escapeHTML(c.cargo || '')}</td>
-                <td style="padding:4px 8px;">${escapeHTML(c.funcao || '')}</td>
+            return `<tr style="border-top:1px solid var(--border); cursor:pointer;" onclick="toggleCargoGheDescricao(${i})">
+                <td style="padding:4px 4px; color:var(--text-light);">${expandido ? '▾' : '▸'}</td>
+                <td style="padding:4px 8px;">${escapeHTML(c.cargo || '') || '<span style="color:var(--text-light);">(sem cargo)</span>'}</td>
+                <td style="padding:4px 8px;">${escapeHTML(c.funcao || '') || '<span style="color:var(--text-light);">(sem função)</span>'}</td>
                 <td style="padding:4px 8px;">${escapeHTML(c.cbo || '')}</td>
                 <td style="padding:4px 8px;">${escapeHTML(String(c.quantidade ?? ''))}</td>
             </tr>${linhaDetalhe}`;
@@ -5154,6 +5253,12 @@ async function salvarCargoAgentesEpi(i) {
     if (!g || !Array.isArray(g.cargos) || !g.cargos[i]) return;
     const statusEl = document.getElementById(`gheCargoStatus-${i}`);
     const cargo = { ...g.cargos[i] };
+    cargo.cargo = document.getElementById(`gheCargoCargo-${i}`).value.trim();
+    cargo.funcao = document.getElementById(`gheCargoFuncao-${i}`).value.trim();
+    cargo.cbo = document.getElementById(`gheCargoCbo-${i}`).value.trim();
+    const quantidadeRaw = document.getElementById(`gheCargoQuantidade-${i}`).value.trim();
+    cargo.quantidade = quantidadeRaw === '' ? '' : (Number.isNaN(Number(quantidadeRaw)) ? quantidadeRaw : Number(quantidadeRaw));
+    cargo.descricao_atividade = document.getElementById(`gheCargoDescricaoAtividade-${i}`).value.trim();
     cargo.agentes = {
         fisico: document.getElementById(`gheCargoFisico-${i}`).value.trim(),
         quimico: document.getElementById(`gheCargoQuimico-${i}`).value.trim(),
@@ -5181,7 +5286,10 @@ async function salvarCargoAgentesEpi(i) {
             updated_at: new Date().toISOString()
         }]);
         g.cargos = novoCargos;
-        if (statusEl) { statusEl.textContent = '✅ Salvo.'; statusEl.style.color = 'var(--success)'; }
+        // Reflete cargo/função/cbo/quantidade recém-salvos na linha colapsada da tabela.
+        document.getElementById('gheCargosOficiais').innerHTML = renderGheCargosHtml(g);
+        const statusReRenderizado = document.getElementById(`gheCargoStatus-${i}`);
+        if (statusReRenderizado) { statusReRenderizado.textContent = '✅ Salvo.'; statusReRenderizado.style.color = 'var(--success)'; }
     } catch (err) {
         console.error('Erro ao salvar agentes/EPI do cargo:', err);
         if (statusEl) { statusEl.textContent = '❌ Falha: ' + err.message; statusEl.style.color = 'var(--danger)'; }

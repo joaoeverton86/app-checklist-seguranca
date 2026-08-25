@@ -7660,6 +7660,11 @@ function calcularStatusAsoColaborador(matricula) {
 
 let previsaoExamesAno = null;
 let previsaoExamesMes = null;
+// Guarda o último resultado calculado por renderPrevisaoExames (mesma lista que já
+// alimenta "Colaboradores e Exames Exigidos") pro relatório de líderes reaproveitar sem
+// recalcular vencimento nenhum - só reagrupa por responsável e reformata como texto/PDF.
+let previsaoExamesUltimoResultado = null;
+let previsaoExamesLideresGrupos = [];
 
 function popularFiltroPrevisaoExames() {
     const hoje = new Date();
@@ -7730,7 +7735,7 @@ function renderPrevisaoExames() {
             if (!vencimentoUsado) return;
             const venc = parseLocalDate(vencimentoUsado);
             if (venc.getFullYear() !== ano || venc.getMonth() !== mes) return;
-            examesDoMes.push({ nome: exameReq.nome, periodicidade: exameReq.periodicidade, certeza: !!vencReal });
+            examesDoMes.push({ nome: exameReq.nome, periodicidade: exameReq.periodicidade, certeza: !!vencReal, vencimento: vencimentoUsado });
         });
 
         if (examesDoMes.length > 0) comGhe.push({ colab, ghe, exames: examesDoMes });
@@ -7791,6 +7796,144 @@ function renderPrevisaoExames() {
     } else {
         document.getElementById('previsaoExamesAviso').textContent = '';
     }
+
+    previsaoExamesUltimoResultado = { ano, mes, comGhe };
+    previsaoExamesLideresGrupos = [];
+    const lideresResultEl = document.getElementById('previsaoExamesLideresResultado');
+    if (lideresResultEl) lideresResultEl.innerHTML = '';
+}
+
+// ============================================
+// RELATÓRIO PARA LÍDERES - agrupa a mesma lista já calculada acima (previsaoExamesUltimoResultado)
+// pelo responsável/líder de cada colaborador (colaboradores_efetivo.responsavel), pra gerar
+// o aviso mensal que o engenheiro de segurança hoje escreve à mão pra cada líder. Não
+// recalcula vencimento nem GHE - só reagrupa e reformata o que renderPrevisaoExames já
+// resolveu.
+// ============================================
+
+// Colaboradores sem "responsavel" preenchido caem num grupo à parte em vez de sumir da
+// lista - usuário pediu explicitamente pra não perder esses casos silenciosamente.
+function agruparPrevisaoExamesPorLider(comGhe) {
+    const grupos = new Map();
+    comGhe.forEach(({ colab, exames }) => {
+        const lider = (colab.responsavel || '').trim();
+        const chave = lider || '__sem_lider__';
+        if (!grupos.has(chave)) grupos.set(chave, { lider, semLider: !lider, colaboradores: [] });
+        grupos.get(chave).colaboradores.push({
+            nome: colab.nome || '',
+            funcao: colab.funcao || '',
+            setor: colab.setor || '',
+            exames: exames.map(e => ({ nome: e.nome, vencimento: e.vencimento }))
+        });
+    });
+    const semLider = grupos.get('__sem_lider__');
+    grupos.delete('__sem_lider__');
+    const ordenados = Array.from(grupos.values()).sort((a, b) => a.lider.localeCompare(b.lider));
+    if (semLider) ordenados.push(semLider);
+    return ordenados;
+}
+
+function formatarTextoRelatorioLider(grupo, mesLabel) {
+    const linhas = grupo.colaboradores.map(c => {
+        const examesTxt = c.exames.map(e => `${e.nome} — vence em ${formatSimpleDate(e.vencimento)}`).join('; ');
+        return `- ${c.nome} — ${c.funcao || '—'} — ${c.setor || '—'} — ${examesTxt}`;
+    }).join('\n');
+    const abertura = grupo.semLider
+        ? `⚠️ Colaboradores sem líder/responsável definido no cadastro (revisar em Efetivo) — exame periódico previsto para ${mesLabel}:`
+        : `Prezado(a) ${grupo.lider}, segue a relação de colaboradores da sua equipe com exame periódico previsto para ${mesLabel}. Favor se programar para a ausência do(s) colaborador(es) no dia do exame.`;
+    return `${abertura}\n\n${linhas}`;
+}
+
+function gerarRelatorioPrevisaoExamesLideres() {
+    const resultEl = document.getElementById('previsaoExamesLideresResultado');
+    const dados = previsaoExamesUltimoResultado;
+    if (!dados || dados.comGhe.length === 0) {
+        resultEl.innerHTML = '<div class="db-list-empty">Nenhum colaborador com exame previsto para este mês.</div>';
+        previsaoExamesLideresGrupos = [];
+        return;
+    }
+
+    const mesLabel = `${NOMES_MESES[dados.mes]} de ${dados.ano}`;
+    const grupos = agruparPrevisaoExamesPorLider(dados.comGhe);
+    previsaoExamesLideresGrupos = grupos.map(g => ({
+        ...g,
+        mesLabel,
+        texto: formatarTextoRelatorioLider(g, mesLabel)
+    }));
+
+    resultEl.innerHTML = previsaoExamesLideresGrupos.map((g, idx) => `
+        <div class="db-list-item${g.semLider ? ' db-item-warning' : ''}">
+            <div class="db-list-item-title">${g.semLider ? '⚠️ Sem líder definido - revisar cadastro' : escapeHTML(g.lider)}</div>
+            <div class="db-list-item-sub" style="margin-bottom:6px;">${g.colaboradores.length} colaborador(es)</div>
+            <textarea readonly style="width:100%; min-height:90px; font-size:11.5px; font-family:inherit; padding:8px; border:1px solid var(--border); border-radius:6px; resize:vertical; box-sizing:border-box; background:white;">${escapeHTML(g.texto)}</textarea>
+            <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <button class="db-clear-btn" onclick="copiarRelatorioLider(${idx}, this)">📋 Copiar texto</button>
+                <button class="db-clear-btn" onclick="baixarPdfRelatorioLider(${idx})">📄 Baixar PDF</button>
+            </div>
+        </div>`).join('');
+}
+
+function copiarRelatorioLider(idx, btnEl) {
+    const grupo = previsaoExamesLideresGrupos[idx];
+    if (!grupo) return;
+    navigator.clipboard.writeText(grupo.texto).then(() => {
+        const original = btnEl.textContent;
+        btnEl.textContent = '✅ Copiado!';
+        setTimeout(() => { btnEl.textContent = original; }, 2000);
+    }).catch(() => {
+        alert('Não foi possível copiar automaticamente - selecione o texto na caixa e copie manualmente (Ctrl+C).');
+    });
+}
+
+// Mesmo padrão de blob+<a>+window.print() de gerarPdfEfetivo() - "PDF" é o navegador
+// imprimindo/salvando essa página HTML, não uma lib de PDF (o painel não carrega jsPDF).
+function baixarPdfRelatorioLider(idx) {
+    const grupo = previsaoExamesLideresGrupos[idx];
+    if (!grupo) return;
+
+    const linhas = [];
+    grupo.colaboradores.forEach(c => {
+        c.exames.forEach(e => {
+            linhas.push({ nome: c.nome, funcao: c.funcao, setor: c.setor, exame: e.nome, vencimento: formatSimpleDate(e.vencimento) });
+        });
+    });
+    const tituloLider = grupo.semLider ? 'SEM LÍDER DEFINIDO - REVISAR CADASTRO' : grupo.lider.toUpperCase();
+    const agora = new Date();
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Exames Previstos - ${escapeHTML(tituloLider)} - ${escapeHTML(grupo.mesLabel)}</title>
+<style>
+    @page { size: portrait; margin: 14mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 20px; }
+    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:6px; gap:10px; }
+    .cabecalho img { max-height:40px; }
+    .cabecalho .titulo { font-weight:700; font-size:15px; text-align:center; flex:1; }
+    .info-geracao { font-size:10.5px; color:#444; margin-bottom:12px; }
+    .abertura { font-size:11.5px; margin-bottom:14px; white-space:pre-wrap; }
+    table { width:100%; border-collapse:collapse; font-size:10.5px; }
+    th, td { border:1px solid #999; padding:5px 7px; text-align:left; }
+    th { background:#e5e5e5; }
+    tbody tr:nth-child(even) { background:#f7f7f7; }
+    .no-print { text-align:center; margin:16px 0; }
+    .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
+    @media print { .no-print { display:none; } body { margin:0; } thead { display: table-header-group; } }
+</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="cabecalho">
+        <img src="${LOGO_COP_BASE64}" alt="COP">
+        <div class="titulo">EXAMES PERIÓDICOS PREVISTOS — ${escapeHTML(tituloLider)}</div>
+        <div style="width:40px;"></div>
+    </div>
+    <div class="info-geracao">${escapeHTML(EMPRESA_INFO.razaoSocial)} — Referência: ${escapeHTML(grupo.mesLabel)} — Gerado em ${formatSimpleDate(agora.toISOString().slice(0, 10))} às ${agora.toLocaleTimeString('pt-BR')}</div>
+    <div class="abertura">${escapeHTML(grupo.texto.split('\n\n')[0])}</div>
+    <table>
+        <thead><tr><th>Colaborador</th><th>Função</th><th>Setor</th><th>Exame</th><th>Vencimento</th></tr></thead>
+        <tbody>${linhas.map(l => `<tr><td>${escapeHTML(l.nome)}</td><td>${escapeHTML(l.funcao || '—')}</td><td>${escapeHTML(l.setor || '—')}</td><td>${escapeHTML(l.exame)}</td><td>${escapeHTML(l.vencimento)}</td></tr>`).join('')}</tbody>
+    </table>
+</body></html>`;
+
+    abrirDocumentoBlob(html);
 }
 
 // Taxa de Absenteísmo Ocupacional = horas perdidas (atestados de doença ocupacional +

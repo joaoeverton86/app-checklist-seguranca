@@ -2102,14 +2102,37 @@
                 <div class="db-chart-card" style="margin-top: 16px;">
                     <div class="db-chart-title">📧 Relatório para Líderes de Equipe</div>
                     <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">
-                        Agrupa os colaboradores acima (mesmo mês/ano selecionado) pelo responsável de cada um, pronto
-                        pra copiar no corpo do e-mail ou baixar em PDF pra anexar e avisar cada líder.
+                        Agrupa os colaboradores acima (mesmo mês/ano selecionado) por líder ou setor, pronto pra
+                        copiar no corpo do e-mail ou baixar em PDF pra avisar cada líder sobre os exames do mês.
                     </p>
-                    <button class="db-apply-btn" onclick="gerarRelatorioPrevisaoExamesLideres()">📧 Gerar Relatório para Líderes</button>
-                    <div id="previsaoExamesLideresResultado" style="margin-top: 14px; display: flex; flex-direction: column; gap: 12px;"></div>
+                    <button class="db-apply-btn" onclick="abrirRelatorioLideresModal()">📧 Gerar Relatório para Líderes</button>
                 </div>
                 </div>
             </section>
+
+            <!-- Modal do Relatório para Líderes (Previsão de Exames) - fica fora do fluxo normal
+                 da página (position:fixed) então a localização no HTML não importa pro layout. -->
+            <div id="relatorioLideresModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:1000; align-items:center; justify-content:center; padding:20px;" onclick="if (event.target === this) fecharRelatorioLideresModal();">
+                <div style="background:var(--card); border-radius:12px; max-width:760px; width:100%; max-height:90vh; overflow-y:auto; padding:20px; box-shadow: var(--shadow);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:10px;">
+                        <div class="db-chart-title" style="margin-bottom:0;">📧 Relatório para Líderes — <span id="relatorioLideresModalMes"></span></div>
+                        <button class="db-clear-btn" onclick="fecharRelatorioLideresModal()">✕ Fechar</button>
+                    </div>
+
+                    <div class="db-filter-buttons" style="margin-bottom: 10px;">
+                        <button id="relatorioLideresModoBtn-individual" class="db-filter-btn active" onclick="setRelatorioLideresModo('individual')">👤 Individual por Líder</button>
+                        <button id="relatorioLideresModoBtn-geral" class="db-filter-btn" onclick="setRelatorioLideresModo('geral')">📑 Geral (todos em um só)</button>
+                    </div>
+
+                    <div id="relatorioLideresCriterioWrap" style="display:none; gap:16px; align-items:center; margin-bottom: 12px; font-size: 12.5px;">
+                        <span style="color:var(--text-light);">Agrupar por:</span>
+                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="radio" name="relatorioLideresCriterio" value="responsavel" checked onchange="onRelatorioLideresCriterioChange()"> Líder/Gestor</label>
+                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="radio" name="relatorioLideresCriterio" value="setor" onchange="onRelatorioLideresCriterioChange()"> Setor</label>
+                    </div>
+
+                    <div id="relatorioLideresConteudo" style="display:flex; flex-direction:column; gap:12px;"></div>
+                </div>
+            </div>
 
             <!-- Página: Avaliação Psicossocial (COPSOQ II) -->
             <section class="db-page" id="page-psicossocial">

@@ -5235,6 +5235,7 @@ function renderGheCargosHtml(g) {
                     <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Observações</label><textarea id="gheCargoObservacoes-${i}" rows="2" style="${campoMini}">${escapeHTML(c.observacoes || '')}</textarea></div>
                 </div>
                 <button class="db-clear-btn" onclick="salvarCargoAgentesEpi(${i})">💾 Salvar</button>
+                <button class="db-clear-btn" style="color: var(--danger); border-color: var(--danger);" onclick="removerCargoGhe(${i})">🗑️ Remover cargo</button>
                 <span id="gheCargoStatus-${i}" style="font-size:11px; color:var(--text-light); margin-left:8px;"></span>
             </td></tr>` : '';
             return `<tr style="border-top:1px solid var(--border); cursor:pointer;" onclick="toggleCargoGheDescricao(${i})">
@@ -5293,6 +5294,43 @@ async function salvarCargoAgentesEpi(i) {
     } catch (err) {
         console.error('Erro ao salvar agentes/EPI do cargo:', err);
         if (statusEl) { statusEl.textContent = '❌ Falha: ' + err.message; statusEl.style.color = 'var(--danger)'; }
+    }
+}
+
+// Remove um cargo do grupo (por índice) - único jeito de desfazer um "+ Adicionar cargo"
+// feito sem querer ou um cargo de teste, já que antes não existia nenhuma forma de tirar
+// um cargo da tela depois de criado. Só sai da tela DEPOIS do upsert confirmar - se der
+// erro, a linha continua lá pra não passar a impressão de que a remoção funcionou.
+async function removerCargoGhe(i) {
+    const g = allGheCatalogo.find(x => x.id === gheAtualGerenciado);
+    if (!g || !Array.isArray(g.cargos) || !g.cargos[i]) return;
+    const cargo = g.cargos[i];
+    const nomeExibicao = cargo.cargo || cargo.funcao || '(sem cargo)';
+    if (!confirm(`Remover o cargo "${nomeExibicao}" deste grupo? Essa ação não pode ser desfeita.`)) return;
+
+    const statusEl = document.getElementById(`gheCargoStatus-${i}`);
+    if (statusEl) { statusEl.textContent = 'Removendo...'; statusEl.style.color = 'var(--text-light)'; }
+    const novoCargos = g.cargos.filter((c, idx) => idx !== i);
+
+    try {
+        // Upsert precisa da linha inteira - mesmo cuidado de salvarCargoAgentesEpi.
+        await supabaseUpsert('ghe_catalogo', [{
+            id: g.id,
+            nome: g.nome,
+            cargos: novoCargos,
+            quantidade_oficial: g.quantidade_oficial,
+            riscos: g.riscos || [],
+            conclusoes: g.conclusoes || {},
+            updated_at: new Date().toISOString()
+        }]);
+        g.cargos = novoCargos;
+        gheCargoExpandidoIdx = null;
+        document.getElementById('gheCargosOficiais').innerHTML = renderGheCargosHtml(g);
+        const gerenciarStatusEl = document.getElementById('gheGerenciarStatus');
+        if (gerenciarStatusEl) { gerenciarStatusEl.textContent = '🗑️ Cargo removido.'; gerenciarStatusEl.style.color = 'var(--success)'; }
+    } catch (err) {
+        console.error('Erro ao remover cargo:', err);
+        if (statusEl) { statusEl.textContent = '❌ Falha ao remover: ' + err.message; statusEl.style.color = 'var(--danger)'; }
     }
 }
 

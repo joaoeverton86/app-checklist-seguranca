@@ -5689,6 +5689,182 @@ function irParaGheDaMatriz(gheId) {
 }
 
 // ============================================
+// MATRIZ NR-6 (aba EPI) - mesma fonte de dado que a Matriz de Risco acima
+// (ghe_catalogo.riscos[]), só que com foco em EPI recomendado por função e edição
+// direta na própria aba (em vez de só leitura). Reaproveita renderGheMapaRiscosHtml
+// (view) e o mesmo formato de linha de risco usado em "Gerenciar GHE"
+// (Efetivo > GHE), mas com estado de edição próprio (matrizEdit*) pra não
+// conflitar com gheAtualGerenciado/gheRiscosForm daquela outra tela.
+// ============================================
+
+let matrizEpiLoaded = false;
+let matrizEditId = null;
+let matrizEditForm = [];
+
+function loadMatrizEpiData() {
+    const jobs = [];
+    if (allGheCatalogo.length === 0) jobs.push(supabaseFetch('ghe_catalogo', '?select=*').then(rows => { allGheCatalogo = rows; }));
+    if (allEfetivo.length === 0) jobs.push(supabaseFetch('colaboradores_efetivo', '?select=*').then(rows => { allEfetivo = rows; }));
+    Promise.all(jobs).then(() => {
+        renderMatrizEpiCards();
+        filterMatrizEpi(document.getElementById('mepiSearchInput')?.value || '');
+    });
+}
+
+function setorDoGheNome(nome) {
+    return String(nome || '').replace(/^GRUPO\s*\d+\s*-\s*/i, '').trim();
+}
+
+function funcoesDoGhe(g) {
+    const nomes = (Array.isArray(g.cargos) ? g.cargos : []).map(c => c.funcao || c.cargo).filter(Boolean);
+    return Array.from(new Set(nomes)).join(', ');
+}
+
+function renderMatrizEpiCards() {
+    const wrap = document.getElementById('mepiCardsWrap');
+    const resumo = document.getElementById('mepiResumo');
+    if (!wrap) return;
+
+    if (allGheCatalogo.length === 0) {
+        wrap.innerHTML = '<div class="db-list-empty">Nenhum catálogo de GHE importado ainda. Envie o Quadro Funcional em Efetivo > Configurações.</div>';
+        if (resumo) resumo.textContent = '';
+        return;
+    }
+
+    const contagem = contagemAtualPorGhe();
+    const grupos = allGheCatalogo.slice().sort((a, b) => a.id.localeCompare(b.id));
+    const totalColab = Array.from(contagem.values()).reduce((s, v) => s + v, 0);
+    if (resumo) resumo.textContent = `${grupos.length} grupo(s) homogêneo(s) de exposição · ${totalColab} colaborador(es) mapeado(s) no cadastro atual`;
+
+    wrap.innerHTML = grupos.map(g => {
+        const riscos = Array.isArray(g.riscos) ? g.riscos : [];
+        const atual = contagem.get(g.id) || 0;
+        const setor = setorDoGheNome(g.nome);
+        const funcoes = funcoesDoGhe(g);
+        const buscaTxt = [setor, funcoes, ...riscos.map(r => r.agente || '')].join(' ').toLowerCase();
+        const editando = matrizEditId === g.id;
+
+        return `<div class="mepi-card" id="mepiCard-${escapeHTML(g.id)}" data-search="${escapeHTML(buscaTxt)}">
+            <div class="mepi-card-head">
+                <span class="mepi-ghe">GHE ${escapeHTML(g.id)}</span>
+                <div class="mepi-head-text">
+                    <div class="mepi-setor">${escapeHTML(setor)}</div>
+                    <div class="mepi-funcoes">${escapeHTML(funcoes)}</div>
+                </div>
+                <span class="mepi-n" style="color:${atual > 0 ? 'var(--text)' : 'var(--text-light)'}">${atual > 0 ? atual + ' colab.' : 'sem colab. ativo'}</span>
+            </div>
+            <div id="mepiView-${escapeHTML(g.id)}">${renderGheMapaRiscosHtml(g)}</div>
+            <div class="mepi-footer" style="border-top:1px dashed var(--border); padding-top:8px; margin-top:8px;">
+                <button class="db-clear-btn" onclick="toggleMatrizEdit('${escapeHTML(g.id)}')">${editando ? '✕ Cancelar' : '✏️ Editar riscos'}</button>
+            </div>
+            ${editando ? renderMatrizEditBlock(g) : ''}
+        </div>`;
+    }).join('');
+}
+
+function renderMatrizEditBlock(g) {
+    return `<div style="margin-top:10px; border-top:1px solid var(--border); padding-top:10px;">
+        <div id="mepiEditFields-${escapeHTML(g.id)}"></div>
+        <button class="db-clear-btn" onclick="adicionarMatrizRisco()">➕ Adicionar Risco</button>
+        <button class="db-clear-btn" style="margin-left:6px;" onclick="salvarMatrizRiscos()">💾 Salvar</button>
+        <span id="mepiEditStatus-${escapeHTML(g.id)}" style="font-size:11px; color:var(--text-light); margin-left:8px;"></span>
+    </div>`;
+}
+
+function toggleMatrizEdit(id) {
+    if (matrizEditId === id) {
+        matrizEditId = null;
+        matrizEditForm = [];
+        renderMatrizEpiCards();
+        filterMatrizEpi(document.getElementById('mepiSearchInput')?.value || '');
+        return;
+    }
+    const g = allGheCatalogo.find(x => x.id === id);
+    if (!g) return;
+    matrizEditId = id;
+    matrizEditForm = Array.isArray(g.riscos) ? g.riscos.map(r => ({ ...r })) : [];
+    renderMatrizEpiCards();
+    filterMatrizEpi(document.getElementById('mepiSearchInput')?.value || '');
+    renderMatrizEditFields();
+    document.getElementById('mepiCard-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function adicionarMatrizRisco() {
+    matrizEditForm.push(rowRiscoGheVazio());
+    renderMatrizEditFields();
+}
+
+function removerMatrizRisco(i) {
+    matrizEditForm.splice(i, 1);
+    renderMatrizEditFields();
+}
+
+function renderMatrizEditFields() {
+    if (!matrizEditId) return;
+    const container = document.getElementById('mepiEditFields-' + matrizEditId);
+    if (!container) return;
+    const campoEstilo = 'padding:6px; border:1px solid var(--border); border-radius:6px; font-size:11.5px; width:100%; box-sizing:border-box;';
+    if (matrizEditForm.length === 0) {
+        container.innerHTML = '<div class="db-list-empty">Nenhum risco cadastrado — clique em "➕ Adicionar Risco".</div>';
+        return;
+    }
+    container.innerHTML = matrizEditForm.map((r, i) => `
+        <div style="border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:10px; background:var(--bg);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <b style="font-size:12px;">Risco ${i + 1}</b>
+                <button onclick="removerMatrizRisco(${i})" title="Remover" style="border:none; background:none; color:var(--danger); cursor:pointer; font-size:15px;">🗑️</button>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:6px; margin-bottom:6px;">
+                <input type="text" placeholder="Tipo de Agente (Físico/Químico/Biológico/Ergonômico/Acidentes)" value="${escapeHTML(r.tipo_agente)}" oninput="matrizEditForm[${i}].tipo_agente=this.value" style="${campoEstilo}">
+                <input type="text" placeholder="Agente" value="${escapeHTML(r.agente)}" oninput="matrizEditForm[${i}].agente=this.value" style="${campoEstilo}">
+                <input type="number" min="1" max="5" placeholder="Gravidade (nº)" value="${escapeHTML(String(r.gravidade ?? ''))}" oninput="matrizEditForm[${i}].gravidade=this.value" style="${campoEstilo}">
+                <input type="text" placeholder="Gravidade (rótulo: Baixo/Moderado/Alto...)" value="${escapeHTML(r.gravidade_label)}" oninput="matrizEditForm[${i}].gravidade_label=this.value" style="${campoEstilo}">
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:6px; margin-bottom:6px;">
+                <input type="text" placeholder="Fontes Geradoras" value="${escapeHTML(r.fontes_geradoras)}" oninput="matrizEditForm[${i}].fontes_geradoras=this.value" style="${campoEstilo}">
+                <input type="text" placeholder="Tipo/Tempo de Exposição" value="${escapeHTML(r.tipo_tempo_exposicao)}" oninput="matrizEditForm[${i}].tipo_tempo_exposicao=this.value" style="${campoEstilo}">
+                <input type="text" placeholder="Situação de Controle" value="${escapeHTML(r.situacao_controle)}" oninput="matrizEditForm[${i}].situacao_controle=this.value" style="${campoEstilo}">
+            </div>
+            <textarea placeholder="Descrição" oninput="matrizEditForm[${i}].descricao=this.value" style="${campoEstilo} margin-bottom:6px;" rows="2">${escapeHTML(r.descricao)}</textarea>
+            <textarea placeholder="Danos à Saúde" oninput="matrizEditForm[${i}].danos_saude=this.value" style="${campoEstilo} margin-bottom:6px;" rows="1">${escapeHTML(r.danos_saude)}</textarea>
+            <textarea placeholder="Sugestões / Medidas de Prevenção" oninput="matrizEditForm[${i}].sugestoes=this.value" style="${campoEstilo} margin-bottom:6px;" rows="2">${escapeHTML(r.sugestoes)}</textarea>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+                <input type="text" placeholder="EPIs Recomendados" value="${escapeHTML(r.epis_recomendados)}" oninput="matrizEditForm[${i}].epis_recomendados=this.value" style="${campoEstilo}">
+                <input type="text" placeholder="EPCs Recomendados" value="${escapeHTML(r.epcs_recomendados)}" oninput="matrizEditForm[${i}].epcs_recomendados=this.value" style="${campoEstilo}">
+            </div>
+        </div>`).join('');
+}
+
+async function salvarMatrizRiscos() {
+    const g = allGheCatalogo.find(x => x.id === matrizEditId);
+    if (!g) return;
+    const statusEl = document.getElementById('mepiEditStatus-' + matrizEditId);
+    const riscosValidos = matrizEditForm.filter(r => (r.agente || '').trim());
+
+    if (statusEl) { statusEl.textContent = 'Salvando...'; statusEl.style.color = 'var(--text-light)'; }
+    try {
+        // Upsert precisa da linha inteira - mesmo cuidado de salvarMapaRiscosGhe.
+        await supabaseUpsert('ghe_catalogo', [{
+            id: g.id,
+            nome: g.nome,
+            cargos: g.cargos,
+            quantidade_oficial: g.quantidade_oficial,
+            riscos: riscosValidos,
+            conclusoes: g.conclusoes || {},
+            updated_at: new Date().toISOString()
+        }]);
+        g.riscos = riscosValidos;
+        matrizEditId = null;
+        matrizEditForm = [];
+        renderMatrizEpiCards();
+        filterMatrizEpi(document.getElementById('mepiSearchInput')?.value || '');
+    } catch (err) {
+        console.error('Erro ao salvar riscos da Matriz NR-6:', err);
+        if (statusEl) { statusEl.textContent = '❌ Falha ao salvar: ' + err.message; statusEl.style.color = 'var(--danger)'; }
+    }
+}
+
+// ============================================
 // EFETIVO - busca de colaborador (ativo/inativo, admissão/demissão, tempo de casa,
 // aniversário e situação de treinamentos), a pedido do cliente.
 // ============================================
@@ -8151,6 +8327,10 @@ function showEpiSubtab(tab) {
     if (tab === 'estoque') renderEpiEstoquePanel();
     if (tab === 'cadastro') { renderEpiCatalogoResumo(); filterEpiCatalogoLista(document.getElementById('epiCatalogoSearchInput')?.value || ''); }
     if (tab === 'lancamentos') { renderEpiEntregasResumo(); filterEpiEntregasLista(document.getElementById('epiEntregasSearchInput')?.value || ''); }
+    if (tab === 'matriz') {
+        if (!matrizEpiLoaded) { matrizEpiLoaded = true; loadMatrizEpiData(); }
+        else { renderMatrizEpiCards(); filterMatrizEpi(document.getElementById('mepiSearchInput')?.value || ''); }
+    }
     if (tab === 'historico') { popularEpiColabDatalist(); renderEpiHistoricoColaborador(); }
 }
 

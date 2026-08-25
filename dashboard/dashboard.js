@@ -7491,12 +7491,25 @@ const PCMSO_SETOR_FUNCAO_GHE = {
     'VIGILÂNCIA||VIGIA - NOTURNO': 'G01'
 };
 
-// Resolve os exames exigidos pelo PCMSO pra um colaborador (por setor+função reais do
-// cadastro de efetivo). Retorna null quando a combinação setor+função não está mapeada
-// ainda (colaborador novo com cargo/setor não visto antes) - nesse caso a tela deve
-// avisar que precisa mapear manualmente, não fabricar um GHE genérico.
+// Resolve os exames exigidos pelo PCMSO pra um colaborador. Prioriza o campo
+// colaboradores_efetivo.ghe (mantido corretamente no cadastro) - só cai no fallback por
+// setor+função (PCMSO_SETOR_FUNCAO_GHE) quando esse campo está vazio, pra manter
+// compatibilidade com cadastros antigos ainda não preenchidos. Isso é necessário porque
+// a equipe/setor atual do colaborador nem sempre bate com o GHE real dele: equipes podem
+// ser formadas com colaboradores de vários setores/funções diferentes (ex: alguém
+// classificado como GHE 14 - Serviços Gerais, mas hoje atuando na equipe de Manutenção
+// Elétrica), então inferir o GHE por setor+função erra nesses casos.
+// Retorna null quando não dá pra resolver de nenhuma forma (colab.ghe vazio e a
+// combinação setor+função também não está mapeada ainda) - nesse caso a tela deve avisar
+// que precisa mapear manualmente, não fabricar um GHE genérico.
 function examesGheColaborador(colab) {
     if (!colab) return null;
+    const gheRaw = String(colab.ghe || '').trim().toUpperCase();
+    if (gheRaw) {
+        const numero = gheRaw.startsWith('G') ? gheRaw.slice(1) : gheRaw;
+        const grupoId = `G${normalizarGhe(numero)}`;
+        return PCMSO_EXAMES_POR_GHE[grupoId] ? { grupoId, ...PCMSO_EXAMES_POR_GHE[grupoId] } : null;
+    }
     const chave = `${(colab.setor || '').trim().toUpperCase()}||${(colab.funcao || '').trim().toUpperCase()}`;
     const grupoId = PCMSO_SETOR_FUNCAO_GHE[chave];
     if (!grupoId) return null;

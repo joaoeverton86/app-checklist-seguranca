@@ -1526,6 +1526,12 @@ let cronogramaOrigemId = null;
 let registroLoteFiltroAno = String(hojeCronograma.getFullYear());
 let registroLoteFiltroMes = String(hojeCronograma.getMonth());
 let registroLoteFiltroTema = '';
+// '' = todas as frentes (comportamento padrão, inalterado). Preenchido = restringe tanto
+// a prévia/seleção quanto a geração final a essa frente - cobre "imprimir todos os temas
+// pra um encarregado específico" (Todos os temas + frente escolhida) e "um tema pra um
+// encarregado escolhido" (tema + frente escolhida), sem tocar no caso já existente de
+// "um tema pra todas as frentes" (tema escolhido, frente em branco).
+let registroLoteFiltroFrente = '';
 // Ids do cronograma marcados pra entrar na impressão em lote - null = ainda não
 // inicializado (marca todos por padrão na primeira renderização do filtro atual).
 let registroLoteSelecionados = null;
@@ -1536,7 +1542,6 @@ let registroLoteSelecionados = null;
 // onde não tem o que pré-carregar automaticamente.
 let registroNovaEquipe = new Map();
 
-const NR_PATTERN = /\bNR[\s.]?\d/i;
 const NOMES_MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const NOMES_DIAS_SEMANA = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -1856,7 +1861,11 @@ function renderTreinamentosPanel() {
 
     // NRs vencidas/vencendo - baseado no status atual (não no período filtrado acima,
     // que é só pra sessões realizadas), só colaboradores ativos, só treinamentos que
-    // parecem NR formal (nome contém "NR" + número - heurística simples).
+    // reciclam de verdade (meses_validade preenchido - já vem pronto na view
+    // treinamentos_status, direto de treinamentos_realizados). Antes filtrava pelo NOME
+    // conter "NR" + número, o que deixava de fora ~9 treinamentos com validade real mas
+    // sem "NR" no nome (ex: "PTE E APR", "COMUNICAÇÃO DE ACIDENTE") - o alerta principal
+    // do módulo ficava cego pra quase metade do que devia vigiar.
     //
     // "Ativo" aqui usa o cadastro de efetivo (colaboradores_efetivo.dt_demissao) como
     // fonte de verdade, não o status_colaborador de treinamentos_status - esse último é
@@ -1874,7 +1883,7 @@ function renderTreinamentosPanel() {
         const efetivo = efetivoPorMatricula.get(s.matricula);
         const estaAtivo = efetivo ? (!!efetivo.dt_admissao && !efetivo.dt_demissao) : (s.status_colaborador === 'ATIVO');
         if (!estaAtivo) return;
-        if (!NR_PATTERN.test(s.treinamento_nome || '')) return;
+        if (!s.meses_validade) return;
         if (!s.data_proxima_reciclagem) return;
         const deadline = parseLocalDate(s.data_proxima_reciclagem);
         deadline.setHours(0, 0, 0, 0);
@@ -2787,8 +2796,9 @@ async function gerarListasCronogramaMes() {
     // Um mesmo tema costuma ir pra várias frentes (confirmado com o usuário: "uma lista
     // por frente, pra cada tema") - por isso cada item do cronograma vira uma folha POR
     // FRENTE ativa, não uma folha só. Em escala real (ex: 9 temas × 12 frentes) isso gera
-    // bastante página, então confirma antes de montar tudo.
-    const frentes = todasFrentesAtivas();
+    // bastante página, então confirma antes de montar tudo. Com uma frente específica
+    // escolhida no filtro, gera só pra ela (ex: "todos os temas pra um encarregado só").
+    const frentes = registroLoteFiltroFrente ? [registroLoteFiltroFrente] : todasFrentesAtivas();
     if (frentes.length === 0) {
         alert('Nenhuma frente cadastrada em Efetivo (campo Responsável). Cadastre as frentes antes de gerar em lote.');
         return;
@@ -2865,6 +2875,10 @@ function refreshCatalogoDatalist() {
     allTreinamentosCatalogo.slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || '')).forEach(c => {
         const opt = document.createElement('option');
         opt.value = `${c.id} - ${c.nome}`;
+        // label não entra no input ao selecionar (só o value) - o navegador mostra os
+        // dois na sugestão, então dá pra distinguir NR/reciclagem de DDS pontual sem
+        // rolar os 172 itens misturados nem esperar abrir pra ver a validade.
+        opt.label = c.meses_validade ? `🔄 recicla a cada ${c.meses_validade}m` : 'DDS (sem validade)';
         dl.appendChild(opt);
     });
 }
@@ -3392,6 +3406,13 @@ function popularFiltroAnoRegistroLote() {
     const mesSel = document.getElementById('registroLoteFiltroMes');
     if (anoSel && !anoSel.dataset.inicializado) { anoSel.value = registroLoteFiltroAno; anoSel.dataset.inicializado = '1'; }
     if (mesSel && !mesSel.dataset.inicializado) { mesSel.value = registroLoteFiltroMes; mesSel.dataset.inicializado = '1'; }
+
+    const frenteSel = document.getElementById('registroLoteFiltroFrente');
+    if (frenteSel) {
+        frenteSel.innerHTML = '<option value="">Todas as frentes</option>' +
+            todasFrentesAtivas().map(f => `<option value="${escapeHTML(f)}">${escapeHTML(f)}</option>`).join('');
+        frenteSel.value = registroLoteFiltroFrente;
+    }
     renderRegistroLotePreview();
 }
 
@@ -3399,6 +3420,7 @@ function onRegistroLoteFiltroChange() {
     registroLoteFiltroAno = document.getElementById('registroLoteFiltroAno').value;
     registroLoteFiltroMes = document.getElementById('registroLoteFiltroMes').value;
     registroLoteFiltroTema = document.getElementById('registroLoteFiltroTema').value;
+    registroLoteFiltroFrente = document.getElementById('registroLoteFiltroFrente').value;
     registroLoteSelecionados = null;
     renderRegistroLotePreview();
 }
@@ -3407,9 +3429,11 @@ function limparFiltroRegistroLote() {
     registroLoteFiltroAno = '';
     registroLoteFiltroMes = '';
     registroLoteFiltroTema = '';
+    registroLoteFiltroFrente = '';
     document.getElementById('registroLoteFiltroAno').value = '';
     document.getElementById('registroLoteFiltroMes').value = '';
     document.getElementById('registroLoteFiltroTema').value = '';
+    document.getElementById('registroLoteFiltroFrente').value = '';
     registroLoteSelecionados = null;
     renderRegistroLotePreview();
 }
@@ -3426,6 +3450,9 @@ function itensLoteCronogramaFiltrados() {
     }
     if (registroLoteFiltroTema) {
         itens = itens.filter(c => c.treinamento_cod === registroLoteFiltroTema);
+    }
+    if (registroLoteFiltroFrente) {
+        itens = itens.filter(c => c.responsavel === registroLoteFiltroFrente);
     }
     itens.sort((a, b) => (a.data_prevista || '').localeCompare(b.data_prevista || ''));
     return itens;
@@ -4543,6 +4570,18 @@ function renderCatalogoResumo() {
         `${total} treinamento(s) cadastrado(s) — ${comValidade} com validade (reciclagem), ${total - comValidade} sem validade — ${cargaTotal.toLocaleString('pt-BR')}h de carga horária somada`;
 }
 
+// 'todos' | 'com' | 'sem' - separa os ~20 treinamentos "de verdade" (NR/reciclagem, com
+// meses_validade preenchido) dos ~153 tópicos de DDS pontuais (sem validade) misturados
+// no mesmo catálogo de 172 itens - sem isso não tinha como achar só um grupo ou outro
+// sem rolar a lista inteira.
+let catalogoFiltroValidade = 'todos';
+
+function setCatalogoFiltroValidade(valor) {
+    catalogoFiltroValidade = valor;
+    ['todos', 'com', 'sem'].forEach(v => document.getElementById(`catalogoFiltroBtn-${v}`)?.classList.toggle('active', v === valor));
+    filterCatalogoTreinamentos(document.getElementById('catalogoSearchInput')?.value || '');
+}
+
 function filterCatalogoTreinamentos(query) {
     const container = document.getElementById('catalogoSearchResults');
     const q = (query || '').toLowerCase().trim();
@@ -4552,7 +4591,10 @@ function filterCatalogoTreinamentos(query) {
     const base = q.length < 2
         ? allTreinamentosCatalogo
         : allTreinamentosCatalogo.filter(c => (c.nome && c.nome.toLowerCase().includes(q)) || (c.id && c.id.toLowerCase().includes(q)));
-    const matches = base.slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    const porValidade = catalogoFiltroValidade === 'todos'
+        ? base
+        : base.filter(c => catalogoFiltroValidade === 'com' ? !!c.meses_validade : !c.meses_validade);
+    const matches = porValidade.slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
     if (matches.length === 0) {
         container.innerHTML = q.length < 2
@@ -4562,8 +4604,8 @@ function filterCatalogoTreinamentos(query) {
     }
     container.innerHTML = matches.map(c => `
         <div class="db-list-item" style="cursor:pointer;" onclick="abrirFormCatalogoTreinamento('${escapeHTML(c.id)}')">
-            <div class="db-list-item-title">${escapeHTML(c.nome || '')}</div>
-            <div class="db-list-item-sub">Código ${escapeHTML(c.id)} — ${c.carga_horaria || 0}h — ${c.meses_validade ? c.meses_validade + ' meses de validade' : 'sem validade'}</div>
+            <div class="db-list-item-title">${c.meses_validade ? '🔄 ' : ''}${escapeHTML(c.nome || '')}</div>
+            <div class="db-list-item-sub">Código ${escapeHTML(c.id)} — ${c.carga_horaria || 0}h — ${c.meses_validade ? c.meses_validade + ' meses de validade' : 'DDS (sem validade)'}</div>
         </div>`).join('');
 }
 

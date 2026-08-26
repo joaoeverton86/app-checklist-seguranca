@@ -709,6 +709,9 @@
                         <select id="registroLoteFiltroTema" onchange="onRegistroLoteFiltroChange()" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
                             <option value="">Todos os temas...</option>
                         </select>
+                        <select id="registroLoteFiltroFrente" onchange="onRegistroLoteFiltroChange()" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <option value="">Todas as frentes</option>
+                        </select>
                         <button class="db-clear-btn" onclick="limparFiltroRegistroLote()">✕ Limpar</button>
                     </div>
 
@@ -876,7 +879,13 @@
                                style="flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
                         <button class="db-clear-btn" onclick="limparBuscaCatalogo()">✕ Limpar</button>
                     </div>
-                    <div style="text-align: right; margin-bottom: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-filter-buttons">
+                            <span style="font-size: 11.5px; color: var(--text-light); align-self: center;">Mostrar:</span>
+                            <button class="db-filter-btn active" id="catalogoFiltroBtn-todos" onclick="setCatalogoFiltroValidade('todos')">Todos</button>
+                            <button class="db-filter-btn" id="catalogoFiltroBtn-com" onclick="setCatalogoFiltroValidade('com')">🔄 Com validade (NR/reciclagem)</button>
+                            <button class="db-filter-btn" id="catalogoFiltroBtn-sem" onclick="setCatalogoFiltroValidade('sem')">Sem validade (DDS)</button>
+                        </div>
                         <button class="db-clear-btn" id="btnExpandirCatalogo" onclick="toggleExpandirCatalogo()">⛶ Expandir Lista</button>
                     </div>
                     <div id="catalogoSearchResults" class="db-list" style="max-height: 420px;"></div>

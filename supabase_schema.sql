@@ -253,47 +253,87 @@ GRANT DELETE ON public.colaboradores_checklist TO anon;
 -- acesso direto via API para o anon key.
 -- ============================================================
 
--- Login: confere matrícula/e-mail + hash da senha no servidor. Nunca devolve a senha.
-CREATE OR REPLACE FUNCTION public.verificar_login(p_login text, p_senha_hash text)
- RETURNS TABLE(id text, nome text, funcao text, setor text, empresa text, matricula text, validade_aso text, ativo boolean, nivel_acesso text, email text)
+-- Login: confere matrícula/e-mail + senha no servidor (bcrypt, via pgcrypto - schema
+-- "extensions" no Supabase, por isso o search_path inclui os dois). Recebe a senha em
+-- TEXTO PURO (protegida pelo HTTPS da chamada, não por um hash pré-calculado no
+-- cliente) porque bcrypt precisa da senha original pra extrair o sal já embutido no
+-- hash salvo e comparar de novo - não dá pra comparar dois hashes bcrypt diretamente
+-- como se fazia com SHA-256.
+--
+-- Migração "preguiçosa" do hash antigo: aceita também o formato legado (SHA-256 sem
+-- sal, de antes desta função existir) - se a senha bater nesse formato, regrava o hash
+-- em bcrypt na mesma chamada, então cada colaborador migra sozinho no próximo login
+-- online, sem precisar redefinir senha manualmente. Devolve a coluna "senha" (o hash)
+-- de propósito - quem chamou já provou que sabe a senha correta pra chegar até aqui, e
+-- o app de campo cacheia esse valor localmente pra permitir login offline depois.
+CREATE OR REPLACE FUNCTION public.verificar_login(p_login text, p_senha text)
+ RETURNS TABLE(id text, nome text, funcao text, setor text, empresa text, matricula text, validade_aso text, ativo boolean, nivel_acesso text, email text, senha text)
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'public'
+ SET search_path TO 'public', 'extensions'
 AS $function$
+DECLARE
+    v_row colaboradores_checklist%ROWTYPE;
+    v_ok boolean := false;
 BEGIN
-    RETURN QUERY
-    SELECT c.id, c.nome, c.funcao, c.setor, c.empresa, c.matricula,
-           c.validade_aso, c.ativo, c.nivel_acesso, c.email
-    FROM colaboradores_checklist c
+    SELECT * INTO v_row FROM colaboradores_checklist c
     WHERE (upper(c.matricula) = upper(p_login) OR lower(c.email) = lower(p_login))
-      AND c.senha = p_senha_hash
     LIMIT 1;
+
+    IF NOT FOUND OR v_row.senha IS NULL OR v_row.senha = '' OR p_senha IS NULL OR p_senha = '' THEN
+        RETURN;
+    END IF;
+
+    IF v_row.senha LIKE '$2%' THEN
+        v_ok := (crypt(p_senha, v_row.senha) = v_row.senha);
+    ELSE
+        v_ok := (v_row.senha = encode(digest(p_senha, 'sha256'), 'hex'));
+        IF v_ok THEN
+            v_row.senha := crypt(p_senha, gen_salt('bf', 10));
+            UPDATE colaboradores_checklist c SET senha = v_row.senha WHERE c.id = v_row.id;
+        END IF;
+    END IF;
+
+    IF NOT v_ok THEN
+        RETURN;
+    END IF;
+
+    RETURN QUERY SELECT v_row.id, v_row.nome, v_row.funcao, v_row.setor, v_row.empresa,
+        v_row.matricula, v_row.validade_aso, v_row.ativo, v_row.nivel_acesso, v_row.email, v_row.senha;
 END;
 $function$;
 
 -- Cadastro de conta (signup): cria ou ativa um colaborador com senha, sem nunca deixar
 -- o cliente gravar "senha" direto na tabela. Nunca deixa o próprio cadastro definir
 -- nivel_acesso diferente de 'Tecnico' (promoção a Admin exige a função abaixo).
+-- p_senha aceita tanto texto puro (cadastro comum online, hasheado aqui com bcrypt)
+-- quanto um hash bcrypt já pronto (prefixo "$2") vindo de uma conta criada OFFLINE no
+-- app - nesse caso o hash precisa ser calculado no aparelho (sem round-trip pro
+-- servidor) pra já permitir login offline imediato, e é gravado como veio, sem
+-- recalcular por cima.
 CREATE OR REPLACE FUNCTION public.cadastrar_conta(
     p_nome text,
     p_email text,
     p_matricula text,
     p_funcao text,
     p_setor text,
-    p_senha_hash text
+    p_senha text
 )
  RETURNS TABLE(id text, nome text, funcao text, setor text, empresa text, matricula text, validade_aso text, ativo boolean, nivel_acesso text, email text)
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'public'
+ SET search_path TO 'public', 'extensions'
 AS $function$
 DECLARE
     v_id text := upper(trim(p_matricula));
     v_existing colaboradores_checklist%ROWTYPE;
+    v_senha_final text;
 BEGIN
-    IF v_id = '' OR p_senha_hash IS NULL OR p_senha_hash = '' THEN
+    IF v_id = '' OR p_senha IS NULL OR p_senha = '' THEN
         RAISE EXCEPTION 'Matrícula e senha são obrigatórias';
     END IF;
+
+    v_senha_final := CASE WHEN p_senha LIKE '$2%' THEN p_senha ELSE crypt(p_senha, gen_salt('bf', 10)) END;
 
     SELECT * INTO v_existing FROM colaboradores_checklist c WHERE c.id = v_id;
 
@@ -306,17 +346,38 @@ BEGIN
             email = lower(p_email),
             funcao = p_funcao,
             setor = p_setor,
-            senha = p_senha_hash,
+            senha = v_senha_final,
             ativo = true
         WHERE c.id = v_id;
     ELSE
         INSERT INTO colaboradores_checklist(id, nome, funcao, setor, matricula, email, senha, ativo, nivel_acesso)
-        VALUES (v_id, p_nome, p_funcao, p_setor, v_id, lower(p_email), p_senha_hash, true, 'Tecnico');
+        VALUES (v_id, p_nome, p_funcao, p_setor, v_id, lower(p_email), v_senha_final, true, 'Tecnico');
     END IF;
 
     RETURN QUERY
     SELECT c.id, c.nome, c.funcao, c.setor, c.empresa, c.matricula, c.validade_aso, c.ativo, c.nivel_acesso, c.email
     FROM colaboradores_checklist c WHERE c.id = v_id;
+END;
+$function$;
+
+-- Usada só pela Edge Function confirmar-recuperacao-senha (via service_role, depois de
+-- já ter validado o código OTP de recuperação) - NÃO é liberada pro anon/authenticated
+-- de propósito, já que recebe o id direto sem nenhuma verificação de senha atual.
+CREATE OR REPLACE FUNCTION public.definir_senha_colaborador(p_colaborador_id text, p_senha text)
+ RETURNS text
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+DECLARE
+    v_hash text;
+BEGIN
+    IF p_senha IS NULL OR p_senha = '' THEN
+        RAISE EXCEPTION 'Senha não pode ser vazia';
+    END IF;
+    v_hash := crypt(p_senha, gen_salt('bf', 10));
+    UPDATE colaboradores_checklist SET senha = v_hash WHERE id = p_colaborador_id;
+    RETURN v_hash;
 END;
 $function$;
 
@@ -360,6 +421,9 @@ $function$;
 GRANT EXECUTE ON FUNCTION public.verificar_login(text, text) TO anon;
 GRANT EXECUTE ON FUNCTION public.cadastrar_conta(text, text, text, text, text, text) TO anon;
 GRANT EXECUTE ON FUNCTION public.alterar_nivel_acesso(text, text, text, text) TO anon;
+
+REVOKE ALL ON FUNCTION public.definir_senha_colaborador(text, text) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.definir_senha_colaborador(text, text) TO service_role;
 
 -- ============================================================
 -- SUPABASE STORAGE - fotos de evidência de não conformidade
@@ -419,9 +483,11 @@ REVOKE ALL ON public.password_resets FROM anon, authenticated;
 --     limite de 1 pedido/min por colaborador) e envia por e-mail via Resend. Sempre
 --     responde a mesma mensagem genérica de sucesso, exista ou não a conta, pra não
 --     vazar quais matrículas/e-mails estão cadastrados.
---   - confirmar-recuperacao-senha: recebe { login, otp, nova_senha_hash }, valida o
---     código mais recente não usado (máx. 5 tentativas, expira em 10 min) e, se
---     bater, atualiza colaboradores_checklist.senha.
+--   - confirmar-recuperacao-senha: recebe { login, otp, nova_senha } (senha em texto
+--     puro, protegida pelo HTTPS da chamada), valida o código mais recente não usado
+--     (máx. 5 tentativas, expira em 10 min) e, se bater, chama a RPC
+--     definir_senha_colaborador (que faz o hash bcrypt de verdade no Postgres) e
+--     devolve o novo hash na resposta pro app cachear localmente.
 -- Ambas rodam com a service_role key (bypassa RLS e os GRANTs de coluna de
 -- "senha"), então precisam do secret RESEND_API_KEY configurado no projeto
 -- (Project Settings > Edge Functions > Secrets) para o envio de e-mail funcionar.
@@ -492,6 +558,27 @@ CREATE TABLE IF NOT EXISTS public.treinamentos_catalogo (
     nome TEXT NOT NULL,
     carga_horaria NUMERIC,                -- horas
     meses_validade INTEGER,               -- NULL = sem validade/não recicla (ex: DDS pontual)
+    -- Alimentam o Registro de Treinamento (FOR.001.R00, ver treinamentos_realizados
+    -- abaixo) - mudam só por TEMA, valem pra toda sessão desse treinamento.
+    objetivo TEXT,
+    conteudo_programatico TEXT,           -- texto livre multi-linha, um tópico por linha
+    metodo_avaliacao TEXT DEFAULT 'Entendimento Participante',
+    -- Alimentam os documentos individuais de admissão/integração gerados na aba Registro
+    -- (Certificado, Declaração de Integração FORM.SMS.001, Termo de Conhecimento -
+    -- Direito de Recusa FORM.SMS.002). Ficam editáveis aqui de propósito: citações de
+    -- NR não são verificáveis com segurança por IA, então quem corrige é o responsável
+    -- técnico, direto no cadastro, sem precisar de alteração de código.
+    certificado_base_legal TEXT,
+    integracao_base_legal TEXT,
+    integracao_obrigacoes_empresa TEXT,     -- uma obrigação por linha
+    integracao_obrigacoes_empregado TEXT,   -- uma obrigação por linha
+    integracao_programa TEXT,               -- grade de tópicos do treinamento de integração, um por linha
+    recusa_base_legal TEXT,
+    -- Banco de questões da prova de eficácia (opcional) - [{pergunta, alternativas:[a,b,c,d], correta:0-3}].
+    -- Só treinamentos com pelo menos 1 questão aqui ganham os botões de gerar
+    -- prova/gabarito na aba Registro (gerarProvaTurma/gerarGabaritoProva) - sem banco
+    -- cadastrado, sem prova fabricada.
+    questoes JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -519,6 +606,20 @@ CREATE TABLE IF NOT EXISTS public.treinamentos_realizados (
     meses_validade INTEGER,               -- copiado do catálogo no momento da importação
     data_proxima_reciclagem DATE,         -- data_treinamento + meses_validade, calculado na importação
     observacoes TEXT,
+    -- Campos por SESSÃO (mesma código+data) pro Registro de Treinamento (FOR.001.R00) -
+    -- duplicados por colaborador na mesma linha, mesmo padrão já usado acima pra
+    -- nome/função/setor, em vez de uma tabela "sessões" separada só pra isso.
+    numero_turma TEXT,
+    hora_inicio TEXT,                     -- "HH:MM"
+    hora_termino TEXT,
+    local_realizacao TEXT,
+    encarregado_responsavel TEXT,
+    instrutor_nome TEXT DEFAULT 'MARIA GESSICA DA SILVA ROQUE',
+    instrutor_qualificacao TEXT DEFAULT 'TEC. SEG. TRABALHO',
+    instrutor_registro TEXT DEFAULT 'MTE: 15760/PE',              -- exigido no Certificado Individual (segurança jurídica)
+    responsavel_tecnico_nome TEXT DEFAULT 'JOÃO EVERTON DE SOUZA LIMEIRA',
+    responsavel_tecnico_qualificacao TEXT DEFAULT 'ENG. SEG. TRABALHO',
+    responsavel_tecnico_registro TEXT DEFAULT 'CREA: 0522078320', -- exigido no Certificado Individual (segurança jurídica)
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -548,6 +649,7 @@ CREATE TABLE IF NOT EXISTS public.colaboradores_efetivo (
     id TEXT PRIMARY KEY,                  -- matrícula
     status TEXT,
     cpf TEXT,
+    rg TEXT,   -- usado na Ordem de Serviço (Kit de Integração) - em branco até ser preenchido, não obrigatório pro resto do sistema
     nome TEXT,
     funcao TEXT,
     setor TEXT,
@@ -701,6 +803,503 @@ CREATE POLICY "Acesso total a checklist item settings" ON public.checklist_item_
 GRANT ALL ON public.checklist_item_settings TO anon;
 
 -- ============================================================
+-- MÓDULO DE EPI (NR-06) - Cadastro, Estoque, Entregas
+-- Fonte histórica: TB_LACAMENTO.csv (export SharePoint, 6.520 entregas
+-- desde 2024-07-12). id de epi_catalogo = ID_EPI do CSV quando consistente;
+-- pros ~8 códigos que o SharePoint reusou pra itens com CA diferente ao
+-- longo do tempo, sufixo -2/-3 (CA é o que importa pra compliance, não o
+-- código interno antigo).
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.epi_catalogo (
+    id TEXT PRIMARY KEY,
+    tipo_protecao TEXT,                   -- maos | pes | cabeca | olhos | rosto | respiratorio | corpo | altura | audicao | outro
+    descricao TEXT NOT NULL,
+    marca TEXT,
+    tamanho TEXT,
+    ca TEXT,                              -- Certificado de Aprovação (NR-06)
+    ca_validade DATE,                     -- vencimento do CA - alimenta o alerta vencidos/vencendo (30 dias) na Visão Geral de EPI
+    ativo BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.epi_catalogo ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total ao catálogo de EPI" ON public.epi_catalogo;
+CREATE POLICY "Acesso total ao catálogo de EPI" ON public.epi_catalogo FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.epi_catalogo TO anon;
+
+-- Saldo de estoque: 1 linha por item de catálogo. O CSV de entregas (log de saída)
+-- não tem contagem de estoque, mas a lista oficial "Cadastro de EPI" do SharePoint
+-- (cad_epi.csv) tem uma coluna ESTOQ real - seedado de lá em 2026-08-07. Itens sem
+-- correspondência nessa lista continuam sem controle até uma Entrada manual.
+CREATE TABLE IF NOT EXISTS public.epi_estoque (
+    epi_catalogo_id TEXT PRIMARY KEY REFERENCES public.epi_catalogo(id) ON DELETE CASCADE,
+    quantidade_atual INTEGER NOT NULL DEFAULT 0,
+    quantidade_minima INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.epi_estoque ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total ao estoque de EPI" ON public.epi_estoque;
+CREATE POLICY "Acesso total ao estoque de EPI" ON public.epi_estoque FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.epi_estoque TO anon;
+
+-- Log de entregas - linha central do módulo, mesmo papel de inspecoes_extintores/
+-- treinamentos_realizados. Entregas históricas importadas do CSV usam
+-- id = 'LEGACY_' || ID (chave determinística da própria planilha, upsert por
+-- on_conflict torna a reimportação idempotente) e entregue_por/assinatura NULL,
+-- já que o SharePoint não guardava quem de fato entregou.
+CREATE TABLE IF NOT EXISTS public.epi_entregas (
+    id TEXT PRIMARY KEY,
+    matricula TEXT NOT NULL,
+    nome TEXT,
+    funcao TEXT,
+    setor TEXT,
+    epi_catalogo_id TEXT REFERENCES public.epi_catalogo(id),
+    quantidade INTEGER NOT NULL DEFAULT 1,
+    data_entrega DATE NOT NULL,
+    tipo_entrega TEXT,                    -- inicial | reposicao | troca
+    motivo_reposicao TEXT,                -- perda | dano | desgaste | troca_tamanho | vencimento (só lançamentos novos)
+    entregue_por TEXT,                    -- matrícula/nome do técnico que lançou (NULL no histórico importado)
+    assinatura TEXT,                      -- PNG base64, mesmo padrão de checklists.signature
+    observacoes TEXT,
+    origem TEXT DEFAULT 'APP',            -- 'IMPORT_HISTORICO' | 'APP'
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.epi_entregas ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total às entregas de EPI" ON public.epi_entregas;
+CREATE POLICY "Acesso total às entregas de EPI" ON public.epi_entregas FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.epi_entregas TO anon;
+
+CREATE INDEX IF NOT EXISTS idx_epi_entregas_matricula ON public.epi_entregas(matricula);
+CREATE INDEX IF NOT EXISTS idx_epi_entregas_catalogo ON public.epi_entregas(epi_catalogo_id);
+CREATE INDEX IF NOT EXISTS idx_epi_entregas_data ON public.epi_entregas(data_entrega);
+
+-- ============================================================
+-- MÓDULO DE GHE (Grupo Homogêneo de Exposição)
+-- Catálogo oficial importado do "Quadro Funcional" exportado do sistema de GHE da
+-- empresa (.xls/.xlsx real, parseado no navegador via SheetJS - ver
+-- importarQuadroFuncionalXLS em dashboard.js). id = número do grupo com 2 dígitos
+-- ("01".."27"), mesma convenção já usada em colaboradores_efetivo.ghe (campo texto
+-- livre pré-existente). Uma linha por grupo, cargos guardados como jsonb em vez de
+-- tabela filha - nunca são consultados/filtrados individualmente fora da tela de
+-- detalhe do próprio grupo. Independente do GHE usado no PCMSO
+-- (PCMSO_SETOR_FUNCAO_GHE, hardcoded em dashboard.js), que resolve por setor+função
+-- e não lê este campo/tabela - são duas classificações de origem diferente.
+-- ============================================================
+
+-- riscos: reconhecimento oficial de exposições ambientais por GHE, extraído do Mapa de
+-- Riscos (laudo da Clínica ENGMED, PGR/NR-01) - [{tipo_agente, agente, gravidade,
+-- gravidade_label, fontes_geradoras, tipo_tempo_exposicao, descricao, danos_saude,
+-- sugestoes, epis_recomendados, epcs_recomendados, situacao_controle}]. NÃO é o mesmo
+-- dado da matriz P×S da APR (apr_registros.riscos): este é reconhecimento por
+-- função/setor pra fins de PCMSO/GFIP/compliance, a APR é avaliação por tarefa/equipe
+-- pontual válida 15 dias. A maioria dos GHEs administrativos legitimamente tem
+-- riscos=[] - reflete o próprio laudo ("Não foram identificados riscos
+-- significativos"), não é campo vazio por falta de dado.
+-- conclusoes: {gfip_codigo, gfip_descricao, periculosidade, insalubridade} - conclusão
+-- legal do laudo por GHE (compliance, não muda por colaborador). Ambos riscos e
+-- conclusoes são editáveis pelo Painel Gerencial (aba Efetivo > GHE > Editar), não só
+-- importados - o laudo original só tinha exposições reais pro Grupo 27; os demais 26
+-- grupos concluíram "sem riscos significativos" e ficam riscos=[] até um laudo futuro
+-- (ou preenchimento manual) trazer dado novo.
+CREATE TABLE IF NOT EXISTS public.ghe_catalogo (
+    id TEXT PRIMARY KEY,
+    nome TEXT NOT NULL,
+    cargos JSONB NOT NULL DEFAULT '[]'::jsonb,   -- [{cargo, funcao, cbo, quantidade, descricao_atividade, agentes:{fisico,quimico,biologico,ergonomico,acidentes}, epis_necessarios:[], epcs_necessarios:[]}] - descricao_atividade extraída do texto oficial do CBO no Mapa de Riscos; agentes/epis/epcs alimentam a Ordem de Serviço (Kit de Integração), editáveis por cargo no Painel Gerencial
+    quantidade_oficial INTEGER NOT NULL DEFAULT 0,
+    riscos JSONB NOT NULL DEFAULT '[]'::jsonb,
+    conclusoes JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.ghe_catalogo ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total ao catálogo de GHE" ON public.ghe_catalogo;
+CREATE POLICY "Acesso total ao catálogo de GHE" ON public.ghe_catalogo FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.ghe_catalogo TO anon;
+
+-- ============================================================
+-- MÓDULO DE GESTÃO AMBIENTAL (Fase 1: Gestão de Resíduos)
+-- Gatilho real: cliente (Ministério da Integração) pediu a relação de todos os resíduos
+-- gerados pela empresa, que nunca foi catalogada. Licenças/Condicionantes/Compromissos/
+-- Relatórios Gerenciais ficam pra uma fase futura (precisa de dado real do usuário pra
+-- basear, não fabricar uma estrutura de licenciamento ambiental genérica).
+-- ============================================================
+
+-- Estimativa mensal de resíduo de refeições (isopor de quentinha + copo descartável) -
+-- peso NÃO fica guardado aqui, é calculado ao vivo no dashboard a partir de constantes
+-- documentadas na planilha original do usuário (isopor limpo 8,9g + contaminação
+-- orgânica 15g = 23,9g/quentinha; copo PP 200ml = 1,8g/unidade). id = 'YYYY-MM', mesma
+-- convenção de hht_dias_trabalhados.
+CREATE TABLE IF NOT EXISTS public.residuos_refeicoes (
+    id TEXT PRIMARY KEY,
+    ano INTEGER NOT NULL,
+    mes INTEGER NOT NULL,
+    quentinhas_qtd INTEGER,
+    copos_qtd INTEGER,
+    observacoes TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.residuos_refeicoes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total a resíduos de refeições" ON public.residuos_refeicoes;
+CREATE POLICY "Acesso total a resíduos de refeições" ON public.residuos_refeicoes FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.residuos_refeicoes TO anon;
+
+-- Log unificado de manutenção veicular terceirizada (preventivas + trocas de óleo -
+-- mesma estrutura nos dois relatórios da terceira, só o `tipo` muda). `litros_oleo` só
+-- é relevante pra tipo='troca_oleo' e fica NULL em todo o histórico importado (a
+-- terceira nunca informou volume até agora) - captura nova pedida pelo usuário pra ser
+-- preenchida manualmente a partir de agora, a cada troca lançada pelo painel.
+CREATE TABLE IF NOT EXISTS public.manutencao_veicular (
+    id TEXT PRIMARY KEY,
+    tipo TEXT NOT NULL,                   -- 'preventiva' | 'troca_oleo'
+    ativo TEXT,
+    modelo TEXT,
+    equipamento TEXT,
+    empresa TEXT,                         -- empresa terceira (ex: ARTEC, AR LOCAÇÕES)
+    descricao_servico TEXT,
+    data_servico DATE,
+    litros_oleo NUMERIC,
+    observacoes TEXT,
+    origem TEXT DEFAULT 'APP',            -- 'IMPORT_HISTORICO' | 'APP'
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.manutencao_veicular ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total à manutenção veicular" ON public.manutencao_veicular;
+CREATE POLICY "Acesso total à manutenção veicular" ON public.manutencao_veicular FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.manutencao_veicular TO anon;
+
+-- ============================================================
+-- CIPA (Comissão Interna de Prevenção de Acidentes) - Fase 1: Reuniões e Atas
+-- ============================================================
+
+-- Roster atual da CIPA. gestao é o texto livre da gestão em curso (ex: '2026/2027').
+CREATE TABLE IF NOT EXISTS public.cipa_membros (
+    id TEXT PRIMARY KEY,
+    matricula TEXT,
+    nome TEXT NOT NULL,
+    funcao TEXT,
+    setor TEXT,
+    cargo TEXT,          -- 'titular_empregado' | 'suplente_empregado' | 'titular_empregador' | 'suplente_empregador'
+    papel TEXT,          -- 'presidente' | 'vice_presidente' | 'secretario' | NULL - usado pra montar a ata (presença agrupada + bloco de assinaturas)
+    gestao TEXT,
+    ativo BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.cipa_membros ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total aos membros da CIPA" ON public.cipa_membros;
+CREATE POLICY "Acesso total aos membros da CIPA" ON public.cipa_membros FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.cipa_membros TO anon;
+
+-- Uma linha por reunião (agendada ou já realizada). participantes fica jsonb (não
+-- tabela filha) por só ser consultado dentro do próprio registro da reunião, mesmo
+-- padrão já usado em ghe_catalogo.cargos.
+CREATE TABLE IF NOT EXISTS public.cipa_reunioes (
+    id TEXT PRIMARY KEY,
+    tipo TEXT NOT NULL,   -- 'posse' | 'ordinaria' | 'extraordinaria'
+    numero_ordinaria INTEGER,
+    data_reuniao DATE NOT NULL,
+    horario TEXT,
+    hora_termino TEXT,
+    local TEXT,
+    modalidade TEXT DEFAULT 'presencial',  -- 'presencial' | 'videoconferencia'
+    cidade_uf TEXT,                        -- ex: 'Sertânia - PE' - usado no fecho de assinatura da ata
+    descricao TEXT,
+    pauta JSONB DEFAULT '[]'::jsonb,              -- [{texto}] - itemizado, mesmo modelo da ata em papel (FOR.016.SMS)
+    assuntos_tratados JSONB DEFAULT '[]'::jsonb,  -- [{texto, resposta, responsavel}] - itemizado
+    -- Estatísticas de acidentes da seção 4.1 da ata: CPT/SPT são calculados ao vivo a
+    -- partir da tabela `acidentes` (não guardados aqui). Quase-acidente e trajeto ficam
+    -- manuais porque a tabela `acidentes` não distingue esses dois casos hoje.
+    quase_acidentes_qtd INTEGER,
+    acidentes_trajeto_qtd INTEGER,
+    detalhamento_acidentes TEXT,
+    acoes_assedio TEXT,      -- seção 4.2 da ata
+    relato_inspecoes TEXT,   -- seção 4.3 da ata
+    status TEXT DEFAULT 'agendada',  -- 'agendada' | 'realizada' | 'cancelada'
+    participantes JSONB DEFAULT '[]'::jsonb,  -- [{matricula, nome, funcao, presente, justificativa}]
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.cipa_reunioes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total às reuniões da CIPA" ON public.cipa_reunioes;
+CREATE POLICY "Acesso total às reuniões da CIPA" ON public.cipa_reunioes FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.cipa_reunioes TO anon;
+
+-- Pendências geradas nas reuniões. reuniao_id é FK solta pra cipa_reunioes.id (mesmo
+-- padrão sem constraint real já usado por treinamento_cod).
+CREATE TABLE IF NOT EXISTS public.cipa_plano_acao (
+    id TEXT PRIMARY KEY,
+    reuniao_id TEXT,
+    descricao TEXT NOT NULL,
+    responsavel TEXT,
+    prazo DATE,
+    status TEXT DEFAULT 'pendente',  -- 'pendente' | 'em_andamento' | 'concluido'
+    observacoes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.cipa_plano_acao ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total ao plano de ação da CIPA" ON public.cipa_plano_acao;
+CREATE POLICY "Acesso total ao plano de ação da CIPA" ON public.cipa_plano_acao FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.cipa_plano_acao TO anon;
+
+-- ============================================================
+-- CONTROLE DE DOCUMENTOS - codificação padronizada, matriz de revisões e log de
+-- emissões pros documentos gerados pelo sistema (Registro de Treinamento, Ficha de EPI,
+-- Declaração de Integração, Termo de Recusa, Ata da CIPA, Certificado Individual, e
+-- outros tipos ainda sem gerador implementado como a APR).
+-- ============================================================
+
+-- Lista mestra: 1 linha por TIPO de documento. `codigo`/`revisao_atual` viram a fonte
+-- real lida pelos geradores (dashboard.js) na hora de montar o cabeçalho do PDF - mudar
+-- aqui reflete automaticamente no próximo documento gerado, sem editar código.
+CREATE TABLE IF NOT EXISTS public.documentos_controle (
+    id TEXT PRIMARY KEY,             -- slug: 'registro_treinamento', 'ficha_epi', 'apr'...
+    nome TEXT NOT NULL,
+    codigo TEXT,                     -- ex: 'FOR.001' - NULL quando o documento ainda não tem código formal (não inventado)
+    revisao_atual TEXT,              -- ex: 'R00'
+    data_revisao_atual DATE,
+    elaborado_por TEXT,
+    aprovado_por TEXT,
+    motivo_revisao_atual TEXT,
+    status TEXT DEFAULT 'vigente',   -- 'vigente' | 'obsoleto' | 'em_elaboracao'
+    modulo_relacionado TEXT,         -- texto livre: 'Treinamentos' | 'EPI' | 'CIPA' | ...
+    gerador_vinculado TEXT,          -- chave interna que os geradores JS usam pra se identificar
+    observacoes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.documentos_controle ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total ao controle de documentos" ON public.documentos_controle;
+CREATE POLICY "Acesso total ao controle de documentos" ON public.documentos_controle FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.documentos_controle TO anon;
+
+-- Matriz de histórico: registro append-only de cada revisão já aplicada a um documento
+-- (mesmo padrão "child append-only + snapshot no pai" já usado por cipa_plano_acao).
+CREATE TABLE IF NOT EXISTS public.documentos_revisoes (
+    id TEXT PRIMARY KEY,
+    documento_id TEXT,               -- FK solta pra documentos_controle.id
+    revisao TEXT NOT NULL,
+    data DATE,
+    descricao_alteracao TEXT,
+    responsavel TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.documentos_revisoes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total às revisões de documentos" ON public.documentos_revisoes;
+CREATE POLICY "Acesso total às revisões de documentos" ON public.documentos_revisoes FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.documentos_revisoes TO anon;
+
+-- Log de emissão: toda vez que um dos geradores realmente produz um PDF, grava aqui
+-- (automaticamente, sem ação manual) qual revisão estava vigente naquele momento -
+-- permite detectar depois se algum documento foi emitido com revisão já superada.
+CREATE TABLE IF NOT EXISTS public.documentos_emissoes (
+    id TEXT PRIMARY KEY,
+    documento_id TEXT,               -- FK solta pra documentos_controle.id
+    revisao_no_momento TEXT,
+    referencia TEXT,                 -- texto livre: nome do colaborador, "Ata Reunião nº7", etc.
+    gerado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.documentos_emissoes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total às emissões de documentos" ON public.documentos_emissoes;
+CREATE POLICY "Acesso total às emissões de documentos" ON public.documentos_emissoes FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.documentos_emissoes TO anon;
+
+-- Cronograma de treinamentos: mesa de planejamento do que já foi realizado ou vai
+-- acontecer (mesmo modelo do "Plano Mensal de Treinamentos de SMS" em planilha que a
+-- equipe já usa: Código, Treinamento, Data, Horário, Local, Responsável). É só uma
+-- tabela de acompanhamento - não guarda quem participa nem gera documento nenhum
+-- (isso é tudo responsabilidade da aba Registro, ver "Nova Sessão" e
+-- gerarListasCronogramaMes em dashboard.js). Não duplica treinamento_nome de propósito
+-- - resolve o nome ao vivo via treinamentos_catalogo (evita nome desatualizado se o
+-- catálogo for editado/mesclado depois). status 'planejado'|'lancado' (sem CHECK, mesmo
+-- padrão do resto do projeto) reflete só se a presença já foi lançada em
+-- treinamentos_realizados a partir deste item; lancado_em é preenchido nesse momento
+-- (ver salvarLancamentoTreinamento em dashboard.js). `local` e `responsavel` são texto
+-- livre (sem lista fixa) - o segundo pode ser tanto uma frente de serviço real
+-- (usada pra pré-carregar equipe no Registro/Lançar Treinamento) quanto só a área de
+-- SMS dona do tema (ex: "Segurança", "Saúde"), como no plano em papel.
+CREATE TABLE IF NOT EXISTS public.treinamentos_cronograma (
+    id TEXT PRIMARY KEY,
+    data_prevista DATE NOT NULL,
+    treinamento_cod TEXT NOT NULL,   -- FK solta pra treinamentos_catalogo.id
+    horario TEXT,
+    local TEXT,
+    responsavel TEXT,
+    status TEXT DEFAULT 'planejado',
+    observacoes TEXT,
+    lancado_em TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    data_realizada DATE,             -- preenchido quando lançado - pode divergir de data_prevista
+    realizado_no_prazo BOOLEAN       -- data_realizada = data_prevista, usado no KPI "Cumprimento do Cronograma"
+);
+
+ALTER TABLE public.treinamentos_cronograma ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total ao cronograma de treinamentos" ON public.treinamentos_cronograma;
+CREATE POLICY "Acesso total ao cronograma de treinamentos" ON public.treinamentos_cronograma FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.treinamentos_cronograma TO anon;
+
+-- Lista completa de quem foi convocado pra cada sessão (presentes + ausentes), separada
+-- de treinamentos_realizados (que continua sendo só o registro oficial de presença/
+-- certificado). Existe só pra dar base ao KPI "Taxa de Presença" - preenchida a partir
+-- de 2026-08-24, não tem histórico anterior (ausências nunca foram registradas antes).
+CREATE TABLE IF NOT EXISTS public.treinamentos_convocados (
+    id TEXT PRIMARY KEY,
+    matricula TEXT,
+    nome TEXT,
+    funcao TEXT,
+    setor TEXT,
+    treinamento_cod TEXT,
+    treinamento_nome TEXT,
+    data_treinamento DATE NOT NULL,
+    presente BOOLEAN NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.treinamentos_convocados ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total a treinamentos convocados" ON public.treinamentos_convocados;
+CREATE POLICY "Acesso total a treinamentos convocados" ON public.treinamentos_convocados FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.treinamentos_convocados TO anon;
+
+-- Módulo de Compras: uma linha por Requisição Interna de Compras (RM), mesmo
+-- formulário de papel já usado pela empresa (COP - Consórcio Operador do PISF Ramal do
+-- Agreste). id = número da RM (texto, ex: "003", "058"). itens fica jsonb (mesmo padrão
+-- de ghe_catalogo.cargos/cipa_reunioes.participantes) - só é consultado dentro do
+-- próprio registro da requisição, não precisa ser tabela filha. Nenhum PDF real
+-- histórico tem data_recebimento preenchida (o campo existe no papel mas nunca foi
+-- digitado), então essa coluna é uma capacidade nova do sistema, não herdada de dado
+-- existente - fica NULL/status='pendente' até alguém dar baixa manualmente.
+CREATE TABLE IF NOT EXISTS public.compras_requisicoes (
+    id TEXT PRIMARY KEY,
+    data_emissao DATE NOT NULL,
+    data_solicitada DATE,          -- "data que o requisitante solicita atendimento" no papel
+    prioridade TEXT DEFAULT 'media',  -- 'baixa' | 'media' | 'alta' | 'urgente'
+    empresa TEXT,
+    depto_obra_local TEXT,
+    setor_solicitante TEXT,
+    eng_responsavel TEXT,
+    aplicacao TEXT,                -- justificativa
+    itens JSONB NOT NULL DEFAULT '[]'::jsonb,  -- [{qtd, unid, cor, tam, codigo, descricao, referencia, observacao}]
+    status TEXT NOT NULL DEFAULT 'pendente',   -- 'pendente' | 'recebido'
+    data_recebimento DATE,         -- preenchida ao dar baixa - junto com data_emissao dá o tempo de entrega
+    observacoes TEXT,
+    arquivo_origem TEXT,           -- nome do PDF original, quando importado do histórico em papel
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.compras_requisicoes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total a requisições de compra" ON public.compras_requisicoes;
+CREATE POLICY "Acesso total a requisições de compra" ON public.compras_requisicoes FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.compras_requisicoes TO anon;
+
+-- Módulo APR (Análise Preliminar de Risco): último módulo antes de produção real.
+-- id = número sequencial da APR (texto, ex: "001"). validade_ate = data_emissao +
+-- validade_dias, recalculado no cliente sempre que qualquer um dos dois muda, mas fica
+-- salvo (não é uma view) porque o campo continua editável manualmente se precisar de
+-- uma exceção à regra padrão de 15 dias em campo. riscos é jsonb (mesmo padrão de
+-- compras_requisicoes.itens) - cada elemento é uma linha da matriz de risco 5x5
+-- (Probabilidade x Severidade): {passo_tarefa, perigo_fonte, evento_risco,
+-- danos_provaveis, p_puro, s_puro, medidas_prevencao, p_residual, s_residual,
+-- responsavel}. A classificação (Aceitável/Baixo, Tolerável/Médio, Substancial/Alto,
+-- Crítico/Muito Alto, Intolerável) é calculada no cliente a partir de p*s
+-- (nivelRiscoApr em dashboard.js), não fica salva. atividades_criticas, epis_basicos e
+-- epis_especificos são arrays de texto (checkboxes marcados). A equipe/frente que
+-- assina a APR não é salva num campo próprio - é resolvida ao vivo a partir de
+-- responsavel via colaboradores_efetivo.responsavel (mesma técnica de Ficha de EPI e
+-- Registro de Treinamento), então uma troca de equipe entre emissão e impressão já
+-- reflete automaticamente.
+CREATE TABLE IF NOT EXISTS public.apr_registros (
+    id TEXT PRIMARY KEY,
+    data_emissao DATE NOT NULL,
+    validade_dias INTEGER NOT NULL DEFAULT 15,
+    validade_ate DATE,
+    empresa_contratada TEXT,
+    setor_unidade TEXT,
+    local_especifico TEXT,
+    pt_numero TEXT,
+    titulo TEXT,                    -- identificação curta da atividade (ex: "LIMPEZA E ROÇAGEM DE VEGETAÇÃO"), usada nas listas/impressão - distinta de descricao_atividade, que é o texto longo
+    descricao_atividade TEXT,
+    atividades_criticas JSONB DEFAULT '[]'::jsonb,
+    riscos JSONB NOT NULL DEFAULT '[]'::jsonb,
+    epis_basicos JSONB DEFAULT '[]'::jsonb,
+    epi_luva_tipo TEXT,
+    epis_especificos JSONB DEFAULT '[]'::jsonb,
+    epi_extintor_tipo TEXT,
+    rota_fuga_desobstruida TEXT,
+    ponto_encontro TEXT,
+    kit_primeiros_socorros BOOLEAN DEFAULT true,
+    socorrista_brigadista TEXT,
+    contato_ambulatorio TEXT,
+    contato_bombeiros TEXT,
+    responsavel TEXT,               -- frente/encarregado, resolve a equipe via colaboradores_efetivo
+    elaborador_sesmt TEXT,
+    supervisor_tarefa TEXT,
+    responsavel_area TEXT,
+    observacoes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.apr_registros ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total a registros de APR" ON public.apr_registros;
+CREATE POLICY "Acesso total a registros de APR" ON public.apr_registros FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.apr_registros TO anon;
+
+-- ============================================================
+-- AVALIAÇÃO PSICOSSOCIAL (NR-01 / COPSOQ II)
+-- ============================================================
+-- Dado agregado e anônimo por natureza (é assim que o COPSOQ funciona - não existe
+-- resposta individual rastreável por colaborador), por isso não tem nenhum vínculo com
+-- colaboradores_efetivo. Organizado por "aplicação" (uma rodada do questionário, com
+-- período de início/fim) para suportar rodadas futuras.
+
+CREATE TABLE IF NOT EXISTS public.avaliacoes_psicossociais (
+    id TEXT PRIMARY KEY,              -- ex: '2026-06' (ano-mês de início do período)
+    periodo_inicio DATE NOT NULL,
+    periodo_fim DATE NOT NULL,
+    taxa_participacao NUMERIC,        -- % (ex: 96.9)
+    resumo_analise TEXT,              -- discussão/recomendações em texto livre, editável
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.avaliacoes_psicossociais ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total a avaliacoes psicossociais" ON public.avaliacoes_psicossociais;
+CREATE POLICY "Acesso total a avaliacoes psicossociais" ON public.avaliacoes_psicossociais FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.avaliacoes_psicossociais TO anon;
+
+CREATE TABLE IF NOT EXISTS public.avaliacoes_psicossociais_escalas (
+    id TEXT PRIMARY KEY,              -- '<aplicacao_id>_<slug da escala>'
+    aplicacao_id TEXT REFERENCES public.avaliacoes_psicossociais(id) ON DELETE CASCADE,
+    escala TEXT NOT NULL,
+    pct_favoravel NUMERIC,
+    pct_intermediario NUMERIC,
+    pct_risco NUMERIC
+);
+
+ALTER TABLE public.avaliacoes_psicossociais_escalas ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total a avaliacoes psicossociais escalas" ON public.avaliacoes_psicossociais_escalas;
+CREATE POLICY "Acesso total a avaliacoes psicossociais escalas" ON public.avaliacoes_psicossociais_escalas FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.avaliacoes_psicossociais_escalas TO anon;
+
+CREATE TABLE IF NOT EXISTS public.avaliacoes_psicossociais_perguntas (
+    id TEXT PRIMARY KEY,              -- '<aplicacao_id>_q<numero>'
+    aplicacao_id TEXT REFERENCES public.avaliacoes_psicossociais(id) ON DELETE CASCADE,
+    numero INTEGER NOT NULL,
+    pergunta TEXT NOT NULL,
+    opcoes JSONB NOT NULL             -- {"Nunca/Quase nunca": 77.6, "Raramente": 12.8, ...}
+);
+
+ALTER TABLE public.avaliacoes_psicossociais_perguntas ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total a avaliacoes psicossociais perguntas" ON public.avaliacoes_psicossociais_perguntas;
+CREATE POLICY "Acesso total a avaliacoes psicossociais perguntas" ON public.avaliacoes_psicossociais_perguntas FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.avaliacoes_psicossociais_perguntas TO anon;
+
+-- ============================================================
 -- RISCOS RESIDUAIS CONHECIDOS (documentados, não corrigidos nesta versão)
 -- ============================================================
 -- 1. cadastros, checklists, relatos, checklist_items e nao_conformidades continuam
@@ -709,7 +1308,9 @@ GRANT ALL ON public.checklist_item_settings TO anon;
 --    sozinha não deixa distinguir um usuário legítimo de um desconhecido para essas
 --    tabelas. Corrigir isso de verdade exigiria implementar Supabase Auth (ou um
 --    esquema de token assinado verificado nas policies), uma mudança bem maior.
--- 2. A senha do colaborador continua sendo SHA-256 de uma rodada só, sem salt
---    (mitigado: não pode mais ser lida em massa via API, mas o algoritmo em si
---    continua fraco contra quem já tiver o hash de outra forma).
+-- 2. A senha do colaborador usa bcrypt (salgado, custo adaptativo, via pgcrypto -
+--    verificar_login/cadastrar_conta) desde 2026-08-18. Contas migradas antes disso e
+--    que nunca fizeram login online de novo ainda podem ter um hash SHA-256 legado
+--    cacheado localmente no celular - verificar_login() aceita os dois formatos e faz
+--    upgrade automático pro bcrypt no primeiro login online bem-sucedido de cada conta.
 -- ============================================================

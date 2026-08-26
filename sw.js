@@ -1,4 +1,4 @@
-const CACHE_NAME = 'checklist-v145';
+const CACHE_NAME = 'checklist-v158';
 const SHELL_URLS = [
     './',
     './index.html',
@@ -18,7 +18,8 @@ const SHELL_URLS = [
 const CDN_URLS = [
     'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
     'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+    'https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js'
 ];
 
 self.addEventListener('install', event => {

@@ -16,8 +16,10 @@
     "EXTINTOR_INSPECTION_ITEMS": "readonly",
     "jspdf": "readonly",
     "Chart": "readonly",
+    "XLSX": "readonly",
     "jsQR": "readonly",
     "qrcode": "readonly",
+    "dcodeIO": "readonly",
     "sendPrompt": "readonly"
   },
   "rules": {

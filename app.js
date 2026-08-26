@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v145';
+const APP_VERSION = 'v158';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -180,6 +180,28 @@ let signaturePad = null;
 let itensComFalhaAnterior = [];
 let currentReinspectionOriginalId = null;
 let syncIntervalId = null;
+// Numa conexão de campo instável (sinal fraco, não totalmente caída), navigator.onLine
+// continua true e vários pontos do app disparam sincronizarComSupabase() de forma
+// independente (intervalo de 5min, evento 'online', navegação de página) - sem essa
+// trava, uma sincronização já em andamento (travada esperando resposta de uma rede
+// lenta) ganhava uma segunda rodada concorrente por cima, competindo pela mesma banda
+// já ruim e disputando o mesmo IndexedDB. Encontrado ao investigar relatos recorrentes
+// de "dados não sobem" especificamente em internet instável.
+let syncEmAndamento = false;
+// Sincronização completa (sincronizarComSupabase) baixa 9 tabelas inteiras via
+// "?select=*" - correto na primeira vez, mas caro em egress quando repetido sem
+// necessidade. Além do intervalo periódico, várias telas (Gestão, Relatórios,
+// Histórico, Extintores) disparam essa mesma sincronização completa de novo TODA vez
+// que são abertas - um técnico navegando rápido entre elas (ou o app reabrindo sozinho
+// no celular ao voltar do segundo plano, o que dispara 'online'/'offline' de novo)
+// podia rodar isso várias vezes por minuto, cada vez puxando as 9 tabelas inteiras de
+// novo. Encontrado ao investigar o aviso do Supabase de quota de egress excedida.
+// Essa trava limita a sincronização AUTOMÁTICA a no máximo uma vez a cada
+// SYNC_MIN_INTERVAL_MS - "forcar=true" (usado só no botão explícito de "tentar de
+// novo" após uma falha) ignora essa trava de propósito, já que aí é o próprio usuário
+// pedindo uma tentativa imediata.
+let ultimoSyncCompletoEm = 0;
+const SYNC_MIN_INTERVAL_MS = 3 * 60 * 1000;
 
 function clearReinspectionState() {
     itensComFalhaAnterior = [];
@@ -503,7 +525,7 @@ function updateConnectionStatus() {
 }
 
 async function getSyncStatus() {
-    const stores = ['cadastros', 'colaboradores', 'checklists', 'issues', 'checklist_items', 'extintores', 'inspecoes_extintores'];
+    const stores = ['cadastros', 'colaboradores', 'checklists', 'issues', 'checklist_items', 'extintores', 'inspecoes_extintores', 'epi_entregas'];
     let pendentes = 0;
     for (const store of stores) {
         const items = await getAllFromIndexedDB(store);
@@ -522,9 +544,37 @@ async function updatePendingBadge() {
             if (count > 0) {
                 text.textContent = `● Online - Sincronizando (${count} pendente(s))...`;
                 text.style.color = 'var(--warning)';
+            } else if (localStorage.getItem('last_sync_had_errors') === 'true') {
+                // "Pendentes = 0" só garante que não há UPLOAD pendente - não prova que o
+                // DOWNLOAD de todas as tabelas funcionou. Sem essa checagem, uma falha
+                // parcial de sincronização (ex: rede caiu no meio) deixava esse texto
+                // mentindo "Sincronizado" em verde mesmo com o Histórico vazio no
+                // aparelho, porque o store local nunca chegou a ser preenchido - achado
+                // real reportado por usuário via captura de tela do Histórico vazio.
+                let falhas = [];
+                try { falhas = JSON.parse(localStorage.getItem('last_sync_errors') || '[]'); } catch (e) { falhas = []; }
+                const resumo = falhas.length > 0 ? falhas[0].etapa : 'etapa desconhecida';
+                text.textContent = `⚠️ Falha ao sincronizar (${resumo}) - toque para ver detalhes`;
+                text.style.color = 'var(--warning)';
+                text.style.cursor = 'pointer';
+                // Mostra o detalhe completo (útil pra reportar o problema) e só then tenta
+                // de novo - antes disparava a nova tentativa direto, sem dar chance de ver
+                // o que realmente falhou.
+                text.onclick = () => {
+                    const detalhe = falhas.length > 0
+                        ? falhas.map(f => `• ${f.etapa}: ${f.erro}`).join('\n')
+                        : 'Nenhum detalhe registrado.';
+                    alert(`Falha(s) na última sincronização:\n\n${detalhe}\n\nTentando sincronizar de novo agora...`);
+                    // forcar=true: pedido explícito do usuário pra tentar de novo agora,
+                    // ignora a trava de intervalo mínimo (só se aplica às tentativas
+                    // automáticas em segundo plano).
+                    sincronizarComSupabase(true).then(updatePendingBadge);
+                };
             } else {
                 text.textContent = '● Sincronizado';
                 text.style.color = 'var(--success)';
+                text.style.cursor = '';
+                text.onclick = null;
             }
         } else {
             text.textContent = `● Offline (${count} pendente(s) localmente)`;
@@ -618,7 +668,10 @@ function showPage(pageId) {
         'pageInspecaoExtintor': 'navHome',
         'pageExtintorDetail': 'navHome',
         'pageTreinamentosVerificacao': 'navHome',
-        'pageTreinamentosColaborador': 'navHome'
+        'pageTreinamentosColaborador': 'navHome',
+        'pageEpiVerificacao': 'navHome',
+        'pageEpiColaborador': 'navHome',
+        'pageEpiEntregaForm': 'navHome'
     };
     if (navMap[pageId] && document.getElementById(navMap[pageId])) {
         document.getElementById(navMap[pageId]).classList.add('active');
@@ -670,7 +723,10 @@ function showPage(pageId) {
         'pageInspecaoExtintor': ['Inspeção de Extintor', currentExtintor?.id || ''],
         'pageExtintorDetail': ['Histórico do Extintor', ''],
         'pageTreinamentosVerificacao': ['Treinamentos', 'Situação de validade por colaborador'],
-        'pageTreinamentosColaborador': ['Situação de Treinamentos', '']
+        'pageTreinamentosColaborador': ['Situação de Treinamentos', ''],
+        'pageEpiVerificacao': ['EPI', 'Entrega de EPI por colaborador'],
+        'pageEpiColaborador': ['Entrega de EPI', ''],
+        'pageEpiEntregaForm': ['Nova Entrega de EPI', '']
     };
     
     if (titles[pageId]) {
@@ -739,6 +795,13 @@ function showPage(pageId) {
         if (searchInput) searchInput.value = '';
         filterTreinamentosColaboradores('');
         sincronizarTreinamentosStatusIncremental();
+    } else if (pageId === 'pageEpiVerificacao') {
+        const searchInput = document.getElementById('epiColabSearch');
+        if (searchInput) searchInput.value = '';
+        filterEpiColaboradores('');
+        sincronizarEpiEntregasIncremental();
+    } else if (pageId === 'pageEpiEntregaForm') {
+        setTimeout(() => initEpiEntregaSignature(), 50);
     }
 }
 
@@ -1313,6 +1376,7 @@ async function loadGestao(search = '') {
                     </div>
                     <div style="display: flex; gap: 4px; align-items: center;">
                         ${c.matricula ? `<button onclick="verTreinamentosColaborador('${escapeHTML(c.matricula)}')" title="Ver Treinamentos" style="background: #1e8449; color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🎓</button>
+                        <button onclick="abrirColaboradorEpi('${escapeHTML(c.matricula)}')" title="Ver Entregas de EPI" style="background: #b45309; color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🦺</button>
                         <button onclick="gerarQRColaborador('${escapeHTML(c.matricula)}')" title="Gerar QR Code" style="background: #6b21a8; color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🏷️</button>` : ''}
                         <button onclick="editColaborador('${c.id}')" title="Editar" style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">✏️</button>
                         <button onclick="deleteColaboradorPermanente('${c.id}')" title="Excluir Definitivamente" style="background: var(--danger); color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer;">🗑️</button>
@@ -2477,9 +2541,13 @@ function renderChecklistItems(equipment, cadastro) {
                               onchange="setObservation('${item.id}', this.value)"></textarea>
                 </div>
                 <div class="item-foto" style="margin-top: 8px;">
-                    <input type="file" accept="image/*" capture="environment" id="fotoInput-${item.id}" style="display:none" onchange="onFotoItemSelecionada('${item.id}', this)">
-                    <button type="button" onclick="capturarFotoItem('${item.id}')" style="background: #f0f0f5; border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; vertical-align: middle;">
-                        📷 Anexar foto
+                    <input type="file" accept="image/*" capture="environment" id="fotoInputCamera-${item.id}" style="display:none" onchange="onFotoItemSelecionada('${item.id}', this)">
+                    <input type="file" accept="image/*" id="fotoInputGaleria-${item.id}" style="display:none" onchange="onFotoItemSelecionada('${item.id}', this)">
+                    <button type="button" onclick="capturarFotoItem('${item.id}', 'camera')" style="background: #f0f0f5; border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; vertical-align: middle;">
+                        📷 Câmera
+                    </button>
+                    <button type="button" onclick="capturarFotoItem('${item.id}', 'galeria')" style="background: #f0f0f5; border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; margin-left: 6px;">
+                        🖼️ Galeria
                     </button>
                     <span id="fotoPreview-${item.id}" style="display: inline-block; vertical-align: middle;"></span>
                 </div>
@@ -2665,8 +2733,9 @@ function comprimirFotoParaBlob(file, maxWidth = 1280, quality = 0.7) {
     });
 }
 
-function capturarFotoItem(itemId) {
-    const input = document.getElementById('fotoInput-' + itemId);
+function capturarFotoItem(itemId, origem) {
+    const inputId = origem === 'camera' ? 'fotoInputCamera-' : 'fotoInputGaleria-';
+    const input = document.getElementById(inputId + itemId);
     if (input) input.click();
 }
 
@@ -3168,16 +3237,28 @@ async function saveChecklist() {
         if (effItem) checklistData[k].customText = effItem.text;
     });
     
-    // Lógica de Status Final com Auto-Interdição
+    // Status Final: a decisão de qual status final aplicar é sempre do técnico
+    // (currentStatusChecklist, escolhido nos botões da tela) - o sistema não sobrescreve
+    // mais isso automaticamente. Antes, marcar qualquer item da seção INTERDIÇÃO como NC
+    // forçava 'interditado' mesmo se o técnico tivesse escolhido "Liberado com Restrição"
+    // de propósito, sem nenhum aviso - achado real reportado por usuário (equipamento
+    // liberado com restrição salvo como Interditado). Mantemos só um alerta de
+    // confirmação chamando atenção pro item crítico, mas quem decide é sempre o técnico.
     let statusFinal = currentStatusChecklist;
-    if (hasInterdictionNC) {
-        statusFinal = 'interditado';
-    } else if (naoConformes > 0 && !currentStatusChecklist) {
-        statusFinal = 'liberado_restricao';
-    } else if (naoConformes === 0) {
+    if (naoConformes === 0) {
         statusFinal = 'liberado';
+    } else if (hasInterdictionNC && statusFinal !== 'interditado') {
+        const confirmarMesmoAssim = confirm(
+            '⚠️ Atenção: pelo menos um item marcado como Não Conforme pertence à seção INTERDIÇÃO (item crítico de segurança).\n\n' +
+            `Você selecionou o status "${statusFinal === 'liberado_restricao' ? 'Liberado com Restrição' : statusFinal}".\n\n` +
+            'Confirma que deseja manter esse status mesmo assim?'
+        );
+        if (!confirmarMesmoAssim) {
+            showToast('Revise o status antes de salvar.');
+            return;
+        }
     }
-    
+
     const prazo = document.getElementById('checklistPrazo')?.value || null;
     const dateVal = formData.date || (document.getElementById('checklistDate')?.value) || new Date().toISOString().split('T')[0];
     
@@ -3303,7 +3384,7 @@ function saveIssue() {
 
 function openDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open('ChecklistSeguranca', 8);
+        const request = indexedDB.open('ChecklistSeguranca', 9);
         request.onupgradeneeded = (e) => {
             const db = e.target.result;
             if (!db.objectStoreNames.contains('checklists')) {
@@ -3340,6 +3421,25 @@ function openDB() {
                 // de forma incremental (sincronizarTreinamentosStatusIncremental), não pelo
                 // motor padrão - é só leitura, o app de campo nunca escreve aqui.
                 db.createObjectStore('treinamentos_status', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('epi_catalogo')) {
+                // Módulo de EPI - catálogo (tabela pequena, sincroniza pelo motor padrão).
+                db.createObjectStore('epi_catalogo', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('epi_entregas')) {
+                // Módulo de EPI - log de entregas. Grande e só cresce (6.500+ linhas já
+                // importadas), então sincroniza de forma incremental (mesmo padrão de
+                // treinamentos_status), mas ao contrário daquela, aqui o app de campo
+                // GRAVA localmente (nova entrega) - ver sincronizarEpiEntregasIncremental.
+                db.createObjectStore('epi_entregas', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('colaboradores_efetivo')) {
+                // Cadastro de RH completo (177+ colaboradores) - ao contrário de
+                // "colaboradores" (só quem tem login no app), cobre qualquer matrícula
+                // real. Só as colunas necessárias pra identificar um colaborador na
+                // entrega de EPI (nome/função/setor/status), não o cadastro inteiro
+                // (CPF, nascimento etc. ficam só no painel, não no celular do técnico).
+                db.createObjectStore('colaboradores_efetivo', { keyPath: 'id' });
             }
         };
         request.onsuccess = (e) => resolve(e.target.result);
@@ -3658,6 +3758,29 @@ function setSupabaseConfig(url, key) {
     localStorage.setItem('supabase_key', (key || '').trim());
 }
 
+// Sem timeout, um fetch numa conexão de campo instável (sinal fraco que nem chega a
+// cair de vez) pode ficar pendurado por minutos sem erro nem resposta - travando toda a
+// fila sequencial de tabelas de sincronizarComSupabase() atrás dele. AbortController
+// força uma falha rápida e recuperável (cai no catch normal, registra em "falhas" e
+// segue pra próxima tabela) em vez de travar o app inteiro esperando uma rede que não
+// vai responder a tempo.
+const SUPABASE_FETCH_TIMEOUT_MS = 20000;
+
+async function fetchComTimeout(endpoint, fetchOptions) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), SUPABASE_FETCH_TIMEOUT_MS);
+    try {
+        return await fetch(endpoint, { ...fetchOptions, signal: controller.signal });
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            throw new Error(`Tempo esgotado (${SUPABASE_FETCH_TIMEOUT_MS / 1000}s) - conexão instável`);
+        }
+        throw err;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
 async function supabaseFetch(table, options = {}) {
     const url = getSupabaseUrl();
     const key = getSupabaseKey();
@@ -3684,7 +3807,7 @@ async function supabaseFetch(table, options = {}) {
             let allRows = [];
             let offset = 0;
             while (true) {
-                const response = await fetch(endpoint, {
+                const response = await fetchComTimeout(endpoint, {
                     method: 'GET',
                     headers: { ...headers, 'Range': `${offset}-${offset + PAGE_SIZE - 1}` }
                 });
@@ -3707,7 +3830,7 @@ async function supabaseFetch(table, options = {}) {
         if (options.body) {
             fetchOptions.body = JSON.stringify(options.body);
         }
-        const response = await fetch(endpoint, fetchOptions);
+        const response = await fetchComTimeout(endpoint, fetchOptions);
         if (!response.ok) {
             const errText = await response.text();
             throw new Error(`HTTP ${response.status}: ${errText}`);
@@ -3912,9 +4035,17 @@ function iniciarSyncPeriodica() {
                 // de milhares de linhas de histórico por trás) pra baixar por inteiro a
                 // cada ciclo, então sincroniza de forma incremental - ver função abaixo.
                 sincronizarTreinamentosStatusIncremental();
+                // Mesmo raciocínio pra epi_entregas (6.500+ linhas e só cresce), com a
+                // diferença de que essa aqui também reenvia entregas locais pendentes.
+                sincronizarEpiEntregasIncremental();
             }
         }
-    }, 5 * 60 * 1000);
+    }, 15 * 60 * 1000);
+    // 15min (era 5min) - reduz o consumo de egress do plano gratuito do Supabase. O
+    // ciclo automático é só pra pegar mudanças feitas em OUTRO aparelho enquanto este
+    // fica parado na Home; qualquer ação neste próprio aparelho (salvar um checklist,
+    // abrir Gestão/Relatórios/Histórico, reconectar à internet) já dispara sua própria
+    // sincronização imediata por fora deste intervalo.
 }
 
 // Gerenciamento de itens de checklist por tipo de equipamento - fonte compartilhada
@@ -3996,6 +4127,115 @@ async function sincronizarTreinamentosStatusIncremental() {
     }
 }
 
+// Módulo de EPI - sincronização incremental, mesmo raciocínio de
+// sincronizarTreinamentosStatusIncremental (tabela grande, só busca o que mudou desde o
+// último ciclo). Diferença: ao contrário de treinamentos_status (só leitura),
+// epi_entregas recebe gravação local (nova entrega feita offline) - por isso primeiro
+// reenvia qualquer entrega local ainda não confirmada no servidor (criada offline, ou
+// cujo push instantâneo em saveToIndexedDB falhou por algum motivo), só depois faz o
+// pull incremental do que mudou em outros aparelhos.
+async function sincronizarEpiEntregasIncremental() {
+    if (!isSupabaseConfigured() || !navigator.onLine) return;
+    try {
+        const locais = await getAllFromIndexedDB('epi_entregas');
+        for (const local of locais) {
+            if (!local.supabase_synced) {
+                const spObj = converterParaSupabase('epi_entregas', local);
+                const upsertRes = await supabaseFetch('epi_entregas', {
+                    method: 'POST',
+                    query: '?on_conflict=id',
+                    prefer: 'resolution=merge-duplicates',
+                    body: spObj
+                });
+                if (upsertRes.success) {
+                    local.synced = true;
+                    local.supabase_synced = true;
+                    await saveToIndexedDB('epi_entregas', local, true);
+                }
+            }
+        }
+
+        const lastSync = localStorage.getItem('last_sync_epi_entregas');
+        let query = '?select=*';
+        if (lastSync) {
+            query += '&created_at=gt.' + encodeURIComponent(lastSync);
+        }
+
+        const res = await supabaseFetch('epi_entregas', { query });
+        if (!res.success || !Array.isArray(res.data)) return;
+
+        let maxCreatedAt = lastSync || null;
+        for (const row of res.data) {
+            const appObj = converterParaAppFromSupabase('epi_entregas', row);
+            await saveToIndexedDB('epi_entregas', appObj, true);
+            if (row.created_at && (!maxCreatedAt || row.created_at > maxCreatedAt)) {
+                maxCreatedAt = row.created_at;
+            }
+        }
+
+        if (maxCreatedAt) {
+            localStorage.setItem('last_sync_epi_entregas', maxCreatedAt);
+        }
+        if (res.data.length > 0) {
+            console.log(`⚡ [EPI] Sincronização incremental: ${res.data.length} registro(s) atualizado(s).`);
+        }
+    } catch (e) {
+        console.error('Erro na sincronização incremental de entregas de EPI:', e);
+    }
+}
+
+// Mesmo raciocínio de sincronizarTreinamentosStatusIncremental/sincronizarEpiEntregasIncremental
+// (tabela grande e só cresce - 14k+ linhas). Diferente das outras duas, essa continua sendo
+// chamada de DENTRO de sincronizarComSupabase() (não separada num ciclo próprio), porque o
+// merge de não conformidades nos checklists locais precisa ficar atualizado a cada sync normal,
+// não só ao entrar numa tela de verificação específica - só o PAYLOAD virou incremental (era
+// `?select=*` sem filtro nenhum, rodando a cada 3 minutos em ~9 pontos do app, puxando a tabela
+// inteira toda vez - identificado como o maior consumidor de egress do plano gratuito).
+// sincronizarNaoConformidadesComChecklists() não precisa mudar: ela já escreve em
+// target.items[itemId] sem nunca resetar o checklist local, então processar só as linhas novas
+// desde o último ciclo é seguro e não perde NCs já mescladas antes.
+async function sincronizarNaoConformidadesIncremental() {
+    if (!isSupabaseConfigured() || !navigator.onLine) return;
+    try {
+        const lastSync = localStorage.getItem('last_sync_nao_conformidades');
+        let query = '?select=*';
+        if (lastSync) {
+            query += '&created_at=gt.' + encodeURIComponent(lastSync);
+        }
+
+        const res = await supabaseFetch('nao_conformidades', { query });
+        if (!res.success || !Array.isArray(res.data)) return;
+
+        let maxCreatedAt = lastSync || null;
+        if (res.data.length > 0) {
+            const spNcRows = res.data.map(r => ({
+                'ID Checklist': r.checklist_id,
+                'Patrimônio': r.patrimonio,
+                'Item': r.item_text,
+                'NR': r.nr,
+                'Risco': r.risco,
+                'Observação': r.observacao
+            }));
+            await sincronizarNaoConformidadesComChecklists(spNcRows);
+
+            for (const row of res.data) {
+                if (row.created_at && (!maxCreatedAt || row.created_at > maxCreatedAt)) {
+                    maxCreatedAt = row.created_at;
+                }
+            }
+        }
+
+        if (maxCreatedAt) {
+            localStorage.setItem('last_sync_nao_conformidades', maxCreatedAt);
+        }
+        if (res.data.length > 0) {
+            console.log(`⚡ [NC] Sincronização incremental: ${res.data.length} registro(s) mesclado(s).`);
+        }
+    } catch (e) {
+        console.error('Erro na sincronização incremental de não conformidades:', e);
+    }
+}
+
 // ============================================
 // MÓDULO DE TREINAMENTOS (Fase 2 - verificação offline em campo)
 // Só leitura: cruza a store treinamentos_status (sincronizada de forma incremental,
@@ -4016,10 +4256,17 @@ async function filterTreinamentosColaboradores(query) {
         return;
     }
 
-    const colaboradores = await getAllFromIndexedDB('colaboradores');
-    const items = colaboradores.filter(c =>
-        c.ativo !== false && c.matricula &&
-        ((c.nome && c.nome.toLowerCase().includes(q)) || c.matricula.toLowerCase().includes(q))
+    // Busca em colaboradores_efetivo (cadastro de RH completo, ~185 pessoas), não em
+    // "colaboradores" (só quem já criou login no app, um subconjunto bem menor) - mesma
+    // correção já aplicada em EPI e pelo mesmo motivo: um técnico precisa conseguir
+    // verificar a situação de treinamento de QUALQUER colaborador real, não só de quem
+    // tem conta. Achado testando ao vivo: buscar por nome de alguém sem conta (mas com
+    // treinamento real vencido) dava "Nenhum colaborador encontrado", mesmo escanear o
+    // QR dessa mesma pessoa funcionando perfeitamente.
+    const colaboradoresEfetivo = await getAllFromIndexedDB('colaboradores_efetivo');
+    const items = colaboradoresEfetivo.filter(c =>
+        c.status === 'ATIVO' && c.id &&
+        ((c.nome && c.nome.toLowerCase().includes(q)) || c.id.toLowerCase().includes(q))
     ).slice(0, 30);
 
     if (items.length === 0) {
@@ -4028,11 +4275,11 @@ async function filterTreinamentosColaboradores(query) {
     }
 
     container.innerHTML = items.map(c => `
-        <div class="history-item" style="flex-wrap: wrap; cursor: pointer;" onclick="verTreinamentosColaborador('${escapeHTML(c.matricula)}')">
+        <div class="history-item" style="flex-wrap: wrap; cursor: pointer;" onclick="verTreinamentosColaborador('${escapeHTML(c.id)}')">
             <div class="history-info">
                 <div class="history-title">${escapeHTML(c.nome || '')}</div>
                 <div class="history-date">${escapeHTML(c.funcao || '')}</div>
-                <div class="history-date">Matrícula: ${escapeHTML(c.matricula)}</div>
+                <div class="history-date">Matrícula: ${escapeHTML(c.id)}</div>
             </div>
             <div style="font-size: 20px;">🎓</div>
         </div>`).join('');
@@ -4041,8 +4288,12 @@ async function filterTreinamentosColaboradores(query) {
 async function verTreinamentosColaborador(matricula) {
     if (!matricula) return;
 
-    const colaboradores = await getAllFromIndexedDB('colaboradores');
-    const colaborador = colaboradores.find(c => c.matricula === matricula);
+    // Mesmo motivo do filtro acima: colaboradores_efetivo cobre todo mundo, "colaboradores"
+    // só quem tem conta - usado aqui como fonte primária de nome/função/setor (o fallback
+    // pro primeiro registro de treinamentos_status logo abaixo continua existindo pra
+    // quando nem colaboradores_efetivo tem a pessoa, ex: terceiro/visitante já treinado).
+    const colaboradoresEfetivo = await getAllFromIndexedDB('colaboradores_efetivo');
+    const colaborador = colaboradoresEfetivo.find(c => c.id === matricula);
 
     const todosStatus = await getAllFromIndexedDB('treinamentos_status');
     const registros = todosStatus.filter(t => t.matricula === matricula);
@@ -4128,6 +4379,245 @@ async function verTreinamentosColaborador(matricula) {
 
     document.getElementById('treinamentosColaboradorContent').innerHTML = html;
     showPage('pageTreinamentosColaborador');
+}
+
+// ============================================
+// MÓDULO DE EPI (NR-06) - entrega em campo via QR, offline-first. Mesmo padrão de
+// verTreinamentosColaborador/filterTreinamentosColaboradores, mas usa
+// colaboradores_efetivo (cadastro de RH completo) em vez de "colaboradores" (só quem
+// tem login no app) - um técnico precisa conseguir entregar EPI pra qualquer
+// colaborador real, não só pra quem já criou conta.
+// ============================================
+
+let currentColaboradorEpi = null;
+let epiEntregaSelectedItem = null;
+
+async function filterEpiColaboradores(query) {
+    const container = document.getElementById('epiColabList');
+    const q = (query || '').toLowerCase().trim();
+    if (q.length < 2) {
+        container.innerHTML = `<div class="empty-state"><div class="icon">👥</div><div class="text">Escaneie o QR Code ou digite para buscar um colaborador</div></div>`;
+        return;
+    }
+    const colaboradores = await getAllFromIndexedDB('colaboradores_efetivo');
+    const items = colaboradores.filter(c =>
+        c.status === 'ATIVO' && c.id &&
+        ((c.nome && c.nome.toLowerCase().includes(q)) || c.id.toLowerCase().includes(q))
+    ).slice(0, 30);
+    if (items.length === 0) {
+        container.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><div class="text">Nenhum colaborador encontrado${!navigator.onLine ? ' (verifique se os dados já foram sincronizados)' : ''}</div></div>`;
+        return;
+    }
+    container.innerHTML = items.map(c => `
+        <div class="history-item" style="flex-wrap: wrap; cursor: pointer;" onclick="abrirColaboradorEpi('${escapeHTML(c.id)}')">
+            <div class="history-info">
+                <div class="history-title">${escapeHTML(c.nome || '')}</div>
+                <div class="history-date">${escapeHTML(c.funcao || '')}</div>
+                <div class="history-date">Matrícula: ${escapeHTML(c.id)}</div>
+            </div>
+            <div style="font-size: 20px;">🦺</div>
+        </div>`).join('');
+}
+
+async function abrirColaboradorEpi(matricula) {
+    if (!matricula) return;
+
+    const colaboradoresEfetivo = await getAllFromIndexedDB('colaboradores_efetivo');
+    const colaborador = colaboradoresEfetivo.find(c => c.id === matricula);
+
+    const todasEntregas = await getAllFromIndexedDB('epi_entregas');
+    const entregas = todasEntregas
+        .filter(e => e.matricula === matricula)
+        .sort((a, b) => (b.dataEntrega || '').localeCompare(a.dataEntrega || ''));
+
+    if (!colaborador && entregas.length === 0) {
+        showToast(`Nenhum colaborador ou entrega de EPI encontrado para a matrícula "${matricula}".`);
+        return;
+    }
+
+    const catalogo = await getAllFromIndexedDB('epi_catalogo');
+    const catalogoPorId = new Map(catalogo.map(c => [c.id, c]));
+
+    currentColaboradorEpi = {
+        matricula,
+        nome: colaborador?.nome || entregas[0]?.nome || matricula,
+        funcao: colaborador?.funcao || entregas[0]?.funcao || '',
+        setor: colaborador?.setor || entregas[0]?.setor || ''
+    };
+
+    let html = `
+        <div class="card">
+            <div class="card-title">🦺 ${escapeHTML(currentColaboradorEpi.nome)}</div>
+            <div style="font-size: 13px; color: var(--text-light); line-height: 1.6;">
+                ${currentColaboradorEpi.funcao ? `<div><strong>Função:</strong> ${escapeHTML(currentColaboradorEpi.funcao)}</div>` : ''}
+                ${currentColaboradorEpi.setor ? `<div><strong>Setor:</strong> ${escapeHTML(currentColaboradorEpi.setor)}</div>` : ''}
+                <div><strong>Matrícula:</strong> ${escapeHTML(matricula)}</div>
+            </div>
+        </div>
+
+        <button onclick="abrirNovaEntregaEpi()" style="width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin: 12px 0;">
+            📝 Nova Entrega de EPI
+        </button>
+
+        <div class="section-title">Histórico de Entregas (${entregas.length})</div>
+    `;
+
+    if (entregas.length === 0) {
+        html += `<div class="empty-state"><div class="icon">🦺</div><div class="text">Nenhuma entrega registrada para este colaborador${!navigator.onLine ? ' (verifique se os dados já foram sincronizados)' : ''}</div></div>`;
+    } else {
+        html += entregas.slice(0, 50).map(e => {
+            const cat = catalogoPorId.get(e.epiCatalogoId);
+            const descricao = cat?.descricao || e.epiCatalogoId || 'Item removido do catálogo';
+            // Só entregas lançadas pelo próprio app podem ser excluídas por um técnico -
+            // o histórico importado da planilha oficial (origem IMPORT_HISTORICO) só se
+            // corrige pelo painel, não a partir de um celular.
+            const podeExcluir = e.origem !== 'IMPORT_HISTORICO';
+            return `
+                <div style="padding: 12px; background: #f4fcf8; border-left: 4px solid #1e8449; border-radius: 8px; margin-bottom: 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                    <div>
+                        <div style="font-weight: 700; color: #2c3e50;">${escapeHTML(descricao)}${e.quantidade > 1 ? ' — ' + e.quantidade + ' un.' : ''}</div>
+                        <div style="font-size: 12px; color: #34495e; margin-top: 2px;">${e.dataEntrega ? formatSimpleDate(e.dataEntrega) : '—'}${e.tipoEntrega ? ' • ' + capitalize(e.tipoEntrega) : ''}${!e.supabase_synced ? ' • ⏳ pendente de sincronização' : ''}</div>
+                    </div>
+                    ${podeExcluir ? `<button onclick="excluirEntregaEpi('${escapeHTML(e.id)}')" title="Excluir" style="background: none; border: none; color: var(--danger); font-size: 16px; cursor: pointer; flex-shrink: 0; padding: 2px;">🗑️</button>` : ''}
+                </div>`;
+        }).join('');
+        if (entregas.length > 50) {
+            html += `<div class="empty-state" style="padding: 12px;"><div class="text">Mostrando as 50 mais recentes de ${entregas.length}</div></div>`;
+        }
+    }
+
+    document.getElementById('epiColaboradorContent').innerHTML = html;
+    showPage('pageEpiColaborador');
+}
+
+function abrirNovaEntregaEpi() {
+    if (!currentColaboradorEpi) return;
+    epiEntregaSelectedItem = null;
+    document.getElementById('epiEntregaColabHeader').textContent = `Para: ${currentColaboradorEpi.nome} — Matrícula ${currentColaboradorEpi.matricula}`;
+    document.getElementById('epiEntregaItemSearch').value = '';
+    document.getElementById('epiEntregaItemList').innerHTML = '';
+    document.getElementById('epiEntregaItemSelecionado').innerHTML = '';
+    document.getElementById('epiEntregaQuantidade').value = 1;
+    document.getElementById('epiEntregaTipo').value = 'inicial';
+    document.getElementById('epiEntregaMotivo').value = '';
+    document.getElementById('epiEntregaObs').value = '';
+    showPage('pageEpiEntregaForm');
+}
+
+async function filterEpiCatalogoMobile(query) {
+    const container = document.getElementById('epiEntregaItemList');
+    const q = (query || '').toLowerCase().trim();
+    if (q.length < 2) { container.innerHTML = ''; return; }
+    const catalogo = await getAllFromIndexedDB('epi_catalogo');
+    const items = catalogo.filter(c => c.ativo !== false && c.descricao && c.descricao.toLowerCase().includes(q)).slice(0, 30);
+    if (items.length === 0) {
+        container.innerHTML = `<div class="empty-state" style="padding: 12px;"><div class="text">Nenhum item encontrado${!navigator.onLine ? ' (verifique se os dados já foram sincronizados)' : ''}</div></div>`;
+        return;
+    }
+    container.innerHTML = items.map(c => `
+        <div class="history-item" style="cursor: pointer;" onclick="selecionarItemEpiForm('${escapeHTML(c.id)}')">
+            <div class="history-info">
+                <div class="history-title">${escapeHTML(c.descricao)}</div>
+                ${c.ca ? `<div class="history-date">CA ${escapeHTML(c.ca)}</div>` : ''}
+            </div>
+        </div>`).join('');
+}
+
+async function selecionarItemEpiForm(catalogoId) {
+    const catalogo = await getAllFromIndexedDB('epi_catalogo');
+    const item = catalogo.find(c => c.id === catalogoId);
+    if (!item) return;
+    epiEntregaSelectedItem = item;
+    document.getElementById('epiEntregaItemSearch').value = '';
+    document.getElementById('epiEntregaItemList').innerHTML = '';
+    document.getElementById('epiEntregaItemSelecionado').innerHTML = `
+        <div style="padding: 10px 12px; background: #f4fcf8; border-left: 4px solid #1e8449; border-radius: 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+            <div><strong>${escapeHTML(item.descricao)}</strong>${item.ca ? ' — CA ' + escapeHTML(item.ca) : ''}</div>
+            <button onclick="limparItemEpiForm()" style="background: none; border: none; color: var(--danger); font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;">Trocar</button>
+        </div>`;
+}
+
+function limparItemEpiForm() {
+    epiEntregaSelectedItem = null;
+    document.getElementById('epiEntregaItemSelecionado').innerHTML = '';
+    document.getElementById('epiEntregaItemSearch').focus();
+}
+
+function initEpiEntregaSignature() {
+    setupCanvas('signatureCanvasEpi');
+}
+
+async function salvarEntregaEpi() {
+    if (!currentColaboradorEpi) return;
+    if (!epiEntregaSelectedItem) {
+        showToast('Selecione um item do catálogo primeiro.');
+        return;
+    }
+
+    const quantidade = parseInt(document.getElementById('epiEntregaQuantidade').value, 10) || 1;
+    const dataEntrega = new Date().toISOString().split('T')[0];
+    const tipoEntrega = document.getElementById('epiEntregaTipo').value;
+    const motivoReposicao = document.getElementById('epiEntregaMotivo').value || null;
+    const observacoes = document.getElementById('epiEntregaObs').value.trim() || null;
+    const assinatura = getSignatureCanvasImage('signatureCanvasEpi');
+
+    const sessionStr = localStorage.getItem('active_session');
+    const session = sessionStr ? JSON.parse(sessionStr) : null;
+
+    const entrega = {
+        id: Date.now().toString(),
+        matricula: currentColaboradorEpi.matricula,
+        nome: currentColaboradorEpi.nome,
+        funcao: currentColaboradorEpi.funcao,
+        setor: currentColaboradorEpi.setor,
+        epiCatalogoId: epiEntregaSelectedItem.id,
+        quantidade,
+        dataEntrega,
+        tipoEntrega,
+        motivoReposicao,
+        entreguePor: session?.nome || null,
+        assinatura,
+        observacoes,
+        origem: 'APP',
+        timestamp: new Date().toISOString(),
+        synced: false
+    };
+
+    await saveToIndexedDB('epi_entregas', entrega);
+    registrarAuditoria('create', 'epi_entregas', entrega.id, `Entrega de ${epiEntregaSelectedItem.descricao} para ${currentColaboradorEpi.nome}`);
+
+    showToast('✅ Entrega registrada!');
+    setTimeout(() => abrirColaboradorEpi(currentColaboradorEpi.matricula), 1000);
+}
+
+// Corrige um lançamento errado direto em campo (mesmo padrão de deleteChecklist: exige
+// estar online pra excluir - evita que o item "volte" sozinho na próxima sincronização
+// por não existir uma lápide/tombstone ainda gravada quando offline).
+async function excluirEntregaEpi(id) {
+    if (!confirm('Excluir esta entrega de EPI? Essa ação não pode ser desfeita.')) return;
+
+    if (isSupabaseConfigured()) {
+        if (!navigator.onLine) {
+            showToast('⚠️ Você está offline. Conecte-se à internet para excluir (evita que o item volte na próxima sincronização).');
+            return;
+        }
+        const delRes = await supabaseFetch('epi_entregas', {
+            method: 'DELETE',
+            query: '?id=eq.' + encodeURIComponent(id)
+        });
+        if (!delRes.success) {
+            showToast('❌ Não foi possível excluir no servidor (' + (delRes.error || 'erro desconhecido') + ').');
+            return;
+        }
+        await registrarExclusaoRemota('epi_entregas', id);
+        await registrarAuditoria('delete', 'epi_entregas', id, 'Entrega de EPI excluída em campo');
+    }
+
+    await deleteFromIndexedDB('epi_entregas', id);
+    showToast('✅ Entrega excluída.');
+    if (currentColaboradorEpi) {
+        abrirColaboradorEpi(currentColaboradorEpi.matricula);
+    }
 }
 
 // ============================================
@@ -4442,7 +4932,37 @@ async function viewChecklist(id) {
                 <div class="card-title">📝 Observações</div>
                 <p style="font-size: 13px;">${escapeHTML(checklist.observacoes)}</p>
             </div>` : ''}
-        
+
+        <div class="card">
+            <div class="card-title"><span class="icon">🚦</span> Status do Equipamento</div>
+            <p style="font-size: 11px; color: var(--text-light); margin-bottom: 12px;">
+                Decisão final é sempre sua - mude quando quiser, mesmo depois de resolver ou reabrir itens.
+            </p>
+            <div class="status-buttons" style="flex-direction: column;">
+                <button class="status-btn ${checklist.statusChecklist === 'interditado' ? 'selected' : ''}" style="text-align: left; padding: 14px;" onclick="setStatusChecklistDetalhe('${checklist.id}', 'interditado', this)">
+                    <span style="color: var(--danger); font-size: 16px;">🚫</span>
+                    <div>
+                        <div style="font-weight: 700; color: var(--danger);">INTERDITADO</div>
+                        <div style="font-size: 11px; color: var(--text-light);">Não pode operar até correção</div>
+                    </div>
+                </button>
+                <button class="status-btn ${checklist.statusChecklist === 'liberado_restricao' ? 'selected' : ''}" style="text-align: left; padding: 14px;" onclick="setStatusChecklistDetalhe('${checklist.id}', 'liberado_restricao', this)">
+                    <span style="color: var(--warning); font-size: 16px;">⚠️</span>
+                    <div>
+                        <div style="font-weight: 700; color: var(--warning);">LIBERADO COM RESTRIÇÃO</div>
+                        <div style="font-size: 11px; color: var(--text-light);">Pode operar com limitações</div>
+                    </div>
+                </button>
+                <button class="status-btn ${checklist.statusChecklist === 'liberado' ? 'selected' : ''}" style="text-align: left; padding: 14px;" onclick="setStatusChecklistDetalhe('${checklist.id}', 'liberado', this)">
+                    <span style="color: var(--success); font-size: 16px;">✅</span>
+                    <div>
+                        <div style="font-weight: 700; color: var(--success);">LIBERADO</div>
+                        <div style="font-size: 11px; color: var(--text-light);">Todos os itens conformes</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+
         <div class="card">
             <div class="card-title">📋 Itens Verificados</div>
             <p style="font-size: 11px; color: var(--text-light); margin-bottom: 10px;">Altere o status dos itens para acompanhar a resolução</p>
@@ -4934,26 +5454,63 @@ async function updateChecklistItem(checklistId, itemId, newStatus, btn) {
         else if (v.status === 'NA') na++;
     }
     checklist.stats = { conformes, naoConformes, na, total: conformes + naoConformes + na };
-    
+
+    // Só auto-ajusta pro caso sem ambiguidade (nenhum item mais em NC = liberado). Com
+    // NC > 0, o status final fica como o técnico deixou da última vez - não recalcula
+    // mais a partir do risco dos itens (isso forçava 'interditado' silenciosamente
+    // mesmo quando o próprio técnico já tinha escolhido "Liberado com Restrição" no
+    // seletor abaixo, sem nenhum aviso - mesmo problema já corrigido no envio inicial
+    // do checklist, reportado por usuário via captura de tela). Pra reclassificar com
+    // NC > 0, o técnico usa o seletor "Status do Equipamento" na tela de detalhe.
     if (naoConformes === 0) {
         checklist.statusChecklist = 'liberado';
-    } else {
-        const hasHighRiskNC = Object.entries(checklist.items).some(([k, v]) => {
-            if (k === '_form' || v.status !== 'NC') return false;
-            const eqItem = checklist.equipment?.items?.find(i => i.id === k);
-            return eqItem?.risk === 'high';
-        });
-        checklist.statusChecklist = hasHighRiskNC ? 'interditado' : 'liberado_restricao';
     }
-    
+
     await saveToIndexedDB('checklists', checklist);
-    
+
     if (justResolved) {
         showToast('Item marcado como resolvido!');
     } else {
         showToast('Status atualizado!');
     }
-    
+
+    viewChecklist(checklistId);
+}
+
+async function setStatusChecklistDetalhe(checklistId, newStatus, btn) {
+    let checklist = await getFromIndexedDB('checklists', checklistId);
+    if (!checklist) {
+        const numId = Number(checklistId);
+        if (!isNaN(numId)) checklist = await getFromIndexedDB('checklists', numId);
+    }
+    if (!checklist) return;
+
+    if (newStatus !== 'interditado') {
+        const hasHighRiskNC = Object.entries(checklist.items).some(([k, v]) => {
+            if (k === '_form' || !v || v.status !== 'NC') return false;
+            const eqItem = checklist.equipment?.items?.find(i => i.id === k);
+            return eqItem?.section === 'INTERDIÇÃO' || eqItem?.risk === 'high';
+        });
+        if (hasHighRiskNC) {
+            const statusLabel = newStatus === 'liberado_restricao' ? 'Liberado com Restrição' : 'Liberado';
+            const confirmarMesmoAssim = confirm(
+                '⚠️ Atenção: pelo menos um item marcado como Não Conforme pertence à seção INTERDIÇÃO (item crítico de segurança).\n\n' +
+                `Você selecionou o status "${statusLabel}".\n\n` +
+                'Confirma que deseja manter esse status mesmo assim?'
+            );
+            if (!confirmarMesmoAssim) return;
+        }
+    }
+
+    checklist.statusChecklist = newStatus;
+    checklist.synced = false;
+    await saveToIndexedDB('checklists', checklist);
+
+    if (navigator.onLine && isSupabaseConfigured()) {
+        sincronizarItemIndividualSupabase('checklists', checklist);
+    }
+
+    showToast('✅ Status do equipamento atualizado!');
     viewChecklist(checklistId);
 }
 
@@ -6566,6 +7123,44 @@ function converterParaSupabase(store, item) {
             observacoes: item.observacoes || ''
         };
     }
+    if (store === 'epi_catalogo') {
+        return {
+            id: String(item.id).trim(),
+            tipo_protecao: item.tipoProtecao || null,
+            descricao: item.descricao || '',
+            marca: item.marca || null,
+            tamanho: item.tamanho || null,
+            ca: item.ca || null,
+            ativo: item.ativo !== false
+        };
+    }
+    if (store === 'epi_entregas') {
+        return {
+            id: String(item.id).trim(),
+            matricula: item.matricula || '',
+            nome: item.nome || null,
+            funcao: item.funcao || null,
+            setor: item.setor || null,
+            epi_catalogo_id: item.epiCatalogoId || null,
+            quantidade: item.quantidade || 1,
+            data_entrega: item.dataEntrega || '',
+            tipo_entrega: item.tipoEntrega || null,
+            motivo_reposicao: item.motivoReposicao || null,
+            entregue_por: item.entreguePor || null,
+            assinatura: item.assinatura || null,
+            observacoes: item.observacoes || null,
+            origem: item.origem || 'APP'
+        };
+    }
+    if (store === 'colaboradores_efetivo') {
+        return {
+            id: String(item.id).trim(),
+            nome: item.nome || null,
+            funcao: item.funcao || null,
+            setor: item.setor || null,
+            status: item.status || null
+        };
+    }
     return item;
 }
 
@@ -6698,6 +7293,51 @@ function converterParaAppFromSupabase(table, row) {
             supabase_synced: true
         };
     }
+    if (table === 'epi_catalogo') {
+        return {
+            id: row.id,
+            tipoProtecao: row.tipo_protecao,
+            descricao: row.descricao,
+            marca: row.marca,
+            tamanho: row.tamanho,
+            ca: row.ca,
+            ativo: row.ativo !== false,
+            synced: true,
+            supabase_synced: true
+        };
+    }
+    if (table === 'epi_entregas') {
+        return {
+            id: row.id,
+            matricula: row.matricula,
+            nome: row.nome,
+            funcao: row.funcao,
+            setor: row.setor,
+            epiCatalogoId: row.epi_catalogo_id,
+            quantidade: row.quantidade,
+            dataEntrega: row.data_entrega,
+            tipoEntrega: row.tipo_entrega,
+            motivoReposicao: row.motivo_reposicao,
+            entreguePor: row.entregue_por,
+            assinatura: row.assinatura,
+            observacoes: row.observacoes,
+            origem: row.origem,
+            timestamp: row.created_at || row.data_entrega,
+            synced: true,
+            supabase_synced: true
+        };
+    }
+    if (table === 'colaboradores_efetivo') {
+        return {
+            id: row.id,
+            nome: row.nome,
+            funcao: row.funcao,
+            setor: row.setor,
+            status: row.status,
+            synced: true,
+            supabase_synced: true
+        };
+    }
     return row;
 }
 
@@ -6711,7 +7351,8 @@ async function sincronizarItemIndividualSupabase(storeName, data) {
             'issues': 'relatos',
             'checklist_items': 'checklist_items',
             'extintores': 'extintores',
-            'inspecoes_extintores': 'inspecoes_extintores'
+            'inspecoes_extintores': 'inspecoes_extintores',
+            'epi_entregas': 'epi_entregas'
         };
         const table = tableMap[storeName];
         if (!table) return;
@@ -6769,7 +7410,7 @@ async function sincronizarSenhasPendentes() {
             if (!c.senhaPendenteSync || !c.senha) continue;
             const rpcRes = await cadastrarContaOnlineSupabase({
                 nome: c.nome, email: c.email, matricula: c.matricula || c.id,
-                funcao: c.funcao, setor: c.setor, senhaHash: c.senha
+                funcao: c.funcao, setor: c.setor, senha: c.senha
             });
             if (rpcRes.success) {
                 c.senhaPendenteSync = false;
@@ -6781,14 +7422,28 @@ async function sincronizarSenhasPendentes() {
     }
 }
 
-async function sincronizarComSupabase() {
+async function sincronizarComSupabase(forcar = false) {
     if (!isSupabaseConfigured()) return;
+    if (syncEmAndamento) {
+        console.log('⏳ Sincronização já em andamento - ignorando chamada concorrente.');
+        return;
+    }
+    if (!forcar && (Date.now() - ultimoSyncCompletoEm) < SYNC_MIN_INTERVAL_MS) {
+        console.log('⏳ Sincronização completa recente - pulando pra economizar egress (use "toque para ver detalhes" pra forçar agora).');
+        return;
+    }
+    syncEmAndamento = true;
+    // Detalhe de QUAL etapa falhou (não só "falhou algo") - sem isso não dá pra
+    // diagnosticar remotamente um relato como "aparece falha com frequência", já que o
+    // console do celular do usuário não é visível daqui. Guardado em localStorage pra
+    // sobreviver ao fechamento do app e poder ser lido na próxima conversa.
+    const falhas = [];
     try {
         console.log('⚡ Iniciando sincronização com Supabase...');
 
-        await sincronizarSenhasPendentes();
-        await sincronizarFotosPendentes();
-        await sincronizarChecklistItemSettings();
+        try { await sincronizarSenhasPendentes(); } catch (e) { falhas.push({ etapa: 'senhas pendentes', erro: e.message }); }
+        try { await sincronizarFotosPendentes(); } catch (e) { falhas.push({ etapa: 'fotos pendentes', erro: e.message }); }
+        try { await sincronizarChecklistItemSettings(); } catch (e) { falhas.push({ etapa: 'configurações de itens', erro: e.message }); }
 
         const tablesMap = [
             { table: 'cadastros', store: 'cadastros' },
@@ -6797,7 +7452,12 @@ async function sincronizarComSupabase() {
             { table: 'relatos', store: 'issues' },
             { table: 'checklist_items', store: 'checklist_items' },
             { table: 'extintores', store: 'extintores' },
-            { table: 'inspecoes_extintores', store: 'inspecoes_extintores' }
+            { table: 'inspecoes_extintores', store: 'inspecoes_extintores' },
+            { table: 'epi_catalogo', store: 'epi_catalogo' },
+            { table: 'colaboradores_efetivo', store: 'colaboradores_efetivo' }
+            // epi_entregas de propósito FORA daqui - tabela grande e só cresce (6.500+
+            // linhas), sincroniza de forma incremental (sincronizarEpiEntregasIncremental),
+            // mesmo raciocínio de treinamentos_status.
         ];
 
         // Remove localmente qualquer registro já excluído definitivamente em outro
@@ -6807,91 +7467,118 @@ async function sincronizarComSupabase() {
         await aplicarExclusoesRemotas(storeByTable);
 
         for (const { table, store } of tablesMap) {
-            // A coluna 'senha' foi bloqueada para SELECT direto via API (anon key) por segurança,
-            // então para colaboradores_checklist listamos as colunas explicitamente sem ela.
-            const selectQuery = table === 'colaboradores_checklist'
-                ? '?select=id,nome,funcao,setor,empresa,matricula,validade_aso,ativo,nivel_acesso,email,created_at'
-                : '?select=*';
-            const res = await supabaseFetch(table, { query: selectQuery });
-            if (res.success && Array.isArray(res.data)) {
-                for (const row of res.data) {
-                    const appObj = converterParaAppFromSupabase(table, row);
-                    if (appObj && appObj.id) {
-                        if (store === 'colaboradores' && !appObj.senha) {
-                            // Preserva o hash de senha já em cache local (necessário para login offline),
-                            // já que o servidor não retorna mais essa coluna.
-                            const local = await getFromIndexedDB('colaboradores', appObj.id);
-                            if (local && local.senha) appObj.senha = local.senha;
+            // Cada tabela isolada no seu próprio try/catch: uma falha pontual (ex: rede
+            // instável no meio da resposta de UMA tabela) não pode mais abortar o resto do
+            // laço silenciosamente - achado real via usuário reportando "Histórico" vazio
+            // no celular mesmo com o badge mostrando "● Sincronizado". Causa raiz: antes
+            // dessa mudança, todo o laço ficava dentro de um único try/catch da função
+            // inteira, então uma exceção em QUALQUER tabela anterior a 'checklists' na
+            // lista (ex: 'cadastros') impedia 'checklists' de sequer ser tentada nessa
+            // rodada - e como getSyncStatus() só conta pendências de UPLOAD (não verifica
+            // se o download de fato aconteceu), um checklists store vazio no IndexedDB
+            // aparecia como "0 pendentes" = "Sincronizado", mascarando o problema.
+            try {
+                // A coluna 'senha' foi bloqueada para SELECT direto via API (anon key) por segurança,
+                // então para colaboradores_checklist listamos as colunas explicitamente sem ela.
+                // colaboradores_efetivo também só traz as colunas necessárias pra identificar
+                // alguém na entrega de EPI - CPF/nascimento/tamanhos de uniforme ficam só no
+                // painel, não precisam estar em cache num celular que pode ser perdido/roubado.
+                const selectQuery = table === 'colaboradores_checklist'
+                    ? '?select=id,nome,funcao,setor,empresa,matricula,validade_aso,ativo,nivel_acesso,email,created_at'
+                    : table === 'colaboradores_efetivo'
+                    ? '?select=id,nome,funcao,setor,status'
+                    : '?select=*';
+                const res = await supabaseFetch(table, { query: selectQuery });
+                if (res.success && Array.isArray(res.data)) {
+                    for (const row of res.data) {
+                        const appObj = converterParaAppFromSupabase(table, row);
+                        if (appObj && appObj.id) {
+                            if (store === 'colaboradores' && !appObj.senha) {
+                                // Preserva o hash de senha já em cache local (necessário para login offline),
+                                // já que o servidor não retorna mais essa coluna.
+                                const local = await getFromIndexedDB('colaboradores', appObj.id);
+                                if (local && local.senha) appObj.senha = local.senha;
+                            }
+                            await saveToIndexedDB(store, appObj, true);
                         }
-                        await saveToIndexedDB(store, appObj, true);
+                    }
+                } else if (!res.success) {
+                    falhas.push({ etapa: `download tabela "${table}"`, erro: res.error || 'requisição sem sucesso' });
+                }
+
+                const locais = await getAllFromIndexedDB(store);
+                for (const local of locais) {
+                    if (!local.supabase_synced) {
+                        const spObj = converterParaSupabase(store, local);
+                        const upsertRes = await supabaseFetch(table, {
+                            method: 'POST',
+                            query: '?on_conflict=id',
+                            prefer: 'resolution=merge-duplicates',
+                            body: spObj
+                        });
+                        if (upsertRes.success) {
+                            local.synced = true;
+                            local.supabase_synced = true;
+                            await saveToIndexedDB(store, local, true);
+                        } else {
+                            falhas.push({ etapa: `upload tabela "${table}" (registro ${local.id})`, erro: upsertRes.error || 'requisição sem sucesso' });
+                        }
+
+                        if (store === 'checklists' && local.items) {
+                            const ncRows = [];
+                            for (const [k, v] of Object.entries(local.items)) {
+                                if (k === '_form' || !v || v.status !== 'NC') continue;
+                                const itemNome = ITEM_NAMES[k] || v.customText || k;
+                                ncRows.push({
+                                    checklist_id: String(local.id).trim(),
+                                    date: local.date || '',
+                                    patrimonio: (local.patrimonio || '').toUpperCase(),
+                                    item_text: itemNome,
+                                    nr: v.nr || '',
+                                    risco: v.risk || 'high',
+                                    observacao: v.observation || ''
+                                });
+                            }
+                            if (ncRows.length > 0) {
+                                await supabaseFetch('nao_conformidades', {
+                                    method: 'POST',
+                                    body: ncRows
+                                });
+                            }
+                        }
                     }
                 }
-            }
-
-            const locais = await getAllFromIndexedDB(store);
-            for (const local of locais) {
-                if (!local.supabase_synced) {
-                    const spObj = converterParaSupabase(store, local);
-                    const upsertRes = await supabaseFetch(table, {
-                        method: 'POST',
-                        query: '?on_conflict=id',
-                        prefer: 'resolution=merge-duplicates',
-                        body: spObj
-                    });
-                    if (upsertRes.success) {
-                        local.synced = true;
-                        local.supabase_synced = true;
-                        await saveToIndexedDB(store, local, true);
-                    }
-
-                    if (store === 'checklists' && local.items) {
-                        const ncRows = [];
-                        for (const [k, v] of Object.entries(local.items)) {
-                            if (k === '_form' || !v || v.status !== 'NC') continue;
-                            const itemNome = ITEM_NAMES[k] || v.customText || k;
-                            ncRows.push({
-                                checklist_id: String(local.id).trim(),
-                                date: local.date || '',
-                                patrimonio: (local.patrimonio || '').toUpperCase(),
-                                item_text: itemNome,
-                                nr: v.nr || '',
-                                risco: v.risk || 'high',
-                                observacao: v.observation || ''
-                            });
-                        }
-                        if (ncRows.length > 0) {
-                            await supabaseFetch('nao_conformidades', {
-                                method: 'POST',
-                                body: ncRows
-                            });
-                        }
-                    }
-                }
+            } catch (tableErr) {
+                console.error(`Erro ao sincronizar tabela "${table}":`, tableErr.message);
+                falhas.push({ etapa: `tabela "${table}"`, erro: tableErr.message });
             }
         }
 
-        // Baixar não conformidades do Supabase e mesclar aos checklists locais
+        // Baixar não conformidades do Supabase (só o que mudou desde o último ciclo) e
+        // mesclar aos checklists locais - ver sincronizarNaoConformidadesIncremental().
         try {
-            const ncRes = await supabaseFetch('nao_conformidades', { query: '?select=*' });
-            if (ncRes.success && Array.isArray(ncRes.data) && ncRes.data.length > 0) {
-                const spNcRows = ncRes.data.map(r => ({
-                    'ID Checklist': r.checklist_id,
-                    'Patrimônio': r.patrimonio,
-                    'Item': r.item_text,
-                    'NR': r.nr,
-                    'Risco': r.risco,
-                    'Observação': r.observacao
-                }));
-                await sincronizarNaoConformidadesComChecklists(spNcRows);
-            }
+            await sincronizarNaoConformidadesIncremental();
         } catch (ncErr) {
             console.log('Erro ao mesclar não conformidades do Supabase:', ncErr.message);
+            falhas.push({ etapa: 'mesclar não conformidades', erro: ncErr.message });
         }
 
         localStorage.setItem('last_supabase_sync', new Date().toISOString());
-        console.log('✅ Sincronização Supabase concluída com sucesso!');
+        localStorage.setItem('last_sync_had_errors', falhas.length > 0 ? 'true' : 'false');
+        localStorage.setItem('last_sync_errors', JSON.stringify(falhas));
+        console.log(falhas.length > 0 ? `⚠️ Sincronização Supabase concluída com falhas parciais: ${JSON.stringify(falhas)}` : '✅ Sincronização Supabase concluída com sucesso!');
+        // Só marca "acabei de sincronizar" numa rodada que chegou até aqui (mesmo com
+        // falhas parciais em alguma tabela) - se a função inteira explodir (catch abaixo),
+        // NÃO marca, pra deixar uma nova tentativa automática acontecer mais cedo em vez
+        // de esperar o intervalo mínimo inteiro depois de uma falha catastrófica.
+        ultimoSyncCompletoEm = Date.now();
     } catch (err) {
         console.error('Erro ao sincronizar com Supabase:', err.message);
+        falhas.push({ etapa: 'sincronização geral', erro: err.message });
+        localStorage.setItem('last_sync_had_errors', 'true');
+        localStorage.setItem('last_sync_errors', JSON.stringify(falhas));
+    } finally {
+        syncEmAndamento = false;
     }
 }
 
@@ -6915,7 +7602,8 @@ async function migrarDadosLocaisParaSupabase() {
             { store: 'issues', table: 'relatos' },
             { store: 'checklist_items', table: 'checklist_items' },
             { store: 'extintores', table: 'extintores' },
-            { store: 'inspecoes_extintores', table: 'inspecoes_extintores' }
+            { store: 'inspecoes_extintores', table: 'inspecoes_extintores' },
+            { store: 'epi_entregas', table: 'epi_entregas' }
         ];
 
         let totalEnviados = 0;
@@ -7349,6 +8037,8 @@ function onQRScanSuccess(decodedText) {
         iniciarInspecaoPorQRExtintor(decodedText);
     } else if (currentQRCategory === 'colaborador-treinamento') {
         verTreinamentosColaborador(decodedText.trim());
+    } else if (currentQRCategory === 'colaborador-epi') {
+        abrirColaboradorEpi(decodedText.trim());
     } else {
         const input = document.getElementById('cadastroInput' + capitalize(currentQRCategory));
         if (input) {
@@ -7533,11 +8223,50 @@ async function sha256(message) {
     return sha256Fallback(message);
 }
 
-async function loginOnlineSupabase(loginVal, hashedInput) {
+// A partir daqui o app usa bcrypt (via bcryptjs, carregado como qualquer outra lib de
+// terceiro já usada no projeto - jsQR/Chart.js/jspdf) em vez de SHA-256 puro pra senha:
+// SHA-256 sozinho é rápido demais (uma GPU decente testa bilhões de combinações por
+// segundo) e sem sal, então duas contas com a mesma senha geram o mesmo hash e um vazamento
+// de banco vira um ataque de força bruta trivial. bcrypt tem sal por linha (embutido no
+// próprio hash) e um custo computacional ajustável de propósito, exatamente pra tornar
+// esse tipo de ataque caro mesmo com hardware moderno.
+//
+// A conta em si nunca teve um passo de re-hash automático pra todo mundo de uma vez -
+// não dá pra converter um hash SHA-256 existente pra bcrypt sem saber a senha em texto
+// puro. Em vez disso, o RPC verificar_login() no Supabase faz a migração "preguiçosa":
+// aceita tanto o formato novo (bcrypt, prefixo "$2") quanto o antigo (SHA-256 legado) e,
+// se a senha bater no formato antigo, já regrava o hash em bcrypt na mesma chamada - cada
+// colaborador migra sozinho no próximo login online, sem precisar redefinir senha.
+function bcryptDisponivel() {
+    return typeof dcodeIO !== 'undefined' && !!dcodeIO.bcrypt;
+}
+
+function hashSenhaBcrypt(senha) {
+    return dcodeIO.bcrypt.hashSync(senha, 10);
+}
+
+// Compara uma senha digitada contra o hash cacheado localmente (login offline, sem
+// round-trip pro servidor). Detecta o formato pelo mesmo prefixo "$2" usado no RPC -
+// um aparelho que não fica online desde antes desta migração ainda pode ter um hash
+// SHA-256 legado cacheado, então o fallback continua necessário aqui também até o
+// próximo login online migrar esse cache específico.
+async function compararSenhaComHash(senhaDigitada, hashArmazenado) {
+    if (!hashArmazenado) return false;
+    if (hashArmazenado.startsWith('$2')) {
+        return bcryptDisponivel() && dcodeIO.bcrypt.compareSync(senhaDigitada, hashArmazenado);
+    }
+    return (await sha256(senhaDigitada)) === hashArmazenado;
+}
+
+async function loginOnlineSupabase(loginVal, senha) {
     if (!isSupabaseConfigured()) return null;
     const url = getSupabaseUrl() + '/rest/v1/rpc/verificar_login';
     const key = getSupabaseKey();
     try {
+        // Vai a senha em texto puro (protegida pelo HTTPS da própria chamada) - é o RPC no
+        // Postgres que faz a comparação com bcrypt, nunca o cliente. Mandar só um hash pré-
+        // calculado (como antes) não permitiria usar bcrypt de verdade aqui: bcrypt precisa
+        // da senha original pra extrair o sal já embutido no hash salvo e comparar de novo.
         const res = await fetch(url, {
             method: 'POST',
             headers: {
@@ -7547,17 +8276,17 @@ async function loginOnlineSupabase(loginVal, hashedInput) {
             },
             body: JSON.stringify({
                 p_login: loginVal,
-                p_senha_hash: hashedInput
+                p_senha: senha
             })
         });
-        
+
         if (res.status === 200) {
             const data = await res.json();
             if (Array.isArray(data) && data.length > 0) {
                 const row = data[0];
                 const appObj = converterParaAppFromSupabase('colaboradores_checklist', row);
                 if (appObj && appObj.id) {
-                    appObj.senha = hashedInput; // Save the hash locally for offline logins!
+                    appObj.senha = row.senha; // Hash real (bcrypt) devolvido pelo RPC, salvo pra permitir login offline depois.
                     await saveToIndexedDB('colaboradores', appObj, true);
                     return appObj;
                 }
@@ -7587,7 +8316,9 @@ async function cadastrarContaOnlineSupabase(payload) {
                 p_matricula: payload.matricula,
                 p_funcao: payload.funcao,
                 p_setor: payload.setor,
-                p_senha_hash: payload.senhaHash
+                // Aceita tanto texto puro (cadastro comum) quanto um hash bcrypt já pronto
+                // (conta criada offline, ver realizarCadastro) - o RPC detecta o formato.
+                p_senha: payload.senha
             })
         });
         if (res.status === 200) return { success: true };
@@ -7687,12 +8418,11 @@ async function realizarLogin() {
     let userMatricula = '';
     
     const loginUpper = loginVal.toUpperCase();
-    const hashedInput = await sha256(senha);
-    
+
     // 1. Se estiver online e Supabase estiver configurado, verificar direto no banco via RPC (SECURITY DEFINER)
     if (navigator.onLine && isSupabaseConfigured()) {
         showToast('Verificando credenciais online...');
-        const onlineColab = await loginOnlineSupabase(loginVal, hashedInput);
+        const onlineColab = await loginOnlineSupabase(loginVal, senha);
         if (onlineColab) {
             if (onlineColab.ativo === false || onlineColab.ativo === 'Não') {
                 if (errorDiv) {
@@ -7727,7 +8457,7 @@ async function realizarLogin() {
                 return;
             }
             
-            if (colab.senha === hashedInput) {
+            if (await compararSenhaComHash(senha, colab.senha)) {
                 authenticated = true;
                 userRole = normalizarNivelAcesso(colab.nivelAcesso);
                 userName = colab.nome;
@@ -7829,8 +8559,16 @@ async function realizarCadastroConta() {
             return;
         }
 
-        // Hashing senha
-        const hash = await sha256(senha);
+        // Hash calculado aqui no aparelho (bcrypt, não SHA-256) porque o cadastro precisa
+        // funcionar mesmo offline - sem round-trip pro servidor não tem como pedir pro
+        // Postgres calcular o hash na hora, então o mesmo valor serve tanto pro login
+        // offline imediato quanto pro envio posterior via cadastrarContaOnlineSupabase
+        // (que reconhece um hash bcrypt já pronto e grava sem recalcular).
+        if (!bcryptDisponivel()) {
+            showSignUpError('❌ Não foi possível preparar o cadastro (biblioteca de segurança não carregada). Verifique sua conexão e tente novamente.');
+            return;
+        }
+        const hash = hashSenhaBcrypt(senha);
 
         if (colabObj) {
             colabObj.senha = hash;
@@ -7860,7 +8598,7 @@ async function realizarCadastroConta() {
             matricula: colabObj.matricula,
             funcao: colabObj.funcao,
             setor: colabObj.setor,
-            senhaHash: colabObj.senha
+            senha: colabObj.senha
         });
         if (!rpcRes.success) {
             console.warn('Falha ao sincronizar senha do cadastro via RPC, será tentado novamente ao reconectar:', rpcRes.error);
@@ -7988,14 +8726,34 @@ async function redefinirSenhaComCodigo() {
     showToast('Redefinindo senha...');
 
     try {
-        const hashedSenha = await sha256(newSenha);
+        // Senha em texto puro (protegida pelo HTTPS da chamada) - é a Edge Function, com a
+        // chave service_role, quem calcula o hash bcrypt de verdade no servidor.
         const res = await chamarEdgeFunction('confirmar-recuperacao-senha', {
             login: matricula,
             otp: code,
-            nova_senha_hash: hashedSenha
+            nova_senha: newSenha
         });
 
         if (res.ok && res.success) {
+            // Atualiza o hash em cache local (se esse aparelho já tinha esse colaborador
+            // salvo) pra permitir login offline com a senha nova sem precisar de outro
+            // login online primeiro só pra sincronizar o hash de volta.
+            if (res.novo_hash) {
+                try {
+                    const matriculaUpper = matricula.toUpperCase();
+                    const matriculaLower = matricula.toLowerCase();
+                    const colaboradoresLocais = await getAllFromIndexedDB('colaboradores');
+                    const local = colaboradoresLocais.find(c =>
+                        String(c.matricula || c.id || '').trim().toUpperCase() === matriculaUpper ||
+                        String(c.email || '').trim().toLowerCase() === matriculaLower);
+                    if (local) {
+                        local.senha = res.novo_hash;
+                        await saveToIndexedDB('colaboradores', local, true);
+                    }
+                } catch (cacheErr) {
+                    console.warn('Não foi possível atualizar o hash local após redefinir senha:', cacheErr);
+                }
+            }
             showToast('✅ Senha redefinida com sucesso!');
             setTimeout(() => {
                 cancelarRecuperacao();

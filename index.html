@@ -237,6 +237,10 @@
                     <span class="icon">🎓</span>
                     <span class="label">Treinamentos</span>
                 </a>
+                <a class="action-btn" onclick="showPage('pageEpiVerificacao')">
+                    <span class="icon">🦺</span>
+                    <span class="label">EPI</span>
+                </a>
             </div>
             
             <!-- Correction Deadlines Card -->
@@ -970,6 +974,96 @@
         <div class="content" id="treinamentosColaboradorContent"></div>
     </div>
 
+    <!-- Page: EPI - Verificação/Lançamento -->
+    <div class="page" id="pageEpiVerificacao">
+        <div class="content">
+            <div class="section-title">🦺 Entrega de EPI</div>
+
+            <button onclick="openQRScanner('colaborador-epi')" style="width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 12px;">
+                📷 Escanear QR do Colaborador
+            </button>
+
+            <div class="search-container" style="margin-bottom: 12px;">
+                <input type="text" class="search-input" id="epiColabSearch"
+                       placeholder="Ou busque por nome ou matrícula..."
+                       oninput="filterEpiColaboradores(this.value)" autocomplete="off">
+            </div>
+
+            <div id="epiColabList">
+                <div class="empty-state">
+                    <div class="icon">👥</div>
+                    <div class="text">Escaneie o QR Code ou digite para buscar um colaborador</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page: EPI - Colaborador (histórico + nova entrega) -->
+    <div class="page" id="pageEpiColaborador">
+        <div class="content" id="epiColaboradorContent"></div>
+    </div>
+
+    <!-- Page: EPI - Formulário de Nova Entrega -->
+    <div class="page" id="pageEpiEntregaForm">
+        <div class="content">
+            <div id="epiEntregaColabHeader" style="font-size: 13px; color: var(--text-light); font-weight: 600; margin-bottom: 12px;"></div>
+
+            <div class="form-group">
+                <label class="form-label">Item de EPI *</label>
+                <div class="search-container" style="margin-bottom: 8px;">
+                    <input type="text" class="search-input" id="epiEntregaItemSearch"
+                           placeholder="Digite pra buscar o item (ex: luva, bota, capacete...)..."
+                           oninput="filterEpiCatalogoMobile(this.value)" autocomplete="off">
+                </div>
+                <div id="epiEntregaItemList"></div>
+                <div id="epiEntregaItemSelecionado" style="margin-top: 8px;"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Quantidade</label>
+                <input type="number" class="form-input" id="epiEntregaQuantidade" min="1" step="1" value="1">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Tipo de Entrega</label>
+                <select class="form-input" id="epiEntregaTipo">
+                    <option value="inicial">Inicial</option>
+                    <option value="reposicao">Reposição</option>
+                    <option value="troca">Troca</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Motivo da Reposição</label>
+                <select class="form-input" id="epiEntregaMotivo">
+                    <option value="">—</option>
+                    <option value="perda">Perda</option>
+                    <option value="dano">Dano/Rompimento</option>
+                    <option value="desgaste">Desgaste Natural</option>
+                    <option value="troca_tamanho">Troca de Tamanho</option>
+                    <option value="vencimento">Vencimento (CA)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Observações</label>
+                <textarea class="form-input" id="epiEntregaObs" rows="2"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Assinatura do Colaborador (confirma recebimento)</label>
+                <div class="signature-area" style="margin-top: 8px;">
+                    <canvas id="signatureCanvasEpi"></canvas>
+                    <button class="clear-btn" onclick="clearSignatureCanvas('signatureCanvasEpi')">Limpar Assinatura</button>
+                </div>
+            </div>
+
+            <button class="save-btn" onclick="salvarEntregaEpi()">
+                💾 Salvar Entrega
+            </button>
+        </div>
+    </div>
+
     <!-- Page: Checklist Detail -->
     <div class="page" id="pageChecklistDetail">
         <div class="content" id="checklistDetailContent"></div>
@@ -1372,8 +1466,9 @@
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js"></script>
     <script src="qrcode.min.js?v=2"></script>
     <script src="data.js?v=142"></script>
-    <script src="app.js?v=145"></script>
+    <script src="app.js?v=158"></script>
 </body>
 </html>

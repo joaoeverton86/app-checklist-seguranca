@@ -3452,7 +3452,12 @@ function itensLoteCronogramaFiltrados() {
         itens = itens.filter(c => c.treinamento_cod === registroLoteFiltroTema);
     }
     if (registroLoteFiltroFrente) {
-        itens = itens.filter(c => c.responsavel === registroLoteFiltroFrente);
+        // Item sem frente marcada é um tema "geral" - vale pra qualquer frente (mesmo
+        // critério que gerarListasCronogramaMes() já usa pra cruzar com TODAS as frentes
+        // quando nenhum filtro está ativo). Comparação exata sozinha excluía praticamente
+        // todo o cronograma real (9 de 12 itens sem responsavel marcado), deixando a prévia
+        // sempre vazia pra qualquer frente escolhida.
+        itens = itens.filter(c => !c.responsavel || c.responsavel === registroLoteFiltroFrente);
     }
     itens.sort((a, b) => (a.data_prevista || '').localeCompare(b.data_prevista || ''));
     return itens;

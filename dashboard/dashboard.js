@@ -1688,7 +1688,7 @@ async function loadTreinamentosData() {
 // showDbPage - se o gráfico foi criado com o canvas escondido em outra aba, sem isso
 // ficaria em branco pra sempre).
 function showTreinSubtab(tab) {
-    ['visao', 'lancar', 'cronograma', 'equipes', 'registro', 'historico', 'catalogo'].forEach(t => {
+    ['visao', 'lancar', 'cronograma', 'equipes', 'registro', 'kits', 'historico', 'catalogo'].forEach(t => {
         const content = document.getElementById('treinSubtab-' + t);
         const btn = document.getElementById('treinSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -1704,6 +1704,7 @@ function showTreinSubtab(tab) {
     // carregarSessaoRegistro/carregarSessaoNovaRegistro), não pelo simples ato de trocar
     // de aba.
     if (tab === 'registro') { popularFiltroAnoRegistroLote(); }
+    if (tab === 'kits') { inicializarKitsTab(); }
 }
 
 // ---- Histórico: lista navegável de sessões já realizadas (separada de Registro, que
@@ -2878,7 +2879,7 @@ function refreshCatalogoDatalist() {
         // label não entra no input ao selecionar (só o value) - o navegador mostra os
         // dois na sugestão, então dá pra distinguir NR/reciclagem de DDS pontual sem
         // rolar os 172 itens misturados nem esperar abrir pra ver a validade.
-        opt.label = c.meses_validade ? `🔄 recicla a cada ${c.meses_validade}m` : 'DDS (sem validade)';
+        opt.label = c.meses_validade ? `🔄 recicla a cada ${c.meses_validade}m` : 'Sem validade (avulso)';
         dl.appendChild(opt);
     });
 }
@@ -3398,6 +3399,207 @@ function renderRegistroNovaEquipeList() {
         </div>`).join('');
 }
 
+// ============================================
+// KITS E DOCUMENTOS - atalho A MAIS pra emitir/reimprimir Kit Completo/OS/Certificado/
+// Declaração/Termo de Recusa sem passar pelo fluxo de "Preparar Registro" (que existe pra
+// lançar presença oficial, FOR.001.R00). Estado próprio (kitsEquipe/kitsCodigoAtual/
+// kitsDataAtual/campos kitsForm_*) - não toca em registroNovaEquipe/registroCodigoAtual/
+// registroDataAtual/registroForm_*, então abrir uma aba nunca bagunça o que está em
+// andamento na outra. Os 5 geradores de documento (gerarKitCompletoIntegracao etc.) são
+// os MESMOS da aba Registro - só passam um contexto próprio (ver contextoKits()) em vez
+// de deixar no valor padrão, sem duplicar a lógica de montagem de nenhum documento.
+// ============================================
+
+let kitsEquipe = new Map();
+let kitsCodigoAtual = '';
+let kitsDataAtual = '';
+// Rastreia se Horário Início/Término/Local ainda estão no valor que NÓS preenchemos
+// (então é seguro atualizar quando o treinamento mudar) ou se o usuário editou na mão
+// (aí o valor dele nunca é sobrescrito, mesmo trocando de treinamento depois).
+let kitsCamposAutoPreenchidos = { horaInicio: true, horaTermino: true, local: true };
+
+function popularKitsResponsavelSelect() {
+    const sel = document.getElementById('kitsResponsavelSelect');
+    if (!sel || sel.options.length > 1) return;
+    todasFrentesAtivas().forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r;
+        opt.textContent = r;
+        sel.appendChild(opt);
+    });
+}
+
+// Chamado ao entrar na aba - só popula o select de frentes e os campos de
+// instrutor/responsável técnico na primeira vez (mesmo padrão de "só popula uma vez" já
+// usado em popularCatalogoDatalist/popularResponsavelSelect), preservando o que o
+// usuário já tiver editado se ele voltar pra essa aba depois de visitar outra.
+function inicializarKitsTab() {
+    popularKitsResponsavelSelect();
+    const instrutorEl = document.getElementById('kitsForm_instrutorNome');
+    if (instrutorEl && !instrutorEl.dataset.inicializado) {
+        instrutorEl.value = CRONOGRAMA_DEFAULTS_SESSAO.instrutor_nome;
+        document.getElementById('kitsForm_instrutorQualificacao').value = CRONOGRAMA_DEFAULTS_SESSAO.instrutor_qualificacao;
+        document.getElementById('kitsForm_instrutorRegistro').value = CRONOGRAMA_DEFAULTS_SESSAO.instrutor_registro;
+        document.getElementById('kitsForm_respTecnicoNome').value = CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_nome;
+        document.getElementById('kitsForm_respTecnicoQualificacao').value = CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_qualificacao;
+        document.getElementById('kitsForm_respTecnicoRegistro').value = CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_registro;
+        instrutorEl.dataset.inicializado = '1';
+        aplicarDefaultsSessaoKits(kitsCodigoAtual);
+    }
+    renderKitsEquipeList();
+    renderKitsDocsIndividuaisList();
+}
+
+// Horário e Local padrão por treinamento (confirmado com o usuário): o Kit de Integração
+// (id "1") precisa somar 6h efetivas exigidas pela norma descontando 1h de almoço - 08h
+// às 12h (4h) + almoço (não conta) + 13h às 15h (2h) = 6h efetivas. Qualquer outro
+// treinamento do catálogo (os formais, lançados às terças/quintas nesse contrato - não é
+// o DDS diário, que é outro processo fora do sistema) usa 07h-09h. Só sobrescreve o campo
+// se ele ainda estiver no valor que preenchemos automaticamente (ver
+// kitsCamposAutoPreenchidos) - edição manual do usuário nunca é sobrescrita.
+function aplicarDefaultsSessaoKits(codigo) {
+    const defaults = codigo === '1' ? { horaInicio: '08:00', horaTermino: '15:00' } : { horaInicio: '07:00', horaTermino: '09:00' };
+    if (kitsCamposAutoPreenchidos.horaInicio) document.getElementById('kitsForm_horaInicio').value = defaults.horaInicio;
+    if (kitsCamposAutoPreenchidos.horaTermino) document.getElementById('kitsForm_horaTermino').value = defaults.horaTermino;
+    if (kitsCamposAutoPreenchidos.local) document.getElementById('kitsForm_local').value = 'Canteiro / Frente de Serviço';
+}
+
+function kitsMarcarCampoEditado(campo) {
+    kitsCamposAutoPreenchidos[campo] = false;
+}
+
+function onKitsCodigoChange() {
+    const codigo = extrairCodigoTreinamento(document.getElementById('kitsCodigoInput').value);
+    const infoEl = document.getElementById('kitsInfo');
+    kitsCodigoAtual = codigo;
+    if (!codigo) { infoEl.style.display = 'none'; return; }
+
+    const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+    infoEl.style.display = 'block';
+    if (!cat) {
+        infoEl.style.color = 'var(--danger)';
+        infoEl.innerHTML = '❌ Código não encontrado no catálogo de treinamentos.';
+        return;
+    }
+    infoEl.style.color = 'var(--text)';
+    infoEl.innerHTML = `<strong>${escapeHTML(cat.nome)}</strong> — Carga horária: ${cat.carga_horaria || 0}h — ${cat.meses_validade ? `Validade: ${cat.meses_validade} meses` : 'Sem validade (avulso)'}`;
+    aplicarDefaultsSessaoKits(codigo);
+}
+
+function onKitsDataChange() {
+    kitsDataAtual = document.getElementById('kitsDataInput').value;
+}
+
+function carregarKitsEquipeResponsavel() {
+    const responsavel = document.getElementById('kitsResponsavelSelect').value;
+    kitsEquipe = new Map();
+    if (responsavel) {
+        equipeDaFrente(responsavel).forEach(p => kitsEquipe.set(p.matricula, { nome: p.nome, funcao: p.funcao, checked: true }));
+    }
+    renderKitsEquipeList();
+    renderKitsDocsIndividuaisList();
+}
+
+function filterKitsAddColab(query) {
+    const container = document.getElementById('kitsAddColabResults');
+    const q = (query || '').toLowerCase().trim();
+    if (q.length < 2) { container.innerHTML = ''; return; }
+    const matches = allEfetivo.filter(e =>
+        !kitsEquipe.has(e.id) &&
+        ((e.nome && e.nome.toLowerCase().includes(q)) || (e.id && e.id.toLowerCase().includes(q)))
+    ).slice(0, 15);
+    if (matches.length === 0) {
+        container.innerHTML = '<div class="db-list-empty">Nenhum colaborador encontrado</div>';
+        return;
+    }
+    container.innerHTML = matches.map(e => `
+        <div class="db-list-item" style="cursor:pointer;" onclick="adicionarKitsColabAvulso('${escapeHTML(e.id)}')">
+            <div class="db-list-item-title">${escapeHTML(e.nome || '')}</div>
+            <div class="db-list-item-sub">${escapeHTML(e.funcao || '')} — Matrícula ${escapeHTML(e.id)}${colaboradorEstaAtivo(e) ? '' : ' — (Desligado)'}</div>
+        </div>`).join('');
+}
+
+function adicionarKitsColabAvulso(matricula) {
+    const e = allEfetivo.find(x => x.id === matricula);
+    if (!e) return;
+    kitsEquipe.set(matricula, { nome: e.nome, funcao: e.funcao, checked: true });
+    document.getElementById('kitsAddColab').value = '';
+    document.getElementById('kitsAddColabResults').innerHTML = '';
+    renderKitsEquipeList();
+    renderKitsDocsIndividuaisList();
+}
+
+function removerKitsColabLista(matricula) {
+    kitsEquipe.delete(matricula);
+    renderKitsEquipeList();
+    renderKitsDocsIndividuaisList();
+}
+
+function toggleKitsColabPresenca(matricula, checked) {
+    const c = kitsEquipe.get(matricula);
+    if (c) c.checked = checked;
+    renderKitsDocsIndividuaisList();
+}
+
+function renderKitsEquipeList() {
+    const container = document.getElementById('kitsEquipeList');
+    const contagemEl = document.getElementById('kitsEquipeContagem');
+    if (!container) return;
+    if (contagemEl) contagemEl.textContent = Array.from(kitsEquipe.values()).filter(c => c.checked).length;
+    if (kitsEquipe.size === 0) {
+        container.innerHTML = '<div class="db-list-empty">Nenhum colaborador na equipe ainda.</div>';
+        return;
+    }
+    const entries = Array.from(kitsEquipe.entries()).sort((a, b) => (a[1].nome || '').localeCompare(b[1].nome || ''));
+    container.innerHTML = entries.map(([matricula, c]) => `
+        <div class="db-list-item" style="display:flex; align-items:center; gap:10px;">
+            <input type="checkbox" ${c.checked ? 'checked' : ''} onchange="toggleKitsColabPresenca('${escapeHTML(matricula)}', this.checked)" style="width:17px; height:17px; flex-shrink:0; cursor:pointer;">
+            <div style="flex:1;">
+                <div class="db-list-item-title">${escapeHTML(c.nome || '')}</div>
+                <div class="db-list-item-sub">${escapeHTML(c.funcao || '')} — Matrícula ${escapeHTML(matricula)}</div>
+            </div>
+            <button onclick="removerKitsColabLista('${escapeHTML(matricula)}')" title="Remover" style="background:none; border:none; color: var(--danger); cursor:pointer; font-size: 16px; padding: 4px;">✕</button>
+        </div>`).join('');
+}
+
+// Mesmo formato de contexto que os 5 geradores esperam (ver contextoRegistroPadrao) - só
+// a fonte dos dados muda (equipe/campos/código/data desta aba, não os da aba Registro).
+function contextoKits() {
+    return {
+        colaboradores: Array.from(kitsEquipe.entries()).filter(([, c]) => c.checked).map(([matricula, c]) => ({ matricula, nome: c.nome, funcao: c.funcao })),
+        codigo: kitsCodigoAtual,
+        data: kitsDataAtual,
+        campos: lerCamposSessaoForm('kitsForm_')
+    };
+}
+
+function renderKitsDocsIndividuaisList() {
+    const container = document.getElementById('kitsDocsIndividuaisLista');
+    if (!container) return;
+    const colaboradores = Array.from(kitsEquipe.entries()).filter(([, c]) => c.checked).map(([matricula, c]) => ({ matricula, nome: c.nome, funcao: c.funcao }));
+    if (colaboradores.length === 0) {
+        container.innerHTML = '<div class="db-list-empty">Nenhum colaborador na equipe ainda - carregue pelo Responsável ou adicione avulso acima.</div>';
+        return;
+    }
+    container.innerHTML = colaboradores.map(r => {
+        // Mesmo aviso que sai impresso na própria OS (ver textoAvisoCargoOs) - mostrado
+        // aqui também, ANTES de gerar o documento.
+        const avaliacao = avaliarCorrespondenciaCargoOs(r.matricula, r.funcao);
+        const avisoOsIcon = avaliacao.semCorrespondencia
+            ? ` <span title="${escapeHTML(textoAvisoCargoOs({ ghe: avaliacao.ghe, funcao: avaliacao.funcao, ambiguo: avaliacao.ambiguo }))}" style="cursor:help;">⚠️</span>`
+            : '';
+        return `
+        <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:180px; font-size:12.5px;">${escapeHTML(r.nome)} <span style="color:var(--text-light);">— ${escapeHTML(r.funcao || '')}</span></div>
+            <button class="db-apply-btn" style="padding:5px 10px; font-size:11.5px;" title="OS + Lista de Presença + Certificado + Declaração de Integração + Termo de Recusa" onclick="gerarKitCompletoIntegracao('${escapeHTML(r.matricula)}', contextoKits())">🖨️ Kit Completo</button>
+            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarOrdemServicoIndividual('${escapeHTML(r.matricula)}', contextoKits())">🖨️ OS</button>${avisoOsIcon}
+            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarCertificadoIndividual('${escapeHTML(r.matricula)}', contextoKits())">🖨️ Certificado</button>
+            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarDeclaracaoIntegracaoIndividual('${escapeHTML(r.matricula)}', contextoKits())">🖨️ Declaração</button>
+            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarTermoRecusaIndividual('${escapeHTML(r.matricula)}', contextoKits())">🖨️ Termo de Recusa</button>
+        </div>`;
+    }).join('');
+}
+
 function popularFiltroAnoRegistroLote() {
     const anos = new Set([new Date().getFullYear()]);
     allTreinamentosCronograma.forEach(c => { if (c.data_prevista) anos.add(parseLocalDate(c.data_prevista).getFullYear()); });
@@ -3534,19 +3736,23 @@ function marcarTodosLoteCronograma(marcar) {
     renderRegistroLotePreview();
 }
 
-function lerCamposSessaoForm() {
+// Prefixo parametrizado pra reaproveitar a mesma leitura de campos tanto no card de
+// detalhe da aba Registro (registroForm_*) quanto na aba Kits e Documentos (kitsForm_*) -
+// mesmo conjunto de campos, dois lugares na tela (não dá pra ter os dois com o mesmo id
+// no DOM ao mesmo tempo), uma lógica só de leitura.
+function lerCamposSessaoForm(prefix = 'registroForm_') {
     return {
-        numero_turma: document.getElementById('registroForm_turma').value.trim() || null,
-        hora_inicio: document.getElementById('registroForm_horaInicio').value || null,
-        hora_termino: document.getElementById('registroForm_horaTermino').value || null,
-        local_realizacao: document.getElementById('registroForm_local').value.trim() || null,
-        encarregado_responsavel: document.getElementById('registroForm_encResponsavel').value.trim() || null,
-        instrutor_nome: document.getElementById('registroForm_instrutorNome').value.trim() || null,
-        instrutor_qualificacao: document.getElementById('registroForm_instrutorQualificacao').value.trim() || null,
-        instrutor_registro: document.getElementById('registroForm_instrutorRegistro').value.trim() || null,
-        responsavel_tecnico_nome: document.getElementById('registroForm_respTecnicoNome').value.trim() || null,
-        responsavel_tecnico_qualificacao: document.getElementById('registroForm_respTecnicoQualificacao').value.trim() || null,
-        responsavel_tecnico_registro: document.getElementById('registroForm_respTecnicoRegistro').value.trim() || null
+        numero_turma: document.getElementById(`${prefix}turma`).value.trim() || null,
+        hora_inicio: document.getElementById(`${prefix}horaInicio`).value || null,
+        hora_termino: document.getElementById(`${prefix}horaTermino`).value || null,
+        local_realizacao: document.getElementById(`${prefix}local`).value.trim() || null,
+        encarregado_responsavel: document.getElementById(`${prefix}encResponsavel`).value.trim() || null,
+        instrutor_nome: document.getElementById(`${prefix}instrutorNome`).value.trim() || null,
+        instrutor_qualificacao: document.getElementById(`${prefix}instrutorQualificacao`).value.trim() || null,
+        instrutor_registro: document.getElementById(`${prefix}instrutorRegistro`).value.trim() || null,
+        responsavel_tecnico_nome: document.getElementById(`${prefix}respTecnicoNome`).value.trim() || null,
+        responsavel_tecnico_qualificacao: document.getElementById(`${prefix}respTecnicoQualificacao`).value.trim() || null,
+        responsavel_tecnico_registro: document.getElementById(`${prefix}respTecnicoRegistro`).value.trim() || null
     };
 }
 
@@ -4002,15 +4208,28 @@ function construirFolhaTermoRecusa(r, cat, campos, data) {
 
 // ---- Geradores standalone (1 documento, 1 folha) ----
 
-async function gerarCertificadoIndividual(matricula) {
-    const r = colaboradoresDaSessaoAtual().find(x => x.matricula === matricula);
+// Contexto padrão (aba Registro) pros 5 geradores abaixo - default param avaliado de
+// novo a cada chamada sem 2º argumento, então o comportamento pra quem já chama sem
+// contexto (botões da aba Registro, inalterados) continua idêntico a antes. A aba Kits e
+// Documentos passa o próprio contexto (ver contextoKits()) pra reaproveitar os mesmos 5
+// geradores com a equipe/campos daquela aba, sem duplicar a lógica de montagem dos
+// documentos.
+function contextoRegistroPadrao() {
+    return {
+        colaboradores: colaboradoresDaSessaoAtual(),
+        codigo: registroCodigoAtual,
+        data: registroDataAtual,
+        campos: lerCamposSessaoForm('registroForm_')
+    };
+}
+
+async function gerarCertificadoIndividual(matricula, ctx = contextoRegistroPadrao()) {
+    const { colaboradores, codigo, data, campos } = ctx;
+    const r = colaboradores.find(x => x.matricula === matricula);
     if (!r) return;
     await garantirDocumentosControleCarregados();
-    const codigo = registroCodigoAtual;
     const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
     const colab = allEfetivo.find(e => e.id === matricula);
-    const campos = lerCamposSessaoForm();
-    const data = registroDataAtual;
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
@@ -4025,12 +4244,11 @@ async function gerarCertificadoIndividual(matricula) {
     registrarEmissaoDocumento('certificado_individual', `${r.nome} — ${cat ? cat.nome : codigo}`);
 }
 
-async function gerarOrdemServicoIndividual(matricula) {
-    const r = colaboradoresDaSessaoAtual().find(x => x.matricula === matricula);
+async function gerarOrdemServicoIndividual(matricula, ctx = contextoRegistroPadrao()) {
+    const { colaboradores, data, campos } = ctx;
+    const r = colaboradores.find(x => x.matricula === matricula);
     if (!r) return;
     await garantirDocumentosControleCarregados();
-    const campos = lerCamposSessaoForm();
-    const data = registroDataAtual;
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
@@ -4045,14 +4263,12 @@ async function gerarOrdemServicoIndividual(matricula) {
     registrarEmissaoDocumento('ordem_servico', r.nome);
 }
 
-async function gerarDeclaracaoIntegracaoIndividual(matricula) {
-    const r = colaboradoresDaSessaoAtual().find(x => x.matricula === matricula);
+async function gerarDeclaracaoIntegracaoIndividual(matricula, ctx = contextoRegistroPadrao()) {
+    const { colaboradores, codigo, data, campos } = ctx;
+    const r = colaboradores.find(x => x.matricula === matricula);
     if (!r) return;
     await garantirDocumentosControleCarregados();
-    const codigo = registroCodigoAtual;
     const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
-    const campos = lerCamposSessaoForm();
-    const data = registroDataAtual;
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
@@ -4067,14 +4283,12 @@ async function gerarDeclaracaoIntegracaoIndividual(matricula) {
     registrarEmissaoDocumento('declaracao_integracao', `${r.nome} — ${cat ? cat.nome : codigo}`);
 }
 
-async function gerarTermoRecusaIndividual(matricula) {
-    const r = colaboradoresDaSessaoAtual().find(x => x.matricula === matricula);
+async function gerarTermoRecusaIndividual(matricula, ctx = contextoRegistroPadrao()) {
+    const { colaboradores, codigo, data, campos } = ctx;
+    const r = colaboradores.find(x => x.matricula === matricula);
     if (!r) return;
     await garantirDocumentosControleCarregados();
-    const codigo = registroCodigoAtual;
     const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
-    const campos = lerCamposSessaoForm();
-    const data = registroDataAtual;
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
@@ -4091,16 +4305,13 @@ async function gerarTermoRecusaIndividual(matricula) {
 
 // ---- Kit Completo (5 folhas num documento só) ----
 
-async function gerarKitCompletoIntegracao(matricula) {
-    const sessaoRows = colaboradoresDaSessaoAtual();
+async function gerarKitCompletoIntegracao(matricula, ctx = contextoRegistroPadrao()) {
+    const { colaboradores: sessaoRows, codigo, data, campos } = ctx;
     const r = sessaoRows.find(x => x.matricula === matricula);
     if (!r) return;
     await garantirDocumentosControleCarregados();
-    const codigo = registroCodigoAtual;
     const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
     const colab = allEfetivo.find(e => e.id === matricula);
-    const campos = lerCamposSessaoForm();
-    const data = registroDataAtual;
 
     const folhas = [
         construirFolhaOrdemServico(matricula, r, campos, data),
@@ -4610,7 +4821,7 @@ function filterCatalogoTreinamentos(query) {
     container.innerHTML = matches.map(c => `
         <div class="db-list-item" style="cursor:pointer;" onclick="abrirFormCatalogoTreinamento('${escapeHTML(c.id)}')">
             <div class="db-list-item-title">${c.meses_validade ? '🔄 ' : ''}${escapeHTML(c.nome || '')}</div>
-            <div class="db-list-item-sub">Código ${escapeHTML(c.id)} — ${c.carga_horaria || 0}h — ${c.meses_validade ? c.meses_validade + ' meses de validade' : 'DDS (sem validade)'}</div>
+            <div class="db-list-item-sub">Código ${escapeHTML(c.id)} — ${c.carga_horaria || 0}h — ${c.meses_validade ? c.meses_validade + ' meses de validade' : 'Sem validade (avulso)'}</div>
         </div>`).join('');
 }
 

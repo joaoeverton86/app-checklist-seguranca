@@ -482,6 +482,7 @@
                         <button id="treinSubtabBtn-cronograma" class="db-filter-btn" onclick="showTreinSubtab('cronograma')">🗓️ Cronograma</button>
                         <button id="treinSubtabBtn-equipes" class="db-filter-btn" onclick="showTreinSubtab('equipes')">👥 Equipes</button>
                         <button id="treinSubtabBtn-registro" class="db-filter-btn" onclick="showTreinSubtab('registro')">🖨️ Registro</button>
+                        <button id="treinSubtabBtn-kits" class="db-filter-btn" onclick="showTreinSubtab('kits')">🪪 Kits e Documentos</button>
                         <button id="treinSubtabBtn-historico" class="db-filter-btn" onclick="showTreinSubtab('historico')">📜 Histórico</button>
                         <button id="treinSubtabBtn-catalogo" class="db-filter-btn" onclick="showTreinSubtab('catalogo')">📋 Catálogo</button>
                     </div>
@@ -793,6 +794,87 @@
                 </div>
                 </div>
 
+                <div id="treinSubtab-kits" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">🪪 Kits e Documentos</div>
+                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">
+                        Atalho pra emitir/reimprimir Kit Completo, OS, Certificado, Declaração de Integração e Termo de Recusa sem passar pelo fluxo de lançar presença - pra isso, use "🖨️ Registro" normalmente. Aqui os campos da sessão ficam sempre visíveis, prontos pra ajustar antes de gerar.
+                    </p>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Treinamento</label>
+                            <input type="text" id="kitsCodigoInput" list="lancTreinCatalogoList" oninput="onKitsCodigoChange()" placeholder="Digite o código ou nome..."
+                                   style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <div id="kitsInfo" style="display:none; margin-top: 6px; font-size: 11.5px;"></div>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data</label>
+                            <input type="date" id="kitsDataInput" onchange="onKitsDataChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Carregar equipe do Responsável (opcional)</label>
+                            <select id="kitsResponsavelSelect" onchange="carregarKitsEquipeResponsavel()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="">— Sem equipe pré-carregada (lista em branco) —</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 12px;">
+                        <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600; font-size: 12.5px;">Equipe desta sessão (<span id="kitsEquipeContagem">0</span> selecionado(s))</label>
+                        <input type="text" id="kitsAddColab" oninput="filterKitsAddColab(this.value)" placeholder="Adicionar colaborador avulso (nome ou matrícula)..."
+                               style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; margin-bottom: 6px;">
+                        <div id="kitsAddColabResults" class="db-list"></div>
+                        <div id="kitsEquipeList" class="db-list" style="margin-top: 8px; max-height: 240px; overflow-y: auto;"></div>
+                    </div>
+                </div>
+
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title" style="font-size: 13px; margin-bottom: 6px;">📋 Dados da Sessão (aparecem nos documentos)</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Nº Turma</label>
+                            <input type="text" id="kitsForm_turma" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Horário Início</label>
+                            <input type="time" id="kitsForm_horaInicio" oninput="kitsMarcarCampoEditado('horaInicio')" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Horário Término</label>
+                            <input type="time" id="kitsForm_horaTermino" oninput="kitsMarcarCampoEditado('horaTermino')" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Local de Realização</label>
+                            <input type="text" id="kitsForm_local" oninput="kitsMarcarCampoEditado('local')" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Enc. / Responsável</label>
+                            <input type="text" id="kitsForm_encResponsavel" list="equipesResponsavelList" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Instrutor</label>
+                            <input type="text" id="kitsForm_instrutorNome" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; margin-bottom: 6px;">
+                            <input type="text" id="kitsForm_instrutorQualificacao" placeholder="Qualificação" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; margin-bottom: 6px;">
+                            <input type="text" id="kitsForm_instrutorRegistro" placeholder="Registro (ex: MTE: 15760/PE)" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Responsável Técnico</label>
+                            <input type="text" id="kitsForm_respTecnicoNome" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; margin-bottom: 6px;">
+                            <input type="text" id="kitsForm_respTecnicoQualificacao" placeholder="Qualificação" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; margin-bottom: 6px;">
+                            <input type="text" id="kitsForm_respTecnicoRegistro" placeholder="Registro (ex: CREA: 0522078320)" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="db-chart-card">
+                    <div class="db-chart-title" style="font-size: 13px; margin-bottom: 6px;">🪪 Documentos Individuais por Colaborador</div>
+                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">
+                        Kit Completo: gera de uma vez OS + Lista de Presença + Certificado + Declaração de Integração + Termo de Recusa (use pra Integração/admissão). Os 4 botões menores geram só um documento por vez - use quando precisar reimprimir apenas um (ex: colaborador errou uma assinatura). Declaração/Termo dependem dos campos preenchidos no Catálogo.
+                    </p>
+                    <div id="kitsDocsIndividuaisLista" style="display:flex; flex-direction:column; gap:6px;"></div>
+                </div>
+                </div>
+
                 <div id="treinSubtab-equipes" style="display:none;">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
                     <div class="db-chart-title">👥 Gestão de Equipes</div>
@@ -884,7 +966,7 @@
                             <span style="font-size: 11.5px; color: var(--text-light); align-self: center;">Mostrar:</span>
                             <button class="db-filter-btn active" id="catalogoFiltroBtn-todos" onclick="setCatalogoFiltroValidade('todos')">Todos</button>
                             <button class="db-filter-btn" id="catalogoFiltroBtn-com" onclick="setCatalogoFiltroValidade('com')">🔄 Com validade (NR/reciclagem)</button>
-                            <button class="db-filter-btn" id="catalogoFiltroBtn-sem" onclick="setCatalogoFiltroValidade('sem')">Sem validade (DDS)</button>
+                            <button class="db-filter-btn" id="catalogoFiltroBtn-sem" onclick="setCatalogoFiltroValidade('sem')">Sem validade (avulso)</button>
                         </div>
                         <button class="db-clear-btn" id="btnExpandirCatalogo" onclick="toggleExpandirCatalogo()">⛶ Expandir Lista</button>
                     </div>

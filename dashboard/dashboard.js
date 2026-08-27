@@ -1937,11 +1937,26 @@ function renderTreinamentosPanel() {
         horasPorMes.push(sublist.reduce((sum, r) => sum + (parseFloat(r.carga_horaria) || 0), 0));
         cursorMes = new Date(ano, mes + 1, 1);
     }
+    // "Histórico completo" de propósito (ver comentário acima) - cresce um mês a cada mês,
+    // sempre dentro da mesma largura fixa do card. Sem largura própria por mês, o autoSkip
+    // padrão do Chart.js decide sozinho quais rótulos cabem numa faixa estreita, e às vezes
+    // derruba justo o mês atual (achado real: "ago. de 26" sumia do eixo com ~25 meses de
+    // histórico). Reserva ~56px por mês (dá pro rótulo "mmm. de aa" não sobrepor) e deixa o
+    // contêiner rolar - nunca mais fica espremido, só mais largo com o tempo.
+    const chartHHTInner = document.getElementById('chartTreinHHTMesInner');
+    const chartHHTWrap = chartHHTInner.parentElement;
+    chartHHTInner.style.width = Math.max(chartHHTWrap.clientWidth, meses.length * 56) + 'px';
     chartInstances.treinHHTMes = new Chart(document.getElementById('chartTreinHHTMes'), {
         type: 'bar',
         data: { labels: meses, datasets: [{ label: 'HHT', data: horasPorMes, backgroundColor: '#4f46e5', borderRadius: 6 }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+        options: {
+            responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true }, x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 45 } } }
+        }
     });
+    // Abre já rolado pro mês mais recente - é o que o usuário mais quer ver de cara; o
+    // histórico mais antigo (2024 em diante) fica a um scroll de distância pra quem quiser.
+    chartHHTWrap.scrollLeft = 999999;
 
     // HHT por setor no período filtrado
     const setorCounts = {};

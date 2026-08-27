@@ -1134,7 +1134,11 @@
                 <div class="db-charts-grid">
                     <div class="db-chart-card">
                         <div class="db-chart-title">HHT por Mês (Histórico Completo)</div>
-                        <div class="db-chart-canvas-wrap"><canvas id="chartTreinHHTMes"></canvas></div>
+                        <div class="db-chart-canvas-wrap" style="overflow-x:auto;">
+                            <div id="chartTreinHHTMesInner" style="height:100%;">
+                                <canvas id="chartTreinHHTMes"></canvas>
+                            </div>
+                        </div>
                     </div>
                     <div class="db-chart-card">
                         <div class="db-chart-title">HHT por Setor no Período</div>

@@ -1526,12 +1526,14 @@ let cronogramaOrigemId = null;
 let registroLoteFiltroAno = String(hojeCronograma.getFullYear());
 let registroLoteFiltroMes = String(hojeCronograma.getMonth());
 let registroLoteFiltroTema = '';
-// '' = todas as frentes (comportamento padrão, inalterado). Preenchido = restringe tanto
-// a prévia/seleção quanto a geração final a essa frente - cobre "imprimir todos os temas
-// pra um encarregado específico" (Todos os temas + frente escolhida) e "um tema pra um
-// encarregado escolhido" (tema + frente escolhida), sem tocar no caso já existente de
-// "um tema pra todas as frentes" (tema escolhido, frente em branco).
-let registroLoteFiltroFrente = '';
+// Frentes marcadas pro filtro/prévia/geração da impressão em lote - checkbox múltiplo, não
+// select único, pra cobrir "3 frentes específicas de 12" (não só "todas" ou "só uma").
+// Inicializado com TODAS as frentes ativas marcadas na primeira vez que a tela carrega
+// (ver popularFiltroAnoRegistroLote), preservando o comportamento antigo de "Todas as
+// frentes" quando o usuário não mexe em nada. Continua cobrindo tanto "todos os temas pra
+// um encarregado específico" (só a frente dele marcada) quanto "um tema pra várias frentes
+// escolhidas" (tema + subconjunto de frentes marcado).
+let registroLoteFrentesSelecionadas = new Set();
 // Ids do cronograma marcados pra entrar na impressão em lote - null = ainda não
 // inicializado (marca todos por padrão na primeira renderização do filtro atual).
 let registroLoteSelecionados = null;
@@ -2800,23 +2802,30 @@ function lancarPresencaDoCronograma(id) {
 async function gerarListasCronogramaMes() {
     await garantirDocumentosControleCarregados();
     const catalogoPorId = new Map(allTreinamentosCatalogo.map(c => [c.id, c]));
+
+    // Um mesmo tema costuma ir pra várias frentes (confirmado com o usuário: "uma lista
+    // por frente, pra cada tema") - por isso cada item do cronograma vira uma folha POR
+    // FRENTE ativa, não uma folha só. Em escala real (ex: 9 temas × 12 frentes) isso gera
+    // bastante página, então confirma antes de montar tudo. Com um subconjunto de frentes
+    // marcado no filtro, gera só pra elas (ex: "todos os temas pra um encarregado só").
+    // Checado ANTES da checagem de itens abaixo: com todas as frentes desmarcadas,
+    // itensLoteCronogramaFiltrados() também pode dar vazio (nenhum item "geral" no filtro
+    // de mês/tema atual) - sem essa ordem, o aviso genérico de "nenhum item selecionado"
+    // apareceria no lugar do aviso específico de frente, escondendo a causa real.
+    const frentes = Array.from(registroLoteFrentesSelecionadas);
+    if (frentes.length === 0) {
+        alert(todasFrentesAtivas().length === 0
+            ? 'Nenhuma frente cadastrada em Efetivo (campo Responsável). Cadastre as frentes antes de gerar em lote.'
+            : 'Nenhuma frente selecionada - marque ao menos uma frente antes de gerar.');
+        return;
+    }
+
     const todosFiltrados = itensLoteCronogramaFiltrados();
     const selecionados = registroLoteSelecionados || new Set(todosFiltrados.map(c => c.id));
     const itens = todosFiltrados.filter(c => selecionados.has(c.id));
 
     if (itens.length === 0) {
         alert('Nenhum item selecionado pra imprimir. Marque ao menos um item na prévia acima (ou ajuste o filtro de mês/ano/tema).');
-        return;
-    }
-
-    // Um mesmo tema costuma ir pra várias frentes (confirmado com o usuário: "uma lista
-    // por frente, pra cada tema") - por isso cada item do cronograma vira uma folha POR
-    // FRENTE ativa, não uma folha só. Em escala real (ex: 9 temas × 12 frentes) isso gera
-    // bastante página, então confirma antes de montar tudo. Com uma frente específica
-    // escolhida no filtro, gera só pra ela (ex: "todos os temas pra um encarregado só").
-    const frentes = registroLoteFiltroFrente ? [registroLoteFiltroFrente] : todasFrentesAtivas();
-    if (frentes.length === 0) {
-        alert('Nenhuma frente cadastrada em Efetivo (campo Responsável). Cadastre as frentes antes de gerar em lote.');
         return;
     }
     const totalFolhas = itens.length * frentes.length;
@@ -3624,12 +3633,61 @@ function popularFiltroAnoRegistroLote() {
     if (anoSel && !anoSel.dataset.inicializado) { anoSel.value = registroLoteFiltroAno; anoSel.dataset.inicializado = '1'; }
     if (mesSel && !mesSel.dataset.inicializado) { mesSel.value = registroLoteFiltroMes; mesSel.dataset.inicializado = '1'; }
 
-    const frenteSel = document.getElementById('registroLoteFiltroFrente');
-    if (frenteSel) {
-        frenteSel.innerHTML = '<option value="">Todas as frentes</option>' +
-            todasFrentesAtivas().map(f => `<option value="${escapeHTML(f)}">${escapeHTML(f)}</option>`).join('');
-        frenteSel.value = registroLoteFiltroFrente;
+    // Igual ano/mês acima: só reseta pra "todas marcadas" na primeira vez que a tela
+    // carrega (dataset.inicializado), pra não apagar a seleção do usuário toda vez que ele
+    // volta pra essa aba.
+    const frenteWrap = document.getElementById('registroLoteFrenteCheckboxList');
+    if (frenteWrap && !frenteWrap.dataset.inicializado) {
+        registroLoteFrentesSelecionadas = new Set(todasFrentesAtivas());
+        frenteWrap.dataset.inicializado = '1';
     }
+    renderRegistroLoteFrentesCheckboxes();
+
+    renderRegistroLotePreview();
+}
+
+// Checkboxes de frente (multi-seleção) + resumo clicável ("Frentes: Todas (12)" / "Frentes:
+// 3 selecionada(s)") - mesmo espírito da lista de itens do cronograma com "Marcar
+// todos"/"Desmarcar todos", só que pra frentes em vez de temas.
+function renderRegistroLoteFrentesCheckboxes() {
+    const wrap = document.getElementById('registroLoteFrenteCheckboxList');
+    if (!wrap) return;
+    const frentes = todasFrentesAtivas();
+    wrap.innerHTML = frentes.length === 0
+        ? '<div class="db-list-empty" style="padding:8px 0;">Nenhuma frente cadastrada em Efetivo.</div>'
+        : frentes.map(f => `
+            <label style="display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12.5px; cursor:pointer;">
+                <input type="checkbox" value="${escapeHTML(f)}" ${registroLoteFrentesSelecionadas.has(f) ? 'checked' : ''} onchange="onRegistroLoteFrenteCheckboxChange()" style="width:15px; height:15px; flex-shrink:0; cursor:pointer;">
+                <span>${escapeHTML(f)}</span>
+            </label>`).join('');
+    atualizarResumoFrentesLote();
+}
+
+function atualizarResumoFrentesLote() {
+    const resumoEl = document.getElementById('registroLoteFrenteResumo');
+    if (!resumoEl) return;
+    const total = todasFrentesAtivas().length;
+    const sel = registroLoteFrentesSelecionadas.size;
+    resumoEl.textContent = total === 0 ? 'Frentes: nenhuma cadastrada'
+        : sel >= total ? `Frentes: Todas (${total})`
+        : sel === 0 ? 'Frentes: nenhuma selecionada'
+        : `Frentes: ${sel} selecionada(s)`;
+}
+
+function onRegistroLoteFrenteCheckboxChange() {
+    const wrap = document.getElementById('registroLoteFrenteCheckboxList');
+    registroLoteFrentesSelecionadas = new Set(
+        Array.from(wrap.querySelectorAll('input[type=checkbox]:checked')).map(el => el.value)
+    );
+    atualizarResumoFrentesLote();
+    registroLoteSelecionados = null;
+    renderRegistroLotePreview();
+}
+
+function marcarTodasFrentesLote(marcar) {
+    registroLoteFrentesSelecionadas = marcar ? new Set(todasFrentesAtivas()) : new Set();
+    renderRegistroLoteFrentesCheckboxes();
+    registroLoteSelecionados = null;
     renderRegistroLotePreview();
 }
 
@@ -3637,7 +3695,6 @@ function onRegistroLoteFiltroChange() {
     registroLoteFiltroAno = document.getElementById('registroLoteFiltroAno').value;
     registroLoteFiltroMes = document.getElementById('registroLoteFiltroMes').value;
     registroLoteFiltroTema = document.getElementById('registroLoteFiltroTema').value;
-    registroLoteFiltroFrente = document.getElementById('registroLoteFiltroFrente').value;
     registroLoteSelecionados = null;
     renderRegistroLotePreview();
 }
@@ -3646,17 +3703,17 @@ function limparFiltroRegistroLote() {
     registroLoteFiltroAno = '';
     registroLoteFiltroMes = '';
     registroLoteFiltroTema = '';
-    registroLoteFiltroFrente = '';
     document.getElementById('registroLoteFiltroAno').value = '';
     document.getElementById('registroLoteFiltroMes').value = '';
     document.getElementById('registroLoteFiltroTema').value = '';
-    document.getElementById('registroLoteFiltroFrente').value = '';
+    registroLoteFrentesSelecionadas = new Set(todasFrentesAtivas());
+    renderRegistroLoteFrentesCheckboxes();
     registroLoteSelecionados = null;
     renderRegistroLotePreview();
 }
 
-// Itens do cronograma dentro do filtro atual (ano/mês/tema) - reaproveitado tanto pra
-// prévia quanto pra geração de verdade, pra nunca divergir.
+// Itens do cronograma dentro do filtro atual (ano/mês/tema/frentes) - reaproveitado tanto
+// pra prévia quanto pra geração de verdade, pra nunca divergir.
 function itensLoteCronogramaFiltrados() {
     let itens = allTreinamentosCronograma.filter(c => c.status !== 'lancado');
     if (registroLoteFiltroAno) {
@@ -3668,13 +3725,13 @@ function itensLoteCronogramaFiltrados() {
     if (registroLoteFiltroTema) {
         itens = itens.filter(c => c.treinamento_cod === registroLoteFiltroTema);
     }
-    if (registroLoteFiltroFrente) {
+    if (registroLoteFrentesSelecionadas.size < todasFrentesAtivas().length) {
         // Item sem frente marcada é um tema "geral" - vale pra qualquer frente (mesmo
         // critério que gerarListasCronogramaMes() já usa pra cruzar com TODAS as frentes
         // quando nenhum filtro está ativo). Comparação exata sozinha excluía praticamente
         // todo o cronograma real (9 de 12 itens sem responsavel marcado), deixando a prévia
         // sempre vazia pra qualquer frente escolhida.
-        itens = itens.filter(c => !c.responsavel || c.responsavel === registroLoteFiltroFrente);
+        itens = itens.filter(c => !c.responsavel || registroLoteFrentesSelecionadas.has(c.responsavel));
     }
     itens.sort((a, b) => (a.data_prevista || '').localeCompare(b.data_prevista || ''));
     return itens;

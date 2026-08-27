@@ -61,6 +61,10 @@ CREATE TABLE IF NOT EXISTS public.checklists (
     empresa TEXT,
     operador TEXT,
     observacoes TEXT,
+    responsavel TEXT,       -- nome do Encarregado/Responsável que assina o checklist
+                            -- (texto livre, não precisa ter login no app)
+    sst TEXT,               -- nome do TST/Engenheiro que assina o checklist
+                            -- (texto livre, não precisa ter login no app)
     status_checklist TEXT DEFAULT 'liberado',
     prazo_adequacao TEXT,
     conformes INTEGER DEFAULT 0,

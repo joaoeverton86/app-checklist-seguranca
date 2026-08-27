@@ -3129,9 +3129,13 @@ async function salvarInterdicaoUrgente() {
     }, 1200);
 }
 
+// Usa colaboradores_efetivo (cadastro de RH completo, ~185 pessoas), não "colaboradores"
+// (só quem já criou login no app, um subconjunto bem menor) - mesma correção já aplicada
+// em Treinamentos e EPI e pelo mesmo motivo: Encarregado/Responsável, TST/Engenheiro e
+// operador/motorista são só quem ASSINA o checklist, não precisam ter login no app.
 async function loadResponsavelSelect() {
-    const colaboradores = await getAllFromIndexedDB('colaboradores');
-    const ativos = colaboradores.filter(c => c.ativo !== false);
+    const colaboradores = await getAllFromIndexedDB('colaboradores_efetivo');
+    const ativos = colaboradores.filter(c => c.status === 'ATIVO');
 
     const listResp = document.getElementById('listaResponsaveis');
     if (listResp) {
@@ -3139,7 +3143,7 @@ async function loadResponsavelSelect() {
         ativos.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c.nome;
-            opt.textContent = `${c.funcao || ''} - ${c.empresa || ''}`;
+            opt.textContent = `${c.funcao || ''} - ${c.setor || ''}`;
             listResp.appendChild(opt);
         });
     }
@@ -3150,7 +3154,7 @@ async function loadResponsavelSelect() {
         ativos.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c.nome;
-            opt.textContent = `${c.funcao || ''} - ${c.empresa || ''}`;
+            opt.textContent = `${c.funcao || ''} - ${c.setor || ''}`;
             listSST.appendChild(opt);
         });
     }
@@ -3161,7 +3165,7 @@ async function loadResponsavelSelect() {
         ativos.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c.nome;
-            opt.textContent = `${c.funcao || ''} - ${c.empresa || ''}`;
+            opt.textContent = `${c.funcao || ''} - ${c.setor || ''}`;
             listOperadores.appendChild(opt);
         });
     }
@@ -7048,6 +7052,13 @@ function converterParaSupabase(store, item) {
             empresa: item.empresa || '',
             operador: item.operador || '',
             observacoes: item.observacoes || '',
+            // Mesmo raciocínio do comentário da assinatura logo abaixo: sem essas colunas
+            // (checklists.responsavel/sst, adicionadas via migration), o nome do
+            // Encarregado/Responsável e do TST/Engenheiro nunca chegava ao Supabase, e a
+            // sincronização de volta apagava esses campos até do próprio celular que
+            // preencheu o checklist.
+            responsavel: item.responsavel || '',
+            sst: item.sst || '',
             status_checklist: normStatus,
             prazo_adequacao: item.prazoAdequacao || '',
             conformes: stats.conformes,
@@ -7213,6 +7224,8 @@ function converterParaAppFromSupabase(table, row) {
             empresa: row.empresa,
             operador: row.operador,
             observacoes: row.observacoes,
+            responsavel: row.responsavel || '',
+            sst: row.sst || '',
             statusChecklist: normStatus,
             prazoAdequacao: row.prazo_adequacao,
             stats: stats,

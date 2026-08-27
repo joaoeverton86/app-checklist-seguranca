@@ -5473,7 +5473,15 @@ function renderGheMapaRiscosHtml(g) {
         return conclusaoHtml + '<div class="db-list-empty">✅ Não foram identificados riscos significativos para este grupo (conforme laudo do Mapa de Riscos).</div>';
     }
     return conclusaoHtml + riscos.map(r => {
-        const grav = gravidadeGheEstilo(r.gravidade);
+        // Colore pelo gravidade_label (mesma fonte que KPIs/gráfico/lista de Riscos Altos
+        // usam), não mais só pelo número de gravidade - gravidadeGheEstilo() assumia uma
+        // escala pequena (1-3, do laudo original importado), que não bate mais com o valor
+        // de 1-25 (probabilidade × severidade) que um risco reclassificado pelos novos
+        // campos passa a ter. Cai pra gravidadeGheEstilo() só se o rótulo não for
+        // reconhecido (dado antigo sem gravidade_label).
+        const grav = NIVEIS_RISCO_COR[r.gravidade_label]
+            ? { cor: NIVEIS_RISCO_COR[r.gravidade_label], bg: NIVEIS_RISCO_COR[r.gravidade_label] + '22' }
+            : gravidadeGheEstilo(r.gravidade);
         return `<div style="border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:8px;">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
                 <div><b>${escapeHTML(r.tipo_agente || '')}</b> — ${escapeHTML(r.agente || '')}</div>
@@ -5526,10 +5534,111 @@ function adicionarCargoGhe() {
     document.getElementById('gheCargosOficiais').scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
+// Sugestões (datalist) coletadas de QUALQUER cargo de QUALQUER grupo de GHE - digitar
+// continua livre (datalist não trava a digitação, só sugere), mas reaproveitar o que já
+// existe evita duas entradas diferentes no sistema por causa de uma diferença mínima de
+// digitação (ex: "Capacete de Segurança" vs "Capacete Segurança"), que atrapalhava
+// qualquer contagem/padronização (achado real reportado pelo usuário).
+function coletarSugestoesGheCargos(extrair) {
+    const valores = new Set();
+    allGheCatalogo.forEach(g => (Array.isArray(g.cargos) ? g.cargos : []).forEach(c => {
+        const v = extrair(c);
+        (Array.isArray(v) ? v : [v]).forEach(item => { if (item && String(item).trim()) valores.add(String(item).trim()); });
+    }));
+    return Array.from(valores).sort((a, b) => a.localeCompare(b));
+}
+
+function optsDatalistGhe(valores) {
+    return valores.map(v => `<option value="${escapeHTML(v)}">`).join('');
+}
+
+// Lista de EPI/EPC de cada cargo em edição - array de strings por índice do cargo (não
+// mais textarea "um item por linha"), montada por adicionarGheCargoItem/
+// removerGheCargoItem e só vira epis_necessarios/epcs_necessarios de fato no momento de
+// salvarCargoAgentesEpi. Resemeada a partir do cargo salvo sempre que a linha (re)abre —
+// os 3 pontos que chamam renderGheCargosHtml com uma linha expandida (toggleCargoGheDescricao,
+// adicionarCargoGhe, salvarCargoAgentesEpi pós-salvar) - mesmo comportamento que os demais
+// campos já têm hoje (fecha sem salvar = perde a edição em andamento).
+let gheCargoEpisForm = {};
+let gheCargoEpcsForm = {};
+
+function htmlGheCargoItens(i, tipo) {
+    const estado = (tipo === 'epis' ? gheCargoEpisForm : gheCargoEpcsForm)[i] || [];
+    return estado.length === 0
+        ? '<div class="db-list-empty" style="padding:6px 0; font-size:11px;">Nenhum item adicionado.</div>'
+        : estado.map((item, idx) => `
+            <div class="db-list-item" style="display:flex; align-items:center; justify-content:space-between; gap:6px; padding:5px 8px;">
+                <span>${escapeHTML(item)}</span>
+                <button type="button" onclick="removerGheCargoItem(${i}, '${tipo}', ${idx})" title="Remover" style="border:none; background:none; color:var(--danger); cursor:pointer; font-size:13px;">✕</button>
+            </div>`).join('');
+}
+
+function renderGheCargoItemsLista(i, tipo) {
+    const container = document.getElementById(tipo === 'epis' ? `gheCargoEpisLista-${i}` : `gheCargoEpcsLista-${i}`);
+    if (container) container.innerHTML = htmlGheCargoItens(i, tipo);
+}
+
+function adicionarGheCargoItem(i, tipo) {
+    const input = document.getElementById(tipo === 'epis' ? `gheCargoEpiInput-${i}` : `gheCargoEpcInput-${i}`);
+    const valor = (input.value || '').trim();
+    if (!valor) return;
+    const estado = tipo === 'epis' ? gheCargoEpisForm : gheCargoEpcsForm;
+    if (!Array.isArray(estado[i])) estado[i] = [];
+    if (!estado[i].includes(valor)) estado[i].push(valor);
+    input.value = '';
+    renderGheCargoItemsLista(i, tipo);
+}
+
+function removerGheCargoItem(i, tipo, idx) {
+    const estado = tipo === 'epis' ? gheCargoEpisForm : gheCargoEpcsForm;
+    if (!Array.isArray(estado[i])) return;
+    estado[i].splice(idx, 1);
+    renderGheCargoItemsLista(i, tipo);
+}
+
+// Copia os campos preenchíveis (tudo, menos Cargo/Função/CBO/Qtd., que identificam ESTE
+// cargo) de outro cargo já cadastrado NO MESMO GRUPO pro formulário atual - só nos campos
+// (ainda não salvos), pra dar pra revisar/ajustar antes de "💾 Salvar". Motivado por um
+// caso real: GRUPO 16 tinha "Técnico de enfermagem em saúde ocupacional" completo, mas
+// "TEC. ENFERMEIRO DO TRABALHO" (a função real da colaboradora) ficou sem essas
+// informações - digitar tudo de novo na mão era o único jeito antes disso.
+function copiarCargoGhe(i) {
+    const g = allGheCatalogo.find(x => x.id === gheAtualGerenciado);
+    if (!g || !Array.isArray(g.cargos)) return;
+    const sel = document.getElementById(`gheCargoCopiarDe-${i}`);
+    const origemIdx = parseInt(sel?.value, 10);
+    const origem = g.cargos[origemIdx];
+    if (!origem) return;
+    const nomeOrigem = origem.cargo || origem.funcao || '(sem cargo)';
+    if (!confirm(`Copiar os dados de "${nomeOrigem}" pro formulário abaixo? Isso substitui o que estiver preenchido nos campos (ainda não salvos) - revise e clique em "💾 Salvar" pra confirmar.`)) return;
+
+    document.getElementById(`gheCargoDescricaoAtividade-${i}`).value = origem.descricao_atividade || '';
+    const ag = origem.agentes || {};
+    document.getElementById(`gheCargoFisico-${i}`).value = ag.fisico || '';
+    document.getElementById(`gheCargoQuimico-${i}`).value = ag.quimico || '';
+    document.getElementById(`gheCargoBiologico-${i}`).value = ag.biologico || '';
+    document.getElementById(`gheCargoErgonomico-${i}`).value = ag.ergonomico || '';
+    document.getElementById(`gheCargoAcidentes-${i}`).value = ag.acidentes || '';
+    document.getElementById(`gheCargoRecomendacoes-${i}`).value = origem.recomendacoes || '';
+    document.getElementById(`gheCargoProcedimentosAcidentes-${i}`).value = origem.procedimentos_acidentes || '';
+    document.getElementById(`gheCargoObservacoes-${i}`).value = origem.observacoes || '';
+    gheCargoEpisForm[i] = Array.isArray(origem.epis_necessarios) ? [...origem.epis_necessarios] : [];
+    gheCargoEpcsForm[i] = Array.isArray(origem.epcs_necessarios) ? [...origem.epcs_necessarios] : [];
+    renderGheCargoItemsLista(i, 'epis');
+    renderGheCargoItemsLista(i, 'epcs');
+}
+
 function renderGheCargosHtml(g) {
     const cargos = Array.isArray(g.cargos) ? g.cargos : [];
     if (cargos.length === 0) return '<div class="db-list-empty">Sem cargos cadastrados neste grupo ainda - use "+ Adicionar cargo" acima.</div>';
     const campoMini = 'padding:5px 6px; border:1px solid var(--border); border-radius:6px; font-size:11px; width:100%; box-sizing:border-box;';
+    const sugestoesFisico = optsDatalistGhe(coletarSugestoesGheCargos(c => (c.agentes || {}).fisico));
+    const sugestoesQuimico = optsDatalistGhe(coletarSugestoesGheCargos(c => (c.agentes || {}).quimico));
+    const sugestoesBiologico = optsDatalistGhe(coletarSugestoesGheCargos(c => (c.agentes || {}).biologico));
+    const sugestoesErgonomico = optsDatalistGhe(coletarSugestoesGheCargos(c => (c.agentes || {}).ergonomico));
+    const sugestoesAcidentes = optsDatalistGhe(coletarSugestoesGheCargos(c => (c.agentes || {}).acidentes));
+    const sugestoesEpi = optsDatalistGhe(coletarSugestoesGheCargos(c => c.epis_necessarios));
+    const sugestoesEpc = optsDatalistGhe(coletarSugestoesGheCargos(c => c.epcs_necessarios));
     return `<table style="width:100%; border-collapse:collapse; font-size:12px;">
         <thead><tr style="text-align:left; color:var(--text-light);">
             <th style="padding:4px 4px; width:18px;"></th><th style="padding:4px 8px;">Cargo</th><th style="padding:4px 8px;">Função</th><th style="padding:4px 8px;">CBO</th><th style="padding:4px 8px;">Qtd. oficial</th>
@@ -5537,6 +5646,11 @@ function renderGheCargosHtml(g) {
         <tbody>${cargos.map((c, i) => {
             const expandido = gheCargoExpandidoIdx === i;
             const ag = c.agentes || {};
+            if (expandido) {
+                gheCargoEpisForm[i] = Array.isArray(c.epis_necessarios) ? [...c.epis_necessarios] : [];
+                gheCargoEpcsForm[i] = Array.isArray(c.epcs_necessarios) ? [...c.epcs_necessarios] : [];
+            }
+            const outrosCargos = cargos.map((c2, idx2) => [idx2, c2]).filter(([idx2]) => idx2 !== i);
             const linhaDetalhe = expandido ? `<tr><td></td><td colspan="4" style="padding:4px 8px 14px;" onclick="event.stopPropagation()">
                 <div style="font-weight:600; font-size:11px; margin-bottom:4px;">Identificação do cargo</div>
                 <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap:6px; margin-bottom:8px;">
@@ -5545,18 +5659,47 @@ function renderGheCargosHtml(g) {
                     <div><label style="color:var(--text-light); font-size:10.5px; display:block;">CBO</label><input type="text" id="gheCargoCbo-${i}" value="${escapeHTML(c.cbo || '')}" style="${campoMini}"></div>
                     <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Qtd. oficial</label><input type="text" id="gheCargoQuantidade-${i}" value="${escapeHTML(String(c.quantidade ?? ''))}" style="${campoMini}"></div>
                 </div>
+                ${outrosCargos.length > 0 ? `<div style="display:flex; align-items:flex-end; gap:6px; margin-bottom:8px;">
+                    <div style="flex:1;"><label style="color:var(--text-light); font-size:10.5px; display:block;">Copiar de:</label>
+                        <select id="gheCargoCopiarDe-${i}" style="${campoMini}">
+                            ${outrosCargos.map(([idx2, c2]) => `<option value="${idx2}">${escapeHTML(c2.cargo || c2.funcao || '(sem cargo)')}</option>`).join('')}
+                        </select>
+                    </div>
+                    <button type="button" class="db-clear-btn" style="padding:5px 10px; font-size:11px; white-space:nowrap;" onclick="copiarCargoGhe(${i})">📋 Copiar</button>
+                </div>` : ''}
                 <div style="margin-bottom:8px;"><label style="color:var(--text-light); font-size:10.5px; display:block;">Descrição das Atividades</label><textarea id="gheCargoDescricaoAtividade-${i}" rows="2" style="${campoMini}">${escapeHTML(c.descricao_atividade || '')}</textarea></div>
                 <div style="font-weight:600; font-size:11px; margin-bottom:4px;">Agentes associados às atividades (usado na Ordem de Serviço)</div>
                 <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap:6px; margin-bottom:8px;">
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Físico</label><input type="text" id="gheCargoFisico-${i}" value="${escapeHTML(ag.fisico || '')}" style="${campoMini}"></div>
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Químico</label><input type="text" id="gheCargoQuimico-${i}" value="${escapeHTML(ag.quimico || '')}" style="${campoMini}"></div>
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Biológico</label><input type="text" id="gheCargoBiologico-${i}" value="${escapeHTML(ag.biologico || '')}" style="${campoMini}"></div>
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Ergonômico</label><input type="text" id="gheCargoErgonomico-${i}" value="${escapeHTML(ag.ergonomico || '')}" style="${campoMini}"></div>
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Acidentes</label><input type="text" id="gheCargoAcidentes-${i}" value="${escapeHTML(ag.acidentes || '')}" style="${campoMini}"></div>
+                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Físico</label><input type="text" id="gheCargoFisico-${i}" list="gheAgenteFisicoSugestoes" value="${escapeHTML(ag.fisico || '')}" style="${campoMini}"></div>
+                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Químico</label><input type="text" id="gheCargoQuimico-${i}" list="gheAgenteQuimicoSugestoes" value="${escapeHTML(ag.quimico || '')}" style="${campoMini}"></div>
+                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Biológico</label><input type="text" id="gheCargoBiologico-${i}" list="gheAgenteBiologicoSugestoes" value="${escapeHTML(ag.biologico || '')}" style="${campoMini}"></div>
+                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Ergonômico</label><input type="text" id="gheCargoErgonomico-${i}" list="gheAgenteErgonomicoSugestoes" value="${escapeHTML(ag.ergonomico || '')}" style="${campoMini}"></div>
+                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Acidentes</label><input type="text" id="gheCargoAcidentes-${i}" list="gheAgenteAcidentesSugestoes" value="${escapeHTML(ag.acidentes || '')}" style="${campoMini}"></div>
                 </div>
+                <datalist id="gheAgenteFisicoSugestoes">${sugestoesFisico}</datalist>
+                <datalist id="gheAgenteQuimicoSugestoes">${sugestoesQuimico}</datalist>
+                <datalist id="gheAgenteBiologicoSugestoes">${sugestoesBiologico}</datalist>
+                <datalist id="gheAgenteErgonomicoSugestoes">${sugestoesErgonomico}</datalist>
+                <datalist id="gheAgenteAcidentesSugestoes">${sugestoesAcidentes}</datalist>
+                <datalist id="gheEpiSugestoes">${sugestoesEpi}</datalist>
+                <datalist id="gheEpcSugestoes">${sugestoesEpc}</datalist>
                 <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap:6px; margin-bottom:8px;">
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">EPIs necessários (um por linha)</label><textarea id="gheCargoEpis-${i}" rows="2" style="${campoMini}">${escapeHTML((Array.isArray(c.epis_necessarios) ? c.epis_necessarios : []).join('\n'))}</textarea></div>
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">EPCs necessários (um por linha)</label><textarea id="gheCargoEpcs-${i}" rows="2" style="${campoMini}">${escapeHTML((Array.isArray(c.epcs_necessarios) ? c.epcs_necessarios : []).join('\n'))}</textarea></div>
+                    <div>
+                        <label style="color:var(--text-light); font-size:10.5px; display:block;">EPIs necessários</label>
+                        <div style="display:flex; gap:6px; margin-bottom:4px;">
+                            <input type="text" id="gheCargoEpiInput-${i}" list="gheEpiSugestoes" placeholder="Digite ou selecione um EPI..." style="${campoMini}">
+                            <button type="button" class="db-clear-btn" style="padding:5px 10px; font-size:11px; white-space:nowrap;" onclick="adicionarGheCargoItem(${i}, 'epis')">+ Adicionar</button>
+                        </div>
+                        <div id="gheCargoEpisLista-${i}" style="display:flex; flex-direction:column; gap:4px; max-height:140px; overflow-y:auto;">${htmlGheCargoItens(i, 'epis')}</div>
+                    </div>
+                    <div>
+                        <label style="color:var(--text-light); font-size:10.5px; display:block;">EPCs necessários</label>
+                        <div style="display:flex; gap:6px; margin-bottom:4px;">
+                            <input type="text" id="gheCargoEpcInput-${i}" list="gheEpcSugestoes" placeholder="Digite ou selecione um EPC..." style="${campoMini}">
+                            <button type="button" class="db-clear-btn" style="padding:5px 10px; font-size:11px; white-space:nowrap;" onclick="adicionarGheCargoItem(${i}, 'epcs')">+ Adicionar</button>
+                        </div>
+                        <div id="gheCargoEpcsLista-${i}" style="display:flex; flex-direction:column; gap:4px; max-height:140px; overflow-y:auto;">${htmlGheCargoItens(i, 'epcs')}</div>
+                    </div>
                 </div>
                 <div style="font-weight:600; font-size:11px; margin-bottom:4px;">Demais seções da Ordem de Serviço</div>
                 <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap:6px; margin-bottom:8px;">
@@ -5597,8 +5740,8 @@ async function salvarCargoAgentesEpi(i) {
         ergonomico: document.getElementById(`gheCargoErgonomico-${i}`).value.trim(),
         acidentes: document.getElementById(`gheCargoAcidentes-${i}`).value.trim()
     };
-    cargo.epis_necessarios = document.getElementById(`gheCargoEpis-${i}`).value.split('\n').map(s => s.trim()).filter(Boolean);
-    cargo.epcs_necessarios = document.getElementById(`gheCargoEpcs-${i}`).value.split('\n').map(s => s.trim()).filter(Boolean);
+    cargo.epis_necessarios = Array.isArray(gheCargoEpisForm[i]) ? gheCargoEpisForm[i].slice() : [];
+    cargo.epcs_necessarios = Array.isArray(gheCargoEpcsForm[i]) ? gheCargoEpcsForm[i].slice() : [];
     cargo.recomendacoes = document.getElementById(`gheCargoRecomendacoes-${i}`).value.trim();
     cargo.procedimentos_acidentes = document.getElementById(`gheCargoProcedimentosAcidentes-${i}`).value.trim();
     cargo.observacoes = document.getElementById(`gheCargoObservacoes-${i}`).value.trim();
@@ -5800,7 +5943,12 @@ function abrirGerenciarGhe(id) {
 let gheRiscosForm = [];
 
 function rowRiscoGheVazio() {
-    return { tipo_agente: '', agente: '', gravidade: '', gravidade_label: '', fontes_geradoras: '', tipo_tempo_exposicao: '', descricao: '', danos_saude: '', sugestoes: '', epis_recomendados: '', epcs_recomendados: '', situacao_controle: '' };
+    // probabilidade/severidade (1-5, vazios por padrão) alimentam nivelRiscoGhe() e
+    // calculam gravidade/gravidade_label automaticamente (ver atualizarGravidadeCalculadaGhe)
+    // - gravidade/gravidade_label continuam existindo como campos calculados, pra não
+    // quebrar quem já lê eles hoje (KPIs, gráfico e lista de Riscos Altos/Muito Altos da
+    // Matriz de Risco).
+    return { tipo_agente: '', agente: '', probabilidade: '', severidade: '', gravidade: '', gravidade_label: '', fontes_geradoras: '', tipo_tempo_exposicao: '', descricao: '', danos_saude: '', sugestoes: '', epis_recomendados: '', epcs_recomendados: '', situacao_controle: '' };
 }
 
 function toggleEdicaoGheMapaRiscos() {
@@ -5855,8 +6003,11 @@ function renderRiscosGheForm() {
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:6px; margin-bottom:6px;">
                 <input type="text" placeholder="Tipo de Agente (Físico/Químico/Biológico/Ergonômico/Acidentes)" value="${escapeHTML(r.tipo_agente)}" oninput="gheRiscosForm[${i}].tipo_agente=this.value" style="${campoEstilo}">
                 <input type="text" placeholder="Agente" value="${escapeHTML(r.agente)}" oninput="gheRiscosForm[${i}].agente=this.value" style="${campoEstilo}">
-                <input type="number" min="1" max="5" placeholder="Gravidade (nº)" value="${escapeHTML(String(r.gravidade ?? ''))}" oninput="gheRiscosForm[${i}].gravidade=this.value" style="${campoEstilo}">
-                <input type="text" placeholder="Gravidade (rótulo: Baixo/Moderado/Alto...)" value="${escapeHTML(r.gravidade_label)}" oninput="gheRiscosForm[${i}].gravidade_label=this.value" style="${campoEstilo}">
+            </div>
+            <div style="display:grid; grid-template-columns: 70px 70px 1fr; gap:6px; align-items:end; margin-bottom:6px;">
+                <div><label style="color:var(--text-light); font-size:10px; display:block;">Probabilidade</label>${selectProbSeverGhe(r.probabilidade, `gheRiscosForm[${i}].probabilidade=this.value; atualizarGravidadeCalculadaGhe(gheRiscosForm[${i}]); renderRiscosGheForm();`, APR_ANCORAS_P)}</div>
+                <div><label style="color:var(--text-light); font-size:10px; display:block;">Severidade</label>${selectProbSeverGhe(r.severidade, `gheRiscosForm[${i}].severidade=this.value; atualizarGravidadeCalculadaGhe(gheRiscosForm[${i}]); renderRiscosGheForm();`, APR_ANCORAS_S)}</div>
+                ${badgeGravidadeGhe(r)}
             </div>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:6px; margin-bottom:6px;">
                 <input type="text" placeholder="Fontes Geradoras" value="${escapeHTML(r.fontes_geradoras)}" oninput="gheRiscosForm[${i}].fontes_geradoras=this.value" style="${campoEstilo}">
@@ -6077,6 +6228,59 @@ let chartRiscoTipoAgente = null;
 const NIVEIS_RISCO_ORDEM = ['Trivial', 'Baixo', 'Moderado', 'Alto', 'Muito Alto'];
 const NIVEIS_RISCO_COR = { 'Trivial': '#6aa84f', 'Baixo': '#f1c232', 'Moderado': '#e69138', 'Alto': '#cc0000', 'Muito Alto': '#990000' };
 
+// Mesma matriz 5×5 Probabilidade × Severidade do módulo de APR (nivelRiscoApr - valor =
+// p × s, mesmas faixas 1-4/5-9/10-14/15-19/20-25), só que devolvendo os rótulos/cores que
+// a Matriz de Risco do GHE já usa (NIVEIS_RISCO_ORDEM/NIVEIS_RISCO_COR acima) em vez dos
+// rótulos do APR ('Aceitável / Baixo' etc, de outro módulo) - troca o campo de texto livre
+// "Gravidade (rótulo...)" por uma classificação de verdade, calculada, não mais digitada
+// à mão.
+function nivelRiscoGhe(p, s) {
+    const pNum = parseInt(p, 10);
+    const sNum = parseInt(s, 10);
+    if (!pNum || !sNum) return { valor: null, label: '', cor: '#888888' };
+    const valor = pNum * sNum;
+    const label = valor <= 4 ? 'Trivial' : valor <= 9 ? 'Baixo' : valor <= 14 ? 'Moderado' : valor <= 19 ? 'Alto' : 'Muito Alto';
+    return { valor, label, cor: NIVEIS_RISCO_COR[label] };
+}
+
+// Select de Probabilidade/Severidade (1-5) com a âncora descritiva (APR_ANCORAS_P/S, mesma
+// escala do APR) como tooltip de cada opção - mesmo padrão do selectPS local de
+// renderRiscosAprForm, só que compartilhado entre os dois formulários de edição de riscos
+// do GHE (gheRiscosForm e matrizEditForm) em vez de duplicado em cada um.
+function selectProbSeverGhe(val, onchange, ancoras) {
+    let opts = '<option value="">-</option>';
+    for (let n = 1; n <= 5; n++) opts += `<option value="${n}" title="${escapeHTML(ancoras[n])}" ${String(val) === String(n) ? 'selected' : ''}>${n}</option>`;
+    return `<select onchange="${onchange}" style="padding:6px; border:1px solid var(--border); border-radius:6px; font-size:11.5px; width:100%; box-sizing:border-box;">${opts}</select>`;
+}
+
+// Recalcula gravidade (número) e gravidade_label (texto) a partir de probabilidade ×
+// severidade só quando a reclassificação fica completa (as duas preenchidas) - nesse
+// momento o risco passa a usar o novo método de vez. Enquanto faltar uma das duas, deixa
+// gravidade/gravidade_label como estavam (ex: rótulo antigo digitado à mão em risco
+// importado do laudo original) - sem apagar ou adivinhar nada em massa.
+function atualizarGravidadeCalculadaGhe(row) {
+    const nivel = nivelRiscoGhe(row.probabilidade, row.severidade);
+    if (nivel.valor !== null) {
+        row.gravidade = nivel.valor;
+        row.gravidade_label = nivel.label;
+    }
+}
+
+// Badge só-leitura ao lado dos selects de P/S, mostrando o nível calculado ao vivo. Se
+// probabilidade/severidade ainda não foram preenchidos os dois (risco antigo ainda não
+// reclassificado, ou risco novo em branco), mostra o gravidade/gravidade_label que já
+// estava salvo em vez de "—", pra não sumir com uma classificação antiga válida só porque
+// os novos campos ainda não foram usados.
+function badgeGravidadeGhe(row) {
+    const nivel = nivelRiscoGhe(row.probabilidade, row.severidade);
+    const valor = nivel.valor !== null ? nivel.valor : (row.gravidade || null);
+    const label = nivel.valor !== null ? nivel.label : (row.gravidade_label || '');
+    const cor = nivel.valor !== null ? nivel.cor : (NIVEIS_RISCO_COR[row.gravidade_label] || '#888888');
+    return `<div title="Calculado a partir de Probabilidade × Severidade (mesma matriz do APR)" style="padding:6px 10px; border-radius:6px; background:${cor}22; color:${cor}; font-weight:700; font-size:11.5px; text-align:center;">
+        ${valor !== null && valor !== '' ? 'Gravidade ' + valor : 'Gravidade —'}${label ? ' - ' + escapeHTML(label) : ''}
+    </div>`;
+}
+
 function todosRiscosGhe() {
     const out = [];
     allGheCatalogo.forEach(g => {
@@ -6293,8 +6497,11 @@ function renderMatrizEditFields() {
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:6px; margin-bottom:6px;">
                 <input type="text" placeholder="Tipo de Agente (Físico/Químico/Biológico/Ergonômico/Acidentes)" value="${escapeHTML(r.tipo_agente)}" oninput="matrizEditForm[${i}].tipo_agente=this.value" style="${campoEstilo}">
                 <input type="text" placeholder="Agente" value="${escapeHTML(r.agente)}" oninput="matrizEditForm[${i}].agente=this.value" style="${campoEstilo}">
-                <input type="number" min="1" max="5" placeholder="Gravidade (nº)" value="${escapeHTML(String(r.gravidade ?? ''))}" oninput="matrizEditForm[${i}].gravidade=this.value" style="${campoEstilo}">
-                <input type="text" placeholder="Gravidade (rótulo: Baixo/Moderado/Alto...)" value="${escapeHTML(r.gravidade_label)}" oninput="matrizEditForm[${i}].gravidade_label=this.value" style="${campoEstilo}">
+            </div>
+            <div style="display:grid; grid-template-columns: 70px 70px 1fr; gap:6px; align-items:end; margin-bottom:6px;">
+                <div><label style="color:var(--text-light); font-size:10px; display:block;">Probabilidade</label>${selectProbSeverGhe(r.probabilidade, `matrizEditForm[${i}].probabilidade=this.value; atualizarGravidadeCalculadaGhe(matrizEditForm[${i}]); renderMatrizEditFields();`, APR_ANCORAS_P)}</div>
+                <div><label style="color:var(--text-light); font-size:10px; display:block;">Severidade</label>${selectProbSeverGhe(r.severidade, `matrizEditForm[${i}].severidade=this.value; atualizarGravidadeCalculadaGhe(matrizEditForm[${i}]); renderMatrizEditFields();`, APR_ANCORAS_S)}</div>
+                ${badgeGravidadeGhe(r)}
             </div>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:6px; margin-bottom:6px;">
                 <input type="text" placeholder="Fontes Geradoras" value="${escapeHTML(r.fontes_geradoras)}" oninput="matrizEditForm[${i}].fontes_geradoras=this.value" style="${campoEstilo}">

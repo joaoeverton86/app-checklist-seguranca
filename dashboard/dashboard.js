@@ -1505,6 +1505,12 @@ let allTreinamentosConvocados = [];
 // já usado ali, em vez de aprender um padrão novo de JOIN.
 let allDdsRealizados = [];
 let allDdsFechamentoSemanal = [];
+// Cronograma anual de temas (1 tema por dia útil, o MESMO tema pra todas as frentes naquele
+// dia - diferente de treinamentos_cronograma, que é por treinamento+frente) - o usuário já
+// mantém isso fora do sistema (TEMAS_DDS_2026.pdf); usado só como SUGESTÃO/auto-preenchimento
+// (Lançar DDS e a ficha impressa), nunca trava o campo - datas de feriado (ex: 25/12)
+// continuam com um tema "normal" cadastrado, ajustado na hora pelo usuário quando bate.
+let allDdsTemasCronograma = [];
 let treinamentosFilter = 'mes';
 let treinamentosFiltroAno = '';
 let treinamentosFiltroMes = '';
@@ -1653,14 +1659,15 @@ function onTreinamentosFiltroAnoMesChange() {
 async function loadTreinamentosData() {
     const statusEl = document.getElementById('treinamentosImportStatus');
     try {
-        const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento] = await Promise.all([
+        const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento, ddsTemas] = await Promise.all([
             supabaseFetchCacheado('treinamentos_realizados', '?select=*'),
             supabaseFetch('treinamentos_catalogo', '?select=*'),
             supabaseFetch('treinamentos_status', '?select=*'),
             supabaseFetch('treinamentos_cronograma', '?select=*'),
             supabaseFetch('treinamentos_convocados', '?select=*'),
             supabaseFetch('dds_realizados', '?select=*'),
-            supabaseFetch('dds_fechamento_semanal', '?select=*')
+            supabaseFetch('dds_fechamento_semanal', '?select=*'),
+            supabaseFetch('dds_temas_cronograma', '?select=*')
         ]);
         allTreinamentosRealizados = realizados;
         allTreinamentosCatalogo = catalogo;
@@ -1669,6 +1676,7 @@ async function loadTreinamentosData() {
         allTreinamentosConvocados = convocados;
         allDdsRealizados = ddsRealizados;
         allDdsFechamentoSemanal = ddsFechamento;
+        allDdsTemasCronograma = ddsTemas;
         // Precisa do efetivo pra saber quem realmente está ativo hoje (ver comentário
         // em renderTreinamentosPanel), e do catálogo de GHE pra preencher Setor/Cargo/
         // Agentes/EPIs/EPCs na Ordem de Serviço (construirFolhaOrdemServico) - carrega os
@@ -1716,6 +1724,7 @@ function showTreinSubtab(tab) {
     if (tab === 'dds') {
         renderDdsPanel();
         renderDdsFechamentoSemanal();
+        renderDdsCalendarioTemas();
         const fichaSel = document.getElementById('ddsImprimirFichaFrente');
         if (fichaSel && fichaSel.options.length <= 1) {
             todasFrentesAtivas().forEach(f => {
@@ -3216,19 +3225,35 @@ function popularDdsFrenteSelect() {
 }
 
 // Sugestão do "Tema do dia" (datalist, não trava digitar algo novo) - mesmo raciocínio do
-// combobox de Agentes/EPI do GHE: junta todos os temas já usados em qualquer lançamento de
-// DDS, pra não virar "Proteção das Mãos" numa frente e "Proteção das mãos e dedos" noutra.
+// combobox de Agentes/EPI do GHE: junta os temas já usados em qualquer lançamento de DDS
+// COM os temas do cronograma anual (dds_temas_cronograma, TEMAS_DDS_2026.pdf), pra não virar
+// "Proteção das Mãos" numa frente e "Proteção das mãos e dedos" noutra.
 function popularDdsTemaDatalist() {
     const dl = document.getElementById('lancDdsTemaSugestoes');
     if (!dl) return;
-    const temas = Array.from(new Set(allDdsRealizados.map(r => (r.tema || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-    dl.innerHTML = temas.map(t => `<option value="${escapeHTML(t)}">`).join('');
+    const temas = new Set();
+    allDdsRealizados.forEach(r => { if (r.tema) temas.add(r.tema.trim()); });
+    allDdsTemasCronograma.forEach(t => { if (t.tema) temas.add(t.tema.trim()); });
+    const lista = Array.from(temas).filter(Boolean).sort((a, b) => a.localeCompare(b));
+    dl.innerHTML = lista.map(t => `<option value="${escapeHTML(t)}">`).join('');
+}
+
+// Auto-preenche o Tema do dia a partir do cronograma anual (dds_temas_cronograma) sempre
+// que a Data muda - continua 100% editável (o usuário troca na hora se bater um feriado que
+// o cronograma ainda não reflete, ex: 25/12 aparece com tema "normal" cadastrado). Sem tema
+// cadastrado pra aquela data, deixa em branco pra digitar livre - nunca trava o lançamento.
+function onLancDdsDataChange() {
+    const data = document.getElementById('lancDdsData').value;
+    const temaInput = document.getElementById('lancDdsTema');
+    if (!temaInput) return;
+    if (!data) { temaInput.value = ''; return; }
+    const cronograma = allDdsTemasCronograma.find(t => t.data === data);
+    temaInput.value = cronograma ? cronograma.tema : '';
 }
 
 function abrirFormLancarDds() {
     document.getElementById('lancDdsData').value = new Date().toISOString().split('T')[0];
     document.getElementById('lancDdsFrente').value = '';
-    document.getElementById('lancDdsTema').value = '';
     document.getElementById('lancDdsTurno').value = '';
     document.getElementById('lancDdsHorario').value = '';
     document.getElementById('lancDdsDuracao').value = '10';
@@ -3238,6 +3263,7 @@ function abrirFormLancarDds() {
     document.getElementById('lancDdsStatus').textContent = '';
     popularDdsFrenteSelect();
     popularDdsTemaDatalist();
+    onLancDdsDataChange();
     lancDdsEquipe = new Map();
     lancDdsEmociogramaPorMatricula = {};
     lancDdsAcaoTratativaPorMatricula = {};
@@ -3415,6 +3441,174 @@ async function salvarLancamentoDds() {
         console.error('Erro ao lançar DDS:', err);
         statusEl.textContent = '❌ Falha ao lançar: ' + err.message;
         statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// ============================================
+// CALENDÁRIO DE TEMAS DDS (dds_temas_cronograma) - o cronograma anual que o usuário já
+// mantém fora do sistema (TEMAS_DDS_2026.pdf), 1 tema por dia útil pra TODAS as frentes
+// naquele dia (diferente de treinamentos_cronograma, que é por treinamento+frente). Só
+// alimenta sugestão/auto-preenchimento (Lançar DDS e a ficha impressa) - editar aqui nunca
+// trava nada, é só manter esse calendário atualizado (ex: ajustar um feriado que o
+// cronograma original não previu) sem precisar mexer no banco na mão.
+// ============================================
+
+let ddsCalendarioFiltroAno = new Date().getFullYear();
+let ddsCalendarioFiltroMes = new Date().getMonth();
+let ddsCalendarioEditandoData = null; // 'YYYY-MM-DD' da linha em edição, ou null
+
+function diasUteisDoMes(ano, mes) {
+    const dias = [];
+    const ultimoDia = new Date(ano, mes + 1, 0).getDate();
+    for (let d = 1; d <= ultimoDia; d++) {
+        const data = new Date(ano, mes, d);
+        const diaSemana = data.getDay();
+        if (diaSemana !== 0 && diaSemana !== 6) dias.push(data); // exclui sáb/dom
+    }
+    return dias;
+}
+
+function popularFiltroDdsCalendario() {
+    const anoSel = document.getElementById('ddsCalendarioFiltroAno');
+    const mesSel = document.getElementById('ddsCalendarioFiltroMes');
+    if (anoSel && !anoSel.dataset.inicializado) {
+        const anos = new Set([new Date().getFullYear()]);
+        allDdsTemasCronograma.forEach(t => { if (t.data) anos.add(parseLocalDate(t.data).getFullYear()); });
+        anos.add(new Date().getFullYear() + 1); // sempre deixa o ano seguinte disponível, mesmo sem seed ainda
+        Array.from(anos).sort().forEach(a => {
+            const opt = document.createElement('option');
+            opt.value = a;
+            opt.textContent = a;
+            anoSel.appendChild(opt);
+        });
+        anoSel.value = ddsCalendarioFiltroAno;
+        anoSel.dataset.inicializado = '1';
+    }
+    if (mesSel && !mesSel.dataset.inicializado) {
+        mesSel.value = ddsCalendarioFiltroMes;
+        mesSel.dataset.inicializado = '1';
+    }
+}
+
+function onDdsCalendarioFiltroChange() {
+    ddsCalendarioFiltroAno = parseInt(document.getElementById('ddsCalendarioFiltroAno').value, 10);
+    ddsCalendarioFiltroMes = parseInt(document.getElementById('ddsCalendarioFiltroMes').value, 10);
+    ddsCalendarioEditandoData = null;
+    renderDdsCalendarioTemas();
+}
+
+function editarDdsTemaDia(data) {
+    ddsCalendarioEditandoData = data;
+    renderDdsCalendarioTemas();
+}
+
+function cancelarEdicaoDdsTemaDia() {
+    ddsCalendarioEditandoData = null;
+    renderDdsCalendarioTemas();
+}
+
+// Se a data salva/editada é a mesma já selecionada em Lançar DDS, atualiza o
+// auto-preenchimento na hora, sem precisar trocar de data e voltar pra ver o efeito.
+function sincronizarLancDdsTemaSeMesmaData(data) {
+    const lancDdsDataEl = document.getElementById('lancDdsData');
+    if (lancDdsDataEl && lancDdsDataEl.value === data) onLancDdsDataChange();
+}
+
+async function salvarDdsTemaDia(data) {
+    const input = document.getElementById(`ddsCalendarioTemaInput-${data}`);
+    const tema = input.value.trim();
+    const statusEl = document.getElementById('ddsCalendarioStatus');
+    if (!tema) {
+        if (statusEl) { statusEl.textContent = '❌ Informe um tema.'; statusEl.style.color = 'var(--danger)'; }
+        return;
+    }
+    const row = { id: data, data, tema };
+    try {
+        await supabaseUpsert('dds_temas_cronograma', [row]);
+        const idx = allDdsTemasCronograma.findIndex(t => t.data === data);
+        if (idx >= 0) allDdsTemasCronograma[idx] = row; else allDdsTemasCronograma.push(row);
+        ddsCalendarioEditandoData = null;
+        if (statusEl) { statusEl.textContent = '✅ Tema salvo.'; statusEl.style.color = 'var(--success)'; }
+        renderDdsCalendarioTemas();
+        popularDdsTemaDatalist();
+        sincronizarLancDdsTemaSeMesmaData(data);
+    } catch (err) {
+        console.error('Erro ao salvar tema do dia (DDS):', err);
+        if (statusEl) { statusEl.textContent = '❌ Falha: ' + err.message; statusEl.style.color = 'var(--danger)'; }
+    }
+}
+
+function renderDdsCalendarioTemas() {
+    popularFiltroDdsCalendario();
+    const container = document.getElementById('ddsCalendarioLista');
+    if (!container) return;
+    const dias = diasUteisDoMes(ddsCalendarioFiltroAno, ddsCalendarioFiltroMes);
+    if (dias.length === 0) {
+        container.innerHTML = '<div class="db-list-empty">Nenhum dia útil nesse mês.</div>';
+        return;
+    }
+    container.innerHTML = dias.map(d => {
+        const dataIso = toISODateLocal(d);
+        const cronograma = allDdsTemasCronograma.find(t => t.data === dataIso);
+        const editando = ddsCalendarioEditandoData === dataIso;
+        const label = `${NOMES_DIAS_SEMANA[d.getDay()]}, ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (editando) {
+            return `<div class="db-list-item" style="display:flex; flex-direction:column; gap:6px;">
+                <div class="db-list-item-title">${escapeHTML(label)}</div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <input type="text" id="ddsCalendarioTemaInput-${dataIso}" list="lancDdsTemaSugestoes" value="${escapeHTML(cronograma ? cronograma.tema : '')}" style="flex:1; min-width:200px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px; box-sizing:border-box;">
+                    <button class="db-clear-btn" onclick="salvarDdsTemaDia('${dataIso}')">💾 Salvar</button>
+                    <button class="db-clear-btn" onclick="cancelarEdicaoDdsTemaDia()">Cancelar</button>
+                </div>
+            </div>`;
+        }
+        return `<div class="db-list-item" style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+            <div>
+                <div class="db-list-item-title">${escapeHTML(label)}</div>
+                <div class="db-list-item-sub">${cronograma ? escapeHTML(cronograma.tema) : '— sem tema cadastrado —'}</div>
+            </div>
+            <button class="db-clear-btn" onclick="editarDdsTemaDia('${dataIso}')">✏️ Editar</button>
+        </div>`;
+    }).join('');
+}
+
+// "+ Adicionar dia" cobre datas fora dos dias úteis do mês em tela (ex: um sábado
+// excepcional) ou de um mês/ano ainda não navegado (ex: preencher 2027 quando chegar) -
+// simples data + tema, mesmo upsert de salvarDdsTemaDia.
+function abrirAdicionarDdsTemaDia() {
+    const wrap = document.getElementById('ddsCalendarioAdicionarWrap');
+    if (!wrap) return;
+    wrap.style.display = 'block';
+    document.getElementById('ddsCalendarioNovaData').value = '';
+    document.getElementById('ddsCalendarioNovoTema').value = '';
+}
+
+function fecharAdicionarDdsTemaDia() {
+    const wrap = document.getElementById('ddsCalendarioAdicionarWrap');
+    if (wrap) wrap.style.display = 'none';
+}
+
+async function salvarNovoDdsTemaDia() {
+    const data = document.getElementById('ddsCalendarioNovaData').value;
+    const tema = document.getElementById('ddsCalendarioNovoTema').value.trim();
+    const statusEl = document.getElementById('ddsCalendarioStatus');
+    if (!data || !tema) {
+        if (statusEl) { statusEl.textContent = '❌ Informe a data e o tema.'; statusEl.style.color = 'var(--danger)'; }
+        return;
+    }
+    const row = { id: data, data, tema };
+    try {
+        await supabaseUpsert('dds_temas_cronograma', [row]);
+        const idx = allDdsTemasCronograma.findIndex(t => t.data === data);
+        if (idx >= 0) allDdsTemasCronograma[idx] = row; else allDdsTemasCronograma.push(row);
+        fecharAdicionarDdsTemaDia();
+        if (statusEl) { statusEl.textContent = '✅ Dia adicionado.'; statusEl.style.color = 'var(--success)'; }
+        renderDdsCalendarioTemas();
+        popularDdsTemaDatalist();
+        sincronizarLancDdsTemaSeMesmaData(data);
+    } catch (err) {
+        console.error('Erro ao adicionar tema do dia (DDS):', err);
+        if (statusEl) { statusEl.textContent = '❌ Falha: ' + err.message; statusEl.style.color = 'var(--danger)'; }
     }
 }
 
@@ -3807,7 +4001,15 @@ function imprimirFichaDdsEmBranco() {
     const diasSemana = Array.from({ length: 7 }, (_, i) => new Date(seg.getFullYear(), seg.getMonth(), seg.getDate() + i));
     const equipe = equipeDaFrente(frente);
 
-    const colDias = diasSemana.map(d => `<th style="min-width:110px;">${NOMES_DIAS_SEMANA[d.getDay()].slice(0, 3).toUpperCase()}<br>${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}<br><span style="font-weight:400; font-size:9.5px;">Tema:</span></th>`).join('');
+    // Tema de cada dia vem do cronograma anual (dds_temas_cronograma) quando cadastrado pra
+    // essa data - exatamente como a ficha real já mostra um tema diferente por dia. Sem tema
+    // cadastrado (ex: fim de semana, ou data fora do ano seedado), deixa uma linha em branco
+    // pra preencher na mão, igual já era antes.
+    const colDias = diasSemana.map(d => {
+        const cronograma = allDdsTemasCronograma.find(t => t.data === toISODateLocal(d));
+        const temaTexto = cronograma ? escapeHTML(cronograma.tema) : '_______________________';
+        return `<th style="min-width:110px;">${NOMES_DIAS_SEMANA[d.getDay()].slice(0, 3).toUpperCase()}<br>${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}<br><span style="font-weight:400; font-size:9.5px;">Tema: ${temaTexto}</span></th>`;
+    }).join('');
     const linhaRespSms = diasSemana.map(() => `<td style="height:34px;"></td>`).join('');
     const linhaResponsavel = diasSemana.map(() => `<td style="height:26px; font-size:9.5px;">Responsável:<br><br>Ass:</td>`).join('');
 

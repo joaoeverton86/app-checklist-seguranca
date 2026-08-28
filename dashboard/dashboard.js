@@ -4008,7 +4008,7 @@ function imprimirFichaDdsEmBranco() {
     const colDias = diasSemana.map(d => {
         const cronograma = allDdsTemasCronograma.find(t => t.data === toISODateLocal(d));
         const temaTexto = cronograma ? escapeHTML(cronograma.tema) : '_______________________';
-        return `<th style="min-width:110px;">${NOMES_DIAS_SEMANA[d.getDay()].slice(0, 3).toUpperCase()}<br>${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}<br><span style="font-weight:400; font-size:9.5px;">Tema: ${temaTexto}</span></th>`;
+        return `<th style="min-width:110px;">${NOMES_DIAS_SEMANA[d.getDay()].slice(0, 3).toUpperCase()} – ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}<br><span style="font-weight:400; font-size:9.5px;">Tema: ${temaTexto}</span></th>`;
     }).join('');
     const linhaRespSms = diasSemana.map(() => `<td style="height:34px;"></td>`).join('');
     const linhaResponsavel = diasSemana.map(() => `<td style="height:26px; font-size:9.5px;">Responsável:<br><br>Ass:</td>`).join('');
@@ -4046,11 +4046,10 @@ function imprimirFichaDdsEmBranco() {
     table { width: 100%; border-collapse: collapse; }
     th, td { border: 1px solid #000; padding: 4px 5px; font-size: 10px; vertical-align: top; }
     th { background: #e5e5e5; font-size: 10px; text-align: center; }
-    .col-item { width: 26px; text-align: center; }
-    .col-mat { width: 52px; text-align: center; font-size: 9px; }
+    .col-item { text-align: center; }
+    .col-mat { text-align: center; font-size: 9px; }
     .col-nome { font-size: 9px; }
     .col-funcao { font-size: 9px; }
-    .col-dia-resp { min-width: 135px; }
     .linha-rubrica { border-bottom: 1px solid #000; height: 18px; margin-top: 3px; }
     .no-print { text-align: center; margin: 16px 0; }
     .no-print button { padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; border: none; background: #4f46e5; color: #fff; }
@@ -4065,10 +4064,10 @@ function imprimirFichaDdsEmBranco() {
         </div>
         <div class="linha">
             <div class="campo" style="flex:2;"><b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
-            <div class="campo"><b>FRENTE DE SERVIÇO:</b> ${escapeHTML(frente)}</div>
+            <div class="campo"><b>FRENTE DE SERVIÇO:</b></div>
         </div>
         <div class="linha">
-            <div class="campo"><b>ENG/ENC/RESP:</b></div>
+            <div class="campo"><b>ENG/ENC/RESP:</b> ${escapeHTML(frente)}</div>
             <div class="campo"><b>TURNO:</b> ☐ Diurno &nbsp; ☐ Noturno</div>
         </div>
         <div class="linha">
@@ -4087,8 +4086,12 @@ function imprimirFichaDdsEmBranco() {
                 <tr><td>Responsável</td>${linhaResponsavel}</tr>
             </tbody>
         </table>
-        <table style="margin-top:8px;">
-            <thead><tr><th class="col-item">Item</th><th class="col-mat">Mat.</th><th class="col-nome">Nome</th><th class="col-funcao">Função</th>${diasSemana.map(d => `<th class="col-dia-resp">${NOMES_DIAS_SEMANA[d.getDay()].slice(0, 3).toUpperCase()} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}<br><span style="font-weight:400; font-size:8.5px;">Como estou / Rubrica</span></th>`).join('')}</tr></thead>
+        <table style="margin-top:8px; table-layout:fixed;">
+            <colgroup>
+                <col style="width:3%"><col style="width:6%"><col style="width:15%"><col style="width:11%">
+                ${diasSemana.map(() => `<col style="width:${(65 / diasSemana.length).toFixed(2)}%">`).join('')}
+            </colgroup>
+            <thead><tr><th class="col-item">Item</th><th class="col-mat">Mat.</th><th class="col-nome">Nome</th><th class="col-funcao">Função</th>${diasSemana.map(d => `<th class="col-dia-resp">${NOMES_DIAS_SEMANA[d.getDay()].slice(0, 3).toUpperCase()} – ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}<br><span style="font-weight:400; font-size:8.5px;">Como estou / Rubrica</span></th>`).join('')}</tr></thead>
             <tbody>${linhasColab || `<tr><td colspan="${4 + diasSemana.length}" style="text-align:center; color:#777;">Nenhum colaborador ativo cadastrado nessa frente.</td></tr>`}</tbody>
         </table>
     </div>

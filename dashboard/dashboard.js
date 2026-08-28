@@ -1725,6 +1725,7 @@ function showTreinSubtab(tab) {
         renderDdsPanel();
         renderDdsFechamentoSemanal();
         renderDdsCalendarioTemas();
+        renderDdsLancamentosRecentes();
         const fichaSel = document.getElementById('ddsImprimirFichaFrente');
         if (fichaSel && fichaSel.options.length <= 1) {
             todasFrentesAtivas().forEach(f => {
@@ -1738,6 +1739,8 @@ function showTreinSubtab(tab) {
         if (anoInput && !anoInput.value) anoInput.value = new Date().getFullYear();
         const mesRelSel = document.getElementById('ddsImprimirRelatorioMes');
         if (mesRelSel && !mesRelSel.dataset.inicializado) { mesRelSel.value = String(new Date().getMonth()); mesRelSel.dataset.inicializado = '1'; }
+        const semanaDataInput = document.getElementById('ddsImprimirRelatorioSemanaData');
+        if (semanaDataInput && !semanaDataInput.value) semanaDataInput.value = new Date().toISOString().split('T')[0];
     }
     // Não força registroDetalheCard a esconder aqui - a busca/lista que carrega uma
     // sessão agora mora em Histórico, então trocar pra Registro deve preservar o que já
@@ -3212,6 +3215,24 @@ let lancDdsEmociogramaPorMatricula = {}; // matricula -> 'bom' | 'regular' | 'ru
 // pra não perder o que a pessoa já tinha digitado só por ter clicado sem querer noutro
 // botão do emociograma antes de confirmar.
 let lancDdsAcaoTratativaPorMatricula = {}; // matricula -> texto (só relevante quando 'ruim')
+// Preenchido com a loteKeyDds() do lançamento em edição (ver editarLoteDds) - null quando o
+// formulário está em modo "lançamento novo". salvarLancamentoDds() usa isso pra apagar as
+// linhas antigas desse lote antes de inserir as novas, em vez de duplicar.
+let lancDdsLoteEmEdicao = null;
+
+// Estado do painel "📅 Lançar Semana Inteira" - independente do lançamento de 1 dia acima
+// (os dois convivem, nenhum substitui o outro). lancDdsSemanaEstados guarda, por matrícula,
+// o estado de CADA dia da semana ('bom'|'regular'|'ruim'|'ausente' - "ausente" não gera
+// lançamento nesse dia pra essa pessoa).
+let lancDdsSemanaFrente = '';
+let lancDdsSemanaDias = []; // array de Date, segunda a domingo
+let lancDdsSemanaTemas = {}; // 'YYYY-MM-DD' -> tema do dia (editável, pré-vem do cronograma)
+let lancDdsSemanaTurno = '';
+let lancDdsSemanaHorario = '';
+let lancDdsSemanaDuracao = 10;
+let lancDdsSemanaEquipe = new Map(); // matricula -> {nome, funcao, setor}
+let lancDdsSemanaEstados = {}; // matricula -> { 'YYYY-MM-DD': 'bom'|'regular'|'ruim'|'ausente' }
+let lancDdsSemanaAcaoTratativa = {}; // 'matricula|YYYY-MM-DD' -> texto (só quando 'ruim')
 
 function popularDdsFrenteSelect() {
     const sel = document.getElementById('lancDdsFrente');
@@ -3267,6 +3288,9 @@ function abrirFormLancarDds() {
     lancDdsEquipe = new Map();
     lancDdsEmociogramaPorMatricula = {};
     lancDdsAcaoTratativaPorMatricula = {};
+    lancDdsLoteEmEdicao = null;
+    const avisoEl = document.getElementById('lancDdsEditandoAviso');
+    if (avisoEl) avisoEl.style.display = 'none';
     renderListaPresencaDds();
 }
 
@@ -3429,16 +3453,415 @@ async function salvarLancamentoDds() {
         };
     });
 
+    const editando = lancDdsLoteEmEdicao;
+    statusEl.textContent = editando ? `Salvando edição (${rows.length} registro(s))...` : `Enviando ${rows.length} registro(s)...`;
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        // Editando um lote existente: apaga as linhas antigas ANTES de inserir as novas -
+        // vira um lote novo (timestamp novo), então excluir/editar de novo depois continua
+        // funcionando igual (ver loteKeyDds/editarLoteDds/excluirLoteDds).
+        if (editando) {
+            const idsAntigos = allDdsRealizados.filter(r => loteKeyDds(r) === editando).map(r => r.id);
+            if (idsAntigos.length > 0) {
+                await supabaseDeleteMany('dds_realizados', idsAntigos);
+                const idsAntigosSet = new Set(idsAntigos);
+                allDdsRealizados = allDdsRealizados.filter(r => !idsAntigosSet.has(r.id));
+            }
+        }
+        await supabaseUpsert('dds_realizados', rows);
+        allDdsRealizados = allDdsRealizados.concat(rows);
+        lancDdsLoteEmEdicao = null;
+        const avisoEl = document.getElementById('lancDdsEditandoAviso');
+        if (avisoEl) avisoEl.style.display = 'none';
+        statusEl.textContent = `✅ ${rows.length} colaborador(es) ${editando ? 'atualizado(s)' : 'lançado(s)'} no DDS de ${formatSimpleDate(data)}.`;
+        statusEl.style.color = 'var(--success)';
+        renderDdsLancamentosRecentes();
+        setTimeout(() => { abrirFormLancarDds(); renderDdsPanel(); renderDdsFechamentoSemanal(); }, 1800);
+    } catch (err) {
+        console.error('Erro ao lançar DDS:', err);
+        statusEl.textContent = '❌ Falha ao lançar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// Extrai "dds_<timestamp>" do id de cada linha - linhas do MESMO envio (1 clique em "📤
+// Lançar DDS", ou 1 dia dentro de "📅 Lançar Semana Inteira") sempre compartilham o mesmo
+// timestamp; envios diferentes (mesmo com frente/data/tema idênticos, como um lançamento
+// duplicado por engano) sempre têm timestamps diferentes - dá pra excluir/editar só ESSE
+// envio específico sem precisar de coluna nova no banco.
+function loteKeyDds(row) {
+    const partes = (row.id || '').split('_');
+    return partes.length >= 2 ? `${partes[0]}_${partes[1]}` : row.id;
+}
+
+function lotesRecentesDds(limite = 20) {
+    const mapa = new Map();
+    allDdsRealizados.forEach(r => {
+        const key = loteKeyDds(r);
+        if (!mapa.has(key)) mapa.set(key, { key, data_dds: r.data_dds, frente_responsavel: r.frente_responsavel, tema: r.tema, ids: [], horas: 0 });
+        const lote = mapa.get(key);
+        lote.ids.push(r.id);
+        lote.horas += parseFloat(r.carga_horaria) || 0;
+    });
+    // O timestamp embutido na key (ex: "dds_1787862291807") tem sempre o mesmo nº de
+    // dígitos, então ordenar a string como texto já ordena por data/hora de lançamento.
+    return Array.from(mapa.values()).sort((a, b) => b.key.localeCompare(a.key)).slice(0, limite);
+}
+
+function renderDdsLancamentosRecentes() {
+    const el = document.getElementById('ddsLancamentosRecentesLista');
+    if (!el) return;
+    const lotes = lotesRecentesDds(20);
+    if (lotes.length === 0) {
+        el.innerHTML = '<div class="db-list-empty">Nenhum lançamento de DDS ainda.</div>';
+        return;
+    }
+    el.innerHTML = lotes.map(lote => `
+        <div class="db-list-item" style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+            <div>
+                <div class="db-list-item-title">${formatSimpleDate(lote.data_dds)} — ${escapeHTML(lote.frente_responsavel || '')}</div>
+                <div class="db-list-item-sub">${escapeHTML(lote.tema || 'Sem tema')} — ${lote.ids.length} participante(s) — ${lote.horas.toLocaleString('pt-BR')}h</div>
+            </div>
+            <div style="display:flex; gap:6px;">
+                <button class="db-clear-btn" onclick="editarLoteDds('${escapeHTML(lote.key)}')">✏️ Editar</button>
+                <button class="db-clear-btn" style="color:var(--danger); border-color:var(--danger);" onclick="excluirLoteDds('${escapeHTML(lote.key)}')">🗑️ Excluir</button>
+            </div>
+        </div>`).join('');
+}
+
+async function excluirLoteDds(loteKey) {
+    const linhas = allDdsRealizados.filter(r => loteKeyDds(r) === loteKey);
+    if (linhas.length === 0) return;
+    const ref = linhas[0];
+    if (!confirm(`Excluir o lançamento de DDS de ${formatSimpleDate(ref.data_dds)} — ${ref.frente_responsavel || ''}? Isso vai apagar ${linhas.length} registro(s) (1 por colaborador). Essa ação não pode ser desfeita.`)) return;
+    try {
+        await supabaseDeleteMany('dds_realizados', linhas.map(r => r.id));
+        const idsExcluidos = new Set(linhas.map(r => r.id));
+        allDdsRealizados = allDdsRealizados.filter(r => !idsExcluidos.has(r.id));
+        renderDdsLancamentosRecentes();
+        renderDdsPanel();
+        renderDdsFechamentoSemanal();
+    } catch (err) {
+        console.error('Erro ao excluir lançamento de DDS:', err);
+        alert('❌ Falha ao excluir: ' + err.message);
+    }
+}
+
+// Preenche o formulário de "Lançar DDS" com os dados do lote escolhido pra corrigir e
+// reenviar - carregarEquipeFrenteDds() monta a equipe INTEIRA da frente (todo mundo
+// presente por padrão), depois ajusta: quem não estava no lote fica desmarcado, quem
+// estava recebe de volta o emociograma/ação-tratativa salvos. salvarLancamentoDds() usa
+// lancDdsLoteEmEdicao pra apagar o lote antigo antes de gravar o corrigido.
+function editarLoteDds(loteKey) {
+    const linhas = allDdsRealizados.filter(r => loteKeyDds(r) === loteKey);
+    if (linhas.length === 0) return;
+    const ref = linhas[0];
+
+    document.getElementById('lancDdsData').value = ref.data_dds || '';
+    document.getElementById('lancDdsFrente').value = ref.frente_responsavel || '';
+    carregarEquipeFrenteDds(); // já reseta lancDdsEmociogramaPorMatricula/lancDdsAcaoTratativaPorMatricula
+
+    document.getElementById('lancDdsTema').value = ref.tema || '';
+    document.getElementById('lancDdsTurno').value = ref.turno || '';
+    document.getElementById('lancDdsHorario').value = ref.horario_inicio || '';
+    document.getElementById('lancDdsDuracao').value = ref.duracao_min || 10;
+    document.getElementById('lancDdsObservacoes').value = ref.observacoes || '';
+    document.getElementById('lancDdsAddColab').value = '';
+    document.getElementById('lancDdsAddColabResults').innerHTML = '';
+    document.getElementById('lancDdsStatus').textContent = '';
+
+    const matriculasDoLote = new Set(linhas.map(r => r.matricula));
+    lancDdsEquipe.forEach((c, matricula) => { c.checked = matriculasDoLote.has(matricula); });
+    linhas.forEach(r => {
+        if (r.emociograma) lancDdsEmociogramaPorMatricula[r.matricula] = r.emociograma;
+        if (r.acao_tratativa) lancDdsAcaoTratativaPorMatricula[r.matricula] = r.acao_tratativa;
+        // Colaborador do lote que não está mais na equipe ATUAL da frente (mudou de frente
+        // ou foi desligado depois do lançamento original) - adiciona de volta como avulso,
+        // pra não sumir silenciosamente do lote sendo editado.
+        if (!lancDdsEquipe.has(r.matricula)) {
+            lancDdsEquipe.set(r.matricula, { nome: r.nome, funcao: r.funcao, setor: r.setor, checked: true });
+        }
+    });
+
+    lancDdsLoteEmEdicao = loteKey;
+    const avisoEl = document.getElementById('lancDdsEditandoAviso');
+    if (avisoEl) {
+        avisoEl.style.display = 'block';
+        avisoEl.textContent = `✏️ Editando o lançamento de ${formatSimpleDate(ref.data_dds)} — ${ref.frente_responsavel || ''}. Clicar em "📤 Lançar DDS" substitui os ${linhas.length} registro(s) originais pelos valores ajustados abaixo.`;
+    }
+    renderListaPresencaDds();
+    document.getElementById('lancDdsFormCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ============================================
+// LANÇAR SEMANA INTEIRA DE DDS - bate com como o usuário realmente trabalha: pega o
+// formulário da semana já preenchido no papel e lança tudo assumindo presença o tempo
+// todo, corrigindo só quem faltou ou teve emociograma diferente de "Bom". Convive com o
+// lançamento de 1 dia acima (nenhum substitui o outro) - cada dia da semana lançado em
+// bloco vira um lote independente (ver loteKeyDds), então dá pra excluir/editar um dia
+// específico depois com a mesma Correção 1 de cima.
+// ============================================
+
+const DDS_SEMANA_ESTADO_CICLO = { bom: 'regular', regular: 'ruim', ruim: 'ausente', ausente: 'bom' };
+const DDS_SEMANA_ESTADO_VISUAL = {
+    bom: { emoji: '🟢', cor: '#1a7f4b', bg: '#e6f7ee' },
+    regular: { emoji: '🟡', cor: '#b78a00', bg: '#fff9e6' },
+    ruim: { emoji: '🔴', cor: '#c0392b', bg: '#fdf2f2' },
+    ausente: { emoji: '⬜', cor: '#888', bg: '#f0f0f0' }
+};
+
+function toggleLancarDdsSemana() {
+    const card = document.getElementById('lancDdsSemanaCard');
+    if (!card) return;
+    const abrindo = card.style.display === 'none';
+    card.style.display = abrindo ? 'block' : 'none';
+    if (abrindo) {
+        abrirFormLancarDdsSemana();
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+function popularDdsSemanaFrenteSelect() {
+    const sel = document.getElementById('lancDdsSemanaFrenteSelect');
+    if (!sel || sel.options.length > 1) return;
+    todasFrentesAtivas().forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f;
+        opt.textContent = f;
+        sel.appendChild(opt);
+    });
+}
+
+function abrirFormLancarDdsSemana() {
+    document.getElementById('lancDdsSemanaFrenteSelect').value = '';
+    document.getElementById('lancDdsSemanaDataInput').value = new Date().toISOString().split('T')[0];
+    document.getElementById('lancDdsSemanaTurnoSelect').value = '';
+    document.getElementById('lancDdsSemanaHorarioInput').value = '';
+    document.getElementById('lancDdsSemanaDuracaoInput').value = '10';
+    document.getElementById('lancDdsSemanaStatus').textContent = '';
+    popularDdsSemanaFrenteSelect();
+    lancDdsSemanaFrente = '';
+    lancDdsSemanaTurno = '';
+    lancDdsSemanaHorario = '';
+    lancDdsSemanaDuracao = 10;
+    lancDdsSemanaDias = [];
+    lancDdsSemanaTemas = {};
+    lancDdsSemanaEquipe = new Map();
+    lancDdsSemanaEstados = {};
+    lancDdsSemanaAcaoTratativa = {};
+    renderLancDdsSemanaTemas();
+    renderLancDdsSemanaGrade();
+    renderLancDdsSemanaAcoes();
+}
+
+// Trocar de frente OU de data de referência sempre reconstrói a semana + a equipe do zero -
+// mesmo raciocínio de "a grade é sempre de UMA frente por vez" já usado no lançamento de 1
+// dia. Segunda a sexta começa 🟢 Bom (padrão real: a maioria só trabalha dia útil); sábado/
+// domingo começam ⬜ Ausente, mas dá pra clicar e ativar pra frentes que trabalham fim de
+// semana (ex: segurança de barragem).
+function onLancDdsSemanaFrenteOuDataChange() {
+    lancDdsSemanaFrente = document.getElementById('lancDdsSemanaFrenteSelect').value;
+    const dataRef = document.getElementById('lancDdsSemanaDataInput').value;
+
+    if (!dataRef) {
+        lancDdsSemanaDias = [];
+        lancDdsSemanaEquipe = new Map();
+        lancDdsSemanaEstados = {};
+        lancDdsSemanaAcaoTratativa = {};
+        renderLancDdsSemanaTemas();
+        renderLancDdsSemanaGrade();
+        renderLancDdsSemanaAcoes();
+        return;
+    }
+
+    const seg = segundaDaSemana(parseLocalDate(dataRef));
+    lancDdsSemanaDias = Array.from({ length: 7 }, (_, i) => new Date(seg.getFullYear(), seg.getMonth(), seg.getDate() + i));
+
+    // Tema por dia auto-preenchido do cronograma anual, só se ainda não tiver um valor
+    // pra essa data (não sobrescreve edição manual já feita numa troca de frente pra
+    // mesma semana).
+    lancDdsSemanaDias.forEach(d => {
+        const iso = toISODateLocal(d);
+        if (lancDdsSemanaTemas[iso] === undefined) {
+            const cronograma = allDdsTemasCronograma.find(t => t.data === iso);
+            lancDdsSemanaTemas[iso] = cronograma ? cronograma.tema : '';
+        }
+    });
+
+    lancDdsSemanaEquipe = new Map();
+    lancDdsSemanaEstados = {};
+    lancDdsSemanaAcaoTratativa = {};
+    if (lancDdsSemanaFrente) {
+        allEfetivo.filter(e => colaboradorEstaAtivo(e) && e.responsavel === lancDdsSemanaFrente).forEach(e => {
+            lancDdsSemanaEquipe.set(e.id, { nome: e.nome, funcao: e.funcao, setor: e.setor });
+            const porDia = {};
+            lancDdsSemanaDias.forEach(d => {
+                const diaSemana = d.getDay();
+                porDia[toISODateLocal(d)] = (diaSemana === 0 || diaSemana === 6) ? 'ausente' : 'bom';
+            });
+            lancDdsSemanaEstados[e.id] = porDia;
+        });
+    }
+
+    renderLancDdsSemanaTemas();
+    renderLancDdsSemanaGrade();
+    renderLancDdsSemanaAcoes();
+}
+
+function onLancDdsSemanaTemaChange(dataIso, valor) {
+    lancDdsSemanaTemas[dataIso] = valor;
+}
+
+function renderLancDdsSemanaTemas() {
+    const wrap = document.getElementById('lancDdsSemanaTemasWrap');
+    if (!wrap) return;
+    if (lancDdsSemanaDias.length === 0) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = `<label style="display:block; margin-bottom:6px; color:var(--text-light); font-weight:600; font-size:12.5px;">Tema de cada dia</label>
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:8px;">
+        ${lancDdsSemanaDias.map(d => {
+            const iso = toISODateLocal(d);
+            const label = `${NOMES_DIAS_SEMANA[d.getDay()].slice(0, 3).toUpperCase()} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+            return `<div>
+                <label style="display:block; margin-bottom:3px; font-size:11px; color:var(--text-light);">${label}</label>
+                <input type="text" list="lancDdsTemaSugestoes" value="${escapeHTML(lancDdsSemanaTemas[iso] || '')}" oninput="onLancDdsSemanaTemaChange('${iso}', this.value)" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:11.5px; box-sizing:border-box;">
+            </div>`;
+        }).join('')}
+        </div>`;
+}
+
+// Clicar cicla 🟢 Bom → 🟡 Regular → 🔴 Ruim → ⬜ Ausente → volta pro 🟢 (ver
+// DDS_SEMANA_ESTADO_CICLO) - "Ausente" não gera lançamento nesse dia pra essa pessoa.
+function cicloEstadoDdsSemana(matricula, dataIso) {
+    if (!lancDdsSemanaEstados[matricula]) lancDdsSemanaEstados[matricula] = {};
+    const atual = lancDdsSemanaEstados[matricula][dataIso] || 'ausente';
+    lancDdsSemanaEstados[matricula][dataIso] = DDS_SEMANA_ESTADO_CICLO[atual];
+    renderLancDdsSemanaGrade();
+    renderLancDdsSemanaAcoes();
+}
+
+function renderLancDdsSemanaGrade() {
+    const wrap = document.getElementById('lancDdsSemanaGradeWrap');
+    if (!wrap) return;
+    if (lancDdsSemanaEquipe.size === 0 || lancDdsSemanaDias.length === 0) {
+        wrap.innerHTML = '<div class="db-list-empty">Selecione a frente e a data de referência acima.</div>';
+        return;
+    }
+    const entries = Array.from(lancDdsSemanaEquipe.entries()).sort((a, b) => (a[1].nome || '').localeCompare(b[1].nome || ''));
+    const headerDias = lancDdsSemanaDias.map(d => `<th style="text-align:center; padding:4px 6px; min-width:56px;">${NOMES_DIAS_SEMANA[d.getDay()].slice(0, 3).toUpperCase()}<br>${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}</th>`).join('');
+    const linhas = entries.map(([matricula, c]) => {
+        const cels = lancDdsSemanaDias.map(d => {
+            const iso = toISODateLocal(d);
+            const estado = (lancDdsSemanaEstados[matricula] || {})[iso] || 'ausente';
+            const v = DDS_SEMANA_ESTADO_VISUAL[estado];
+            return `<td style="text-align:center; padding:2px;">
+                <button type="button" onclick="cicloEstadoDdsSemana('${escapeHTML(matricula)}', '${iso}')" title="${estado}" style="border:2px solid ${v.cor}; background:${v.bg}; border-radius:8px; cursor:pointer; font-size:15px; padding:3px 8px; line-height:1;">${v.emoji}</button>
+            </td>`;
+        }).join('');
+        return `<tr><td style="padding:4px 8px; white-space:nowrap;">${escapeHTML(c.nome || '')}<div style="font-size:10.5px; color:var(--text-light);">${escapeHTML(c.funcao || '')} — Mat. ${escapeHTML(matricula)}</div></td>${cels}</tr>`;
+    }).join('');
+    wrap.innerHTML = `<table style="border-collapse:collapse; font-size:12px; width:100%;">
+        <thead><tr style="color:var(--text-light);"><th style="text-align:left; padding:4px 8px;">Colaborador</th>${headerDias}</tr></thead>
+        <tbody>${linhas}</tbody>
+    </table>`;
+}
+
+function onLancDdsSemanaAcaoChange(chave, valor) {
+    lancDdsSemanaAcaoTratativa[chave] = valor;
+}
+
+// Área de Ação/Tratativa fica FORA da grade (célula minúscula não tem espaço) - uma
+// pra cada (colaborador, dia) marcado 🔴 Ruim, mesmo raciocínio de sigilo já aplicado no
+// lançamento de 1 dia (nunca aparece fora da tela de lançamento).
+function renderLancDdsSemanaAcoes() {
+    const wrap = document.getElementById('lancDdsSemanaAcoesWrap');
+    if (!wrap) return;
+    const pendentes = [];
+    lancDdsSemanaEquipe.forEach((c, matricula) => {
+        const porDia = lancDdsSemanaEstados[matricula] || {};
+        lancDdsSemanaDias.forEach(d => {
+            const iso = toISODateLocal(d);
+            if (porDia[iso] === 'ruim') pendentes.push({ matricula, nome: c.nome, dataIso: iso, dataLabel: formatSimpleDate(iso) });
+        });
+    });
+    if (pendentes.length === 0) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = '<div style="font-weight:600; font-size:12px; margin-bottom:6px;">Ação/Tratativa (só pra quem ficou 🔴 Ruim em algum dia)</div>' +
+        pendentes.map(p => {
+            const chave = `${p.matricula}|${p.dataIso}`;
+            const texto = lancDdsSemanaAcaoTratativa[chave] || '';
+            const preenchida = !!texto.trim();
+            return `<div style="margin-bottom:8px;">
+                <label style="display:block; margin-bottom:3px; font-size:11px; color:var(--text-light);">${escapeHTML(p.nome || p.matricula)} — ${p.dataLabel}</label>
+                <textarea rows="2" placeholder="Ex: conversa reservada, encaminhado ao RESP SMS..."
+                    oninput="onLancDdsSemanaAcaoChange('${chave}', this.value); this.style.borderColor = this.value.trim() ? 'var(--border)' : '#c0392b';"
+                    style="width:100%; padding:6px 8px; border:2px solid ${preenchida ? 'var(--border)' : '#c0392b'}; border-radius:6px; font-size:11.5px; box-sizing:border-box;">${escapeHTML(texto)}</textarea>
+            </div>`;
+        }).join('');
+}
+
+async function salvarLancamentoDdsSemana() {
+    const statusEl = document.getElementById('lancDdsSemanaStatus');
+    if (!lancDdsSemanaFrente) { statusEl.textContent = '❌ Selecione a Frente/Encarregado.'; statusEl.style.color = 'var(--danger)'; return; }
+    if (lancDdsSemanaDias.length === 0) { statusEl.textContent = '❌ Selecione a data de referência.'; statusEl.style.color = 'var(--danger)'; return; }
+    if (lancDdsSemanaEquipe.size === 0) { statusEl.textContent = '❌ Nenhum colaborador ativo cadastrado nessa frente.'; statusEl.style.color = 'var(--danger)'; return; }
+
+    const duracao = lancDdsSemanaDuracao || 10;
+    const cargaHoraria = duracao / 60;
+    const tsBase = Date.now();
+
+    // Um `ts` PRÓPRIO por dia (tsBase + índice do dia) garante um lote (id) diferente por
+    // dia mesmo lançando a semana inteira num clique só - cada dia vira um lote
+    // independente, editável/excluível sozinho depois pela Correção 1.
+    const rows = [];
+    lancDdsSemanaDias.forEach((d, idx) => {
+        const iso = toISODateLocal(d);
+        const tema = (lancDdsSemanaTemas[iso] || '').trim();
+        const ts = tsBase + idx;
+        lancDdsSemanaEquipe.forEach((c, matricula) => {
+            const estado = (lancDdsSemanaEstados[matricula] || {})[iso] || 'ausente';
+            if (estado === 'ausente') return;
+            rows.push({
+                id: `dds_${ts}_${matricula}`,
+                data_dds: iso,
+                frente_responsavel: lancDdsSemanaFrente,
+                tema: tema || null,
+                turno: lancDdsSemanaTurno || null,
+                horario_inicio: lancDdsSemanaHorario || null,
+                duracao_min: duracao,
+                matricula,
+                nome: c.nome,
+                funcao: c.funcao,
+                setor: c.setor,
+                emociograma: estado,
+                acao_tratativa: estado === 'ruim' ? (lancDdsSemanaAcaoTratativa[`${matricula}|${iso}`] || null) : null,
+                rubrica_confirmada: true,
+                carga_horaria: cargaHoraria,
+                observacoes: null
+            });
+        });
+    });
+
+    if (rows.length === 0) {
+        statusEl.textContent = '❌ Nenhum colaborador presente em nenhum dia - marque ao menos 1 pessoa como 🟢/🟡/🔴 em algum dia.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const diasComLancamento = new Set(rows.map(r => r.data_dds)).size;
+    if (!confirm(`Isso vai gerar ${rows.length} registro(s) de DDS (${diasComLancamento} dia(s) com pelo menos 1 presença). Continuar?`)) return;
+
     statusEl.textContent = `Enviando ${rows.length} registro(s)...`;
     statusEl.style.color = 'var(--text-light)';
     try {
         await supabaseUpsert('dds_realizados', rows);
         allDdsRealizados = allDdsRealizados.concat(rows);
-        statusEl.textContent = `✅ ${rows.length} colaborador(es) lançado(s) no DDS de ${formatSimpleDate(data)}.`;
+        statusEl.textContent = `✅ ${rows.length} registro(s) lançado(s) em ${diasComLancamento} dia(s) da semana.`;
         statusEl.style.color = 'var(--success)';
-        setTimeout(() => { abrirFormLancarDds(); renderDdsPanel(); renderDdsFechamentoSemanal(); }, 1800);
+        renderDdsPanel();
+        renderDdsFechamentoSemanal();
+        renderDdsLancamentosRecentes();
+        setTimeout(() => abrirFormLancarDdsSemana(), 1800);
     } catch (err) {
-        console.error('Erro ao lançar DDS:', err);
+        console.error('Erro ao lançar semana de DDS:', err);
         statusEl.textContent = '❌ Falha ao lançar: ' + err.message;
         statusEl.style.color = 'var(--danger)';
     }
@@ -4111,35 +4534,29 @@ function imprimirFichaDdsEmBranco() {
 
 // (b) Relatório do mês - a mesma tabela estilo controle_de_dds.pdf da tela (PARTE 6),
 // pronta pra impressão/arquivo, já com os totais. Nunca inclui acao_tratativa (PARTE 4).
-function imprimirRelatorioMensalDds() {
-    const ano = parseInt(document.getElementById('ddsImprimirRelatorioAno').value, 10);
-    const mes = parseInt(document.getElementById('ddsImprimirRelatorioMes').value, 10);
-    if (!ano || Number.isNaN(mes)) { alert('Selecione o mês e o ano do relatório.'); return; }
-
-    const inicio = new Date(ano, mes, 1);
-    const fim = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
+// HTML do relatório de controle de DDS (estilo controle_de_dds.pdf) pra QUALQUER intervalo
+// de datas - tabelaControleDds() já aceita isso, então mensal e semanal só trocam o título/
+// intervalo, sem duplicar a lógica de tabela. Devolve null quando não há nenhuma frente com
+// DDS lançado nesse intervalo (quem chama decide a mensagem de aviso).
+function montarHtmlRelatorioDds(inicio, fim, tituloPeriodo, tituloAba) {
     const { dias, frentes, porFrenteDia, porFrenteTotalHoras } = tabelaControleDds(inicio, fim);
-
-    if (frentes.length === 0) {
-        alert('Nenhuma frente com DDS lançado nesse mês.');
-        return;
-    }
+    if (frentes.length === 0) return null;
 
     const headerDias = dias.map(d => `<th>${String(parseLocalDate(d).getDate()).padStart(2, '0')}</th>`).join('');
     let totalGeralParticipantes = 0, totalGeralHoras = 0;
     const linhas = frentes.map(f => {
         const mapaDias = porFrenteDia.get(f) || new Map();
-        const totalMes = Array.from(mapaDias.values()).reduce((s, v) => s + v, 0);
+        const totalPeriodo = Array.from(mapaDias.values()).reduce((s, v) => s + v, 0);
         const horas = porFrenteTotalHoras.get(f) || 0;
-        totalGeralParticipantes += totalMes;
+        totalGeralParticipantes += totalPeriodo;
         totalGeralHoras += horas;
         const cels = dias.map(d => `<td style="text-align:center;">${mapaDias.get(d) || ''}</td>`).join('');
-        return `<tr><td>${escapeHTML(f)}</td>${cels}<td style="text-align:center; font-weight:700;">${totalMes}</td><td style="text-align:center; font-weight:700;">${horas.toLocaleString('pt-BR')}</td></tr>`;
+        return `<tr><td>${escapeHTML(f)}</td>${cels}<td style="text-align:center; font-weight:700;">${totalPeriodo}</td><td style="text-align:center; font-weight:700;">${horas.toLocaleString('pt-BR')}</td></tr>`;
     }).join('');
 
-    const html = `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
-<title>Controle de DDS - ${NOMES_MESES[mes]}/${ano}</title>
+<title>${escapeHTML(tituloAba)}</title>
 <style>
     body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111; margin: 20px; }
     .folha { max-width: 1300px; margin: 0 auto; }
@@ -4161,7 +4578,7 @@ function imprimirRelatorioMensalDds() {
         <div class="cabecalho">
             <img src="${LOGO_COP_BASE64}" alt="COP">
             <div class="titulo">
-                <h1>CONTROLE DE DDS — ${escapeHTML(NOMES_MESES[mes])}/${ano}</h1>
+                <h1>CONTROLE DE DDS — ${escapeHTML(tituloPeriodo)}</h1>
                 <p>Carga horária: 10min por tema por dia — ${frentes.length} frente(s) — emitido em ${new Date().toLocaleDateString('pt-BR')}</p>
             </div>
         </div>
@@ -4172,6 +4589,43 @@ function imprimirRelatorioMensalDds() {
         </table>
     </div>
 </body></html>`;
+}
+
+function imprimirRelatorioMensalDds() {
+    const ano = parseInt(document.getElementById('ddsImprimirRelatorioAno').value, 10);
+    const mes = parseInt(document.getElementById('ddsImprimirRelatorioMes').value, 10);
+    if (!ano || Number.isNaN(mes)) { alert('Selecione o mês e o ano do relatório.'); return; }
+
+    const inicio = new Date(ano, mes, 1);
+    const fim = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
+    const html = montarHtmlRelatorioDds(inicio, fim, `${NOMES_MESES[mes]}/${ano}`, `Controle de DDS - ${NOMES_MESES[mes]}/${ano}`);
+    if (!html) { alert('Nenhuma frente com DDS lançado nesse mês.'); return; }
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+// Mesmo relatório da Correção 3 acima, só que pra 1 semana (segunda a domingo) em vez do
+// mês inteiro - pra bater com o jeito real de trabalhar do usuário (ficha da semana em
+// papel, lançada e conferida de uma vez).
+function imprimirRelatorioSemanalDds() {
+    const dataRef = document.getElementById('ddsImprimirRelatorioSemanaData').value;
+    if (!dataRef) { alert('Selecione uma data de referência (qualquer dia da semana desejada).'); return; }
+
+    const seg = segundaDaSemana(parseLocalDate(dataRef));
+    const dom = new Date(seg.getFullYear(), seg.getMonth(), seg.getDate() + 6);
+    const fim = new Date(dom.getFullYear(), dom.getMonth(), dom.getDate(), 23, 59, 59, 999);
+    const tituloPeriodo = `Semana de ${formatSimpleDate(toISODateLocal(seg))} a ${formatSimpleDate(toISODateLocal(dom))}`;
+    const html = montarHtmlRelatorioDds(seg, fim, tituloPeriodo, `Controle de DDS - ${tituloPeriodo}`);
+    if (!html) { alert('Nenhuma frente com DDS lançado nessa semana.'); return; }
 
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);

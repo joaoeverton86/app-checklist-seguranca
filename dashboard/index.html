@@ -1211,11 +1211,15 @@
                 </div>
 
                 <div id="treinSubtab-dds" style="display:none;">
-                <div class="db-chart-card" style="margin-bottom: 16px;">
+                <div class="db-chart-card" id="lancDdsFormCard" style="margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 8px; flex-wrap: wrap;">
                         <div class="db-chart-title" style="margin-bottom: 0;">📝 Lançar DDS</div>
-                        <button class="db-clear-btn" onclick="abrirFormLancarDds()">🔄 Novo Lançamento</button>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button class="db-clear-btn" onclick="abrirFormLancarDds()">🔄 Novo Lançamento</button>
+                            <button class="db-clear-btn" onclick="toggleLancarDdsSemana()">📅 Lançar Semana Inteira</button>
+                        </div>
                     </div>
+                    <div id="lancDdsEditandoAviso" style="display:none; background:#fff9e6; border:1px solid #ffe8a1; color:#7a5b00; padding:8px 12px; border-radius:8px; font-size:12px; margin-bottom:12px;"></div>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; font-size: 12.5px; margin-bottom: 14px;">
                         <div>
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data do DDS *</label>
@@ -1272,6 +1276,66 @@
                     <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <button class="db-apply-btn" onclick="salvarLancamentoDds()">📤 Lançar DDS</button>
                         <span id="lancDdsStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--border);">
+                        <div class="db-chart-title" style="font-size: 13px; margin-bottom: 8px;">📋 Lançamentos Recentes</div>
+                        <p style="font-size: 11px; color: var(--text-light); margin: 0 0 8px;">
+                            Últimos lançamentos (agrupados por envio) - use "✏️ Editar" pra corrigir um erro (ex: emociograma trocado) ou "🗑️ Excluir" pra remover um lançamento feito por engano, como um dia duplicado sem querer.
+                        </p>
+                        <div id="ddsLancamentosRecentesLista" class="db-list" style="max-height: 300px;"></div>
+                    </div>
+                </div>
+
+                <div class="db-chart-card" id="lancDdsSemanaCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" style="margin-bottom: 0;">📅 Lançar Semana Inteira</div>
+                        <button class="db-clear-btn" onclick="toggleLancarDdsSemana()">✕ Fechar</button>
+                    </div>
+                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 12px;">
+                        Pra quando a semana inteira já foi preenchida no papel: assume presença o tempo todo (🟢 Bom, segunda a sexta) e corrige só quem faltou ou teve emociograma diferente - clique numa célula da grade abaixo pra alternar.
+                    </p>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px; margin-bottom: 14px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Frente/Encarregado *</label>
+                            <select id="lancDdsSemanaFrenteSelect" onchange="onLancDdsSemanaFrenteOuDataChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="">— Selecione —</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data de referência (qualquer dia da semana) *</label>
+                            <input type="date" id="lancDdsSemanaDataInput" onchange="onLancDdsSemanaFrenteOuDataChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Turno (semana toda)</label>
+                            <select id="lancDdsSemanaTurnoSelect" onchange="lancDdsSemanaTurno=this.value" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="">— Não informado —</option>
+                                <option value="Diurno">Diurno</option>
+                                <option value="Noturno">Noturno</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Horário de início (semana toda)</label>
+                            <input type="time" id="lancDdsSemanaHorarioInput" onchange="lancDdsSemanaHorario=this.value" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Duração em minutos (semana toda)</label>
+                            <input type="number" id="lancDdsSemanaDuracaoInput" min="1" step="1" value="10" onchange="lancDdsSemanaDuracao=parseFloat(this.value)||10" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                    </div>
+
+                    <div id="lancDdsSemanaTemasWrap" style="margin-bottom: 14px;"></div>
+
+                    <div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">
+                        Clique numa célula pra alternar 🟢 Bom → 🟡 Regular → 🔴 Ruim → ⬜ Ausente (não lança nesse dia pra essa pessoa) → volta pro 🟢.
+                    </div>
+                    <div id="lancDdsSemanaGradeWrap" style="overflow-x: auto; margin-bottom: 10px;"></div>
+
+                    <div id="lancDdsSemanaAcoesWrap" style="margin-bottom: 10px;"></div>
+
+                    <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="salvarLancamentoDdsSemana()">📤 Lançar Semana</button>
+                        <span id="lancDdsSemanaStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
                 </div>
 
@@ -1476,6 +1540,16 @@
                             </div>
                         </div>
                         <button class="db-apply-btn" onclick="imprimirRelatorioMensalDds()">🖨️ Imprimir Relatório do Mês</button>
+                    </div>
+                    <div style="margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--border);">
+                        <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Relatório da Semana (estilo controle de DDS)</div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 10px; font-size: 12.5px; margin-bottom: 10px;">
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Qualquer dia da semana desejada</label>
+                                <input type="date" id="ddsImprimirRelatorioSemanaData" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                        </div>
+                        <button class="db-apply-btn" onclick="imprimirRelatorioSemanalDds()">🖨️ Imprimir Relatório da Semana</button>
                     </div>
                 </div>
                 </div>

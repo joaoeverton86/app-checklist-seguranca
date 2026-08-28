@@ -4014,8 +4014,17 @@ function imprimirFichaDdsEmBranco() {
     const linhaResponsavel = diasSemana.map(() => `<td style="height:26px; font-size:9.5px;">Responsável:<br><br>Ass:</td>`).join('');
 
     const linhasColab = equipe.map((c, i) => {
-        const emocCels = diasSemana.map(() => `<td style="text-align:center; white-space:nowrap;">🟢&nbsp;🟡&nbsp;🔴<br><span style="font-size:9px;">Rubrica:</span></td>`).join('');
-        return `<tr><td style="text-align:center;">${i + 1}</td><td>${escapeHTML(c.matricula)}</td><td>${escapeHTML(c.nome)}</td><td>${escapeHTML(c.funcao || '')}</td>${emocCels}</tr>`;
+        // Emojis alinhados à esquerda numa linha compacta no topo da célula + "Rubrica:"
+        // pequeno logo abaixo + uma linha em branco de verdade (.linha-rubrica) reservada só
+        // pra assinar com caneta - antes tudo ficava centralizado empilhado na mesma célula,
+        // sem nenhuma área realmente livre pra rubrica (achado real reportado pelo usuário:
+        // rubricas feitas à mão saíam espremidas em cima do texto "Rubrica:").
+        const emocCels = diasSemana.map(() => `<td class="col-dia-resp">
+            <div style="text-align:left; white-space:nowrap; font-size:11px;">🟢&nbsp;🟡&nbsp;🔴</div>
+            <div style="font-size:8.5px; color:#555; margin-top:2px;">Rubrica:</div>
+            <div class="linha-rubrica"></div>
+        </td>`).join('');
+        return `<tr><td class="col-item">${i + 1}</td><td class="col-mat">${escapeHTML(c.matricula)}</td><td class="col-nome">${escapeHTML(c.nome)}</td><td class="col-funcao">${escapeHTML(c.funcao || '')}</td>${emocCels}</tr>`;
     }).join('');
 
     const html = `<!DOCTYPE html>
@@ -4037,6 +4046,12 @@ function imprimirFichaDdsEmBranco() {
     table { width: 100%; border-collapse: collapse; }
     th, td { border: 1px solid #000; padding: 4px 5px; font-size: 10px; vertical-align: top; }
     th { background: #e5e5e5; font-size: 10px; text-align: center; }
+    .col-item { width: 26px; text-align: center; }
+    .col-mat { width: 52px; text-align: center; font-size: 9px; }
+    .col-nome { font-size: 9px; }
+    .col-funcao { font-size: 9px; }
+    .col-dia-resp { min-width: 135px; }
+    .linha-rubrica { border-bottom: 1px solid #000; height: 18px; margin-top: 3px; }
     .no-print { text-align: center; margin: 16px 0; }
     .no-print button { padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; border: none; background: #4f46e5; color: #fff; }
     @media print { .no-print { display: none; } body { margin: 0; } .folha { border: 2px solid #000; } }
@@ -4073,7 +4088,7 @@ function imprimirFichaDdsEmBranco() {
             </tbody>
         </table>
         <table style="margin-top:8px;">
-            <thead><tr><th>Item</th><th>Matrícula</th><th>Nome</th><th>Função</th>${diasSemana.map(d => `<th>${NOMES_DIAS_SEMANA[d.getDay()].slice(0, 3).toUpperCase()} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} — Como estou / Rubrica</th>`).join('')}</tr></thead>
+            <thead><tr><th class="col-item">Item</th><th class="col-mat">Mat.</th><th class="col-nome">Nome</th><th class="col-funcao">Função</th>${diasSemana.map(d => `<th class="col-dia-resp">${NOMES_DIAS_SEMANA[d.getDay()].slice(0, 3).toUpperCase()} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}<br><span style="font-weight:400; font-size:8.5px;">Como estou / Rubrica</span></th>`).join('')}</tr></thead>
             <tbody>${linhasColab || `<tr><td colspan="${4 + diasSemana.length}" style="text-align:center; color:#777;">Nenhum colaborador ativo cadastrado nessa frente.</td></tr>`}</tbody>
         </table>
     </div>

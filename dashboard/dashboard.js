@@ -1511,6 +1511,7 @@ let allDdsFechamentoSemanal = [];
 // (Lançar DDS e a ficha impressa), nunca trava o campo - datas de feriado (ex: 25/12)
 // continuam com um tema "normal" cadastrado, ajustado na hora pelo usuário quando bate.
 let allDdsTemasCronograma = [];
+let allDdsFrentesConfig = [];
 let treinamentosFilter = 'mes';
 let treinamentosFiltroAno = '';
 let treinamentosFiltroMes = '';
@@ -1659,7 +1660,7 @@ function onTreinamentosFiltroAnoMesChange() {
 async function loadTreinamentosData() {
     const statusEl = document.getElementById('treinamentosImportStatus');
     try {
-        const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento, ddsTemas] = await Promise.all([
+        const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento, ddsTemas, ddsFrentesConfig] = await Promise.all([
             supabaseFetchCacheado('treinamentos_realizados', '?select=*'),
             supabaseFetch('treinamentos_catalogo', '?select=*'),
             supabaseFetch('treinamentos_status', '?select=*'),
@@ -1667,7 +1668,8 @@ async function loadTreinamentosData() {
             supabaseFetch('treinamentos_convocados', '?select=*'),
             supabaseFetch('dds_realizados', '?select=*'),
             supabaseFetch('dds_fechamento_semanal', '?select=*'),
-            supabaseFetch('dds_temas_cronograma', '?select=*')
+            supabaseFetch('dds_temas_cronograma', '?select=*'),
+            supabaseFetch('dds_frentes_config', '?select=*')
         ]);
         allTreinamentosRealizados = realizados;
         allTreinamentosCatalogo = catalogo;
@@ -1677,6 +1679,7 @@ async function loadTreinamentosData() {
         allDdsRealizados = ddsRealizados;
         allDdsFechamentoSemanal = ddsFechamento;
         allDdsTemasCronograma = ddsTemas;
+        allDdsFrentesConfig = ddsFrentesConfig;
         // Precisa do efetivo pra saber quem realmente está ativo hoje (ver comentário
         // em renderTreinamentosPanel), e do catálogo de GHE pra preencher Setor/Cargo/
         // Agentes/EPIs/EPCs na Ordem de Serviço (construirFolhaOrdemServico) - carrega os
@@ -2812,6 +2815,20 @@ function todasFrentesAtivas() {
     const frentes = new Set();
     allEfetivo.forEach(e => { if (colaboradorEstaAtivo(e) && e.responsavel) frentes.add(e.responsavel); });
     return Array.from(frentes).sort();
+}
+
+// Frentes que entram no "Controle de DDS por Frente" (tela + relatório mensal/semanal
+// impresso) - por padrão todas as frentes de todasFrentesAtivas() entram (sem registro em
+// dds_frentes_config = ativa), mas o usuário pode desmarcar uma frente administrativa que
+// quase nunca faz DDS em "⚙️ Gerenciar frentes desta tabela", ou adicionar uma frente extra
+// que ainda não tem colaborador cadastrado em Efetivo. NÃO afeta o combo "Carregar equipe
+// do Responsável" de Treinamento, nem o "Lançar Semana Inteira"/imprimir ficha do DDS -
+// só a contabilidade/relatório.
+function frentesAtivasDds() {
+    const config = new Map(allDdsFrentesConfig.map(c => [c.id, c.ativo !== false]));
+    const todas = new Set(todasFrentesAtivas());
+    allDdsFrentesConfig.forEach(c => todas.add(c.id));
+    return Array.from(todas).filter(f => (config.has(f) ? config.get(f) : true)).sort();
 }
 
 const CRONOGRAMA_DEFAULTS_SESSAO = {
@@ -4263,7 +4280,7 @@ function tabelaControleDds(inicio, fim) {
     const dias = diasDoIntervaloDds(inicio, fim);
     const porFrenteDia = new Map();
     const porFrenteTotalHoras = new Map();
-    todasFrentesAtivas().forEach(f => { porFrenteDia.set(f, new Map()); porFrenteTotalHoras.set(f, 0); });
+    frentesAtivasDds().forEach(f => { porFrenteDia.set(f, new Map()); porFrenteTotalHoras.set(f, 0); });
     allDdsRealizados.forEach(r => {
         if (!r.data_dds) return;
         const d = parseLocalDate(r.data_dds);
@@ -4322,6 +4339,60 @@ function renderAcoesTratativasPendentesDds() {
         </div>`).join('');
 }
 
+function renderDdsGerenciarFrentes() {
+    const container = document.getElementById('ddsGerenciarFrentesLista');
+    if (!container) return;
+    const config = new Map(allDdsFrentesConfig.map(c => [c.id, c.ativo !== false]));
+    const todas = new Set(todasFrentesAtivas());
+    allDdsFrentesConfig.forEach(c => todas.add(c.id));
+    const frentes = Array.from(todas).sort();
+    if (frentes.length === 0) {
+        container.innerHTML = '<div class="db-list-empty">Nenhuma frente cadastrada em Efetivo ainda.</div>';
+        return;
+    }
+    container.innerHTML = frentes.map(f => {
+        const ativo = config.has(f) ? config.get(f) : true;
+        return `<label style="display:flex; align-items:center; gap:8px; font-size:12.5px; cursor:pointer; padding:2px 0;">
+            <input type="checkbox" ${ativo ? 'checked' : ''} onchange="toggleFrenteDdsAtiva('${escapeHTML(f)}', this.checked)" style="width:16px; height:16px; cursor:pointer; flex-shrink:0;">
+            <span>${escapeHTML(f)}</span>
+        </label>`;
+    }).join('');
+}
+
+async function toggleFrenteDdsAtiva(frente, ativo) {
+    try {
+        await supabaseUpsert('dds_frentes_config', [{ id: frente, ativo }]);
+        const existente = allDdsFrentesConfig.find(c => c.id === frente);
+        if (existente) existente.ativo = ativo;
+        else allDdsFrentesConfig.push({ id: frente, ativo });
+        const { inicio, fim } = getDdsDateRange();
+        renderDdsTabelaControle(inicio, fim);
+    } catch (e) {
+        alert('Erro ao salvar: ' + e.message);
+        renderDdsGerenciarFrentes();
+    }
+}
+
+async function adicionarFrenteDdsManual() {
+    const input = document.getElementById('ddsNovaFrenteInput');
+    const nome = (input.value || '').trim().toUpperCase();
+    if (!nome) return;
+    if (todasFrentesAtivas().includes(nome) || allDdsFrentesConfig.some(c => c.id === nome)) {
+        alert('Essa frente já está na lista.');
+        return;
+    }
+    try {
+        await supabaseUpsert('dds_frentes_config', [{ id: nome, ativo: true }]);
+        allDdsFrentesConfig.push({ id: nome, ativo: true });
+        input.value = '';
+        renderDdsGerenciarFrentes();
+        const { inicio, fim } = getDdsDateRange();
+        renderDdsTabelaControle(inicio, fim);
+    } catch (e) {
+        alert('Erro ao adicionar: ' + e.message);
+    }
+}
+
 function renderDdsPanel() {
     popularFiltroAnoDds();
     const anoSel = document.getElementById('ddsFiltroAno');
@@ -4344,6 +4415,7 @@ function renderDdsPanel() {
     document.getElementById('kpiDdsRuim').textContent = periodo.filter(r => r.emociograma === 'ruim').length;
 
     renderDdsTabelaControle(inicio, fim);
+    renderDdsGerenciarFrentes();
     renderAcoesTratativasPendentesDds();
 
     if (typeof Chart === 'undefined') return;

@@ -1512,6 +1512,7 @@ let allDdsFechamentoSemanal = [];
 // continuam com um tema "normal" cadastrado, ajustado na hora pelo usuário quando bate.
 let allDdsTemasCronograma = [];
 let allDdsFrentesConfig = [];
+let allDdsHistoricoAgregado = [];
 let treinamentosFilter = 'mes';
 let treinamentosFiltroAno = '';
 let treinamentosFiltroMes = '';
@@ -1660,7 +1661,7 @@ function onTreinamentosFiltroAnoMesChange() {
 async function loadTreinamentosData() {
     const statusEl = document.getElementById('treinamentosImportStatus');
     try {
-        const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento, ddsTemas, ddsFrentesConfig] = await Promise.all([
+        const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento, ddsTemas, ddsFrentesConfig, ddsHistorico] = await Promise.all([
             supabaseFetchCacheado('treinamentos_realizados', '?select=*'),
             supabaseFetch('treinamentos_catalogo', '?select=*'),
             supabaseFetch('treinamentos_status', '?select=*'),
@@ -1669,7 +1670,8 @@ async function loadTreinamentosData() {
             supabaseFetch('dds_realizados', '?select=*'),
             supabaseFetch('dds_fechamento_semanal', '?select=*'),
             supabaseFetch('dds_temas_cronograma', '?select=*'),
-            supabaseFetch('dds_frentes_config', '?select=*')
+            supabaseFetch('dds_frentes_config', '?select=*'),
+            supabaseFetch('dds_historico_agregado', '?select=*')
         ]);
         allTreinamentosRealizados = realizados;
         allTreinamentosCatalogo = catalogo;
@@ -1680,6 +1682,7 @@ async function loadTreinamentosData() {
         allDdsFechamentoSemanal = ddsFechamento;
         allDdsTemasCronograma = ddsTemas;
         allDdsFrentesConfig = ddsFrentesConfig;
+        allDdsHistoricoAgregado = ddsHistorico;
         // Precisa do efetivo pra saber quem realmente está ativo hoje (ver comentário
         // em renderTreinamentosPanel), e do catálogo de GHE pra preencher Setor/Cargo/
         // Agentes/EPIs/EPCs na Ordem de Serviço (construirFolhaOrdemServico) - carrega os
@@ -4291,6 +4294,19 @@ function tabelaControleDds(inicio, fim) {
         mapaDias.set(r.data_dds, (mapaDias.get(r.data_dds) || 0) + 1);
         porFrenteTotalHoras.set(frente, porFrenteTotalHoras.get(frente) + (parseFloat(r.carga_horaria) || 0));
     });
+    // Histórico agregado importado da planilha (jan-ago/26, antes do sistema existir) -
+    // cada registro já É a quantidade de participantes daquele dia (não 1 linha por
+    // pessoa como em allDdsRealizados), por isso soma direto em vez de contar +1.
+    allDdsHistoricoAgregado.forEach(h => {
+        if (!h.data_dds) return;
+        const d = parseLocalDate(h.data_dds);
+        if (d < inicio || d > fim) return;
+        const frente = h.frente_responsavel || '(sem frente)';
+        if (!porFrenteDia.has(frente)) { porFrenteDia.set(frente, new Map()); porFrenteTotalHoras.set(frente, 0); }
+        const mapaDias = porFrenteDia.get(frente);
+        mapaDias.set(h.data_dds, (mapaDias.get(h.data_dds) || 0) + (parseInt(h.participantes) || 0));
+        porFrenteTotalHoras.set(frente, porFrenteTotalHoras.get(frente) + (parseFloat(h.carga_horaria) || 0));
+    });
     const frentes = Array.from(porFrenteDia.keys()).sort();
     return { dias, frentes, porFrenteDia, porFrenteTotalHoras };
 }
@@ -4406,10 +4422,17 @@ function renderDdsPanel() {
         const d = parseLocalDate(r.data_dds);
         return d >= inicio && d <= fim;
     });
+    const periodoHistorico = allDdsHistoricoAgregado.filter(h => {
+        if (!h.data_dds) return false;
+        const d = parseLocalDate(h.data_dds);
+        return d >= inicio && d <= fim;
+    });
 
     const sessoesDia = new Set(periodo.map(r => `${r.frente_responsavel}||${r.data_dds}`));
-    document.getElementById('kpiDdsSessoes').textContent = sessoesDia.size;
-    const horasDds = periodo.reduce((sum, r) => sum + (parseFloat(r.carga_horaria) || 0), 0);
+    const sessoesHistorico = new Set(periodoHistorico.map(h => `${h.frente_responsavel}||${h.data_dds}`));
+    document.getElementById('kpiDdsSessoes').textContent = (sessoesDia.size + sessoesHistorico.size).toLocaleString('pt-BR');
+    const horasDds = periodo.reduce((sum, r) => sum + (parseFloat(r.carga_horaria) || 0), 0)
+        + periodoHistorico.reduce((sum, h) => sum + (parseFloat(h.carga_horaria) || 0), 0);
     document.getElementById('kpiDdsHHT').textContent = horasDds.toLocaleString('pt-BR');
     document.getElementById('kpiDdsColaboradores').textContent = new Set(periodo.map(r => r.matricula)).size;
     document.getElementById('kpiDdsRuim').textContent = periodo.filter(r => r.emociograma === 'ruim').length;
@@ -4425,7 +4448,8 @@ function renderDdsPanel() {
     const meses = [], horasDdsPorMes = [], horasTreinPorMes = [];
     const now = new Date();
     const datasTodas = allTreinamentosRealizados.filter(r => r.data_treinamento).map(r => parseLocalDate(r.data_treinamento))
-        .concat(allDdsRealizados.filter(r => r.data_dds).map(r => parseLocalDate(r.data_dds)));
+        .concat(allDdsRealizados.filter(r => r.data_dds).map(r => parseLocalDate(r.data_dds)))
+        .concat(allDdsHistoricoAgregado.filter(h => h.data_dds).map(h => parseLocalDate(h.data_dds)));
     const primeiraData = datasTodas.length > 0 ? new Date(Math.min(...datasTodas.map(d => d.getTime()))) : now;
     let cursorMes = new Date(primeiraData.getFullYear(), primeiraData.getMonth(), 1);
     const limiteMes = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -8548,9 +8572,13 @@ function hht220DoMes(ano, mesIndex0) {
 // HHT de DDS num intervalo/mês - mesma lógica de filtro por data que hhtDoMes já usa,
 // só que somando carga_horaria de allDdsRealizados em vez de allTreinamentosRealizados.
 function ddsHorasNoPeriodo(inicio, fim) {
-    return allDdsRealizados
+    const horasDetalhado = allDdsRealizados
         .filter(r => { if (!r.data_dds) return false; const d = parseLocalDate(r.data_dds); return d >= inicio && d <= fim; })
         .reduce((sum, r) => sum + (parseFloat(r.carga_horaria) || 0), 0);
+    const horasHistorico = allDdsHistoricoAgregado
+        .filter(h => { if (!h.data_dds) return false; const d = parseLocalDate(h.data_dds); return d >= inicio && d <= fim; })
+        .reduce((sum, h) => sum + (parseFloat(h.carga_horaria) || 0), 0);
+    return horasDetalhado + horasHistorico;
 }
 
 function ddsHorasDoMes(ano, mesIndex0) {

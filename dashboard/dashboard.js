@@ -1513,6 +1513,7 @@ let allDdsFechamentoSemanal = [];
 let allDdsTemasCronograma = [];
 let allDdsFrentesConfig = [];
 let allDdsHistoricoAgregado = [];
+let allDdsFrentesAlias = [];
 let treinamentosFilter = 'mes';
 let treinamentosFiltroAno = '';
 let treinamentosFiltroMes = '';
@@ -1661,7 +1662,7 @@ function onTreinamentosFiltroAnoMesChange() {
 async function loadTreinamentosData() {
     const statusEl = document.getElementById('treinamentosImportStatus');
     try {
-        const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento, ddsTemas, ddsFrentesConfig, ddsHistorico] = await Promise.all([
+        const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento, ddsTemas, ddsFrentesConfig, ddsHistorico, ddsFrentesAlias] = await Promise.all([
             supabaseFetchCacheado('treinamentos_realizados', '?select=*'),
             supabaseFetch('treinamentos_catalogo', '?select=*'),
             supabaseFetch('treinamentos_status', '?select=*'),
@@ -1671,7 +1672,8 @@ async function loadTreinamentosData() {
             supabaseFetch('dds_fechamento_semanal', '?select=*'),
             supabaseFetch('dds_temas_cronograma', '?select=*'),
             supabaseFetch('dds_frentes_config', '?select=*'),
-            supabaseFetch('dds_historico_agregado', '?select=*')
+            supabaseFetch('dds_historico_agregado', '?select=*'),
+            supabaseFetch('dds_frentes_alias', '?select=*')
         ]);
         allTreinamentosRealizados = realizados;
         allTreinamentosCatalogo = catalogo;
@@ -1683,6 +1685,7 @@ async function loadTreinamentosData() {
         allDdsTemasCronograma = ddsTemas;
         allDdsFrentesConfig = ddsFrentesConfig;
         allDdsHistoricoAgregado = ddsHistorico;
+        allDdsFrentesAlias = ddsFrentesAlias;
         // Precisa do efetivo pra saber quem realmente está ativo hoje (ver comentário
         // em renderTreinamentosPanel), e do catálogo de GHE pra preencher Setor/Cargo/
         // Agentes/EPIs/EPCs na Ordem de Serviço (construirFolhaOrdemServico) - carrega os
@@ -2820,6 +2823,15 @@ function todasFrentesAtivas() {
     return Array.from(frentes).sort();
 }
 
+// Resolve um nome de frente pro seu "nome atual", caso tenha sido mesclado em
+// "🔗 Mesclar frente antiga com uma atual" (ex: 'WILLIAMS' -> 'ADEILTON MONTEIRO'). Se não
+// tiver mesclagem cadastrada, devolve o próprio nome sem alteração. NUNCA muda o dado
+// original no banco - só agrupa na hora de montar a tabela/relatório.
+function resolverFrenteDds(nome) {
+    const alias = allDdsFrentesAlias.find(a => a.id === nome);
+    return alias ? alias.frente_atual : nome;
+}
+
 // Frentes que entram no "Controle de DDS por Frente" (tela + relatório mensal/semanal
 // impresso) - por padrão todas as frentes de todasFrentesAtivas() entram (sem registro em
 // dds_frentes_config = ativa), mas o usuário pode desmarcar uma frente administrativa que
@@ -2829,8 +2841,8 @@ function todasFrentesAtivas() {
 // só a contabilidade/relatório.
 function frentesAtivasDds() {
     const config = new Map(allDdsFrentesConfig.map(c => [c.id, c.ativo !== false]));
-    const todas = new Set(todasFrentesAtivas());
-    allDdsFrentesConfig.forEach(c => todas.add(c.id));
+    const todas = new Set(todasFrentesAtivas().map(resolverFrenteDds));
+    allDdsFrentesConfig.forEach(c => todas.add(resolverFrenteDds(c.id)));
     return Array.from(todas).filter(f => (config.has(f) ? config.get(f) : true)).sort();
 }
 
@@ -4288,7 +4300,7 @@ function tabelaControleDds(inicio, fim) {
         if (!r.data_dds) return;
         const d = parseLocalDate(r.data_dds);
         if (d < inicio || d > fim) return;
-        const frente = r.frente_responsavel || '(sem frente)';
+        const frente = resolverFrenteDds(r.frente_responsavel || '(sem frente)');
         if (!porFrenteDia.has(frente)) { porFrenteDia.set(frente, new Map()); porFrenteTotalHoras.set(frente, 0); }
         const mapaDias = porFrenteDia.get(frente);
         mapaDias.set(r.data_dds, (mapaDias.get(r.data_dds) || 0) + 1);
@@ -4301,7 +4313,7 @@ function tabelaControleDds(inicio, fim) {
         if (!h.data_dds) return;
         const d = parseLocalDate(h.data_dds);
         if (d < inicio || d > fim) return;
-        const frente = h.frente_responsavel || '(sem frente)';
+        const frente = resolverFrenteDds(h.frente_responsavel || '(sem frente)');
         if (!porFrenteDia.has(frente)) { porFrenteDia.set(frente, new Map()); porFrenteTotalHoras.set(frente, 0); }
         const mapaDias = porFrenteDia.get(frente);
         mapaDias.set(h.data_dds, (mapaDias.get(h.data_dds) || 0) + (parseInt(h.participantes) || 0));
@@ -4359,8 +4371,8 @@ function renderDdsGerenciarFrentes() {
     const container = document.getElementById('ddsGerenciarFrentesLista');
     if (!container) return;
     const config = new Map(allDdsFrentesConfig.map(c => [c.id, c.ativo !== false]));
-    const todas = new Set(todasFrentesAtivas());
-    allDdsFrentesConfig.forEach(c => todas.add(c.id));
+    const todas = new Set(todasFrentesAtivas().map(resolverFrenteDds));
+    allDdsFrentesConfig.forEach(c => todas.add(resolverFrenteDds(c.id)));
     const frentes = Array.from(todas).sort();
     if (frentes.length === 0) {
         container.innerHTML = '<div class="db-list-empty">Nenhuma frente cadastrada em Efetivo ainda.</div>';
@@ -4409,6 +4421,62 @@ async function adicionarFrenteDdsManual() {
     }
 }
 
+function renderDdsAliasFrentes() {
+    const container = document.getElementById('ddsAliasFrentesLista');
+    if (!container) return;
+    if (allDdsFrentesAlias.length === 0) {
+        container.innerHTML = '<div class="db-list-empty">Nenhuma mesclagem cadastrada ainda.</div>';
+        return;
+    }
+    container.innerHTML = allDdsFrentesAlias.slice().sort((a, b) => a.id.localeCompare(b.id)).map(a => `
+        <div style="display:flex; align-items:center; gap:8px; font-size:12px;">
+            <span style="flex:1;"><b>${escapeHTML(a.id)}</b> conta como <b>${escapeHTML(a.frente_atual)}</b></span>
+            <button onclick="desfazerMesclarFrenteDds('${escapeHTML(a.id)}')" title="Desfazer" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:14px; padding:2px 6px;">✕</button>
+        </div>`).join('');
+}
+
+async function mesclarFrenteDds() {
+    const inputAntigo = document.getElementById('ddsAliasNomeAntigoInput');
+    const inputAtual = document.getElementById('ddsAliasNomeAtualInput');
+    const nomeAntigo = (inputAntigo.value || '').trim().toUpperCase();
+    const nomeAtual = (inputAtual.value || '').trim().toUpperCase();
+    if (!nomeAntigo || !nomeAtual) { alert('Preencha os dois nomes.'); return; }
+    if (nomeAntigo === nomeAtual) { alert('Os dois nomes não podem ser iguais.'); return; }
+    if (!confirm(`Confirma: "${nomeAntigo}" passa a contar como "${nomeAtual}" em todas as tabelas e relatórios do DDS?\n\nO dado original de "${nomeAntigo}" não é apagado, só a exibição passa a ser junto com "${nomeAtual}".`)) return;
+    try {
+        await supabaseUpsert('dds_frentes_alias', [{ id: nomeAntigo, frente_atual: nomeAtual }]);
+        await supabaseUpsert('dds_frentes_config', [{ id: nomeAtual, ativo: true }]);
+        const idxAlias = allDdsFrentesAlias.findIndex(a => a.id === nomeAntigo);
+        if (idxAlias >= 0) allDdsFrentesAlias[idxAlias].frente_atual = nomeAtual;
+        else allDdsFrentesAlias.push({ id: nomeAntigo, frente_atual: nomeAtual });
+        const idxConfig = allDdsFrentesConfig.findIndex(c => c.id === nomeAtual);
+        if (idxConfig >= 0) allDdsFrentesConfig[idxConfig].ativo = true;
+        else allDdsFrentesConfig.push({ id: nomeAtual, ativo: true });
+        inputAntigo.value = '';
+        inputAtual.value = '';
+        renderDdsAliasFrentes();
+        renderDdsGerenciarFrentes();
+        const { inicio, fim } = getDdsDateRange();
+        renderDdsTabelaControle(inicio, fim);
+    } catch (e) {
+        alert('Erro ao mesclar: ' + e.message);
+    }
+}
+
+async function desfazerMesclarFrenteDds(nomeAntigo) {
+    if (!confirm(`Desfazer a mesclagem de "${nomeAntigo}"? Ele volta a aparecer como frente separada nas tabelas.`)) return;
+    try {
+        await supabaseDelete('dds_frentes_alias', nomeAntigo);
+        allDdsFrentesAlias = allDdsFrentesAlias.filter(a => a.id !== nomeAntigo);
+        renderDdsAliasFrentes();
+        renderDdsGerenciarFrentes();
+        const { inicio, fim } = getDdsDateRange();
+        renderDdsTabelaControle(inicio, fim);
+    } catch (e) {
+        alert('Erro ao desfazer: ' + e.message);
+    }
+}
+
 function renderDdsPanel() {
     popularFiltroAnoDds();
     const anoSel = document.getElementById('ddsFiltroAno');
@@ -4439,6 +4507,7 @@ function renderDdsPanel() {
 
     renderDdsTabelaControle(inicio, fim);
     renderDdsGerenciarFrentes();
+    renderDdsAliasFrentes();
     renderAcoesTratativasPendentesDds();
 
     if (typeof Chart === 'undefined') return;

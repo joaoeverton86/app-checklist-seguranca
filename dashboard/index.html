@@ -1458,6 +1458,16 @@
                                 <input type="text" id="ddsNovaFrenteInput" placeholder="Nome da nova frente" style="flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
                                 <button class="db-apply-btn" onclick="adicionarFrenteDdsManual()" style="white-space:nowrap; padding:6px 12px; font-size:12px;">+ Adicionar</button>
                             </div>
+                            <div style="margin-top:14px; padding-top:10px; border-top:1px solid var(--border);">
+                                <p style="font-size:11px; color:var(--text-light); margin:0 0 6px;">Quando um encarregado sai e outro assume a mesma equipe (ex: FABRICIO virou ELÉTRICA), mescle o nome antigo aqui - o histórico do nome antigo continua guardado, só passa a contar junto do nome atual nas tabelas e relatórios.</p>
+                                <div id="ddsAliasFrentesLista" style="display:flex; flex-direction:column; gap:4px; max-width:420px; margin-bottom:8px;"></div>
+                                <div style="display:flex; gap:6px; max-width:420px; flex-wrap:wrap;">
+                                    <input type="text" id="ddsAliasNomeAntigoInput" placeholder="Nome antigo (ex: FABRICIO)" style="flex:1; min-width:140px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
+                                    <span style="align-self:center; font-size:12px; color:var(--text-light);">virou</span>
+                                    <input type="text" id="ddsAliasNomeAtualInput" placeholder="Nome atual (ex: ELÉTRICA)" style="flex:1; min-width:140px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
+                                    <button class="db-apply-btn" onclick="mesclarFrenteDds()" style="white-space:nowrap; padding:6px 12px; font-size:12px;">🔗 Mesclar</button>
+                                </div>
+                            </div>
                         </details>
                     </div>
                     <div class="db-chart-card db-list-card" style="margin-top: 16px;">

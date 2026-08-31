@@ -1877,8 +1877,12 @@ function renderTreinHistLista() {
         const detalhe = expandido ? `
             <div style="flex-basis:100%; margin-top:8px; padding:10px; background:var(--bg); border-radius:8px; font-size:12px;">
                 <div style="margin-bottom:6px;"><b>Participantes (${s.participantes.length}):</b></div>
-                <ul style="margin:0; padding-left:18px;">
-                    ${s.participantes.map(p => `<li>${escapeHTML(p.nome || p.matricula)} — ${escapeHTML(p.funcao || 'Sem função')}</li>`).join('')}
+                <ul style="margin:0; padding-left:18px; list-style:none;">
+                    ${s.participantes.map(p => `
+                        <li style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:3px 0;">
+                            <span>${escapeHTML(p.nome || p.matricula)} — ${escapeHTML(p.funcao || 'Sem função')}</span>
+                            <button onclick="excluirTreinamentoRealizadoHist('${escapeHTML(p.id)}')" title="Excluir este lançamento" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:14px; padding:2px 6px; flex-shrink:0;">🗑️</button>
+                        </li>`).join('')}
                 </ul>
             </div>` : '';
         return `
@@ -2268,6 +2272,24 @@ async function excluirTreinamentoRealizado(id) {
         if (buscaEl) { buscaEl.value = buscaAtual; renderListaTreinColaboradoresPeriodo(); }
     } catch (err) {
         console.error('Erro ao excluir treinamento realizado:', err);
+        alert('Falha ao excluir o registro: ' + err.message);
+    }
+}
+
+// Mesma exclusão de excluirTreinamentoRealizado() acima, mas chamada a partir da aba
+// "Histórico" (renderTreinHistLista) em vez de "Colaboradores no período" - por isso
+// re-renderiza a tela de Histórico, não o painel inteiro. Motivo de existir: o usuário
+// corrige lançamentos errados (ex: pessoa certa na data errada) direto de onde ele
+// primeiro percebe o erro, sem precisar sair da aba pra achar a mesma pessoa em outro
+// lugar.
+async function excluirTreinamentoRealizadoHist(id) {
+    if (!confirm('Excluir este lançamento de treinamento? Essa ação não pode ser desfeita.')) return;
+    try {
+        await supabaseDelete('treinamentos_realizados', id);
+        allTreinamentosRealizados = allTreinamentosRealizados.filter(r => r.id !== id);
+        renderTreinHistLista();
+    } catch (err) {
+        console.error('Erro ao excluir lançamento de treinamento (Histórico):', err);
         alert('Falha ao excluir o registro: ' + err.message);
     }
 }
@@ -3142,6 +3164,32 @@ async function salvarLancamentoTreinamento() {
         statusEl.textContent = '❌ Selecione ao menos um colaborador na lista de presença.';
         statusEl.style.color = 'var(--danger)';
         return;
+    }
+
+    // Avisa (mas não bloqueia) quando algum colaborador selecionado já tem ESTE MESMO
+    // treinamento com validade que ainda cobre a data sendo lançada agora - situação
+    // real que gerou o erro do LUCAS/VANDILER em jul/2026 (LUCAS quase foi relançado em
+    // 13/07 quando já tinha Integração válida até 2028-07-02). Não bloqueia porque uma
+    // reciclagem antecipada pode ser legítima (ex: exigência da fiscalização).
+    const jaValidos = [];
+    selecionados.forEach(([matricula, c]) => {
+        const registroValido = allTreinamentosRealizados.find(r =>
+            r.matricula === matricula &&
+            r.treinamento_cod === codigo &&
+            r.data_proxima_reciclagem &&
+            r.data_proxima_reciclagem > data
+        );
+        if (registroValido) {
+            jaValidos.push(`${c.nome} (válido até ${formatSimpleDate(registroValido.data_proxima_reciclagem)})`);
+        }
+    });
+    if (jaValidos.length > 0) {
+        const confirmaMesmoAssim = confirm(
+            `⚠️ ${jaValidos.length} colaborador(es) já têm "${cat.nome}" válido além de ${formatSimpleDate(data)}:\n\n` +
+            jaValidos.join('\n') +
+            `\n\nDeseja lançar mesmo assim?`
+        );
+        if (!confirmaMesmoAssim) return;
     }
 
     // Próxima reciclagem = data + meses_validade do catálogo, calculado aqui (sem

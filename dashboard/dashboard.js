@@ -1514,6 +1514,11 @@ let allDdsTemasCronograma = [];
 let allDdsFrentesConfig = [];
 let allDdsHistoricoAgregado = [];
 let allDdsFrentesAlias = [];
+let allRelatorioMensalConfig = [];
+// Cache em memória dos 3 valores de "turmas/módulos" (um por categoria do relatório
+// mensal) - populado a partir de allRelatorioMensalConfig em
+// popularRelatorioMensalDefaults(), usado por montarLinhasRelatorioMensal().
+let relatorioMensalTurmas = { integracao: null, seguranca: null, ddsms: null };
 let treinamentosFilter = 'mes';
 let treinamentosFiltroAno = '';
 let treinamentosFiltroMes = '';
@@ -1662,7 +1667,7 @@ function onTreinamentosFiltroAnoMesChange() {
 async function loadTreinamentosData() {
     const statusEl = document.getElementById('treinamentosImportStatus');
     try {
-        const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento, ddsTemas, ddsFrentesConfig, ddsHistorico, ddsFrentesAlias] = await Promise.all([
+        const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento, ddsTemas, ddsFrentesConfig, ddsHistorico, ddsFrentesAlias, relatorioConfig] = await Promise.all([
             supabaseFetchCacheado('treinamentos_realizados', '?select=*'),
             supabaseFetch('treinamentos_catalogo', '?select=*'),
             supabaseFetch('treinamentos_status', '?select=*'),
@@ -1673,7 +1678,8 @@ async function loadTreinamentosData() {
             supabaseFetch('dds_temas_cronograma', '?select=*'),
             supabaseFetch('dds_frentes_config', '?select=*'),
             supabaseFetch('dds_historico_agregado', '?select=*'),
-            supabaseFetch('dds_frentes_alias', '?select=*')
+            supabaseFetch('dds_frentes_alias', '?select=*'),
+            supabaseFetch('relatorio_mensal_config', '?select=*')
         ]);
         allTreinamentosRealizados = realizados;
         allTreinamentosCatalogo = catalogo;
@@ -1686,6 +1692,7 @@ async function loadTreinamentosData() {
         allDdsFrentesConfig = ddsFrentesConfig;
         allDdsHistoricoAgregado = ddsHistorico;
         allDdsFrentesAlias = ddsFrentesAlias;
+        allRelatorioMensalConfig = relatorioConfig;
         // Precisa do efetivo pra saber quem realmente está ativo hoje (ver comentário
         // em renderTreinamentosPanel), e do catálogo de GHE pra preencher Setor/Cargo/
         // Agentes/EPIs/EPCs na Ordem de Serviço (construirFolhaOrdemServico) - carrega os
@@ -1720,7 +1727,7 @@ async function loadTreinamentosData() {
 // showDbPage - se o gráfico foi criado com o canvas escondido em outra aba, sem isso
 // ficaria em branco pra sempre).
 function showTreinSubtab(tab) {
-    ['visao', 'lancar', 'cronograma', 'equipes', 'registro', 'kits', 'historico', 'catalogo', 'dds'].forEach(t => {
+    ['visao', 'lancar', 'cronograma', 'equipes', 'registro', 'kits', 'historico', 'catalogo', 'dds', 'relatorio'].forEach(t => {
         const content = document.getElementById('treinSubtab-' + t);
         const btn = document.getElementById('treinSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -1730,6 +1737,7 @@ function showTreinSubtab(tab) {
     if (tab === 'historico') renderTreinHistLista();
     if (tab === 'cronograma') renderCronogramaLista();
     if (tab === 'equipes') { popularEquipesResponsavelDatalist(); renderEquipeAtual(); }
+    if (tab === 'relatorio') popularRelatorioMensalDefaults();
     if (tab === 'dds') {
         renderDdsPanel();
         renderDdsFechamentoSemanal();
@@ -8676,6 +8684,257 @@ function headcountAsOf(dateEnd) {
         if (!e.dt_demissao) return true;
         return parseLocalDate(e.dt_demissao) > dateEnd;
     }).length;
+}
+
+// ================================================================
+// RELATÓRIO MENSAL "DDS/TREINAMENTO" (mesmo formato do PDF que o usuário já envia
+// todo mês pra gerenciadora do contrato) - ver notas completas no prompt que criou
+// esta seção.
+// ================================================================
+
+// Preenche mês/ano (padrão: mês anterior ao atual) e os 3 campos de turmas/módulos
+// (padrão: último valor salvo em relatorio_mensal_config) só na primeira vez que a
+// aba é aberta - não sobrescreve o que o usuário já tiver digitado na tela.
+function popularRelatorioMensalDefaults() {
+    const hoje = new Date();
+    const mesAnterior = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+    const mesEl = document.getElementById('relatorioMensalMes');
+    const anoEl = document.getElementById('relatorioMensalAno');
+    // mesEl é <select> - já nasce com value="0" (primeira <option>), nunca fica vazio,
+    // por isso usa dataset.inicializado (mesmo padrão de anoSel/mesSel em
+    // renderCronogramaLista/renderDdsPanel/etc) em vez de checar '' como o anoEl (input
+    // number, esse sim nasce vazio de verdade).
+    if (mesEl && !mesEl.dataset.inicializado) { mesEl.value = String(mesAnterior.getMonth()); mesEl.dataset.inicializado = '1'; }
+    if (anoEl && !anoEl.value) anoEl.value = mesAnterior.getFullYear();
+
+    const cfg = new Map(allRelatorioMensalConfig.map(c => [c.id, c.valor]));
+    const integEl = document.getElementById('relatorioMensalTurmaIntegracao');
+    const segEl = document.getElementById('relatorioMensalTurmaSeguranca');
+    const ddsEl = document.getElementById('relatorioMensalTurmaDdsms');
+    if (integEl && !integEl.value) integEl.value = cfg.get('turmas_integracao') ?? 1;
+    if (segEl && !segEl.value) segEl.value = cfg.get('turmas_seguranca') ?? '';
+    if (ddsEl && !ddsEl.value) ddsEl.value = cfg.get('turmas_ddsms') ?? (allDdsFrentesConfig.length || '');
+}
+
+// Lê os 3 campos de turmas da tela, guarda em memória (usado por
+// montarLinhasRelatorioMensal logo abaixo) e salva no banco pra lembrar da próxima vez -
+// chamado sempre que o usuário gera o Excel ou o PDF.
+async function salvarTurmasRelatorioMensal() {
+    relatorioMensalTurmas = {
+        integracao: parseFloat(document.getElementById('relatorioMensalTurmaIntegracao').value) || 1,
+        seguranca: document.getElementById('relatorioMensalTurmaSeguranca').value || '',
+        ddsms: parseFloat(document.getElementById('relatorioMensalTurmaDdsms').value) || (allDdsFrentesConfig.length || '')
+    };
+    try {
+        await supabaseUpsert('relatorio_mensal_config', [
+            { id: 'turmas_integracao', valor: relatorioMensalTurmas.integracao },
+            { id: 'turmas_seguranca', valor: relatorioMensalTurmas.seguranca || null },
+            { id: 'turmas_ddsms', valor: relatorioMensalTurmas.ddsms || null }
+        ]);
+    } catch (err) {
+        console.error('Erro ao salvar turmas do relatório mensal:', err);
+    }
+}
+
+// Monta as 3 categorias do relatório (Integração / Segurança-Saúde-Meio Ambiente /
+// DDSMS) pro mês pedido. "Nº Total de Funcionários" usa headcountAsOf() (mesma fonte de
+// verdade já usada no índice HHT/Efetivo) - fim do mês, colaboradores ativos na época.
+// A categoria DDSMS usa o mesmo blend de allDdsRealizados (+1 por linha) e
+// allDdsHistoricoAgregado (soma "participantes" direto) que tabelaControleDds() e
+// ddsHorasNoPeriodo() já usam, pra não inventar uma terceira forma de contar DDS.
+function montarLinhasRelatorioMensal(ano, mesIndex0) {
+    const inicio = new Date(ano, mesIndex0, 1);
+    const fim = new Date(ano, mesIndex0 + 1, 0);
+    const totalFuncionarios = headcountAsOf(fim);
+
+    function dentroPeriodo(dataStr) {
+        if (!dataStr) return false;
+        const d = parseLocalDate(dataStr);
+        return d >= inicio && d <= fim;
+    }
+    function pct(qtd) {
+        return totalFuncionarios > 0 ? `${Math.round((qtd / totalFuncionarios) * 100)}%` : '—';
+    }
+    function cargaFormatada(valor) {
+        const n = parseFloat(valor) || 0;
+        return `${String(Math.round(n)).padStart(2, '0')} h`;
+    }
+
+    const turmaIntegracao = relatorioMensalTurmas.integracao ?? 1;
+    const turmaSeguranca = relatorioMensalTurmas.seguranca ?? '';
+    const turmaDdsms = relatorioMensalTurmas.ddsms ?? (allDdsFrentesConfig.length || '');
+
+    // --- Categoria 1: Integração (NR-01) ---
+    const integracaoPorData = new Map();
+    allTreinamentosRealizados.forEach(r => {
+        if (r.treinamento_cod !== '1' || !dentroPeriodo(r.data_treinamento)) return;
+        integracaoPorData.set(r.data_treinamento, (integracaoPorData.get(r.data_treinamento) || 0) + 1);
+    });
+    const linhasIntegracao = Array.from(integracaoPorData.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([data, qtd]) => ({
+            data, nome: 'INTEGRAÇÃO', carga: cargaFormatada(6), turmas: turmaIntegracao,
+            treinados: qtd, total: totalFuncionarios, pct: pct(qtd)
+        }));
+
+    // --- Categoria 2: (Treinamentos) Segurança, Saúde e Meio Ambiente ---
+    const segurancaPorSessao = new Map();
+    allTreinamentosRealizados.forEach(r => {
+        if (r.treinamento_cod === '1' || !dentroPeriodo(r.data_treinamento)) return;
+        const chave = `${r.treinamento_cod}||${r.data_treinamento}`;
+        if (!segurancaPorSessao.has(chave)) {
+            segurancaPorSessao.set(chave, { data: r.data_treinamento, nome: r.treinamento_nome, carga: r.carga_horaria, qtd: 0 });
+        }
+        segurancaPorSessao.get(chave).qtd++;
+    });
+    const linhasSeguranca = Array.from(segurancaPorSessao.values())
+        .sort((a, b) => a.data.localeCompare(b.data))
+        .map(s => ({
+            data: s.data, nome: s.nome, carga: cargaFormatada(s.carga), turmas: turmaSeguranca,
+            treinados: s.qtd, total: totalFuncionarios, pct: pct(s.qtd)
+        }));
+
+    // --- Categoria 3: DDSMS ---
+    const ddsPorData = new Map();
+    allDdsRealizados.forEach(r => {
+        if (!dentroPeriodo(r.data_dds)) return;
+        ddsPorData.set(r.data_dds, (ddsPorData.get(r.data_dds) || 0) + 1);
+    });
+    allDdsHistoricoAgregado.forEach(h => {
+        if (!dentroPeriodo(h.data_dds)) return;
+        ddsPorData.set(h.data_dds, (ddsPorData.get(h.data_dds) || 0) + (parseInt(h.participantes) || 0));
+    });
+    const linhasDds = Array.from(ddsPorData.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([data, qtd]) => {
+            const tema = allDdsTemasCronograma.find(t => t.data === data);
+            return {
+                data, nome: tema ? tema.tema : '(sem tema cadastrado)', carga: '10 min', turmas: turmaDdsms,
+                treinados: qtd, total: totalFuncionarios, pct: pct(qtd)
+            };
+        });
+
+    return {
+        totalFuncionarios,
+        categorias: [
+            { label: 'Integração', linhas: linhasIntegracao },
+            { label: '(Treinamentos) Segurança, Saúde e Meio Ambiente', linhas: linhasSeguranca },
+            { label: 'DDSMS (Segurança, M. Ambiente, Saúde, Cod. Conduta)', linhas: linhasDds }
+        ].filter(c => c.linhas.length > 0)
+    };
+}
+
+// Excel via SheetJS (já carregado no projeto como XLSX, usado hoje só pra IMPORTAR o
+// Quadro Funcional - agora também EXPORTA). Atenção: a versão gratuita do SheetJS não
+// grava cor de fundo/negrito ao exportar, só estrutura (larguras de coluna e células
+// mescladas) - o arquivo sai correto mas em preto e branco. Pra sair visualmente igual
+// ao modelo (com cabeçalho cinza), use "Imprimir / Gerar PDF" em vez do Excel.
+async function gerarExcelRelatorioMensal() {
+    await salvarTurmasRelatorioMensal();
+    const ano = parseInt(document.getElementById('relatorioMensalAno').value);
+    const mes = parseInt(document.getElementById('relatorioMensalMes').value);
+    const statusEl = document.getElementById('relatorioMensalStatus');
+    const { totalFuncionarios, categorias } = montarLinhasRelatorioMensal(ano, mes);
+    if (categorias.length === 0) {
+        statusEl.textContent = '❌ Nenhum lançamento encontrado nesse mês.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const header = ['TEMAS', 'Data', 'DDS, PALESTRAS E TREINAMENTOS', 'CARGA HORÁRIA MÍNIMA (h)', 'TURMAS OU MÓDULOS', 'Nº DE FUNCIONÁRIOS TREINADOS', 'Nº TOTAL DE FUNCIONÁRIOS', '%'];
+    const aoa = [header];
+    const merges = [];
+    categorias.forEach(cat => {
+        const linhaInicio = aoa.length;
+        cat.linhas.forEach((l, i) => {
+            aoa.push([
+                i === 0 ? cat.label : '',
+                formatSimpleDate(l.data), l.nome, l.carga, l.turmas, l.treinados, l.total, l.pct
+            ]);
+        });
+        if (cat.linhas.length > 1) {
+            merges.push({ s: { r: linhaInicio, c: 0 }, e: { r: linhaInicio + cat.linhas.length - 1, c: 0 } });
+        }
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!merges'] = merges;
+    ws['!cols'] = [{ wch: 14 }, { wch: 11 }, { wch: 55 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 8 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'DDS TREINAMENTO');
+
+    const nomeMes = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'][mes];
+    XLSX.writeFile(wb, `RELATORIO_DDS_TREINAMENTO_${nomeMes}_${ano}.xlsx`);
+
+    const totalLinhas = categorias.reduce((s, c) => s + c.linhas.length, 0);
+    statusEl.textContent = `✅ Excel gerado — ${totalLinhas} linha(s), Nº Total de Funcionários: ${totalFuncionarios}.`;
+    statusEl.style.color = 'var(--success)';
+}
+
+function gerarPdfRelatorioMensal() {
+    salvarTurmasRelatorioMensal();
+    const ano = parseInt(document.getElementById('relatorioMensalAno').value);
+    const mes = parseInt(document.getElementById('relatorioMensalMes').value);
+    const statusEl = document.getElementById('relatorioMensalStatus');
+    const { totalFuncionarios, categorias } = montarLinhasRelatorioMensal(ano, mes);
+    if (categorias.length === 0) {
+        statusEl.textContent = '❌ Nenhum lançamento encontrado nesse mês.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const nomeMes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][mes];
+
+    const linhasHtml = categorias.map(cat => cat.linhas.map((l, i) => `
+        <tr>
+            ${i === 0 ? `<td rowspan="${cat.linhas.length}" style="font-weight:600; vertical-align:middle;">${escapeHTML(cat.label)}</td>` : ''}
+            <td>${formatSimpleDate(l.data)}</td>
+            <td style="text-align:left;">${escapeHTML(l.nome)}</td>
+            <td>${escapeHTML(l.carga)}</td>
+            <td>${escapeHTML(String(l.turmas))}</td>
+            <td>${l.treinados}</td>
+            <td>${l.total}</td>
+            <td>${l.pct}</td>
+        </tr>`).join('')).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Relatório DDS/Treinamento - ${escapeHTML(nomeMes)}/${ano}</title>
+<style>
+    @page { size: landscape; margin: 10mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #111; margin: 16px; }
+    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:6px; gap:10px; }
+    .cabecalho img { max-height:40px; }
+    .cabecalho .titulo { font-weight:700; font-size:15px; text-align:center; flex:1; }
+    .info-geracao { font-size:10px; color:#444; margin-bottom:10px; }
+    table { width:100%; border-collapse:collapse; font-size:9px; }
+    th, td { border:1px solid #999; padding:4px 5px; text-align:center; }
+    th { background:#d9d9d9; font-weight:700; }
+    tbody tr:nth-child(even) { background:#f7f7f7; }
+    .no-print { text-align:center; margin:16px 0; }
+    .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
+    @media print { .no-print { display:none; } body { margin:0; } thead { display: table-header-group; } }
+</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="cabecalho">
+        <img src="${LOGO_COP_BASE64}" alt="COP">
+        <div class="titulo">RELATÓRIO MENSAL DE DDS E TREINAMENTOS — ${escapeHTML(nomeMes.toUpperCase())}/${ano}</div>
+        <div style="width:40px;"></div>
+    </div>
+    <div class="info-geracao">${escapeHTML(EMPRESA_INFO.razaoSocial)} — Nº Total de Funcionários: ${totalFuncionarios}</div>
+    <table>
+        <thead><tr>
+            <th>TEMAS</th><th>Data</th><th>DDS, PALESTRAS E TREINAMENTOS</th>
+            <th>CARGA HORÁRIA MÍNIMA (h)</th><th>TURMAS OU MÓDULOS</th>
+            <th>Nº DE FUNCIONÁRIOS TREINADOS</th><th>Nº TOTAL DE FUNCIONÁRIOS</th><th>%</th>
+        </tr></thead>
+        <tbody>${linhasHtml}</tbody>
+    </table>
+</body></html>`;
+
+    abrirDocumentoBlob(html);
+    statusEl.textContent = `✅ Relatório gerado (${nomeMes}/${ano}) — abra a aba nova pra imprimir/salvar em PDF.`;
+    statusEl.style.color = 'var(--success)';
 }
 
 // HHT normativo (Efetivo do mês × 220h) - denominador padrão de exposição usado tanto

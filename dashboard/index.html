@@ -486,6 +486,7 @@
                         <button id="treinSubtabBtn-historico" class="db-filter-btn" onclick="showTreinSubtab('historico')">📜 Histórico</button>
                         <button id="treinSubtabBtn-catalogo" class="db-filter-btn" onclick="showTreinSubtab('catalogo')">📋 Catálogo</button>
                         <button id="treinSubtabBtn-dds" class="db-filter-btn" onclick="showTreinSubtab('dds')">🗣️ DDS</button>
+                        <button id="treinSubtabBtn-relatorio" class="db-filter-btn" onclick="showTreinSubtab('relatorio')">📄 Relatório Mensal</button>
                     </div>
                 </div>
 
@@ -1571,6 +1572,50 @@
                         <button class="db-apply-btn" onclick="imprimirRelatorioSemanalDds()">🖨️ Imprimir Relatório da Semana</button>
                     </div>
                 </div>
+                </div>
+
+                <div id="treinSubtab-relatorio" style="display:none;">
+                    <div class="db-card">
+                        <h3>📄 Relatório Mensal (DDS/Treinamentos)</h3>
+                        <p style="font-size:12.5px; color:var(--text-light); margin-top:-6px;">
+                            Gera o relatório no mesmo formato enviado todo mês à gerenciadora do contrato,
+                            juntando Integração, Treinamentos de Segurança/Saúde/Meio Ambiente e DDSMS.
+                        </p>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Mês</label>
+                                <select id="relatorioMensalMes" style="padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                                    <option value="0">Janeiro</option><option value="1">Fevereiro</option><option value="2">Março</option>
+                                    <option value="3">Abril</option><option value="4">Maio</option><option value="5">Junho</option>
+                                    <option value="6">Julho</option><option value="7">Agosto</option><option value="8">Setembro</option>
+                                    <option value="9">Outubro</option><option value="10">Novembro</option><option value="11">Dezembro</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Ano</label>
+                                <input type="number" id="relatorioMensalAno" style="width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:14px;">
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Turmas/Módulos — Integração</label>
+                                <input type="number" id="relatorioMensalTurmaIntegracao" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Turmas/Módulos — Segurança/Saúde</label>
+                                <input type="number" id="relatorioMensalTurmaSeguranca" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Turmas/Módulos — DDSMS</label>
+                                <input type="number" id="relatorioMensalTurmaDdsms" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button class="db-apply-btn" onclick="gerarExcelRelatorioMensal()">📊 Baixar Excel</button>
+                            <button class="db-apply-btn" onclick="gerarPdfRelatorioMensal()">🖨️ Imprimir / Gerar PDF</button>
+                        </div>
+                        <div id="relatorioMensalStatus" style="margin-top:10px; font-size:12.5px;"></div>
+                    </div>
                 </div>
             </section>
 

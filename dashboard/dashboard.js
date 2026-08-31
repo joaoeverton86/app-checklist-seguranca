@@ -2128,14 +2128,26 @@ function renderCumprimentoCronogramaEPresenca(inicio, fim) {
     const listaEl = document.getElementById('listTreinCronogramaPendente');
     if (!kpiCronoEl || !kpiPresencaEl || !listaEl) return;
 
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
     const itensCronogramaPeriodo = allTreinamentosCronograma.filter(c => {
         if (!c.data_prevista) return false;
         const d = parseLocalDate(c.data_prevista);
         return d >= inicio && d <= fim;
     });
-    kpiCronoEl.textContent = itensCronogramaPeriodo.length === 0
+    // Só entram na conta do % itens já "julgáveis": ou já foram lançados (não importa a
+    // data), ou ainda estão planejados mas a data prevista já passou (vencidos sem
+    // lançamento = não cumprido). Item planejado com data futura ainda não entra nem a
+    // favor nem contra - é exatamente essa exclusão que faltava, e que fazia o KPI cair
+    // pra 0% só porque o mês ainda estava em andamento (itens futuros contando como
+    // "não cumprido" no denominador).
+    const itensJulgaveisPeriodo = itensCronogramaPeriodo.filter(c =>
+        c.status === 'lancado' || parseLocalDate(c.data_prevista) < hoje
+    );
+    kpiCronoEl.textContent = itensJulgaveisPeriodo.length === 0
         ? '—'
-        : `${Math.round(itensCronogramaPeriodo.filter(c => c.realizado_no_prazo === true).length / itensCronogramaPeriodo.length * 100)}%`;
+        : `${Math.round(itensJulgaveisPeriodo.filter(c => c.realizado_no_prazo === true).length / itensJulgaveisPeriodo.length * 100)}%`;
 
     const convocadosPeriodo = allTreinamentosConvocados.filter(c => {
         if (!c.data_treinamento) return false;
@@ -2146,8 +2158,6 @@ function renderCumprimentoCronogramaEPresenca(inicio, fim) {
         ? '—'
         : `${Math.round(convocadosPeriodo.filter(c => c.presente === true).length / convocadosPeriodo.length * 100)}%`;
 
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
     const semCumprimento = itensCronogramaPeriodo.filter(c => {
         if (c.status === 'lancado') return c.realizado_no_prazo === false;
         return parseLocalDate(c.data_prevista) < hoje; // planejado, com data já passada

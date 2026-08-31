@@ -2993,7 +2993,13 @@ async function gerarListasCronogramaMes() {
 
 function abrirFormLancarTreinamento() {
     document.getElementById('lancTreinCodigo').value = '';
-    document.getElementById('lancTreinData').value = new Date().toISOString().split('T')[0];
+    const lancTreinDataEl = document.getElementById('lancTreinData');
+    lancTreinDataEl.value = new Date().toISOString().split('T')[0];
+    // Data nasce preenchida com hoje (valor padrão de conveniência, não uma escolha do
+    // usuário) - por isso zera a flag de edição manual aqui, senão
+    // onLancTreinCodigoChange() nunca autopreencheria a partir do Cronograma (o campo
+    // nunca fica vazio de verdade, sempre tem "hoje" no lugar).
+    delete lancTreinDataEl.dataset.editadoManualmente;
     document.getElementById('lancTreinInfo').style.display = 'none';
     document.getElementById('lancTreinStatus').textContent = '';
     document.getElementById('lancTreinAddColab').value = '';
@@ -3061,6 +3067,7 @@ function extrairCodigoTreinamento(raw) {
 function onLancTreinCodigoChange() {
     const codigo = extrairCodigoTreinamento(document.getElementById('lancTreinCodigo').value);
     const infoEl = document.getElementById('lancTreinInfo');
+    const dataEl = document.getElementById('lancTreinData');
     if (!codigo) { infoEl.style.display = 'none'; return; }
 
     const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
@@ -3071,7 +3078,27 @@ function onLancTreinCodigoChange() {
         return;
     }
     infoEl.style.color = 'var(--text)';
-    infoEl.innerHTML = `<strong>${escapeHTML(cat.nome)}</strong> — Carga horária: ${cat.carga_horaria || 0}h — ${cat.meses_validade ? `Validade: ${cat.meses_validade} meses` : 'Sem validade (não recicla)'}`;
+    let infoHtml = `<strong>${escapeHTML(cat.nome)}</strong> — Carga horária: ${cat.carga_horaria || 0}h — ${cat.meses_validade ? `Validade: ${cat.meses_validade} meses` : 'Sem validade (não recicla)'}`;
+
+    // Se este código tem um item PLANEJADO no Cronograma, avisa a data prevista e já
+    // preenche o campo Data (só se o usuário ainda não tiver editado esse campo à mão -
+    // ver dataset.editadoManualmente em abrirFormLancarTreinamento/index.html - já que o
+    // campo nasce preenchido com "hoje" por padrão, não vazio, então checar só
+    // dataEl.value nunca dispararia de verdade) - reduz o erro de digitar a data errada
+    // na mão, que foi exatamente o que causou um lançamento duplicado com data trocada
+    // num caso real.
+    const itemCronograma = allTreinamentosCronograma
+        .filter(c => c.treinamento_cod === codigo && c.status === 'planejado' && c.data_prevista)
+        .sort((a, b) => a.data_prevista.localeCompare(b.data_prevista))[0];
+    if (itemCronograma) {
+        let preencheuData = false;
+        if (dataEl && !dataEl.dataset.editadoManualmente) {
+            dataEl.value = itemCronograma.data_prevista;
+            preencheuData = true;
+        }
+        infoHtml += `<br>📅 Previsto no Cronograma para ${formatSimpleDate(itemCronograma.data_prevista)}${preencheuData ? ' — data preenchida automaticamente acima' : ''}.`;
+    }
+    infoEl.innerHTML = infoHtml;
 }
 
 // Cada "responsável" identifica uma frente de serviço - a lista de presença é sempre
@@ -3210,6 +3237,31 @@ async function salvarLancamentoTreinamento() {
         if (!confirmaMesmoAssim) return;
     }
 
+    // Avisa (mas não bloqueia) quando este código é um treinamento controlado pelo
+    // Cronograma (as palestras/temas mensais de Segurança/Saúde/Meio Ambiente, DDS etc)
+    // e já existe um lançamento dele no MESMO MÊS com uma data DIFERENTE - pega
+    // exatamente o erro real que aconteceu (mesmo tema lançado 2x no mês com datas
+    // trocadas). Não se aplica a treinamentos "avulsos" fora do Cronograma (ex:
+    // Integração, que legitimamente acontece várias vezes no mês, uma por admissão) -
+    // por isso só entra na conta se o código aparecer em allTreinamentosCronograma.
+    const ehTreinamentoDeCronograma = allTreinamentosCronograma.some(c => c.treinamento_cod === codigo);
+    if (ehTreinamentoDeCronograma) {
+        const mesAnoNovo = data.slice(0, 7);
+        const jaLancadoNoMes = allTreinamentosRealizados.find(r =>
+            r.treinamento_cod === codigo && r.data_treinamento &&
+            r.data_treinamento.slice(0, 7) === mesAnoNovo && r.data_treinamento !== data
+        );
+        if (jaLancadoNoMes) {
+            const confirmaDuplicado = confirm(
+                `⚠️ "${cat.nome}" já foi lançado em ${formatSimpleDate(jaLancadoNoMes.data_treinamento)} neste mês.\n\n` +
+                `Se foi engano na data, cancele e corrija a data acima antes de salvar.\n` +
+                `Se este treinamento realmente foi reagendado, pode confirmar e lançar mesmo assim.\n\n` +
+                `Lançar mesmo assim com a data ${formatSimpleDate(data)}?`
+            );
+            if (!confirmaDuplicado) return;
+        }
+    }
+
     // Próxima reciclagem = data + meses_validade do catálogo, calculado aqui (sem
     // planilha por trás desta vez) - monta a string manualmente a partir dos
     // componentes locais da data pra não arriscar um deslocamento de fuso horário
@@ -3285,6 +3337,32 @@ async function salvarLancamentoTreinamento() {
                 }
             }
             cronogramaOrigemId = null;
+        } else {
+            // Lançado pela aba "Lançar Treinamento" em branco, sem vir do Cronograma -
+            // mesmo assim, se existir um item PLANEJADO do mesmo código no mesmo mês,
+            // marca como lançado também. Sem isso, todo lançamento feito por aqui (que é
+            // o caminho que o usuário mais usa no dia a dia) nunca fechava o item do
+            // Cronograma, e o KPI "Cumprimento do Cronograma" continuava contando pra
+            // sempre como "vencido sem lançamento" um treinamento que na verdade já
+            // tinha sido feito.
+            const mesAnoLancado = data.slice(0, 7);
+            const itemCronogramaPendente = allTreinamentosCronograma.find(c =>
+                c.treinamento_cod === codigo && c.status === 'planejado' &&
+                c.data_prevista && c.data_prevista.slice(0, 7) === mesAnoLancado
+            );
+            if (itemCronogramaPendente) {
+                const itemAtualizado = {
+                    ...itemCronogramaPendente, status: 'lancado', lancado_em: new Date().toISOString(),
+                    data_realizada: data, realizado_no_prazo: data === itemCronogramaPendente.data_prevista
+                };
+                try {
+                    await supabaseUpsert('treinamentos_cronograma', [itemAtualizado]);
+                    const idx = allTreinamentosCronograma.findIndex(c => c.id === itemAtualizado.id);
+                    if (idx >= 0) allTreinamentosCronograma[idx] = itemAtualizado;
+                } catch (cronoErr) {
+                    console.error('Erro ao marcar item do cronograma como lançado (reconciliação automática):', cronoErr);
+                }
+            }
         }
 
         statusEl.textContent = `✅ ${rows.length} colaborador(es) lançado(s) em "${cat.nome}" (${formatSimpleDate(data)}).`;

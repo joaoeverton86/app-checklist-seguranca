@@ -2058,10 +2058,13 @@ function renderTreinamentosPanel() {
 }
 
 // Aderência por sessão = Nº de treinados na sessão ÷ Efetivo total ativo naquela data,
-// × 100 - mesmo método simples que o usuário já usa hoje na planilha real (uma linha
-// por tema+data, comparando presença contra o efetivo total do dia). "periodo" já vem
-// filtrado por data (uma linha por PRESENÇA individual); aqui agrupa por sessão real
-// (mesmo treinamento_cod + mesma data_treinamento) pra contar presença por sessão.
+// × 100 - uma linha por sessão real (mesmo treinamento_cod + mesma data_treinamento).
+// EXCEÇÃO: Integração (cod '1') não é evento pra todo o efetivo - é por turma de
+// admitidos, então o "total" comparável é a própria turma (= o nº de treinados),
+// sempre dando 100% - confirmado no arquivo oficial da Gerenciadora Ambiental que o
+// usuário enviou (mesma correção já feita no Relatório Mensal). Por isso as sessões de
+// Integração ficam de fora da "Média do período" no topo do card: misturar um número
+// que é sempre 100% com a adesão real das outras sessões só infla a média à toa.
 function renderListaTreinAderencia(periodo) {
     const el = document.getElementById('listTreinAderencia');
     const kpiEl = document.getElementById('kpiTreinAderenciaMedia');
@@ -2084,12 +2087,13 @@ function renderListaTreinAderencia(periodo) {
     }
 
     const linhas = Array.from(sessoes.values()).map(s => {
-        const totalFuncionarios = headcountAsOf(parseLocalDate(s.data));
+        const ehIntegracao = s.cod === '1';
+        const totalFuncionarios = ehIntegracao ? s.count : headcountAsOf(parseLocalDate(s.data));
         const pct = totalFuncionarios > 0 ? (s.count / totalFuncionarios * 100) : null;
-        return { ...s, totalFuncionarios, pct };
+        return { ...s, totalFuncionarios, pct, ehIntegracao };
     }).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
 
-    const comPct = linhas.filter(l => l.pct !== null);
+    const comPct = linhas.filter(l => l.pct !== null && !l.ehIntegracao);
     if (kpiEl) {
         kpiEl.textContent = comPct.length > 0
             ? `Média do período: ${(comPct.reduce((sum, l) => sum + l.pct, 0) / comPct.length).toFixed(0)}%`
@@ -2105,11 +2109,14 @@ function renderListaTreinAderencia(periodo) {
             : l.pct >= 50 ? { bg: '#fff9e6', fg: '#b78a00', bd: '#ffe8a1' }
             : { bg: '#fdf2f2', fg: '#c0392b', bd: '#f3c6c6' };
         const pctTexto = l.pct === null ? '—' : `${l.pct.toFixed(0)}%`;
+        const subtitulo = l.ehIntegracao
+            ? `${l.count} treinado(s) — turma de admissão`
+            : `${l.count} treinado(s) de ${l.totalFuncionarios} colaborador(es) ativo(s) na data`;
         return `
         <div class="db-list-item" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <div style="flex:1; min-width:220px;">
                 <div class="db-list-item-title">${formatSimpleDate(l.data)} — ${escapeHTML(l.nome || l.cod)}</div>
-                <div class="db-list-item-sub">${l.count} treinado(s) de ${l.totalFuncionarios} colaborador(es) ativo(s) na data</div>
+                <div class="db-list-item-sub">${subtitulo}</div>
             </div>
             <span class="badge" style="background:${cor.bg}; color:${cor.fg}; border:1px solid ${cor.bd}; font-weight:700;">${pctTexto}</span>
         </div>`;

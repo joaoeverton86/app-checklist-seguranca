@@ -3608,6 +3608,29 @@ async function salvarLancamentoDds() {
         return;
     }
 
+    // Avisa (mas não bloqueia) quando essa MESMA frente/turma já tem um
+    // lançamento de DDS pra essa MESMA data - situação real que gerou o erro
+    // do encarregado DANILO em ago/2026 (turma lançada 2x sem querer,
+    // dobrando o total de participantes daquele dia). Mesmo raciocínio do
+    // aviso de treinamento duplicado no mês (ehTreinamentoDeCronograma, ver
+    // salvarLancamentoTreinamento) - não bloqueia porque pode ser legítimo
+    // lançar 2 rodadas de DDS no mesmo dia pra frentes com 2 turnos. Ignora o
+    // próprio lote quando está EDITANDO (lancDdsLoteEmEdicao), senão o aviso
+    // dispararia toda vez que alguém confirma uma edição normal.
+    const loteExistenteMesmoDia = lotesRecentesDds(9999).find(lote =>
+        lote.data_dds === data && lote.frente_responsavel === frente && lote.key !== lancDdsLoteEmEdicao
+    );
+    if (loteExistenteMesmoDia) {
+        const confirmaDuplicado = confirm(
+            `⚠️ Já existe um lançamento de DDS para "${frente}" em ${formatSimpleDate(data)}:\n\n` +
+            `${loteExistenteMesmoDia.tema || 'Sem tema'} — ${loteExistenteMesmoDia.ids.length} participante(s)\n\n` +
+            `Se foi engano (turma lançada 2x), cancele e use "🗑️ Excluir" em "Lançamentos Recentes" no lançamento antigo antes de lançar de novo.\n` +
+            `Se esta frente realmente teve uma 2ª rodada de DDS neste mesmo dia (ex: 2 turnos), pode confirmar e lançar mesmo assim.\n\n` +
+            `Lançar mesmo assim?`
+        );
+        if (!confirmaDuplicado) return;
+    }
+
     const cargaHoraria = duracao / 60;
     const ts = Date.now();
     // Sem emociograma marcado = "não respondeu" (não é erro): presença na roda de DDS não
@@ -4030,6 +4053,25 @@ async function salvarLancamentoDdsSemana() {
     }
 
     const diasComLancamento = new Set(rows.map(r => r.data_dds)).size;
+
+    // Mesmo aviso de duplicidade do lançamento de 1 dia (ver
+    // salvarLancamentoDds) - aqui verificado pra CADA dia da semana que vai
+    // gerar lançamento, já que "Lançar Semana Inteira" grava um lote por dia
+    // (ver loteKeyDds / tsBase+idx acima).
+    const diasDuplicados = Array.from(new Set(rows.map(r => r.data_dds))).filter(dia =>
+        lotesRecentesDds(9999).some(lote => lote.data_dds === dia && lote.frente_responsavel === lancDdsSemanaFrente)
+    );
+    if (diasDuplicados.length > 0) {
+        const confirmaDuplicado = confirm(
+            `⚠️ "${lancDdsSemanaFrente}" já tem lançamento de DDS em ${diasDuplicados.length} dia(s) desta semana:\n\n` +
+            diasDuplicados.map(d => formatSimpleDate(d)).join('\n') +
+            `\n\nSe foi engano (semana já lançada antes), cancele e confira em "Lançamentos Recentes" antes de lançar de novo.\n` +
+            `Se esses dias realmente tiveram uma 2ª rodada de DDS, pode confirmar e lançar mesmo assim.\n\n` +
+            `Lançar mesmo assim?`
+        );
+        if (!confirmaDuplicado) return;
+    }
+
     if (!confirm(`Isso vai gerar ${rows.length} registro(s) de DDS (${diasComLancamento} dia(s) com pelo menos 1 presença). Continuar?`)) return;
 
     statusEl.textContent = `Enviando ${rows.length} registro(s)...`;

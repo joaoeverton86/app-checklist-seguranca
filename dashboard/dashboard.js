@@ -8933,8 +8933,16 @@ function montarLinhasRelatorioMensal(ano, mesIndex0, ddsAgrupamento) {
     const linhasIntegracao = Array.from(integracaoPorData.entries())
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([data, qtd]) => ({
+            // "Nº TOTAL DE FUNCIONÁRIOS" da Integração NÃO é o efetivo da obra inteira -
+            // é o tamanho da turma de admitidos daquele dia (= a própria quantidade
+            // treinada). Confirmado no arquivo oficial da Gerenciadora Ambiental: em
+            // TODAS as linhas de Integração de 5 meses diferentes, essa coluna sempre
+            // repete o mesmo valor da coluna "treinados", dando 100%. Comparar Integração
+            // com o efetivo total (como as outras categorias fazem, corretamente) não faz
+            // sentido aqui porque Integração é evento único por pessoa admitida, não algo
+            // que todo o efetivo participa todo mês.
             data, nome: 'INTEGRAÇÃO', carga: cargaFormatada(6), turmas: turmaIntegracao,
-            treinados: qtd, total: totalFuncionarios, pct: pct(qtd)
+            treinados: qtd, total: qtd, pct: '100%'
         }));
     const participantesIntegracao = linhasIntegracao.reduce((s, l) => s + l.treinados, 0);
     const hhtIntegracao = participantesIntegracao * 6;

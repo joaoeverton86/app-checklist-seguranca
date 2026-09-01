@@ -1716,6 +1716,20 @@ async function loadTreinamentosData() {
         renderCronogramaLista();
         popularDdsFrenteSelect();
         popularDdsTemaDatalist();
+        // Corrige uma condição de corrida real: loadTreinamentosData() é disparada sem
+        // "await" ao entrar na página Treinamentos (ver showDbPage), então se o usuário já
+        // estiver (ou entrar rápido demais) na aba DDS antes dessa busca terminar, as
+        // funções que desenham a aba DDS (chamadas só ao TROCAR de aba, em
+        // showTreinSubtab) já rodaram com allDdsRealizados ainda vazio e nunca eram
+        // chamadas de novo - a lista "Lançamentos Recentes" (e o resto da aba DDS) ficava
+        // presa no estado vazio até o usuário trocar de aba e voltar. Redesenhar aqui,
+        // incondicionalmente, assim que os dados realmente chegam, resolve isso sem
+        // depender de qual aba está aberta no momento (mesmo raciocínio do "self-heal" já
+        // usado acima pra renderTreinamentosPanel/renderCronogramaLista).
+        renderDdsPanel();
+        renderDdsFechamentoSemanal();
+        renderDdsCalendarioTemas();
+        renderDdsLancamentosRecentes();
     } catch (err) {
         console.error('Erro ao carregar dados de treinamentos:', err);
         if (statusEl) statusEl.textContent = '❌ Falha ao carregar dados de treinamentos.';

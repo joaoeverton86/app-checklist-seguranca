@@ -9831,6 +9831,14 @@ function renderEfetivoPanel() {
         resumoEl.innerHTML = `Arcoverde: <strong>${adaCounts.ARCOVERDE}</strong> (${pct(adaCounts.ARCOVERDE)}%) — Sertânia: <strong>${adaCounts['SERTÂNIA']}</strong> (${pct(adaCounts['SERTÂNIA'])}%) — Outros: <strong>${adaCounts.OUTROS}</strong> (${pct(adaCounts.OUTROS)}%)`;
     }
 
+    // Mesmo truque já usado no gráfico "HHT por Mês (Histórico Completo)" acima: em vez
+    // de espremer todos os meses numa largura fixa (o que faz o Chart.js esconder a
+    // legenda de vários meses pra não sobrepor texto - dando a falsa impressão de mês
+    // "sumido"), força uma largura mínima proporcional à quantidade de meses e deixa
+    // rolar horizontalmente.
+    const chartAdaAdmInner = document.getElementById('chartAdaAdmissoesInner');
+    const chartAdaAdmWrap = chartAdaAdmInner.parentElement;
+    chartAdaAdmInner.style.width = Math.max(chartAdaAdmWrap.clientWidth, meses.length * 56) + 'px';
     chartInstances.adaAdmissoes = new Chart(document.getElementById('chartAdaAdmissoes'), {
         type: 'bar',
         data: {
@@ -9840,8 +9848,13 @@ function renderEfetivoPanel() {
                 { label: 'Sertânia', data: admSertaniaPorMes, backgroundColor: '#f59e0b', borderRadius: 4 }
             ]
         },
-        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } }, x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 45 } } }
+        }
     });
+    // Abre já rolado pro mês mais recente - mesmo comportamento do gráfico de HHT acima.
+    chartAdaAdmWrap.scrollLeft = 999999;
 }
 
 async function importarEfetivoCSV() {

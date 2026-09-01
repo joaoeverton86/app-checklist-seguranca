@@ -2082,7 +2082,11 @@
                     </div>
                     <div class="db-chart-card">
                         <div class="db-chart-title">Admissões por Área e Mês</div>
-                        <div class="db-chart-canvas-wrap"><canvas id="chartAdaAdmissoes"></canvas></div>
+                        <div class="db-chart-canvas-wrap" style="overflow-x:auto;">
+                            <div id="chartAdaAdmissoesInner" style="height:100%;">
+                                <canvas id="chartAdaAdmissoes"></canvas>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 </div>

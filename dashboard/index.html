@@ -1631,7 +1631,8 @@
                         <h3>📄 Relatório Mensal (DDS/Treinamentos)</h3>
                         <p style="font-size:12.5px; color:var(--text-light); margin-top:-6px;">
                             Gera o relatório no mesmo formato enviado todo mês à gerenciadora do contrato,
-                            juntando Integração, Treinamentos de Segurança/Saúde/Meio Ambiente e DDSMS.
+                            juntando Integração, Treinamentos de Segurança/Saúde/Meio Ambiente, Treinamentos
+                            Adicionais e DDSMS — com bloco de totais HHT/Efetivo igual ao Quadro 11 do RSA.
                         </p>
                         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
                             <div>
@@ -1647,6 +1648,13 @@
                                 <label style="display:block; font-size:12px; margin-bottom:4px;">Ano</label>
                                 <input type="number" id="relatorioMensalAno" style="width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
                             </div>
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Agrupamento do DDS</label>
+                                <select id="relatorioMensalDdsAgrupamento" style="padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                                    <option value="diario">Diário (uma linha por dia)</option>
+                                    <option value="semanal">Semanal (uma linha por semana)</option>
+                                </select>
+                            </div>
                         </div>
                         <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:14px;">
                             <div>
@@ -1656,6 +1664,10 @@
                             <div>
                                 <label style="display:block; font-size:12px; margin-bottom:4px;">Turmas/Módulos — Segurança/Saúde</label>
                                 <input type="number" id="relatorioMensalTurmaSeguranca" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Turmas/Módulos — Adicionais</label>
+                                <input type="number" id="relatorioMensalTurmaAdicionais" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
                             </div>
                             <div>
                                 <label style="display:block; font-size:12px; margin-bottom:4px;">Turmas/Módulos — DDSMS</label>

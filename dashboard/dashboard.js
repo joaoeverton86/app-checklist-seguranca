@@ -1518,7 +1518,7 @@ let allRelatorioMensalConfig = [];
 // Cache em memória dos 3 valores de "turmas/módulos" (um por categoria do relatório
 // mensal) - populado a partir de allRelatorioMensalConfig em
 // popularRelatorioMensalDefaults(), usado por montarLinhasRelatorioMensal().
-let relatorioMensalTurmas = { integracao: null, seguranca: null, ddsms: null };
+let relatorioMensalTurmas = { integracao: null, seguranca: null, ddsms: null, adicionais: null };
 let treinamentosFilter = 'mes';
 let treinamentosFiltroAno = '';
 let treinamentosFiltroMes = '';
@@ -8795,13 +8795,23 @@ function popularRelatorioMensalDefaults() {
     if (mesEl && !mesEl.dataset.inicializado) { mesEl.value = String(mesAnterior.getMonth()); mesEl.dataset.inicializado = '1'; }
     if (anoEl && !anoEl.value) anoEl.value = mesAnterior.getFullYear();
 
+    // Select de agrupamento do DDS - mesmo padrão do mesEl (select nunca fica vazio de
+    // verdade). Padrão "Diário" (era o único comportamento antes desta extensão) na
+    // primeira abertura da aba. Não é salvo no banco: é só preferência de tela, e
+    // relatorio_mensal_config.valor é numérico, não daria pra guardar 'diario'/'semanal'
+    // ali sem mudar o tipo da coluna à toa.
+    const ddsAgrupEl = document.getElementById('relatorioMensalDdsAgrupamento');
+    if (ddsAgrupEl && !ddsAgrupEl.dataset.inicializado) { ddsAgrupEl.value = 'diario'; ddsAgrupEl.dataset.inicializado = '1'; }
+
     const cfg = new Map(allRelatorioMensalConfig.map(c => [c.id, c.valor]));
     const integEl = document.getElementById('relatorioMensalTurmaIntegracao');
     const segEl = document.getElementById('relatorioMensalTurmaSeguranca');
     const ddsEl = document.getElementById('relatorioMensalTurmaDdsms');
+    const adicEl = document.getElementById('relatorioMensalTurmaAdicionais');
     if (integEl && !integEl.value) integEl.value = cfg.get('turmas_integracao') ?? 1;
     if (segEl && !segEl.value) segEl.value = cfg.get('turmas_seguranca') ?? '';
     if (ddsEl && !ddsEl.value) ddsEl.value = cfg.get('turmas_ddsms') ?? (allDdsFrentesConfig.length || '');
+    if (adicEl && !adicEl.value) adicEl.value = cfg.get('turmas_adicionais') ?? '';
 }
 
 // Lê os 3 campos de turmas da tela, guarda em memória (usado por
@@ -8811,26 +8821,87 @@ async function salvarTurmasRelatorioMensal() {
     relatorioMensalTurmas = {
         integracao: parseFloat(document.getElementById('relatorioMensalTurmaIntegracao').value) || 1,
         seguranca: document.getElementById('relatorioMensalTurmaSeguranca').value || '',
-        ddsms: parseFloat(document.getElementById('relatorioMensalTurmaDdsms').value) || (allDdsFrentesConfig.length || '')
+        ddsms: parseFloat(document.getElementById('relatorioMensalTurmaDdsms').value) || (allDdsFrentesConfig.length || ''),
+        adicionais: document.getElementById('relatorioMensalTurmaAdicionais').value || ''
     };
     try {
         await supabaseUpsert('relatorio_mensal_config', [
             { id: 'turmas_integracao', valor: relatorioMensalTurmas.integracao },
             { id: 'turmas_seguranca', valor: relatorioMensalTurmas.seguranca || null },
-            { id: 'turmas_ddsms', valor: relatorioMensalTurmas.ddsms || null }
+            { id: 'turmas_ddsms', valor: relatorioMensalTurmas.ddsms || null },
+            { id: 'turmas_adicionais', valor: relatorioMensalTurmas.adicionais || null }
         ]);
     } catch (err) {
         console.error('Erro ao salvar turmas do relatório mensal:', err);
     }
 }
 
-// Monta as 3 categorias do relatório (Integração / Segurança-Saúde-Meio Ambiente /
-// DDSMS) pro mês pedido. "Nº Total de Funcionários" usa headcountAsOf() (mesma fonte de
-// verdade já usada no índice HHT/Efetivo) - fim do mês, colaboradores ativos na época.
-// A categoria DDSMS usa o mesmo blend de allDdsRealizados (+1 por linha) e
-// allDdsHistoricoAgregado (soma "participantes" direto) que tabelaControleDds() e
-// ddsHorasNoPeriodo() já usam, pra não inventar uma terceira forma de contar DDS.
-function montarLinhasRelatorioMensal(ano, mesIndex0) {
+// Agrupa o mês inteiro em semanas úteis (segunda a sexta) - ao contrário da planilha
+// RSA original (que só lista semanas fechadas e descarta dias soltos de início/fim de
+// mês que não fecham uma semana cheia), aqui toda semana que tem pelo menos 1 dia útil
+// dentro do mês vira uma linha, e só os dias daquele mês específico entram na contagem
+// de participantes - decisão consciente pra não perder DDS lançado nos primeiros/
+// últimos dias do mês só porque a semana "vaza" pro mês vizinho.
+function semanasUteisDoMes(ano, mesIndex0) {
+    const inicio = new Date(ano, mesIndex0, 1);
+    const fim = new Date(ano, mesIndex0 + 1, 0);
+    const semanas = [];
+    let cursor = new Date(inicio);
+    while (cursor <= fim) {
+        const diaSemana = cursor.getDay(); // 0=domingo ... 6=sábado
+        if (diaSemana === 0 || diaSemana === 6) { cursor.setDate(cursor.getDate() + 1); continue; }
+        const segunda = new Date(cursor);
+        segunda.setDate(segunda.getDate() - (diaSemana - 1));
+        const sexta = new Date(segunda);
+        sexta.setDate(sexta.getDate() + 4);
+        semanas.push({ de: segunda < inicio ? new Date(inicio) : segunda, ate: sexta > fim ? new Date(fim) : sexta });
+        cursor = new Date(sexta);
+        cursor.setDate(cursor.getDate() + 1);
+    }
+    return semanas;
+}
+
+// Formata o intervalo de uma semana no mesmo padrão do RSA oficial ("06 A 10/07/2026").
+function formatIntervaloSemana(de, ate) {
+    const dd = d => String(d.getDate()).padStart(2, '0');
+    const mm = d => String(d.getMonth() + 1).padStart(2, '0');
+    if (de.getMonth() === ate.getMonth() && de.getFullYear() === ate.getFullYear()) {
+        return `${dd(de)} A ${dd(ate)}/${mm(ate)}/${ate.getFullYear()}`;
+    }
+    return `${dd(de)}/${mm(de)} A ${dd(ate)}/${mm(ate)}/${ate.getFullYear()}`;
+}
+
+// Arredonda pra 2 casas decimais (usado nos números do bloco de totais HHT/Efetivo,
+// pra não sair "13.264705882..." na tela/Excel/PDF).
+function r2(n) {
+    return Math.round((parseFloat(n) || 0) * 100) / 100;
+}
+
+// Monta as 4 categorias do relatório (Integração / Segurança-Saúde-Meio Ambiente /
+// Treinamentos Adicionais / DDSMS) pro mês pedido, mais o bloco de totais HHT/Efetivo
+// que bate com o Quadro 11 do RSA mensal. "Nº Total de Funcionários" usa
+// headcountAsOf() (mesma fonte de verdade já usada no índice HHT/Efetivo) - fim do mês,
+// colaboradores ativos na época.
+//
+// "Segurança/Saúde" x "Treinamentos Adicionais": um treinamento (cod != '1') entra em
+// Segurança/Saúde se o código estava no Cronograma daquele mês (era um tema
+// programado); senão, é "Adicional" (ministrado mas fora do que estava agendado) -
+// mesma distinção que o RSA já faz entre "Treinamentos Mensais" e "Treinamentos
+// Adicionais" no bloco de totais, aplicada aqui também na listagem.
+//
+// HHT de cada categoria usa a carga horária REAL de cada sessão já lançada (não um
+// multiplicador fixo como a planilha RSA usa pra "Treinamentos Mensais" ×2h /
+// "Adicionais" ×1h - isso é uma aproximação da planilha) - por isso o HHT Geral daqui
+// bate exatamente com hhtDoMes(), já confirmada batendo com o relatório oficial.
+// Integração continua fixa em 6h, igual já era antes (mesma regra da coluna "CARGA
+// HORÁRIA" da linha de Integração).
+//
+// O bloco de totais usa sempre a contagem SEMANAL de turmas de DDS pro cálculo de
+// "% DE HORAS"/"% MÉDIA", mesmo se a tabela visível estiver em modo Diário - é assim
+// que o RSA oficial calcula esses dois campos, então o bloco de totais fica sempre
+// batendo com o que a empresa exige, não importa qual visualização for escolhida pra
+// imprimir.
+function montarLinhasRelatorioMensal(ano, mesIndex0, ddsAgrupamento) {
     const inicio = new Date(ano, mesIndex0, 1);
     const fim = new Date(ano, mesIndex0 + 1, 0);
     const totalFuncionarios = headcountAsOf(fim);
@@ -8850,6 +8921,7 @@ function montarLinhasRelatorioMensal(ano, mesIndex0) {
 
     const turmaIntegracao = relatorioMensalTurmas.integracao ?? 1;
     const turmaSeguranca = relatorioMensalTurmas.seguranca ?? '';
+    const turmaAdicionais = relatorioMensalTurmas.adicionais ?? '';
     const turmaDdsms = relatorioMensalTurmas.ddsms ?? (allDdsFrentesConfig.length || '');
 
     // --- Categoria 1: Integração (NR-01) ---
@@ -8864,25 +8936,49 @@ function montarLinhasRelatorioMensal(ano, mesIndex0) {
             data, nome: 'INTEGRAÇÃO', carga: cargaFormatada(6), turmas: turmaIntegracao,
             treinados: qtd, total: totalFuncionarios, pct: pct(qtd)
         }));
+    const participantesIntegracao = linhasIntegracao.reduce((s, l) => s + l.treinados, 0);
+    const hhtIntegracao = participantesIntegracao * 6;
 
-    // --- Categoria 2: (Treinamentos) Segurança, Saúde e Meio Ambiente ---
+    // --- Categorias 2 e 3: Segurança/Saúde (programado no Cronograma do mês) x
+    // Treinamentos Adicionais (ministrado mas fora do Cronograma do mês) ---
+    const codigosCronogramaDoMes = new Set(
+        allTreinamentosCronograma
+            .filter(c => dentroPeriodo(c.data_prevista))
+            .map(c => c.treinamento_cod)
+    );
     const segurancaPorSessao = new Map();
+    const adicionaisPorSessao = new Map();
     allTreinamentosRealizados.forEach(r => {
         if (r.treinamento_cod === '1' || !dentroPeriodo(r.data_treinamento)) return;
+        const destino = codigosCronogramaDoMes.has(r.treinamento_cod) ? segurancaPorSessao : adicionaisPorSessao;
         const chave = `${r.treinamento_cod}||${r.data_treinamento}`;
-        if (!segurancaPorSessao.has(chave)) {
-            segurancaPorSessao.set(chave, { data: r.data_treinamento, nome: r.treinamento_nome, carga: r.carga_horaria, qtd: 0 });
+        if (!destino.has(chave)) {
+            destino.set(chave, { data: r.data_treinamento, nome: r.treinamento_nome, carga: r.carga_horaria, qtd: 0 });
         }
-        segurancaPorSessao.get(chave).qtd++;
+        destino.get(chave).qtd++;
     });
-    const linhasSeguranca = Array.from(segurancaPorSessao.values())
-        .sort((a, b) => a.data.localeCompare(b.data))
-        .map(s => ({
-            data: s.data, nome: s.nome, carga: cargaFormatada(s.carga), turmas: turmaSeguranca,
-            treinados: s.qtd, total: totalFuncionarios, pct: pct(s.qtd)
-        }));
+    function linhasDeSessoes(mapa, turmaValor) {
+        return Array.from(mapa.values())
+            .sort((a, b) => a.data.localeCompare(b.data))
+            .map(s => ({
+                data: s.data, nome: s.nome, carga: cargaFormatada(s.carga), turmas: turmaValor,
+                treinados: s.qtd, total: totalFuncionarios, pct: pct(s.qtd)
+            }));
+    }
+    function hhtDeSessoes(mapa) {
+        return Array.from(mapa.values()).reduce((s, x) => s + x.qtd * (parseFloat(x.carga) || 0), 0);
+    }
+    const linhasSeguranca = linhasDeSessoes(segurancaPorSessao, turmaSeguranca);
+    const linhasAdicionais = linhasDeSessoes(adicionaisPorSessao, turmaAdicionais);
+    const participantesSeguranca = linhasSeguranca.reduce((s, l) => s + l.treinados, 0);
+    const participantesAdicionais = linhasAdicionais.reduce((s, l) => s + l.treinados, 0);
+    const hhtSeguranca = hhtDeSessoes(segurancaPorSessao);
+    const hhtAdicionais = hhtDeSessoes(adicionaisPorSessao);
 
-    // --- Categoria 3: DDSMS ---
+    // --- Categoria 4: DDSMS - diário (padrão) ou semanal, à escolha do usuário. Usa o
+    // mesmo blend de allDdsRealizados (+1 por linha) e allDdsHistoricoAgregado (soma
+    // "participantes" direto) que tabelaControleDds() e ddsHorasNoPeriodo() já usam,
+    // pra não inventar uma terceira forma de contar DDS. ---
     const ddsPorData = new Map();
     allDdsRealizados.forEach(r => {
         if (!dentroPeriodo(r.data_dds)) return;
@@ -8892,23 +8988,70 @@ function montarLinhasRelatorioMensal(ano, mesIndex0) {
         if (!dentroPeriodo(h.data_dds)) return;
         ddsPorData.set(h.data_dds, (ddsPorData.get(h.data_dds) || 0) + (parseInt(h.participantes) || 0));
     });
-    const linhasDds = Array.from(ddsPorData.entries())
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([data, qtd]) => {
-            const tema = allDdsTemasCronograma.find(t => t.data === data);
+    const participantesDds = Array.from(ddsPorData.values()).reduce((s, v) => s + v, 0);
+    const semanasDoMes = semanasUteisDoMes(ano, mesIndex0);
+
+    let linhasDds;
+    if (ddsAgrupamento === 'semanal') {
+        linhasDds = semanasDoMes.map((sem, i) => {
+            let qtd = 0;
+            const temas = new Set();
+            ddsPorData.forEach((v, dataStr) => {
+                const d = parseLocalDate(dataStr);
+                if (d >= sem.de && d <= sem.ate) {
+                    qtd += v;
+                    const tema = allDdsTemasCronograma.find(t => t.data === dataStr);
+                    if (tema && tema.tema) temas.add(tema.tema);
+                }
+            });
             return {
-                data, nome: tema ? tema.tema : '(sem tema cadastrado)', carga: '10 min', turmas: turmaDdsms,
+                data: formatIntervaloSemana(sem.de, sem.ate),
+                nome: `${i + 1}ª SEMANA${temas.size ? ' - ' + Array.from(temas).join('; ') : ''}`,
+                carga: '10 min/dia', turmas: turmaDdsms,
                 treinados: qtd, total: totalFuncionarios, pct: pct(qtd)
             };
-        });
+        }).filter(l => l.treinados > 0);
+    } else {
+        linhasDds = Array.from(ddsPorData.entries())
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([data, qtd]) => {
+                const tema = allDdsTemasCronograma.find(t => t.data === data);
+                return {
+                    data, nome: tema ? tema.tema : '(sem tema cadastrado)', carga: '10 min', turmas: turmaDdsms,
+                    treinados: qtd, total: totalFuncionarios, pct: pct(qtd)
+                };
+            });
+    }
+    const hhtDds = ddsHorasNoPeriodo(inicio, fim);
+
+    // --- Bloco de totais (mesmas fórmulas do Quadro 11 / bloco HHT-Efetivo do RSA) ---
+    const totalGeralParticipantes = participantesIntegracao + participantesSeguranca + participantesAdicionais + participantesDds;
+    const hhtGeral = hhtIntegracao + hhtSeguranca + hhtAdicionais + hhtDds;
+    // Total de turmas sempre usando a contagem SEMANAL de DDS (ver nota no topo da função).
+    const totalTurmas =
+        linhasIntegracao.length * (parseFloat(turmaIntegracao) || 0) +
+        linhasSeguranca.length * (parseFloat(turmaSeguranca) || 0) +
+        linhasAdicionais.length * (parseFloat(turmaAdicionais) || 0) +
+        semanasDoMes.length * (parseFloat(turmaDdsms) || 0);
+    const mediaParticipantesPorTurma = totalTurmas > 0 ? (totalGeralParticipantes / totalTurmas) : 0;
+    const percMedia = totalFuncionarios > 0 ? (mediaParticipantesPorTurma * 100 / totalFuncionarios) : 0;
+    const efetivoX220 = totalFuncionarios * 220;
+    const percHhtEfetivo = efetivoX220 > 0 ? (hhtGeral / efetivoX220 * 100) : 0;
 
     return {
         totalFuncionarios,
         categorias: [
             { label: 'Integração', linhas: linhasIntegracao },
             { label: '(Treinamentos) Segurança, Saúde e Meio Ambiente', linhas: linhasSeguranca },
+            { label: 'Treinamentos Adicionais', linhas: linhasAdicionais },
             { label: 'DDSMS (Segurança, M. Ambiente, Saúde, Cod. Conduta)', linhas: linhasDds }
-        ].filter(c => c.linhas.length > 0)
+        ].filter(c => c.linhas.length > 0),
+        totais: {
+            participantes: { integracao: participantesIntegracao, seguranca: participantesSeguranca, adicionais: participantesAdicionais, dds: participantesDds, geral: totalGeralParticipantes },
+            hht: { integracao: hhtIntegracao, seguranca: hhtSeguranca, adicionais: hhtAdicionais, dds: hhtDds, geral: hhtGeral },
+            totalTurmas, mediaParticipantesPorTurma, percMedia,
+            efetivoX220, percHhtEfetivo
+        }
     };
 }
 
@@ -8921,8 +9064,9 @@ async function gerarExcelRelatorioMensal() {
     await salvarTurmasRelatorioMensal();
     const ano = parseInt(document.getElementById('relatorioMensalAno').value);
     const mes = parseInt(document.getElementById('relatorioMensalMes').value);
+    const ddsAgrupamento = document.getElementById('relatorioMensalDdsAgrupamento').value;
     const statusEl = document.getElementById('relatorioMensalStatus');
-    const { totalFuncionarios, categorias } = montarLinhasRelatorioMensal(ano, mes);
+    const { totalFuncionarios, categorias, totais } = montarLinhasRelatorioMensal(ano, mes, ddsAgrupamento);
     if (categorias.length === 0) {
         statusEl.textContent = '❌ Nenhum lançamento encontrado nesse mês.';
         statusEl.style.color = 'var(--danger)';
@@ -8945,6 +9089,26 @@ async function gerarExcelRelatorioMensal() {
         }
     });
 
+    // Bloco de totais / HHT-Efetivo (mesmas fórmulas do Quadro 11 do RSA mensal),
+    // sempre logo abaixo da tabela principal, separado por uma linha em branco.
+    aoa.push([]);
+    aoa.push(['RESUMO — HHT / EFETIVO DO MÊS']);
+    aoa.push(['Categoria', 'Nº de Participantes', 'HHT (h)']);
+    aoa.push(['Treinamentos Mensais (Segurança/Saúde)', totais.participantes.seguranca, r2(totais.hht.seguranca)]);
+    aoa.push(['Integração', totais.participantes.integracao, r2(totais.hht.integracao)]);
+    aoa.push(['Treinamentos Adicionais', totais.participantes.adicionais, r2(totais.hht.adicionais)]);
+    aoa.push(['DDS', totais.participantes.dds, r2(totais.hht.dds)]);
+    aoa.push(['TOTAL GERAL', totais.participantes.geral, r2(totais.hht.geral)]);
+    aoa.push([]);
+    aoa.push(['Total de Pessoas Treinadas', totais.participantes.geral]);
+    aoa.push(['Efetivo', totalFuncionarios]);
+    aoa.push(['% de Horas (média de participantes por turma)', r2(totais.mediaParticipantesPorTurma)]);
+    aoa.push(['% Média', r2(totais.percMedia) + '%']);
+    aoa.push([]);
+    aoa.push(['Efetivo × 220 (HHT Normativo)', totais.efetivoX220]);
+    aoa.push(['HHT Realizado no Mês', r2(totais.hht.geral)]);
+    aoa.push(['Índice HHT/Efetivo', r2(totais.percHhtEfetivo) + '%']);
+
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!merges'] = merges;
     ws['!cols'] = [{ wch: 14 }, { wch: 11 }, { wch: 55 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 8 }];
@@ -8955,7 +9119,7 @@ async function gerarExcelRelatorioMensal() {
     XLSX.writeFile(wb, `RELATORIO_DDS_TREINAMENTO_${nomeMes}_${ano}.xlsx`);
 
     const totalLinhas = categorias.reduce((s, c) => s + c.linhas.length, 0);
-    statusEl.textContent = `✅ Excel gerado — ${totalLinhas} linha(s), Nº Total de Funcionários: ${totalFuncionarios}.`;
+    statusEl.textContent = `✅ Excel gerado — ${totalLinhas} linha(s) + bloco de totais HHT/Efetivo. Nº Total de Funcionários: ${totalFuncionarios}.`;
     statusEl.style.color = 'var(--success)';
 }
 
@@ -8963,8 +9127,9 @@ function gerarPdfRelatorioMensal() {
     salvarTurmasRelatorioMensal();
     const ano = parseInt(document.getElementById('relatorioMensalAno').value);
     const mes = parseInt(document.getElementById('relatorioMensalMes').value);
+    const ddsAgrupamento = document.getElementById('relatorioMensalDdsAgrupamento').value;
     const statusEl = document.getElementById('relatorioMensalStatus');
-    const { totalFuncionarios, categorias } = montarLinhasRelatorioMensal(ano, mes);
+    const { totalFuncionarios, categorias, totais } = montarLinhasRelatorioMensal(ano, mes, ddsAgrupamento);
     if (categorias.length === 0) {
         statusEl.textContent = '❌ Nenhum lançamento encontrado nesse mês.';
         statusEl.style.color = 'var(--danger)';
@@ -8983,6 +9148,34 @@ function gerarPdfRelatorioMensal() {
             <td>${l.total}</td>
             <td>${l.pct}</td>
         </tr>`).join('')).join('');
+
+    const totaisHtml = `
+    <h3 style="margin-top:18px; font-size:12px;">RESUMO — HHT / EFETIVO DO MÊS</h3>
+    <table style="width:65%; margin-bottom:10px;">
+        <thead><tr><th>Categoria</th><th>Nº de Participantes</th><th>HHT (h)</th></tr></thead>
+        <tbody>
+            <tr><td style="text-align:left;">Treinamentos Mensais (Segurança/Saúde)</td><td>${totais.participantes.seguranca}</td><td>${r2(totais.hht.seguranca)}</td></tr>
+            <tr><td style="text-align:left;">Integração</td><td>${totais.participantes.integracao}</td><td>${r2(totais.hht.integracao)}</td></tr>
+            <tr><td style="text-align:left;">Treinamentos Adicionais</td><td>${totais.participantes.adicionais}</td><td>${r2(totais.hht.adicionais)}</td></tr>
+            <tr><td style="text-align:left;">DDS</td><td>${totais.participantes.dds}</td><td>${r2(totais.hht.dds)}</td></tr>
+            <tr style="font-weight:700; background:#e0e0e0;"><td style="text-align:left;">TOTAL GERAL</td><td>${totais.participantes.geral}</td><td>${r2(totais.hht.geral)}</td></tr>
+        </tbody>
+    </table>
+    <table style="width:65%; margin-bottom:10px;">
+        <tbody>
+            <tr><td style="text-align:left;">Total de Pessoas Treinadas</td><td>${totais.participantes.geral}</td></tr>
+            <tr><td style="text-align:left;">Efetivo</td><td>${totalFuncionarios}</td></tr>
+            <tr><td style="text-align:left;">% de Horas (média de participantes por turma)</td><td>${r2(totais.mediaParticipantesPorTurma)}</td></tr>
+            <tr><td style="text-align:left;">% Média</td><td>${r2(totais.percMedia)}%</td></tr>
+        </tbody>
+    </table>
+    <table style="width:65%;">
+        <tbody>
+            <tr><td style="text-align:left;">Efetivo × 220 (HHT Normativo)</td><td>${totais.efetivoX220}</td></tr>
+            <tr><td style="text-align:left;">HHT Realizado no Mês</td><td>${r2(totais.hht.geral)}</td></tr>
+            <tr style="font-weight:700; background:#e0e0e0;"><td style="text-align:left;">Índice HHT/Efetivo</td><td>${r2(totais.percHhtEfetivo)}%</td></tr>
+        </tbody>
+    </table>`;
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
@@ -9018,6 +9211,7 @@ function gerarPdfRelatorioMensal() {
         </tr></thead>
         <tbody>${linhasHtml}</tbody>
     </table>
+    ${totaisHtml}
 </body></html>`;
 
     abrirDocumentoBlob(html);

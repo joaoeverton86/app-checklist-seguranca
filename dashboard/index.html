@@ -35,6 +35,9 @@
                         <button class="db-nav-item" id="navTreinamentos" onclick="showDbPage('treinamentos')">
                             <span class="db-nav-icon">🎓</span> Treinamentos
                         </button>
+                        <button class="db-nav-item" id="navDdsma" onclick="showDbPage('ddsma')">
+                            <span class="db-nav-icon">🗣️</span> DDSMA
+                        </button>
                         <button class="db-nav-item" id="navApr" onclick="showDbPage('apr')">
                             <span class="db-nav-icon">⚠️</span> APR
                         </button>
@@ -537,7 +540,6 @@
                         <button id="treinSubtabBtn-kits" class="db-filter-btn" onclick="showTreinSubtab('kits')">🪪 Kits e Documentos</button>
                         <button id="treinSubtabBtn-historico" class="db-filter-btn" onclick="showTreinSubtab('historico')">📜 Histórico</button>
                         <button id="treinSubtabBtn-catalogo" class="db-filter-btn" onclick="showTreinSubtab('catalogo')">📋 Catálogo</button>
-                        <button id="treinSubtabBtn-dds" class="db-filter-btn" onclick="showTreinSubtab('dds')">🗣️ DDS</button>
                         <button id="treinSubtabBtn-relatorio" class="db-filter-btn" onclick="showTreinSubtab('relatorio')">📄 Relatório Mensal</button>
                     </div>
                 </div>
@@ -1263,7 +1265,179 @@
                 </div>
                 </div>
 
-                <div id="treinSubtab-dds" style="display:none;">
+                <div id="treinSubtab-relatorio" style="display:none;">
+                    <div class="db-card">
+                        <h3>📄 Relatório Mensal (DDS/Treinamentos)</h3>
+                        <p style="font-size:12.5px; color:var(--text-light); margin-top:-6px;">
+                            Gera o relatório no mesmo formato enviado todo mês à gerenciadora do contrato,
+                            juntando Integração, Treinamentos de Segurança/Saúde/Meio Ambiente, Treinamentos
+                            Adicionais e DDSMS — com bloco de totais HHT/Efetivo igual ao Quadro 11 do RSA.
+                        </p>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Mês</label>
+                                <select id="relatorioMensalMes" style="padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                                    <option value="0">Janeiro</option><option value="1">Fevereiro</option><option value="2">Março</option>
+                                    <option value="3">Abril</option><option value="4">Maio</option><option value="5">Junho</option>
+                                    <option value="6">Julho</option><option value="7">Agosto</option><option value="8">Setembro</option>
+                                    <option value="9">Outubro</option><option value="10">Novembro</option><option value="11">Dezembro</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Ano</label>
+                                <input type="number" id="relatorioMensalAno" style="width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Agrupamento do DDS</label>
+                                <select id="relatorioMensalDdsAgrupamento" style="padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                                    <option value="diario">Diário (uma linha por dia)</option>
+                                    <option value="semanal">Semanal (uma linha por semana)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:14px;">
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Turmas/Módulos — Integração</label>
+                                <input type="number" id="relatorioMensalTurmaIntegracao" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Turmas/Módulos — Segurança/Saúde</label>
+                                <input type="number" id="relatorioMensalTurmaSeguranca" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Turmas/Módulos — Adicionais</label>
+                                <input type="number" id="relatorioMensalTurmaAdicionais" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Turmas/Módulos — DDSMS</label>
+                                <input type="number" id="relatorioMensalTurmaDdsms" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button class="db-apply-btn" onclick="gerarExcelRelatorioMensal()">📊 Baixar Excel</button>
+                            <button class="db-apply-btn" onclick="gerarPdfRelatorioMensal()">🖨️ Imprimir / Gerar PDF</button>
+                        </div>
+                        <div id="relatorioMensalStatus" style="margin-top:10px; font-size:12.5px;"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Página: DDSMA -->
+            <section class="db-page" id="page-ddsma">
+                <div class="db-filters" style="margin-bottom: 16px;">
+                    <div class="db-filter-buttons">
+                        <button id="ddsmaSubtabBtn-visao" class="db-filter-btn active" onclick="showDdsmaSubtab('visao')">📊 Visão Geral</button>
+                        <button id="ddsmaSubtabBtn-lancar" class="db-filter-btn" onclick="showDdsmaSubtab('lancar')">📝 Lançar DDS</button>
+                        <button id="ddsmaSubtabBtn-calendario" class="db-filter-btn" onclick="showDdsmaSubtab('calendario')">🗓️ Calendário de Temas</button>
+                        <button id="ddsmaSubtabBtn-frente" class="db-filter-btn" onclick="showDdsmaSubtab('frente')">👥 Controle por Frente</button>
+                        <button id="ddsmaSubtabBtn-imprimir" class="db-filter-btn" onclick="showDdsmaSubtab('imprimir')">🖨️ Imprimir</button>
+                    </div>
+                </div>
+
+                <div id="ddsmaSubtab-visao">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">📊 Resumo do DDS</div>
+                    <div class="db-filters" style="margin-bottom: 12px;">
+                        <div class="db-filter-buttons">
+                            <button id="btnFiltroDdsMes" class="db-filter-btn active" onclick="setDdsFilter('mes')">Este Mês</button>
+                            <button id="btnFiltroDdsTrimestre" class="db-filter-btn" onclick="setDdsFilter('trimestre')">Últimos 3 Meses</button>
+                            <button id="btnFiltroDdsAno" class="db-filter-btn" onclick="setDdsFilter('ano')">Este Ano</button>
+                            <button id="btnFiltroDdsTodos" class="db-filter-btn" onclick="setDdsFilter('todos')">Todos</button>
+                        </div>
+                        <div class="db-filter-selects">
+                            <select id="ddsFiltroAno" onchange="onDdsFiltroAnoMesChange()">
+                                <option value="">Ano específico...</option>
+                            </select>
+                            <select id="ddsFiltroMes" onchange="onDdsFiltroAnoMesChange()">
+                                <option value="">Mês específico...</option>
+                                <option value="0">Janeiro</option>
+                                <option value="1">Fevereiro</option>
+                                <option value="2">Março</option>
+                                <option value="3">Abril</option>
+                                <option value="4">Maio</option>
+                                <option value="5">Junho</option>
+                                <option value="6">Julho</option>
+                                <option value="7">Agosto</option>
+                                <option value="8">Setembro</option>
+                                <option value="9">Outubro</option>
+                                <option value="10">Novembro</option>
+                                <option value="11">Dezembro</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="db-periodo-titulo">📊 Período: <span id="ddsPeriodoTitulo">Este mês</span></div>
+                    <div class="db-kpi-grid">
+                        <div class="db-kpi-card">
+                            <div class="db-kpi-value" id="kpiDdsSessoes">0</div>
+                            <div class="db-kpi-label">Sessões-dia de DDS no Período</div>
+                        </div>
+                        <div class="db-kpi-card db-kpi-primary">
+                            <div class="db-kpi-value" id="kpiDdsHHT">0</div>
+                            <div class="db-kpi-label">HHT de DDS no Período (horas)</div>
+                        </div>
+                        <div class="db-kpi-card db-kpi-success">
+                            <div class="db-kpi-value" id="kpiDdsColaboradores">0</div>
+                            <div class="db-kpi-label">Colaboradores Participantes<br><span style="font-size:9.5px; font-weight:400; color:var(--text-light);">(não conta o histórico importado da planilha)</span></div>
+                        </div>
+                        <div class="db-kpi-card db-kpi-danger">
+                            <div class="db-kpi-value" id="kpiDdsRuim">0</div>
+                            <div class="db-kpi-label">Registros "Ruim" no Período</div>
+                        </div>
+                    </div>
+                    <div class="db-charts-grid">
+                        <div class="db-chart-card">
+                            <div class="db-chart-title">HHT de DDS por Mês (Histórico Completo)</div>
+                            <div class="db-chart-canvas-wrap" style="overflow-x:auto;">
+                                <div id="chartDdsHHTMesInner" style="height:100%;">
+                                    <canvas id="chartDdsHHTMes"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="db-chart-card">
+                            <div class="db-chart-title">HHT Total por Mês (Treinamento + DDS)</div>
+                            <div class="db-chart-canvas-wrap" style="overflow-x:auto;">
+                                <div id="chartHHTTotalMesInner" style="height:100%;">
+                                    <canvas id="chartHHTTotalMes"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="db-chart-card db-list-card" style="margin-top: 16px;">
+                        <div class="db-chart-title">📋 Controle de DDS por Frente (estilo planilha mensal)</div>
+                        <div id="ddsTabelaControleWrap"></div>
+                        <details style="margin-top:10px;">
+                            <summary style="cursor:pointer; font-weight:700; font-size:12.5px; color:var(--text-light);">⚙️ Gerenciar frentes desta tabela</summary>
+                            <p style="font-size:11px; color:var(--text-light); margin:8px 0;">Desmarque uma frente pra tirá-la desta tabela e do relatório do DDS (ex: cargo administrativo que quase nunca faz DDS) - isso não mexe no cadastro de Efetivo, só esconde daqui. Também dá pra adicionar uma frente extra que ainda não tem ninguém cadastrado.</p>
+                            <div id="ddsGerenciarFrentesLista" style="display:flex; flex-direction:column; gap:2px; max-width:320px; max-height:220px; overflow-y:auto; padding:6px 0;"></div>
+                            <div style="display:flex; gap:6px; margin-top:10px; max-width:320px;">
+                                <input type="text" id="ddsNovaFrenteInput" placeholder="Nome da nova frente" style="flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
+                                <button class="db-apply-btn" onclick="adicionarFrenteDdsManual()" style="white-space:nowrap; padding:6px 12px; font-size:12px;">+ Adicionar</button>
+                            </div>
+                            <div style="margin-top:14px; padding-top:10px; border-top:1px solid var(--border);">
+                                <p style="font-size:11px; color:var(--text-light); margin:0 0 6px;">Quando um encarregado sai e outro assume a mesma equipe (ex: FABRICIO virou ELÉTRICA), mescle o nome antigo aqui - o histórico do nome antigo continua guardado, só passa a contar junto do nome atual nas tabelas e relatórios.</p>
+                                <div id="ddsAliasFrentesLista" style="display:flex; flex-direction:column; gap:4px; max-width:420px; margin-bottom:8px;"></div>
+                                <div style="display:flex; gap:6px; max-width:420px; flex-wrap:wrap;">
+                                    <input type="text" id="ddsAliasNomeAntigoInput" placeholder="Nome antigo (ex: FABRICIO)" style="flex:1; min-width:140px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
+                                    <span style="align-self:center; font-size:12px; color:var(--text-light);">virou</span>
+                                    <input type="text" id="ddsAliasNomeAtualInput" placeholder="Nome atual (ex: ELÉTRICA)" style="flex:1; min-width:140px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
+                                    <button class="db-apply-btn" onclick="mesclarFrenteDds()" style="white-space:nowrap; padding:6px 12px; font-size:12px;">🔗 Mesclar</button>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                    <div class="db-chart-card db-list-card" style="margin-top: 16px;">
+                        <details>
+                            <summary style="cursor:pointer; font-weight:700; font-size:13px;">⚠️ Ações/Tratativas Pendentes (sigiloso — visível só nesta tela)</summary>
+                            <p style="font-size:11px; color:var(--text-light); margin:8px 0 0;">
+                                Nunca aparece em relatório impresso, exportação ou qualquer outra lista - só quem já está logado no Painel Gerencial vê o texto completo, e só aqui.
+                            </p>
+                            <div id="ddsAcoesTratativasLista" class="db-list" style="margin-top:8px; max-height: 300px;"></div>
+                        </details>
+                    </div>
+                </div>
+                </div>
+
+                <div id="ddsmaSubtab-lancar" style="display:none;">
                 <div class="db-chart-card" id="lancDdsFormCard" style="margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 8px; flex-wrap: wrap;">
                         <div class="db-chart-title" style="margin-bottom: 0;">📝 Lançar DDS</div>
@@ -1391,7 +1565,9 @@
                         <span id="lancDdsSemanaStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
                 </div>
+                </div>
 
+                <div id="ddsmaSubtab-calendario" style="display:none;">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
                     <div class="db-chart-title">🗓️ Calendário de Temas DDS</div>
                     <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">
@@ -1432,108 +1608,9 @@
                     </div>
                     <div id="ddsCalendarioLista" class="db-list" style="max-height: 420px;"></div>
                 </div>
-
-                <div class="db-chart-card" style="margin-bottom: 16px;">
-                    <div class="db-chart-title">📊 Resumo do DDS</div>
-                    <div class="db-filters" style="margin-bottom: 12px;">
-                        <div class="db-filter-buttons">
-                            <button id="btnFiltroDdsMes" class="db-filter-btn active" onclick="setDdsFilter('mes')">Este Mês</button>
-                            <button id="btnFiltroDdsTrimestre" class="db-filter-btn" onclick="setDdsFilter('trimestre')">Últimos 3 Meses</button>
-                            <button id="btnFiltroDdsAno" class="db-filter-btn" onclick="setDdsFilter('ano')">Este Ano</button>
-                            <button id="btnFiltroDdsTodos" class="db-filter-btn" onclick="setDdsFilter('todos')">Todos</button>
-                        </div>
-                        <div class="db-filter-selects">
-                            <select id="ddsFiltroAno" onchange="onDdsFiltroAnoMesChange()">
-                                <option value="">Ano específico...</option>
-                            </select>
-                            <select id="ddsFiltroMes" onchange="onDdsFiltroAnoMesChange()">
-                                <option value="">Mês específico...</option>
-                                <option value="0">Janeiro</option>
-                                <option value="1">Fevereiro</option>
-                                <option value="2">Março</option>
-                                <option value="3">Abril</option>
-                                <option value="4">Maio</option>
-                                <option value="5">Junho</option>
-                                <option value="6">Julho</option>
-                                <option value="7">Agosto</option>
-                                <option value="8">Setembro</option>
-                                <option value="9">Outubro</option>
-                                <option value="10">Novembro</option>
-                                <option value="11">Dezembro</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="db-periodo-titulo">📊 Período: <span id="ddsPeriodoTitulo">Este mês</span></div>
-                    <div class="db-kpi-grid">
-                        <div class="db-kpi-card">
-                            <div class="db-kpi-value" id="kpiDdsSessoes">0</div>
-                            <div class="db-kpi-label">Sessões-dia de DDS no Período</div>
-                        </div>
-                        <div class="db-kpi-card db-kpi-primary">
-                            <div class="db-kpi-value" id="kpiDdsHHT">0</div>
-                            <div class="db-kpi-label">HHT de DDS no Período (horas)</div>
-                        </div>
-                        <div class="db-kpi-card db-kpi-success">
-                            <div class="db-kpi-value" id="kpiDdsColaboradores">0</div>
-                            <div class="db-kpi-label">Colaboradores Participantes<br><span style="font-size:9.5px; font-weight:400; color:var(--text-light);">(não conta o histórico importado da planilha)</span></div>
-                        </div>
-                        <div class="db-kpi-card db-kpi-danger">
-                            <div class="db-kpi-value" id="kpiDdsRuim">0</div>
-                            <div class="db-kpi-label">Registros "Ruim" no Período</div>
-                        </div>
-                    </div>
-                    <div class="db-charts-grid">
-                        <div class="db-chart-card">
-                            <div class="db-chart-title">HHT de DDS por Mês (Histórico Completo)</div>
-                            <div class="db-chart-canvas-wrap" style="overflow-x:auto;">
-                                <div id="chartDdsHHTMesInner" style="height:100%;">
-                                    <canvas id="chartDdsHHTMes"></canvas>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="db-chart-card">
-                            <div class="db-chart-title">HHT Total por Mês (Treinamento + DDS)</div>
-                            <div class="db-chart-canvas-wrap" style="overflow-x:auto;">
-                                <div id="chartHHTTotalMesInner" style="height:100%;">
-                                    <canvas id="chartHHTTotalMes"></canvas>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="db-chart-card db-list-card" style="margin-top: 16px;">
-                        <div class="db-chart-title">📋 Controle de DDS por Frente (estilo planilha mensal)</div>
-                        <div id="ddsTabelaControleWrap"></div>
-                        <details style="margin-top:10px;">
-                            <summary style="cursor:pointer; font-weight:700; font-size:12.5px; color:var(--text-light);">⚙️ Gerenciar frentes desta tabela</summary>
-                            <p style="font-size:11px; color:var(--text-light); margin:8px 0;">Desmarque uma frente pra tirá-la desta tabela e do relatório do DDS (ex: cargo administrativo que quase nunca faz DDS) - isso não mexe no cadastro de Efetivo, só esconde daqui. Também dá pra adicionar uma frente extra que ainda não tem ninguém cadastrado.</p>
-                            <div id="ddsGerenciarFrentesLista" style="display:flex; flex-direction:column; gap:2px; max-width:320px; max-height:220px; overflow-y:auto; padding:6px 0;"></div>
-                            <div style="display:flex; gap:6px; margin-top:10px; max-width:320px;">
-                                <input type="text" id="ddsNovaFrenteInput" placeholder="Nome da nova frente" style="flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
-                                <button class="db-apply-btn" onclick="adicionarFrenteDdsManual()" style="white-space:nowrap; padding:6px 12px; font-size:12px;">+ Adicionar</button>
-                            </div>
-                            <div style="margin-top:14px; padding-top:10px; border-top:1px solid var(--border);">
-                                <p style="font-size:11px; color:var(--text-light); margin:0 0 6px;">Quando um encarregado sai e outro assume a mesma equipe (ex: FABRICIO virou ELÉTRICA), mescle o nome antigo aqui - o histórico do nome antigo continua guardado, só passa a contar junto do nome atual nas tabelas e relatórios.</p>
-                                <div id="ddsAliasFrentesLista" style="display:flex; flex-direction:column; gap:4px; max-width:420px; margin-bottom:8px;"></div>
-                                <div style="display:flex; gap:6px; max-width:420px; flex-wrap:wrap;">
-                                    <input type="text" id="ddsAliasNomeAntigoInput" placeholder="Nome antigo (ex: FABRICIO)" style="flex:1; min-width:140px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
-                                    <span style="align-self:center; font-size:12px; color:var(--text-light);">virou</span>
-                                    <input type="text" id="ddsAliasNomeAtualInput" placeholder="Nome atual (ex: ELÉTRICA)" style="flex:1; min-width:140px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
-                                    <button class="db-apply-btn" onclick="mesclarFrenteDds()" style="white-space:nowrap; padding:6px 12px; font-size:12px;">🔗 Mesclar</button>
-                                </div>
-                            </div>
-                        </details>
-                    </div>
-                    <div class="db-chart-card db-list-card" style="margin-top: 16px;">
-                        <details>
-                            <summary style="cursor:pointer; font-weight:700; font-size:13px;">⚠️ Ações/Tratativas Pendentes (sigiloso — visível só nesta tela)</summary>
-                            <p style="font-size:11px; color:var(--text-light); margin:8px 0 0;">
-                                Nunca aparece em relatório impresso, exportação ou qualquer outra lista - só quem já está logado no Painel Gerencial vê o texto completo, e só aqui.
-                            </p>
-                            <div id="ddsAcoesTratativasLista" class="db-list" style="margin-top:8px; max-height: 300px;"></div>
-                        </details>
-                    </div>
                 </div>
 
+                <div id="ddsmaSubtab-frente" style="display:none;">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
                     <div class="db-chart-title">🖊️ Fechamento Semanal (RESP SMS)</div>
                     <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">
@@ -1567,7 +1644,9 @@
                         <div id="ddsFechamentosLista" class="db-list" style="max-height: 260px;"></div>
                     </div>
                 </div>
+                </div>
 
+                <div id="ddsmaSubtab-imprimir" style="display:none;">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
                     <div class="db-chart-title">🖨️ Imprimir</div>
                     <div style="border-bottom: 1px dashed var(--border); padding-bottom: 14px; margin-bottom: 14px;">
@@ -1624,62 +1703,6 @@
                         <button class="db-apply-btn" onclick="imprimirRelatorioSemanalDds()">🖨️ Imprimir Relatório da Semana</button>
                     </div>
                 </div>
-                </div>
-
-                <div id="treinSubtab-relatorio" style="display:none;">
-                    <div class="db-card">
-                        <h3>📄 Relatório Mensal (DDS/Treinamentos)</h3>
-                        <p style="font-size:12.5px; color:var(--text-light); margin-top:-6px;">
-                            Gera o relatório no mesmo formato enviado todo mês à gerenciadora do contrato,
-                            juntando Integração, Treinamentos de Segurança/Saúde/Meio Ambiente, Treinamentos
-                            Adicionais e DDSMS — com bloco de totais HHT/Efetivo igual ao Quadro 11 do RSA.
-                        </p>
-                        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
-                            <div>
-                                <label style="display:block; font-size:12px; margin-bottom:4px;">Mês</label>
-                                <select id="relatorioMensalMes" style="padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
-                                    <option value="0">Janeiro</option><option value="1">Fevereiro</option><option value="2">Março</option>
-                                    <option value="3">Abril</option><option value="4">Maio</option><option value="5">Junho</option>
-                                    <option value="6">Julho</option><option value="7">Agosto</option><option value="8">Setembro</option>
-                                    <option value="9">Outubro</option><option value="10">Novembro</option><option value="11">Dezembro</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="display:block; font-size:12px; margin-bottom:4px;">Ano</label>
-                                <input type="number" id="relatorioMensalAno" style="width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
-                            </div>
-                            <div>
-                                <label style="display:block; font-size:12px; margin-bottom:4px;">Agrupamento do DDS</label>
-                                <select id="relatorioMensalDdsAgrupamento" style="padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
-                                    <option value="diario">Diário (uma linha por dia)</option>
-                                    <option value="semanal">Semanal (uma linha por semana)</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:14px;">
-                            <div>
-                                <label style="display:block; font-size:12px; margin-bottom:4px;">Turmas/Módulos — Integração</label>
-                                <input type="number" id="relatorioMensalTurmaIntegracao" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
-                            </div>
-                            <div>
-                                <label style="display:block; font-size:12px; margin-bottom:4px;">Turmas/Módulos — Segurança/Saúde</label>
-                                <input type="number" id="relatorioMensalTurmaSeguranca" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
-                            </div>
-                            <div>
-                                <label style="display:block; font-size:12px; margin-bottom:4px;">Turmas/Módulos — Adicionais</label>
-                                <input type="number" id="relatorioMensalTurmaAdicionais" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
-                            </div>
-                            <div>
-                                <label style="display:block; font-size:12px; margin-bottom:4px;">Turmas/Módulos — DDSMS</label>
-                                <input type="number" id="relatorioMensalTurmaDdsms" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
-                            </div>
-                        </div>
-                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                            <button class="db-apply-btn" onclick="gerarExcelRelatorioMensal()">📊 Baixar Excel</button>
-                            <button class="db-apply-btn" onclick="gerarPdfRelatorioMensal()">🖨️ Imprimir / Gerar PDF</button>
-                        </div>
-                        <div id="relatorioMensalStatus" style="margin-top:10px; font-size:12.5px;"></div>
-                    </div>
                 </div>
             </section>
 

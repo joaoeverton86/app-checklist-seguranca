@@ -1741,7 +1741,7 @@ async function loadTreinamentosData() {
 // showDbPage - se o gráfico foi criado com o canvas escondido em outra aba, sem isso
 // ficaria em branco pra sempre).
 function showTreinSubtab(tab) {
-    ['visao', 'lancar', 'cronograma', 'equipes', 'registro', 'kits', 'historico', 'catalogo', 'dds', 'relatorio'].forEach(t => {
+    ['visao', 'lancar', 'cronograma', 'equipes', 'registro', 'kits', 'historico', 'catalogo', 'relatorio'].forEach(t => {
         const content = document.getElementById('treinSubtab-' + t);
         const btn = document.getElementById('treinSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -1752,11 +1752,33 @@ function showTreinSubtab(tab) {
     if (tab === 'cronograma') renderCronogramaLista();
     if (tab === 'equipes') { popularEquipesResponsavelDatalist(); renderEquipeAtual(); }
     if (tab === 'relatorio') popularRelatorioMensalDefaults();
-    if (tab === 'dds') {
-        renderDdsPanel();
-        renderDdsFechamentoSemanal();
-        renderDdsCalendarioTemas();
-        renderDdsLancamentosRecentes();
+    // A sub-aba "dds" saiu daqui - agora é a página própria "DDSMA" (ver
+    // showDdsmaSubtab, showDbPage e o menu lateral).
+    // Não força registroDetalheCard a esconder aqui - a busca/lista que carrega uma
+    // sessão agora mora em Histórico, então trocar pra Registro deve preservar o que já
+    // foi carregado (a visibilidade do card é controlada por quem carrega a sessão:
+    // carregarSessaoRegistro/carregarSessaoNovaRegistro), não pelo simples ato de trocar
+    // de aba.
+    if (tab === 'registro') { popularFiltroAnoRegistroLote(); }
+    if (tab === 'kits') { inicializarKitsTab(); }
+}
+
+// Abas da página DDSMA (Visão Geral / Lançar DDS / Calendário de Temas /
+// Controle por Frente / Imprimir) - mesmo raciocínio de showTreinSubtab:
+// sempre redesenha a aba ao entrar nela (self-heal de gráfico com canvas
+// escondido) e inicializa os campos de data/select da primeira visita.
+function showDdsmaSubtab(tab) {
+    ['visao', 'lancar', 'calendario', 'frente', 'imprimir'].forEach(t => {
+        const content = document.getElementById('ddsmaSubtab-' + t);
+        const btn = document.getElementById('ddsmaSubtabBtn-' + t);
+        if (content) content.style.display = (t === tab) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
+    if (tab === 'visao') renderDdsPanel();
+    if (tab === 'lancar') renderDdsLancamentosRecentes();
+    if (tab === 'calendario') renderDdsCalendarioTemas();
+    if (tab === 'frente') renderDdsFechamentoSemanal();
+    if (tab === 'imprimir') {
         const fichaSel = document.getElementById('ddsImprimirFichaFrente');
         if (fichaSel && fichaSel.options.length <= 1) {
             todasFrentesAtivas().forEach(f => {
@@ -1773,13 +1795,6 @@ function showTreinSubtab(tab) {
         const semanaDataInput = document.getElementById('ddsImprimirRelatorioSemanaData');
         if (semanaDataInput && !semanaDataInput.value) semanaDataInput.value = new Date().toISOString().split('T')[0];
     }
-    // Não força registroDetalheCard a esconder aqui - a busca/lista que carrega uma
-    // sessão agora mora em Histórico, então trocar pra Registro deve preservar o que já
-    // foi carregado (a visibilidade do card é controlada por quem carrega a sessão:
-    // carregarSessaoRegistro/carregarSessaoNovaRegistro), não pelo simples ato de trocar
-    // de aba.
-    if (tab === 'registro') { popularFiltroAnoRegistroLote(); }
-    if (tab === 'kits') { inicializarKitsTab(); }
 }
 
 // ---- Histórico: lista navegável de sessões já realizadas (separada de Registro, que
@@ -13198,6 +13213,7 @@ const DB_PAGE_TITLES = {
     extintores: 'Extintores',
     relatos: 'Relatos de Problemas',
     treinamentos: 'Treinamentos',
+    ddsma: 'DDSMA',
     efetivo: 'Efetivo',
     matrizrisco: 'Matriz de Risco (AIHA)',
     acidentes: 'Acidentabilidade',
@@ -13216,7 +13232,7 @@ const DB_PAGE_TITLES = {
 // MENU LATERAL EM GRUPOS (accordion por pilar de SSMA)
 // ================================================================
 const NAV_GROUP_POR_PAGINA = {
-    checklists: 'seguranca', treinamentos: 'seguranca', apr: 'seguranca', matrizrisco: 'seguranca',
+    checklists: 'seguranca', treinamentos: 'seguranca', ddsma: 'seguranca', apr: 'seguranca', matrizrisco: 'seguranca',
     epi: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca',
     saude: 'saude', psicossocial: 'saude',
     ambiental: 'ambiente',
@@ -13281,7 +13297,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', documentos: 'navDocumentos', config: 'navConfig' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', documentos: 'navDocumentos', config: 'navConfig' };
     document.getElementById(navMap[pageId])?.classList.add('active');
     abrirGrupoNavPagina(pageId);
 
@@ -13303,6 +13319,14 @@ function showDbPage(pageId) {
     if (pageId === 'treinamentos') {
         if (!treinamentosLoaded) { treinamentosLoaded = true; loadTreinamentosData(); }
         else renderTreinamentosPanel();
+    }
+    // DDSMA usa os MESMOS dados já carregados pra Treinamentos (dds_realizados,
+    // dds_historico_agregado etc. já vêm juntos em loadTreinamentosData) - só muda a
+    // TELA, não a fonte de dados. Por isso reaproveita o mesmo treinamentosLoaded em
+    // vez de criar uma busca nova no Supabase.
+    if (pageId === 'ddsma') {
+        if (!treinamentosLoaded) { treinamentosLoaded = true; loadTreinamentosData(); }
+        else if (document.getElementById('ddsmaSubtabBtn-visao')?.classList.contains('active')) renderDdsPanel();
     }
     if (pageId === 'efetivo') {
         if (!efetivoLoaded) { efetivoLoaded = true; loadEfetivoData(); }

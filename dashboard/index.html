@@ -21,55 +21,107 @@
                     <div class="db-brand-sub">PISF Ramal do Agreste</div>
                 </div>
             </div>
-            <div class="db-nav">
-                <button class="db-nav-item active" id="navChecklists" onclick="showDbPage('checklists')">
-                    <span class="db-nav-icon">📊</span> Checklists
-                </button>
-                <button class="db-nav-item" id="navExtintores" onclick="showDbPage('extintores')">
-                    <span class="db-nav-icon">🧯</span> Extintores
-                </button>
-                <button class="db-nav-item" id="navRelatos" onclick="showDbPage('relatos')">
-                    <span class="db-nav-icon">⚠️</span> Relatos de Problemas
-                </button>
-                <button class="db-nav-item" id="navTreinamentos" onclick="showDbPage('treinamentos')">
-                    <span class="db-nav-icon">🎓</span> Treinamentos
-                </button>
-                <button class="db-nav-item" id="navEfetivo" onclick="showDbPage('efetivo')">
-                    <span class="db-nav-icon">👷</span> Efetivo
-                </button>
-                <button class="db-nav-item" id="navMatrizRisco" onclick="showDbPage('matrizrisco')">
-                    <span class="db-nav-icon">📐</span> Matriz de Risco
-                </button>
-                <button class="db-nav-item" id="navAcidentes" onclick="showDbPage('acidentes')">
-                    <span class="db-nav-icon">🚑</span> Acidentabilidade
-                </button>
-                <button class="db-nav-item" id="navSaude" onclick="showDbPage('saude')">
-                    <span class="db-nav-icon">🩺</span> Saúde Ocupacional
-                </button>
-                <button class="db-nav-item" id="navPsicossocial" onclick="showDbPage('psicossocial')">
-                    <span class="db-nav-icon">🧠</span> Psicossocial
-                </button>
-                <button class="db-nav-item" id="navEpi" onclick="showDbPage('epi')">
-                    <span class="db-nav-icon">🦺</span> EPI
-                </button>
-                <button class="db-nav-item" id="navApr" onclick="showDbPage('apr')">
-                    <span class="db-nav-icon">⚠️</span> APR
-                </button>
-                <button class="db-nav-item" id="navAmbiental" onclick="showDbPage('ambiental')">
-                    <span class="db-nav-icon">🌱</span> Gestão Ambiental
-                </button>
-                <button class="db-nav-item" id="navCompras" onclick="showDbPage('compras')">
-                    <span class="db-nav-icon">🛒</span> Compras
-                </button>
-                <button class="db-nav-item" id="navCipa" onclick="showDbPage('cipa')">
-                    <span class="db-nav-icon">🤝</span> CIPA
-                </button>
-                <button class="db-nav-item" id="navDocumentos" onclick="showDbPage('documentos')">
-                    <span class="db-nav-icon">📄</span> Documentos
-                </button>
-                <button class="db-nav-item" id="navConfig" onclick="showDbPage('config')">
-                    <span class="db-nav-icon">⚙️</span> Configurações
-                </button>
+            <div class="db-nav" id="dbNav">
+                <div class="db-nav-group" data-group="seguranca">
+                    <button class="db-nav-group-header" onclick="toggleNavGroup('seguranca')">
+                        <span class="db-nav-icon">🦺</span>
+                        <span class="db-nav-group-label">Segurança do Trabalho</span>
+                        <span class="db-nav-group-caret">▾</span>
+                    </button>
+                    <div class="db-nav-group-items" id="navGroupItems-seguranca">
+                        <button class="db-nav-item active" id="navChecklists" onclick="showDbPage('checklists')">
+                            <span class="db-nav-icon">📊</span> Checklists
+                        </button>
+                        <button class="db-nav-item" id="navTreinamentos" onclick="showDbPage('treinamentos')">
+                            <span class="db-nav-icon">🎓</span> Treinamentos
+                        </button>
+                        <button class="db-nav-item" id="navApr" onclick="showDbPage('apr')">
+                            <span class="db-nav-icon">⚠️</span> APR
+                        </button>
+                        <button class="db-nav-item" id="navMatrizRisco" onclick="showDbPage('matrizrisco')">
+                            <span class="db-nav-icon">📐</span> Matriz de Risco
+                        </button>
+                        <button class="db-nav-item" id="navEpi" onclick="showDbPage('epi')">
+                            <span class="db-nav-icon">🦺</span> EPI
+                        </button>
+                        <button class="db-nav-item" id="navExtintores" onclick="showDbPage('extintores')">
+                            <span class="db-nav-icon">🧯</span> Extintores
+                        </button>
+                        <button class="db-nav-item" id="navAcidentes" onclick="showDbPage('acidentes')">
+                            <span class="db-nav-icon">🚑</span> Acidentabilidade
+                        </button>
+                        <button class="db-nav-item" id="navRelatos" onclick="showDbPage('relatos')">
+                            <span class="db-nav-icon">⚠️</span> Relatos de Problemas
+                        </button>
+                        <button class="db-nav-item" id="navCipa" onclick="showDbPage('cipa')">
+                            <span class="db-nav-icon">🤝</span> CIPA
+                        </button>
+                    </div>
+                </div>
+
+                <div class="db-nav-group" data-group="saude">
+                    <button class="db-nav-group-header" onclick="toggleNavGroup('saude')">
+                        <span class="db-nav-icon">🩺</span>
+                        <span class="db-nav-group-label">Saúde Ocupacional</span>
+                        <span class="db-nav-group-caret">▾</span>
+                    </button>
+                    <div class="db-nav-group-items" id="navGroupItems-saude">
+                        <button class="db-nav-item" id="navSaude" onclick="showDbPage('saude')">
+                            <span class="db-nav-icon">🩺</span> Saúde Ocupacional
+                        </button>
+                        <button class="db-nav-item" id="navPsicossocial" onclick="showDbPage('psicossocial')">
+                            <span class="db-nav-icon">🧠</span> Psicossocial
+                        </button>
+                    </div>
+                </div>
+
+                <div class="db-nav-group" data-group="ambiente">
+                    <button class="db-nav-group-header" onclick="toggleNavGroup('ambiente')">
+                        <span class="db-nav-icon">🌱</span>
+                        <span class="db-nav-group-label">Meio Ambiente</span>
+                        <span class="db-nav-group-caret">▾</span>
+                    </button>
+                    <div class="db-nav-group-items" id="navGroupItems-ambiente">
+                        <button class="db-nav-item" id="navAmbiental" onclick="showDbPage('ambiental')">
+                            <span class="db-nav-icon">🌱</span> Gestão Ambiental
+                        </button>
+                    </div>
+                </div>
+
+                <div class="db-nav-group" data-group="pessoas">
+                    <button class="db-nav-group-header" onclick="toggleNavGroup('pessoas')">
+                        <span class="db-nav-icon">👷</span>
+                        <span class="db-nav-group-label">Gestão de Pessoas</span>
+                        <span class="db-nav-group-caret">▾</span>
+                    </button>
+                    <div class="db-nav-group-items" id="navGroupItems-pessoas">
+                        <button class="db-nav-item" id="navEfetivo" onclick="showDbPage('efetivo')">
+                            <span class="db-nav-icon">👷</span> Efetivo
+                        </button>
+                    </div>
+                </div>
+
+                <div class="db-nav-group" data-group="gestao">
+                    <button class="db-nav-group-header" onclick="toggleNavGroup('gestao')">
+                        <span class="db-nav-icon">🗂️</span>
+                        <span class="db-nav-group-label">Gestão &amp; Administração</span>
+                        <span class="db-nav-group-caret">▾</span>
+                    </button>
+                    <div class="db-nav-group-items" id="navGroupItems-gestao">
+                        <button class="db-nav-item" id="navCompras" onclick="showDbPage('compras')">
+                            <span class="db-nav-icon">🛒</span> Compras
+                        </button>
+                        <button class="db-nav-item" id="navDocumentos" onclick="showDbPage('documentos')">
+                            <span class="db-nav-icon">📄</span> Documentos
+                        </button>
+                    </div>
+                </div>
+
+                <div class="db-nav-standalone">
+                    <button class="db-nav-item" id="navConfig" onclick="showDbPage('config')">
+                        <span class="db-nav-icon">⚙️</span> Configurações
+                    </button>
+                </div>
             </div>
             <div class="db-sidebar-footer">Somente leitura — atualiza a cada 5 min</div>
         </nav>

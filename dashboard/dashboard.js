@@ -12691,6 +12691,70 @@ const DB_PAGE_TITLES = {
     config: 'Configurações'
 };
 
+// ================================================================
+// MENU LATERAL EM GRUPOS (accordion por pilar de SSMA)
+// ================================================================
+const NAV_GROUP_POR_PAGINA = {
+    checklists: 'seguranca', treinamentos: 'seguranca', apr: 'seguranca', matrizrisco: 'seguranca',
+    epi: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca',
+    saude: 'saude', psicossocial: 'saude',
+    ambiental: 'ambiente',
+    efetivo: 'pessoas',
+    compras: 'gestao', documentos: 'gestao'
+    // 'config' fica de fora de propósito - não pertence a nenhum grupo, fica solto no menu.
+};
+
+function toggleNavGroup(grupo) {
+    const itemsEl = document.getElementById('navGroupItems-' + grupo);
+    const headerEl = document.querySelector(`.db-nav-group[data-group="${grupo}"] .db-nav-group-header`);
+    if (!itemsEl || !headerEl) return;
+    const vaiAbrir = itemsEl.classList.contains('collapsed');
+    itemsEl.classList.toggle('collapsed', !vaiAbrir);
+    headerEl.classList.toggle('open', vaiAbrir);
+    salvarGruposNavAbertos();
+}
+
+// Abre (sem fechar os outros) o grupo que contém a página informada - chamado sempre
+// que showDbPage() navega pra algum lugar, pra garantir que o item nunca fique
+// "escondido" atrás de um grupo fechado.
+function abrirGrupoNavPagina(pageId) {
+    const grupo = NAV_GROUP_POR_PAGINA[pageId];
+    if (!grupo) return;
+    const itemsEl = document.getElementById('navGroupItems-' + grupo);
+    const headerEl = document.querySelector(`.db-nav-group[data-group="${grupo}"] .db-nav-group-header`);
+    if (itemsEl) itemsEl.classList.remove('collapsed');
+    if (headerEl) headerEl.classList.add('open');
+    salvarGruposNavAbertos();
+}
+
+function salvarGruposNavAbertos() {
+    const abertos = Array.from(document.querySelectorAll('.db-nav-group-items:not(.collapsed)'))
+        .map(el => el.id.replace('navGroupItems-', ''));
+    try { localStorage.setItem('dbNavGruposAbertos', JSON.stringify(abertos)); } catch (e) { /* localStorage indisponível - sem problema, só não lembra na próxima visita */ }
+}
+
+// Restaura, ao carregar a página, quais grupos estavam abertos na última visita - padrão
+// (primeira vez, ou localStorage vazio) é só "Segurança do Trabalho" aberto, já que é
+// onde fica a maioria das páginas e a página inicial (Checklists).
+function restaurarGruposNavAbertos() {
+    let abertos;
+    try { abertos = JSON.parse(localStorage.getItem('dbNavGruposAbertos')); } catch (e) { abertos = null; }
+    if (!Array.isArray(abertos)) abertos = ['seguranca'];
+    // Checklists é sempre a página que já carrega ativa (marcada direto no HTML) -
+    // garante que o grupo dela também esteja aberto mesmo que o localStorage salvo não
+    // inclua 'seguranca', senão o item ativo fica escondido atrás de um grupo fechado
+    // logo na primeira tela que o usuário vê.
+    if (!abertos.includes('seguranca')) abertos = [...abertos, 'seguranca'];
+    document.querySelectorAll('.db-nav-group').forEach(grupoEl => {
+        const grupo = grupoEl.dataset.group;
+        const itemsEl = document.getElementById('navGroupItems-' + grupo);
+        const headerEl = grupoEl.querySelector('.db-nav-group-header');
+        const deveAbrir = abertos.includes(grupo);
+        if (itemsEl) itemsEl.classList.toggle('collapsed', !deveAbrir);
+        if (headerEl) headerEl.classList.toggle('open', deveAbrir);
+    });
+}
+
 function showDbPage(pageId) {
     document.querySelectorAll('.db-page').forEach(el => el.classList.remove('active'));
     document.getElementById('page-' + pageId)?.classList.add('active');
@@ -12698,6 +12762,7 @@ function showDbPage(pageId) {
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
     const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', documentos: 'navDocumentos', config: 'navConfig' };
     document.getElementById(navMap[pageId])?.classList.add('active');
+    abrirGrupoNavPagina(pageId);
 
     document.getElementById('pageTitle').textContent = DB_PAGE_TITLES[pageId] || '';
 
@@ -16244,6 +16309,7 @@ async function excluirAplicacaoPsicossocial() {
 // ============================================
 
 function init() {
+    restaurarGruposNavAbertos();
     setReportFilter('mes');
     loadData();
     iniciarAutoRefresh();

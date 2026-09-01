@@ -1692,6 +1692,60 @@
                         <button id="efetivoSubtabBtn-setores" class="db-filter-btn" onclick="showEfetivoSubtab('setores')">🏢 Setores</button>
                         <button id="efetivoSubtabBtn-ghe" class="db-filter-btn" onclick="showEfetivoSubtab('ghe')">🧪 GHE</button>
                         <button id="efetivoSubtabBtn-recomendacoes" class="db-filter-btn" onclick="showEfetivoSubtab('recomendacoes')">📋 Recomendações</button>
+                        <button id="efetivoSubtabBtn-maoobra" class="db-filter-btn" onclick="showEfetivoSubtab('maoobra')">🗺️ Mão de Obra Local</button>
+                    </div>
+                </div>
+
+                <div id="efetivoSubtab-maoobra" style="display:none;">
+                    <div class="db-card">
+                        <h3>🗺️ Mão de Obra Local (Município / ADA)</h3>
+                        <p style="font-size:12.5px; color:var(--text-light); margin-top:-6px;">
+                            Gera os Quadros 1 e 2 do RSA mensal: ocupação de mão de obra por
+                            município de origem, e o percentual de contratados vindos de
+                            municípios da Área Diretamente Afetada (ADA) pelo Ramal do Agreste.
+                        </p>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Mês</label>
+                                <select id="maoObraMes" style="padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                                    <option value="0">Janeiro</option><option value="1">Fevereiro</option><option value="2">Março</option>
+                                    <option value="3">Abril</option><option value="4">Maio</option><option value="5">Junho</option>
+                                    <option value="6">Julho</option><option value="7">Agosto</option><option value="8">Setembro</option>
+                                    <option value="9">Outubro</option><option value="10">Novembro</option><option value="11">Dezembro</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Ano</label>
+                                <input type="number" id="maoObraAno" style="width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button class="db-apply-btn" onclick="gerarExcelMaoDeObra()">📊 Baixar Excel</button>
+                            <button class="db-apply-btn" onclick="gerarPdfMaoDeObra()">🖨️ Imprimir / Gerar PDF</button>
+                        </div>
+                        <div id="maoObraStatus" style="margin-top:10px; font-size:12.5px;"></div>
+                    </div>
+
+                    <div class="db-card" style="margin-top:16px;">
+                        <h3>📍 Municípios da ADA (Área Diretamente Afetada)</h3>
+                        <p style="font-size:12px; color:var(--text-light); margin-top:-2px;">
+                            Lista fixada pela licença ambiental do Ramal do Agreste - raramente
+                            muda. Usada só pra separar, no Quadro 2, quais municípios de origem
+                            contam como ADA.
+                        </p>
+                        <div id="municipiosAdaLista" class="db-list" style="max-height:220px; margin-bottom:12px;"></div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">Município</label>
+                                <input type="text" id="municipioAdaNovoNome" placeholder="Ex: ARCOVERDE" style="padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:12px; margin-bottom:4px;">UF</label>
+                                <input type="text" id="municipioAdaNovoUf" placeholder="PE" maxlength="2" style="width:50px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; text-transform:uppercase;">
+                            </div>
+                            <button class="db-apply-btn" onclick="adicionarMunicipioAda()">+ Adicionar</button>
+                        </div>
+                        <span id="municipioAdaStatus" style="font-size:12px; color:var(--text-light);"></span>
                     </div>
                 </div>
 

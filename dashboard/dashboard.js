@@ -6996,6 +6996,7 @@ async function salvarCatalogoTreinamento() {
 
 let allEfetivo = [];
 let allGheCatalogo = [];
+let allMunicipiosAda = [];
 let efetivoLoaded = false;
 
 async function loadEfetivoData() {
@@ -7003,6 +7004,7 @@ async function loadEfetivoData() {
     try {
         allEfetivo = await supabaseFetch('colaboradores_efetivo', '?select=*');
         allGheCatalogo = await supabaseFetch('ghe_catalogo', '?select=*');
+        allMunicipiosAda = await supabaseFetch('municipios_ada', '?select=*');
         popularGheCatalogoDatalist();
         if (!treinamentosLoaded) {
             treinamentosLoaded = true;
@@ -7020,7 +7022,7 @@ async function loadEfetivoData() {
 // Abas da página Efetivo (Visão Geral / Colaboradores) - mesmo raciocínio de
 // self-heal do showTreinSubtab: sempre re-renderiza a Visão Geral ao entrar nela.
 function showEfetivoSubtab(tab) {
-    ['visao', 'colaboradores', 'setores', 'ghe', 'recomendacoes'].forEach(t => {
+    ['visao', 'colaboradores', 'setores', 'ghe', 'recomendacoes', 'maoobra'].forEach(t => {
         const content = document.getElementById('efetivoSubtab-' + t);
         const btn = document.getElementById('efetivoSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -7030,6 +7032,247 @@ function showEfetivoSubtab(tab) {
     if (tab === 'setores') { fecharGerenciarSetor(); renderSetoresLista(); }
     if (tab === 'ghe') { fecharGerenciarGhe(); renderGheLista(); }
     if (tab === 'recomendacoes') renderRecomendacoesGheLista();
+    if (tab === 'maoobra') { popularMaoDeObraDefaults(); renderMunicipiosAdaLista(); }
+}
+
+// ============================================
+// MÃO DE OBRA LOCAL (Quadros 1 e 2 do RSA) - ocupação de mão de obra por
+// município de origem, e % de contratados vindos de municípios da Área
+// Diretamente Afetada (ADA). Usa os campos "cidade"/"estado" que já existem
+// em colaboradores_efetivo (já preenchidos historicamente) - não precisou de
+// campo novo no cadastro.
+// ============================================
+
+// Mapa nome-do-estado -> UF, porque "estado" em colaboradores_efetivo é texto
+// livre (tem registro como "PERNAMBUCO" e outro como "PE" pro MESMO município
+// - sem isso, os dois viram grupos separados e o Quadro 1 conta errado).
+const NOME_ESTADO_PARA_UF = {
+    'ACRE': 'AC', 'ALAGOAS': 'AL', 'AMAPÁ': 'AP', 'AMAZONAS': 'AM', 'BAHIA': 'BA',
+    'CEARÁ': 'CE', 'DISTRITO FEDERAL': 'DF', 'ESPÍRITO SANTO': 'ES', 'GOIÁS': 'GO',
+    'MARANHÃO': 'MA', 'MATO GROSSO': 'MT', 'MATO GROSSO DO SUL': 'MS',
+    'MINAS GERAIS': 'MG', 'PARÁ': 'PA', 'PARAÍBA': 'PB', 'PARANÁ': 'PR',
+    'PERNAMBUCO': 'PE', 'PIAUÍ': 'PI', 'RIO DE JANEIRO': 'RJ',
+    'RIO GRANDE DO NORTE': 'RN', 'RIO GRANDE DO SUL': 'RS', 'RONDÔNIA': 'RO',
+    'RORAIMA': 'RR', 'SANTA CATARINA': 'SC', 'SÃO PAULO': 'SP', 'SERGIPE': 'SE',
+    'TOCANTINS': 'TO'
+};
+function normalizarUF(estadoTexto) {
+    const t = (estadoTexto || '').trim();
+    if (t.length === 2) return t.toUpperCase();
+    return NOME_ESTADO_PARA_UF[t.toUpperCase()] || t.toUpperCase();
+}
+
+function popularMaoDeObraDefaults() {
+    const hoje = new Date();
+    const mesEl = document.getElementById('maoObraMes');
+    const anoEl = document.getElementById('maoObraAno');
+    if (mesEl && !mesEl.dataset.inicializado) { mesEl.value = String(hoje.getMonth()); mesEl.dataset.inicializado = '1'; }
+    if (anoEl && !anoEl.value) anoEl.value = hoje.getFullYear();
+}
+
+function renderMunicipiosAdaLista() {
+    const el = document.getElementById('municipiosAdaLista');
+    if (!el) return;
+    if (allMunicipiosAda.length === 0) {
+        el.innerHTML = '<div class="db-list-empty">Nenhum município ADA cadastrado.</div>';
+        return;
+    }
+    const ordenados = [...allMunicipiosAda].sort((a, b) => a.municipio.localeCompare(b.municipio, 'pt-BR'));
+    el.innerHTML = ordenados.map(m => `
+        <div class="db-list-item" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            <span>${escapeHTML(m.municipio)} / ${escapeHTML(m.uf)}</span>
+            <button class="db-clear-btn" onclick="removerMunicipioAda('${m.id}')">🗑️ Remover</button>
+        </div>`).join('');
+}
+
+async function adicionarMunicipioAda() {
+    const nomeEl = document.getElementById('municipioAdaNovoNome');
+    const ufEl = document.getElementById('municipioAdaNovoUf');
+    const statusEl = document.getElementById('municipioAdaStatus');
+    const municipio = (nomeEl.value || '').trim().toUpperCase();
+    const uf = normalizarUF(ufEl.value || '');
+    if (!municipio || uf.length !== 2) {
+        statusEl.textContent = '❌ Preencha o município e a UF (2 letras).';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const id = municipio.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + uf.toLowerCase();
+    if (allMunicipiosAda.some(m => m.id === id)) {
+        statusEl.textContent = 'Esse município já está na lista.';
+        statusEl.style.color = 'var(--text-light)';
+        return;
+    }
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        const row = { id, municipio, uf };
+        await supabaseUpsert('municipios_ada', [row]);
+        allMunicipiosAda.push(row);
+        nomeEl.value = '';
+        ufEl.value = '';
+        renderMunicipiosAdaLista();
+        statusEl.textContent = '✅ Adicionado.';
+        statusEl.style.color = 'var(--success)';
+    } catch (err) {
+        console.error('Erro ao adicionar município ADA:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function removerMunicipioAda(id) {
+    const m = allMunicipiosAda.find(x => x.id === id);
+    if (!m) return;
+    if (!confirm(`Remover "${m.municipio}/${m.uf}" da lista de municípios ADA?`)) return;
+    try {
+        await supabaseDelete('municipios_ada', id);
+        allMunicipiosAda = allMunicipiosAda.filter(x => x.id !== id);
+        renderMunicipiosAdaLista();
+    } catch (err) {
+        console.error('Erro ao remover município ADA:', err);
+    }
+}
+
+// Mesmo filtro de headcountAsOf(), só que devolvendo os registros em vez da
+// contagem - precisa dos registros aqui pra agrupar por cidade/estado, não só
+// contar.
+function colaboradoresAtivosEm(dataRef) {
+    return allEfetivo.filter(e => {
+        if (!e.dt_admissao) return false;
+        if (parseLocalDate(e.dt_admissao) > dataRef) return false;
+        if (!e.dt_demissao) return true;
+        return parseLocalDate(e.dt_demissao) > dataRef;
+    });
+}
+
+// Monta o Quadro 1 (todos os municípios de origem) e o Quadro 2 (só os
+// municípios ADA, com % sobre o total) pro fim do mês escolhido - mesmo
+// "retrato no fim do mês" que headcountAsOf() já usa em Treinamentos/Efetivo,
+// pra bater com o mesmo efetivo do mês mostrado no resto do sistema.
+function montarQuadrosMaoDeObra(ano, mesIndex0) {
+    const fim = new Date(ano, mesIndex0 + 1, 0);
+    const ativos = colaboradoresAtivosEm(fim);
+    const totalFuncionarios = ativos.length;
+
+    const porMunicipio = new Map();
+    ativos.forEach(e => {
+        const municipio = (e.cidade || '').trim().toUpperCase() || '(NÃO INFORMADO)';
+        const uf = normalizarUF(e.estado);
+        if (!porMunicipio.has(municipio)) porMunicipio.set(municipio, { municipio, uf, qtd: 0 });
+        porMunicipio.get(municipio).qtd++;
+    });
+    const linhasQuadro1 = Array.from(porMunicipio.values()).sort((a, b) => a.municipio.localeCompare(b.municipio, 'pt-BR'));
+
+    const chavesAda = new Set(allMunicipiosAda.map(m => `${m.municipio.toUpperCase()}||${normalizarUF(m.uf)}`));
+    const linhasQuadro2 = linhasQuadro1
+        .filter(l => chavesAda.has(`${l.municipio}||${l.uf}`))
+        .map(l => ({ ...l, pct: totalFuncionarios > 0 ? (l.qtd / totalFuncionarios * 100) : 0 }));
+    const totalAda = linhasQuadro2.reduce((s, l) => s + l.qtd, 0);
+    const pctAda = totalFuncionarios > 0 ? (totalAda / totalFuncionarios * 100) : 0;
+
+    return { totalFuncionarios, linhasQuadro1, linhasQuadro2, totalAda, pctAda };
+}
+
+async function gerarExcelMaoDeObra() {
+    const ano = parseInt(document.getElementById('maoObraAno').value);
+    const mes = parseInt(document.getElementById('maoObraMes').value);
+    const statusEl = document.getElementById('maoObraStatus');
+    const { totalFuncionarios, linhasQuadro1, linhasQuadro2, totalAda, pctAda } = montarQuadrosMaoDeObra(ano, mes);
+    if (linhasQuadro1.length === 0) {
+        statusEl.textContent = '❌ Nenhum colaborador ativo encontrado nesse mês.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const aoa1 = [
+        ['QUADRO 1 - Demonstrativo da ocupação da mão de obra local por município'],
+        ['Número Total de Funcionários da Obra', totalFuncionarios, '', ''],
+        ['MUNICÍPIO DE ORIGEM', 'UF DE ORIGEM', 'Nº DE TRABALHADORES POR MUNICÍPIO']
+    ];
+    linhasQuadro1.forEach(l => aoa1.push([l.municipio, l.uf, l.qtd]));
+    aoa1.push(['TOTAL', '', totalFuncionarios]);
+    aoa1.push([]);
+    aoa1.push(['QUADRO 2 - Municípios na Área Diretamente Afetada (ADA)']);
+    aoa1.push(['MUNICÍPIO DE ORIGEM ADA', 'UF DE ORIGEM', 'Nº DE FUNCIONÁRIOS', 'PORCENTAGEM SOBRE O TOTAL (%)']);
+    linhasQuadro2.forEach(l => aoa1.push([l.municipio, l.uf, l.qtd, r2(l.pct)]));
+    aoa1.push(['TOTAL', '', totalAda, r2(pctAda) + '%']);
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa1);
+    ws['!cols'] = [{ wch: 28 }, { wch: 12 }, { wch: 16 }, { wch: 20 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'MAO DE OBRA LOCAL');
+
+    const nomeMes = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'][mes];
+    XLSX.writeFile(wb, `MAO_DE_OBRA_LOCAL_${nomeMes}_${ano}.xlsx`);
+
+    statusEl.textContent = `✅ Excel gerado — ${linhasQuadro1.length} município(s), Efetivo: ${totalFuncionarios}.`;
+    statusEl.style.color = 'var(--success)';
+}
+
+function gerarPdfMaoDeObra() {
+    const ano = parseInt(document.getElementById('maoObraAno').value);
+    const mes = parseInt(document.getElementById('maoObraMes').value);
+    const statusEl = document.getElementById('maoObraStatus');
+    const { totalFuncionarios, linhasQuadro1, linhasQuadro2, totalAda, pctAda } = montarQuadrosMaoDeObra(ano, mes);
+    if (linhasQuadro1.length === 0) {
+        statusEl.textContent = '❌ Nenhum colaborador ativo encontrado nesse mês.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const nomeMes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][mes];
+
+    const linhasQuadro1Html = linhasQuadro1.map(l => `
+        <tr><td style="text-align:left;">${escapeHTML(l.municipio)}</td><td>${escapeHTML(l.uf)}</td><td>${l.qtd}</td></tr>`).join('');
+    const linhasQuadro2Html = linhasQuadro2.map(l => `
+        <tr><td style="text-align:left;">${escapeHTML(l.municipio)}</td><td>${escapeHTML(l.uf)}</td><td>${l.qtd}</td><td>${r2(l.pct)}%</td></tr>`).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Mão de Obra Local - ${escapeHTML(nomeMes)}/${ano}</title>
+<style>
+    @page { size: portrait; margin: 12mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
+    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:6px; gap:10px; }
+    .cabecalho img { max-height:40px; }
+    .cabecalho .titulo { font-weight:700; font-size:14px; text-align:center; flex:1; }
+    .info-geracao { font-size:11px; color:#444; margin-bottom:10px; }
+    h3 { font-size:12px; margin:18px 0 6px; }
+    table { width:100%; border-collapse:collapse; font-size:10px; margin-bottom:10px; }
+    th, td { border:1px solid #999; padding:5px 6px; text-align:center; }
+    th { background:#d9d9d9; font-weight:700; }
+    tbody tr:nth-child(even) { background:#f7f7f7; }
+    tfoot td { font-weight:700; background:#e0e0e0; }
+    .no-print { text-align:center; margin:16px 0; }
+    .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
+    @media print { .no-print { display:none; } body { margin:0; } thead { display: table-header-group; } }
+</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="cabecalho">
+        <img src="${LOGO_COP_BASE64}" alt="COP">
+        <div class="titulo">MÃO DE OBRA LOCAL — ${escapeHTML(nomeMes.toUpperCase())}/${ano}</div>
+        <div style="width:40px;"></div>
+    </div>
+    <div class="info-geracao">${escapeHTML(EMPRESA_INFO.razaoSocial)} — Nº Total de Funcionários: ${totalFuncionarios}</div>
+
+    <h3>QUADRO 1 — Demonstrativo da ocupação da mão de obra local por município</h3>
+    <table>
+        <thead><tr><th>MUNICÍPIO DE ORIGEM</th><th>UF DE ORIGEM</th><th>Nº DE TRABALHADORES POR MUNICÍPIO</th></tr></thead>
+        <tbody>${linhasQuadro1Html}</tbody>
+        <tfoot><tr><td>TOTAL</td><td></td><td>${totalFuncionarios}</td></tr></tfoot>
+    </table>
+
+    <h3>QUADRO 2 — Municípios na Área Diretamente Afetada (ADA)</h3>
+    <table>
+        <thead><tr><th>MUNICÍPIO DE ORIGEM ADA</th><th>UF DE ORIGEM</th><th>Nº DE FUNCIONÁRIOS</th><th>PORCENTAGEM SOBRE O TOTAL (%)</th></tr></thead>
+        <tbody>${linhasQuadro2Html}</tbody>
+        <tfoot><tr><td>TOTAL</td><td></td><td>${totalAda}</td><td>${r2(pctAda)}%</td></tr></tfoot>
+    </table>
+</body></html>`;
+
+    abrirDocumentoBlob(html);
+    statusEl.textContent = `✅ Relatório gerado (${nomeMes}/${ano}) — abra a aba nova pra imprimir/salvar em PDF.`;
+    statusEl.style.color = 'var(--success)';
 }
 
 // ============================================

@@ -14523,6 +14523,19 @@ function abrirGrupoNavPagina(pageId) {
     salvarGruposNavAbertos();
 }
 
+// Destaca (texto roxo) o cabeçalho da categoria que contém a página atualmente ativa, e
+// tira o destaque de todas as outras - chamada sempre que a página muda (showDbPage) e
+// uma vez na inicialização (pra já nascer com "Segurança do Trabalho" destacado, já que
+// Checklists é a página inicial). 'config' fica de fora de propósito - é um item solto no
+// menu, não pertence a nenhuma categoria, então nenhum cabeçalho fica destacado nesse caso.
+function destacarGrupoAtivo(pageId) {
+    document.querySelectorAll('.db-nav-group-header').forEach(el => el.classList.remove('grupo-ativo'));
+    const grupo = NAV_GROUP_POR_PAGINA[pageId];
+    if (!grupo) return;
+    const headerEl = document.querySelector(`.db-nav-group[data-group="${grupo}"] .db-nav-group-header`);
+    if (headerEl) headerEl.classList.add('grupo-ativo');
+}
+
 function salvarGruposNavAbertos() {
     const abertos = Array.from(document.querySelectorAll('.db-nav-group-items:not(.collapsed)'))
         .map(el => el.id.replace('navGroupItems-', ''));
@@ -14559,6 +14572,7 @@ function showDbPage(pageId) {
     const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', documentos: 'navDocumentos', config: 'navConfig' };
     document.getElementById(navMap[pageId])?.classList.add('active');
     abrirGrupoNavPagina(pageId);
+    destacarGrupoAtivo(pageId);
 
     document.getElementById('pageTitle').textContent = DB_PAGE_TITLES[pageId] || '';
 
@@ -18308,6 +18322,11 @@ async function excluirAplicacaoPsicossocial() {
 
 function init() {
     restaurarGruposNavAbertos();
+    // Checklists é a página que já carrega ativa direto no HTML (ver comentário em
+    // restaurarGruposNavAbertos) - por isso o destaque da categoria correspondente
+    // ("Segurança do Trabalho") também precisa ser aplicado aqui na inicialização, e não
+    // só dentro de showDbPage() (que só roda quando o usuário clica em algum item).
+    destacarGrupoAtivo('checklists');
     setReportFilter('mes');
     loadData();
     iniciarAutoRefresh();

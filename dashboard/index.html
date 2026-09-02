@@ -146,6 +146,7 @@
                         <button id="checklistsSubtabBtn-cadastros" class="db-filter-btn" onclick="showChecklistsSubtab('cadastros')">📋 Cadastros</button>
                         <button id="checklistsSubtabBtn-historico" class="db-filter-btn" onclick="showChecklistsSubtab('historico')">📜 Histórico</button>
                         <button id="checklistsSubtabBtn-itens" class="db-filter-btn" onclick="showChecklistsSubtab('itens')">🛠️ Itens de Verificação</button>
+                        <button id="checklistsSubtabBtn-relatorio" class="db-filter-btn" onclick="showChecklistsSubtab('relatorio')">📄 Relatório</button>
                     </div>
                 </div>
 
@@ -365,6 +366,55 @@
                     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <button class="db-apply-btn" onclick="salvarItemGerencia()">💾 Salvar Alterações</button>
                         <span id="itemGerenciaStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
+                </div>
+
+                <div id="checklistsSubtab-relatorio" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">📄 Relatório Configurável de Checklists</div>
+                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 6px;">
+                        Escolha abaixo o que deve entrar no relatório antes de gerar.
+                    </p>
+                    <div style="font-size: 12.5px; color: var(--text-light); margin-bottom: 14px;">
+                        Período considerado (mesmo da aba 📊 Visão Geral): <strong id="checklistRelPeriodo">—</strong>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+                        <button class="db-clear-btn" onclick="marcarTodosRelatorioChecklist(true)">☑️ Marcar Todos</button>
+                        <button class="db-clear-btn" onclick="marcarTodosRelatorioChecklist(false)">⬜ Desmarcar Todos</button>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Indicadores (KPIs)</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 8px; margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relChecklistChk_equipamentos" checked> Equipamentos Ativos</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relChecklistChk_conformidade" checked> Conformidade (%)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relChecklistChk_interditados" checked> Interditados</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relChecklistChk_restricao" checked> Liberados c/ Restrição</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relChecklistChk_liberados" checked> Liberados</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relChecklistChk_pendentes" checked> Pendentes no Período</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relChecklistChk_realizados" checked> Realizados no Período</label>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Gráficos</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 8px; margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relChecklistChk_graficoConformidade" checked> Conformidade Geral</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relChecklistChk_graficoMeses" checked> Volume de Checklists (Últimos 6 Meses)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relChecklistChk_graficoTipo" checked> Checklists por Tipo de Equipamento</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relChecklistChk_graficoItens" checked> Top 10 Itens com Mais Não Conformidade</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relChecklistChk_graficoEquip" checked> Top 10 Equipamentos com Mais Não Conformidade</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relChecklistChk_graficoEmpresa" checked> Top Empresas com Mais Não Conformidade</label>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Lista</div>
+                    <div style="margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relChecklistChk_listaPendentes" checked> Equipamentos Pendentes no Período</label>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="gerarExcelChecklist()">📊 Baixar Excel</button>
+                        <button class="db-apply-btn" onclick="gerarPdfChecklist()">🖨️ Gerar PDF</button>
+                        <span id="relatorioChecklistStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
                 </div>
                 </div>

@@ -480,8 +480,27 @@ function renderAll() {
     checklistsPeriodo = filterChecklistArray(checklistsPeriodo);
 
     renderTituloPeriodo();
-    renderKPIs(filteredEquips, checklistsPeriodo);
-    renderCharts(checklistsPeriodo, filterChecklistArray);
+    const kpiData = renderKPIs(filteredEquips, checklistsPeriodo);
+    const chartData = renderCharts(checklistsPeriodo, filterChecklistArray);
+
+    // Snapshot dos números/gráficos/lista que acabaram de ser calculados acima (em
+    // renderKPIs e renderCharts), pra alimentar a aba "📄 Relatório" sem duplicar
+    // nenhuma lógica de cálculo. Diferente dos outros módulos (Saúde/Efetivo/EPI/
+    // Acidentabilidade), aqui o cálculo é feito em duas funções separadas, por isso o
+    // snapshot é montado aqui em renderAll(), juntando o retorno das duas.
+    window.checklistReportData = {
+        periodoLabel: document.getElementById('periodoTitulo')?.textContent || '',
+        kpis: kpiData.kpis,
+        graficos: chartData.graficos,
+        listas: {
+            listaPendentes: {
+                titulo: 'Equipamentos Pendentes no Período',
+                colunas: ['Patrimônio', 'Nome', 'Categoria', 'Empresa'],
+                linhas: kpiData.listaPendentes
+            }
+        }
+    };
+    if (document.getElementById('checklistsSubtabBtn-relatorio')?.classList.contains('active')) renderChecklistRelatorioChecklist();
 }
 
 function renderTituloPeriodo() {
@@ -491,7 +510,11 @@ function renderTituloPeriodo() {
     if (!el) return;
     if (reportFilter === 'semana') el.textContent = 'Última Semana';
     else if (reportFilter === 'todos') el.textContent = 'Todos os Dados';
-    else if (reportFilter === 'custom') el.textContent = 'Período Personalizado';
+    else if (reportFilter === 'custom') {
+        el.textContent = (customFrom && customTo)
+            ? `${formatSimpleDate(customFrom)} a ${formatSimpleDate(customTo)}`
+            : 'Período Personalizado';
+    }
     else el.textContent = `${meses[agora.getMonth()]} ${agora.getFullYear()}`;
 }
 
@@ -520,6 +543,28 @@ function renderKPIs(filteredEquips, checklistsPeriodo) {
     document.getElementById('kpiPendentes').textContent = pendentes.length;
     document.getElementById('kpiRealizados').textContent = realizados.length;
     renderChecklistPendentesLista(pendentes);
+
+    // Retorna os números calculados acima pra quem chamou (renderAll) poder montar o
+    // snapshot da aba "📄 Relatório", sem duplicar nenhum cálculo aqui.
+    const pendentesOrdenados = pendentes.slice().sort((a, b) => {
+        const catA = (a.categoria || '').localeCompare(b.categoria || '');
+        if (catA !== 0) return catA;
+        return (a.patrimonio || '').localeCompare(b.patrimonio || '');
+    });
+    return {
+        kpis: [
+            { key: 'equipamentos', label: 'Equipamentos Ativos', value: filteredEquips.length },
+            { key: 'conformidade', label: 'Conformidade (%)', value: pctConformidade + '%' },
+            { key: 'interditados', label: 'Interditados', value: statusCounts.interditado },
+            { key: 'restricao', label: 'Liberados c/ Restrição', value: statusCounts.liberado_restricao },
+            { key: 'liberados', label: 'Liberados', value: statusCounts.liberado },
+            { key: 'pendentes', label: 'Pendentes no Período', value: pendentes.length },
+            { key: 'realizados', label: 'Realizados no Período', value: realizados.length }
+        ],
+        listaPendentes: pendentesOrdenados.map(p => [
+            p.patrimonio || '—', p.nome || '—', p.categoria || '—', p.empresa || '—'
+        ])
+    };
 }
 
 // O KPI já existia, mas só mostrava a contagem - o app de campo (app.js, pendentesList)
@@ -660,10 +705,214 @@ function renderCharts(checklistsPeriodo, filterChecklistArray) {
         data: { labels: empresaLabels, datasets: [{ label: 'Não Conformidades', data: empresaSorted.map(e => e[1]), backgroundColor: colors.warning || '#f59e0b', borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
     });
+
+    // Retorna os dados dos gráficos calculados acima pra quem chamou (renderAll) poder
+    // montar o snapshot da aba "📄 Relatório", sem recalcular nada aqui.
+    return {
+        graficos: {
+            graficoConformidade: { titulo: 'Conformidade Geral', labels: ['Conformes', 'Não Conformes', 'N/A'], valores: [totalC, totalNC, totalNA] },
+            graficoMeses: { titulo: 'Volume de Checklists (Últimos 6 Meses)', labels: meses, valores: contagens },
+            graficoTipo: { titulo: 'Checklists por Tipo de Equipamento', labels: typeSorted.map(t => t[0]), valores: typeSorted.map(t => t[1]) },
+            graficoItens: { titulo: 'Top 10 Itens com Mais Não Conformidade', labels: itemsSorted.map(i => i[0]), valores: itemsSorted.map(i => i[1]) },
+            graficoEquip: { titulo: 'Top 10 Equipamentos com Mais Não Conformidade', labels: equipSorted.map(e => e[0]), valores: equipSorted.map(e => e[1]) },
+            graficoEmpresa: { titulo: 'Top Empresas com Mais Não Conformidade', labels: empresaSorted.map(e => e[0]), valores: empresaSorted.map(e => e[1]) }
+        }
+    };
+}
+
+// ============================================
+// RELATÓRIO CONFIGURÁVEL DE CHECKLISTS - mesmo padrão já usado em Saúde, Efetivo, EPI e
+// Acidentabilidade: o usuário escolhe via checkbox quais KPIs/gráficos/lista entram no
+// relatório antes de gerar. Os dados vêm de window.checklistReportData (preenchido no fim
+// de renderAll() - nunca recalculado aqui).
+// ============================================
+
+function renderChecklistRelatorioChecklist() {
+    const el = document.getElementById('checklistRelPeriodo');
+    if (el && window.checklistReportData) el.textContent = window.checklistReportData.periodoLabel || '—';
+}
+
+function marcarTodosRelatorioChecklist(valor) {
+    ['relChecklistChk_equipamentos', 'relChecklistChk_conformidade', 'relChecklistChk_interditados',
+     'relChecklistChk_restricao', 'relChecklistChk_liberados', 'relChecklistChk_pendentes',
+     'relChecklistChk_realizados', 'relChecklistChk_graficoConformidade', 'relChecklistChk_graficoMeses',
+     'relChecklistChk_graficoTipo', 'relChecklistChk_graficoItens', 'relChecklistChk_graficoEquip',
+     'relChecklistChk_graficoEmpresa', 'relChecklistChk_listaPendentes'].forEach(id => {
+        const chk = document.getElementById(id);
+        if (chk) chk.checked = valor;
+    });
+}
+
+function lerSelecaoRelatorioChecklist() {
+    return {
+        equipamentos: document.getElementById('relChecklistChk_equipamentos').checked,
+        conformidade: document.getElementById('relChecklistChk_conformidade').checked,
+        interditados: document.getElementById('relChecklistChk_interditados').checked,
+        restricao: document.getElementById('relChecklistChk_restricao').checked,
+        liberados: document.getElementById('relChecklistChk_liberados').checked,
+        pendentes: document.getElementById('relChecklistChk_pendentes').checked,
+        realizados: document.getElementById('relChecklistChk_realizados').checked,
+        graficoConformidade: document.getElementById('relChecklistChk_graficoConformidade').checked,
+        graficoMeses: document.getElementById('relChecklistChk_graficoMeses').checked,
+        graficoTipo: document.getElementById('relChecklistChk_graficoTipo').checked,
+        graficoItens: document.getElementById('relChecklistChk_graficoItens').checked,
+        graficoEquip: document.getElementById('relChecklistChk_graficoEquip').checked,
+        graficoEmpresa: document.getElementById('relChecklistChk_graficoEmpresa').checked,
+        listaPendentes: document.getElementById('relChecklistChk_listaPendentes').checked
+    };
+}
+
+async function gerarExcelChecklist() {
+    const statusEl = document.getElementById('relatorioChecklistStatus');
+    const dados = window.checklistReportData;
+    if (!dados) {
+        statusEl.textContent = '❌ Abra a aba 📊 Visão Geral pelo menos uma vez antes de gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const marcados = lerSelecaoRelatorioChecklist();
+    if (Object.values(marcados).every(v => !v)) {
+        statusEl.textContent = '❌ Selecione pelo menos um item para gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const aoa = [];
+    aoa.push([`RELATÓRIO DE CHECKLISTS — ${dados.periodoLabel}`]);
+    aoa.push([`Gerado em ${new Date().toLocaleDateString('pt-BR')}`]);
+    aoa.push([]);
+
+    const kpisMarcados = dados.kpis.filter(k => marcados[k.key]);
+    if (kpisMarcados.length > 0) {
+        aoa.push(['INDICADORES (KPIs)']);
+        aoa.push(['Indicador', 'Valor']);
+        kpisMarcados.forEach(k => aoa.push([k.label, k.value]));
+        aoa.push([]);
+    }
+
+    Object.entries(dados.graficos).forEach(([key, g]) => {
+        if (!marcados[key]) return;
+        aoa.push([g.titulo.toUpperCase()]);
+        if (g.series) {
+            aoa.push(['Categoria', ...g.series.map(s => s.nome)]);
+            g.labels.forEach((label, i) => aoa.push([label, ...g.series.map(s => s.valores[i])]));
+        } else {
+            aoa.push(['Categoria', 'Valor']);
+            g.labels.forEach((label, i) => aoa.push([label, g.valores[i]]));
+        }
+        aoa.push([]);
+    });
+
+    Object.entries(dados.listas).forEach(([key, l]) => {
+        if (!marcados[key]) return;
+        aoa.push([l.titulo.toUpperCase()]);
+        aoa.push(l.colunas);
+        if (l.linhas.length === 0) aoa.push(['Nenhum item nessa lista no momento']);
+        else l.linhas.forEach(linha => aoa.push(linha));
+        aoa.push([]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 16 }, { wch: 16 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'CHECKLISTS');
+
+    const dataSlug = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `RELATORIO_CHECKLISTS_${dataSlug}.xlsx`);
+
+    statusEl.textContent = `✅ Excel gerado com ${Object.values(marcados).filter(Boolean).length} item(ns) selecionado(s).`;
+    statusEl.style.color = 'var(--success)';
+}
+
+function gerarPdfChecklist() {
+    const statusEl = document.getElementById('relatorioChecklistStatus');
+    const dados = window.checklistReportData;
+    if (!dados) {
+        statusEl.textContent = '❌ Abra a aba 📊 Visão Geral pelo menos uma vez antes de gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const marcados = lerSelecaoRelatorioChecklist();
+    if (Object.values(marcados).every(v => !v)) {
+        statusEl.textContent = '❌ Selecione pelo menos um item para gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const kpisMarcados = dados.kpis.filter(k => marcados[k.key]);
+    const kpisHtml = kpisMarcados.length === 0 ? '' : `
+    <h3>Indicadores (KPIs)</h3>
+    <table style="width:65%; margin-bottom:14px;">
+        <thead><tr><th>Indicador</th><th>Valor</th></tr></thead>
+        <tbody>${kpisMarcados.map(k => `<tr><td style="text-align:left;">${escapeHTML(k.label)}</td><td>${escapeHTML(String(k.value))}</td></tr>`).join('')}</tbody>
+    </table>`;
+
+    const graficosHtml = Object.entries(dados.graficos).filter(([key]) => marcados[key]).map(([key, g]) => {
+        if (g.series) {
+            return `
+    <h3>${escapeHTML(g.titulo)}</h3>
+    <table style="width:85%; margin-bottom:14px;">
+        <thead><tr><th>Categoria</th>${g.series.map(s => `<th>${escapeHTML(s.nome)}</th>`).join('')}</tr></thead>
+        <tbody>${g.labels.map((label, i) => `<tr><td style="text-align:left;">${escapeHTML(String(label))}</td>${g.series.map(s => `<td>${escapeHTML(String(s.valores[i] ?? '—'))}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`;
+        }
+        return `
+    <h3>${escapeHTML(g.titulo)}</h3>
+    <table style="width:65%; margin-bottom:14px;">
+        <thead><tr><th>Categoria</th><th>Valor</th></tr></thead>
+        <tbody>${g.labels.map((label, i) => `<tr><td style="text-align:left;">${escapeHTML(String(label))}</td><td>${escapeHTML(String(g.valores[i]))}</td></tr>`).join('')}</tbody>
+    </table>`;
+    }).join('');
+
+    const listasHtml = Object.entries(dados.listas).filter(([key]) => marcados[key]).map(([key, l]) => `
+    <h3>${escapeHTML(l.titulo)}</h3>
+    <table style="width:100%; margin-bottom:14px;">
+        <thead><tr>${l.colunas.map(c => `<th>${escapeHTML(c)}</th>`).join('')}</tr></thead>
+        <tbody>${l.linhas.length === 0
+            ? `<tr><td colspan="${l.colunas.length}">Nenhum item nessa lista no momento</td></tr>`
+            : l.linhas.map(linha => `<tr>${linha.map((v, i) => `<td${i === 0 ? ' style="text-align:left;"' : ''}>${escapeHTML(String(v))}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Relatório de Checklists</title>
+<style>
+    @page { size: portrait; margin: 12mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
+    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:6px; gap:10px; }
+    .cabecalho img { max-height:40px; }
+    .cabecalho .titulo { font-weight:700; font-size:14px; text-align:center; flex:1; }
+    .info-geracao { font-size:11px; color:#444; margin-bottom:10px; }
+    h3 { font-size:12px; margin:18px 0 6px; }
+    table { width:100%; border-collapse:collapse; font-size:10px; margin-bottom:10px; }
+    th, td { border:1px solid #999; padding:5px 6px; text-align:center; }
+    th { background:#d9d9d9; font-weight:700; }
+    tbody tr:nth-child(even) { background:#f7f7f7; }
+    .no-print { text-align:center; margin:16px 0; }
+    .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
+    @media print { .no-print { display:none; } body { margin:0; } thead { display: table-header-group; } }
+</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="cabecalho">
+        <img src="${LOGO_COP_BASE64}" alt="COP">
+        <div class="titulo">RELATÓRIO DE CHECKLISTS</div>
+        <div style="width:40px;"></div>
+    </div>
+    <div class="info-geracao">${escapeHTML(EMPRESA_INFO.razaoSocial)} — Período: ${escapeHTML(dados.periodoLabel)} — Gerado em ${new Date().toLocaleDateString('pt-BR')}</div>
+
+    ${kpisHtml}
+    ${graficosHtml}
+    ${listasHtml}
+</body></html>`;
+
+    abrirDocumentoBlob(html);
+    statusEl.textContent = `✅ Relatório gerado — abra a aba nova pra imprimir/salvar em PDF.`;
+    statusEl.style.color = 'var(--success)';
 }
 
 function showChecklistsSubtab(tab) {
-    ['visao', 'cadastros', 'historico', 'itens'].forEach(t => {
+    ['visao', 'cadastros', 'historico', 'itens', 'relatorio'].forEach(t => {
         const content = document.getElementById('checklistsSubtab-' + t);
         const btn = document.getElementById('checklistsSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -679,6 +928,11 @@ function showChecklistsSubtab(tab) {
         popularHistCategoriaSelect();
         renderHistoricoChecklists();
     }
+    // A aba de Relatório usa os números da Visão Geral (window.checklistReportData) - por
+    // isso, ao abrir ela, força um recálculo da Visão Geral, garantindo que o relatório
+    // nunca fique desatualizado mesmo que o usuário nunca tenha aberto essa outra sub-aba
+    // antes.
+    if (tab === 'relatorio') { renderAll(); renderChecklistRelatorioChecklist(); }
     if (tab === 'itens') {
         popularItemGerenciaSelect();
         if (!checklistItemSettingsLoaded) {

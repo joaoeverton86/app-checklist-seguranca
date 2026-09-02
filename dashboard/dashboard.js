@@ -10152,11 +10152,19 @@ function diasSemAcidente(comAfastamento) {
 function renderAcidentesPanel() {
     popularFiltroAnoAcidentes();
     const { inicio, fim } = getAcidentesDateRange();
-    const periodo = allAcidentes.filter(a => {
+    const periodoTodos = allAcidentes.filter(a => {
         if (!a.data_acidente) return false;
         const d = parseLocalDate(a.data_acidente);
         return d >= inicio && d <= fim;
     });
+    // NBR 14280 exige segregar acidente Típico de acidente de Trajeto e de ocorrência Sem
+    // Lesão (impessoal/dano material) - só o Típico entra no TF/TG e nos gráficos de
+    // tipologia/parte do corpo/agente causador, porque só ele usa o HHT de exposição real
+    // ao trabalho como base de cálculo. Registro antigo sem essa classificação (campo
+    // novo, adicionado depois) é tratado como Típico - ver DEFAULT da coluna no banco -
+    // pra não zerar o histórico de TF/TG já calculado antes desta mudança.
+    const periodo = periodoTodos.filter(a => (a.classificacao_nbr || 'Típico') === 'Típico');
+    const periodoOutras = periodoTodos.filter(a => (a.classificacao_nbr || 'Típico') !== 'Típico');
 
     // HHT do período: soma a HHT de exposição real (efetivo × dias trabalhados × horas/dia)
     // de cada mês coberto. Se algum mês do período ainda não tiver dias trabalhados
@@ -10173,31 +10181,54 @@ function renderAcidentesPanel() {
     }
 
     const numAcidentes = periodo.length;
+    // TF segregado por com/sem afastamento (TF_CA/TF_SA), como a NBR 14280 exige, além do
+    // TF Global (soma dos dois) que já existia - pedido do usuário depois de ver as
+    // fórmulas oficiais da norma.
+    const numAcidentesCA = periodo.filter(a => a.com_afastamento).length;
+    const numAcidentesSA = periodo.filter(a => !a.com_afastamento).length;
     const diasPerdidosTotal = periodo.reduce((s, a) => s + (parseInt(a.dias_perdidos, 10) || 0), 0);
     const diasDebitadosTotal = periodo.reduce((s, a) => s + (parseInt(a.dias_debitados, 10) || 0), 0);
 
     const tfDisponivel = periodoCompleto && hhtPeriodo > 0;
-    const tf = tfDisponivel ? (numAcidentes * 1000000 / hhtPeriodo) : 0;
+    const tfCA = tfDisponivel ? (numAcidentesCA * 1000000 / hhtPeriodo) : 0;
+    const tfSA = tfDisponivel ? (numAcidentesSA * 1000000 / hhtPeriodo) : 0;
+    const tfG = tfDisponivel ? (numAcidentes * 1000000 / hhtPeriodo) : 0;
     const tg = tfDisponivel ? ((diasPerdidosTotal + diasDebitadosTotal) * 1000000 / hhtPeriodo) : 0;
 
-    document.getElementById('kpiAcidTF').textContent = tfDisponivel ? tf.toFixed(2) : '—';
+    document.getElementById('kpiAcidTFCA').textContent = tfDisponivel ? tfCA.toFixed(2) : '—';
+    document.getElementById('kpiAcidTFSA').textContent = tfDisponivel ? tfSA.toFixed(2) : '—';
+    document.getElementById('kpiAcidTFG').textContent = tfDisponivel ? tfG.toFixed(2) : '—';
     document.getElementById('kpiAcidTG').textContent = tfDisponivel ? tg.toFixed(2) : '—';
     document.getElementById('kpiAcidTotal').textContent = numAcidentes;
+    document.getElementById('kpiAcidOutras').textContent = periodoOutras.length;
+
+    // Taxa de Incidência (acidentes por 1.000 colaboradores) - complementa o TF (que usa
+    // HHT como base) com uma leitura por efetivo, comum em relatório gerencial. Usa o
+    // efetivo "retrato no fim do período" (headcountAsOf), mesmo critério já usado em
+    // outros pontos do sistema (ex: Mão de Obra Local).
+    const efetivoFimPeriodo = headcountAsOf(fim);
+    const taxaIncidencia = efetivoFimPeriodo > 0 ? (numAcidentes * 1000 / efetivoFimPeriodo) : 0;
+    document.getElementById('kpiAcidTaxaIncidencia').textContent = efetivoFimPeriodo > 0 ? taxaIncidencia.toFixed(2) : '—';
 
     const diasCPT = diasSemAcidente(true);
     const diasSPT = diasSemAcidente(false);
     document.getElementById('kpiAcidDiasSemCPT').textContent = diasCPT === null ? '—' : diasCPT;
     document.getElementById('kpiAcidDiasSemSPT').textContent = diasSPT === null ? '—' : diasSPT;
 
+    // A lista de histórico continua mostrando TODOS os registros do período (Típico,
+    // Trajeto e Sem Lesão) - só os cálculos de TF/TG/gráficos acima é que segregam. Um
+    // registro que não é Típico ganha uma etiqueta na lista, pra ficar claro por que ele
+    // não entra nos indicadores oficiais.
     const listaEl = document.getElementById('listAcidentesHistorico');
-    const periodoOrdenado = periodo.slice().sort((a, b) => (b.data_acidente || '').localeCompare(a.data_acidente || ''));
+    const periodoOrdenado = periodoTodos.slice().sort((a, b) => (b.data_acidente || '').localeCompare(a.data_acidente || ''));
     if (periodoOrdenado.length === 0) {
         listaEl.innerHTML = '<div class="db-list-empty">✅ Nenhum acidente registrado no período</div>';
     } else {
         listaEl.innerHTML = periodoOrdenado.map(a => {
             const cls = a.com_afastamento ? 'db-item-danger' : 'db-item-warning';
+            const classifTag = (a.classificacao_nbr && a.classificacao_nbr !== 'Típico') ? ` — ${escapeHTML(a.classificacao_nbr)}` : '';
             return `<div class="db-list-item ${cls}" style="cursor:pointer;" onclick="abrirFormAcidente('${escapeHTML(a.id)}')">
-                <div class="db-list-item-title">${escapeHTML(a.tipo_acidente || 'Não especificado')} ${a.com_afastamento ? '(CPT)' : '(SPT)'}</div>
+                <div class="db-list-item-title">${escapeHTML(a.tipo_acidente || 'Não especificado')} ${a.com_afastamento ? '(CPT)' : '(SPT)'}${classifTag}</div>
                 <div class="db-list-item-sub">${escapeHTML(a.nome_colaborador || 'Não identificado')} — ${formatSimpleDate(a.data_acidente)}${a.setor ? ' — ' + escapeHTML(a.setor) : ''}</div>
             </div>`;
         }).join('');
@@ -10207,9 +10238,13 @@ function renderAcidentesPanel() {
     if (chartInstances.acidTFTG) chartInstances.acidTFTG.destroy();
     if (chartInstances.acidTipologia) chartInstances.acidTipologia.destroy();
     if (chartInstances.acidSetor) chartInstances.acidSetor.destroy();
+    if (chartInstances.acidParteCorpo) chartInstances.acidParteCorpo.destroy();
+    if (chartInstances.acidAgenteCausador) chartInstances.acidAgenteCausador.destroy();
 
-    // TF/TG por mês - histórico completo desde a primeira admissão registrada (não só
-    // desde o primeiro acidente - "0 acidentes" também é um dado válido pra mostrar).
+    // TF/TG por mês e os gráficos de tipologia/parte do corpo/agente causador abaixo só
+    // consideram acidente Típico - mesmo critério da segregação NBR 14280 usada acima nos
+    // KPIs do período.
+    const acidentesTipicos = allAcidentes.filter(a => (a.classificacao_nbr || 'Típico') === 'Típico');
     const hoje = new Date();
     const datasAdmissao = allEfetivo.filter(e => e.dt_admissao).map(e => parseLocalDate(e.dt_admissao));
     const primeiraData = datasAdmissao.length > 0 ? new Date(Math.min(...datasAdmissao.map(d => d.getTime()))) : hoje;
@@ -10221,7 +10256,7 @@ function renderAcidentesPanel() {
         const inicioMes = new Date(ano, mes, 1);
         const fimMes = new Date(ano, mes + 1, 0);
         mesesAcid.push(cursorAcid.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
-        const acidDoMes = allAcidentes.filter(a => a.data_acidente && parseLocalDate(a.data_acidente) >= inicioMes && parseLocalDate(a.data_acidente) <= fimMes);
+        const acidDoMes = acidentesTipicos.filter(a => a.data_acidente && parseLocalDate(a.data_acidente) >= inicioMes && parseLocalDate(a.data_acidente) <= fimMes);
         const hhtMes = hhtExposicaoDoMes(ano, mes);
         const dPerdidosMes = acidDoMes.reduce((s, a) => s + (parseInt(a.dias_perdidos, 10) || 0), 0);
         const dDebitadosMes = acidDoMes.reduce((s, a) => s + (parseInt(a.dias_debitados, 10) || 0), 0);
@@ -10251,7 +10286,7 @@ function renderAcidentesPanel() {
     });
 
     const tipoCounts = {};
-    allAcidentes.forEach(a => { const t = a.tipo_acidente || 'Não especificado'; tipoCounts[t] = (tipoCounts[t] || 0) + 1; });
+    acidentesTipicos.forEach(a => { const t = a.tipo_acidente || 'Não especificado'; tipoCounts[t] = (tipoCounts[t] || 0) + 1; });
     const tipoSorted = Object.entries(tipoCounts).sort((a, b) => b[1] - a[1]);
     const tipoLabels = tipoSorted.map(t => wrapChartLabel(t[0]));
     ajustarAlturaBarrasHorizontais('chartAcidTipologia', tipoLabels);
@@ -10262,13 +10297,37 @@ function renderAcidentesPanel() {
     });
 
     const setorCounts = {};
-    allAcidentes.forEach(a => { const s = a.setor || 'Não informado'; setorCounts[s] = (setorCounts[s] || 0) + 1; });
+    acidentesTipicos.forEach(a => { const s = a.setor || 'Não informado'; setorCounts[s] = (setorCounts[s] || 0) + 1; });
     const setorSorted = Object.entries(setorCounts).sort((a, b) => b[1] - a[1]);
     const setorLabels = setorSorted.map(s => wrapChartLabel(s[0]));
     ajustarAlturaBarrasHorizontais('chartAcidSetor', setorLabels);
     chartInstances.acidSetor = new Chart(document.getElementById('chartAcidSetor'), {
         type: 'bar',
         data: { labels: setorLabels, datasets: [{ label: 'Acidentes', data: setorSorted.map(s => s[1]), backgroundColor: '#ef4444', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
+    });
+
+    // NOVO: Parte do Corpo Atingida e Agente Causador - o formulário de registro já
+    // captura os dois campos há tempos, mas nenhum gráfico usava esse dado até agora.
+    const parteCorpoCounts = {};
+    acidentesTipicos.forEach(a => { const p = a.parte_corpo || 'Não informado'; parteCorpoCounts[p] = (parteCorpoCounts[p] || 0) + 1; });
+    const parteCorpoSorted = Object.entries(parteCorpoCounts).sort((a, b) => b[1] - a[1]);
+    const parteCorpoLabels = parteCorpoSorted.map(p => wrapChartLabel(p[0]));
+    ajustarAlturaBarrasHorizontais('chartAcidParteCorpo', parteCorpoLabels);
+    chartInstances.acidParteCorpo = new Chart(document.getElementById('chartAcidParteCorpo'), {
+        type: 'bar',
+        data: { labels: parteCorpoLabels, datasets: [{ label: 'Acidentes', data: parteCorpoSorted.map(p => p[1]), backgroundColor: '#0ea5e9', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
+    });
+
+    const agenteCounts = {};
+    acidentesTipicos.forEach(a => { const ag = a.agente_causador || 'Não informado'; agenteCounts[ag] = (agenteCounts[ag] || 0) + 1; });
+    const agenteSorted = Object.entries(agenteCounts).sort((a, b) => b[1] - a[1]);
+    const agenteLabels = agenteSorted.map(ag => wrapChartLabel(ag[0]));
+    ajustarAlturaBarrasHorizontais('chartAcidAgenteCausador', agenteLabels);
+    chartInstances.acidAgenteCausador = new Chart(document.getElementById('chartAcidAgenteCausador'), {
+        type: 'bar',
+        data: { labels: agenteLabels, datasets: [{ label: 'Acidentes', data: agenteSorted.map(ag => ag[1]), backgroundColor: '#8b5cf6', borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
     });
 }
@@ -10286,6 +10345,7 @@ function abrirFormAcidente(id) {
         title.textContent = '✏️ Editar Acidente';
         form.dataset.editId = id;
         document.getElementById('acidForm_data').value = a.data_acidente || '';
+        document.getElementById('acidForm_classificacao').value = a.classificacao_nbr || 'Típico';
         document.getElementById('acidForm_matricula').value = a.matricula ? `${a.matricula} - ${a.nome_colaborador || ''}` : (a.nome_colaborador || '');
         document.getElementById('acidForm_setor').value = a.setor || '';
         document.getElementById('acidForm_tipo').value = a.tipo_acidente || '';
@@ -10301,6 +10361,7 @@ function abrirFormAcidente(id) {
         title.textContent = '🚑 Registrar Acidente';
         delete form.dataset.editId;
         document.getElementById('acidForm_data').value = new Date().toISOString().split('T')[0];
+        document.getElementById('acidForm_classificacao').value = 'Típico';
         document.getElementById('acidForm_matricula').value = '';
         document.getElementById('acidForm_setor').value = '';
         document.getElementById('acidForm_tipo').value = '';
@@ -10355,6 +10416,7 @@ async function salvarAcidente() {
     const row = {
         id,
         data_acidente: data,
+        classificacao_nbr: document.getElementById('acidForm_classificacao').value || 'Típico',
         matricula: matricula || null,
         nome_colaborador: nomeColaborador || null,
         funcao: funcao || null,

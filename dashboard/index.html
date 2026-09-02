@@ -2337,12 +2337,24 @@
 
                 <div class="db-kpi-grid">
                     <div class="db-kpi-card db-kpi-primary">
-                        <div class="db-kpi-value" id="kpiAcidTF">0</div>
-                        <div class="db-kpi-label">Taxa de Frequência (TF)</div>
+                        <div class="db-kpi-value" id="kpiAcidTFCA">0</div>
+                        <div class="db-kpi-label">TF com Afastamento (TF_CA)</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-primary">
+                        <div class="db-kpi-value" id="kpiAcidTFSA">0</div>
+                        <div class="db-kpi-label">TF sem Afastamento (TF_SA)</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-primary">
+                        <div class="db-kpi-value" id="kpiAcidTFG">0</div>
+                        <div class="db-kpi-label">TF Global (TF_CA + TF_SA)</div>
                     </div>
                     <div class="db-kpi-card db-kpi-danger">
                         <div class="db-kpi-value" id="kpiAcidTG">0</div>
                         <div class="db-kpi-label">Taxa de Gravidade (TG)</div>
+                    </div>
+                    <div class="db-kpi-card">
+                        <div class="db-kpi-value" id="kpiAcidTaxaIncidencia">0</div>
+                        <div class="db-kpi-label">Taxa de Incidência (por 1.000 colaboradores)</div>
                     </div>
                     <div class="db-kpi-card db-kpi-success">
                         <div class="db-kpi-value" id="kpiAcidDiasSemCPT">0</div>
@@ -2354,7 +2366,11 @@
                     </div>
                     <div class="db-kpi-card">
                         <div class="db-kpi-value" id="kpiAcidTotal">0</div>
-                        <div class="db-kpi-label">Acidentes no Período</div>
+                        <div class="db-kpi-label">Acidentes Típicos no Período</div>
+                    </div>
+                    <div class="db-kpi-card">
+                        <div class="db-kpi-value" id="kpiAcidOutras">0</div>
+                        <div class="db-kpi-label">Trajeto / Sem Lesão no Período<br><span style="font-size:9.5px; font-weight:400; color:var(--text-light);">(fora do TF/TG, por exigência da NBR 14280)</span></div>
                     </div>
                 </div>
 
@@ -2370,6 +2386,14 @@
                     <div class="db-chart-card">
                         <div class="db-chart-title">Acidentes por Setor</div>
                         <div class="db-chart-canvas-wrap"><canvas id="chartAcidSetor"></canvas></div>
+                    </div>
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">Acidentes por Parte do Corpo Atingida</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartAcidParteCorpo"></canvas></div>
+                    </div>
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">Acidentes por Agente Causador</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartAcidAgenteCausador"></canvas></div>
                     </div>
                     <div class="db-chart-card db-list-card">
                         <div class="db-chart-title">Histórico de Acidentes no Período</div>
@@ -2388,6 +2412,14 @@
                         <div>
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data do Acidente *</label>
                             <input type="date" id="acidForm_data" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Classificação (NBR 14280) *</label>
+                            <select id="acidForm_classificacao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="Típico">Típico (ocorreu durante o trabalho)</option>
+                                <option value="Trajeto">Trajeto (no percurso casa-trabalho)</option>
+                                <option value="Sem Lesão">Sem Lesão (impessoal - dano material/ambiental, sem ninguém ferido)</option>
+                            </select>
                         </div>
                         <div>
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Colaborador (matrícula ou nome)</label>

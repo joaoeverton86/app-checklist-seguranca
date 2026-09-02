@@ -1716,6 +1716,7 @@
                         <button id="efetivoSubtabBtn-ghe" class="db-filter-btn" onclick="showEfetivoSubtab('ghe')">🧪 GHE</button>
                         <button id="efetivoSubtabBtn-recomendacoes" class="db-filter-btn" onclick="showEfetivoSubtab('recomendacoes')">📋 Recomendações</button>
                         <button id="efetivoSubtabBtn-maoobra" class="db-filter-btn" onclick="showEfetivoSubtab('maoobra')">🗺️ Mão de Obra Local</button>
+                        <button id="efetivoSubtabBtn-relatorio" class="db-filter-btn" onclick="showEfetivoSubtab('relatorio')">📄 Relatório</button>
                     </div>
                 </div>
 
@@ -1742,11 +1743,11 @@
                                 <input type="number" id="maoObraAno" style="width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
                             </div>
                         </div>
-                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                            <button class="db-apply-btn" onclick="gerarExcelMaoDeObra()">📊 Baixar Excel</button>
-                            <button class="db-apply-btn" onclick="gerarPdfMaoDeObra()">🖨️ Imprimir / Gerar PDF</button>
-                        </div>
-                        <div id="maoObraStatus" style="margin-top:10px; font-size:12.5px;"></div>
+                        <p style="font-size:11.5px; color: var(--text-light); border: 1px dashed var(--border); border-radius:8px; padding:8px 10px;">
+                            📄 Pra baixar o Excel ou gerar o PDF do Quadro 1/2 (usando o Mês/Ano acima), vá na
+                            aba <strong>📄 Relatório</strong> — lá dá pra escolher se inclui só esses quadros, só a
+                            Visão Geral, ou os dois juntos no mesmo arquivo.
+                        </p>
                     </div>
 
                     <div class="db-card" style="margin-top:16px;">
@@ -2006,6 +2007,96 @@
                         <button class="db-apply-btn" onclick="salvarColaboradorEfetivo()">💾 Salvar</button>
                         <button class="db-clear-btn" onclick="fecharFormEfetivo()">Cancelar</button>
                         <span id="efetivoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
+                </div>
+
+                <div id="efetivoSubtab-relatorio" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">📄 Relatório Configurável de Gestão de Pessoas (Efetivo)</div>
+                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 6px;">
+                        Escolha abaixo o que deve entrar no relatório antes de gerar.
+                    </p>
+
+                    <div style="font-size: 12.5px; color: var(--text-light); margin-bottom: 6px;">
+                        Período dos KPIs/gráficos abaixo (mesmo filtro da aba 📊 Visão Geral — mudar aqui muda lá também):
+                    </div>
+                    <div class="db-filters" style="margin-bottom: 6px;">
+                        <div class="db-filter-selects" style="margin-left: 0;">
+                            <select id="relEfetivoFiltroAno" onchange="onRelatorioEfetivoFiltroChange()">
+                                <option value="">Todos os Anos</option>
+                            </select>
+                            <select id="relEfetivoFiltroMes" onchange="onRelatorioEfetivoFiltroChange()">
+                                <option value="">Todos os Meses</option>
+                                <option value="0">Janeiro</option>
+                                <option value="1">Fevereiro</option>
+                                <option value="2">Março</option>
+                                <option value="3">Abril</option>
+                                <option value="4">Maio</option>
+                                <option value="5">Junho</option>
+                                <option value="6">Julho</option>
+                                <option value="7">Agosto</option>
+                                <option value="8">Setembro</option>
+                                <option value="9">Outubro</option>
+                                <option value="10">Novembro</option>
+                                <option value="11">Dezembro</option>
+                            </select>
+                            <button class="db-clear-btn" onclick="limparFiltroRelatorioEfetivo()">Limpar Filtro</button>
+                        </div>
+                    </div>
+                    <div style="font-size: 12.5px; color: var(--text-light); margin-bottom: 14px;">
+                        Período aplicado: <strong id="efetivoRelPeriodo">—</strong>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+                        <button class="db-clear-btn" onclick="marcarTodosRelatorioEfetivo(true)">☑️ Marcar Todos</button>
+                        <button class="db-clear-btn" onclick="marcarTodosRelatorioEfetivo(false)">⬜ Desmarcar Todos</button>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Indicadores (KPIs)</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 8px; margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_efetivoAtual" checked> Efetivo Atual</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_admissoes" checked> Admissões (período)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_demissoes" checked> Demissões (período)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_turnover" checked> Turnover (período)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_tempoCasa" checked> Tempo Médio de Casa</label>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Gráficos Gerais</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 8px; margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_graficoEvolucao" checked> Efetivo, Admissões e Demissões por Mês</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_graficoIndiceHht" checked> Índice HHT/Efetivo × 100 por Mês</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_graficoSetor" checked> Efetivo Atual por Setor</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_graficoFuncao" checked> Efetivo Atual por Função (Top 10)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_graficoHht220" checked> HHT (Efetivo × 220) por Mês</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_graficoSexo" checked> Efetivo Atual por Sexo</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_graficoFaixaEtaria" checked> Efetivo Atual por Faixa Etária</label>
+                        <div>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_graficoAniversariantes" checked> Aniversariantes do Mês</label>
+                            <div style="font-size: 11px; color: var(--warning); margin-top: 4px; margin-left: 24px;">⚠️ Contém nome de colaborador — avalie antes de incluir em relatório externo.</div>
+                        </div>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Gráficos ADA (Área Diretamente Afetada)</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 8px; margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_graficoAdaAtual" checked> Efetivo Atual por Área (ADA)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_graficoAdaAdmissoes" checked> Admissões por Área e Mês</label>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Mão de Obra Local (Quadros do RSA)</div>
+                    <p style="font-size: 11px; color: var(--text-light); margin: 0 0 8px;">
+                        Usa o Mês/Ano selecionados na sub-aba 🗺️ Mão de Obra Local (período diferente do usado
+                        pelos KPIs/gráficos acima).
+                    </p>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 8px; margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_quadro1" checked> Quadro 1 — Mão de obra por município</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEfetivoChk_quadro2" checked> Quadro 2 — Municípios ADA</label>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="gerarExcelEfetivo()">📊 Baixar Excel</button>
+                        <button class="db-apply-btn" onclick="gerarPdfRelatorioEfetivo()">🖨️ Gerar PDF</button>
+                        <span id="relatorioEfetivoStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
                 </div>
                 </div>

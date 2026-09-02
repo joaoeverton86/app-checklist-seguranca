@@ -7093,7 +7093,7 @@ async function loadEfetivoData() {
 // Abas da página Efetivo (Visão Geral / Colaboradores) - mesmo raciocínio de
 // self-heal do showTreinSubtab: sempre re-renderiza a Visão Geral ao entrar nela.
 function showEfetivoSubtab(tab) {
-    ['visao', 'colaboradores', 'setores', 'ghe', 'recomendacoes', 'maoobra'].forEach(t => {
+    ['visao', 'colaboradores', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].forEach(t => {
         const content = document.getElementById('efetivoSubtab-' + t);
         const btn = document.getElementById('efetivoSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -7104,6 +7104,262 @@ function showEfetivoSubtab(tab) {
     if (tab === 'ghe') { fecharGerenciarGhe(); renderGheLista(); }
     if (tab === 'recomendacoes') renderRecomendacoesGheLista();
     if (tab === 'maoobra') { popularMaoDeObraDefaults(); renderMunicipiosAdaLista(); }
+    // A aba de Relatório usa os números da Visão Geral (window.efetivoReportData) e os
+    // campos de Mês/Ano da Mão de Obra Local (maoObraMes/maoObraAno) - por isso, ao abrir
+    // ela, força um recálculo da Visão Geral e garante que os campos de Mês/Ano já estejam
+    // inicializados, mesmo que o usuário nunca tenha aberto essas outras sub-abas antes.
+    if (tab === 'relatorio') { renderEfetivoPanel(); popularMaoDeObraDefaults(); renderEfetivoRelatorioChecklist(); }
+}
+
+// ============================================
+// RELATÓRIO CONFIGURÁVEL DE GESTÃO DE PESSOAS (EFETIVO) - mesmo padrão já usado em Saúde
+// Ocupacional: o usuário escolhe via checkbox quais KPIs/gráficos/quadros entram no
+// relatório antes de gerar. Os KPIs/gráficos vêm de window.efetivoReportData (preenchido
+// no fim de renderEfetivoPanel - nunca recalculado aqui); os Quadros de Mão de Obra Local
+// são calculados na hora, chamando montarQuadrosMaoDeObra() com o Mês/Ano que estiver nos
+// campos já existentes na sub-aba 🗺️ Mão de Obra Local.
+// ============================================
+
+function renderEfetivoRelatorioChecklist() {
+    syncEfetivoFiltroSelects();
+    const el = document.getElementById('efetivoRelPeriodo');
+    if (el && window.efetivoReportData) el.textContent = window.efetivoReportData.periodoLabel || '—';
+}
+
+function marcarTodosRelatorioEfetivo(valor) {
+    ['relEfetivoChk_efetivoAtual', 'relEfetivoChk_admissoes', 'relEfetivoChk_demissoes', 'relEfetivoChk_turnover', 'relEfetivoChk_tempoCasa',
+     'relEfetivoChk_graficoEvolucao', 'relEfetivoChk_graficoIndiceHht', 'relEfetivoChk_graficoSetor', 'relEfetivoChk_graficoFuncao',
+     'relEfetivoChk_graficoHht220', 'relEfetivoChk_graficoSexo', 'relEfetivoChk_graficoFaixaEtaria', 'relEfetivoChk_graficoAniversariantes',
+     'relEfetivoChk_graficoAdaAtual', 'relEfetivoChk_graficoAdaAdmissoes', 'relEfetivoChk_quadro1', 'relEfetivoChk_quadro2'].forEach(id => {
+        const chk = document.getElementById(id);
+        if (chk) chk.checked = valor;
+    });
+}
+
+function lerSelecaoRelatorioEfetivo() {
+    return {
+        efetivoAtual: document.getElementById('relEfetivoChk_efetivoAtual').checked,
+        admissoes: document.getElementById('relEfetivoChk_admissoes').checked,
+        demissoes: document.getElementById('relEfetivoChk_demissoes').checked,
+        turnover: document.getElementById('relEfetivoChk_turnover').checked,
+        tempoCasa: document.getElementById('relEfetivoChk_tempoCasa').checked,
+        graficoEvolucao: document.getElementById('relEfetivoChk_graficoEvolucao').checked,
+        graficoIndiceHht: document.getElementById('relEfetivoChk_graficoIndiceHht').checked,
+        graficoSetor: document.getElementById('relEfetivoChk_graficoSetor').checked,
+        graficoFuncao: document.getElementById('relEfetivoChk_graficoFuncao').checked,
+        graficoHht220: document.getElementById('relEfetivoChk_graficoHht220').checked,
+        graficoSexo: document.getElementById('relEfetivoChk_graficoSexo').checked,
+        graficoFaixaEtaria: document.getElementById('relEfetivoChk_graficoFaixaEtaria').checked,
+        graficoAniversariantes: document.getElementById('relEfetivoChk_graficoAniversariantes').checked,
+        graficoAdaAtual: document.getElementById('relEfetivoChk_graficoAdaAtual').checked,
+        graficoAdaAdmissoes: document.getElementById('relEfetivoChk_graficoAdaAdmissoes').checked,
+        quadro1: document.getElementById('relEfetivoChk_quadro1').checked,
+        quadro2: document.getElementById('relEfetivoChk_quadro2').checked
+    };
+}
+
+async function gerarExcelEfetivo() {
+    const statusEl = document.getElementById('relatorioEfetivoStatus');
+    const dados = window.efetivoReportData;
+    if (!dados) {
+        statusEl.textContent = '❌ Abra a aba 📊 Visão Geral pelo menos uma vez antes de gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const marcados = lerSelecaoRelatorioEfetivo();
+    if (Object.values(marcados).every(v => !v)) {
+        statusEl.textContent = '❌ Selecione pelo menos um item para gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const aoa = [];
+    aoa.push([`RELATÓRIO DE GESTÃO DE PESSOAS (EFETIVO) — ${dados.periodoLabel}`]);
+    aoa.push([`Gerado em ${new Date().toLocaleDateString('pt-BR')}`]);
+    aoa.push([]);
+
+    const kpisMarcados = dados.kpis.filter(k => marcados[k.key]);
+    if (kpisMarcados.length > 0) {
+        aoa.push(['INDICADORES (KPIs)']);
+        aoa.push(['Indicador', 'Valor']);
+        kpisMarcados.forEach(k => aoa.push([k.label, k.value]));
+        aoa.push([]);
+    }
+
+    Object.entries(dados.graficos).forEach(([key, g]) => {
+        if (!marcados[key]) return;
+        aoa.push([g.titulo.toUpperCase()]);
+        if (g.linhas) {
+            aoa.push(['Dia', 'Nome', 'Função', 'Idade que completa']);
+            if (g.linhas.length === 0) aoa.push(['Nenhum aniversariante ativo neste mês', '', '', '']);
+            else g.linhas.forEach(l => aoa.push([l.dia, l.nome, l.funcao, l.idade]));
+        } else if (g.series) {
+            aoa.push(['Categoria', ...g.series.map(s => s.nome)]);
+            g.labels.forEach((label, i) => aoa.push([label, ...g.series.map(s => s.valores[i])]));
+        } else {
+            aoa.push(['Categoria', 'Valor']);
+            g.labels.forEach((label, i) => aoa.push([label, g.valores[i]]));
+        }
+        aoa.push([]);
+    });
+
+    if (marcados.quadro1 || marcados.quadro2) {
+        const ano = parseInt(document.getElementById('maoObraAno').value);
+        const mes = parseInt(document.getElementById('maoObraMes').value);
+        const nomeMes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][mes];
+        const { totalFuncionarios, linhasQuadro1, linhasQuadro2, totalAda, pctAda } = montarQuadrosMaoDeObra(ano, mes);
+        if (linhasQuadro1.length === 0) {
+            aoa.push([`MÃO DE OBRA LOCAL (${nomeMes}/${ano}) — nenhum colaborador ativo encontrado nesse mês`]);
+            aoa.push([]);
+        } else {
+            if (marcados.quadro1) {
+                aoa.push([`QUADRO 1 — Demonstrativo da ocupação da mão de obra local por município (${nomeMes}/${ano})`]);
+                aoa.push(['Número Total de Funcionários da Obra', totalFuncionarios]);
+                aoa.push(['MUNICÍPIO DE ORIGEM', 'UF DE ORIGEM', 'Nº DE TRABALHADORES POR MUNICÍPIO']);
+                linhasQuadro1.forEach(l => aoa.push([l.municipio, l.uf, l.qtd]));
+                aoa.push(['TOTAL', '', totalFuncionarios]);
+                aoa.push([]);
+            }
+            if (marcados.quadro2) {
+                aoa.push([`QUADRO 2 — Municípios na Área Diretamente Afetada - ADA (${nomeMes}/${ano})`]);
+                aoa.push(['MUNICÍPIO DE ORIGEM ADA', 'UF DE ORIGEM', 'Nº DE FUNCIONÁRIOS', 'PORCENTAGEM SOBRE O TOTAL (%)']);
+                linhasQuadro2.forEach(l => aoa.push([l.municipio, l.uf, l.qtd, r2(l.pct)]));
+                aoa.push(['TOTAL', '', totalAda, r2(pctAda) + '%']);
+                aoa.push([]);
+            }
+        }
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 34 }, { wch: 22 }, { wch: 16 }, { wch: 20 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'EFETIVO');
+
+    const dataSlug = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `RELATORIO_EFETIVO_${dataSlug}.xlsx`);
+
+    statusEl.textContent = `✅ Excel gerado com ${Object.values(marcados).filter(Boolean).length} item(ns) selecionado(s).`;
+    statusEl.style.color = 'var(--success)';
+}
+
+function gerarPdfRelatorioEfetivo() {
+    const statusEl = document.getElementById('relatorioEfetivoStatus');
+    const dados = window.efetivoReportData;
+    if (!dados) {
+        statusEl.textContent = '❌ Abra a aba 📊 Visão Geral pelo menos uma vez antes de gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const marcados = lerSelecaoRelatorioEfetivo();
+    if (Object.values(marcados).every(v => !v)) {
+        statusEl.textContent = '❌ Selecione pelo menos um item para gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const kpisMarcados = dados.kpis.filter(k => marcados[k.key]);
+    const kpisHtml = kpisMarcados.length === 0 ? '' : `
+    <h3>Indicadores (KPIs)</h3>
+    <table style="width:65%; margin-bottom:14px;">
+        <thead><tr><th>Indicador</th><th>Valor</th></tr></thead>
+        <tbody>${kpisMarcados.map(k => `<tr><td style="text-align:left;">${escapeHTML(k.label)}</td><td>${escapeHTML(String(k.value))}</td></tr>`).join('')}</tbody>
+    </table>`;
+
+    const graficosHtml = Object.entries(dados.graficos).filter(([key]) => marcados[key]).map(([key, g]) => {
+        if (g.linhas) {
+            return `
+    <h3>${escapeHTML(g.titulo)}</h3>
+    <table style="width:100%; margin-bottom:14px;">
+        <thead><tr><th>Dia</th><th>Nome</th><th>Função</th><th>Idade que completa</th></tr></thead>
+        <tbody>${g.linhas.length === 0
+            ? '<tr><td colspan="4">Nenhum aniversariante ativo neste mês</td></tr>'
+            : g.linhas.map(l => `<tr><td>${l.dia}</td><td style="text-align:left;">${escapeHTML(l.nome)}</td><td style="text-align:left;">${escapeHTML(l.funcao)}</td><td>${l.idade}</td></tr>`).join('')}</tbody>
+    </table>`;
+        }
+        if (g.series) {
+            return `
+    <h3>${escapeHTML(g.titulo)}</h3>
+    <table style="width:85%; margin-bottom:14px;">
+        <thead><tr><th>Categoria</th>${g.series.map(s => `<th>${escapeHTML(s.nome)}</th>`).join('')}</tr></thead>
+        <tbody>${g.labels.map((label, i) => `<tr><td style="text-align:left;">${escapeHTML(String(label))}</td>${g.series.map(s => `<td>${escapeHTML(String(s.valores[i]))}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`;
+        }
+        return `
+    <h3>${escapeHTML(g.titulo)}</h3>
+    <table style="width:65%; margin-bottom:14px;">
+        <thead><tr><th>Categoria</th><th>Valor</th></tr></thead>
+        <tbody>${g.labels.map((label, i) => `<tr><td style="text-align:left;">${escapeHTML(String(label))}</td><td>${escapeHTML(String(g.valores[i]))}</td></tr>`).join('')}</tbody>
+    </table>`;
+    }).join('');
+
+    let maoDeObraHtml = '';
+    if (marcados.quadro1 || marcados.quadro2) {
+        const ano = parseInt(document.getElementById('maoObraAno').value);
+        const mes = parseInt(document.getElementById('maoObraMes').value);
+        const nomeMes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][mes];
+        const { totalFuncionarios, linhasQuadro1, linhasQuadro2, totalAda, pctAda } = montarQuadrosMaoDeObra(ano, mes);
+        if (linhasQuadro1.length === 0) {
+            maoDeObraHtml = `<h3>Mão de Obra Local (${escapeHTML(nomeMes)}/${ano})</h3><p>Nenhum colaborador ativo encontrado nesse mês.</p>`;
+        } else {
+            if (marcados.quadro1) {
+                maoDeObraHtml += `
+    <h3>Quadro 1 — Demonstrativo da ocupação da mão de obra local por município (${escapeHTML(nomeMes)}/${ano})</h3>
+    <p style="font-size:10.5px;">Número Total de Funcionários da Obra: <strong>${totalFuncionarios}</strong></p>
+    <table style="width:75%; margin-bottom:14px;">
+        <thead><tr><th>MUNICÍPIO DE ORIGEM</th><th>UF DE ORIGEM</th><th>Nº DE TRABALHADORES</th></tr></thead>
+        <tbody>${linhasQuadro1.map(l => `<tr><td style="text-align:left;">${escapeHTML(l.municipio)}</td><td>${escapeHTML(l.uf)}</td><td>${l.qtd}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td>TOTAL</td><td></td><td>${totalFuncionarios}</td></tr></tfoot>
+    </table>`;
+            }
+            if (marcados.quadro2) {
+                maoDeObraHtml += `
+    <h3>Quadro 2 — Municípios na Área Diretamente Afetada - ADA (${escapeHTML(nomeMes)}/${ano})</h3>
+    <table style="width:85%; margin-bottom:14px;">
+        <thead><tr><th>MUNICÍPIO DE ORIGEM ADA</th><th>UF</th><th>Nº DE FUNCIONÁRIOS</th><th>% SOBRE O TOTAL</th></tr></thead>
+        <tbody>${linhasQuadro2.map(l => `<tr><td style="text-align:left;">${escapeHTML(l.municipio)}</td><td>${escapeHTML(l.uf)}</td><td>${l.qtd}</td><td>${r2(l.pct)}%</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td>TOTAL</td><td></td><td>${totalAda}</td><td>${r2(pctAda)}%</td></tr></tfoot>
+    </table>`;
+            }
+        }
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Relatório de Gestão de Pessoas (Efetivo)</title>
+<style>
+    @page { size: portrait; margin: 12mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
+    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:6px; gap:10px; }
+    .cabecalho img { max-height:40px; }
+    .cabecalho .titulo { font-weight:700; font-size:14px; text-align:center; flex:1; }
+    .info-geracao { font-size:11px; color:#444; margin-bottom:10px; }
+    h3 { font-size:12px; margin:18px 0 6px; }
+    table { width:100%; border-collapse:collapse; font-size:10px; margin-bottom:10px; }
+    th, td { border:1px solid #999; padding:5px 6px; text-align:center; }
+    th { background:#d9d9d9; font-weight:700; }
+    tbody tr:nth-child(even) { background:#f7f7f7; }
+    tfoot td { font-weight:700; background:#e0e0e0; }
+    .no-print { text-align:center; margin:16px 0; }
+    .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
+    @media print { .no-print { display:none; } body { margin:0; } thead { display: table-header-group; } }
+</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="cabecalho">
+        <img src="${LOGO_COP_BASE64}" alt="COP">
+        <div class="titulo">RELATÓRIO DE GESTÃO DE PESSOAS (EFETIVO)</div>
+        <div style="width:40px;"></div>
+    </div>
+    <div class="info-geracao">${escapeHTML(EMPRESA_INFO.razaoSocial)} — Período: ${escapeHTML(dados.periodoLabel)} — Gerado em ${new Date().toLocaleDateString('pt-BR')}</div>
+
+    ${kpisHtml}
+    ${graficosHtml}
+    ${maoDeObraHtml}
+</body></html>`;
+
+    abrirDocumentoBlob(html);
+    statusEl.textContent = `✅ Relatório gerado — abra a aba nova pra imprimir/salvar em PDF.`;
+    statusEl.style.color = 'var(--success)';
 }
 
 // ============================================
@@ -7242,108 +7498,6 @@ function montarQuadrosMaoDeObra(ano, mesIndex0) {
     const pctAda = totalFuncionarios > 0 ? (totalAda / totalFuncionarios * 100) : 0;
 
     return { totalFuncionarios, linhasQuadro1, linhasQuadro2, totalAda, pctAda };
-}
-
-async function gerarExcelMaoDeObra() {
-    const ano = parseInt(document.getElementById('maoObraAno').value);
-    const mes = parseInt(document.getElementById('maoObraMes').value);
-    const statusEl = document.getElementById('maoObraStatus');
-    const { totalFuncionarios, linhasQuadro1, linhasQuadro2, totalAda, pctAda } = montarQuadrosMaoDeObra(ano, mes);
-    if (linhasQuadro1.length === 0) {
-        statusEl.textContent = '❌ Nenhum colaborador ativo encontrado nesse mês.';
-        statusEl.style.color = 'var(--danger)';
-        return;
-    }
-
-    const aoa1 = [
-        ['QUADRO 1 - Demonstrativo da ocupação da mão de obra local por município'],
-        ['Número Total de Funcionários da Obra', totalFuncionarios, '', ''],
-        ['MUNICÍPIO DE ORIGEM', 'UF DE ORIGEM', 'Nº DE TRABALHADORES POR MUNICÍPIO']
-    ];
-    linhasQuadro1.forEach(l => aoa1.push([l.municipio, l.uf, l.qtd]));
-    aoa1.push(['TOTAL', '', totalFuncionarios]);
-    aoa1.push([]);
-    aoa1.push(['QUADRO 2 - Municípios na Área Diretamente Afetada (ADA)']);
-    aoa1.push(['MUNICÍPIO DE ORIGEM ADA', 'UF DE ORIGEM', 'Nº DE FUNCIONÁRIOS', 'PORCENTAGEM SOBRE O TOTAL (%)']);
-    linhasQuadro2.forEach(l => aoa1.push([l.municipio, l.uf, l.qtd, r2(l.pct)]));
-    aoa1.push(['TOTAL', '', totalAda, r2(pctAda) + '%']);
-
-    const ws = XLSX.utils.aoa_to_sheet(aoa1);
-    ws['!cols'] = [{ wch: 28 }, { wch: 12 }, { wch: 16 }, { wch: 20 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'MAO DE OBRA LOCAL');
-
-    const nomeMes = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'][mes];
-    XLSX.writeFile(wb, `MAO_DE_OBRA_LOCAL_${nomeMes}_${ano}.xlsx`);
-
-    statusEl.textContent = `✅ Excel gerado — ${linhasQuadro1.length} município(s), Efetivo: ${totalFuncionarios}.`;
-    statusEl.style.color = 'var(--success)';
-}
-
-function gerarPdfMaoDeObra() {
-    const ano = parseInt(document.getElementById('maoObraAno').value);
-    const mes = parseInt(document.getElementById('maoObraMes').value);
-    const statusEl = document.getElementById('maoObraStatus');
-    const { totalFuncionarios, linhasQuadro1, linhasQuadro2, totalAda, pctAda } = montarQuadrosMaoDeObra(ano, mes);
-    if (linhasQuadro1.length === 0) {
-        statusEl.textContent = '❌ Nenhum colaborador ativo encontrado nesse mês.';
-        statusEl.style.color = 'var(--danger)';
-        return;
-    }
-    const nomeMes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][mes];
-
-    const linhasQuadro1Html = linhasQuadro1.map(l => `
-        <tr><td style="text-align:left;">${escapeHTML(l.municipio)}</td><td>${escapeHTML(l.uf)}</td><td>${l.qtd}</td></tr>`).join('');
-    const linhasQuadro2Html = linhasQuadro2.map(l => `
-        <tr><td style="text-align:left;">${escapeHTML(l.municipio)}</td><td>${escapeHTML(l.uf)}</td><td>${l.qtd}</td><td>${r2(l.pct)}%</td></tr>`).join('');
-
-    const html = `<!DOCTYPE html>
-<html lang="pt-BR"><head><meta charset="UTF-8">
-<title>Mão de Obra Local - ${escapeHTML(nomeMes)}/${ano}</title>
-<style>
-    @page { size: portrait; margin: 12mm; }
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
-    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:6px; gap:10px; }
-    .cabecalho img { max-height:40px; }
-    .cabecalho .titulo { font-weight:700; font-size:14px; text-align:center; flex:1; }
-    .info-geracao { font-size:11px; color:#444; margin-bottom:10px; }
-    h3 { font-size:12px; margin:18px 0 6px; }
-    table { width:100%; border-collapse:collapse; font-size:10px; margin-bottom:10px; }
-    th, td { border:1px solid #999; padding:5px 6px; text-align:center; }
-    th { background:#d9d9d9; font-weight:700; }
-    tbody tr:nth-child(even) { background:#f7f7f7; }
-    tfoot td { font-weight:700; background:#e0e0e0; }
-    .no-print { text-align:center; margin:16px 0; }
-    .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
-    @media print { .no-print { display:none; } body { margin:0; } thead { display: table-header-group; } }
-</style></head>
-<body>
-    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
-    <div class="cabecalho">
-        <img src="${LOGO_COP_BASE64}" alt="COP">
-        <div class="titulo">MÃO DE OBRA LOCAL — ${escapeHTML(nomeMes.toUpperCase())}/${ano}</div>
-        <div style="width:40px;"></div>
-    </div>
-    <div class="info-geracao">${escapeHTML(EMPRESA_INFO.razaoSocial)} — Nº Total de Funcionários: ${totalFuncionarios}</div>
-
-    <h3>QUADRO 1 — Demonstrativo da ocupação da mão de obra local por município</h3>
-    <table>
-        <thead><tr><th>MUNICÍPIO DE ORIGEM</th><th>UF DE ORIGEM</th><th>Nº DE TRABALHADORES POR MUNICÍPIO</th></tr></thead>
-        <tbody>${linhasQuadro1Html}</tbody>
-        <tfoot><tr><td>TOTAL</td><td></td><td>${totalFuncionarios}</td></tr></tfoot>
-    </table>
-
-    <h3>QUADRO 2 — Municípios na Área Diretamente Afetada (ADA)</h3>
-    <table>
-        <thead><tr><th>MUNICÍPIO DE ORIGEM ADA</th><th>UF DE ORIGEM</th><th>Nº DE FUNCIONÁRIOS</th><th>PORCENTAGEM SOBRE O TOTAL (%)</th></tr></thead>
-        <tbody>${linhasQuadro2Html}</tbody>
-        <tfoot><tr><td>TOTAL</td><td></td><td>${totalAda}</td><td>${r2(pctAda)}%</td></tr></tfoot>
-    </table>
-</body></html>`;
-
-    abrirDocumentoBlob(html);
-    statusEl.textContent = `✅ Relatório gerado (${nomeMes}/${ano}) — abra a aba nova pra imprimir/salvar em PDF.`;
-    statusEl.style.color = 'var(--success)';
 }
 
 // ============================================
@@ -9601,20 +9755,49 @@ function popularFiltroAnoEfetivo() {
         if (e.dt_demissao) anos.add(parseLocalDate(e.dt_demissao).getFullYear());
     });
     popularSelectAnos('efetivoFiltroAno', anos);
+    popularSelectAnos('relEfetivoFiltroAno', anos);
+}
+
+// efetivoFiltroAno/Mes é o único estado de período do módulo - a Visão Geral e a aba
+// Relatório têm cada uma seu próprio par de selects, mas os dois pares sempre refletem
+// as mesmas variáveis globais, pra mudar o período em qualquer uma das duas abas afetar
+// a outra também (sem duplicar a lógica de cálculo do período).
+function syncEfetivoFiltroSelects() {
+    const anoEl = document.getElementById('efetivoFiltroAno');
+    const mesEl = document.getElementById('efetivoFiltroMes');
+    const relAnoEl = document.getElementById('relEfetivoFiltroAno');
+    const relMesEl = document.getElementById('relEfetivoFiltroMes');
+    if (anoEl) anoEl.value = efetivoFiltroAno;
+    if (mesEl) mesEl.value = efetivoFiltroMes;
+    if (relAnoEl) relAnoEl.value = efetivoFiltroAno;
+    if (relMesEl) relMesEl.value = efetivoFiltroMes;
 }
 
 function onEfetivoFiltroChange() {
     efetivoFiltroAno = document.getElementById('efetivoFiltroAno').value;
     efetivoFiltroMes = document.getElementById('efetivoFiltroMes').value;
+    syncEfetivoFiltroSelects();
     renderEfetivoPanel();
 }
 
+function onRelatorioEfetivoFiltroChange() {
+    efetivoFiltroAno = document.getElementById('relEfetivoFiltroAno').value;
+    efetivoFiltroMes = document.getElementById('relEfetivoFiltroMes').value;
+    syncEfetivoFiltroSelects();
+    renderEfetivoPanel();
+    renderEfetivoRelatorioChecklist();
+}
+
 function limparFiltroEfetivo() {
-    document.getElementById('efetivoFiltroAno').value = '';
-    document.getElementById('efetivoFiltroMes').value = '';
     efetivoFiltroAno = '';
     efetivoFiltroMes = '';
+    syncEfetivoFiltroSelects();
     renderEfetivoPanel();
+    renderEfetivoRelatorioChecklist();
+}
+
+function limparFiltroRelatorioEfetivo() {
+    limparFiltroEfetivo();
 }
 
 function renderEfetivoPanel() {
@@ -9926,6 +10109,51 @@ function renderEfetivoPanel() {
     });
     // Abre já rolado pro mês mais recente - mesmo comportamento do gráfico de HHT acima.
     chartAdaAdmWrap.scrollLeft = 999999;
+
+    // Snapshot dos números/gráficos que acabaram de ser calculados acima, pra alimentar a
+    // aba "📄 Relatório" sem duplicar nenhuma lógica de cálculo - o relatório sempre lê
+    // exatamente o que está na tela, no período já selecionado (efetivoFiltroAno/Mês).
+    window.efetivoReportData = {
+        periodoLabel: tituloPeriodo,
+        kpis: [
+            { key: 'efetivoAtual', label: 'Efetivo Atual', value: efetivoAtual },
+            { key: 'admissoes', label: `Admissões (${tituloPeriodo})`, value: admissoesPeriodo },
+            { key: 'demissoes', label: `Demissões (${tituloPeriodo})`, value: demissoesPeriodo },
+            { key: 'turnover', label: `Turnover (${tituloPeriodo})`, value: turnover.toFixed(1) + '%' },
+            { key: 'tempoCasa', label: 'Tempo Médio de Casa (meses)', value: ativosNaData.length > 0 ? Math.round(tempoCasaTotalMeses / ativosNaData.length) : 0 }
+        ],
+        graficos: {
+            graficoEvolucao: {
+                titulo: 'Efetivo, Admissões e Demissões por Mês',
+                labels: meses,
+                series: [
+                    { nome: 'Efetivo', valores: efetivoPorMes },
+                    { nome: 'Admissões', valores: admissoesPorMes },
+                    { nome: 'Demissões', valores: demissoesPorMes }
+                ]
+            },
+            graficoIndiceHht: { titulo: 'Índice HHT/Efetivo × 100 por Mês', labels: meses, valores: indicePorMes },
+            graficoSetor: { titulo: 'Efetivo Atual por Setor', labels: setorSorted.map(s => s[0]), valores: setorSorted.map(s => s[1]) },
+            graficoFuncao: { titulo: 'Efetivo Atual por Função (Top 10)', labels: funcaoSorted.map(f => f[0]), valores: funcaoSorted.map(f => f[1]) },
+            graficoHht220: { titulo: 'Horas Homens Trabalhadas (Efetivo × 220) por Mês', labels: meses, valores: hht220PorMes },
+            graficoSexo: { titulo: 'Efetivo Atual por Sexo', labels: ['Masculino', 'Feminino'], valores: [sexoCounts.MASCULINO, sexoCounts.FEMININO] },
+            graficoFaixaEtaria: { titulo: 'Efetivo Atual por Faixa Etária', labels: faixaEtariaLabels, valores: faixaEtariaData },
+            graficoAniversariantes: {
+                titulo: `Aniversariantes de ${nomesMeses[mesCorrente]}`,
+                linhas: aniversariantesDoMes.map(a => ({ dia: a.dia, nome: a.nome, funcao: a.funcao || '—', idade: a.idadeQueCompleta }))
+            },
+            graficoAdaAtual: { titulo: 'Efetivo Atual por Área (ADA)', labels: ['Arcoverde', 'Sertânia', 'Outros'], valores: [adaCounts.ARCOVERDE, adaCounts['SERTÂNIA'], adaCounts.OUTROS] },
+            graficoAdaAdmissoes: {
+                titulo: 'Admissões por Área e Mês',
+                labels: meses,
+                series: [
+                    { nome: 'Arcoverde', valores: admArcoverdePorMes },
+                    { nome: 'Sertânia', valores: admSertaniaPorMes }
+                ]
+            }
+        }
+    };
+    if (document.getElementById('efetivoSubtabBtn-relatorio')?.classList.contains('active')) renderEfetivoRelatorioChecklist();
 }
 
 async function importarEfetivoCSV() {

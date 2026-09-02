@@ -11570,10 +11570,52 @@ function renderSaudePanel() {
         data: { labels: mesesAbs, datasets: [{ label: 'Absenteísmo Ocupacional (%)', data: taxaPorMes, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)', fill: true, tension: 0.25 }] },
         options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: '%' } } } }
     });
+
+    // Snapshot dos números/gráficos que acabaram de ser calculados acima, pra alimentar a
+    // aba "📄 Relatório" sem duplicar nenhuma lógica de cálculo - o relatório sempre lê
+    // exatamente o que está na tela, no período já selecionado (saudeFilter/saudeFiltroAno/Mês).
+    window.saudeReportData = {
+        periodoLabel: document.getElementById('saudePeriodoTitulo')?.textContent || '',
+        kpis: [
+            { key: 'asoVencidos', label: 'ASO Vencidos', value: vencidos },
+            { key: 'asoVencendo', label: 'ASO Vencendo em 30 dias', value: vencendo },
+            { key: 'asoEmDia', label: 'ASO Em Dia', value: emDia },
+            { key: 'asoSemRegistro', label: 'Sem ASO Registrado', value: semRegistro },
+            { key: 'absenteismo', label: 'Taxa de Absenteísmo Ocupacional', value: absen.disponivel ? absen.taxa.toFixed(2) + '%' : '—' }
+        ],
+        graficos: {
+            graficoStatusAso: {
+                titulo: 'Status de ASO (Efetivo Ativo)',
+                labels: ['Vencidos', 'Vencendo (30d)', 'Em Dia', 'Sem Registro'],
+                valores: [vencidos, vencendo, emDia, semRegistro]
+            },
+            graficoExamesTipo: {
+                titulo: 'Exames Realizados por Tipo (Histórico Completo)',
+                labels: tipoSorted.map(t => t[0]),
+                valores: tipoSorted.map(t => t[1])
+            },
+            graficoAbsenteismoMes: {
+                titulo: 'Absenteísmo Ocupacional por Mês (Histórico Completo)',
+                labels: mesesAbs,
+                valores: taxaPorMes.map(v => v === null ? '—' : v + '%')
+            }
+        },
+        listaPendencias: alertList.map(({ e, r }) => {
+            const situacao = r.status === 'vencido' ? 'Vencido' : r.status === 'vencendo' ? 'Vencendo' : 'Sem Registro';
+            let detalhe;
+            if (r.status === 'sem_registro') {
+                detalhe = r.ultimoExame ? 'Último ASO sem data de vencimento preenchida' : 'Nenhum ASO registrado';
+            } else {
+                detalhe = r.status === 'vencido' ? `Vencido há ${Math.abs(r.diffDays)} dia(s)` : (r.diffDays === 0 ? 'Vence hoje' : `Vence em ${r.diffDays} dia(s)`);
+            }
+            return { nome: e.nome || e.id, setor: e.setor || '—', situacao, detalhe };
+        })
+    };
+    if (document.getElementById('saudeSubtabBtn-relatorio')?.classList.contains('active')) renderSaudeRelatorioChecklist();
 }
 
 function showSaudeSubtab(tab) {
-    ['visao', 'aso', 'atestado', 'previsao'].forEach(t => {
+    ['visao', 'aso', 'atestado', 'previsao', 'relatorio'].forEach(t => {
         const content = document.getElementById('saudeSubtab-' + t);
         const btn = document.getElementById('saudeSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -11584,6 +11626,184 @@ function showSaudeSubtab(tab) {
     if (tab === 'aso') { renderAsoResumo(); filterAsoLista(document.getElementById('asoSearchInput')?.value || ''); }
     if (tab === 'atestado') { renderAtestadoResumo(); filterAtestadoLista(document.getElementById('atestadoSearchInput')?.value || ''); }
     if (tab === 'previsao') renderPrevisaoExames();
+    // A aba de Relatório usa os mesmos números já calculados pela Visão Geral
+    // (window.saudeReportData) - por isso, ao abrir ela, força um recálculo da Visão Geral
+    // (com o período que já estava selecionado) pra garantir que o relatório nunca fique
+    // com números desatualizados, mesmo que o usuário nunca tenha clicado em "Visão Geral".
+    if (tab === 'relatorio') { renderSaudePanel(); renderSaudeRelatorioChecklist(); }
+}
+
+// ============================================
+// RELATÓRIO CONFIGURÁVEL DE SAÚDE OCUPACIONAL - o usuário escolhe (via checkbox) quais
+// KPIs/gráficos/lista entram no relatório antes de gerar, pra poder tirar informação
+// sensível (ex: ASO Vencidos, ou a lista com nome de quem está vencido) quando o relatório
+// vai pra fiscalização, e manter tudo quando é só uso interno. Os números vêm de
+// window.saudeReportData, preenchido no fim de renderSaudePanel() - nunca recalcula nada
+// aqui, só lê o que já está na tela.
+// ============================================
+
+function renderSaudeRelatorioChecklist() {
+    const el = document.getElementById('saudeRelPeriodo');
+    if (el && window.saudeReportData) el.textContent = window.saudeReportData.periodoLabel || '—';
+}
+
+function marcarTodosRelatorioSaude(valor) {
+    ['relSaudeChk_asoVencidos', 'relSaudeChk_asoVencendo', 'relSaudeChk_asoEmDia', 'relSaudeChk_asoSemRegistro', 'relSaudeChk_absenteismo',
+     'relSaudeChk_graficoStatusAso', 'relSaudeChk_graficoExamesTipo', 'relSaudeChk_graficoAbsenteismoMes', 'relSaudeChk_listaPendencias'].forEach(id => {
+        const chk = document.getElementById(id);
+        if (chk) chk.checked = valor;
+    });
+}
+
+function lerSelecaoRelatorioSaude() {
+    return {
+        asoVencidos: document.getElementById('relSaudeChk_asoVencidos').checked,
+        asoVencendo: document.getElementById('relSaudeChk_asoVencendo').checked,
+        asoEmDia: document.getElementById('relSaudeChk_asoEmDia').checked,
+        asoSemRegistro: document.getElementById('relSaudeChk_asoSemRegistro').checked,
+        absenteismo: document.getElementById('relSaudeChk_absenteismo').checked,
+        graficoStatusAso: document.getElementById('relSaudeChk_graficoStatusAso').checked,
+        graficoExamesTipo: document.getElementById('relSaudeChk_graficoExamesTipo').checked,
+        graficoAbsenteismoMes: document.getElementById('relSaudeChk_graficoAbsenteismoMes').checked,
+        listaPendencias: document.getElementById('relSaudeChk_listaPendencias').checked
+    };
+}
+
+async function gerarExcelSaude() {
+    const statusEl = document.getElementById('relatorioSaudeStatus');
+    const dados = window.saudeReportData;
+    if (!dados) {
+        statusEl.textContent = '❌ Abra a aba 📊 Visão Geral pelo menos uma vez antes de gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const marcados = lerSelecaoRelatorioSaude();
+    if (Object.values(marcados).every(v => !v)) {
+        statusEl.textContent = '❌ Selecione pelo menos um item para gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const aoa = [];
+    aoa.push([`RELATÓRIO DE SAÚDE OCUPACIONAL — ${dados.periodoLabel}`]);
+    aoa.push([`Gerado em ${new Date().toLocaleDateString('pt-BR')}`]);
+    aoa.push([]);
+
+    const kpisMarcados = dados.kpis.filter(k => marcados[k.key]);
+    if (kpisMarcados.length > 0) {
+        aoa.push(['INDICADORES (KPIs)']);
+        aoa.push(['Indicador', 'Valor']);
+        kpisMarcados.forEach(k => aoa.push([k.label, k.value]));
+        aoa.push([]);
+    }
+
+    Object.entries(dados.graficos).forEach(([key, g]) => {
+        if (!marcados[key]) return;
+        aoa.push([g.titulo.toUpperCase()]);
+        aoa.push(['Categoria', 'Valor']);
+        g.labels.forEach((label, i) => aoa.push([label, g.valores[i]]));
+        aoa.push([]);
+    });
+
+    if (marcados.listaPendencias) {
+        aoa.push(['COLABORADORES COM ASO VENCIDO, VENCENDO OU SEM REGISTRO']);
+        aoa.push(['Nome', 'Setor', 'Situação', 'Detalhe']);
+        if (dados.listaPendencias.length === 0) {
+            aoa.push(['Nenhum colaborador nessa situação', '', '', '']);
+        } else {
+            dados.listaPendencias.forEach(p => aoa.push([p.nome, p.setor, p.situacao, p.detalhe]));
+        }
+        aoa.push([]);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 34 }, { wch: 22 }, { wch: 16 }, { wch: 34 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'SAUDE OCUPACIONAL');
+
+    const dataSlug = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `RELATORIO_SAUDE_OCUPACIONAL_${dataSlug}.xlsx`);
+
+    statusEl.textContent = `✅ Excel gerado com ${Object.values(marcados).filter(Boolean).length} item(ns) selecionado(s).`;
+    statusEl.style.color = 'var(--success)';
+}
+
+function gerarPdfSaude() {
+    const statusEl = document.getElementById('relatorioSaudeStatus');
+    const dados = window.saudeReportData;
+    if (!dados) {
+        statusEl.textContent = '❌ Abra a aba 📊 Visão Geral pelo menos uma vez antes de gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const marcados = lerSelecaoRelatorioSaude();
+    if (Object.values(marcados).every(v => !v)) {
+        statusEl.textContent = '❌ Selecione pelo menos um item para gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const kpisMarcados = dados.kpis.filter(k => marcados[k.key]);
+    const kpisHtml = kpisMarcados.length === 0 ? '' : `
+    <h3>Indicadores (KPIs)</h3>
+    <table style="width:65%; margin-bottom:14px;">
+        <thead><tr><th>Indicador</th><th>Valor</th></tr></thead>
+        <tbody>${kpisMarcados.map(k => `<tr><td style="text-align:left;">${escapeHTML(k.label)}</td><td>${escapeHTML(String(k.value))}</td></tr>`).join('')}</tbody>
+    </table>`;
+
+    const graficosHtml = Object.entries(dados.graficos).filter(([key]) => marcados[key]).map(([key, g]) => `
+    <h3>${escapeHTML(g.titulo)}</h3>
+    <table style="width:65%; margin-bottom:14px;">
+        <thead><tr><th>Categoria</th><th>Valor</th></tr></thead>
+        <tbody>${g.labels.map((label, i) => `<tr><td style="text-align:left;">${escapeHTML(String(label))}</td><td>${escapeHTML(String(g.valores[i]))}</td></tr>`).join('')}</tbody>
+    </table>`).join('');
+
+    const listaHtml = !marcados.listaPendencias ? '' : `
+    <h3>Colaboradores com ASO Vencido, Vencendo ou Sem Registro</h3>
+    <p style="font-size:10px; color:#a00; margin-bottom:6px;">⚠️ Esta seção contém nomes de colaboradores — avalie antes de enviar a órgãos externos.</p>
+    <table style="width:100%; margin-bottom:14px;">
+        <thead><tr><th>Nome</th><th>Setor</th><th>Situação</th><th>Detalhe</th></tr></thead>
+        <tbody>${dados.listaPendencias.length === 0
+            ? '<tr><td colspan="4">Nenhum colaborador nessa situação</td></tr>'
+            : dados.listaPendencias.map(p => `<tr><td style="text-align:left;">${escapeHTML(p.nome)}</td><td>${escapeHTML(p.setor)}</td><td>${escapeHTML(p.situacao)}</td><td style="text-align:left;">${escapeHTML(p.detalhe)}</td></tr>`).join('')}</tbody>
+    </table>`;
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Relatório de Saúde Ocupacional</title>
+<style>
+    @page { size: portrait; margin: 12mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
+    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:6px; gap:10px; }
+    .cabecalho img { max-height:40px; }
+    .cabecalho .titulo { font-weight:700; font-size:14px; text-align:center; flex:1; }
+    .info-geracao { font-size:11px; color:#444; margin-bottom:10px; }
+    h3 { font-size:12px; margin:18px 0 6px; }
+    table { width:100%; border-collapse:collapse; font-size:10px; margin-bottom:10px; }
+    th, td { border:1px solid #999; padding:5px 6px; text-align:center; }
+    th { background:#d9d9d9; font-weight:700; }
+    tbody tr:nth-child(even) { background:#f7f7f7; }
+    .no-print { text-align:center; margin:16px 0; }
+    .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
+    @media print { .no-print { display:none; } body { margin:0; } thead { display: table-header-group; } }
+</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="cabecalho">
+        <img src="${LOGO_COP_BASE64}" alt="COP">
+        <div class="titulo">RELATÓRIO DE SAÚDE OCUPACIONAL</div>
+        <div style="width:40px;"></div>
+    </div>
+    <div class="info-geracao">${escapeHTML(EMPRESA_INFO.razaoSocial)} — Período: ${escapeHTML(dados.periodoLabel)} — Gerado em ${new Date().toLocaleDateString('pt-BR')}</div>
+
+    ${kpisHtml}
+    ${graficosHtml}
+    ${listaHtml}
+</body></html>`;
+
+    abrirDocumentoBlob(html);
+    statusEl.textContent = `✅ Relatório gerado — abra a aba nova pra imprimir/salvar em PDF.`;
+    statusEl.style.color = 'var(--success)';
 }
 
 // ---- CRUD: Exames ASO ----

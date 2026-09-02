@@ -2508,6 +2508,7 @@
                         <button id="saudeSubtabBtn-aso" class="db-filter-btn" onclick="showSaudeSubtab('aso')">🩺 Registrar ASO</button>
                         <button id="saudeSubtabBtn-atestado" class="db-filter-btn" onclick="showSaudeSubtab('atestado')">🤒 Registrar Atestado</button>
                         <button id="saudeSubtabBtn-previsao" class="db-filter-btn" onclick="showSaudeSubtab('previsao')">📅 Previsão de Exames</button>
+                        <button id="saudeSubtabBtn-relatorio" class="db-filter-btn" onclick="showSaudeSubtab('relatorio')">📄 Relatório</button>
                     </div>
                 </div>
 
@@ -2802,6 +2803,52 @@
                         copiar no corpo do e-mail ou baixar em PDF pra avisar cada líder sobre os exames do mês.
                     </p>
                     <button class="db-apply-btn" onclick="abrirRelatorioLideresModal()">📧 Gerar Relatório para Líderes</button>
+                </div>
+                </div>
+
+                <div id="saudeSubtab-relatorio" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">📄 Relatório Configurável de Saúde Ocupacional</div>
+                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 6px;">
+                        Escolha abaixo o que deve entrar no relatório antes de gerar. Por exemplo: pra enviar pra
+                        fiscalização você pode desmarcar "ASO Vencidos" ou a lista com nomes, e manter só o resto.
+                    </p>
+                    <div style="font-size: 12.5px; color: var(--text-light); margin-bottom: 14px;">
+                        Período considerado (mesmo da aba 📊 Visão Geral): <strong id="saudeRelPeriodo">—</strong>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+                        <button class="db-clear-btn" onclick="marcarTodosRelatorioSaude(true)">☑️ Marcar Todos</button>
+                        <button class="db-clear-btn" onclick="marcarTodosRelatorioSaude(false)">⬜ Desmarcar Todos</button>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Indicadores (KPIs)</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 8px; margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relSaudeChk_asoVencidos" checked> ASO Vencidos</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relSaudeChk_asoVencendo" checked> ASO Vencendo em 30 dias</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relSaudeChk_asoEmDia" checked> ASO Em Dia</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relSaudeChk_asoSemRegistro" checked> Sem ASO Registrado</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relSaudeChk_absenteismo" checked> Taxa de Absenteísmo Ocupacional</label>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Gráficos</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 8px; margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relSaudeChk_graficoStatusAso" checked> Status de ASO (Efetivo Ativo)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relSaudeChk_graficoExamesTipo" checked> Exames Realizados por Tipo (Histórico Completo)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relSaudeChk_graficoAbsenteismoMes" checked> Absenteísmo Ocupacional por Mês (Histórico Completo)</label>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Lista Nominal</div>
+                    <div style="margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relSaudeChk_listaPendencias" checked> Colaboradores com ASO vencido, vencendo ou sem registro (com nome)</label>
+                        <div style="font-size: 11px; color: var(--warning); margin-top: 4px; margin-left: 24px;">⚠️ Contém nome de colaborador — avalie antes de incluir em relatório externo.</div>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="gerarExcelSaude()">📊 Baixar Excel</button>
+                        <button class="db-apply-btn" onclick="gerarPdfSaude()">🖨️ Gerar PDF</button>
+                        <span id="relatorioSaudeStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
                 </div>
                 </div>
             </section>

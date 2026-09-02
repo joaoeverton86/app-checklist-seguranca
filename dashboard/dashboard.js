@@ -10195,8 +10195,10 @@ function renderAcidentesPanel() {
     const tfG = tfDisponivel ? (numAcidentes * 1000000 / hhtPeriodo) : 0;
     const tg = tfDisponivel ? ((diasPerdidosTotal + diasDebitadosTotal) * 1000000 / hhtPeriodo) : 0;
 
-    document.getElementById('kpiAcidTFCA').textContent = tfDisponivel ? tfCA.toFixed(2) : '—';
-    document.getElementById('kpiAcidTFSA').textContent = tfDisponivel ? tfSA.toFixed(2) : '—';
+    // TF_CA e TF_SA viraram o gráfico "TF por Categoria no Período" mais abaixo (pedido do
+    // usuário pra economizar espaço na tela) - só o TF_G continua como card, por ser o
+    // número "resumo" mais olhado no dia a dia. tfCA e tfSA continuam calculados acima,
+    // só não viram mais card - agora alimentam o gráfico novo.
     document.getElementById('kpiAcidTFG').textContent = tfDisponivel ? tfG.toFixed(2) : '—';
     document.getElementById('kpiAcidTG').textContent = tfDisponivel ? tg.toFixed(2) : '—';
     document.getElementById('kpiAcidTotal').textContent = numAcidentes;
@@ -10235,11 +10237,34 @@ function renderAcidentesPanel() {
     }
 
     if (typeof Chart === 'undefined') return;
+    if (chartInstances.acidTFCategoria) chartInstances.acidTFCategoria.destroy();
     if (chartInstances.acidTFTG) chartInstances.acidTFTG.destroy();
     if (chartInstances.acidTipologia) chartInstances.acidTipologia.destroy();
     if (chartInstances.acidSetor) chartInstances.acidSetor.destroy();
     if (chartInstances.acidParteCorpo) chartInstances.acidParteCorpo.destroy();
     if (chartInstances.acidAgenteCausador) chartInstances.acidAgenteCausador.destroy();
+
+    // Gráfico pequeno comparando TF_CA, TF_SA e TF_G do período selecionado - substitui os
+    // cards de TF_CA/TF_SA que existiam antes (o usuário pediu pra virar gráfico, pra
+    // sobrar menos cards na tela). Continua mostrando os 3 juntos, só que como barrinhas em
+    // vez de números separados. Usa tfCA/tfSA/tfG, já calculados mais acima nesta função.
+    chartInstances.acidTFCategoria = new Chart(document.getElementById('chartAcidTFCategoria'), {
+        type: 'bar',
+        data: {
+            labels: ['TF_CA', 'TF_SA', 'TF_G'],
+            datasets: [{
+                label: 'TF no período',
+                data: tfDisponivel ? [tfCA, tfSA, tfG] : [0, 0, 0],
+                backgroundColor: ['#4f46e5', '#818cf8', '#1e1b4b'],
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
 
     // TF/TG por mês e os gráficos de tipologia/parte do corpo/agente causador abaixo só
     // consideram acidente Típico - mesmo critério da segregação NBR 14280 usada acima nos

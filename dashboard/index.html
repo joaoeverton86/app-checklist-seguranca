@@ -2337,14 +2337,6 @@
 
                 <div class="db-kpi-grid">
                     <div class="db-kpi-card db-kpi-primary">
-                        <div class="db-kpi-value" id="kpiAcidTFCA">0</div>
-                        <div class="db-kpi-label">TF com Afastamento (TF_CA)</div>
-                    </div>
-                    <div class="db-kpi-card db-kpi-primary">
-                        <div class="db-kpi-value" id="kpiAcidTFSA">0</div>
-                        <div class="db-kpi-label">TF sem Afastamento (TF_SA)</div>
-                    </div>
-                    <div class="db-kpi-card db-kpi-primary">
                         <div class="db-kpi-value" id="kpiAcidTFG">0</div>
                         <div class="db-kpi-label">TF Global (TF_CA + TF_SA)</div>
                     </div>
@@ -2375,6 +2367,10 @@
                 </div>
 
                 <div class="db-charts-grid">
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">TF por Categoria no Período</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartAcidTFCategoria"></canvas></div>
+                    </div>
                     <div class="db-chart-card">
                         <div class="db-chart-title">TF e TG por Mês (Histórico Completo)</div>
                         <div class="db-chart-canvas-wrap"><canvas id="chartAcidTFTG"></canvas></div>

@@ -10583,6 +10583,47 @@ function renderAcidentesPanel() {
         data: { labels: agenteLabels, datasets: [{ label: 'Acidentes', data: agenteSorted.map(ag => ag[1]), backgroundColor: '#8b5cf6', borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
     });
+
+    // Snapshot dos números/gráficos/lista que acabaram de ser calculados acima, pra
+    // alimentar a aba "📄 Relatório" sem duplicar nenhuma lógica de cálculo.
+    window.acidReportData = {
+        periodoLabel: document.getElementById('acidPeriodoTitulo')?.textContent || '',
+        kpis: [
+            { key: 'tfg', label: 'TF Global (TF_CA + TF_SA)', value: tfDisponivel ? tfG.toFixed(2) : '—' },
+            { key: 'tg', label: 'Taxa de Gravidade (TG)', value: tfDisponivel ? tg.toFixed(2) : '—' },
+            { key: 'taxaIncidencia', label: 'Taxa de Incidência (por 1.000 colaboradores)', value: efetivoFimPeriodo > 0 ? taxaIncidencia.toFixed(2) : '—' },
+            { key: 'diasSemCpt', label: 'Dias sem Acidente c/ Afastamento (CPT)', value: diasCPT === null ? '—' : diasCPT },
+            { key: 'diasSemSpt', label: 'Dias sem Acidente s/ Afastamento (SPT)', value: diasSPT === null ? '—' : diasSPT },
+            { key: 'total', label: 'Acidentes Típicos no Período', value: numAcidentes },
+            { key: 'outras', label: 'Trajeto / Sem Lesão no Período', value: periodoOutras.length }
+        ],
+        graficos: {
+            graficoTfCategoria: { titulo: 'TF por Categoria no Período', labels: ['TF_CA', 'TF_SA', 'TF_G'], valores: tfDisponivel ? [tfCA, tfSA, tfG] : [0, 0, 0] },
+            graficoTfTg: {
+                titulo: 'TF e TG por Mês (Histórico Completo)',
+                labels: mesesAcid,
+                series: [
+                    { nome: 'TF', valores: tfPorMes },
+                    { nome: 'TG', valores: tgPorMes }
+                ]
+            },
+            graficoTipologia: { titulo: 'Acidentes por Tipologia', labels: tipoSorted.map(t => t[0]), valores: tipoSorted.map(t => t[1]) },
+            graficoSetor: { titulo: 'Acidentes por Setor', labels: setorSorted.map(s => s[0]), valores: setorSorted.map(s => s[1]) },
+            graficoParteCorpo: { titulo: 'Acidentes por Parte do Corpo Atingida', labels: parteCorpoSorted.map(p => p[0]), valores: parteCorpoSorted.map(p => p[1]) },
+            graficoAgenteCausador: { titulo: 'Acidentes por Agente Causador', labels: agenteSorted.map(ag => ag[0]), valores: agenteSorted.map(ag => ag[1]) }
+        },
+        listas: {
+            listaHistorico: {
+                titulo: 'Histórico de Acidentes no Período',
+                colunas: ['Data', 'Colaborador', 'Setor', 'Tipo', 'Afastamento', 'Classificação'],
+                linhas: periodoOrdenado.map(a => [
+                    formatSimpleDate(a.data_acidente), a.nome_colaborador || 'Não identificado', a.setor || '—',
+                    a.tipo_acidente || 'Não especificado', a.com_afastamento ? 'CPT' : 'SPT', a.classificacao_nbr || 'Típico'
+                ])
+            }
+        }
+    };
+    if (document.getElementById('acidentesSubtabBtn-relatorio')?.classList.contains('active')) renderAcidentesRelatorioChecklist();
 }
 
 function abrirFormAcidente(id) {
@@ -14344,7 +14385,7 @@ function showDbPage(pageId) {
 }
 
 function showAcidentesSubtab(tab) {
-    ['visao', 'registrar', 'hht'].forEach(t => {
+    ['visao', 'registrar', 'hht', 'relatorio'].forEach(t => {
         const content = document.getElementById('acidentesSubtab-' + t);
         const btn = document.getElementById('acidentesSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -14352,6 +14393,200 @@ function showAcidentesSubtab(tab) {
     });
     if (tab === 'visao') renderAcidentesPanel();
     if (tab === 'hht') renderDiasTrabalhadosConfig();
+    // A aba de Relatório usa os números da Visão Geral (window.acidReportData) - por isso,
+    // ao abrir ela, força um recálculo da Visão Geral, garantindo que o relatório nunca
+    // fique desatualizado mesmo que o usuário nunca tenha aberto essa outra sub-aba antes.
+    if (tab === 'relatorio') { renderAcidentesPanel(); renderAcidentesRelatorioChecklist(); }
+}
+
+// ============================================
+// RELATÓRIO CONFIGURÁVEL DE ACIDENTABILIDADE - mesmo padrão já usado em Saúde, Efetivo e
+// EPI: o usuário escolhe via checkbox quais KPIs/gráficos/lista entram no relatório antes
+// de gerar. Os dados vêm de window.acidReportData (preenchido no fim de
+// renderAcidentesPanel - nunca recalculado aqui).
+// ============================================
+
+function renderAcidentesRelatorioChecklist() {
+    const el = document.getElementById('acidRelPeriodo');
+    if (el && window.acidReportData) el.textContent = window.acidReportData.periodoLabel || '—';
+}
+
+function marcarTodosRelatorioAcidentes(valor) {
+    ['relAcidChk_tfg', 'relAcidChk_tg', 'relAcidChk_taxaIncidencia', 'relAcidChk_diasSemCpt', 'relAcidChk_diasSemSpt',
+     'relAcidChk_total', 'relAcidChk_outras', 'relAcidChk_graficoTfCategoria', 'relAcidChk_graficoTfTg',
+     'relAcidChk_graficoTipologia', 'relAcidChk_graficoSetor', 'relAcidChk_graficoParteCorpo',
+     'relAcidChk_graficoAgenteCausador', 'relAcidChk_listaHistorico'].forEach(id => {
+        const chk = document.getElementById(id);
+        if (chk) chk.checked = valor;
+    });
+}
+
+function lerSelecaoRelatorioAcidentes() {
+    return {
+        tfg: document.getElementById('relAcidChk_tfg').checked,
+        tg: document.getElementById('relAcidChk_tg').checked,
+        taxaIncidencia: document.getElementById('relAcidChk_taxaIncidencia').checked,
+        diasSemCpt: document.getElementById('relAcidChk_diasSemCpt').checked,
+        diasSemSpt: document.getElementById('relAcidChk_diasSemSpt').checked,
+        total: document.getElementById('relAcidChk_total').checked,
+        outras: document.getElementById('relAcidChk_outras').checked,
+        graficoTfCategoria: document.getElementById('relAcidChk_graficoTfCategoria').checked,
+        graficoTfTg: document.getElementById('relAcidChk_graficoTfTg').checked,
+        graficoTipologia: document.getElementById('relAcidChk_graficoTipologia').checked,
+        graficoSetor: document.getElementById('relAcidChk_graficoSetor').checked,
+        graficoParteCorpo: document.getElementById('relAcidChk_graficoParteCorpo').checked,
+        graficoAgenteCausador: document.getElementById('relAcidChk_graficoAgenteCausador').checked,
+        listaHistorico: document.getElementById('relAcidChk_listaHistorico').checked
+    };
+}
+
+async function gerarExcelAcidentes() {
+    const statusEl = document.getElementById('relatorioAcidentesStatus');
+    const dados = window.acidReportData;
+    if (!dados) {
+        statusEl.textContent = '❌ Abra a aba 📊 Visão Geral pelo menos uma vez antes de gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const marcados = lerSelecaoRelatorioAcidentes();
+    if (Object.values(marcados).every(v => !v)) {
+        statusEl.textContent = '❌ Selecione pelo menos um item para gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const aoa = [];
+    aoa.push([`RELATÓRIO DE ACIDENTABILIDADE — ${dados.periodoLabel}`]);
+    aoa.push([`Gerado em ${new Date().toLocaleDateString('pt-BR')}`]);
+    aoa.push([]);
+
+    const kpisMarcados = dados.kpis.filter(k => marcados[k.key]);
+    if (kpisMarcados.length > 0) {
+        aoa.push(['INDICADORES (KPIs)']);
+        aoa.push(['Indicador', 'Valor']);
+        kpisMarcados.forEach(k => aoa.push([k.label, k.value]));
+        aoa.push([]);
+    }
+
+    Object.entries(dados.graficos).forEach(([key, g]) => {
+        if (!marcados[key]) return;
+        aoa.push([g.titulo.toUpperCase()]);
+        if (g.series) {
+            aoa.push(['Categoria', ...g.series.map(s => s.nome)]);
+            g.labels.forEach((label, i) => aoa.push([label, ...g.series.map(s => s.valores[i])]));
+        } else {
+            aoa.push(['Categoria', 'Valor']);
+            g.labels.forEach((label, i) => aoa.push([label, g.valores[i]]));
+        }
+        aoa.push([]);
+    });
+
+    Object.entries(dados.listas).forEach(([key, l]) => {
+        if (!marcados[key]) return;
+        aoa.push([l.titulo.toUpperCase()]);
+        aoa.push(l.colunas);
+        if (l.linhas.length === 0) aoa.push(['Nenhum item nessa lista no momento']);
+        else l.linhas.forEach(linha => aoa.push(linha));
+        aoa.push([]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 16 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'ACIDENTABILIDADE');
+
+    const dataSlug = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `RELATORIO_ACIDENTABILIDADE_${dataSlug}.xlsx`);
+
+    statusEl.textContent = `✅ Excel gerado com ${Object.values(marcados).filter(Boolean).length} item(ns) selecionado(s).`;
+    statusEl.style.color = 'var(--success)';
+}
+
+function gerarPdfAcidentes() {
+    const statusEl = document.getElementById('relatorioAcidentesStatus');
+    const dados = window.acidReportData;
+    if (!dados) {
+        statusEl.textContent = '❌ Abra a aba 📊 Visão Geral pelo menos uma vez antes de gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const marcados = lerSelecaoRelatorioAcidentes();
+    if (Object.values(marcados).every(v => !v)) {
+        statusEl.textContent = '❌ Selecione pelo menos um item para gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const kpisMarcados = dados.kpis.filter(k => marcados[k.key]);
+    const kpisHtml = kpisMarcados.length === 0 ? '' : `
+    <h3>Indicadores (KPIs)</h3>
+    <table style="width:65%; margin-bottom:14px;">
+        <thead><tr><th>Indicador</th><th>Valor</th></tr></thead>
+        <tbody>${kpisMarcados.map(k => `<tr><td style="text-align:left;">${escapeHTML(k.label)}</td><td>${escapeHTML(String(k.value))}</td></tr>`).join('')}</tbody>
+    </table>`;
+
+    const graficosHtml = Object.entries(dados.graficos).filter(([key]) => marcados[key]).map(([key, g]) => {
+        if (g.series) {
+            return `
+    <h3>${escapeHTML(g.titulo)}</h3>
+    <table style="width:85%; margin-bottom:14px;">
+        <thead><tr><th>Categoria</th>${g.series.map(s => `<th>${escapeHTML(s.nome)}</th>`).join('')}</tr></thead>
+        <tbody>${g.labels.map((label, i) => `<tr><td style="text-align:left;">${escapeHTML(String(label))}</td>${g.series.map(s => `<td>${escapeHTML(String(s.valores[i] ?? '—'))}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`;
+        }
+        return `
+    <h3>${escapeHTML(g.titulo)}</h3>
+    <table style="width:65%; margin-bottom:14px;">
+        <thead><tr><th>Categoria</th><th>Valor</th></tr></thead>
+        <tbody>${g.labels.map((label, i) => `<tr><td style="text-align:left;">${escapeHTML(String(label))}</td><td>${escapeHTML(String(g.valores[i]))}</td></tr>`).join('')}</tbody>
+    </table>`;
+    }).join('');
+
+    const listasHtml = Object.entries(dados.listas).filter(([key]) => marcados[key]).map(([key, l]) => `
+    <h3>${escapeHTML(l.titulo)}</h3>
+    <table style="width:100%; margin-bottom:14px;">
+        <thead><tr>${l.colunas.map(c => `<th>${escapeHTML(c)}</th>`).join('')}</tr></thead>
+        <tbody>${l.linhas.length === 0
+            ? `<tr><td colspan="${l.colunas.length}">Nenhum item nessa lista no momento</td></tr>`
+            : l.linhas.map(linha => `<tr>${linha.map((v, i) => `<td${i === 0 ? ' style="text-align:left;"' : ''}>${escapeHTML(String(v))}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Relatório de Acidentabilidade</title>
+<style>
+    @page { size: portrait; margin: 12mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
+    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:6px; gap:10px; }
+    .cabecalho img { max-height:40px; }
+    .cabecalho .titulo { font-weight:700; font-size:14px; text-align:center; flex:1; }
+    .info-geracao { font-size:11px; color:#444; margin-bottom:10px; }
+    h3 { font-size:12px; margin:18px 0 6px; }
+    table { width:100%; border-collapse:collapse; font-size:10px; margin-bottom:10px; }
+    th, td { border:1px solid #999; padding:5px 6px; text-align:center; }
+    th { background:#d9d9d9; font-weight:700; }
+    tbody tr:nth-child(even) { background:#f7f7f7; }
+    .no-print { text-align:center; margin:16px 0; }
+    .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
+    @media print { .no-print { display:none; } body { margin:0; } thead { display: table-header-group; } }
+</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="cabecalho">
+        <img src="${LOGO_COP_BASE64}" alt="COP">
+        <div class="titulo">RELATÓRIO DE ACIDENTABILIDADE</div>
+        <div style="width:40px;"></div>
+    </div>
+    <div class="info-geracao">${escapeHTML(EMPRESA_INFO.razaoSocial)} — Período: ${escapeHTML(dados.periodoLabel)} — Gerado em ${new Date().toLocaleDateString('pt-BR')}</div>
+
+    ${kpisHtml}
+    ${graficosHtml}
+    ${listasHtml}
+</body></html>`;
+
+    abrirDocumentoBlob(html);
+    statusEl.textContent = `✅ Relatório gerado — abra a aba nova pra imprimir/salvar em PDF.`;
+    statusEl.style.color = 'var(--success)';
 }
 
 // Contrato começou em 12/07/2024 - mês inicial fixo pra listar a configuração de "dias

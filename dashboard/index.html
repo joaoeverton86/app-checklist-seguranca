@@ -3083,6 +3083,7 @@
                         <button id="epiSubtabBtn-diretrizes" class="db-filter-btn" onclick="showEpiSubtab('diretrizes')">📖 Diretrizes NR-06</button>
                         <button id="epiSubtabBtn-matriz" class="db-filter-btn" onclick="showEpiSubtab('matriz')">🎯 Matriz NR-6</button>
                         <button id="epiSubtabBtn-historico" class="db-filter-btn" onclick="showEpiSubtab('historico')">📜 Histórico</button>
+                        <button id="epiSubtabBtn-relatorio" class="db-filter-btn" onclick="showEpiSubtab('relatorio')">📄 Relatório</button>
                     </div>
                 </div>
 
@@ -3143,6 +3144,18 @@
                         <div class="db-kpi-value" id="kpiEpiCaVencendo">0</div>
                         <div class="db-kpi-label">CA's Vencendo (30 dias)</div>
                     </div>
+                    <div class="db-kpi-card db-kpi-primary">
+                        <div class="db-kpi-value" id="kpiEpiTotalItens">0</div>
+                        <div class="db-kpi-label">Total de Itens Entregues (Período)</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-danger">
+                        <div class="db-kpi-value" id="kpiEpiSemEntrega">0</div>
+                        <div class="db-kpi-label">Ativos sem Entrega Registrada</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-warning">
+                        <div class="db-kpi-value" id="kpiEpiTaxaReposicao">0%</div>
+                        <div class="db-kpi-label">Taxa de Reposição (Período)</div>
+                    </div>
                 </div>
 
                 <div class="db-charts-grid">
@@ -3165,6 +3178,18 @@
                     <div class="db-chart-card db-list-card">
                         <div class="db-chart-title">⚠️ CA's Vencidos / Vencendo (30 dias)</div>
                         <div id="listEpiCaVencimento" class="db-list"></div>
+                    </div>
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">Motivo das Reposições (Período)</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartEpiMotivoReposicao"></canvas></div>
+                    </div>
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">Entregas por Setor (Período)</div>
+                        <div class="db-chart-canvas-wrap"><canvas id="chartEpiPorSetor"></canvas></div>
+                    </div>
+                    <div class="db-chart-card db-list-card">
+                        <div class="db-chart-title">⚠️ Colaboradores Ativos sem Entrega Registrada</div>
+                        <div id="listEpiSemEntrega" class="db-list"></div>
                     </div>
                 </div>
                 </div>
@@ -3456,6 +3481,80 @@
                            style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
                 </div>
                 <div id="epiHistoricoColabContent"></div>
+                </div>
+
+                <div id="epiSubtab-relatorio" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">📅 Relatório Semanal de Entrega</div>
+                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">
+                        Lista bruta de todas as entregas de EPI de uma semana (documento de prova de entrega) —
+                        não é um resumo, é o detalhe de cada entrega, colaborador por colaborador.
+                    </p>
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+                        <button class="db-clear-btn" onclick="mudarEpiRelatorioSemana(-1)">◀ Semana Anterior</button>
+                        <strong id="epiRelatorioSemanaLabel" style="font-size:13px;">—</strong>
+                        <button class="db-clear-btn" onclick="mudarEpiRelatorioSemana(1)">Próxima Semana ▶</button>
+                        <button class="db-clear-btn" onclick="irParaEpiSemanaAtual()">Semana Atual</button>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="gerarExcelEpiSemanal()">📊 Baixar Excel</button>
+                        <button class="db-apply-btn" onclick="gerarPdfEpiSemanal()">🖨️ Gerar PDF</button>
+                        <span id="epiRelatorioSemanalStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
+
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">📄 Relatório Configurável (Visão Geral)</div>
+                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 6px;">
+                        Escolha abaixo o que deve entrar no relatório antes de gerar.
+                    </p>
+                    <div style="font-size: 12.5px; color: var(--text-light); margin-bottom: 14px;">
+                        Período considerado (mesmo da aba 📊 Visão Geral): <strong id="epiRelPeriodo">—</strong>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+                        <button class="db-clear-btn" onclick="marcarTodosRelatorioEpi(true)">☑️ Marcar Todos</button>
+                        <button class="db-clear-btn" onclick="marcarTodosRelatorioEpi(false)">⬜ Desmarcar Todos</button>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Indicadores (KPIs)</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 8px; margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_entregas" checked> Entregas no Período</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_colaboradores" checked> Colaboradores Atendidos no Período</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_itens" checked> Itens Cadastrados no Catálogo</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_estoqueBaixo" checked> Itens com Estoque Baixo</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_caVencidos" checked> CA's Vencidos</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_caVencendo" checked> CA's Vencendo (30 dias)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_totalItens" checked> Total de Itens Entregues (Período)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_coberturaEpi" checked> Ativos sem Entrega Registrada</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_taxaReposicao" checked> Taxa de Reposição (Período)</label>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Gráficos</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 8px; margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_graficoPorMes" checked> Entregas por Mês (Histórico Completo)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_graficoPorTipo" checked> Entregas por Tipo de Proteção (Período)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_graficoMotivoReposicao" checked> Motivo das Reposições (Período)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_graficoPorSetor" checked> Entregas por Setor (Período)</label>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Listas</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 8px; margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_listaMaisEntregues" checked> Itens Mais Entregues (Período)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_listaEstoqueBaixo" checked> Alertas de Estoque Baixo</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_listaCaVencimento" checked> CA's Vencidos / Vencendo (30 dias)</label>
+                        <div>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relEpiChk_listaSemEntrega" checked> Colaboradores Ativos sem Entrega Registrada</label>
+                            <div style="font-size: 11px; color: var(--warning); margin-top: 4px; margin-left: 24px;">⚠️ Contém nome de colaborador — avalie antes de incluir em relatório externo.</div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="gerarExcelEpi()">📊 Baixar Excel</button>
+                        <button class="db-apply-btn" onclick="gerarPdfEpi()">🖨️ Gerar PDF</button>
+                        <span id="relatorioEpiStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
                 </div>
             </section>
 

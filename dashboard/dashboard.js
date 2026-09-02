@@ -12427,7 +12427,7 @@ async function loadEpiData() {
 }
 
 function showEpiSubtab(tab) {
-    ['visao', 'lancamentos', 'estoque', 'cadastro', 'diretrizes', 'matriz', 'historico'].forEach(t => {
+    ['visao', 'lancamentos', 'estoque', 'cadastro', 'diretrizes', 'matriz', 'historico', 'relatorio'].forEach(t => {
         const content = document.getElementById('epiSubtab-' + t);
         const btn = document.getElementById('epiSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -12442,6 +12442,335 @@ function showEpiSubtab(tab) {
         else { renderMatrizEpiCards(); filterMatrizEpi(document.getElementById('mepiSearchInput')?.value || ''); }
     }
     if (tab === 'historico') { popularEpiColabDatalist(); renderEpiHistoricoColaborador(); }
+    // A aba de Relatório usa os números da Visão Geral (window.epiReportData) - por isso, ao
+    // abrir ela, força um recálculo da Visão Geral, garantindo que o relatório nunca fique
+    // desatualizado mesmo que o usuário nunca tenha aberto essa outra sub-aba antes.
+    if (tab === 'relatorio') { renderEpiPanel(); renderEpiRelatorioChecklist(); renderEpiRelatorioSemanaLabel(); }
+}
+
+// ============================================
+// RELATÓRIO CONFIGURÁVEL DE EPI - mesmo padrão já usado em Saúde e Efetivo: o usuário
+// escolhe via checkbox quais KPIs/gráficos/listas entram no relatório antes de gerar. Os
+// dados vêm de window.epiReportData (preenchido no fim de renderEpiPanel - nunca
+// recalculado aqui).
+// ============================================
+
+function renderEpiRelatorioChecklist() {
+    const el = document.getElementById('epiRelPeriodo');
+    if (el && window.epiReportData) el.textContent = window.epiReportData.periodoLabel || '—';
+}
+
+function marcarTodosRelatorioEpi(valor) {
+    ['relEpiChk_entregas', 'relEpiChk_colaboradores', 'relEpiChk_itens', 'relEpiChk_estoqueBaixo', 'relEpiChk_caVencidos',
+     'relEpiChk_caVencendo', 'relEpiChk_totalItens', 'relEpiChk_coberturaEpi', 'relEpiChk_taxaReposicao',
+     'relEpiChk_graficoPorMes', 'relEpiChk_graficoPorTipo', 'relEpiChk_graficoMotivoReposicao', 'relEpiChk_graficoPorSetor',
+     'relEpiChk_listaMaisEntregues', 'relEpiChk_listaEstoqueBaixo', 'relEpiChk_listaCaVencimento', 'relEpiChk_listaSemEntrega'].forEach(id => {
+        const chk = document.getElementById(id);
+        if (chk) chk.checked = valor;
+    });
+}
+
+function lerSelecaoRelatorioEpi() {
+    return {
+        entregas: document.getElementById('relEpiChk_entregas').checked,
+        colaboradores: document.getElementById('relEpiChk_colaboradores').checked,
+        itens: document.getElementById('relEpiChk_itens').checked,
+        estoqueBaixo: document.getElementById('relEpiChk_estoqueBaixo').checked,
+        caVencidos: document.getElementById('relEpiChk_caVencidos').checked,
+        caVencendo: document.getElementById('relEpiChk_caVencendo').checked,
+        totalItens: document.getElementById('relEpiChk_totalItens').checked,
+        coberturaEpi: document.getElementById('relEpiChk_coberturaEpi').checked,
+        taxaReposicao: document.getElementById('relEpiChk_taxaReposicao').checked,
+        graficoPorMes: document.getElementById('relEpiChk_graficoPorMes').checked,
+        graficoPorTipo: document.getElementById('relEpiChk_graficoPorTipo').checked,
+        graficoMotivoReposicao: document.getElementById('relEpiChk_graficoMotivoReposicao').checked,
+        graficoPorSetor: document.getElementById('relEpiChk_graficoPorSetor').checked,
+        listaMaisEntregues: document.getElementById('relEpiChk_listaMaisEntregues').checked,
+        listaEstoqueBaixo: document.getElementById('relEpiChk_listaEstoqueBaixo').checked,
+        listaCaVencimento: document.getElementById('relEpiChk_listaCaVencimento').checked,
+        listaSemEntrega: document.getElementById('relEpiChk_listaSemEntrega').checked
+    };
+}
+
+async function gerarExcelEpi() {
+    const statusEl = document.getElementById('relatorioEpiStatus');
+    const dados = window.epiReportData;
+    if (!dados) {
+        statusEl.textContent = '❌ Abra a aba 📊 Visão Geral pelo menos uma vez antes de gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const marcados = lerSelecaoRelatorioEpi();
+    if (Object.values(marcados).every(v => !v)) {
+        statusEl.textContent = '❌ Selecione pelo menos um item para gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const aoa = [];
+    aoa.push([`RELATÓRIO DE EPI — ${dados.periodoLabel}`]);
+    aoa.push([`Gerado em ${new Date().toLocaleDateString('pt-BR')}`]);
+    aoa.push([]);
+
+    const kpisMarcados = dados.kpis.filter(k => marcados[k.key]);
+    if (kpisMarcados.length > 0) {
+        aoa.push(['INDICADORES (KPIs)']);
+        aoa.push(['Indicador', 'Valor']);
+        kpisMarcados.forEach(k => aoa.push([k.label, k.value]));
+        aoa.push([]);
+    }
+
+    Object.entries(dados.graficos).forEach(([key, g]) => {
+        if (!marcados[key]) return;
+        aoa.push([g.titulo.toUpperCase()]);
+        aoa.push(['Categoria', 'Valor']);
+        g.labels.forEach((label, i) => aoa.push([label, g.valores[i]]));
+        aoa.push([]);
+    });
+
+    Object.entries(dados.listas).forEach(([key, l]) => {
+        if (!marcados[key]) return;
+        aoa.push([l.titulo.toUpperCase()]);
+        aoa.push(l.colunas);
+        if (l.linhas.length === 0) aoa.push(['Nenhum item nessa lista no momento']);
+        else l.linhas.forEach(linha => aoa.push(linha));
+        aoa.push([]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 34 }, { wch: 20 }, { wch: 16 }, { wch: 16 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'EPI');
+
+    const dataSlug = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `RELATORIO_EPI_${dataSlug}.xlsx`);
+
+    statusEl.textContent = `✅ Excel gerado com ${Object.values(marcados).filter(Boolean).length} item(ns) selecionado(s).`;
+    statusEl.style.color = 'var(--success)';
+}
+
+function gerarPdfEpi() {
+    const statusEl = document.getElementById('relatorioEpiStatus');
+    const dados = window.epiReportData;
+    if (!dados) {
+        statusEl.textContent = '❌ Abra a aba 📊 Visão Geral pelo menos uma vez antes de gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const marcados = lerSelecaoRelatorioEpi();
+    if (Object.values(marcados).every(v => !v)) {
+        statusEl.textContent = '❌ Selecione pelo menos um item para gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const kpisMarcados = dados.kpis.filter(k => marcados[k.key]);
+    const kpisHtml = kpisMarcados.length === 0 ? '' : `
+    <h3>Indicadores (KPIs)</h3>
+    <table style="width:65%; margin-bottom:14px;">
+        <thead><tr><th>Indicador</th><th>Valor</th></tr></thead>
+        <tbody>${kpisMarcados.map(k => `<tr><td style="text-align:left;">${escapeHTML(k.label)}</td><td>${escapeHTML(String(k.value))}</td></tr>`).join('')}</tbody>
+    </table>`;
+
+    const graficosHtml = Object.entries(dados.graficos).filter(([key]) => marcados[key]).map(([key, g]) => `
+    <h3>${escapeHTML(g.titulo)}</h3>
+    <table style="width:65%; margin-bottom:14px;">
+        <thead><tr><th>Categoria</th><th>Valor</th></tr></thead>
+        <tbody>${g.labels.map((label, i) => `<tr><td style="text-align:left;">${escapeHTML(String(label))}</td><td>${escapeHTML(String(g.valores[i]))}</td></tr>`).join('')}</tbody>
+    </table>`).join('');
+
+    const listasHtml = Object.entries(dados.listas).filter(([key]) => marcados[key]).map(([key, l]) => `
+    <h3>${escapeHTML(l.titulo)}</h3>
+    <table style="width:100%; margin-bottom:14px;">
+        <thead><tr>${l.colunas.map(c => `<th>${escapeHTML(c)}</th>`).join('')}</tr></thead>
+        <tbody>${l.linhas.length === 0
+            ? `<tr><td colspan="${l.colunas.length}">Nenhum item nessa lista no momento</td></tr>`
+            : l.linhas.map(linha => `<tr>${linha.map((v, i) => `<td${i === 0 ? ' style="text-align:left;"' : ''}>${escapeHTML(String(v))}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Relatório de EPI</title>
+<style>
+    @page { size: portrait; margin: 12mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
+    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:6px; gap:10px; }
+    .cabecalho img { max-height:40px; }
+    .cabecalho .titulo { font-weight:700; font-size:14px; text-align:center; flex:1; }
+    .info-geracao { font-size:11px; color:#444; margin-bottom:10px; }
+    h3 { font-size:12px; margin:18px 0 6px; }
+    table { width:100%; border-collapse:collapse; font-size:10px; margin-bottom:10px; }
+    th, td { border:1px solid #999; padding:5px 6px; text-align:center; }
+    th { background:#d9d9d9; font-weight:700; }
+    tbody tr:nth-child(even) { background:#f7f7f7; }
+    .no-print { text-align:center; margin:16px 0; }
+    .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
+    @media print { .no-print { display:none; } body { margin:0; } thead { display: table-header-group; } }
+</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="cabecalho">
+        <img src="${LOGO_COP_BASE64}" alt="COP">
+        <div class="titulo">RELATÓRIO DE EPI</div>
+        <div style="width:40px;"></div>
+    </div>
+    <div class="info-geracao">${escapeHTML(EMPRESA_INFO.razaoSocial)} — Período: ${escapeHTML(dados.periodoLabel)} — Gerado em ${new Date().toLocaleDateString('pt-BR')}</div>
+
+    ${kpisHtml}
+    ${graficosHtml}
+    ${listasHtml}
+</body></html>`;
+
+    abrirDocumentoBlob(html);
+    statusEl.textContent = `✅ Relatório gerado — abra a aba nova pra imprimir/salvar em PDF.`;
+    statusEl.style.color = 'var(--success)';
+}
+
+// ============================================
+// RELATÓRIO SEMANAL DE ENTREGA - lista bruta (não agregada) de todas as entregas de uma
+// semana (Segunda a Domingo), pra virar documento/prova de entrega. Diferente do checklist
+// acima: não é configurável por item, é sempre "a semana inteira" - só a semana em si que
+// navega (anterior/atual/próxima), guardada em epiRelatorioSemanaOffset (0 = semana atual,
+// -1 = semana passada, +1 = semana que vem, etc.).
+// ============================================
+
+let epiRelatorioSemanaOffset = 0;
+
+function calcularEpiSemana(offset) {
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const diaSemana = hoje.getDay(); // 0=domingo, 1=segunda, ..., 6=sábado
+    const diffParaSegunda = diaSemana === 0 ? -6 : 1 - diaSemana;
+    const segundaAtual = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + diffParaSegunda);
+    const inicio = new Date(segundaAtual.getFullYear(), segundaAtual.getMonth(), segundaAtual.getDate() + offset * 7);
+    const fim = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + 6, 23, 59, 59, 999);
+    return { inicio, fim };
+}
+
+function renderEpiRelatorioSemanaLabel() {
+    const { inicio, fim } = calcularEpiSemana(epiRelatorioSemanaOffset);
+    const el = document.getElementById('epiRelatorioSemanaLabel');
+    if (el) el.textContent = `${inicio.toLocaleDateString('pt-BR')} a ${fim.toLocaleDateString('pt-BR')}` + (epiRelatorioSemanaOffset === 0 ? ' (semana atual)' : '');
+}
+
+function mudarEpiRelatorioSemana(delta) {
+    epiRelatorioSemanaOffset += delta;
+    renderEpiRelatorioSemanaLabel();
+}
+
+function irParaEpiSemanaAtual() {
+    epiRelatorioSemanaOffset = 0;
+    renderEpiRelatorioSemanaLabel();
+}
+
+function montarLinhasEpiSemanal() {
+    const { inicio, fim } = calcularEpiSemana(epiRelatorioSemanaOffset);
+    const catalogoPorId = new Map(allEpiCatalogo.map(c => [c.id, c]));
+    const entregas = allEpiEntregas
+        .filter(e => e.data_entrega && parseLocalDate(e.data_entrega) >= inicio && parseLocalDate(e.data_entrega) <= fim)
+        .slice()
+        .sort((a, b) => (a.nome || '').localeCompare(b.nome || '') || (a.data_entrega || '').localeCompare(b.data_entrega || ''));
+    return { inicio, fim, catalogoPorId, entregas };
+}
+
+const TIPO_ENTREGA_LABELS_EPI = { inicial: 'Inicial', reposicao: 'Reposição', troca: 'Troca' };
+const MOTIVO_REPOSICAO_LABELS_EPI_SEMANAL = { perda: 'Perda', dano: 'Dano/Rompimento', desgaste: 'Desgaste Natural', troca_tamanho: 'Troca de Tamanho', vencimento: 'Vencimento (CA)' };
+
+async function gerarExcelEpiSemanal() {
+    const statusEl = document.getElementById('epiRelatorioSemanalStatus');
+    const { inicio, fim, catalogoPorId, entregas } = montarLinhasEpiSemanal();
+    if (entregas.length === 0) {
+        statusEl.textContent = '❌ Nenhuma entrega registrada nessa semana.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const aoa = [
+        [`RELATÓRIO SEMANAL DE ENTREGA DE EPI — ${inicio.toLocaleDateString('pt-BR')} a ${fim.toLocaleDateString('pt-BR')}`],
+        [`Gerado em ${new Date().toLocaleDateString('pt-BR')} — ${entregas.length} entrega(s)`],
+        [],
+        ['Data', 'Matrícula', 'Colaborador', 'Função', 'Setor', 'Item', 'Quantidade', 'Tipo', 'Motivo', 'Entregue por']
+    ];
+    entregas.forEach(e => {
+        const cat = catalogoPorId.get(e.epi_catalogo_id);
+        aoa.push([
+            formatSimpleDate(e.data_entrega), e.matricula, e.nome, e.funcao || '', e.setor || '',
+            cat?.descricao || e.epi_catalogo_id, e.quantidade || 1,
+            TIPO_ENTREGA_LABELS_EPI[e.tipo_entrega] || e.tipo_entrega || '',
+            MOTIVO_REPOSICAO_LABELS_EPI_SEMANAL[e.motivo_reposicao] || e.motivo_reposicao || '',
+            e.entregue_por || ''
+        ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 28 }, { wch: 20 }, { wch: 18 }, { wch: 28 }, { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 18 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'ENTREGAS DA SEMANA');
+
+    XLSX.writeFile(wb, `RELATORIO_SEMANAL_EPI_${inicio.toISOString().slice(0, 10)}_a_${fim.toISOString().slice(0, 10)}.xlsx`);
+
+    statusEl.textContent = `✅ Excel gerado — ${entregas.length} entrega(s) na semana.`;
+    statusEl.style.color = 'var(--success)';
+}
+
+function gerarPdfEpiSemanal() {
+    const statusEl = document.getElementById('epiRelatorioSemanalStatus');
+    const { inicio, fim, catalogoPorId, entregas } = montarLinhasEpiSemanal();
+    if (entregas.length === 0) {
+        statusEl.textContent = '❌ Nenhuma entrega registrada nessa semana.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const linhasHtml = entregas.map(e => {
+        const cat = catalogoPorId.get(e.epi_catalogo_id);
+        return `<tr>
+            <td>${formatSimpleDate(e.data_entrega)}</td>
+            <td style="text-align:left;">${escapeHTML(e.nome || '')} (${escapeHTML(e.matricula || '')})</td>
+            <td style="text-align:left;">${escapeHTML(e.setor || '—')}</td>
+            <td style="text-align:left;">${escapeHTML(cat?.descricao || e.epi_catalogo_id || '')}</td>
+            <td>${e.quantidade || 1}</td>
+            <td>${escapeHTML(TIPO_ENTREGA_LABELS_EPI[e.tipo_entrega] || e.tipo_entrega || '—')}</td>
+            <td style="text-align:left;">${escapeHTML(MOTIVO_REPOSICAO_LABELS_EPI_SEMANAL[e.motivo_reposicao] || e.motivo_reposicao || '—')}</td>
+            <td style="text-align:left;">${escapeHTML(e.entregue_por || '—')}</td>
+        </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Relatório Semanal de Entrega de EPI</title>
+<style>
+    @page { size: landscape; margin: 10mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5px; color: #111; margin: 16px; }
+    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:6px; gap:10px; }
+    .cabecalho img { max-height:40px; }
+    .cabecalho .titulo { font-weight:700; font-size:14px; text-align:center; flex:1; }
+    .info-geracao { font-size:11px; color:#444; margin-bottom:10px; }
+    table { width:100%; border-collapse:collapse; font-size:10px; margin-bottom:10px; }
+    th, td { border:1px solid #999; padding:5px 6px; text-align:center; }
+    th { background:#d9d9d9; font-weight:700; }
+    tbody tr:nth-child(even) { background:#f7f7f7; }
+    .no-print { text-align:center; margin:16px 0; }
+    .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
+    @media print { .no-print { display:none; } body { margin:0; } thead { display: table-header-group; } }
+</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="cabecalho">
+        <img src="${LOGO_COP_BASE64}" alt="COP">
+        <div class="titulo">RELATÓRIO SEMANAL DE ENTREGA DE EPI</div>
+        <div style="width:40px;"></div>
+    </div>
+    <div class="info-geracao">${escapeHTML(EMPRESA_INFO.razaoSocial)} — Semana: ${inicio.toLocaleDateString('pt-BR')} a ${fim.toLocaleDateString('pt-BR')} — ${entregas.length} entrega(s) — Gerado em ${new Date().toLocaleDateString('pt-BR')}</div>
+
+    <table>
+        <thead><tr><th>Data</th><th>Colaborador</th><th>Setor</th><th>Item</th><th>Qtd</th><th>Tipo</th><th>Motivo</th><th>Entregue por</th></tr></thead>
+        <tbody>${linhasHtml}</tbody>
+    </table>
+</body></html>`;
+
+    abrirDocumentoBlob(html);
+    statusEl.textContent = `✅ Relatório gerado — abra a aba nova pra imprimir/salvar em PDF.`;
+    statusEl.style.color = 'var(--success)';
 }
 
 // ---- Visão Geral: filtro de período (mesmo padrão de Treinamentos/Saúde) ----
@@ -12509,6 +12838,36 @@ function renderEpiPanel() {
     document.getElementById('kpiEpiColaboradores').textContent = new Set(periodo.map(e => e.matricula)).size;
     document.getElementById('kpiEpiItens').textContent = allEpiCatalogo.filter(c => c.ativo !== false).length;
 
+    // Total de Itens Entregues (Período): soma as QUANTIDADES entregues, diferente de
+    // "Entregas no Período" (que conta registros/lançamentos, não unidades de EPI).
+    const totalItensEntregues = periodo.reduce((s, e) => s + (e.quantidade || 1), 0);
+    document.getElementById('kpiEpiTotalItens').textContent = totalItensEntregues;
+
+    // Taxa de Reposição (Período): % das entregas que NÃO são "inicial" (ou seja, reposição
+    // ou troca) - um número alto pode indicar perda, dano ou desgaste acima do esperado.
+    const reposicoesPeriodo = periodo.filter(e => e.tipo_entrega && e.tipo_entrega !== 'inicial').length;
+    const taxaReposicaoEpi = periodo.length > 0 ? (reposicoesPeriodo / periodo.length * 100) : 0;
+    document.getElementById('kpiEpiTaxaReposicao').textContent = periodo.length > 0 ? taxaReposicaoEpi.toFixed(1) + '%' : '—';
+
+    // Cobertura de EPI: colaboradores ATIVOS hoje que nunca tiveram NENHUMA entrega
+    // registrada (em todo o histórico, não só no período) - checagem de conformidade
+    // "quem pode estar sem EPI documentado", não um recorte de período.
+    const matriculasComEntregaEpi = new Set(allEpiEntregas.map(e => e.matricula));
+    const colaboradoresSemEpi = allEfetivo.filter(e => colaboradorEstaAtivo(e) && !matriculasComEntregaEpi.has(e.id));
+    document.getElementById('kpiEpiSemEntrega').textContent = colaboradoresSemEpi.length;
+    const listSemEpi = document.getElementById('listEpiSemEntrega');
+    if (listSemEpi) {
+        listSemEpi.innerHTML = colaboradoresSemEpi.length === 0
+            ? '<div class="db-list-empty">✅ Todos os colaboradores ativos têm ao menos 1 entrega registrada</div>'
+            : colaboradoresSemEpi
+                .slice()
+                .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
+                .map(e => `<div class="db-list-item db-item-warning">
+                    <div class="db-list-item-title">${escapeHTML(e.nome || e.id)}</div>
+                    <div class="db-list-item-sub">${escapeHTML(e.funcao || '—')} — ${escapeHTML(e.setor || '—')}</div>
+                </div>`).join('');
+    }
+
     const catalogoPorId = new Map(allEpiCatalogo.map(c => [c.id, c]));
     const estoqueBaixo = allEpiEstoque.filter(es => (es.quantidade_atual || 0) <= (es.quantidade_minima || 0) && catalogoPorId.get(es.epi_catalogo_id)?.ativo !== false);
     document.getElementById('kpiEpiEstoqueBaixo').textContent = estoqueBaixo.length;
@@ -12569,6 +12928,8 @@ function renderEpiPanel() {
     if (typeof Chart === 'undefined') return;
     if (chartInstances.epiPorMes) chartInstances.epiPorMes.destroy();
     if (chartInstances.epiPorTipo) chartInstances.epiPorTipo.destroy();
+    if (chartInstances.epiMotivoReposicao) chartInstances.epiMotivoReposicao.destroy();
+    if (chartInstances.epiPorSetor) chartInstances.epiPorSetor.destroy();
 
     const meses = [], qtdPorMes = [];
     const now = new Date();
@@ -12607,6 +12968,74 @@ function renderEpiPanel() {
         data: { labels: tipoSorted.map(t => t[0]), datasets: [{ data: tipoSorted.map(t => t[1]), backgroundColor: ['#4f46e5', '#818cf8', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#ec4899', '#84cc16', '#64748b'] }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
     });
+
+    // Motivo das Reposições (Período): só entregas que TÊM motivo_reposicao preenchido
+    // (reposição/troca) - ajuda a ver se perda/dano está recorrente.
+    const MOTIVO_REPOSICAO_LABELS_EPI = { perda: 'Perda', dano: 'Dano/Rompimento', desgaste: 'Desgaste Natural', troca_tamanho: 'Troca de Tamanho', vencimento: 'Vencimento (CA)' };
+    const motivoCounts = {};
+    periodo.forEach(e => {
+        if (!e.motivo_reposicao) return;
+        const label = MOTIVO_REPOSICAO_LABELS_EPI[e.motivo_reposicao] || e.motivo_reposicao;
+        motivoCounts[label] = (motivoCounts[label] || 0) + (e.quantidade || 1);
+    });
+    const motivoSorted = Object.entries(motivoCounts).sort((a, b) => b[1] - a[1]);
+    chartInstances.epiMotivoReposicao = new Chart(document.getElementById('chartEpiMotivoReposicao'), {
+        type: 'bar',
+        data: { labels: motivoSorted.map(m => m[0]), datasets: [{ label: 'Reposições', data: motivoSorted.map(m => m[1]), backgroundColor: '#f59e0b', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+
+    // Entregas por Setor (Período): quantidade entregue por setor - útil pra planejamento
+    // de compra/estoque por frente de trabalho.
+    const setorCountsEpi = {};
+    periodo.forEach(e => { const s = e.setor || 'Sem setor'; setorCountsEpi[s] = (setorCountsEpi[s] || 0) + (e.quantidade || 1); });
+    const setorSortedEpi = Object.entries(setorCountsEpi).sort((a, b) => b[1] - a[1]);
+    const epiSetorLabels = setorSortedEpi.map(s => wrapChartLabel(s[0]));
+    ajustarAlturaBarrasHorizontais('chartEpiPorSetor', epiSetorLabels);
+    chartInstances.epiPorSetor = new Chart(document.getElementById('chartEpiPorSetor'), {
+        type: 'bar',
+        data: { labels: epiSetorLabels, datasets: [{ label: 'Itens entregues', data: setorSortedEpi.map(s => s[1]), backgroundColor: '#10b981', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
+    });
+
+    // Snapshot dos números/gráficos/listas que acabaram de ser calculados acima, pra
+    // alimentar a aba "📄 Relatório" sem duplicar nenhuma lógica de cálculo.
+    window.epiReportData = {
+        periodoLabel: document.getElementById('epiPeriodoTitulo')?.textContent || '',
+        kpis: [
+            { key: 'entregas', label: 'Entregas no Período', value: periodo.length },
+            { key: 'colaboradores', label: 'Colaboradores Atendidos no Período', value: new Set(periodo.map(e => e.matricula)).size },
+            { key: 'itens', label: 'Itens Cadastrados no Catálogo', value: allEpiCatalogo.filter(c => c.ativo !== false).length },
+            { key: 'estoqueBaixo', label: 'Itens com Estoque Baixo', value: estoqueBaixo.length },
+            { key: 'caVencidos', label: "CA's Vencidos", value: itensComCa.filter(x => x.status === 'vencido').length },
+            { key: 'caVencendo', label: "CA's Vencendo (30 dias)", value: itensComCa.filter(x => x.status === 'vencendo').length },
+            { key: 'totalItens', label: 'Total de Itens Entregues (Período)', value: totalItensEntregues },
+            { key: 'coberturaEpi', label: 'Ativos sem Entrega Registrada', value: colaboradoresSemEpi.length },
+            { key: 'taxaReposicao', label: 'Taxa de Reposição (Período)', value: periodo.length > 0 ? taxaReposicaoEpi.toFixed(1) + '%' : '—' }
+        ],
+        graficos: {
+            graficoPorMes: { titulo: 'Entregas por Mês (Histórico Completo)', labels: meses, valores: qtdPorMes },
+            graficoPorTipo: { titulo: 'Entregas por Tipo de Proteção (Período)', labels: tipoSorted.map(t => t[0]), valores: tipoSorted.map(t => t[1]) },
+            graficoMotivoReposicao: { titulo: 'Motivo das Reposições (Período)', labels: motivoSorted.map(m => m[0]), valores: motivoSorted.map(m => m[1]) },
+            graficoPorSetor: { titulo: 'Entregas por Setor (Período)', labels: setorSortedEpi.map(s => s[0]), valores: setorSortedEpi.map(s => s[1]) }
+        },
+        listas: {
+            listaMaisEntregues: { titulo: 'Itens Mais Entregues (Período)', colunas: ['Item', 'Quantidade'], linhas: itemSorted.map(([label, qtd]) => [label, qtd]) },
+            listaEstoqueBaixo: {
+                titulo: 'Alertas de Estoque Baixo', colunas: ['Item', 'Saldo', 'Mínimo'],
+                linhas: estoqueBaixo.map(es => { const cat = catalogoPorId.get(es.epi_catalogo_id); return [cat?.descricao || es.epi_catalogo_id, es.quantidade_atual || 0, es.quantidade_minima || 0]; })
+            },
+            listaCaVencimento: {
+                titulo: "CA's Vencidos / Vencendo (30 dias)", colunas: ['Item', 'CA', 'Status', 'Validade'],
+                linhas: itensComCa.map(x => [x.item.descricao || '', x.item.ca || '—', x.status === 'vencido' ? 'Vencido' : 'Vencendo', formatSimpleDate(x.item.ca_validade)])
+            },
+            listaSemEntrega: {
+                titulo: 'Colaboradores Ativos sem Entrega Registrada', colunas: ['Nome', 'Função', 'Setor'],
+                linhas: colaboradoresSemEpi.map(e => [e.nome || e.id, e.funcao || '—', e.setor || '—'])
+            }
+        }
+    };
+    if (document.getElementById('epiSubtabBtn-relatorio')?.classList.contains('active')) renderEpiRelatorioChecklist();
 }
 
 // ---- Cadastro: CRUD do catálogo de EPI ----

@@ -2292,6 +2292,10 @@
 
             <!-- Página: Matriz de Risco (metodologia AIHA, seção 16 do PGR) -->
             <section class="db-page" id="page-matrizrisco">
+                <div style="margin-bottom:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <button class="db-apply-btn" onclick="recalcularClassificacaoRiscoGhe()">🔄 Recalcular Classificação (Tabela Oficial AIHA)</button>
+                    <span id="statusRecalcularRiscoGhe" style="font-size:12px; color:var(--text-light);"></span>
+                </div>
                 <div class="db-kpi-grid">
                     <div class="db-kpi-card db-kpi-primary">
                         <div class="db-kpi-value" id="kpiRiscoTotal">0</div>
@@ -3719,7 +3723,7 @@
                     </div>
                     <div class="db-kpi-card db-kpi-danger">
                         <div class="db-kpi-value" id="kpiAprRiscoAlto">0</div>
-                        <div class="db-kpi-label">Ativas com Risco Crítico/Intolerável</div>
+                        <div class="db-kpi-label">Ativas com Risco Alto/Crítico</div>
                     </div>
                 </div>
 

@@ -8765,8 +8765,8 @@ function renderRiscosGheForm() {
                 <input type="text" placeholder="Agente" value="${escapeHTML(r.agente)}" oninput="gheRiscosForm[${i}].agente=this.value" style="${campoEstilo}">
             </div>
             <div style="display:grid; grid-template-columns: 70px 70px 1fr; gap:6px; align-items:end; margin-bottom:6px;">
-                <div><label style="color:var(--text-light); font-size:10px; display:block;">Probabilidade</label>${selectProbSeverGhe(r.probabilidade, `gheRiscosForm[${i}].probabilidade=this.value; atualizarGravidadeCalculadaGhe(gheRiscosForm[${i}]); renderRiscosGheForm();`, APR_ANCORAS_P)}</div>
-                <div><label style="color:var(--text-light); font-size:10px; display:block;">Severidade</label>${selectProbSeverGhe(r.severidade, `gheRiscosForm[${i}].severidade=this.value; atualizarGravidadeCalculadaGhe(gheRiscosForm[${i}]); renderRiscosGheForm();`, APR_ANCORAS_S)}</div>
+                <div><label style="color:var(--text-light); font-size:10px; display:block;">Probabilidade</label>${selectProbSeverGhe(r.probabilidade, `gheRiscosForm[${i}].probabilidade=this.value; atualizarGravidadeCalculadaGhe(gheRiscosForm[${i}]); renderRiscosGheForm();`, GHE_ANCORAS_PROBABILIDADE)}</div>
+                <div><label style="color:var(--text-light); font-size:10px; display:block;">Severidade</label>${selectProbSeverGhe(r.severidade, `gheRiscosForm[${i}].severidade=this.value; atualizarGravidadeCalculadaGhe(gheRiscosForm[${i}]); renderRiscosGheForm();`, GHE_ANCORAS_EFEITO)}</div>
                 ${badgeGravidadeGhe(r)}
             </div>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:6px; margin-bottom:6px;">
@@ -8988,25 +8988,59 @@ let chartRiscoTipoAgente = null;
 const NIVEIS_RISCO_ORDEM = ['Trivial', 'Baixo', 'Moderado', 'Alto', 'Muito Alto'];
 const NIVEIS_RISCO_COR = { 'Trivial': '#6aa84f', 'Baixo': '#f1c232', 'Moderado': '#e69138', 'Alto': '#cc0000', 'Muito Alto': '#990000' };
 
-// Mesma matriz 5×5 Probabilidade × Severidade do módulo de APR (nivelRiscoApr - valor =
-// p × s, mesmas faixas 1-4/5-9/10-14/15-19/20-25), só que devolvendo os rótulos/cores que
-// a Matriz de Risco do GHE já usa (NIVEIS_RISCO_ORDEM/NIVEIS_RISCO_COR acima) em vez dos
-// rótulos do APR ('Aceitável / Baixo' etc, de outro módulo) - troca o campo de texto livre
-// "Gravidade (rótulo...)" por uma classificação de verdade, calculada, não mais digitada
-// à mão.
+// Âncoras da Probabilidade e do Efeito EXATAMENTE como a tabela 16.1 do PGR (mesmo texto
+// da tabela "📐 Metodologia AIHA — Referência Oficial" que já aparece na tela de Matriz de
+// Risco) - critério de EXPOSIÇÃO ao agente, diferente da escala de "Raro/Frequente" e
+// "Lesão leve/Fatalidade" que a APR usa (a APR é uma matriz de campo genérica; o GHE segue
+// um documento oficial específico, com critérios próprios). Pesos oficiais são 0-4;
+// somamos 1 pra guardar como 1-5 nos mesmos campos probabilidade/severidade de sempre.
+const GHE_ANCORAS_PROBABILIDADE = {
+    1: 'Não há exposição — nenhum contato com o agente ou contato improvável',
+    2: 'Exposição a níveis baixos — contatos não frequentes com o agente',
+    3: 'Exposição moderada — contato frequente a baixas concentrações ou não frequente a altas concentrações',
+    4: 'Exposição elevada — contato frequente com o agente a altas concentrações',
+    5: 'Exposição elevadíssima — contato frequente com o agente a concentrações elevadíssimas'
+};
+const GHE_ANCORAS_EFEITO = {
+    1: 'Pouca importância — efeitos reversíveis de pouca importância, ou não conhecidos/apenas suspeitos',
+    2: 'Preocupantes — efeitos reversíveis preocupantes',
+    3: 'Severos — efeitos reversíveis severos e preocupantes',
+    4: 'Irreversíveis — efeitos irreversíveis preocupantes',
+    5: 'Ameaça — ameaça à vida ou doença/lesão incapacitante'
+};
+
+// Tabela 16.3 do PGR (Matriz para Determinação dos Níveis de Risco) transcrita ao pé da
+// letra - Efeito nas linhas (1 a 5), Probabilidade nas colunas (1 a 5). Substitui o
+// cálculo antigo (probabilidade × severidade dentro de uma faixa), que em vários
+// cruzamentos não batia com essa tabela oficial - ex: Efeito 5 (Ameaça) × Probabilidade 4
+// (Exp. elevada) essa tabela classifica como "Moderado", mas a multiplicação simples (5×4
+// = 20) caía na faixa de "Muito Alto".
+const GHE_MATRIZ_NIVEIS = {
+    1: { 1: 'Trivial', 2: 'Trivial', 3: 'Trivial', 4: 'Trivial', 5: 'Baixo' },
+    2: { 1: 'Trivial', 2: 'Baixo', 3: 'Baixo', 4: 'Baixo', 5: 'Moderado' },
+    3: { 1: 'Trivial', 2: 'Baixo', 3: 'Moderado', 4: 'Moderado', 5: 'Moderado' },
+    4: { 1: 'Trivial', 2: 'Moderado', 3: 'Moderado', 4: 'Alto', 5: 'Alto' },
+    5: { 1: 'Baixo', 2: 'Moderado', 3: 'Moderado', 4: 'Alto', 5: 'Muito Alto' }
+};
+
+// Classifica pela tabela oficial acima (GHE_MATRIZ_NIVEIS[efeito][probabilidade]), não
+// mais por p × s dentro de uma faixa. "valor" continua sendo p × s só pra manter o campo
+// numérico "Gravidade" já salvo e pra ordenar a lista de "Riscos Altos" (quem decide o
+// NÍVEL agora é sempre a tabela, não esse número).
 function nivelRiscoGhe(p, s) {
     const pNum = parseInt(p, 10);
     const sNum = parseInt(s, 10);
     if (!pNum || !sNum) return { valor: null, label: '', cor: '#888888' };
     const valor = pNum * sNum;
-    const label = valor <= 4 ? 'Trivial' : valor <= 9 ? 'Baixo' : valor <= 14 ? 'Moderado' : valor <= 19 ? 'Alto' : 'Muito Alto';
-    return { valor, label, cor: NIVEIS_RISCO_COR[label] };
+    const label = (GHE_MATRIZ_NIVEIS[sNum] && GHE_MATRIZ_NIVEIS[sNum][pNum]) || '';
+    return { valor, label, cor: NIVEIS_RISCO_COR[label] || '#888888' };
 }
 
-// Select de Probabilidade/Severidade (1-5) com a âncora descritiva (APR_ANCORAS_P/S, mesma
-// escala do APR) como tooltip de cada opção - mesmo padrão do selectPS local de
-// renderRiscosAprForm, só que compartilhado entre os dois formulários de edição de riscos
-// do GHE (gheRiscosForm e matrizEditForm) em vez de duplicado em cada um.
+// Select de Probabilidade/Efeito (1-5) com a âncora descritiva (GHE_ANCORAS_PROBABILIDADE/
+// GHE_ANCORAS_EFEITO, critério oficial da AIHA - não é mais o mesmo texto do APR) como
+// tooltip de cada opção - mesmo padrão do selectPS local de renderRiscosAprForm, só que
+// compartilhado entre os dois formulários de edição de riscos do GHE (gheRiscosForm e
+// matrizEditForm) em vez de duplicado em cada um.
 function selectProbSeverGhe(val, onchange, ancoras) {
     let opts = '<option value="">-</option>';
     for (let n = 1; n <= 5; n++) opts += `<option value="${n}" title="${escapeHTML(ancoras[n])}" ${String(val) === String(n) ? 'selected' : ''}>${n}</option>`;
@@ -9036,7 +9070,7 @@ function badgeGravidadeGhe(row) {
     const valor = nivel.valor !== null ? nivel.valor : (row.gravidade || null);
     const label = nivel.valor !== null ? nivel.label : (row.gravidade_label || '');
     const cor = nivel.valor !== null ? nivel.cor : (NIVEIS_RISCO_COR[row.gravidade_label] || '#888888');
-    return `<div title="Calculado a partir de Probabilidade × Severidade (mesma matriz do APR)" style="padding:6px 10px; border-radius:6px; background:${cor}22; color:${cor}; font-weight:700; font-size:11.5px; text-align:center;">
+    return `<div title="Calculado pela tabela oficial da AIHA (Probabilidade × Efeito, seção 16.3 do PGR - mesma tabela da 'Metodologia AIHA' logo abaixo nesta página)" style="padding:6px 10px; border-radius:6px; background:${cor}22; color:${cor}; font-weight:700; font-size:11.5px; text-align:center;">
         ${valor !== null && valor !== '' ? 'Gravidade ' + valor : 'Gravidade —'}${label ? ' - ' + escapeHTML(label) : ''}
     </div>`;
 }
@@ -9126,6 +9160,48 @@ function irParaGheDaMatriz(gheId) {
     showDbPage('efetivo');
     showEfetivoSubtab('ghe');
     abrirGerenciarGhe(gheId);
+}
+
+// Recalcula gravidade/gravidade_label de TODOS os riscos de GHE já cadastrados usando a
+// tabela oficial da AIHA (GHE_MATRIZ_NIVEIS), em vez da fórmula antiga (p × s por faixa) -
+// criada pra rodar uma vez só, logo depois de aplicar essa correção, e já atualizar de uma
+// vez os riscos que tinham probabilidade/severidade preenchidas com o rótulo calculado do
+// jeito antigo (que podia divergir da tabela oficial). Pode ser rodada de novo a qualquer
+// momento sem problema nenhum: é idempotente (sempre recalcula do zero a partir de
+// probabilidade/severidade, nunca acumula nem "piora" nada).
+async function recalcularClassificacaoRiscoGhe() {
+    const statusEl = document.getElementById('statusRecalcularRiscoGhe');
+    if (statusEl) { statusEl.textContent = 'Recalculando...'; statusEl.style.color = 'var(--text-light)'; }
+    try {
+        const gruposAlterados = [];
+        let riscosAlterados = 0;
+        allGheCatalogo.forEach(g => {
+            if (!Array.isArray(g.riscos) || g.riscos.length === 0) return;
+            let mudouAlgumRisco = false;
+            g.riscos.forEach(r => {
+                const labelAntes = r.gravidade_label;
+                const valorAntes = r.gravidade;
+                atualizarGravidadeCalculadaGhe(r);
+                if (r.gravidade_label !== labelAntes || r.gravidade !== valorAntes) {
+                    mudouAlgumRisco = true;
+                    riscosAlterados++;
+                }
+            });
+            if (mudouAlgumRisco) gruposAlterados.push({ id: g.id, riscos: g.riscos, updated_at: new Date().toISOString() });
+        });
+
+        if (gruposAlterados.length === 0) {
+            if (statusEl) { statusEl.textContent = '✅ Nenhum risco precisava de recálculo - todos já batem com a tabela oficial da AIHA.'; statusEl.style.color = 'var(--success)'; }
+            return;
+        }
+
+        await supabaseUpsert('ghe_catalogo', gruposAlterados);
+        if (statusEl) { statusEl.textContent = `✅ ${riscosAlterados} risco(s) em ${gruposAlterados.length} grupo(s) de GHE recalculados pela tabela oficial da AIHA.`; statusEl.style.color = 'var(--success)'; }
+        if (document.getElementById('page-matrizrisco')?.classList.contains('active')) renderMatrizRiscoPanel();
+    } catch (err) {
+        console.error('Erro ao recalcular classificação de risco (GHE):', err);
+        if (statusEl) { statusEl.textContent = '❌ Falha ao recalcular: ' + err.message; statusEl.style.color = 'var(--danger)'; }
+    }
 }
 
 // ============================================
@@ -9259,8 +9335,8 @@ function renderMatrizEditFields() {
                 <input type="text" placeholder="Agente" value="${escapeHTML(r.agente)}" oninput="matrizEditForm[${i}].agente=this.value" style="${campoEstilo}">
             </div>
             <div style="display:grid; grid-template-columns: 70px 70px 1fr; gap:6px; align-items:end; margin-bottom:6px;">
-                <div><label style="color:var(--text-light); font-size:10px; display:block;">Probabilidade</label>${selectProbSeverGhe(r.probabilidade, `matrizEditForm[${i}].probabilidade=this.value; atualizarGravidadeCalculadaGhe(matrizEditForm[${i}]); renderMatrizEditFields();`, APR_ANCORAS_P)}</div>
-                <div><label style="color:var(--text-light); font-size:10px; display:block;">Severidade</label>${selectProbSeverGhe(r.severidade, `matrizEditForm[${i}].severidade=this.value; atualizarGravidadeCalculadaGhe(matrizEditForm[${i}]); renderMatrizEditFields();`, APR_ANCORAS_S)}</div>
+                <div><label style="color:var(--text-light); font-size:10px; display:block;">Probabilidade</label>${selectProbSeverGhe(r.probabilidade, `matrizEditForm[${i}].probabilidade=this.value; atualizarGravidadeCalculadaGhe(matrizEditForm[${i}]); renderMatrizEditFields();`, GHE_ANCORAS_PROBABILIDADE)}</div>
+                <div><label style="color:var(--text-light); font-size:10px; display:block;">Severidade</label>${selectProbSeverGhe(r.severidade, `matrizEditForm[${i}].severidade=this.value; atualizarGravidadeCalculadaGhe(matrizEditForm[${i}]); renderMatrizEditFields();`, GHE_ANCORAS_EFEITO)}</div>
                 ${badgeGravidadeGhe(r)}
             </div>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:6px; margin-bottom:6px;">
@@ -16268,37 +16344,39 @@ let aprLoaded = false;
 let aprRiscosForm = [];
 let aprItemExpandidoId = null;
 
-// Faixas de classificação exatamente como especificado pelo usuário (matriz 5×5):
-// 1-4 Aceitável/Baixo, 5-9 Tolerável/Médio, 10-14 Substancial/Alto, 15-19 Crítico/Muito
-// Alto, 20-25 Intolerável. Cores só de referência visual, não são um limite normativo.
+// Faixas de classificação da matriz 5×5 da APR, padronizadas pelo usuário em
+// 03/09/2026: 1-4 Baixo, 5-9 Moderado, 10-16 Alto, 17-25 Crítico. Cores só de
+// referência visual, não são um limite normativo. Essa é a matriz de campo genérica da
+// APR (não ligada a um documento específico) - diferente da Matriz de Risco do GHE, que
+// usa a tabela oficial da AIHA do PGR (ver GHE_MATRIZ_NIVEIS, mais abaixo no arquivo).
 function nivelRiscoApr(p, s) {
     const pNum = parseInt(p, 10);
     const sNum = parseInt(s, 10);
     if (!pNum || !sNum) return { valor: null, label: '—', cor: '#888', bg: '#f0f0f0' };
     const valor = pNum * sNum;
-    if (valor <= 4) return { valor, label: 'Aceitável / Baixo', cor: '#1a7f4b', bg: '#e6f7ee' };
-    if (valor <= 9) return { valor, label: 'Tolerável / Médio', cor: '#b78a00', bg: '#fff9e6' };
-    if (valor <= 14) return { valor, label: 'Substancial / Alto', cor: '#c2650a', bg: '#fef1e0' };
-    if (valor <= 19) return { valor, label: 'Crítico / Muito Alto', cor: '#c0392b', bg: '#fdf2f2' };
-    return { valor, label: 'Intolerável', cor: '#fff', bg: '#7a0d0d' };
+    if (valor <= 4) return { valor, label: 'Baixo', cor: '#1a7f4b', bg: '#e6f7ee' };
+    if (valor <= 9) return { valor, label: 'Moderado', cor: '#b78a00', bg: '#fff9e6' };
+    if (valor <= 16) return { valor, label: 'Alto', cor: '#c2650a', bg: '#fef1e0' };
+    return { valor, label: 'Crítico', cor: '#c0392b', bg: '#fdf2f2' };
 }
 
 // Âncoras descritivas dos níveis 1-5, usadas como tooltip (title) em cada opção dos
 // selects de P/S - resolve a dúvida real relatada em campo ("qual peso colocar?") sem
 // precisar de outra tela; o resumo curto também aparece fixo acima da matriz no HTML.
+// Critério padronizado pelo usuário em 03/09/2026.
 const APR_ANCORAS_P = {
     1: 'Raro — pode ocorrer apenas em circunstâncias excepcionais',
     2: 'Improvável — pode ocorrer eventualmente',
     3: 'Possível — pode ocorrer em algum momento',
     4: 'Provável — provavelmente ocorrerá na maioria das circunstâncias',
-    5: 'Quase certo — espera-se que ocorra na maioria das circunstâncias'
+    5: 'Frequente — espera-se que ocorra com frequência'
 };
 const APR_ANCORAS_S = {
-    1: 'Insignificante — sem lesão, dano material mínimo',
-    2: 'Leve — primeiros socorros, sem afastamento',
-    3: 'Moderada — lesão com afastamento / atendimento médico',
-    4: 'Grave — lesão grave ou incapacitante',
-    5: 'Catastrófica — óbito ou invalidez permanente'
+    1: 'Lesão leve sem afastamento — primeiros socorros, sem afastamento do trabalho',
+    2: 'Lesão com atendimento ambulatorial — atendimento médico, sem afastamento',
+    3: 'Lesão com afastamento — atendimento médico com afastamento do trabalho',
+    4: 'Lesão grave/incapacitante — lesão grave ou com incapacidade/invalidez permanente',
+    5: 'Fatalidade — óbito'
 };
 
 // Status calculado ao vivo a partir de validade_ate (mesmo padrão de ASO/Treinamentos -
@@ -16350,14 +16428,15 @@ function renderAprPanel() {
     document.getElementById('kpiAprVencendo').textContent = vencendo.length;
     document.getElementById('kpiAprVencidas').textContent = vencidas.length;
 
-    // "Risco alto" conta APRs ativas com pelo menos 1 risco RESIDUAL classificado
-    // Crítico/Muito Alto ou Intolerável (>=15) - é o residual que importa aqui (depois
-    // das medidas de prevenção), não o puro.
+    // "Risco alto" conta APRs ativas com pelo menos 1 risco RESIDUAL classificado Alto ou
+    // Crítico (>=10, os 2 níveis mais graves das 4 faixas novas: Baixo/Moderado/Alto/
+    // Crítico) - é o residual que importa aqui (depois das medidas de prevenção), não o
+    // puro.
     const ativasComRiscoAlto = ativas.filter(s => {
         const riscos = Array.isArray(s.apr.riscos) ? s.apr.riscos : [];
         return riscos.some(r => {
             const n = nivelRiscoApr(r.p_residual, r.s_residual);
-            return n.valor !== null && n.valor >= 15;
+            return n.valor !== null && n.valor >= 10;
         });
     });
     document.getElementById('kpiAprRiscoAlto').textContent = ativasComRiscoAlto.length;
@@ -16382,7 +16461,7 @@ function renderAprPanel() {
     if (chartInstances.aprClassificacao) chartInstances.aprClassificacao.destroy();
     if (chartInstances.aprAtividadesCriticas) chartInstances.aprAtividadesCriticas.destroy();
 
-    const classCounts = { 'Aceitável / Baixo': 0, 'Tolerável / Médio': 0, 'Substancial / Alto': 0, 'Crítico / Muito Alto': 0, 'Intolerável': 0 };
+    const classCounts = { 'Baixo': 0, 'Moderado': 0, 'Alto': 0, 'Crítico': 0 };
     ativas.forEach(s => {
         const riscos = Array.isArray(s.apr.riscos) ? s.apr.riscos : [];
         riscos.forEach(r => {
@@ -16392,7 +16471,7 @@ function renderAprPanel() {
     });
     chartInstances.aprClassificacao = new Chart(document.getElementById('chartAprClassificacao'), {
         type: 'bar',
-        data: { labels: Object.keys(classCounts), datasets: [{ data: Object.values(classCounts), backgroundColor: ['#1a7f4b', '#b78a00', '#c2650a', '#c0392b', '#7a0d0d'], borderRadius: 6 }] },
+        data: { labels: Object.keys(classCounts), datasets: [{ data: Object.values(classCounts), backgroundColor: ['#1a7f4b', '#b78a00', '#c2650a', '#c0392b'], borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     });
 

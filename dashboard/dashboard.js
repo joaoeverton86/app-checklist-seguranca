@@ -2200,13 +2200,12 @@ function renderTreinamentosPanel() {
     document.getElementById('kpiTreinSessoes').textContent = periodo.length;
     const totalHoras = periodo.reduce((sum, r) => sum + (parseFloat(r.carga_horaria) || 0), 0);
     document.getElementById('kpiTreinHHT').textContent = totalHoras.toLocaleString('pt-BR');
-    // HHT de DDS e HHT Total ficam lado a lado com o HHT de treinamento formal acima -
-    // nenhum substitui o outro (mesmo raciocínio dos 3 gráficos de HHT por mês na aba
-    // DDS). "HHT Total" é o número que corresponde ao "HHT GERAL" que a planilha oficial
-    // (QUADRO_DE_TREINAMENTOS) já soma na mão hoje.
+    // O card "HHT de DDS no Período" foi removido daqui (era duplicata do card
+    // "kpiDdsHHT" que já existe na Visão Geral do módulo DDSMA) - mas o cálculo de
+    // ddsHorasPeriodo continua aqui porque o card "HHT Total" (logo abaixo) precisa dele
+    // pra somar treinamento formal + DDS. "HHT Total" é o número que corresponde ao "HHT
+    // GERAL" que a planilha oficial (QUADRO_DE_TREINAMENTOS) já soma na mão hoje.
     const ddsHorasPeriodo = ddsHorasNoPeriodo(inicio, fim);
-    const kpiDdsEl = document.getElementById('kpiTreinHHTDds');
-    if (kpiDdsEl) kpiDdsEl.textContent = ddsHorasPeriodo.toLocaleString('pt-BR');
     const kpiTotalEl = document.getElementById('kpiTreinHHTTotal');
     if (kpiTotalEl) kpiTotalEl.textContent = (totalHoras + ddsHorasPeriodo).toLocaleString('pt-BR');
     document.getElementById('kpiTreinColaboradores').textContent = new Set(periodo.map(r => r.matricula)).size;

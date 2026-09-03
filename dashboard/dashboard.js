@@ -16557,8 +16557,14 @@ function renderRiscosAprForm() {
     container.innerHTML = aprRiscosForm.map((r, i) => {
         const puro = nivelRiscoApr(r.p_puro, r.s_puro);
         const residual = nivelRiscoApr(r.p_residual, r.s_residual);
+        // Aviso automático: se o Residual (depois da medida de prevenção) ficou igual ou
+        // pior que o Puro (antes dela), a medida descrita não reduziu o risco na prática -
+        // isso normalmente é esquecimento de reavaliar o P/S, não um erro de cálculo (o
+        // sistema nunca copia os valores do Puro pro Residual sozinho). Só avisa - não
+        // bloqueia o preenchimento, porque em algum caso raro pode ser mesmo intencional.
+        const residualRuim = puro.valor !== null && residual.valor !== null && residual.valor >= puro.valor;
         return `
-        <div style="border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:10px; background:var(--bg);">
+        <div style="border:1px solid ${residualRuim ? 'var(--danger)' : 'var(--border)'}; border-radius:10px; padding:10px; margin-bottom:10px; background:var(--bg);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                 <b style="font-size:12px;">Risco ${i + 1}</b>
                 <button onclick="removerRiscoAprForm(${i})" title="Remover" style="border:none; background:none; color:var(--danger); cursor:pointer; font-size:15px;">🗑️</button>
@@ -16585,6 +16591,10 @@ function renderRiscosAprForm() {
                 </div>
                 <input type="text" placeholder="Responsável" value="${escapeHTML(r.responsavel)}" oninput="aprRiscosForm[${i}].responsavel=this.value" style="${campoEstilo}">
             </div>
+            ${residualRuim ? `
+            <div style="grid-column: 1 / -1; margin-top:6px; padding:6px 8px; border-radius:6px; background:#fdf2f2; color:var(--danger); font-size:11px; font-weight:600;">
+                ⚠️ O Risco Residual não ficou menor que o Risco Puro. Revise a "Medida de Prevenção" descrita acima e ajuste o P/S do Residual pra refletir o risco depois dela ser aplicada de verdade (ou confirme que é intencional ao salvar).
+            </div>` : ''}
         </div>`;
     }).join('');
 }
@@ -16610,6 +16620,24 @@ async function salvarApr() {
         statusEl.textContent = '❌ Adicione ao menos um risco com perigo/evento preenchido.';
         statusEl.style.color = 'var(--danger)';
         return;
+    }
+
+    // Aviso (não bloqueio) igual ao padrão já usado no lançamento de DDS duplicado: se
+    // algum risco está salvando com o Residual igual ou pior que o Puro, confirma antes de
+    // gravar - dá pra voltar e corrigir, ou confirmar que é intencional mesmo.
+    const riscosResidualRuim = riscosValidos.filter(r => {
+        const puro = nivelRiscoApr(r.p_puro, r.s_puro);
+        const residual = nivelRiscoApr(r.p_residual, r.s_residual);
+        return puro.valor !== null && residual.valor !== null && residual.valor >= puro.valor;
+    });
+    if (riscosResidualRuim.length > 0) {
+        const listaRiscos = riscosResidualRuim.map(r => `- ${r.evento_risco || r.perigo_fonte || 'Risco sem descrição'}`).join('\n');
+        const confirmaResidualRuim = confirm(
+            `⚠️ ${riscosResidualRuim.length} risco(s) estão com o Risco Residual igual ou pior que o Risco Puro (a medida de prevenção não reduziu o risco na prática):\n\n` +
+            listaRiscos + '\n\n' +
+            `Revise as Medidas de Prevenção e o P/S do Residual antes de salvar, ou confirme pra salvar assim mesmo.\n\nSalvar mesmo assim?`
+        );
+        if (!confirmaResidualRuim) return;
     }
 
     const ativCriticas = Array.from(document.querySelectorAll('.aprAtivCriticaCheckbox:checked')).map(cb => cb.value);

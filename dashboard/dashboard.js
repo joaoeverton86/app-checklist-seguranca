@@ -2022,7 +2022,7 @@ function showTreinSubtab(tab) {
 // sempre redesenha a aba ao entrar nela (self-heal de gráfico com canvas
 // escondido) e inicializa os campos de data/select da primeira visita.
 function showDdsmaSubtab(tab) {
-    ['visao', 'lancar', 'calendario', 'frente', 'imprimir'].forEach(t => {
+    ['visao', 'lancar', 'calendario', 'frente', 'imprimir', 'relatorio'].forEach(t => {
         const content = document.getElementById('ddsmaSubtab-' + t);
         const btn = document.getElementById('ddsmaSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -2049,6 +2049,194 @@ function showDdsmaSubtab(tab) {
         const semanaDataInput = document.getElementById('ddsImprimirRelatorioSemanaData');
         if (semanaDataInput && !semanaDataInput.value) semanaDataInput.value = new Date().toISOString().split('T')[0];
     }
+    // A aba de Relatório usa os números da Visão Geral (window.ddsmaReportData) - por isso,
+    // ao abrir ela, força um recálculo da Visão Geral, garantindo que o relatório nunca
+    // fique desatualizado mesmo que o usuário nunca tenha aberto essa outra sub-aba antes.
+    if (tab === 'relatorio') { renderDdsPanel(); renderDdsmaRelatorioChecklist(); }
+}
+
+// ============================================
+// RELATÓRIO CONFIGURÁVEL DE DDSMA - mesmo padrão já usado em Saúde, Efetivo, EPI,
+// Acidentabilidade e Checklist: o usuário escolhe via checkbox quais KPIs/gráficos/lista
+// entram no relatório antes de gerar. Os dados vêm de window.ddsmaReportData (preenchido
+// no fim de renderDdsPanel - nunca recalculado aqui). A seção "Ações/Tratativas Pendentes"
+// nunca aparece aqui de propósito - é sigilosa por design (ver comentário em
+// renderAcoesTratativasPendentesDds).
+// ============================================
+
+function renderDdsmaRelatorioChecklist() {
+    const el = document.getElementById('ddsmaRelPeriodo');
+    if (el && window.ddsmaReportData) el.textContent = window.ddsmaReportData.periodoLabel || '—';
+}
+
+function marcarTodosRelatorioDdsma(valor) {
+    ['relDdsmaChk_sessoes', 'relDdsmaChk_hht', 'relDdsmaChk_colaboradores', 'relDdsmaChk_ruim',
+     'relDdsmaChk_graficoHhtMes', 'relDdsmaChk_graficoHhtTotalMes',
+     'relDdsmaChk_listaControleFrente'].forEach(id => {
+        const chk = document.getElementById(id);
+        if (chk) chk.checked = valor;
+    });
+}
+
+function lerSelecaoRelatorioDdsma() {
+    return {
+        sessoes: document.getElementById('relDdsmaChk_sessoes').checked,
+        hht: document.getElementById('relDdsmaChk_hht').checked,
+        colaboradores: document.getElementById('relDdsmaChk_colaboradores').checked,
+        ruim: document.getElementById('relDdsmaChk_ruim').checked,
+        graficoHhtMes: document.getElementById('relDdsmaChk_graficoHhtMes').checked,
+        graficoHhtTotalMes: document.getElementById('relDdsmaChk_graficoHhtTotalMes').checked,
+        listaControleFrente: document.getElementById('relDdsmaChk_listaControleFrente').checked
+    };
+}
+
+async function gerarExcelDdsma() {
+    const statusEl = document.getElementById('relatorioDdsmaStatus');
+    const dados = window.ddsmaReportData;
+    if (!dados) {
+        statusEl.textContent = '❌ Abra a aba 📊 Visão Geral pelo menos uma vez antes de gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const marcados = lerSelecaoRelatorioDdsma();
+    if (Object.values(marcados).every(v => !v)) {
+        statusEl.textContent = '❌ Selecione pelo menos um item para gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const aoa = [];
+    aoa.push([`RELATÓRIO DE DDS (DDSMA) — ${dados.periodoLabel}`]);
+    aoa.push([`Gerado em ${new Date().toLocaleDateString('pt-BR')}`]);
+    aoa.push([]);
+
+    const kpisMarcados = dados.kpis.filter(k => marcados[k.key]);
+    if (kpisMarcados.length > 0) {
+        aoa.push(['INDICADORES (KPIs)']);
+        aoa.push(['Indicador', 'Valor']);
+        kpisMarcados.forEach(k => aoa.push([k.label, k.value]));
+        aoa.push([]);
+    }
+
+    Object.entries(dados.graficos).forEach(([key, g]) => {
+        if (!marcados[key]) return;
+        aoa.push([g.titulo.toUpperCase()]);
+        if (g.series) {
+            aoa.push(['Categoria', ...g.series.map(s => s.nome)]);
+            g.labels.forEach((label, i) => aoa.push([label, ...g.series.map(s => s.valores[i])]));
+        } else {
+            aoa.push(['Categoria', 'Valor']);
+            g.labels.forEach((label, i) => aoa.push([label, g.valores[i]]));
+        }
+        aoa.push([]);
+    });
+
+    Object.entries(dados.listas).forEach(([key, l]) => {
+        if (!marcados[key]) return;
+        aoa.push([l.titulo.toUpperCase()]);
+        aoa.push(l.colunas);
+        if (l.linhas.length === 0) aoa.push(['Nenhum item nessa lista no momento']);
+        else l.linhas.forEach(linha => aoa.push(linha));
+        aoa.push([]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 16 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'DDSMA');
+
+    const dataSlug = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `RELATORIO_DDSMA_${dataSlug}.xlsx`);
+
+    statusEl.textContent = `✅ Excel gerado com ${Object.values(marcados).filter(Boolean).length} item(ns) selecionado(s).`;
+    statusEl.style.color = 'var(--success)';
+}
+
+function gerarPdfDdsma() {
+    const statusEl = document.getElementById('relatorioDdsmaStatus');
+    const dados = window.ddsmaReportData;
+    if (!dados) {
+        statusEl.textContent = '❌ Abra a aba 📊 Visão Geral pelo menos uma vez antes de gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const marcados = lerSelecaoRelatorioDdsma();
+    if (Object.values(marcados).every(v => !v)) {
+        statusEl.textContent = '❌ Selecione pelo menos um item para gerar o relatório.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const kpisMarcados = dados.kpis.filter(k => marcados[k.key]);
+    const kpisHtml = kpisMarcados.length === 0 ? '' : `
+    <h3>Indicadores (KPIs)</h3>
+    <table style="width:65%; margin-bottom:14px;">
+        <thead><tr><th>Indicador</th><th>Valor</th></tr></thead>
+        <tbody>${kpisMarcados.map(k => `<tr><td style="text-align:left;">${escapeHTML(k.label)}</td><td>${escapeHTML(String(k.value))}</td></tr>`).join('')}</tbody>
+    </table>`;
+
+    const graficosHtml = Object.entries(dados.graficos).filter(([key]) => marcados[key]).map(([key, g]) => {
+        if (g.series) {
+            return `
+    <h3>${escapeHTML(g.titulo)}</h3>
+    <table style="width:85%; margin-bottom:14px;">
+        <thead><tr><th>Categoria</th>${g.series.map(s => `<th>${escapeHTML(s.nome)}</th>`).join('')}</tr></thead>
+        <tbody>${g.labels.map((label, i) => `<tr><td style="text-align:left;">${escapeHTML(String(label))}</td>${g.series.map(s => `<td>${escapeHTML(String(s.valores[i] ?? '—'))}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`;
+        }
+        return `
+    <h3>${escapeHTML(g.titulo)}</h3>
+    <table style="width:65%; margin-bottom:14px;">
+        <thead><tr><th>Categoria</th><th>Valor</th></tr></thead>
+        <tbody>${g.labels.map((label, i) => `<tr><td style="text-align:left;">${escapeHTML(String(label))}</td><td>${escapeHTML(String(g.valores[i]))}</td></tr>`).join('')}</tbody>
+    </table>`;
+    }).join('');
+
+    const listasHtml = Object.entries(dados.listas).filter(([key]) => marcados[key]).map(([key, l]) => `
+    <h3>${escapeHTML(l.titulo)}</h3>
+    <table style="width:100%; margin-bottom:14px;">
+        <thead><tr>${l.colunas.map(c => `<th>${escapeHTML(c)}</th>`).join('')}</tr></thead>
+        <tbody>${l.linhas.length === 0
+            ? `<tr><td colspan="${l.colunas.length}">Nenhum item nessa lista no momento</td></tr>`
+            : l.linhas.map(linha => `<tr>${linha.map((v, i) => `<td${i === 0 ? ' style="text-align:left;"' : ''}>${escapeHTML(String(v))}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Relatório de DDS (DDSMA)</title>
+<style>
+    @page { size: portrait; margin: 12mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
+    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:6px; gap:10px; }
+    .cabecalho img { max-height:40px; }
+    .cabecalho .titulo { font-weight:700; font-size:14px; text-align:center; flex:1; }
+    .info-geracao { font-size:11px; color:#444; margin-bottom:10px; }
+    h3 { font-size:12px; margin:18px 0 6px; }
+    table { width:100%; border-collapse:collapse; font-size:10px; margin-bottom:10px; }
+    th, td { border:1px solid #999; padding:5px 6px; text-align:center; }
+    th { background:#d9d9d9; font-weight:700; }
+    tbody tr:nth-child(even) { background:#f7f7f7; }
+    .no-print { text-align:center; margin:16px 0; }
+    .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
+    @media print { .no-print { display:none; } body { margin:0; } thead { display: table-header-group; } }
+</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="cabecalho">
+        <img src="${LOGO_COP_BASE64}" alt="COP">
+        <div class="titulo">RELATÓRIO DE DDS (DDSMA)</div>
+        <div style="width:40px;"></div>
+    </div>
+    <div class="info-geracao">${escapeHTML(EMPRESA_INFO.razaoSocial)} — Período: ${escapeHTML(dados.periodoLabel)} — Gerado em ${new Date().toLocaleDateString('pt-BR')}</div>
+
+    ${kpisHtml}
+    ${graficosHtml}
+    ${listasHtml}
+</body></html>`;
+
+    abrirDocumentoBlob(html);
+    statusEl.textContent = `✅ Relatório gerado — abra a aba nova pra imprimir/salvar em PDF.`;
+    statusEl.style.color = 'var(--success)';
 }
 
 // ---- Histórico: lista navegável de sessões já realizadas (separada de Registro, que
@@ -5043,6 +5231,52 @@ function renderDdsPanel() {
         });
         totalWrap.scrollLeft = 999999;
     }
+
+    // Snapshot dos números/gráficos que acabaram de ser calculados acima, pra alimentar a
+    // aba "📄 Relatório" sem duplicar nenhuma lógica de cálculo. A ÚNICA exceção é a lista
+    // "Controle de DDS por Frente resumida" - chama de novo a função tabelaControleDds
+    // (já existe e já é reaproveitada assim em outros pontos, ex: toggleFrenteDdsAtiva),
+    // só que aqui só aproveita o Total e as Horas de cada frente, sem montar as colunas de
+    // dia a dia (que só fazem sentido pra tabela de controle interno na tela, não pra um
+    // relatório - ficariam com uma coluna por dia do período, potencialmente centenas se o
+    // período for "Este Ano" ou "Todos"). A seção "Ações/Tratativas Pendentes" fica de fora
+    // de propósito - já é sigilosa por design (ver comentário em
+    // renderAcoesTratativasPendentesDds), nunca deve entrar em relatório/exportação.
+    const controleFrenteResumo = tabelaControleDds(inicio, fim);
+    const linhasControleFrente = controleFrenteResumo.frentes.map(f => {
+        const mapaDias = controleFrenteResumo.porFrenteDia.get(f) || new Map();
+        const totalPeriodoFrente = Array.from(mapaDias.values()).reduce((s, v) => s + v, 0);
+        const horasFrente = controleFrenteResumo.porFrenteTotalHoras.get(f) || 0;
+        return [f, totalPeriodoFrente, horasFrente.toLocaleString('pt-BR') + 'h'];
+    });
+    window.ddsmaReportData = {
+        periodoLabel: document.getElementById('ddsPeriodoTitulo')?.textContent || '',
+        kpis: [
+            { key: 'sessoes', label: 'Sessões-dia de DDS no Período', value: (sessoesDia.size + sessoesHistorico.size).toLocaleString('pt-BR') },
+            { key: 'hht', label: 'HHT de DDS no Período (horas)', value: horasDds.toLocaleString('pt-BR') },
+            { key: 'colaboradores', label: 'Colaboradores Participantes', value: new Set(periodo.map(r => r.matricula)).size },
+            { key: 'ruim', label: 'Registros "Ruim" no Período', value: periodo.filter(r => r.emociograma === 'ruim').length }
+        ],
+        graficos: {
+            graficoHhtMes: { titulo: 'HHT de DDS por Mês (Histórico Completo)', labels: meses, valores: horasDdsPorMes },
+            graficoHhtTotalMes: {
+                titulo: 'HHT Total por Mês (Treinamento + DDS)',
+                labels: meses,
+                series: [
+                    { nome: 'Treinamento', valores: horasTreinPorMes },
+                    { nome: 'DDS', valores: horasDdsPorMes }
+                ]
+            }
+        },
+        listas: {
+            listaControleFrente: {
+                titulo: 'Controle de DDS por Frente no Período (Resumo)',
+                colunas: ['Frente', 'Total de Sessões no Período', 'Horas no Período'],
+                linhas: linhasControleFrente
+            }
+        }
+    };
+    if (document.getElementById('ddsmaSubtabBtn-relatorio')?.classList.contains('active')) renderDdsmaRelatorioChecklist();
 }
 
 // ============================================

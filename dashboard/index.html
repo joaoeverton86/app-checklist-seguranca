@@ -1372,6 +1372,7 @@
                         <button id="ddsmaSubtabBtn-calendario" class="db-filter-btn" onclick="showDdsmaSubtab('calendario')">🗓️ Calendário de Temas</button>
                         <button id="ddsmaSubtabBtn-frente" class="db-filter-btn" onclick="showDdsmaSubtab('frente')">👥 Controle por Frente</button>
                         <button id="ddsmaSubtabBtn-imprimir" class="db-filter-btn" onclick="showDdsmaSubtab('imprimir')">🖨️ Imprimir</button>
+                        <button id="ddsmaSubtabBtn-relatorio" class="db-filter-btn" onclick="showDdsmaSubtab('relatorio')">📄 Relatório</button>
                     </div>
                 </div>
 
@@ -1742,6 +1743,48 @@
                             </div>
                         </div>
                         <button class="db-apply-btn" onclick="imprimirRelatorioSemanalDds()">🖨️ Imprimir Relatório da Semana</button>
+                    </div>
+                </div>
+                </div>
+
+                <div id="ddsmaSubtab-relatorio" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">📄 Relatório Configurável de DDSMA</div>
+                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 6px;">
+                        Escolha abaixo o que deve entrar no relatório antes de gerar.
+                    </p>
+                    <div style="font-size: 12.5px; color: var(--text-light); margin-bottom: 14px;">
+                        Período considerado (mesmo da aba 📊 Visão Geral): <strong id="ddsmaRelPeriodo">—</strong>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+                        <button class="db-clear-btn" onclick="marcarTodosRelatorioDdsma(true)">☑️ Marcar Todos</button>
+                        <button class="db-clear-btn" onclick="marcarTodosRelatorioDdsma(false)">⬜ Desmarcar Todos</button>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Indicadores (KPIs)</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 8px; margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relDdsmaChk_sessoes" checked> Sessões-dia de DDS no Período</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relDdsmaChk_hht" checked> HHT de DDS no Período (horas)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relDdsmaChk_colaboradores" checked> Colaboradores Participantes</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relDdsmaChk_ruim" checked> Registros "Ruim" no Período</label>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Gráficos</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 8px; margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relDdsmaChk_graficoHhtMes" checked> HHT de DDS por Mês (Histórico Completo)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relDdsmaChk_graficoHhtTotalMes" checked> HHT Total por Mês (Treinamento + DDS)</label>
+                    </div>
+
+                    <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Lista</div>
+                    <div style="margin-bottom: 16px; font-size: 12.5px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="relDdsmaChk_listaControleFrente" checked> Controle de DDS por Frente no Período (resumo — sem coluna por dia)</label>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="gerarExcelDdsma()">📊 Baixar Excel</button>
+                        <button class="db-apply-btn" onclick="gerarPdfDdsma()">🖨️ Gerar PDF</button>
+                        <span id="relatorioDdsmaStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
                 </div>
                 </div>

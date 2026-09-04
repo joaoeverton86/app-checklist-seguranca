@@ -16492,8 +16492,21 @@ async function carregarAprAuditLog() {
     }
 }
 
+let allAprModelos = [];
+
+// Modelos de APR reutilizáveis - tabela SEPARADA de apr_registros, carregada só quando a
+// aba "Modelos" é aberta. Nunca entra em KPI/gráfico/histórico de APR real nenhum.
+async function carregarAprModelos() {
+    try {
+        allAprModelos = await supabaseFetch('apr_modelos', '?select=*&order=titulo.asc');
+    } catch (e) {
+        console.error('Erro ao carregar modelos de APR:', e);
+        allAprModelos = [];
+    }
+}
+
 async function showAprSubtab(tab) {
-    ['visao', 'nova', 'historico'].forEach(t => {
+    ['visao', 'nova', 'historico', 'modelos'].forEach(t => {
         const content = document.getElementById('aprSubtab-' + t);
         const btn = document.getElementById('aprSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -16501,6 +16514,7 @@ async function showAprSubtab(tab) {
     });
     if (tab === 'visao') renderAprPanel();
     if (tab === 'historico') { await carregarAprAuditLog(); renderAprHistoricoLista(); }
+    if (tab === 'modelos') { await carregarAprModelos(); renderAprModelosLista(); }
 }
 
 function renderAprPanel() {
@@ -16966,6 +16980,102 @@ async function excluirApr(id) {
     } catch (err) {
         console.error('Erro ao excluir APR:', err);
         alert('❌ Falha ao excluir: ' + err.message);
+    }
+}
+
+// ---- Modelos de APR reutilizáveis ----
+
+function renderAprModelosLista() {
+    const container = document.getElementById('listAprModelos');
+    if (!container) return;
+    const contadorEl = document.getElementById('contadorAprModelos');
+    if (contadorEl) contadorEl.textContent = allAprModelos.length;
+
+    const q = (document.getElementById('buscaAprModelos')?.value || '').toLowerCase().trim();
+    let itens = allAprModelos.slice();
+    if (q.length >= 2) {
+        itens = itens.filter(m => (m.titulo || '').toLowerCase().includes(q) || (m.numero_legado || '').toLowerCase().includes(q));
+    }
+    itens.sort((a, b) => (a.titulo || '').localeCompare(b.titulo || ''));
+
+    if (itens.length === 0) {
+        container.innerHTML = allAprModelos.length === 0
+            ? '<div class="db-list-empty">Nenhum modelo cadastrado ainda. Clique em "🌱 Importar Modelos" acima (só precisa fazer isso uma vez).</div>'
+            : '<div class="db-list-empty">Nenhum modelo encontrado com esse termo de busca.</div>';
+        return;
+    }
+
+    container.innerHTML = itens.map(m => {
+        const riscos = Array.isArray(m.riscos) ? m.riscos : [];
+        const nEpis = (Array.isArray(m.epis_basicos) ? m.epis_basicos.length : 0) + (Array.isArray(m.epis_especificos) ? m.epis_especificos.length : 0);
+        return `
+        <div class="db-list-item" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:220px;">
+                <div class="db-list-item-title">${escapeHTML(m.titulo || '(sem título)')}${m.numero_legado ? ` <span style="color:var(--text-light); font-weight:400;">(cód. anterior ${escapeHTML(m.numero_legado)})</span>` : ''}</div>
+                <div class="db-list-item-sub">${riscos.length} risco(s) mapeado(s) — ${nEpis} EPI(s) sugerido(s)</div>
+            </div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button class="db-clear-btn" style="color:var(--primary); border-color:var(--primary);" onclick="usarModeloComoBase(${m.id})">▶️ Usar como Base</button>
+                <button class="db-clear-btn" style="color:var(--danger); border-color:var(--danger);" onclick="excluirModeloApr(${m.id})">🗑️</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function usarModeloComoBase(id) {
+    const m = allAprModelos.find(x => x.id === id);
+    if (!m) return;
+    if (!confirm(`Começar uma APR nova usando o modelo "${m.titulo}" como base? Etapas, perigos, danos, medidas e EPIs sugeridos vêm preenchidos - mas a classificação de Probabilidade/Severidade de cada risco fica em branco, pra você avaliar de acordo com a atividade real de hoje antes de salvar.`)) return;
+    showAprSubtab('nova');
+    abrirFormNovaApr();
+
+    document.getElementById('aprForm_titulo').value = m.titulo || '';
+    document.getElementById('aprForm_descricaoAtividade').value = m.titulo || '';
+
+    const ativCriticas = Array.isArray(m.atividades_criticas) ? m.atividades_criticas : [];
+    document.querySelectorAll('.aprAtivCriticaCheckbox').forEach(cb => { cb.checked = ativCriticas.includes(cb.value); });
+
+    const episBasicos = Array.isArray(m.epis_basicos) ? m.epis_basicos : [];
+    document.querySelectorAll('.aprEpiBasicoCheckbox').forEach(cb => { cb.checked = episBasicos.includes(cb.value); });
+    document.getElementById('aprForm_luvaTipo').value = m.epi_luva_tipo || '';
+
+    const episEspecificos = Array.isArray(m.epis_especificos) ? m.epis_especificos : [];
+    document.querySelectorAll('.aprEpiEspecificoCheckbox').forEach(cb => { cb.checked = episEspecificos.includes(cb.value); });
+    document.getElementById('aprForm_extintorTipo').value = m.epi_extintor_tipo || '';
+
+    aprRiscosForm = Array.isArray(m.riscos) && m.riscos.length > 0 ? m.riscos.map(r => ({ ...r })) : [rowRiscoVazio()];
+    renderRiscosAprForm();
+
+    document.getElementById('aprFormTitle').textContent = `➕ Nova APR (baseada no modelo: ${m.titulo})`;
+    document.getElementById('aprFormTitle').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function excluirModeloApr(id) {
+    const m = allAprModelos.find(x => x.id === id);
+    if (!m) return;
+    if (!confirm(`Excluir o modelo "${m.titulo}"? Isso NÃO afeta nenhuma APR já emitida a partir dele - só remove o modelo da lista de reutilização. Não pode ser desfeito.`)) return;
+    try {
+        await supabaseDelete('apr_modelos', id);
+        allAprModelos = allAprModelos.filter(x => x.id !== id);
+        renderAprModelosLista();
+    } catch (e) {
+        alert('Erro ao excluir modelo: ' + e.message);
+    }
+}
+
+async function importarModelosAprSeed() {
+    if (allAprModelos.length > 0) {
+        if (!confirm(`Já existem ${allAprModelos.length} modelo(s) cadastrado(s). Importar de novo vai DUPLICAR os ${MODELOS_APR_SEED.length} modelos do formato anterior. Tem certeza que quer continuar?`)) return;
+    } else {
+        if (!confirm(`Importar os ${MODELOS_APR_SEED.length} modelos de atividade do formato físico anterior? Cada um vira um "Modelo de APR" reutilizável, já com etapas/perigos/danos/medidas/EPIs preenchidos (sem a classificação de Probabilidade/Severidade - isso é feito por você ao usar cada modelo). Isso só precisa ser feito uma vez.`)) return;
+    }
+    try {
+        await supabaseInsert('apr_modelos', MODELOS_APR_SEED);
+        await carregarAprModelos();
+        renderAprModelosLista();
+        alert(`✅ ${MODELOS_APR_SEED.length} modelos importados com sucesso!`);
+    } catch (e) {
+        alert('Erro ao importar modelos: ' + e.message);
     }
 }
 
@@ -18866,3 +18976,3377 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 window.addEventListener('focus', rerenderGraficosDaPaginaAtiva);
+const MODELOS_APR_SEED = [
+    {
+        "numero_legado": "004.16",
+        "titulo": "Almoxarifado",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Organização e utilização do espaço",
+                "perigo_fonte": "Queda de materiais",
+                "evento_risco": "",
+                "danos_provaveis": "Pancadas Contusões",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Elaborar um plano de trabalho antes de iniciar a atividade para garantir a segurança de todos os envolvidos Garantir que as devidas proteções estejam em bom estado de funcionamento Realizar as atividades com paciência e cuidado",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Manuseio de materiais pesados",
+                "perigo_fonte": "Postura incorreta Contusões",
+                "evento_risco": "",
+                "danos_provaveis": "Dor lombar Entorse Fadiga muscular",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Procurar sempre manter a postura adequada para realização das atividades, evitar carregar peso acima do normal e se for preciso procurar auxílio de outro colaborador ou outros meios para facilitar a atividade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Manuseio de produtos químicos",
+                "perigo_fonte": "Inalação de substâncias tóxicas Exposição a produtos químicos",
+                "evento_risco": "",
+                "danos_provaveis": "Irritação das vias aéreas superiores Náuseas Tonturas Enjoo Irritação da pele Alergia",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manusear essas substâncias obedecendo o que diz em suas fichas FISPQ, colocando em local adequado para sua conserva onde não possa prejudicar nenhum colaborador Sempre ler as orientações das embalagens sobre forma de Manuseio e armazenamento",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Manuseio de produtos inflamáveis",
+                "perigo_fonte": "Explosão Incêndio Contato com a pele",
+                "evento_risco": "",
+                "danos_provaveis": "Queimaduras Ferimentos Lesões Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sempre seguir as orientações do fabricante sobre guarda e conserva e manuseio dessas substâncias Essas substâncias só podem ser utilizadas e transportadas por pessoas capacitadas e de conhecimento sólido no assunto",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.16). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.30",
+        "titulo": "Aplicação e Substituição de Mantas nas Estruturas do Canal",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Transporte de pessoas e equipamentos",
+                "perigo_fonte": "Colisão veicular Queda de objetos",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões Lesões Torções Ferimentos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar veículo adequado ao transporte de cargas e pessoas Manter todos os ocupantes do veículo com conto de segurança Certificar-se de que os equipamentos estejam devidamente amarrados ou atracados a carroceria do caminhão por meio de cintas ou cabos .",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Preparação do local para realização das atividades",
+                "perigo_fonte": "Queda de objeto Queda de mesmo nível Prensamento",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas, cortes, hematomas, perfurações, contusões, luxações.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sinalizar a área onde ocorrera a atividade para evitar a presença de pessoas não autorizadas Utilizar cordas guias para guiar as cargas içadas Não deixar pessoas sobre as cargas enquanto são transportadas Só manter no local pessoal que participara da atividade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Esgotamento do canal",
+                "perigo_fonte": "Queda de nível Excesso de umidade",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões Torções Ferimentos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Instalação de escadas de acesso nas ensecadeiras Manipulação da bomba dágua por profissional capacitado Não adentrar ao canal durante a operação de esgotamento Utilizar E.P.I´s adequados para realização de atividades com agua",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Quebra do concreto para remoção da manta",
+                "perigo_fonte": "Queda de objetos Queda de nível Poeiras Exposição a produtos químicos",
+                "evento_risco": "",
+                "danos_provaveis": "Insuficiência respiratória Torções Ferimentos Contusões Pancadas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Realizar a atividade com local isolado e sinalizado Utilizar corretamente todos os E.P.I.’s e E.P.C´s adequados a atividade Posicionar as ferramentas em local adequado Manter apenas os colaboradores necessários no local da atividade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Instalação da manta",
+                "perigo_fonte": "Ferramentas cortantes Contato com produtos químicos Intoxicação por produto químico Queda de nível",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Irritação cutânea Cortes Lesões Falta de ar Irritação das vias aéreas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar corretamente os E.P.I´s para realização das atividades Evitar contato com a pele por produtos químicos Utilizar máscara adequada para atividade Manter apenas a quantidade de colaboradores suficiente para realizar a atividade Manter a área organizada e livre de obstáculos Depositar as ferramentas em desuso em local adequado e seguro Não improvisar ferramentas Fazer a colagem das mantas em local arejado",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Concretagem da manta",
+                "perigo_fonte": "Queda de nível Impacto contra objeto Irritação cutânea por contato com produto químico",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Irritação cutânea Cortes Lesões Falta de ar",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar corretamente os E.P.I´s para realização das atividades Evitar contato com a pele por produtos químicos Utilizar máscara adequada para atividade Manter apenas a quantidade de colaboradores suficiente para realizar a atividade Manter a área organizada e livre de obstáculos Depositar as ferramentas em desuso em local adequado e seguro Não improvisar ferramentas",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.30). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.28",
+        "titulo": "Atividades com Barco",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação dos equipamentos e do local de trabalho",
+                "perigo_fonte": "Queda de nível Queda de objetos Esforço físico",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Quedas Contusões Luxações",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Observar as condições da frente de serviço antes de iniciar as atividades em questão Realizar orientação aos colaboradores sobre as condições da frente de serviço Sinalizar e isolar a frente de serviço mantendo apenas pessoal necessário para atividade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Transporte de equipamentos",
+                "perigo_fonte": "Queda de objeto Queda de mesmo nível Colisão",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas Cortes Hematomas Perfurações Contusões Luxações",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Andar com atenção e cuidado com os obstáculos no local de trabalho Analisar o comportamento do solo antes e durante a atividade Estabelecer distancias mínimas entre os colaboradores e equipamentos durante a execução das atividades Manter o local sinalizado e isolado durante a realização da atividade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Trabalhos na água",
+                "perigo_fonte": "Afogamento Quedas da embarcação Colisão",
+                "evento_risco": "",
+                "danos_provaveis": "Insuficiência respiratória Torções Ferimentos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar equipamentos adequados para realizar atividade Isolar e sinalizar o local para evitar a presença de pessoas não autorizadas Manter apenas o efetivo necessário no local da atividade Utilizar os E.P.C’ s e E.P.I.’ s necessários para sanar os riscos existentes na frente de serviço Prover de profissional autorizado e habilitado para realizar atividades com embarcação",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Colete Salva-Vidas"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.28). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.29",
+        "titulo": "Atividades com Mergulho",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Transporte de pessoas e equipamentos",
+                "perigo_fonte": "Colisão veicular Queda de objetos",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões Lesões Torções Ferimentos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar veículo adequado ao transporte de cargas e pessoas Manter todos os ocupantes do veículo com conto de segurança Certificar-se de que os equipamentos estejam devidamente amarrados ou atracados a carroceria do caminhão por meio de cintas ou cabos",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Preparação do local para realização das atividades",
+                "perigo_fonte": "Queda de objeto Queda de mesmo nível Prensamento",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas, cortes, hematomas, perfurações, contusões, luxações.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sinalizar a área onde ocorrera a atividade para evitar a presença de pessoas não autorizadas Utilizar cordas guias para guiar as cargas içadas Não deixar pessoas sobre as cargas enquanto são transportadas Só manter no local pessoal que participara da atividade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Atividades com mergulho",
+                "perigo_fonte": "Afogamento Pancadas",
+                "evento_risco": "",
+                "danos_provaveis": "Insuficiência respiratória Torções Ferimentos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Realizar atividade com local isolado e sinalizado Utilizar corretamente todos os E.P.I.’s e E.P.C’s adequados a atividade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Atividades de reparos elétricos",
+                "perigo_fonte": "Descarga elétrica Queda de objetos",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas, cortes, hematomas, perfurações, contusões, luxações Queimaduras Parada cardíaca",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter uma equipe da elétrica sempre de prontidão no local para realização de tais atividades Só realizar atividades com o local previamente inspecionado e isolado garantindo a segurança dos envolvidos Não realizar nenhum tipo de teste com equipamentos elétricos na água quando estiverem colaboradores no local",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Atividades de reparos mecânicos",
+                "perigo_fonte": "Queda de objeto Queda de mesmo nível Pensamento",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas, cortes, hematomas, perfurações, Contusões, luxações",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sinalizar a área onde ocorrerá a atividade, para evitar a presença de pessoas não autorizadas Utilizar cordas ou cabos para guiar carga içada Não permanecer nenhum colaborador sobre cargas içadas Só manter no local o pessoal autorizado para realizar as atividades",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.29). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.23",
+        "titulo": "Atividades de Pintura",
+        "atividades_criticas": [
+            "Produtos Químicos Perigosos"
+        ],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação da superfície",
+                "perigo_fonte": "Exposição a produtos Químicos e Soluções Inflamáveis Inalação de substâncias geradas por dessas soluções",
+                "evento_risco": "",
+                "danos_provaveis": "Intoxicação Dermatose Irritação nos olhos Contaminação do Solo (Derramamento Acidental)",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Verificação prévia do local Realizar procedimentos de segurança no uso dos produtos tóxicos Utilizar máscara com respirador válvula Utilizar de maneira correta todos os EPI’s necessários a atividade evitando o máximo, contado da pele com os agentes químicos",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Pintura",
+                "perigo_fonte": "Postura Inadequada Queda de nível Queda de materiais",
+                "evento_risco": "",
+                "danos_provaveis": "Irritação nos olhos Contaminação do Solo (Derramamento Acidental)",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Realizar procedimentos de segurança no uso dos produtos tóxicos Utilizar máscara PFF2 Utilizar de maneira correta todos os EPI’s necessários a atividade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.23). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.19",
+        "titulo": "Carga e Descarga",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação do local para descarga de material",
+                "perigo_fonte": "Queda de nível",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões e traumas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter a área sinalizada e isolada para não permitir a presença de pessoas não autorizadas Respeitar as sinalizações do local para evitar acidentes",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Descarga",
+                "perigo_fonte": "Queda de diferente nível Queda de materiais Colisão Prensamento Atropelamento",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Traumas Fraturas Contusões Ferimentos Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar cinto de segurança, talabarte, trava quedas, linha de vida e demais EPI´s e EPC´s necessários para movimentações de cargas sobre caminhão Não ficar atrás dos caminhões quando estiverem realizando manobras Antes de soltar a carga verificar se está tudo estável e se não ninguém por perto Sinalizar as áreas de maneira a não deixar nenhuma pessoa não autorizada se envolver na atividade Sempre que necessário pedir auxílio ao colega para pegar cargas que não puder pegar só ou utilizar algum utensilio para auxiliá-lo",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Carga",
+                "perigo_fonte": "Queda de material Queda de nível Queda de diferente nível Prensamento",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Traumas Fraturas Contusões Ferimentos Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter a pilha a qual será removida para o caminhão sempre estável e equilibrada Respeitar as sinalizações existentes no local Os colaboradores que ficam sobre os caminhões devem utilizar cinto de segurança, talabarte, trava quedas, linha de vida e demais EPI´s e EPC’s necessários para movimentações de cargas",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Linha de Vida / Trava-quedas",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.19). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.41",
+        "titulo": "Cesto Suspenso",
+        "atividades_criticas": [
+            "Trabalho em Altura (NR-35)"
+        ],
+        "riscos": [
+            {
+                "passo_tarefa": "Deslocar para frente de serviço com equipamentos, ferramentas e materiais.",
+                "perigo_fonte": "Queda do mesmo nível, queda de nível diferente, queda de ferramentas ou material, ultrapassar área isolada, atropelamento, colisão, ataque de animais peçonhentos, torções,",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Fraturas Entorses Lesões Cortes Escoriações Lesão na coluna",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Não levantar ou transportar peso acima de sua capacidade física Peça ajuda aos companheiros e superiores Não corra, ande. Olhe onde pisa. Não ultrapassar por local sinalizado e isolado você pode ser a vítima. Ao fazer deslocamento acima de use escada, cinto de segurança com 2 talabartes, linha de vida, guarda corpo com roda pé. Transportar as ferramentas e peças na bolsa ou amarrada para evitar queda. – Ao caminhar procure as faixas para pedestres no canteiro de obra. Não permanecer no raio de movimentação de máquinas e equipamentos. Em caso de animais peçonhentos acione a equipe de resgate de fauna para resgate. Manter concentração no local de trabalho. Não improvisar acessos, utilize somente acesso liberado. Manter postura ergonomicamente enquanto estiver executando a atividade. Respeitar os limites de velocidade no canteiro de obra. Solicitar a elétrica melhoria na iluminação, caso necessário, verificar a aproximação do andaime e fios de alta tensão, isolar e sinalizar a área antes de iniciar as atividades.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Preparação da área de serviço.",
+                "perigo_fonte": "Acidente.",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões, Escoriações Lesões, fraturas e cortes",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "É obrigação do encarregado a avaliação dos conhecimentos e experiência dos colaboradores nos serviços a serem executados; -Todos os colaboradores devem ser treinados e qualificados a executar suas tarefas com segurança, visando garantir as suas atividades e as dos demais envolvidos, para que não venham a sofrer acidentes. NR18.28.3; -Todos os colaboradores deverão receber treinamento do uso correto dos EPI´s e importância dos mesmos; -É responsabilidade do encarregado tomar obrigatório a utilização dos EPI´s; -Antes de iniciar os trabalhos o Encarregado deve reunir os seus colaboradores e inspecionar a frente de serviço para avaliar e controlar os riscos existentes; -Certificar-se de que todos os colaboradores envolvidos na tarefa estejam perfeitamente bem de saúde física e psicológica.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Posicionamento da Máquina ou Equipamento responsável pela elevação do cesto",
+                "perigo_fonte": "Queda de funcionário de diferente nível ou do mesmo nível Queda de Materiais Tombamento,",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Fraturas Entorses Lesões Cortes Escoriações Lesão na coluna",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilização dos EPI's básicos necessários: capacete com jugular, óculos de segurança, luvas de raspa, botina com biqueira de aço, cinto de segurança tipo paraquedista atracado em local seguro, acima do tronco do colaborador. Todas as equipes de montagem de andaimes devem ser treinadas pelos encarregados responsáveis pelo serviço, porta carteira de identificação de treinamento, é proibido trabalho sobre por. Toda montagem de torre para execução de andaimes deverá ter acompanhamento do responsável, em caso de condições meteorológicas adversas paralisar as atividades. Antes do início das atividades, o encarregado deverá preencher o checklist de trabalho em altura.? O encarregado deverá orientar sempre a equipe sobre o serviço a ser executado. Verificar as condições dos módulos antes de iniciar a montagem da torre, eliminando os que apresentarem desgastes, trincas, empenamentos etc. Efetuar o primeiro travamento quando os módulos atingirem (três metros) de altura, e só continuar a montagem da torre depois deste travamento realizado, colocar o travamento a cada 03 metros de módulos montados. Efetuar o travamento utilizando tubo roll ou similar fazendo a amarração nas torres. Confeccionar escada, linha de vida para acesso e travar o cinto de segurança. Após a montagem do segundo módulo, trabalhar na parte interna da estrutura fazendo uso constante do cinto de segurança tipo paraquedista atracado em local seguro. Utilizar tábuas resistentes e de boa qualidade nas estruturas da torre para apoio dos pés e movimentação segura do corpo. As tábuas deverão ser amarradas adequadamente a fim de evitar seu deslizamento. Utilizar cordas novas e de boa qualidade para içamento dos módulos. Proceder ao içamento de 01 (um) módulo de cada vez. Amarrar adequadamente os módulos. Afastar-se do local enquanto estiver subindo e montando os módulos. Os andaimes deverão possuir rodapé Fazer isolamento do local abaixo, quando em atividade acima. Toda torre deverá possuir uma sapata (chapa de ferro) x com encaixe para a colocação dos pés no primeiro módulo, a fim de facilitar o nivelamento da torre caso necessite. Uso obrigatório de luvas de raspa / vaqueta.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Carregamento e transporte de materiais",
+                "perigo_fonte": "Queda de funcionário diferente nível, desabamento, lombalgia e distensões, corpo estranho nos olhos, choque elétrico, ruído, calor, poeira, risco ergonômico, iluminação inadequada.",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Fraturas Entorses Lesões Cortes Escoriações Lesão na coluna",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sinalizar e isolar a área do carregamento; Usar os EPI´S óculos de segurança, luvas pigmentadas, botina, respirador PFF 2, bloqueador solar, abafador de ruído; Somente operadores qualificados e treinados poderão operar o equipamento",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Içamento do cesto",
+                "perigo_fonte": "Pancada/Queda de pessoa e cesto/ Desequilíbrio/ Viragem do cesto Risco Ergonômico, Iluminação Inadequada.",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Fraturas Entorses Lesões Cortes Escoriações Lesão na coluna Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilização dos EPI's básicos necessários: capacete com jugular, óculos de segurança, luvas de raspa, botina com biqueira de aço, cinto de segurança tipo paraquedista atracado em local seguro, a um nível mais elevado que a cabeça Fazer isolamento da área do desmonte das torres. Não levantar ou transportar peso acima de sua capacidade física . Utilizar corda resistente e de boa qualidade para a descida dos módulos. Descer um de cada vez. Não improvisar ferramentas ou acessos. - Retirar os travamentos de cima para baixo, na medida em que for desmontando os módulos. Não permanecer no raio da movimentação de máquinas e equipamentos e em içamento de cargas. Fazer o remanejamento das tábuas utilizadas para apoio dos pés, a cada módulo desmontado. Manter a postura ergonomicamente correta durante a execução das atividades. Manter todos os módulos da estrutura empilhados adequadamente em local que não interfira com movimentação de veículos, equipamentos ou pessoas. Afastar os funcionários quando da descida dos módulos Esta análise de risco deve ser levada ao conhecimento de todos os envolvidos através do DDS. Os andaimes deverão possuir rodapé Uso obrigatório de luvas de raspa/vaqueta",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Trabalho no cesto suspenso Movimentação/Içamento de cesto suspenso",
+                "perigo_fonte": "Queda do cesto/Rompimento dos dispositivos de içamento",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Fraturas Entorses Lesões Cortes Escoriações Lesão na coluna Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilização dos EPI's básicos necessários: capacete com jugular, óculos de segurança, luvas de raspa, botina com biqueira de aço, cinto de segurança tipo paraquedista atracado em local seguro, a um nível mais elevado que a cabeça Fazer isolamento da área do desmonte das torres. Não levantar ou transportar peso acima de sua capacidade física . Utilizar corda resistente e de boa qualidade para a descida dos módulos. Descer um de cada vez. Não improvisar ferramentas ou acessos. - Retirar os travamentos de cima para baixo, na medida em que for desmontando os módulos. Não permanecer no raio da movimentação de máquinas e equipamentos e em içamento de cargas. Fazer o remanejamento das tábuas utilizadas para apoio dos pés a cada módulo desmontado. Manter a postura ergonomicamente correta durante a execução das atividades. Manter todos os módulos da estrutura empilhados adequadamente em local que não interfira com movimentação de veículos, equipamentos ou pessoas. Afastar os funcionários quando da descida dos módulos Esta análise de risco deve ser levada ao conhecimento de todos os envolvidos através do DDS. Os andaimes deverão possuir rodapé Uso obrigatório de luvas de raspa/vaqueta",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Linha de Vida / Trava-quedas",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.41). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.38",
+        "titulo": "Cozinha",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Limpeza e conservação das dependências da cozinha, e dos equipamentos existentes.",
+                "perigo_fonte": "Queda de nível Queda de objetos de pequeno porte Postura inadequada Poeiras Exposição a produtos Químicos",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas Contusões Irritação/dermatose",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Organização do Ambiente Atenção redobrada com os objetos e materiais ao seu redor Não carregar peso em excesso Usar os EPIs destinado a atividade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Preparo de Café",
+                "perigo_fonte": "Exposição ao Calor Respingo de líquidos quentes(água)",
+                "evento_risco": "",
+                "danos_provaveis": "Queimaduras",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Atenção redobrada na etapa de mistura dos ingredientes Usar os EPIs: Luva, Avental, Botina, e os demais",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Óculos de Proteção",
+            "Luvas de Proteção"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Avental de Raspa/PVC",
+            "Bota de Borracha (Impermeável)"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.38). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.09",
+        "titulo": "Enfermaria",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Transporte de equipamentos de resgate",
+                "perigo_fonte": "Queda de nível Queda de objetos e materiais",
+                "evento_risco": "",
+                "danos_provaveis": "Quedas, Lesões, Traumas e Fraturas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter a atenção redobrada com todos a volta durante a preparação do local, manter a sinalização sempre boa no local do ocorrido, sempre realizar os devidos treinamentos e reciclagens inerentes a função",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Preparação do local para realização do resgate",
+                "perigo_fonte": "Acidente com transeuntes Contato com substâncias toxicas e/ou contaminantes Contato com materiais perfuro cortantes",
+                "evento_risco": "",
+                "danos_provaveis": "Colisão Contaminações Perfurações Lesões Ferimentos Traumas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sempre manter o local o mais isolado e sinalizado possível evitando a presença de curiosos no local Observar com atenção todos os aspectos do local para evitar contatos como corpos estranhos e materiais perfuro cortante Utilizar sempre os EPI´s e EPC´s que estiverem a disposição e de maneira adequada",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Transporte da vítima",
+                "perigo_fonte": "Colisão",
+                "evento_risco": "",
+                "danos_provaveis": "Acidente veicular",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "O veículo de socorro deve ter condutor treinado e habilitado e capacitado para a função Os profissionais devem conhecimentos na área de APH (atendimento pré-hospitalar), todos os envolvidos no resgate devem estar utilizando seu EPI´s de maneira adequada",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Utilização de materiais e seringas",
+                "perigo_fonte": "Contaminação Perfuração",
+                "evento_risco": "",
+                "danos_provaveis": "Doenças infectocontagiosas Perfuração da pele Contato com substâncias toxicas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Todo material deve ser esterilizado ou descartável Deve existir um local específico para o descarte de seringas e materiais utilizados durante os procedimentos",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Linha de Vida / Trava-quedas",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.09). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.24",
+        "titulo": "Inspeções e Leituras Instrumentais",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Instalação de equipamentos",
+                "perigo_fonte": "Queda de nível Queda de materiais Exposição ao sol Impacto contra Ataques de animais peçonhentos",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões Lesões Danos materiais Ferimentos Envenenamento Dermatose",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sempre fazer uma verificação prévia do local Realizar procedimentos contra quedas Levar apenas o necessário para realização das atividades Utilizar de maneira correta todos os EPI’s necessários Utilizar proteção solar",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Acesso a instrumentos instalados",
+                "perigo_fonte": "Queda de nível Ataques de animais peçonhentos",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões Lesões Ferimentos Envenenamento",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter a atenção aos acessos e riscos presentes Fazer verificação prévia do local Utilizar de maneira correta os EPI’s necessários a atividade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Acesso a locais fechados",
+                "perigo_fonte": "Queda de nível Sufocamento Infecção Ataque de animais peçonhentos Presença de vapores e gases",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões Lesões Ferimentos Problemas respiratórios Envenenamento Doenças infecciosas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Fazer a inspeção prévia do local Utilizar de maneira adequada os EPI’s necessários a realização da atividade Prover de iluminação apar acesso a locais de pouca luminosidade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Trabalhos nas margens de barragens e canais",
+                "perigo_fonte": "Queda de nível Queda de materiais Afogamento Exposição ao Sol",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões Lesões Ferimentos Parada respiratória Dermatose",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Verificar de forma prévia locais de posicionamento de instrumentos de trabalho Utilizar equipamentos de proteção para trabalho em altura Utilizar equipamentos de proteção solar",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Transporte entre locais e acessos",
+                "perigo_fonte": "Colisão Tombamento",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões Lesões Ferimentos Tombamento",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Redobrar a atenção enquanto trafega pelos acessos das vias Respeitar as regras de trânsito Respeitar as sinalizações implantadas nos acessos Não dar caronas a transeuntes Manter em dia as revisões e manutenções dos veículos Informar ao setor responsável qualquer defeito ou dano no veículo para que seja tomada as devidas precauções e reparos",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Óculos de Proteção",
+            "Luvas de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Linha de Vida / Trava-quedas",
+            "Macacão Impermeável (Tiken)",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.24). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.18",
+        "titulo": "Içamento de Carga",
+        "atividades_criticas": [
+            "Içamento / Cargas Críticas"
+        ],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação da peça para içamento",
+                "perigo_fonte": "Queda de nível Queda de diferente nível Queda de objetos Colisão",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Lesões Traumas Prensamento Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Antes de iniciar as atividades fazer a verificação de toda a frente de serviço para garantir que a atividade aconteça sem riscos Realizar a sinalização das áreas de trabalho para impedir a presença de pessoas não autorizadas Sempre que for transportar algum material certificar-se de não ter nenhum colaborador abaixo da peça que será içada Sempre que precisar fazer a utilização da corda guia para contato dos colaboradores com a peça enquanto a mesma está sendo içada",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Transporte de materiais",
+                "perigo_fonte": "Queda de objetos Trabalho sobreposto Ausência de sinalização",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Lesões Traumas Prensamento Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Realização da atividade após ser feita a sinalização e realizar o isolamento da área Não permitir que se realize outra atividade simultaneamente na frente de serviço onde estiver sendo feito os trabalhos de içamento e movimentação Manter a área devidamente sinalizada para impedir a presença ou chegada e pessoas não autorizadas ao local",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Trabalhos com cargas pesadas",
+                "perigo_fonte": "Quedas de objetos Quebra de equipamentos",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Lesões Traumas Prensamento Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter a área isolada e sinalizada para evitar a presença de pessoas não autorizadas Realização periódica de manutenções preventivas nesses equipamentos Vistoria e chrek-list dos equipamentos devem ser realizadas periodicamente para garantir o bom funcionamento dos equipamentos Verificar as cintas se existem falhas, partes desfiadas, buracos ou marcas de desgaste Verificar o desgaste de outros equipamentos como moitão, travas de segurança, manilhas e demais que possam interferir no bom funcionamento do equipamento",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Amarrações",
+                "perigo_fonte": "Quedas de objetos",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Lesões Traumas Prensamento Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Realizar as amarrações de forma correta para garantir a estabilidade da peça durante a operação Manter a área isolada e sinalizada para evitar a presença de pessoas não autorizadas",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.18). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.27",
+        "titulo": "Içamento de Módulos de Comporta",
+        "atividades_criticas": [
+            "Içamento / Cargas Críticas"
+        ],
+        "riscos": [
+            {
+                "passo_tarefa": "Posicionamento dos equipamentos",
+                "perigo_fonte": "Queda de nível Queda de objetos Esforço físico",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Quedas Contusões Luxações",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Observar as condições da frente de serviço antes de iniciar as atividades em questão Realizar orientação aos colaboradores sobre as condições da frente de serviço Sinalizar e isolar a frente de serviço mantendo apenas pessoal necessário para atividade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Transporte de equipamentos",
+                "perigo_fonte": "Queda de objeto Queda de mesmo nível Colisão",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas Cortes Hematomas Perfurações Contusões Luxações",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Andar com atenção e cuidado com os obstáculos no local de trabalho Analisar o comportamento do solo antes e durante a atividade Estabelecer distancias mínimas entre os colaboradores e equipamentos durante a execução das atividades Manter o local sinalizado e isolado durante a realização da atividade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Remoção de peças e equipamentos",
+                "perigo_fonte": "Queda de objeto Queda de nível Tombamento de materiais ou peças Presença de animais peçonhentos Falha no equipamento",
+                "evento_risco": "",
+                "danos_provaveis": "Pensamento Esmagamento Contusão Fraturas Traumas Lesões Escoriações Envenenamento por animal peçonhento",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar equipamentos adequados para realizar o içamento ou remoção das peças ou equipamentos Isolar e sinalizar o local para evitar a presença de pessoas não autorizadas Manter apenas o efetivo necessário no local da atividade Utilizar os E.P.C’ s e E.P.I.’ s necessários para sanar os riscos existentes na frente de serviço Prover de profissional autorizado e habilitado para realizar atividades de içamento de cargas",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.27). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.05",
+        "titulo": "Manutenção Elétrica no Canteiro",
+        "atividades_criticas": [
+            "Eletricidade / SEP (NR-10)"
+        ],
+        "riscos": [
+            {
+                "passo_tarefa": "Manutenção em todo canteiro de obra",
+                "perigo_fonte": "Queda em altura - Curto-circuito; - Impacto de objetos ferramentas ou equipamentos contra os trabalhadores; - Impacto de ferramentas e objetos contra instalações elétricas; - Choque - Incêndio",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões - Perfurações - Queimaduras - Fratura de membros",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Atendimento às Normas Regulamentadoras (NRs), do MTE, e demais legislações vigentes (CLT); - Usar os EPIs adequados para o tipo de trabalho que está sendo executado: capacete, óculos, luvas apropriadas, uniforme, calçado de segurança e ferramentas adequadas para eletricistas; - Cuidar para que as fiações tomadas e disjuntores não fiquem desprotegidos (quadros elétricos); - Fazer sempre o uso do conjunto plug/tomada; - Manter toda rede elétrica da obra aérea e protegida com conduletes ou fazer uso de cabos - Extintor de incêndio tipo CO2 ;",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Manutenção nos painéis elétricos e robô.",
+                "perigo_fonte": "Impacto de materiais e objetos contra os trabalhadores; - Entroncamento dos cabos no chão; - Choque; - Incêndio.",
+                "evento_risco": "",
+                "danos_provaveis": "Queimaduras; - Fratura; - Emprensamento.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Uso de disjuntores (desativar quando entrar em curto circuito); - Uso de tomadas monofásico-trifásicas; - Atentar para uso do conjunto plug /tomadas; - Utilizar sempre cabos múltiplos; - Evitar uso de fios paralelos; - Zelar para que as extensões estejam isoladas de materiais metálicos e fora de área de trânsito de veículos (suspensas); - Confeccionar os quadros de forma segura e adequada para as instalações elétricas; - Extintor de incêndio tipo CO2 ;",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Manutenção nas redes elétricas do canteiro de obras",
+                "perigo_fonte": "Impacto de ferramentas por trabalhadores; - Projeção de materiais e objetos sobre a rede e pessoas; - Curto circuito e queima dos fusíveis; - Queda de pessoas de nível diferente; - Choque elétrico; - Incêndio",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas; - Contusões; - Danos materiais/pessoais; - Perfurações.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Desenergização elétrica na sua impossibilidade, o emprego de tensão de segurança; - Manter a rede elétrica sinalizada com placas indicativa (rede elétrica ou cabo enterrado); - Colocar nas emendas dos cabos fita de alto-baixa fusão e se possível evitar emendas; - Fazer uso de eletrodutos nas fiações enterradas; - Extintor de incêndio tipo CO2 ;",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Instalações de máquinas e equipamentos;",
+                "perigo_fonte": "Curto circuito; - Choque elétrico; - Incêndio.",
+                "evento_risco": "",
+                "danos_provaveis": "Queimaduras",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter a demarcação da fiação elétrica que alimenta as máquinas enterrada; - Melhorar e fazer inspeção no aterramento das máquinas/equipamentos; - Fazer uso de eletrodutos nos cabos de alimentação das máquinas a fim de evitar umidade provocada pela chuva e outros; - No caso de emendas (não podendo evitar), usar fita de alta fusão; - Extintor de incêndio tipo CO2 ; - Evitar gambiarras e fios paralelos; - Só será executado por profissional habilitado/qualificado com Curso NR 10; - Isolação das partes vivas, obstáculos, barreiras, sinalização, sistema de seccionamento automático de alimentação, bloqueio do religamento automático; - utilizar o cento de segurança, tipo abdominal, em atividade acima de 2 metros; - É vedado o uso de adornos pessoais nos trabalhos com instalações elétricas ou em suas proximidades; - Utilizar as luva para eletricista - Manter a demarcação da fiação elétrica que alimenta as máquinas aterrada; - Melhorar e fazer inspeção no aterramento das máquinas/equipamentos; - Fazer uso de eletrodutos nos cabos de alimentação das máquinas a fim de evitar umidade provocada pela chuva e outros; - No caso de emendas (não podendo evitar), usar fita de alta fusão; - Extintor de incêndio tipo CO2 ; - Evitar gambiarras e fios paralelos; - Só será executado por profissional habilitado/qualificado; Com curso de NR 10; - Isolação das partes vivas, obstáculos, barreiras, sinalização, sistema de seccionamento automático de alimentação, bloqueio do religamento automática.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Luva para Eletricista (Isolante)",
+            "Calçado de Segurança c/ Biqueira",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Linha de Vida / Trava-quedas",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.05). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.40",
+        "titulo": "Manutenção Mecânica",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação da área de serviço",
+                "perigo_fonte": "Acidente Queda de materiais Queda de nível",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões, Escoriações Lesões, fraturas e cortes",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "É obrigação do encarregado a avaliação dos conhecimentos e experiência dos colaboradores nos serviços a serem executados; -Todos os colaboradores devem ser treinados e qualificados a executar suas tarefas com segurança, visando garantir as suas atividades e as dos demais envolvidos, para que não venham a sofrer acidentes. NR18.28.3; -Todos os colaboradores deverão receber treinamento do uso correto dos EPI´s e importância dos mesmos; -É responsabilidade do encarregado tomar obrigatório a utilização dos EPI´s; -Antes de iniciar os trabalhos o Encarregado deve reunir os seus colaboradores e inspecionar a frente de serviço para avaliar e controlar os riscos existentes; -Certificar-se de que todos os colaboradores envolvidos na tarefa estejam perfeitamente bem de saúde física e psicológica.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Manutenção mecânica",
+                "perigo_fonte": "Ruído Quedas de materiais Içamento de materiais Queda de nível Descarga elétrica",
+                "evento_risco": "",
+                "danos_provaveis": "Perda Aditiva; Fratura e escoriação; Contusão e Esmagamento Queimaduras e choques elétricos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar protetor auricular Utilizar cordas guias para realização de movimentação de matérias por içamento Manter a área de trabalho isolada Utilizar os EPC’s adequados para realização de trabalhos em altura e com andaimes Certificar-se do desligamento elétrico dos equipamentos, testar os equipamentos antes de iniciar as atividades através de equipamentos adequados, prover de sinalização e bloqueio nos painéis elétricos",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Limpeza e recuperação de peças e acessórios",
+                "perigo_fonte": "Ruído; Queda de materiais Produtos químicos Postura inadequada",
+                "evento_risco": "",
+                "danos_provaveis": "Perda Auditiva; Contusões, fraturas, ferimentos; Lesões, escoriações, fraturas e cortes; Lesão na coluna e nas articulações Infecções respiratórias; Irritação na pele e olhos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Fazer uso do protetor auricular; Manter o equipamento sempre nivelado em superfície; Prover de proteção para os membros superiores Proteção facial e respiratória Postura adequada no trabalho; Utilizar os E.P.I’ s indicados a cada produto conforme especificação da ficha FISPQ (Ficha de Inspeção de Segurança para produtos Químicos) Manter isolamento e sinalização na área durante a execução de atividades de içamento de carga, mantendo apenas pessoal autorizado no local",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Lubrificação e posicionamento de peças e acessórios",
+                "perigo_fonte": "Queda de Material Contato com produtos químicos Tombamento de peças e equipamentos Derramamento de óleos e outras substâncias",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Fraturas Contusões Intoxicação Irritação das vias respiratórias Danos físicos e ao meio ambiente",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sinalizar e isolar a área do carregamento; Usar os EPI´S inerentes a atividade a ser realizada Manter kit de mitigação disponível na frente de serviço",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Remontagem",
+                "perigo_fonte": "Ruído Quedas de materiais Içamento de materiais Queda de nível",
+                "evento_risco": "",
+                "danos_provaveis": "Perda Aditiva; Fratura e escoriação; Contusão e Esmagamento",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar protetor auricular Utilizar cordas guias para realização de movimentação de matérias por içamento Manter a área de trabalho isolada Utilizar os EPC’s adequados para realização de trabalhos em altura e com andaimes",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Testes",
+                "perigo_fonte": "Partes móveis desprotegidas Energização Desmontagem de andaimes e estruturas",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos, contusões, fraturas Choque elétrico Queda de materiais Queda de nível",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter distância segura dos equipamentos durante os testes, mantendo a área isolada e sinalizada Manter os colaboradores longe partes energizadas Utilizar cordas guias para materiais içados Utilizar os E.P.I.’s adequados aos trabalhos em altura para desmontagem de andaimes e estruturas",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Uso de ponte rolante",
+                "perigo_fonte": "Falha operacional - Danos aos equipamentos - Quedas da ponte rolante ou do pórtico. - Queda de peças/estruturas",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos - Contusões - Fraturas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Só será autorizada a permanência na atividade, dos colaboradores que portarem todos os EPI’s obrigatórios para a execução da atividade. Os funcionários que não sentirem-se bem deverá avisar a seu encarregado para encaminhá-los ao ambulatório A ponte rolante deve dispor de alarme sonoro audível aos demais colaboradores A operação da ponte rolante deverá ser realizada por profissional qualificado e autorizado a operar o equipamento.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Subida e descida dos pórticos",
+                "perigo_fonte": "Quedas de pessoas. - Falha operacional - Danos aos equipamentos",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos - Contusões - Fraturas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Só é permitido subir nas escadas marinheiro de acesso as cabines que tiverem um cabo-guia para trava-quedas - É obrigatório o uso de cinto de segurança e trava-quedas nas escadas marinheiro para acessar a cabine de operação - O operador do pórtico e os demais envolvidos deverão passar por treinamento de trabalho em altura.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.40). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "044",
+        "titulo": "Manutenção e Reparo de Canaleta/Meio-Fio de Concreto",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Separação, inspeção e carregamento de ferramentas e equipamentos no caminhão de apoio",
+                "perigo_fonte": "Esforço físico excessivo / postura inadequada no levantamento de peso; - Queda de materiais (marretas, ponteiros, martelete, fôrmas) sobre os membros; - Prensagem de dedos/mãos durante o manuseio; - Equipamentos/ferramentas defeituosas.",
+                "evento_risco": "",
+                "danos_provaveis": "Lombalgias, distensões musculares e fadiga; - Contusões, hematomas, escoriações e fraturas; - Lesões por esmagamento; - Acidentes operacionais em campo por falha do equipamento.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Realizar a inspeção prévia (check-list) de todas as ferramentas e cabos elétricos antes do embarque;- Adotar postura ergonômica correta: dobrar os joelhos e manter a coluna ereta ao erguer cargas;- Solicitar auxílio de um colega ou uso de equipamento mecânico para pesos acima de 23 kg;- Uso obrigatório de luvas de vaqueta e botina com biqueira de aço;- Acondicionar e amarrar os materiais na carroceria do caminhão de forma segura para evitar deslocamentos durante o trajeto.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Deslocamento da equipe e materiais até a frente de serviço (Canal)",
+                "perigo_fonte": "Acidentes de trânsito (colisão, capotamento, atropelamento); - Queda de pessoas da carroceria do veículo; - Queda de materiais/ferramentas mal estivadas durante o trajeto.",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões graves, fraturas, politraumatismo e fatalidade; - Lesões por impacto ou esmagamento na queda; - Lesões a terceiros ou danos materiais.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "O transporte de colaboradores deve ser feito estritamente em veículos adequados e homologados (cabine), sendo expressamente proibido pegar carona na carroceria ou junto com as ferramentas;- Respeitar os limites de velocidade das vias internas da obra e manter os faróis acessos; - O motorista deve ser devidamente habilitado e treinado para o veículo de apoio;- Certificar-se de que a carga está travada e as tampas da carroceria estão travadas antes de iniciar o movimento.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Preparação da área e sinalização do local de trabalho",
+                "perigo_fonte": "Atropelamento por veículos/máquinas em movimento na proximidade; - Ataque de animais peçonhentos na vegetação marginal; - Postura inadequada no transporte de materiais.",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões, fraturas, fatalidade; - Picadas de escorpiões, cobras ou aranhas; - Lombalgias e dores musculares.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Isolar e sinalizar a área com cones, fitas zebradas e placas antes de iniciar os trabalhos; - Divulgar a APR no DDS para toda a equipe envolvida; - Inspecionar visualmente o local antes de adentrar na vegetação, utilizando perneiras; - Adotar postura correta para levantamento de cargas (máx. 23kg por colaborador).",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Demolição do concreto danificado (Canaleta/Meio-fio) com ponteiro/marreta ou martelete",
+                "perigo_fonte": "Projeção de partículas (estilhaços de concreto); - Ruído excessivo e vibração de ferramentas; - Posição ergonômica forçada; - Queda de nível (borda do canal).",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões oculares, cortes, escoriações; - Perda auditiva temporária/definitiva, fadiga; - Lesões na coluna e articulações; - Quedas na canaleta/canal.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Uso obrigatório de óculos de proteção contra impacto ou protetor facial; - Uso de protetor auditivo (concha ou inserção) e luvas de vaqueta/raspa; - Revezamento de braço na atividade e pausas periódicas para evitar esforço repetitivo; - Atenção aos limites de borda; se houver risco de queda em altura/profundidade, instalar proteção coletiva ou linha de vida.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Uso do compactador de solo manual",
+                "perigo_fonte": "Queda de nível - Inalação de monóxido de carbono",
+                "evento_risco": "",
+                "danos_provaveis": "Machucar membros inferiores - Ferimentos em geral - Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Mantenha mãos e pés afastados das partes móveis do equipamento, sempre utilizando os EPIs para operar o compactador - Evite compactar áreas de encosta, barrancos e valas que ofereçam riscos de desmoronamento ou deslizamento - A operação desse equipamento deve obedecer aos treinamentos exigidos, restringido seu uso apenas há colaboradores capacitados - As imediações de uso desta máquina são proibido fazer fogo, fumar, bem como utilizá-la em locais sujeitos a gases e líquidos inflamáveis",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Preparo de argamassa/concreto (manual ou mecânico)",
+                "perigo_fonte": "Contato da pele com cimento e agregados; - Inalação de poeira de cimento/areia; - Projeção de material nos olhos.",
+                "evento_risco": "",
+                "danos_provaveis": "Dermatites de contato, queimaduras químicas; - Problemas respiratórios, irritação das vias aéreas; - Conjuntivite química.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Uso obrigatório de respirador para poeiras; - Uso de luvas de vaqueta/nitrílica e mangas compridas para evitar contato direto com o cimento úmido; - Manter lavatório ou água limpa próxima para higienização imediata em caso de contato.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Aplicação do concreto, nivelamento e acabamento do meio-fio/canaleta",
+                "perigo_fonte": "Postura ergonômica inadequada (trabalho prolongado agachado); - Exposição à radiação solar; - Ferimentos com ferramentas manuais (colher de pedreiro, desempenadeira).",
+                "evento_risco": "",
+                "danos_provaveis": "Dores lombares, desvios na coluna; - Desidratação, insolação, queimaduras na pele; - Cortes e escoriações nas mãos.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Realizar pausas programadas para alongamento e mudança de postura; - Uso obrigatório de bloqueador solar e capacete com jugular; - Manter água potável disponível e fresca na proximidade da atividade; - Manusear ferramentas manuais com atenção, inspecionando a fixação dos cabos.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Para todas as atividades na manutenção do canal",
+                "perigo_fonte": "Queda de nível diferente e queda de materiais.",
+                "evento_risco": "",
+                "danos_provaveis": "Machucar membros/ ferimentos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Mesmo com check list é obrigatório todos os colaboradores fazer verificação de todos os EPI’s antes de iniciar as atividades; - Isolar e sinalizar a área; - Não ultrapasse por local isolado com risco de queda de arvore e material.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Limpeza, organização da área e descarte de resíduos",
+                "perigo_fonte": "Geração de entulho e materiais pontiagudos (restos de arame, pregos ou lascas); - Queda do mesmo nível por tropeções.",
+                "evento_risco": "",
+                "danos_provaveis": "Perfurações, cortes, infecções (tétano); - Escoriações, hematomas e luxações.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Uso de luva de vaqueta/pigmentada e botina com biqueira de aço durante o recolhimento de resíduos; - Não acumular entulho na borda do canal para evitar quedas de materiais ou sobrecarga; - Destinar todo o resíduo gerado (restos de concreto, sacos de cimento) para as caçambas ou locais indicados pelo Meio Ambiente.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Linha de Vida / Trava-quedas",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 044). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.01",
+        "titulo": "Manutenção em Equipamentos Elétricos",
+        "atividades_criticas": [
+            "Eletricidade / SEP (NR-10)"
+        ],
+        "riscos": [
+            {
+                "passo_tarefa": "Planejamento das atividades",
+                "perigo_fonte": "Descumprimento da Legislação",
+                "evento_risco": "",
+                "danos_provaveis": "Falha na execução da atividade podendo ocasionar acidentes; - Execução inadequada pelos profissionais diretamente ligados ao processo; - Falta de documentação necessária",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Antes de iniciar qualquer atividade, todos documentos e projetos deverão ser checados e avaliado; - Todos os profissionais devem ser capacitados e treinados com relação as atividades a serem realizadas bem como análise de risco da atividade; - Antes da execução dos trabalhos, verificar toda documentação exigida pelas leis e normas bem como procedimentos específicos a serem seguidos; manter no local de trabalho, estando disponível para consulta aos envolvidos na tarefa bem como, cliente e órgãos fiscalizadores; toda documentação necessária para atividade deve ser assinada por todos envolvidos; qualquer alteração ou surgimento de novas situações no decorrer da atividade seja na elaboração de projetos como também análises de riscos da atividade, os documentos devem passar por revisão e consequentemente divulgado as alterações ao envolvidos.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Manutenção em todo canteiro de obra/ e dependências do empreendimento",
+                "perigo_fonte": "Queda em altura - Curto-circuito; - Impacto de objetos - Ferramentas ou equipamentos contra os trabalhadores; Impacto de ferramentas e objetos contra instalações elétricas; - Choque - Incêndio",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões - Perfurações - Queimaduras - Fratura de membros",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Atendimento às Normas Regulamentadoras (NRs), do MTE, e demais legislações vigentes (CLT); - Usar os EPIs adequados para o tipo de trabalho que está sendo executado: capacete, óculos, luvas apropriadas, uniforme, calçado de segurança e ferramentas adequadas para eletricistas; - Cuidar para que as fiações tomadas e disjuntores não fiquem desprotegidos (quadros elétricos); - Fazer sempre o uso do conjunto plug/tomada; - Manter toda rede elétrica da obra aérea e protegida com conduletes ou fazer uso de cabos - Extintor de incêndio tipo CO2 ;",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Manutenção nos painéis elétricos e robô.",
+                "perigo_fonte": "Impacto de materiais e objetos contra os trabalhadores; Entroncamento dos cabos no chão; Choque; Incêndio.",
+                "evento_risco": "",
+                "danos_provaveis": "Queimaduras; - Fratura; - Prensamento",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Uso de disjuntores (desativar quando entrar em curto-circuito); - Uso de tomadas monofásico-trifásicas; - Atentar para uso do conjunto plug /tomadas; - Utilizar sempre cabos múltiplos; - Evitar uso de fios paralelos; - Zelar para que as extensões estejam isoladas de materiais metálicos e fora de área de trânsito de veículos (suspensas); - Confeccionar os quadros de forma segura e adequada para as instalações elétricas; - Extintor de incêndio tipo CO2 ;",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Manutenção nas redes elétricas",
+                "perigo_fonte": "Impacto de ferramentas por trabalhadores; Projeção de materiais e objetos sobre a rede e pessoas; Curto-circuito e queima dos fusíveis; Queda de pessoas de nível diferente; Choque elétrico; Incêndio",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas; Contusões; Danos materiais/pessoais; Perfurações.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Desenergização elétrica na sua impossibilidade, o emprego de tensão de segurança; - Manter a rede elétrica sinalizada com placas indicativa (rede elétrica ou cabo enterrado); - Colocar nas emendas dos cabos fita de alto-baixa fusão e se possível evitar emendas; Fazer uso de eletrodutos nas fiações enterradas; Extintor de incêndio tipo CO2 ;",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Instalações de máquinas e equipamentos;",
+                "perigo_fonte": "Curto-circuito; Choque elétrico; Incêndio.",
+                "evento_risco": "",
+                "danos_provaveis": "Queimaduras",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter a demarcação da fiação elétrica que alimenta as máquinas enterrada; Melhorar e fazer inspeção no aterramento das máquinas/equipamentos; Fazer uso de eletrodutos nos cabos de alimentação das máquinas a fim de evitar umidade provocada pela chuva e outros; No caso de emendas (não podendo evitar), usar fita de alta fusão; Extintor de incêndio tipo CO2 ; Evitar gambiarras e fios paralelos; Só será executado por profissional habilitado/qualificado com Curso NR 10; Isolação das partes vivas, obstáculos, barreiras, sinalização, sistema de seccionamento automático de alimentação, bloqueio do religamento automático; Utilizar o cinto de segurança, tipo abdominal, em atividade acima de 2 metros; É vedado o uso de adornos pessoais nos trabalhos com instalações elétricas ou em suas proximidades; Utilizar as luvas para eletricista Manter a demarcação da fiação elétrica que alimenta as máquinas aterrada; Melhorar e fazer inspeção no aterramento das máquinas/equipamentos; Fazer uso de eletrodutos nos cabos de alimentação das máquinas a fim de evitar umidade provocada pela chuva e outros; No caso de emendas (não podendo evitar), usar fita de alta fusão; Extintor de incêndio tipo CO2 ; Evitar gambiarras e fios paralelos; Só será executado por profissional habilitado/qualificado; Com curso de NR 10; Isolação das partes vivas, obstáculos, barreiras, sinalização, sistema de seccionamento automático de alimentação, bloqueio do religamento automático.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Identificação /sinalização do serviço",
+                "perigo_fonte": "Choque elétrico",
+                "evento_risco": "",
+                "danos_provaveis": "Choque",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Ter atenção e cuidado, Providenciar Togout/Logout",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Energização da rede",
+                "perigo_fonte": "Choque elétrico",
+                "evento_risco": "",
+                "danos_provaveis": "Queimaduras, afastamento do profissional",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Verificar se a rede a ser energizada está totalmente verificada e sem a presença de pessoas não autorizadas nas proximidades",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Desligamento chave seccionadora da cabine primária",
+                "perigo_fonte": "Choque elétrico",
+                "evento_risco": "",
+                "danos_provaveis": "Queimaduras - Choque - Óbito",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Usar luva de alta tensão e vaqueta",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Aterramento dos barramentos de alta tensão.",
+                "perigo_fonte": "Choque elétrico",
+                "evento_risco": "",
+                "danos_provaveis": "Queimaduras - Choque - Óbito",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Usar bastão isolado, luva de alta tensão, aparelho detector de tensão",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Ensaios elétricos dos equipamentos elétricos, utilizando megômetro, TTR (teste de relação de transformação), microhomimetro.",
+                "perigo_fonte": "Choque elétrico",
+                "evento_risco": "",
+                "danos_provaveis": "Queimaduras - Choque - Óbito",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter distância do transformador ( Limite cabo ), Usar luvas de vaqueta, evitar aproximação de pessoas não envolvidas na atividade.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Limpeza dos equipamentos com álcool (pano industrial)",
+                "perigo_fonte": "Incêndio. Queda de diferentes níveis e altura, Queda de objetos sobre terceiros.",
+                "evento_risco": "",
+                "danos_provaveis": "Queimaduras - Choque - Óbito",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Não utilizar chamas expostas; Acima de dois metros de altura utilizar cinto de segurança; não transportar material sobre pessoas e nem permitir pessoas debaixo do transformador ou sobre qualquer carga suspensa.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Serviços no Pátio da SE",
+                "perigo_fonte": "Riscos específicos da subestação - Erro de manobra, acionamento indesejado",
+                "evento_risco": "",
+                "danos_provaveis": "Queimaduras - Choque - Óbito",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Antes do início da obra e durante seu desenvolvimento, deverão haver reuniões entre Operador da Subestação ou Representante do Engenheiro Eletricista do Sítio e CONTRATADA onde os aspectos de segurança de pessoal, específicos para a obra, deverão ser abordados. Instruções minuciosas e identificação dos pontos que oferecem risco de acidentes, deverão ser efetuadas antes do início de cada serviço.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Luva para Eletricista (Isolante)",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.01). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.04",
+        "titulo": "Manutenção no Entorno do Canal",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Corte de Árvores Utilizando foice",
+                "perigo_fonte": "Atingir auxiliares pela proximidade excessiva da área de uso de ferramentas manuais; - Picada de animais Peçonhentos.",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas, cortes, hematomas, perfurações, contusões, luxações e fatalidade e esforço repetitivo;",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Nenhuma tarefa poderá ser iniciada sem a divulgação da APT nos DDS, a todos os colaboradores envolvidos; - Andar com atenção e cuidado aos obstáculos no local de trabalho; - Avaliar o comportamento do solo antes e durante a atividade; - Problemas ergonômicos, desvio da coluna; -Somente será autorizada a permanência na atividade, os colaboradores que portarem todos os EPI´s obrigatórios para a atividade a ser realizada; - Usar máscara para poeiras (quando necessário); - Manter a área limpa, Organizada e sinalizada; - Inspeção prévia das condições das ferramentas manuais; - Todos os resíduos gerados durante a execução da atividade deverão ser recolhidos ao final dos trabalhos e direcionados ao local certo; - Manusear as ferramentas pelo cabo, cortando sempre no sentido contrário ao corpo.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Desbaste do entorno de árvores a serem abatidas;",
+                "perigo_fonte": "Queda de árvores ou galhada sobre colaboradores",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas, cortes, hematomas, perfurações, contusões, luxações.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Andar com atenção e cuidado aos obstáculos no local de trabalho; - Avaliar o comportamento do solo antes e durante a atividade; - Estabelecimento de distâncias mínimas entre os colaboradores durante a execução da atividade; - Ter cuidado e atenção ao manter contato com a vegetação ou madeiras em decomposição, presença de cobras, escorpiões e aranhas.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Roçado e remoção da galhada e troncos das áreas da faixa do canal da transposição.",
+                "perigo_fonte": "Ferramentas defeituosas; - Ferimento causado pela foice; - Queda da carroceria do veículo na operação de carga ou descarga de lenha e madeira",
+                "evento_risco": "",
+                "danos_provaveis": "Lesão nas mãos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Não trabalhar com ferramenta defeituosa, substituir as ferramentas defeituosas e providenciar o reparo das mesmas; - Procedimento de manutenção de distância segura entre operadores de ferramentas manuais (machados e foices; - Pausar periodicamente quando o trabalho for prolongado; - Não deve transitar dentro da vegetação; - Ter cuidado e atenção ao manter contato com a vegetação ou madeiras em decomposição, presença de cobras, escorpiões e aranhas. - Manusear as ferramentas pelo cabo, cortando sempre no sentido contrário ao corpo; - Os materiais deverão ser acondicionados de forma a não se movimentarem durante o transporte, pois ao serem retirados podem se movimentar e causar ferimentos; - Todas as medidas de segurança propostas a serem adotadas deverão seguir as Normas Regulamentadoras da Portaria 3214/78;",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Uso do compactador de solo manual",
+                "perigo_fonte": "Queda de nível - Inalação de monóxido de carbono",
+                "evento_risco": "",
+                "danos_provaveis": "Machucar membros inferiores - Ferimentos em geral - Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Mantenha mãos e pés afastados das partes móveis do equipamento, sempre utilizando os EPIs para operar o compactador - Evite compactar áreas de encosta, barrancos e valas que ofereçam riscos de desmoronamento ou deslizamento - A operação desse equipamento deve obedecer os treinamento exigidos, restringido seu uso apenas há colaboradores capacitados - As imediações de uso desta máquina é proibido fazer fogo, fumar, bem como utilizá-la em locais sujeitos a gases e líquidos inflamáveis",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Para todas as atividades na manutenção do canal",
+                "perigo_fonte": "Queda de nível diferente e queda de materiais.",
+                "evento_risco": "",
+                "danos_provaveis": "Machucar membros/ ferimentos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Mesmo com check list é obrigatório todos os colaboradores fazer verificação de todos os EPI’s antes de iniciar as atividades; - Isolar e sinalizar a área; - Não ultrapasse por local isolado com risco de queda de arvore e material.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Linha de Vida / Trava-quedas",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.04). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.32",
+        "titulo": "Montagem e Desmontagem de Motobomba",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação da área de serviço",
+                "perigo_fonte": "Acidente Queda de materiais Queda de nivel",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões, Escoriações Lesões, fraturas e cortes",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "É obrigação do encarregado a avaliação dos conhecimentos e experiência dos colaboradores nos serviços a serem executados; -Todos os colaboradores devem ser treinados e qualificados a executar suas tarefas com segurança, visando garantir as suas atividades e as dos demais envolvidos, para que não venham a sofrer acidentes. NR18.28.3; -Todos os colaboradores deverão receber treinamento do uso correto dos EPI´s e importância dos mesmos; -É responsabilidade do encarregado tomar obrigatório a utilização dos EPI´s; -Antes de iniciar os trabalhos o Encarregado deve reunir os seus colaboradores e inspecionar a frente de serviço para avaliar e controlar os riscos existentes; -Certificar-se de que todos os colaboradores envolvidos na tarefa estejam perfeitamente bem de saúde física e psicológica.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Desmontagem de motobombas",
+                "perigo_fonte": "Ruído Quedas de materiais Içamento de materiais Queda de nível Descarga elétrica",
+                "evento_risco": "",
+                "danos_provaveis": "Perda Aditiva; Fratura e escoriação; Contusão e Esmagamento Queimaduras e choques elétricos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar protetor auricular Utilizar cordas guias para realização de movimentação de matérias por içamento Manter a área de trabalho isolada Utilizar os EPC’s adequados para realização de trabalhos em altura e com andaimes Certificar-se do desligamento elétrico dos equipamentos, testar os equipamentos antes de iniciar as atividades através de equipamentos adequados, prover de sinalização e bloqueio nos painéis elétricos",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Limpeza e recuperação de peças e acessórios",
+                "perigo_fonte": "Ruído; Queda de materiais Produtos químicos Postura inadequada",
+                "evento_risco": "",
+                "danos_provaveis": "Perda Auditiva; Contusões, fraturas, ferimentos; Lesões, escoriações, fraturas e cortes; Lesão na coluna e nas articulações Infecções respiratórias; Irritação na pele e olhos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Fazer uso do protetor auricular; Manter o equipamento sempre nivelado em superfície; Prover de proteção para os membros superiores Proteção facial e respiratória Postura adequada no trabalho; Utilizar os E.P.I’ s indicados a cada produto conforme especificação da ficha FISPQ (Ficha de Inspeção de Segurança para produtos Químicos) Manter isolamento e sinalização na área durante a execução de atividades de içamento de carga, mantendo apenas pessoal autorizado no local",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Lubrificação e posicionamento de peças e acessórios",
+                "perigo_fonte": "Queda de Material Contato com produtos químicos Tombamento de peças e equipamentos Derramamento de óleos e outras substâncias",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Fraturas Contusões Intoxicação Irritação das vias respiratórias Danos físicos e ao meio ambiente",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sinalizar e isolar a área do carregamento; Usar os EPI´S inerentes a atividade a ser realizada Manter kit de mitigação disponível na frente de serviço",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Remontagem",
+                "perigo_fonte": "Ruído Quedas de materiais Içamento de materiais Queda de nível",
+                "evento_risco": "",
+                "danos_provaveis": "Perda Aditiva; Fratura e escoriação; Contusão e Esmagamento",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar protetor auricular Utilizar cordas guias para realização de movimentação de matérias por içamento Manter a área de trabalho isolada Utilizar os EPC’s adequados para realização de trabalhos em altura e com andaimes",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Testes",
+                "perigo_fonte": "Partes móveis desprotegidas Energização Desmontagem de andaimes e estruturas",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos, contusões, fraturas Choque elétrico Queda de materiais Queda de nível",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter distância segura dos equipamentos durante os testes, mantendo a área isolada e sinalizada Manter os colaboradores longe partes energizadas Utilizar cordas guias para materiais içados Utilizar os E.P.I.’s adequados aos trabalhos em altura para desmontagem de andaimes e estruturas",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Avental de Raspa/PVC",
+            "Bota de Borracha (Impermeável)",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.32). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.07",
+        "titulo": "Operação com Munk",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação da área de serviço.",
+                "perigo_fonte": "Queda de nível Queda de objetos",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões, Escoriações -Lesões, fraturas e cortes.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "É obrigação do encarregado a avaliação dos conhecimentos e experiência dos colaboradores nos serviços a serem executados; -Todos os colaboradores devem ser treinados e qualificados a executar suas tarefas com segurança, visando garantir as suas atividades e as dos demais envolvidos, para que não venham a sofrer acidentes. -Todos os colaboradores deverão receber treinamento do uso correto dos EPI´s, e da NR-12 Máquinas e Equipamentos. -É responsabilidade de o encarregado tornar obrigatório a utilização dos EPI´s; -Antes de iniciar os trabalhos o Encarregado deve reunir os seus colaboradores e inspecionar a frente de serviço para avaliar e controlar os riscos existentes; -Certificar-se de que todos os colaboradores envolvidos na tarefa estejam perfeitamente bem de saúde física e psicológica.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Estacionamento do caminhão e patolamento",
+                "perigo_fonte": "Atropelamento; Prensamento de membros; Queda de mesmo nível.; Movimentação irregular do Munck.",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões, Escoriações -Lesões, Danos Materiais.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Antes de iniciar as operações de descarregamento de materiais, o responsável pela mesma deverá providenciar a sinalização e isolamento da mesma, de modo a permitir a proximidade somente dos envolvidos. Havendo a necessidade de se fazer a descarga em áreas de circulação obstruir a mesma; Nunca correr no local de trabalho e observar atentamente os desníveis e interferências nos locais de passagem; Ao estacionar o caminhão, o motorista deverá manter os freios de estacionamento acionados; As operações somente poderão ser iniciadas se o Munck estiver patolado sobre pranchas de madeira com dimensões que garantam boa distribuição da carga ao solo.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Acesso à carroceria do caminhão e descarregamento de materiais diversos.",
+                "perigo_fonte": "Queda de nível diferente; Prensamento; Cortes/ perfurações; Ruído; Projeção de particulados; Ergonomia; Poeira.",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões; Escoriações; Lesões; Danos Materiais; Perda Auditiva; Lombalgia.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "A fim de tornar mais prático, seguro e rápido o acesso às carrocerias, deverá ser adaptada onde inexistir, uma escada que garanta o acesso, sendo proibido subir escalando a carroceria e pular da mesma; É proibido o uso de anéis, alianças, pulseiras, cordões e outros adereços metálicos durante o expediente de trabalho, especialmente nas operações de movimentações de cargas. É obrigatório o uso de luvas adequadas (vaqueta / raspa) para o manuseio e movimentação de cargas e dispositivos de içamento como corda guia na movimentação; Fazer uso de protetor auditivo plug ou concha onde houver excesso de ruído ou máquina em movimento; Fazer uso de óculos de proteção de segurança em atividade de movimentação; Fazer uso de respirador semifacial PFF2 quando necessário.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Amarração das peças a serem descarregados.",
+                "perigo_fonte": "Queda de nível diferente; Prensamento; Cortes/ perfurações; Ruído; Projeção de particulados; Ergonomia; Poeira.",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões; Escoriações; Lesões; Danos Materiais; Perda Auditiva; Lombalgia.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Nunca passar ou permanecer sob carga suspensa, cabendo a todos os participantes das operações, tomar todas as medidas necessárias para que terceiros e participantes das operações não se exponham às cargas suspensa; fazer uso de corda guia. Somente pessoas autorizadas e qualificadas poderão operar o equipamento; Utilizar cordas guias para auxiliar na movimentação de carga, não sendo permitida a entrada abaixo das cargas para manuseá-las; As cargas deverão ser acondicionadas sobre calços de madeira ou material de resistência similar, de modo a manter espaço entre o solo e a carga. Nunca deverá ser colocada uma ou ambas as mãos, ou qualquer outra parte do corpo sob carga suspensa, de modo que, havendo a necessidade de ajustar a posição dos calços deverão ser utilizadas alavancas; Manter os membros superiores e inferiores fora de pontos de pensamento; O dimensionamento dos dispositivos de içamento deverá ser realizado pelo responsável pelas operações, considerando a carga de trabalho +e a capacidade de carga dos dispositivos utilizados; Antes do içamento, o responsável pela movimentação deverá checar as condições das amarrações de modo que as amarrações não se deslocaram do posicionamento indicado antes da movimentação; É proibido sinalizar ao operador com luvas nas mãos, devendo as mãos estarem nuas para a sinalização, observa as anilhas, cabos de aço e outras ferramentas, verificar seu estado físico e realizar cheque list das mesmas.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Movimentação e Descarregamento de Materiais",
+                "perigo_fonte": "Carga suspensa; Prensamentos; Rompimento dos dispositivos de Içamento; Queda da carga; Falha de comunicação.",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões; Escoriações; Lesões; Danos Materiais; Perda Auditiva; Lombalgia.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter o isolamento da área de trabalho Não transitar embaixo de carga suspensa Manter no local apenas colaboradores que estejam participando do trabalho",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.07). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.10",
+        "titulo": "Operação das Estações de Bombeamento",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Acidentes com veículos/equipamentos",
+                "perigo_fonte": "Impacto por e contra; abalroamento, colisão tombamento, atropelamento",
+                "evento_risco": "",
+                "danos_provaveis": "Danos materiais, Lesões múltiplas, Fraturas Óbito",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Somente motorista habilitado e autorizado, que portar Carteira Nacional de Habilitação, deve dirigir conduzir veículos leves nas frentes de serviço. Manter limites de velocidade de 30 e 40 Km/h, definidos segundo a orientação das placas de sinalização, instaladas nos acessos internos. O motorista deve comunicar imediatamente ao encarregado qualquer anormalidade detectada no veículo, fazendo as anotações necessárias na lista de verificação . Antes de acionar ou movimentar o veículo, deve-se observar ao redor do caminhão/equipamento, para não expor pessoas e/ou p patrimônio da empresa ao risco. É proibido o consumo de álcool ou drogas. Antes de iniciar os trabalhos, o topógrafo deve reunir os seus Auxiliares de topografia no local inspecionar a frente de serviço, avaliar e controlar os riscos, acompanhar a tarefa que vai ser executada. Monitorar as condições de estabilidade dos acessos e áreas de trabalho. Em aclives acentuados deve-se regularizar a área de trabalho, a fim de permitir o estacionamento seguro do veículo, É PROIBIDO PARAR E ESTACIONAR nas frentes de carga e descarga dos equipamentos e caminhões pesados. Manter os faróis acessos durante todo o período de trabalho. Não ultrapassar quando não for permitido e quando permitido use as setas, olhe pelos espelhos retrovisores e coloque-se com antecedência na posição para ultrapassar. Antes de realizar conversões ou manobras de retorno, sinalize previamente e mantenha seu veículo na faixa apropriada. Não estacionar de maneira que seu veículo de Ré. Durante a instalação dos aparelhos de medição topografia certificar-se que a área está isolada e que no raio de trabalho da equipe não haja movimentação de equipamentos e/ou caminhões. Durante as operações de carga e descarga manter-se fora do raio de ação dos equipamentos e só aproximar-se após a carga estiver acomodada e estabilizada ou totalmente descarregada.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Preparação do pessoal",
+                "perigo_fonte": "Não entender atividade ou não seguir os procedimentos de Segurança",
+                "evento_risco": "",
+                "danos_provaveis": "Perda de Colaboradores; - Perda de material; - Perda de tempo.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "As atividades somente poderão ter início após a Divulgação desta APR no DDS com seu respectivo registro; - Antes de iniciar as atividades os colaboradores deverão estar cientes das tarefas a serem realizadas e procedimentos a serem seguidos, através de orientações diárias feitas por DDS´s e orientação sobre o conteúdo desta APR.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Verificação dos níveis do canal",
+                "perigo_fonte": "Queda de nível",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos - Luxação, entorse, contusão E fratura;",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilização dos E.P.C’ s (Equipamentos de proteção coletiva) instalados nas frentes de serviço",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Acesso a sala de comando",
+                "perigo_fonte": "Queda de nível",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos - Luxação, entorse, contusão E fratura;",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilização dos E.P.C’ s (Equipamentos de proteção coletiva) instalados nas frentes de serviço",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Operação dos sistemas",
+                "perigo_fonte": "Ergonômicos",
+                "evento_risco": "",
+                "danos_provaveis": "Problemas de coluna L. E. R (Lesão por esforço repetitivo)",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Prevenção de posições inadequadas Ginastica laboral",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Leituras das instrumentações e manutenção dos painéis",
+                "perigo_fonte": "Queda de nível Choque elétrico",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos, Luxação, entorse, contusão E fratura; - Queimaduras - Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilização dos EPC´s instalados na frente de serviço. - Não realizar operações em áreas energizadas - Realizar o bloqueio dos equipamentos para realização da manutenção - Utilizar os EPI´s necessários para realização das atividades",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capacete com Jugular"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.10). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.33",
+        "titulo": "Operação de Motosserra",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação da área de serviço",
+                "perigo_fonte": "Acidente.",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões, Escoriações Lesões, fraturas e cortes",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "É obrigação do encarregado a avaliação dos conhecimentos e experiência dos colaboradores nos serviços a serem executados; -Todos os colaboradores devem ser treinados e qualificados a executar suas tarefas com segurança, visando garantir as suas atividades e as dos demais envolvidos, para que não venham a sofrer acidentes. NR18.28.3; -Todos os colaboradores deverão receber treinamento do uso correto dos EPI´s e importância dos mesmos; -É responsabilidade do encarregado tomar obrigatório a utilização dos EPI´s; -Antes de iniciar os trabalhos o Encarregado deve reunir os seus colaboradores e inspecionar a frente de serviço para avaliar e controlar os riscos existentes; -Certificar-se de que todos os colaboradores envolvidos na tarefa estejam perfeitamente bem de saúde física e psicológica.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Fiscalização visual da área de atividade",
+                "perigo_fonte": "Queda de nível Animais peçonhentos",
+                "evento_risco": "",
+                "danos_provaveis": "Fratura e escoriação; Ferimentos Contusões Envenenamento",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar perneira para proteção dos membros inferiores Sinalizar local de trabalho para evitar a presença de terceiros quando necessário",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Utilização de motosserra",
+                "perigo_fonte": "Ruído; Posturas inadequadas; Tombamento de arvores Poeira",
+                "evento_risco": "",
+                "danos_provaveis": "Perda Auditiva; Lesões, escoriações, fraturas e cortes; Infecções respiratórias; Irritação na pele e olhos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Fazer uso do protetor auricular; Manter os empregados a uma determinada distancia da máquina; Somente operadores qualificados e treinados poderão operar os equipamentos; Postura adequada durante o trabalho; Não permitir que pessoas fiquem próximas das áreas atividades de corte com motosserra",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Carregamento e transporte de materiais",
+                "perigo_fonte": "Queda de Material Poeira Ruído Tombamento Falha Mecânica",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões, Fraturas Infecções nas vias respiratórias Perda auditiva Danos no Veículo Esmagamento de membros",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sinalizar e isolar a área do carregamento; Usar os EPI´S óculos de segurança, luvas pigmentadas, botina, respirador PFF 2, bloqueador solar, abafador de ruído; Somente operadores qualificados e treinados poderão operar o equipamento",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.33). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.13",
+        "titulo": "Operação de Máquinas",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Transporte da máquina ao local da atividade",
+                "perigo_fonte": "Queda de máquina Atropelamento Colisão entre veículos",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Cortes Fraturas Contusões Lesões Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sempre que for mover uma máquina de esteira utilizar-se da carreta prancha para o translado. As máquinas devem ser transportadas sempre por veículo adequado e com a utilização das travas ou equipamentos de amarração adequados. Manter a atenção n deslocamento quanto a presença de colaboradores ou moradores das comunidades dos arredores Manter a atenção nas estradas e acessos durante o percurso inteiro do deslocamento",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Preparação da área para realização da atividade",
+                "perigo_fonte": "Atropelamentos Colisão Impacto de máquina contra objeto Acúmulo de pessoas no local",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Cortes Fraturas Quedas Danos materiais Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter o local sinalizado e isolado tendo apenas a presença dos colaboradores que realizarão as atividades Desviar o fluxo de veículos por outro acesso Manter a atenção quanto aos possíveis obstáculos que podem estar no local Sempre realizar as atividades após a realização de uma inspeção prévia no local",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Utilização da máquina",
+                "perigo_fonte": "Quebra de equipamento Atropelamento Colisão Tombamento",
+                "evento_risco": "",
+                "danos_provaveis": "Danos materiais Contusões Lesões Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Realizar o preenchimento do check – list do equipamento periodicamente Fazer uma análise prévia do local antes do início das atividades Utilizar o equipamento apenas para serviços de sua natureza Não improvisar ferramentas para utilização nas atividades",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.13). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.42",
+        "titulo": "Pintura de Piso",
+        "atividades_criticas": [
+            "Produtos Químicos Perigosos"
+        ],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação da superfície",
+                "perigo_fonte": "Exposição a produtos Químicos e Soluções Inflamáveis Inalação de substâncias geradas por dessas soluções",
+                "evento_risco": "",
+                "danos_provaveis": "Intoxicação Dermatose Irritação nos olhos Contaminação do Solo (Derramamento Acidental)",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Verificação prévia do local Realizar procedimentos de segurança no uso dos produtos tóxicos Utilizar máscara com respirador válvula Utilizar de maneira correta todos os EPI’s necessários a atividade evitando o máximo, contado da pele com os agentes químicos",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Pintura",
+                "perigo_fonte": "Postura Inadequada Queda de nível Queda de materiais",
+                "evento_risco": "",
+                "danos_provaveis": "Irritação nos olhos Contaminação do Solo (Derramamento Acidental)",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Realizar procedimentos de segurança no uso dos produtos tóxicos Utilizar máscara PFF2 Utilizar de maneira correta todos os EPI’s necessários a atividade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Preparação dos materiais",
+                "perigo_fonte": "Exposição aos produtos químicos.",
+                "evento_risco": "",
+                "danos_provaveis": "Dermatite,intoxicação,irritaçõesrespiratoria.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Uso do EPI adequado; ventilação do local; armazenamento seguro.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Aplicação de tintas no piso",
+                "perigo_fonte": "Inalação de vapores, contato com tinta; postura inadequada.",
+                "evento_risco": "",
+                "danos_provaveis": "Intoxicação,irritações,desconforto físico/muscular.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Mascaras com filtros apropriados (p2 ou vapores orgânico) , pausas ergonômicas",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Trânsitos de pessoas próximas",
+                "perigo_fonte": "Interrupções, riscos de acidentes.",
+                "evento_risco": "",
+                "danos_provaveis": "Contaminações da pintura, escorregões.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Isolamento da área, barreiras físicas, comunicação previa ,sinalização .",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Secagem da tinta.",
+                "perigo_fonte": "Liberações de vapores.",
+                "evento_risco": "",
+                "danos_provaveis": "Inalação de vapores.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Ventilação natural ou exaustão local, tempo de secagem adequada.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Descarte de resíduos",
+                "perigo_fonte": "Contaminação ambiental.",
+                "evento_risco": "",
+                "danos_provaveis": "Danos ao meio ambiente, multas.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Descarte conforme legislação ambiental vigente , armazenamento temporário.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.42). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.14",
+        "titulo": "Rampa de Lavagem",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação do veículo",
+                "perigo_fonte": "Colisão Atropelamento",
+                "evento_risco": "",
+                "danos_provaveis": "Prensamento Ferimento Lesão Corte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Ao realizar manobras com veículos redobrar a atenção e sempre ter como auxílio os espelhos retrovisores Manter a sinalização do local visível para todos os colaboradores que estiverem no entorno das atividades",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Lavagem do veículo com jato d’agua",
+                "perigo_fonte": "Umidade Contato como produtos químicos",
+                "evento_risco": "",
+                "danos_provaveis": "Irritação cutânea Alergia Queimaduras",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sempre que for realizar esse tipo de atividade será necessário utilizar todos os EPI´s de maneira adequada para evitar contatos a pele de produtos químicos e evitar também o excesso de umidade que possa vir a se expor",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Aplicação de xampu veicular",
+                "perigo_fonte": "Contato com produtos químicos",
+                "evento_risco": "",
+                "danos_provaveis": "Irritação das vias aéreas Irritação da pele",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sempre se utilizar de todos os EPI´s para realizar essas atividades evitando assim o contato direto com essa substância",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capa de Chuva",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Avental de Raspa/PVC",
+            "Bota de Borracha (Impermeável)",
+            "Macacão Impermeável (Tiken)",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.14). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.43",
+        "titulo": "Realização de Inspeção na Linha de Transmissão (LT) 69 KV",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Planejamento e Preparação da Inspeção",
+                "perigo_fonte": "Falha na comunicação. - Planejamento inadequado da rota. - Descumprimento de normas (NR-10, NR-12, NR-35).",
+                "evento_risco": "",
+                "danos_provaveis": "Acidentes graves por falta de autorização. - Atrasos na execução. - Exposição a riscos não previstos. - Sanções legais e administrativas.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Realizar DDS (Diálogo Diário de Segurança) antes de iniciar a atividade. - Obter a Liberação e Autorização formal do COP para a inspeção. - Analisar os projetos da LT, mapas e condições de acesso. - Verificar a validade dos treinamentos da equipe (NR-10, NR-12, NR-35). - Assegurar que todos os EPIs e EPCs necessários estejam disponíveis e em bom estado.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Deslocamento e Acesso à Faixa de Servidão",
+                "perigo_fonte": "Acidentes com veículos. - Ataque de animais peçonhentos (cobras, aranhas). - Condições adversas do terreno (atoleiros, buracos).",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões corporais, fraturas. - Danos materiais aos veículos. - Picadas venenosas, reações alérgicas. - Atraso ou interrupção da atividade.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Realizar checklist de segurança dos veículos. - Portar kit de primeiros socorros e rádio de comunicação. - Utilizar perneiras de segurança, botinas e luvas de vaqueta para proteção. - Manter atenção constante ao terreno durante o deslocamento a pé.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Inspeção Visual da Rede e da Vegetação",
+                "perigo_fonte": "Risco Elétrico: Proximidade ou contato acidental com cabos energizados. - Risco Elétrico: Indução elétrica em cercas, vegetação ou no próprio inspetor. - Queda de objetos (componentes da rede).",
+                "evento_risco": "",
+                "danos_provaveis": "Choque elétrico, arco elétrico, queimaduras graves, fibrilação, óbito. - Lesões por impacto, traumatismo craniano.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter distância de segurança da rede energizada, conforme estabelecido na NR-10. - Não tocar em cercas, portões metálicos ou vegetação alta sob a linha sem antes verificar a ausência de tensão de indução com detector. - Utilizar capacete com jugular e óculos de segurança.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Remoção de Vegetação com Motosserra",
+                "perigo_fonte": "Risco Elétrico: Contato da vegetação (árvore/galho) com a rede energizada durante o corte. - Risco Elétrico: Contato do operador ou do motosserra com a rede. - Cortes, lacerações, projeção de partículas.",
+                "evento_risco": "",
+                "danos_provaveis": "Arco elétrico, choque elétrico (potencialmente fatal), curto-circuito, interrupção do fornecimento de energia. - Ferimentos graves, amputações.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "A atividade só pode ser iniciada após análise e liberação por profissional qualificado. - Manter distância de segurança rigorosa. O corte deve ser planejado para que a queda da árvore/galho ocorra no sentido oposto à rede. - Utilizar bastão de manobra para guiar a queda, se necessário. - Operador de motosserra deve ter treinamento específico (NR-12). - Uso obrigatório de todos os EPIs específicos para a atividade.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Encerramento da Atividade",
+                "perigo_fonte": "Falha no registro de informações críticas (pontos de risco). - Comunicação inadequada",
+                "evento_risco": "",
+                "danos_provaveis": "Perda de dados importantes para a manutenção. - Risco de acidentes futuros por falta de correção das anomalias.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar formulários padronizados ou aplicativos para registro fotográfico e descritivo das anomalias. - Assegurar que todas as informações sejam claras e completas. - Comunicar formalmente ao COP o término da inspeção e a saída da equipe da área.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Luva para Eletricista (Isolante)",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.43). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.45",
+        "titulo": "Reparo com Injeção de Calda",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação e Manuseio dos Produtos Químicos (Resinas/Calda de Injeção)",
+                "perigo_fonte": "Contato dérmico e ocular com substâncias químicas.• Inalação de vapores tóxicos ou poeiras químicas.• Derramamento de material no piso da estação.",
+                "evento_risco": "",
+                "danos_provaveis": "Dermatite de contato, queimaduras químicas na pele/olhos.• Irritação das vias aéreas superiores, intoxicação.• Risco de quedas por piso escorregadio.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Obrigatório: Consultar e divulgar a FISPQ/FDS do produto antes do início da atividade.• Utilizar obrigatoriamente os EPIs específicos assinalados: óculos ampla visão, luvas de vaqueta/nitrílica, avental e respirador com filtro mecânico/químico adequado.• Manter Kit de Mitigação Ambiental (absorventes) próximo ao local de mistura.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Trabalho em Altura (Acesso às trincas elevadas nas paredes da estação)",
+                "perigo_fonte": "Queda de pessoas com diferença de nível.• Queda de materiais/equipamentos sobre terceiros.",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas, lesões graves, politraumatismo, óbito.• Contusões e traumatismos em trabalhadores no nível inferior.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar andaimes devidamente montados, travados, com rodapé e guarda-corpo, ou plataformas elevatórias homologadas.• Uso obrigatório de cinto de segurança tipo paraquedista com duplo talabarte ancorado em linha de vida ou ponto estrutural resistente . • Isolamento e sinalização da área inferior com cones e telas para evitar o trânsito de pessoas.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Operação de Injeção sob Pressão (Aplicação da calda nos bicos/obturadores)",
+                "perigo_fonte": "Projeção de partículas/calda por sobrepressão ou falha nos bicos injetores.• Rompimento de mangueiras da bomba de injeção.",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões oculares graves, queimaduras químicas, ferimentos perfurocortantes.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Inspecionar manômetros e válvulas de alívio da bomba de injeção antes do uso.• Uso obrigatório de protetor facial (face shield) acoplado ao capacete durante a pressurização . • Posicionar anteparos físicos (telas/lonas) para conter possíveis projeções em direção a painéis elétricos ou outras equipes.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Interferência com a Operação da EB (Permanência no piso/proximidade de motobombas)",
+                "perigo_fonte": "Vibração mecânica intensa e ruído extremo das motobombas ligadas .• Jato de alta pressão por falha em juntas/flanges do barramento .• Inundação súbita ou contato com circuitos energizados.",
+                "evento_risco": "",
+                "danos_provaveis": "Perda auditiva temporária/definitiva, fadiga nervosa, dificuldade de comunicação .• Amputações, cortes profundos ou óbito instantâneo.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "É proibida a permanência e manutenção estrutural no piso inferior com o sistema de bombeamento operando (mesmo que apenas uma bomba esteja ligada) EM EXCEÇÃO ATIVIDADES DE CARETER DE URGÊNCIA, OU QUE NESCESSITAM DAS MÁQUINAS/EQUIPAMENTOS EM FUNCIONAMENTO• Realizar o bloqueio elétrico e hidráulico (LOTO) das linhas adjacentes afetadas antes de iniciar as injeções na parede .• Uso de protetor auricular de alta atenuação (concha + inserção) se houver ruído residual de salas vizinhas.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Perfuração / Limpeza da área",
+                "perigo_fonte": "Rompimento, Desconexão Das Mangueiras De Injeção",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimento, cortes, escoriações Fratura",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "As mangueiras e conexões utilizadas nas interligações, bomba misturador, acessórios, deverão resistir a pressões do serviço e ser devidamente acopladas com acessórios apropriados (engate rápido, braçadeiras ou outros dispositivos com igual eficiência).",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Uso de ferramentas, manuais e rotativas",
+                "perigo_fonte": "Queda De Ferramentas",
+                "evento_risco": "",
+                "danos_provaveis": "",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "É proibido arremessar ferramentas sobre outro colaborador; As ferramentas manuais deverão estar amarradas ao punho do trabalhador para evitar a sua queda acidental;",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Uso de ferramentas, manuais e rotativas",
+                "perigo_fonte": "Impacto Sofrido",
+                "evento_risco": "",
+                "danos_provaveis": "",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Inspecionar ferramentas rotativas antes de sua utilização, observando a integridade das partes móveis, trincas, e fissuras.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Ligar / Desligar equipamentos",
+                "perigo_fonte": "Exposição A Circuitos / Partes Energizadas",
+                "evento_risco": "",
+                "danos_provaveis": "Perdas Materiais, Lesões, Contusões, Fraturas, Queimadura",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Verificar previamente o local de posicionamento do equipamento e garantir o distanciamento mínimo seguro das redes energizadas, caso exista. Proibido aproximar qualquer objeto próximo de equipamentos, redes, cabos e fios energizados. Somente eletricista capacitado e autorizado deve realizar serviços de desenergização em painéis ou rede energizada.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Trabalho em Altura com Gaiola Içada por Ponte Rolante (Acesso e posicionamento nas paredes da EB)",
+                "perigo_fonte": "Queda de pessoas em diferença de nível. • Falha mecânica/ruptura dos cabos de aço ou acessórios de içamento (manilhas, laços). • Tombamento, oscilação ou batida da gaiola contra a estrutura da Estação de Bombeamento. • Queda de ferramentas/materiais lá do alto da gaiola.",
+                "evento_risco": "",
+                "danos_provaveis": "Politraumatismo, fraturas graves, esmagamento ou óbito. • Lesões e traumatismos severos por impacto de ferramentas em colaboradores que estejam no piso inferior.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Check-list e Inspeção: Inspecionar a ponte rolante, o moitão, os cabos e a integridade da gaiola • Ancoragem Independente: O trabalhador dentro da gaiola NÃO pode se ancorar na própria gaiola ou no gancho da ponte. O cinto de segurança tipo paraquedista com duplo talabarte deve estar conectado a uma linha de vida vertical independente ou bloco retrátil fixado em estrutura externa segura. • Amarração de Ferramentas: Proibido o uso de ferramentas soltas; todas devem estar obrigatoriamente amarradas ao pulso do trabalhador ou guardadas em bolsas presas à estrutura interna da gaiola . • Guia de Carga: Utilizar corda guia (cabo de manobra) acoplada à gaiola para evitar a oscilação da estrutura e batidas contra as paredes. • Sinalização: Isolamento total do raio de movimentação sob a gaiola com cones e fitas zebradas, impedindo a passagem de pessoas.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Luva para Eletricista (Isolante)",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.45). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.25",
+        "titulo": "Roço e Poda de Vegetação de Canais e Reservatórios",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Mobilização da equipe",
+                "perigo_fonte": "Ataque de ser vivo, - Exposição a tráfego de veículos - Queda em mesmo nível - Acidente no transporte;",
+                "evento_risco": "",
+                "danos_provaveis": "Lesão por mordida, picada e lesões - Escoriação, abrasão; Ferida incisa, laceração, ferida contusa, punctura; Contusão, distensão, torção; luxação, fratura; Concussão cerebral; Lesões múltiplas; Óbito",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter o setor limpo e organizado; realizar vistoria do local antes do início das atividades; utilização de EPI's quando for realizar atividade em campo com risco; em caso de aparecimento de animais não tente pegar comunique para que seja resgatado pelo setor especializado; não ficar próximo a deposito de material amontoado de origem de supressão ou próximo aos limites da mata. - Atentar-se para movimentação de veículos; atender a sinalização de segurança; atravessar as vias em pontos sinalizados para este fim; Proibir travessia de vias diante de veículos em movimento; Adentrar o veículo com atenção nos degraus; Manter-se sob o campo de visão do condutor; não se aproximar de maquinas ou equipamentos sem que seja autorizado pelo operador; não permanecer atrás de equipamentos moveis; sinalizar e isolar o local de trabalho. - Obedecer ao limite de velocidade da via; manter os faróis acesos mesmo durante o dia; Adotar sinal sonoro nas manobras de marcha à ré; Atender aos prazos de revisões mecânicas; Trafegar somente em local autorizado; não transportar pessoas na parte externa dos veículos; não trafegar em pé no ônibus; não descer correndo do ônibus.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Corte de Árvores Utilizando foice",
+                "perigo_fonte": "Atingir auxiliares pela proximidade excessiva da área de uso de ferramentas manuais; Picada de animais Peçonhentos.",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas, cortes, hematomas, perfurações, contusões, luxações e fatalidade e esforço repetitivo;",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Nenhuma tarefa poderá ser iniciada sem a divulgação da APR, nos DDS a todos os colaboradores envolvidos; - Andar com atenção e cuidado aos obstáculos no local de Trabalho. - Avaliar o comportamento do solo antes e durante a atividade; - Problemas ergonômicos, desvio da coluna; Somente será autorizada a permanência na atividade, os colaboradores que portarem todos os EPI´s obrigatórios para a atividade a ser realizada; - Usar máscara para poeiras (quando necessário); - Manter a área limpa, Organizada e sinalizada; - Inspeção prévia das condições das ferramentas manuais; - Todos os resíduos gerados durante a execução da atividade deverão ser recolhidos ao final dos trabalhos e direcionados ao local certo; Manusear as ferramentas pelo cabo, cortando sempre no sentido contrário ao corpo.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Desbaste do entorno de árvores a serem abatidas;",
+                "perigo_fonte": "Queda de árvores ou galhada sobre colaboradores",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas, cortes, hematomas, perfurações, contusões, luxações.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Andar com atenção e cuidado aos obstáculos no local de trabalho; - Avaliar o comportamento do solo antes e durante a atividade; - Estabelecimento de distâncias mínimas entre os colaboradores durante a execução da atividade; - Ter cuidado e atenção ao manter contato com a vegetação ou madeiras em decomposição, presença de cobras, escorpiões e aranhas.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Roçado e remoção da galhada e troncos das áreas da faixa do canal da transposição.",
+                "perigo_fonte": "Ferramentas defeituosas; - Ferimento causado pela foice; - Queda da carroceria do veículo na operação de carga ou descarga de lenha e madeira",
+                "evento_risco": "",
+                "danos_provaveis": "Lesão nas mãos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Não trabalhar com ferramenta defeituosa, substituir as ferramentas defeituosas e providenciar o reparo das mesmas; - Procedimento de manutenção de distância segura entre operadores de ferramentas manuais (machados e foices; - Pausar periodicamente quando o trabalho for prolongado; - Não deve transitar dentro da vegetação; - Ter cuidado e atenção ao manter contato com a vegetação ou – madeiras em decomposição, presença de cobras, escorpiões e aranhas. - Manusear as ferramentas pelo cabo, cortando sempre no sentido contrário ao corpo; - Os materiais deverão ser acondicionados de forma a não se movimentarem durante o transporte, pois ao serem retirados podem se movimentar e causar ferimentos; - Todas as medidas de segurança propostas a serem adotadas deverão seguir as Normas Regulamentadoras;",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Para todas as atividades na manutenção do canal",
+                "perigo_fonte": "Queda de diferente nível Queda de materiais.",
+                "evento_risco": "",
+                "danos_provaveis": "Machucar membros ferimentos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Mesmo com check list é obrigatório todos os colaboradores fazer verificação de todos os EPI’s antes de iniciar as atividades; isolar e sinalizar a área; Não ultrapasse por local isolado com risco de queda de arvore e material.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Complementos com concreto nas barragens e instrumentais",
+                "perigo_fonte": "Queda de nível Queda de materiais Ferramentas manuais",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões Ferimentos Fraturas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Só utilizar o equipamento o profissional habilitado e devidamente treinado Isolar a área da atividade para evitar a presença de outros colaboradores Seguir as normas de segurança e procedimentos que sejam necessários para a realização segura da atividade",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Corte de Árvores próximas a área energizada",
+                "perigo_fonte": "Choque elétrico; Incêndio.",
+                "evento_risco": "",
+                "danos_provaveis": "Queimaduras",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Não ultrapasse por local isolado com risco de choque elétrico. Esse tipo de atividade só será executado por profissional habilitado/qualificado com Curso NR 10, portanto mantenha uma distância segura. Manter distância segura de locais energizados em tempo de climas adversos; Alta humidade do ar, Chuvas e poeira.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Desobstrução de canaletas",
+                "perigo_fonte": "Impacto contra - Radiação não ionizantes",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas, cortes, hematomas, perfurações, contusões, luxações. - Lesões oculares / queimaduras / lesões ou câncer de pele",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manusear as ferramentas (Enxadas, Alavancas) de forma segura, protegendo os membros inferiores. - Manutenção de infraestrutura: Verifique regularmente a integridade das canaletas e faça reparos necessários para evitar danos maiores - Utilizar protetor solar / camisa de manga longa / óculos escuros",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Linha de Vida / Trava-quedas",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.25). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.20",
+        "titulo": "Serra Circular Portátil",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação do Equipamento",
+                "perigo_fonte": "Choque elétrico Cortes fraturas",
+                "evento_risco": "",
+                "danos_provaveis": "Queimaduras Ferimentos Lesões Traumas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Verificar as condições do equipamento e controle de segurança e travamento antes de realizar a ligação da máquina a energia Verificar se existem fios descascados iou emendas sem proteção nos cabos",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Utilização de serra circular",
+                "perigo_fonte": "Cortes e amputações nos membros superiores Choque elétrico Quebra do disco e contragolpe durante a operação Risco de incêndio Ruído Projeção de partículas Inalação de poeiras",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Lesões Traumas Amputação Cortes Contusões Descarga elétrica",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "As operações em máquinas e equipamentos para a realização das atividades de carpintaria deverão ser realizadas por trabalhador qualificado O disco deve estar dotado de coifa protetora e cutelo divisor, com a identificação do fabricante e coletor de serragem. Realizar semanalmente lista de verificação na serra circular de bancada Devem ser utilizados dispositivos empurradores de madeira e guia e travado e ser substituído quando apresentar problemas de alinhamento As transmissões de força mecânica devem estar protegidas por anteparos fixos e resistentes, não podendo ser removidos A carcaça do motor deve estar aterrada eletricamente O disco deve estar afiado",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Óculos de Proteção",
+            "Luvas de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Avental de Raspa/PVC",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.20). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.21",
+        "titulo": "Serra Circular de Bancada",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Local de instalação",
+                "perigo_fonte": "Quedas de nível Choque elétrico Projeção de partículas Poeiras Ruido",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Ferimentos Contusões Queimaduras Perca auditiva",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "O local de instalação deve ter piso acimentado e nivelado Deve dispor de local adequado para armazenamento de madeiras Deve conter caixa coletora para pó de serra O equipamento deve estar provido de coifa de proteção Deve conter sistema de desligamento de emergência Todos os colaboradores ao redor do equipamento devem estar usando protetor auricular",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Empilhamento de madeira",
+                "perigo_fonte": "Contusão nos pés e mãos por queda de materiais.",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Ferimentos Contusões",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar bota de couro com palmilha e biqueira resistente. - Utilizar EPI’s recomendados acima e seguir instruções dos Técnicos de Segurança quanto ao correto armazenamento dos materiais e a observação da organização do ambiente de trabalho.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Utilização de serra circular de bancada",
+                "perigo_fonte": "Cortes e amputações nos membros superiores Choque elétrico Quebra do disco e contragolpe durante a operação Risco de incêndio Ruído Projeção de partículas Inalação de poeiras",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Lesões Traumas Amputação Cortes Contusões Descarga elétrica",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "As operações em máquinas e equipamentos para a realização das atividades de carpintaria deverão ser realizadas por trabalhador qualificado O disco deve estar dotado de coifa protetora e cutelo divisor, com a identificação do fabricante e coletor de serragem. Realizar semanalmente lista de verificação na serra circular de bancada Devem ser utilizados dispositivos empurradores de madeira e guia de alinhamento As transmissões de força mecânica devem estar protegidas por anteparos fixos e resistentes, não podendo ser removidos A carcaça do motor deve estar aterrada eletricamente O disco deve estar afiado e travado e ser substituído quando apresentar problemas",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Avental de Raspa/PVC",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.21). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.11",
+        "titulo": "Serviços Administrativos",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Trabalhos em escritório",
+                "perigo_fonte": "Postura inadequada",
+                "evento_risco": "",
+                "danos_provaveis": "Lesão por esforço repetitivo (LER) Monotonia",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Realização de atividades em ambientes bem iluminados e com mobílias adequadas a postura dos colaboradores Realização de ginástica laboral",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Deslocamento entre salas pelo canteiro",
+                "perigo_fonte": "Queda de nível",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Traumas Ferimentos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilização dos meios de proteção de maneira correta (guarda corpos, corrimões etc.) Evitar correr pelo canteiro Praticar e respeitar as sinalizações existentes (piso molhado, proibido fumar, estacione de ré, etc.)",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.11). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.03",
+        "titulo": "Serviços Gerais",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Limpeza das salas e escritórios no canteiro",
+                "perigo_fonte": "Queda de nível Queda de objetos de pequeno porte Postura inadequada Poeiras",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Cortes Fraturas Contusões Lesões Doenças pulmonares",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Ter sempre a atenção redobrada nos objetos e materiais ao seu redor para não tropeçar ou esbarrar Manter a área sinalizada durante a execução das atividades Não carregar peso em excesso Utilizar máscara adequada a atividade a ser realizada",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Limpeza de pisos e banheiros",
+                "perigo_fonte": "Queda de nível Queda de objetos de pequeno porte Postura inadequada Contato com produtos químicos",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Cortes Fraturas Contusões Lesões Asfixia Envenenamento",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Realizar as atividades utilizando sempre os E.P.I´s adequados Sinalizar o local para evitar a trânsito de pessoas desavisadas ao local Manter as janelas dos banheiros sempre abertas para garantir uma boa ventilação no local Evitar o contato manual com substâncias que possam causar danos a saúde Ser treinado e orientado quando o uso correto de produtos químicos",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Coleta de lixos",
+                "perigo_fonte": "Contaminação Bactérias e fungos",
+                "evento_risco": "",
+                "danos_provaveis": "Danos à saúde",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter os sacos de lixo bem fechados e evitar o contato de seus conteúdos com partes do corpo Usar os equipamentos de proteção necessários para realização das atividades",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Avental de Raspa/PVC",
+            "Bota de Borracha (Impermeável)"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.03). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.22",
+        "titulo": "Serviços de Topografia",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Mobilização",
+                "perigo_fonte": "Acidente diverso",
+                "evento_risco": "",
+                "danos_provaveis": "Corte, escoriação, perfurações Exposição a Intempéries",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Antes do início da atividade os encarregados juntamente com o Técnico de Segurança divulgarão está APR, onde a mesma deverá permanecer no local de execução da atividade ; é de responsabilidade do Supervisor e/ou encarregado cumprir e fazer com que os colaboradores estejam cumprido os procedimentos contidos neste documento; realizar inspeção de pré-uso , antes da utilização dos equipamentos e ferramentas. É obrigatório o uso dos EPI- Equipamento de Proteção Individual e toda área de trabalho, de acordo com orientação dom SMS. Utilizar protetor solar e camisa de manga longa.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Acidentes com veículos/equipamentos",
+                "perigo_fonte": "Impacto por e contra; abalroamento, colisão tombamento, atropelamento",
+                "evento_risco": "",
+                "danos_provaveis": "Danos materiais, Lesões múltiplas, Fraturas Óbito",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Somente motorista habilitado e autorizado, que portar Carteira Nacional de Habilitação, deve dirigir conduzir veículos leves nas frentes de serviço. Manter limites de velocidade de 30 e 40 Km/h, definidos segundo a orientação das placas de sinalização, instaladas nos acessos internos. O motorista deve comunicar imediatamente ao encarregado qualquer anormalidade detectada no veículo, fazendo as anotações necessárias na lista de verificação . Antes de acionar ou movimentar o veículo, deve-se observar ao redor do caminhão/equipamento, para não expor pessoas e/ou p patrimônio da empresa ao risco. É proibido o consumo de álcool ou drogas. Antes de iniciar os trabalhos, o topógrafo deve reunir os seus Auxiliares de topografia no local inspecionar a frente de serviço, avaliar e controlar os riscos, acompanhar a tarefa que vai ser executada. Monitorar as condições de estabilidade dos acessos e áreas de trabalho. Em aclives acentuados deve-se regularizar a área de trabalho, a fim de permitir o estacionamento seguro do veículo, É PROIBIDO PARAR E ESTACIONAR nas frentes de carga e descarga dos equipamentos e caminhões pesados. Manter os faróis acessos durante todo o período de trabalho. Não ultrapassar quando não for permitido e quando permitido use as setas, olhe pelos espelhos retrovisores e coloque-se com antecedência na posição para ultrapassar. Antes de realizar conversões ou manobras de retorno, sinalize previamente e mantenha seu veículo na faixa apropriada. Não estacionar de maneira que seu veículo de Ré. Durante a instalação dos aparelhos de medição topografia certificar-se que a área está isolada e que no raio de trabalho da equipe não haja movimentação de equipamentos e/ou caminhões. Durante as operações de carga e descarga manter-se fora do raio de ação dos equipamentos e só aproximar-se após a carga estiver acomodada e estabilizada ou totalmente descarregada.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Levantamento topográfico",
+                "perigo_fonte": "Cortes, Escoriações, lacerações; Partes cortantes expostas, canto vivos e etc. Queda de mesmo nível.. Lombalgia; Exposição à intempéries.",
+                "evento_risco": "",
+                "danos_provaveis": "Danos materiais, lesões múltiplas, Fraturas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Inspecionar as ferramentas manuais; Proteger pontas e/ou cantos vivos; Utilizar ferramentas adequadas à atividade; Não expor as mãos próximas ao raio de ação da ferramenta; Treinar os envolvidos quanto a importância do uso dos EPI; Orientar os colaboradores quanto ao uso de ferramentas manuais.\" Fazer isolamento de, no mínimo, 3 metros da borda da escavação, manter atenção no decorrer da atividade e sinalizar a área. Manter uma postura ergonomicamente correta (Costas retas e ao se abaixar sempre dobrar os joelhos). Em caso de incidência de risco de raios ou chuvas fortes os trabalhos deverão ser interrompidos.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Transporte e instalação dos equipamentos e ferramentas para frente de trabalho.",
+                "perigo_fonte": "Impacto de pessoa contra. Queda de pessoa em mesmo nível.",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Traumas Fraturas Contusões",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Evite pressa e movimentos bruscos. Fique atento aos obstáculos e interferências no seu trajeto. Mantenha sua área limpa, bem organizada e livre de interferências e obstáculos. Manter as pontas de vergalhões expostas em áreas de acesso de pessoas, protegidas. Manter as áreas limpas, organizadas, livres de obstáculos, interferências, buracos. Ao trabalhar próximo a valas e taludes, avaliar a resistência do terreno. Desviar de poças, valas e atoleiros. Isolar pisos com vestígios de substâncias escorregadias, valas e outras depressões.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Trabalhos em locais rampeados",
+                "perigo_fonte": "Quedas de nível Impacto contra pessoas Ataques de animais peçonhentos Quedas de materiais",
+                "evento_risco": "",
+                "danos_provaveis": "Envenenamento por picada de animal peçonhento Lesões, Traumas Fraturas, Contusões",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Ficar sempre atento por onde anda Utilizar todos os EPI´s necessários Sinalizar todas as áreas de risco Manter-se sempre fora do raio de ação de máquinas e veículos",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Derrubada da vegetação e acesso para frente de serviço.",
+                "perigo_fonte": "Quedas de nível Impacto contra pessoas Ataques de animais peçonhentos",
+                "evento_risco": "",
+                "danos_provaveis": "Envenenamento por picada de animal peçonhento Lesões, Traumas Fraturas, Contusões",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Inspecionar a área quanto a presença de caixas de abelha e cobras na vegetação. Antes da jornada de trabalho, verificar se nos locais de contato, galhos, troncos, se não existem animais peçonhentos. Em caso de picadas de cobra ou outros insetos, comunicar a equipe de brigadistas via rádio, conforme plano de atendimento a emergência e manter sistema de comunicação no local através de rádio e celular. Dispor na frente de serviço de sanitários (privada, banheiro químico) para evitar que funcionários adentrem na vegetação, manter água potável na frente de serviço. Preparar o acesso de veículos, máquinas e equipamentos, roçando e alargando a pista, bem como criar e manter áreas de escape e manobra.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capa de Chuva",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.22). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.37",
+        "titulo": "Sondagem",
+        "atividades_criticas": [
+            "Escavação / Solo (NR-18)"
+        ],
+        "riscos": [
+            {
+                "passo_tarefa": "Sondagem de interferências - Deslocamento e acesso a vala.",
+                "perigo_fonte": "Atropelamento Queda de mesmo nível ou diferente nível Ataque de animais silvestres",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Contusões Ferimentos Escoriações Cortes",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Transportar os equipamentos de maneira adequada Manter o local isolado e sinalizado Utilizar os EPI’s adequados para realização das atividades",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Sondagem de interferências - Apoio na escavação manual",
+                "perigo_fonte": "Trabalho em local com espaço restrito Presença de mais de um trabalhador Proximidade do raio de ação da ferramenta Rompimento da tubulação por esforços excessivos Falta de proteção das partes motoras",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Contusões Ferimentos Escoriações Cortes",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Uso correto e cuidadoso da haste de sondagem na procura de interferências Sempre realizar a sondagem de forma que não necessite fazer muita força Manutenção das hastes, substituição da ponteira sempre que necessário Manter extintor de incêndio em fácil acesso, próximo ao local da atividade Manter as proteções de polias e partes móveis Utilização dos EPI obrigatórios.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Atividade Sondagem geração de resíduos sólidos",
+                "perigo_fonte": "Vazamento de gás Descarte de equipamentos danificados",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Contusões Ferimentos Escoriações Cortes Poluição atmosférica",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Planejar a atividade de forma a diminuir a geração de resíduos sólidos Manter coleta seletiva no local da atividade Descarte final de resíduos em aterros homologados.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capa de Chuva",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.37). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.31",
+        "titulo": "Terraplenagem",
+        "atividades_criticas": [
+            "Escavação / Solo (NR-18)"
+        ],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação da área de serviço",
+                "perigo_fonte": "Acidente.",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões, Escoriações Lesões, fraturas e cortes",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "É obrigação do encarregado a avaliação dos conhecimentos e experiência dos colaboradores nos serviços a serem executados; -Todos os colaboradores devem ser treinados e qualificados a executar suas tarefas com segurança, visando garantir as suas atividades e as dos demais envolvidos, para que não venham a sofrer acidentes. NR18.28.3; -Todos os colaboradores deverão receber treinamento do uso correto dos EPI´s e importância dos mesmos; -É responsabilidade do encarregado tomar obrigatório a utilização dos EPI´s; -Antes de iniciar os trabalhos o Encarregado deve reunir os seus colaboradores e inspecionar a frente de serviço para avaliar e controlar os riscos existentes; -Certificar-se de que todos os colaboradores envolvidos na tarefa estejam perfeitamente bem de saúde física e psicológica.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Desmatamento/ Limpeza do terreno com uso Trator Esteira",
+                "perigo_fonte": "Ruído Atropelamento Poeira Animais peçonhentos",
+                "evento_risco": "",
+                "danos_provaveis": "Perda Aditiva; Fratura e escoriação; Infecção nas vias respiratória",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilizar protetor auricular sempre que necessário; Fazer uso correto dos retrovisores, caso evidencie a presença de pessoas e equipamentos próximos; Solicitar manutenção nos sistemas de refrigeração sempre que constatar a entrada de poeira no interior do veículo; Utilizar perneira sempre que necessário",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Escavação do Solo (Uso de Escavadeira).",
+                "perigo_fonte": "Ruído; Tombamentos; Posturas inadequadas; Poeiras; Insolação; Tombamento.",
+                "evento_risco": "",
+                "danos_provaveis": "Perda Auditiva; Soterramento de Pessoas; Lesões, escoriações, fraturas e cortes; Lesão na coluna/perda da capacidade labor ativa; Infecções respiratórias; Irritação na pele e olhos",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Fazer uso do protetor auricular; Manter o equipamento sempre nivelado em superfície, atividades corte da camada supressão vegetal evitando tombar e atolar o equipamento; Ficar atento ao manobrar o equipamento com a presença das pessoas próximo do giro do equipamento; Manter os empregados fora do raio de giro das máquinas; Somente operadores qualificados e treinados poderão operar os equipamentos; Postura adequada no trabalho; Subir e descer do equipamento somente pelos locais onde possuir garras de pega para as mãos, não improvisar acesso; Não aproximar da borda da bancada, manter distância segura do corte da mesma; Não permitir que pessoas / equipamentos fiquem posicionados no raio de giro da máquina",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Carregamento de matéria Prima (Uso escavadeira)",
+                "perigo_fonte": "Queda de Material Poeira Ruído Tombamento Falha Mecânica",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões, Fraturas Infecções nas vias respiratórias Perda auditiva Danos no Veículo Esmagamento de membros",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sinalizar e isolar a área do carregamento; Usar os EPI´S óculos de segurança, luvas pigmentadas, botina, respirador PFF 2, bloqueador solar, abafador de ruído; Somente operadores qualificados e treinados poderão operar o equipamento",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Carga e Descarga com Caminhão basculante.",
+                "perigo_fonte": "Ruído; Poeira; Tombamento; Prensamento; Atolamento e tombamento",
+                "evento_risco": "",
+                "danos_provaveis": "Perda auditiva; Infecções nas vias respiratórias Lesões e fratura; Danos no veículo",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Fazer o uso de todos os EPI’s necessários a atividade Trafegar com o caminhão com velocidade moderada de acordo com os limites máximos determinados para cada via de acesso. Manter distância de 30m em relação a outro equipamento; Manter atenção na manobra do caminhão na hora que estiver em marcha ré; Posicionar o veículo de forma alinhada, respeitando o limite de segurança do terreno no basculamento do caminhão; Só bascular o caminhão com ajuda do manobreiro. Na hora de bascular, manter distância de 3m da crista do aterro; Não permitir pessoas no entorno do equipamento. Manter os equipamentos em praça com superfície sólida. Observar a necessidade de colocar sinaleiro, quando o carregamento interferir com trânsito de veículos de terceiros; Todos os sinaleiros que trabalham em pé devem utilizar coletes refletivos, bandeirola, apitos e lanternas nas atividades noturnas, serem treinados e capacitados para a atividade; O sinaleiro não deve ficar atrás dos caminhões e sim na lateral esquerda da cabina, a uma distância de 7 m.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Umedecimento das vias de acesso com o caminhão pipa.",
+                "perigo_fonte": "Colisão com outros veículos; Postura Inadequada; Poeira; Tombamento; Atropelamento de pessoas; Danos nos Veículos",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões, Fraturas; Lombalgia; Infecções nas vias respiratórias; Perda auditiva; Danos no Veículo",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Manter distância seguro de outros veículos; Respeitar os limites de velocidade das vias de acesso. Não transporta pessoas no reservatório de água do pipa Seguir Orientação de Direção Defensiva",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Nivelamento do terreno (Uso de Motoniveladora)",
+                "perigo_fonte": "Ruído; Posturas inadequadas; Poeiras; Isolação; Colisão.",
+                "evento_risco": "",
+                "danos_provaveis": "Perda Auditiva Lesão na coluna Infecções vias respiratórias Problema de pele Fraturas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Abafador de ruído; Postura adequada; Utilizar todos os EPI’s indicados para esta etapa da atividade: óculos de segurança, luvas pigmentadas, Botina, respirador PFF 2, bloqueador solar, - Umedecimento com o caminhão pipa; Somente operadores qualificados e treinados poderão operar o equipamento. Subir e descer do equipamento somente pelos locais onde possuem garras e peças para as mãos, não improvisar acessos; O equipamento deve trafegar pelo canteiro com faróis dianteiros e traseiros acessos Todo equipamento que operam em marcha à ré devem possuir alarme sonoro acoplado ao sistema de câmbio e retrovisores em bom estado; Não é permitida a presença de pessoas próxima as máquinas durante os serviços e expressamente proibido passar o controle do equipamento a pessoa não autorizada ou habilitada;",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Movimentação de Terra Uso (Trator de pneu)",
+                "perigo_fonte": "Atropelamento Ruído Poeira Colisão Ergonomia Exposição à radiação solar Tombamento Prensamento",
+                "evento_risco": "",
+                "danos_provaveis": "Esmagamentos de membro Perda auditiva Infecções nas vias respiratórias Danos no Veículo. Câncer de pele Lombalgia",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Antes de iniciar os trabalhos o Encarregado deve reunir os seus colaboradores e inspecionar a frente de serviço para avaliar e controlar os riscos existentes; Somente operadores qualificados e treinados poderão operar o equipamento; Usar protetor auricular durante a exposição de ruído; Manter área umidificada sempre que possível, usar máscara PFF2 quando exposto a poeira e a umidificação não for possível; Todos os Colaboradores deveram utilizar os EPI´s Adequado a sua função; Cuidado com trânsito de veículos máquina e equipamentos em operação; Todos os colaboradores deverão estar utilizando uniforme com faixa refletiva; utilizar cones refletivos de sinalização para isolamento da área; Fazer uso de protetor solar /Usar uniforme de manga comprida; Utilize sempre luvas para apanhar materiais ou pegar cabos; Todo funcionário fica proibido de transitar pelas áreas onde o acesso é restrito, bem como onde os serviços não estiverem sendo realizados. Sem a devida autorização; Mantenha distância da operação de equipamentos móveis.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Regularização e Compactação do solo.",
+                "perigo_fonte": "Ruído; Atropelamento; Colisão Atropelamento Tombamento",
+                "evento_risco": "",
+                "danos_provaveis": "Perda auditiva; Fraturas e escoriações Esmagamento de membros",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Inspecionar a área de trabalho antes do início das atividades; Utilizar todos os EPI’s indicados para esta etapa da atividade: óculos de segurança, luvas pigmentadas Botina, respirador PFF 2, bloqueador solar, Touca, Abafador de ruído; É proibido a permanecia de pessoas entre as máquinas e equipamentos durante as atividades; Orientar os operadores durante as manobras Somente operadores qualificados e treinados poderão operar o equipamento; Todo equipamento que operam em marcha à ré devem possuir alarme sonoro acoplado ao sistema de câmbio e retrovisores em bom estado",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.31). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.39",
+        "titulo": "Trabalho com Plataforma Elevatória",
+        "atividades_criticas": [
+            "Trabalho em Altura (NR-35)"
+        ],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação da área de serviço",
+                "perigo_fonte": "Acidente.",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões, Escoriações Lesões, Fraturas Cortes",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "É obrigação do encarregado a avaliação dos conhecimentos e experiência dos colaboradores nos serviços a serem executados; -Todos os colaboradores devem ser treinados e qualificados a executar suas tarefas com segurança, visando garantir as suas atividades e as dos demais envolvidos, para que não venham a sofrer acidentes. NR18.28.3; -Todos os colaboradores deverão receber treinamento do uso correto dos EPI´s e importância dos mesmos; -É responsabilidade do encarregado tomar obrigatório a utilização dos EPI´s; -Antes de iniciar os trabalhos o Encarregado deve reunir os seus colaboradores e inspecionar a frente de serviço para avaliar e controlar os riscos existentes; -Certificar-se de que todos os colaboradores envolvidos na tarefa estejam perfeitamente bem de saúde física e psicológica.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Preparação do pessoal",
+                "perigo_fonte": "Não entender atividade ou não seguir os procedimentos de Segurança",
+                "evento_risco": "",
+                "danos_provaveis": "Perda de Colaboradores; Perda de material; Perda de tempo",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "As atividades somente poderão ter início após a Divulgação desta APR no DDS com seu respectivo registro; - Antes de iniciar as atividades os colaboradores deverão estar cientes das tarefas a serem realizadas e procedimentos a serem seguidos, através de orientações diárias feitas por DDS´s e orientação sobre o conteúdo desta APR.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Uso da Plataforma Elevatória",
+                "perigo_fonte": "Quedas em Altura Queda de Objetos Tombamento; Esmagamento; Choque Elétrico Atropelamento; Colisão.",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Fraturas Entorses Lesões Cortes Escoriações Lesão na coluna Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Controle de operação e de emergência; Dispositivos de segurança do equipamento; Dispositivos de proteção individual, incluindo trava quedas; Sistemas de ar hidráulico e de combustível; Painéis, cabos, e chicotes elétricos; Pneus e rodas; Placas, sinais de avisos e de controle; Estabilizadores, eixos expansíveis e estrutura em geral; Demais itens especificados pelo fabricante; Fixar talabartes no suporte da plataforma específica; Só executar a operação no piso nivelado e que não ofereça risco de tombamento; Amarrar as ferramentas para evitar quedas involuntárias; Sempre deixar uma distância de 01 metro do teto se possível evitando assim o esmagamento;",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Linha de Vida / Trava-quedas",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.39). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.06",
+        "titulo": "Trabalho em Altura",
+        "atividades_criticas": [
+            "Trabalho em Altura (NR-35)"
+        ],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação da área de serviço",
+                "perigo_fonte": "Acidente.",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões, Escoriações Lesões, fraturas e cortes",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "É obrigação do encarregado a avaliação dos conhecimentos e experiência dos colaboradores nos serviços a serem executados; -Todos os colaboradores devem ser treinados e qualificados a executar suas tarefas com segurança, visando garantir as suas atividades e as dos demais envolvidos, para que não venham a sofrer acidentes. NR18.28.3; -Todos os colaboradores deverão receber treinamento do uso correto dos EPI´s e importância dos mesmos; -É responsabilidade do encarregado tomar obrigatório a utilização dos EPI´s; -Antes de iniciar os trabalhos o Encarregado deve reunir os seus colaboradores e inspecionar a frente de serviço para avaliar e controlar os riscos existentes; -Certificar-se de que todos os colaboradores envolvidos na tarefa estejam perfeitamente bem de saúde física e psicológica.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Deslocar para frente de serviço com equipamento, ferramentas e materiais etc.",
+                "perigo_fonte": "Transporte de pessoas acima de sua capacidade física, Queda do mesmo nível Queda de nível diferente, Queda de ferramentas ou material, Ultrapassar área isolada, Atropelamento, batida contra picada de animais peçonhentos, Torções, Lombalgia, Iluminação inadequada",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Fraturas Entorses Lesões Cortes Escoriações Lesão na coluna",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Não levantar ou transportar peso acima de sua capacidade física Peça ajuda aos companheiros e superiores Não corra ande, olhe onde pisa. Não ultrapassar por local sinalizado e isolado você pode ser a vítima. Ao fazer deslocamento acima de use escada, cinto de segurança com 2 talabartes, linha de vida, guarda corpo com roda pé. Transportar as ferramentas e peças na bolsa ou amarrada para evitar queda. – Ao caminhar procure as faixas para pedestres no canteiro de obra. Não permanecer no raio de movimentação de máquinas e equipamentos. Em caso de animais peçonhentos acione a equipe de resgate de fauna para resgate. Manter concentração no local de trabalho. Não improvisar acessos, utilize somente acesso liberado. Manter postura ergonomicamente enquanto estiver executando a atividade. Respeitar os limites de velocidade no canteiro de obra. Solicitar a elétrica melhoria na iluminação, caso necessário, verificar a aproximação do andaime e fios de alta tensão, isolar e sinalizar a área antes de iniciar as atividades.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Montagem de torre para execução de andaimes.",
+                "perigo_fonte": "Queda de funcionário de diferente nível ou do mesmo nível Queda de Materiais Tombamento da torre Ferimento, Contusão/ Prensagem dos Membros.",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Fraturas Entorses Lesões Cortes Escoriações Lesão na coluna",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilização dos EPI's básicos necessários: capacete com jugular, óculos de segurança, luvas de raspa, botina com biqueira de aço, cinto de segurança tipo paraquedista atracado em local seguro, acima do tronco do colaborador. Todas as equipes de montagem de andaimes devem ser treinadas pelos encarregados responsáveis pelo serviço, porta carteira de identificação de treinamento, é proibido trabalho sobre por. Toda montagem de torre para execução de andaimes deverá ter acompanhamento do responsável, em caso de condições meteorológicas adversas paralisar as atividades. Antes do início das atividades, o encarregado deverá preencher o checklist de trabalho em altura.? O encarregado deverá orientar sempre a equipe sobre o serviço a ser executado. Verificar as condições dos módulos antes de iniciar a montagem da torre, eliminando os que apresentarem desgastes, trincas, empenamentos etc. Efetuar o primeiro travamento quando os módulos atingirem (três metros) de altura, e só continuar a montagem da torre depois deste travamento realizado, colocar o travamento a cada 03 metros de módulos montados. Efetuar o travamento utilizando tubo roll ou similar fazendo a amarração nas torres. Confeccionar escada, linha de vida para acesso e travar o cinto de segurança. Após a montagem do segundo módulo, trabalhar na parte interna da estrutura fazendo uso constante do cinto de segurança tipo paraquedista atracado em local seguro. Utilizar tábuas resistentes e de boa qualidade nas estruturas da torre para apoio dos pés e movimentação segura do corpo. As tábuas deverão ser amarradas adequadamente a fim de evitar seu deslizamento. Utilizar cordas novas e de boa qualidade para içamento dos módulos. Proceder ao içamento de 01 (um) módulo de cada vez. Amarrar adequadamente os módulos. Afastar-se do local enquanto estiver subindo e montando os módulos. Os andaimes deverão possuir rodapé Fazer isolamento do local abaixo, quando em atividade acima. Toda torre deverá possuir uma sapata (chapa de ferro) x com encaixe para a colocação dos pés no primeiro módulo, a fim de facilitar o nivelamento da torre caso necessite. Uso obrigatório de luvas de raspa / vaqueta.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Carregamento e transporte de materiais",
+                "perigo_fonte": "Queda de Material Poeira Ruído Tombamento Falha Mecânica",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões, Fraturas Infecções nas vias respiratórias Perda auditiva Danos no Veículo Esmagamento de membros",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Sinalizar e isolar a área do carregamento; Usar os EPI´S óculos de segurança, luvas pigmentadas, botina, respirador PFF 2, bloqueador solar, abafador de ruído; Somente operadores qualificados e treinados poderão operar o equipamento",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Desmontagem das torres.",
+                "perigo_fonte": "Queda de Funcionário diferente nível, Desabamento, Lombalgia e Distensões, Corpo Estranho nos Olhos, Choque Elétrico, Ruído, Calor, Poeira, Risco Ergonômico, Iluminação Inadequada.",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Fraturas Entorses Lesões Cortes Escoriações Lesão na coluna",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Utilização dos EPI's básicos necessários: capacete com jugular, óculos de segurança, luvas de raspa, botina com biqueira de aço, cinto de segurança tipo pára-quedista atracado em local seguro, a um nível mais elevado que a cabeça Fazer isolamento da área do desmonte das torres. Não levantar ou transportar peso acima de sua capacidade física . Utilizar corda resistente e de boa qualidade para a descida dos módulos. Descer um de cada vez. Não improvisar ferramentas ou acessos. - Retirar os travamentos de cima para baixo, na medida em que for desmontando os módulos. Não permanecer no raio da movimentação de máquinas e equipamentos e em içamento de cargas. Fazer o remanejamento das tábuas utilizadas para apoio dos pés, a cada módulo desmontado. Manter a postura ergonomicamente correta durante a execução das atividades. Manter todos os módulos da estrutura empilhados adequadamente em local que não interfira com movimentação de veículos, equipamentos ou pessoas. Afastar os funcionários quando da descida dos módulos Esta análise de risco deve ser levada ao conhecimento de todos os envolvidos através do DDS. Os andaimes deverão possuir rodapé Uso obrigatório de luvas de raspa/vaqueta",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Protetor Facial",
+            "Linha de Vida / Trava-quedas",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.06). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.26",
+        "titulo": "Trabalhos com Solda e Corte a Quente",
+        "atividades_criticas": [
+            "Trabalho a Quente / Fogo"
+        ],
+        "riscos": [
+            {
+                "passo_tarefa": "Serviços de Solda Elétrica.",
+                "perigo_fonte": "Incêndios Explosão Choques elétricos",
+                "evento_risco": "",
+                "danos_provaveis": "Queimadura no corpo Radiações não ionizantes",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Fazer uso constante dos seguintes EPI’s: avental, blusão, de raspa e perneira de raspa, luvas de para soldador máscara de soldador e botas de couro O dispositivo usado para manusear eletrodos, deve ter isolamento adequado à corrente usada, a fim de evitar a formação de arco elétrico ou choques no operador. As mangueiras de oxigênio e acetileno devem possuir mecanismos contra retrocesso das chamas nos cilindros, válvulas corta-chama e na chegada do maçarico válvula anti-retrocesso. É proibida a presença de substâncias inflamáveis e / ou explosivas próximas aos cilindros de oxigênio e acetileno. As operações de solda e corte a quente, somente poderão ser realizadas por profissionais qualificados e treinados.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Operações de Solda e Corte Oxiacetilenos",
+                "perigo_fonte": "Explosão Incêndio Queda de Material ou Ferramentas. Vazamento de gas Trabalhos em ambientes confinados Trabalhos em ambientes com presença de líquidos e gases inflamáveis",
+                "evento_risco": "",
+                "danos_provaveis": "Fraturas Cortes Hematomas perfurações Contusões Luxações Intoxicação com Gases.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Fazer uso dos EPI’s adequados a tarefa, a saber: botas de couro com palmilha e biqueira de aço, óculos de segurança com lentes filtrantes, avental e blusão de raspa, luvas de vaqueta, cinto de segurança tipo paraquedista e respirador contra fumos de solda. Se necessário efetuar ventilação forçada. Os cilindros de oxigênio e acetileno, deverão ser providos de válvulas corte – fluxo e anti-retrocesso. O transporte de cilindros deverá ser feito em carrinho apropriado. E os cilindros que não estiverem em uso deverão permanecer na gaiola. Remover os materiais combustíveis da área próxima à soldagem.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Linha de Vida / Trava-quedas",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.26). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.15",
+        "titulo": "Trabalhos em Espaço Confinado",
+        "atividades_criticas": [
+            "Espaço Confinado (NR-33)"
+        ],
+        "riscos": [
+            {
+                "passo_tarefa": "Preparação da equipe para realização da atividade.",
+                "perigo_fonte": "Queda de nível. Queda de materiais.",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Traumas.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Respeitar as sinalizações presentes no local Trabalhar com atenção as estruturas que estará exposto Manter os materiais de maneira segura durante o transporte utilizando-se de condições adequadas para o mesmo",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Realização da atividade.",
+                "perigo_fonte": "Queda de diferente nível. Asfixia. Intoxicação por gases inflamáveis (butano; propano; acetileno). Explosão.",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões. Ferimentos. Fraturas. Traumas. Morte.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Só será permitido que o colaborador realize a atividade após a apresentação do certificado de treinamento, exames complementares, PET (Permissão para Entrada e Trabalho) emitida pelo responsável legal da atividade, aferição da pressão arterial, resultado dos testes de gás feito no local da atividade e demais testes que sejam necessários O colaborador deve estar portando rádio de comunicação, todos os EPI´s necessários a atividade, cilindro de gás se necessário",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Controle da atividade.",
+                "perigo_fonte": "Acidentes. Morte.",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Ferimentos Fraturas Traumas Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Só poderá ser realizada a atividade com a presença dos seguintes fatores: Colaboradores devidamente treinados para a atividade conforme determina a NR 33 – Trabalhos em Espaço Confinado Apresentação da APR (Análise Preliminar de Risco) Apresentação da PET (Permissão de Entrada e Trabalho) Resultado dos testes realizados no local Presença do vigia de espaço confinado Presença do supervisor de espaço confinado Área devidamente isolada e sinalizada, livre de pessoas não autorizadas e qualquer outro tipo de obstáculo Com a presença da equipe de resgate e do veículo de resgate",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Linha de Vida / Trava-quedas",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.15). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.08",
+        "titulo": "Transporte Coletivo",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Início das atividades.",
+                "perigo_fonte": "Falhas humanas / mecânicas.",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões, Escoriações -Lesões, fraturas e cortes.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Diariamente antes de iniciar a atividade, o motorista deverá efetuar inspeção no veículo, preencher o formulário de check list, verificando os principais itens de segurança, tais como: a) sistema de freio; b) iluminação (luz alta e baixa), setas indicativas de direção, luz de freio e iluminação interna do veículo. c) estado dos pneus; d) extintor de incêndio; e) níveis de óleo e água; bem como a quantidade de combustível. .",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Deslocamento na cidade e estrada.",
+                "perigo_fonte": "Colisões e Atropelamentos.",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões, Escoriações -Lesões, Danos Materiais.",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Antes de iniciar as operações de descarregamento de materiais, o responsável pela mesma deverá providenciar a sinalização e isolamento da mesma, de modo a permitir a proximidade somente dos envolvidos. Havendo a necessidade de se fazer a descarga em áreas de circulação obstruir a mesma; Nunca correr no local de trabalho e observar atentamente os desníveis e interferências nos locais de passagem; Ao estacionar o caminhão, o motorista deverá manter os freios de estacionamento acionados; As operações somente poderão ser iniciadas se o Munck estiver patolado sobre pranchas de madeira com dimensões que garantam boa distribuição da carga ao solo.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Embarque e desembarque e transporte de passageiros.",
+                "perigo_fonte": "Queda de nível diferente; Prensamento; Cortes/ perfurações; Ruído; Projeção de particulados; Ergonomia; Poeira.",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões; Escoriações; Lesões; Danos Materiais;",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Nos deslocamentos na cidade e estrada, o motorista deverá trafegar com cautela, respeitando a sinalização de trânsito, limites de velocidade e principalmente a faixa de pedestres. Na estrada deve-se ter atenção redobrada quanto à presença de homens e máquinas na pista; bem como a sinalização nos trechos em obras. A parada para embarque e desembarque de passageiros deverá ser obrigatoriamente nos pontos de embarque pré-definidos, sendo proibido em esquinas ou locais que possam dificultar o trânsito de outros veículos. O veículo só deverá se deslocar depois que os passageiros estiverem sentados, sendo proibido o transporte de pessoas em pé. Todos os colaboradores deverão respeitar o motorista, não sendo permitido fumar, portar armas de qualquer espécie ou bebidas alcoólicas no interior do veículo. Não permitir que passageiros viagem com a cabeça ou braços fora da janela.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Excesso de velocidade e desavenças.",
+                "perigo_fonte": "Atropelamentos Queda de colaboradores Colisão",
+                "evento_risco": "",
+                "danos_provaveis": "Contusões; Escoriações; Lesões; Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "O motorista deverá conhecer todos os acesos e nomenclaturas de locais e frentes de serviço, devendo analisar previamente qualquer alteração nas pistas de acesso. Caso seja constatado qualquer tipo e risco no deslocamento, o veículo deve ser parado e feito análise mais apurada da situação. Caso seja constatado qualquer tipo e risco no deslocamento, o veículo deve ser parado e feito análise mais apurada da situação. Estar atento a movimentação de máquinas e equipamentos, dando preferência de trânsito, conforme segue: a) ambulância e veículo da Segurança do Trabalho, com sirene e os giroflex ligados; b) equipamentos pesados carregados; c) equipamentos pesados. O veículo nunca deverá ser estacionado em áreas de movimentação de máquinas e equipamentos pesados. O veículo nunca deverá ser estacionado em áreas de movimentação de máquinas e equipamentos pesados. Deverá ser respeitada sinalização do canteiro de obras e a velocidade de deslocamento nas pistas e praças de carregamento. O embarque e desembarque de passageiros deverá ser feito em local de livre circulação, longe de máquinas e equipamentos e nunca no cruzamento de vias.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Protetor Auditivo (Plug/Concha)",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Bota de Borracha (Impermeável)",
+            "Protetor Facial",
+            "Respirador c/ Filtro Mecânico/Válvula",
+            "Cinto de Segurança Tipo Paraquedista c/ Talabarte Duplo Y"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.08). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.34",
+        "titulo": "Transporte de Equipamentos em Carreta",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Posicionamento do equipamento na prancha da carreta.",
+                "perigo_fonte": "Queda de equipamento Queda de nível Colisão Esmagamento Tombamento Esforço excessivo no levantamento da rampa da carreta.",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Traumas Contusões Prensamento Cortes Fraturas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Fazer a movimentação dos equipamentos para carreta em local adequado Antes de abaixar as rampas da prancha, verifique se não há nenhuma pessoa no raio de movimentação da mesma Utilize luvas de raspa para manipular cabos, corrente e rampa. Na operação de subida do equipamento na carreta, não deve permanecer nenhuma pessoa sobre a prancha e ao redor da carreta. Os equipamentos deveram ser operados por colaborador qualificado avaliados pelos instrutores de equipamentos",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Transporte do equipamento para frente de trabalho.",
+                "perigo_fonte": "Queda do equipamento. Atropelamento. Colisão da carreta durante o transporte de equipamentos. Contato com redes elétricas",
+                "evento_risco": "",
+                "danos_provaveis": "Ferimentos Contusões Fraturas Choque elétrico Prensamento Morte",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "A carreta não poderá ultrapassar o limite de velocidade permitido verificar se não há presença de rede elétrica. Os equipamentos deverão ser operados por profissional qualificado e autorizado. Para baixar ou subir o equipamento da prancha, deve-se estacionar a carreta em superfície nivelada. Durante o descarregamento do equipamento da prancha, deve-se instalar cones de sinalização na frente e atrás da carreta. Deve evitar caminhar na beirada da carreta a fim de evitar queda. Evite pular da prancha da carreta ao solo.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Meio Ambiente",
+                "perigo_fonte": "Vazamentos Descarte de resíduos",
+                "evento_risco": "",
+                "danos_provaveis": "Atração de animais e insetos Contaminação do solo Contaminação da água Contaminação do Lençol freático",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Aplicar os Sensos de Utilização, de Ordenação, de Limpeza, de Saúde e de Autodisciplina Não descartar nenhum tipo de resíduo fora da coleta seletiva. Recolher, segregar e destinar os resíduos Em caso de vazamento de óleo utilizar-se do kit de mitigação",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capa de Chuva",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.34). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.35",
+        "titulo": "Transporte de Inflamáveis e Lubrificantes em Caminhão Comboio",
+        "atividades_criticas": [
+            "Produtos Químicos Perigosos"
+        ],
+        "riscos": [
+            {
+                "passo_tarefa": "Transporte de líquidos inflamáveis e lubrificantes.",
+                "perigo_fonte": "Colisão. Atropelamento. Tombamento do Equipamento",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Traumas Contusões Prensamento Cortes Fraturas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "O operador do caminhão comboio deverá ser habilitado, treinado e autorizado Durante o percurso o operador do comboio deverá respeitar as leis de trânsito vigentes no país e obedecer a sinalização existente ao longo do trajeto a ser percorrido. O caminhão comboio deverá possuir calços de material resistentes, apropriados e em número suficiente para serem utilizados nas rodas em caso de necessidade. O caminhão comboio deverá transitar em perfeitas condições principalmente os sistemas de freios, elétricos, direção e suspensão, cabendo ao operador relatar ao encarregado qualquer anormalidade no equipamento que possa comprometer a segurança da sua operação O operador do caminhão comboio nunca deverá passar o comando do mesmo para outro operador",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Meio Ambiente.",
+                "perigo_fonte": "Geração de resíduos sólidos inertes, não-inertes e perigosos.",
+                "evento_risco": "",
+                "danos_provaveis": "Contaminação do solo Atração de animais e insetos Transmissão de doenças infectocontagiosas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Aplicar os Sensos de Utilização, de Ordenação, de Limpeza, de Saúde e de Autodisciplina Não descartar nenhum tipo de resíduo fora da coleta seletiva. Recolher, segregar e destinar os resíduos As baterias de veículos inservíveis devem ser armazenadas em depósito apropriado para baterias usadas, para seu posterior envio aos distribuidores / fabricantes e/ou empresas licenciadas. Disponibilizar Kit Mitigação nos veículos/equipamentos. Todos os veículos/equipamentos devem conter bandeja de contenção. Na operação, quando na ocorrência de vazamento de óleo hidráulico e/ou produtos químicos é necessária a execução de barreiras de contenção para evitar ao máximo que o material escoe para cursos d’água e/ou se espalhe. Sinalizar o local com cones e/ou isolar com fita zebrada. No caso de risco de incêndio, a área deverá ser imediatamente evacuada. Utilizar o Kit de contenção, na persistência do vazamento Quanto ao fracionamento de embalagens fica restringido em",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capa de Chuva",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.35). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.36",
+        "titulo": "Utilização da Ambulância",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Deslocamentos no Canteiro, Rodovia e Cidade.",
+                "perigo_fonte": "Atropelamento Colisões Tombamentos",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Traumas Contusões Prensamento Cortes Fraturas",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Deverá ser obedecida a sinalização de trânsito, limites de velocidade e a preferência dentro do canteiro de obras, ou seja, dar preferência para veículos pesados e/ou máquinas pesadas caso não estiverem em ação de busca e remoção de nenhuma vítima Manter distância segura do veículo da frente Estacionar o veículo em local visível e permanecer com o pisca alerta ligado. A sirene e giroflex somente deverão ser utilizadas em casos de emergência O uso da sirene e do giroflex ligado não garantem que o condutor do veículo à frente ou que vem em sentido contrário irão facilitar a ultrapassagem, portanto a ultrapassagem por outros veículos deverá ser feira somente quando tiver boa visão da pista ou quando o veículo que trafega frente de lado ou sinalizar favoravelmente para que a ultrapassagem seja feita O uso do cinto de segurança é obrigatório para o condutor da ambulância, para os envolvidos no transporte do paciente e para os pacientes, mesmo quando transportados nas macas A ambulância deverá ser utilizada somente para atendimento de urgência",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capa de Chuva",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.36). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    },
+    {
+        "numero_legado": "004.17",
+        "titulo": "Vigilância Patrimonial",
+        "atividades_criticas": [],
+        "riscos": [
+            {
+                "passo_tarefa": "Movimentação do guindaste/ munck até o local de operação",
+                "perigo_fonte": "Exposição ao ruído. Tombamento do guindaste/ munck. Impacto de pessoa contra.",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Traumas Contusões Cortes Pensamento Colisão",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Usar protetor auricular especificado. Alertar colaboradores que não estiverem usando o protetor auricular. O operador do guindaste/ munck deverá verificar e analisar as condições de acesso até o local de patolar a máquina. Esta movimentação deverá ser feita com auxílio de sinaleiro. Observar as interferências existentes no raio de ação da lança do guindaste/ munk. O deslocamento do guindaste/ munk não poderá ser feito com a lança suspensa.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Patolar guindaste/ munk.",
+                "perigo_fonte": "Tombamento do guindaste/munk Aprisiona - mento em, sob ou entre. Queda de pessoa em mesmo nível.",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Traumas Contusões Cortes Pensamento",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "O operador do guindaste/ munck deverá verificar e analisar as condições o local, antes de patolar o equipamento. Caso seja necessário, seguir o plano de rigger elaborado pelo responsável técnico pelo levantamento. Deverá ser utilizado o sinal convencional de movimentação de carga pelo sinaleiro (rigger), que terá que estar com colete de identificação, auxiliando o operador. Antes de levantar o equipamento, verificar o seu peso e a tabela de carga do guindaste/ munck.No caso do operador não visualizar o rigger, este contato deverá ser feito via rádio. Observar as interferências existentes no raio de ação da lança do guindaste/ munck. O deslocamento do guindaste/ munck não poderá ser feito com a lança suspensa.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            },
+            {
+                "passo_tarefa": "Verificação de cintas estropos e acessórios a serem utilizados na movimentação de carga.",
+                "perigo_fonte": "Impacto de pessoa contra Queda de pessoa em mesmo nível.",
+                "evento_risco": "",
+                "danos_provaveis": "Lesões Traumas Contusões Cortes Pensamento",
+                "p_puro": "",
+                "s_puro": "",
+                "medidas_prevencao": "Evite pressa e movimentos bruscos. Fique atento aos obstáculos e interferências no seu trajeto. Mantenha sua área limpa, organizada e livre de interferências e obstáculos. Manter as áreas limpas, organizadas, livres de obstáculos, interferências, buracos. Pisos com vestígios de substâncias escorregadias, valas e outras depressões.",
+                "p_residual": "",
+                "s_residual": "",
+                "responsavel": ""
+            }
+        ],
+        "epis_basicos": [
+            "Luvas de Proteção",
+            "Óculos de Proteção",
+            "Calçado de Segurança c/ Biqueira",
+            "Perneira 3 Talas",
+            "Protetor Auditivo (Plug/Concha)",
+            "Capa de Chuva",
+            "Capacete com Jugular",
+            "Protetor Solar"
+        ],
+        "epi_luva_tipo": "",
+        "epis_especificos": [
+            "Respirador c/ Filtro Mecânico/Válvula"
+        ],
+        "epi_extintor_tipo": "",
+        "observacoes": "Modelo importado do formato físico anterior (código legado 004.17). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
+    }
+];

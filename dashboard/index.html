@@ -3707,6 +3707,7 @@
                         <button id="aprSubtabBtn-visao" class="db-filter-btn active" onclick="showAprSubtab('visao')">📊 Visão Geral</button>
                         <button id="aprSubtabBtn-nova" class="db-filter-btn" onclick="showAprSubtab('nova'); abrirFormNovaApr();">➕ Nova APR</button>
                         <button id="aprSubtabBtn-historico" class="db-filter-btn" onclick="showAprSubtab('historico')">📜 Histórico</button>
+                        <button id="aprSubtabBtn-modelos" class="db-filter-btn" onclick="showAprSubtab('modelos')">📁 Modelos</button>
                     </div>
                 </div>
 
@@ -3832,6 +3833,11 @@
                             <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiBasicoCheckbox" value="Óculos de Proteção" style="width:15px; height:15px;"><span>Óculos de Proteção</span></label>
                             <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiBasicoCheckbox" value="Calçado de Segurança c/ Biqueira" style="width:15px; height:15px;"><span>Calçado de Segurança c/ Biqueira</span></label>
                             <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiBasicoCheckbox" value="Protetor Auditivo (Plug/Concha)" style="width:15px; height:15px;"><span>Protetor Auditivo (Plug/Concha)</span></label>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiBasicoCheckbox" value="Perneira 3 Talas" style="width:15px; height:15px;"><span>Perneira 3 Talas</span></label>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiBasicoCheckbox" value="Protetor Solar" style="width:15px; height:15px;"><span>Protetor Solar</span></label>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiBasicoCheckbox" value="Capa de Chuva" style="width:15px; height:15px;"><span>Capa de Chuva</span></label>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiBasicoCheckbox" value="Botina Isolante 10.000 Volts" style="width:15px; height:15px;"><span>Botina Isolante 10.000 Volts</span></label>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiBasicoCheckbox" value="Luva para Eletricista (Isolante)" style="width:15px; height:15px;"><span>Luva para Eletricista (Isolante)</span></label>
                         </div>
                         <div style="margin-top:6px; display:flex; align-items:center; gap:8px;">
                             <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;"><input type="checkbox" class="aprEpiBasicoCheckbox" value="Luvas de Proteção" style="width:15px; height:15px;"><span>Luvas de Proteção (Tipo):</span></label>
@@ -3847,6 +3853,15 @@
                             <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiEspecificoCheckbox" value="Tapete Isolante / Ferramentas Isoladas 1000V" style="width:15px; height:15px;"><span>Tapete Isolante / Ferramentas Isoladas 1000V</span></label>
                             <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiEspecificoCheckbox" value="Biombos / Mantas Anti-chama" style="width:15px; height:15px;"><span>Biombos / Mantas Anti-chama</span></label>
                             <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiEspecificoCheckbox" value="Sistema de Bloqueio/Travamento LOTO" style="width:15px; height:15px;"><span>Sistema de Bloqueio/Travamento LOTO</span></label>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiEspecificoCheckbox" value="Respirador c/ Filtro Mecânico/Válvula" style="width:15px; height:15px;"><span>Respirador c/ Filtro Mecânico/Válvula</span></label>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiEspecificoCheckbox" value="Avental de Raspa/PVC" style="width:15px; height:15px;"><span>Avental de Raspa/PVC</span></label>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiEspecificoCheckbox" value="Mangote de Raspa" style="width:15px; height:15px;"><span>Mangote de Raspa</span></label>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiEspecificoCheckbox" value="Macacão Impermeável (Tiken)" style="width:15px; height:15px;"><span>Macacão Impermeável (Tiken)</span></label>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiEspecificoCheckbox" value="Capuz de Soldador" style="width:15px; height:15px;"><span>Capuz de Soldador</span></label>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiEspecificoCheckbox" value="Máscara de Celeron" style="width:15px; height:15px;"><span>Máscara de Celeron</span></label>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiEspecificoCheckbox" value="Protetor Facial" style="width:15px; height:15px;"><span>Protetor Facial</span></label>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiEspecificoCheckbox" value="Bota de Borracha (Impermeável)" style="width:15px; height:15px;"><span>Bota de Borracha (Impermeável)</span></label>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="aprEpiEspecificoCheckbox" value="Colete Salva-Vidas" style="width:15px; height:15px;"><span>Colete Salva-Vidas</span></label>
                         </div>
                         <div style="margin-top:6px; display:flex; align-items:center; gap:8px;">
                             <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;"><input type="checkbox" class="aprEpiEspecificoCheckbox" value="Extintor de Incêndio Dedicado" style="width:15px; height:15px;"><span>Extintor de Incêndio Dedicado (Tipo/Capacidade):</span></label>
@@ -3904,6 +3919,25 @@
                         <button class="db-clear-btn" onclick="limparBuscaAprHistorico()">✕ Limpar</button>
                     </div>
                     <div id="listAprHistorico" class="db-list"></div>
+                </div>
+                </div>
+
+                <div id="aprSubtab-modelos" style="display:none;">
+                <div class="db-chart-card db-list-card">
+                    <div class="db-chart-title">📁 Modelos de APR Reutilizáveis</div>
+                    <div style="font-size:12px; color:var(--text-light); margin-bottom:10px; line-height:1.5;">
+                        Modelos vindos do formato de APR em papel usado antes do sistema (43 atividades). Cada um já vem com etapas, perigos, danos e medidas preventivas preenchidos, além dos EPIs aplicáveis — mas <b>sem</b> a classificação de Probabilidade/Severidade de cada risco, que só você (SESMT) deve preencher ao usar o modelo, de acordo com a atividade real. Clique em "▶️ Usar como Base" para começar uma APR nova a partir de um modelo.
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
+                        <button class="db-clear-btn" onclick="importarModelosAprSeed()">🌱 Importar Modelos do Formato Anterior</button>
+                        <span style="font-size:12px; color:var(--text-light);">Modelos cadastrados: <b id="contadorAprModelos">0</b></span>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-bottom: 10px;">
+                        <input type="text" id="buscaAprModelos" placeholder="Buscar por título ou código anterior..." oninput="renderAprModelosLista()"
+                               style="flex:1; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-size: 12.5px;">
+                        <button class="db-clear-btn" onclick="document.getElementById('buscaAprModelos').value=''; renderAprModelosLista();">✕ Limpar</button>
+                    </div>
+                    <div id="listAprModelos" class="db-list"></div>
                 </div>
                 </div>
             </section>

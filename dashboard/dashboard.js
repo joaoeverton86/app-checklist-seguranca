@@ -75,48 +75,134 @@ async function supabaseFetchCacheado(table, query) {
 }
 
 // ============================================
-// IDENTIFICAÇÃO DE USO DO PAINEL (NÃO É LOGIN) - o painel não tem senha nem controle de
-// acesso (isso é um projeto à parte, maior - ver roteiro_apr_login_auditoria.txt em
-// scratch/). Isso aqui só pergunta, uma vez por computador/navegador, "quem está usando o
-// painel agora" e guarda no localStorage DESSE aparelho - serve só pra preencher o "quem"
-// no histórico de alterações (audit_log), de boa-fé. Não impede ninguém de usar o painel
-// nem de mentir o nome - é um registro de controle interno, não uma trava de segurança.
+// LOGIN DO PAINEL (Fase 2 do roteiro de login/auditoria - ver
+// scratch/roteiro_apr_login_auditoria.txt) - mesma matrícula/senha e o mesmo RPC
+// verificar_login() que o app de celular já usa e já testa em campo (bcrypt no banco,
+// nunca no cliente). A sessão fica salva em localStorage na chave 'active_session' - a
+// MESMA chave que o app de celular usa - e como os dois ficam no mesmo domínio (mesma
+// origem), quem já está logado no app de celular neste navegador entra direto no painel
+// também, sem precisar logar de novo.
+//
+// IMPORTANTE - isso resolve só a "porta da frente" (agora precisa de credencial de
+// verdade pra ENXERGAR a tela do painel). NÃO é ainda a proteção de dados no banco: a
+// política de acesso (RLS) de cada tabela continua aberta pra qualquer um com a chave
+// pública do Supabase (a mesma chave que está neste próprio arquivo), inclusive por fora
+// do painel. Essa parte é a Fase 3 do roteiro, um projeto maior à parte.
 // ============================================
 
+// Lê a sessão ativa (mesmo formato que o app de celular grava: matricula/role/nome/
+// loginTime) - null se não tiver ninguém logado ou se o conteúdo salvo estiver corrompido.
+function sessaoDashboardAtual() {
+    try {
+        const raw = localStorage.getItem('active_session');
+        if (!raw) return null;
+        const session = JSON.parse(raw);
+        return (session && session.matricula && session.nome) ? session : null;
+    } catch (e) {
+        return null;
+    }
+}
+
 function usuarioDashboardAtual() {
-    try { return localStorage.getItem('dashboard_usuario_atual') || ''; } catch (e) { return ''; }
+    const session = sessaoDashboardAtual();
+    return session ? session.nome : '';
 }
 
 function atualizarBadgeUsuarioDashboard() {
+    const session = sessaoDashboardAtual();
     const el = document.getElementById('badgeUsuarioDashboard');
-    if (el) el.textContent = usuarioDashboardAtual() || '(não identificado)';
+    if (el) el.textContent = session ? `${session.nome}${session.role ? ' (' + session.role + ')' : ''}` : '(não identificado)';
 }
 
-function garantirUsuarioDashboard() {
-    if (!usuarioDashboardAtual()) {
-        const nome = (prompt('Quem está usando o painel agora?\n\nIsso NÃO é uma senha - é só pra registrar quem fez cada alteração no histórico das APRs (e futuramente de outros módulos). Fica guardado só neste computador/navegador; dá pra trocar quando quiser clicando no nome no topo da tela.', 'JOÃO EVERTON DE SOUZA LIMEIRA') || '').trim();
-        if (nome) { try { localStorage.setItem('dashboard_usuario_atual', nome); } catch (e) { /* localStorage indisponível - segue sem identificação */ } }
-    }
-    atualizarBadgeUsuarioDashboard();
+// Alterna entre a tela de login e o painel de verdade, de acordo com a sessão atual -
+// chamado na inicialização e de novo depois de login/logout bem-sucedidos.
+function aplicarVisibilidadeLoginDashboard() {
+    const logado = !!sessaoDashboardAtual();
+    const loginScreen = document.getElementById('dashboardLoginScreen');
+    const app = document.getElementById('dashboardApp');
+    if (loginScreen) loginScreen.style.display = logado ? 'none' : 'flex';
+    if (app) app.style.display = logado ? '' : 'none';
+    if (logado) atualizarBadgeUsuarioDashboard();
 }
 
-function trocarUsuarioDashboard() {
-    const nome = (prompt('Trocar identificação de uso do painel (não é senha/login, só pro histórico de alterações):', usuarioDashboardAtual()) || '').trim();
-    if (nome) {
-        try { localStorage.setItem('dashboard_usuario_atual', nome); } catch (e) { /* localStorage indisponível */ }
-        atualizarBadgeUsuarioDashboard();
+// Mesmo fluxo do realizarLogin() do app de celular, só que sem o fallback offline/
+// IndexedDB (o painel já depende de internet pra tudo o mais, então login offline não faz
+// sentido aqui) - chama o RPC verificar_login direto, sempre online.
+async function realizarLoginDashboard() {
+    const matriculaInput = document.getElementById('dbLoginMatricula');
+    const senhaInput = document.getElementById('dbLoginSenha');
+    const errorDiv = document.getElementById('dbLoginError');
+    const btn = document.getElementById('dbLoginBtn');
+    if (!matriculaInput || !senhaInput) return;
+
+    const loginVal = matriculaInput.value.trim();
+    const senha = senhaInput.value;
+    if (errorDiv) errorDiv.style.display = 'none';
+
+    if (!loginVal || !senha) {
+        if (errorDiv) { errorDiv.textContent = '❌ Preencha matrícula e senha.'; errorDiv.style.display = 'block'; }
+        return;
     }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Verificando...'; }
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/verificar_login`, {
+            method: 'POST',
+            headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ p_login: loginVal, p_senha: senha })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const colab = Array.isArray(data) && data.length > 0 ? data[0] : null;
+
+        if (!colab) {
+            if (errorDiv) { errorDiv.textContent = '❌ Matrícula ou senha incorretos.'; errorDiv.style.display = 'block'; }
+            return;
+        }
+        if (colab.ativo === false) {
+            if (errorDiv) { errorDiv.textContent = '❌ Este colaborador está inativo/desmobilizado.'; errorDiv.style.display = 'block'; }
+            return;
+        }
+
+        // Guarda só o essencial pra sessão - nunca o hash da senha (o painel não precisa
+        // dele pra nada, diferente do app de celular que usa pra permitir login offline).
+        const session = {
+            matricula: colab.matricula || colab.id,
+            role: (colab.nivel_acesso || '').toLowerCase().includes('admin') ? 'Admin' : 'Tecnico',
+            nome: colab.nome,
+            loginTime: Date.now()
+        };
+        localStorage.setItem('active_session', JSON.stringify(session));
+        matriculaInput.value = '';
+        senhaInput.value = '';
+        init();
+    } catch (e) {
+        console.error('Erro ao verificar login do painel:', e);
+        if (errorDiv) { errorDiv.textContent = '❌ Falha ao verificar login: ' + e.message; errorDiv.style.display = 'block'; }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔑 Entrar'; }
+    }
+}
+
+function realizarLogoutDashboard() {
+    if (!confirm('Deseja realmente sair do painel?')) return;
+    localStorage.removeItem('active_session');
+    pararAutoRefresh();
+    aplicarVisibilidadeLoginDashboard();
 }
 
 // Grava uma linha no audit_log (mesma tabela que o app de celular já usa e já tem tela de
 // consulta pra ela) - reaproveita a estrutura pronta em vez de criar uma tabela nova só
-// pro painel. Nunca deixa uma falha aqui derrubar o salvamento/exclusão principal - só
-// avisa no console, o histórico é um "extra", não pode travar o trabalho de verdade.
+// pro painel. Agora com login de verdade (Fase 2), actor_matricula vem da sessão
+// autenticada, não mais de texto livre. Nunca deixa uma falha aqui derrubar o salvamento/
+// exclusão principal - só avisa no console, o histórico é um "extra", não pode travar o
+// trabalho de verdade.
 async function registrarAuditLogDashboard(action, tableName, recordId, recordLabel, details) {
+    const session = sessaoDashboardAtual();
     try {
         await supabaseInsert('audit_log', [{
-            actor_matricula: null,
-            actor_nome: usuarioDashboardAtual() || '(não identificado)',
+            actor_matricula: session ? session.matricula : null,
+            actor_nome: (session && session.nome) || '(não identificado)',
             action,
             table_name: tableName,
             record_id: (recordId !== undefined && recordId !== null) ? String(recordId) : null,
@@ -18884,6 +18970,14 @@ async function excluirAplicacaoPsicossocial() {
 // ============================================
 
 function init() {
+    // Sem sessão ativa (ninguém logado neste navegador, nem pelo painel nem pelo app de
+    // celular) - mostra só a tela de login e para por aqui. init() é chamado de novo
+    // pelo próprio realizarLoginDashboard() assim que o login for bem-sucedido.
+    if (!sessaoDashboardAtual()) {
+        aplicarVisibilidadeLoginDashboard();
+        return;
+    }
+    aplicarVisibilidadeLoginDashboard();
     restaurarGruposNavAbertos();
     // Checklists é a página que já carrega ativa direto no HTML (ver comentário em
     // restaurarGruposNavAbertos) - por isso o destaque da categoria correspondente
@@ -18891,7 +18985,6 @@ function init() {
     // só dentro de showDbPage() (que só roda quando o usuário clica em algum item).
     destacarGrupoAtivo('checklists');
     setReportFilter('mes');
-    garantirUsuarioDashboard();
     loadData();
     iniciarAutoRefresh();
 }
@@ -18965,8 +19058,10 @@ function rerenderGraficosDaPaginaAtiva() {
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
         // Timer pausado (refreshTimer null) = a aba esteve escondida - busca dado fresco
-        // na hora (pode ter passado horas) e retoma o ciclo normal de 5 em 5 minutos.
-        if (!refreshTimer) {
+        // na hora (pode ter passado horas) e retoma o ciclo normal de 5 em 5 minutos. Só
+        // faz isso com sessão ativa - sem essa checagem, voltar numa aba com a tela de
+        // login (ex: depois de um logout) reativava o auto-refresh sozinho.
+        if (!refreshTimer && sessaoDashboardAtual()) {
             loadData();
             iniciarAutoRefresh();
         }

@@ -8,6 +8,25 @@
 const SUPABASE_URL = 'https://qqtcwxvbjmybyzubocgd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxdGN3eHZiam15Ynl6dWJvY2dkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1ODczNDUsImV4cCI6MjEwMDE2MzM0NX0.T6Nm-lUD2I_mRULsEXCDQBkJe2cEpl6_z7hUNR30yTk';
 
+// Client oficial do Supabase Auth (Fase 3 do roteiro de login/auditoria - ver
+// scratch/roteiro_apr_login_auditoria.txt) - usado SÓ pra autenticação (login/logout/
+// sessão). As chamadas de dados continuam nos helpers supabaseFetch/Upsert/Insert/Delete
+// abaixo, sem reescrever cada chamador - eles só passam a mandar o token de sessão real
+// (via authTokenDashboard()) em vez da anon key fixa, quando existir uma sessão Auth.
+const sbAuth = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Devolve o access_token da sessão Supabase Auth real, se existir, senão a anon key de
+// sempre (mesmo comportamento de hoje pras tabelas que ainda não têm RLS restrita). Não
+// falha nunca - qualquer erro ao consultar a sessão cai de volta pra anon key.
+async function authTokenDashboard() {
+    try {
+        const { data } = await sbAuth.auth.getSession();
+        return data?.session?.access_token || SUPABASE_KEY;
+    } catch (e) {
+        return SUPABASE_KEY;
+    }
+}
+
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
 
 // Pagina automaticamente via Range/Content-Range. O PostgREST corta em 1000 linhas por
@@ -20,12 +39,13 @@ async function supabaseFetch(table, query = '') {
     let offset = 0;
     let total = null; // conhecido a partir da 1ª página, local a esta chamada (nunca
     // compartilhado entre fetches em paralelo - ver comentário do Prefer abaixo)
+    const authToken = await authTokenDashboard();
 
     while (true) {
         const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${query}`, {
             headers: {
                 apikey: SUPABASE_KEY,
-                Authorization: `Bearer ${SUPABASE_KEY}`,
+                Authorization: `Bearer ${authToken}`,
                 Range: `${offset}-${offset + PAGE_SIZE - 1}`,
                 // count=exact só na primeira página - da segunda em diante o total já é
                 // conhecido, pedir de novo só faz o Postgres recalcular a mesma contagem
@@ -173,6 +193,41 @@ async function realizarLoginDashboard() {
             loginTime: Date.now()
         };
         localStorage.setItem('active_session', JSON.stringify(session));
+
+        // Fase 3 (ver scratch/roteiro_apr_login_auditoria.txt) - além da sessão de sempre,
+        // tenta autenticar de verdade no Supabase Auth com a mesma matrícula/senha, pra
+        // ganhar um JWT real (só ele faz o RLS restrito de apr_registros/apr_modelos/
+        // ghe_catalogo/acidentes/aso_exames enxergar dados). Primeira vez que essa pessoa
+        // loga depois do deploy da Fase 3 (ou se a conta Auth ainda não existe por
+        // qualquer motivo), o signInWithPassword falha - nesse caso chama a Edge Function
+        // que ativa a conta (usando a MESMA senha que acabou de ser digitada) e tenta de
+        // novo. Se mesmo assim falhar, não bloqueia o login do painel (Fase 2 continua
+        // garantindo a entrada) - só fica sem acesso às tabelas com RLS restrita até
+        // resolver, em vez de travar a pessoa fora do painel inteiro por causa disso.
+        if (colab.email) {
+            let { error: authErr } = await sbAuth.auth.signInWithPassword({ email: colab.email, password: senha });
+            if (authErr) {
+                try {
+                    const ativacaoRes = await fetch(`${SUPABASE_URL}/functions/v1/ativar-conta-auth`, {
+                        method: 'POST',
+                        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ login: loginVal, senha })
+                    });
+                    const ativacaoData = await ativacaoRes.json().catch(() => ({}));
+                    if (ativacaoRes.ok && ativacaoData.success) {
+                        ({ error: authErr } = await sbAuth.auth.signInWithPassword({ email: colab.email, password: senha }));
+                    } else {
+                        authErr = new Error(ativacaoData.error || `HTTP ${ativacaoRes.status}`);
+                    }
+                } catch (ativacaoException) {
+                    authErr = ativacaoException;
+                }
+                if (authErr) console.error('Não foi possível ativar/entrar no Supabase Auth (Fase 3) - painel segue liberado pela Fase 2, mas tabelas com RLS restrita podem não carregar:', authErr);
+            }
+        } else {
+            console.error('Colaborador sem e-mail cadastrado - não é possível ativar o acesso protegido (Fase 3) pra essa conta ainda.');
+        }
+
         matriculaInput.value = '';
         senhaInput.value = '';
         init();
@@ -184,9 +239,10 @@ async function realizarLoginDashboard() {
     }
 }
 
-function realizarLogoutDashboard() {
+async function realizarLogoutDashboard() {
     if (!confirm('Deseja realmente sair do painel?')) return;
     localStorage.removeItem('active_session');
+    try { await sbAuth.auth.signOut(); } catch (e) { /* sem sessão Auth pra encerrar, ou já expirada - tudo bem */ }
     pararAutoRefresh();
     aplicarVisibilidadeLoginDashboard();
 }
@@ -232,7 +288,7 @@ async function supabaseUpsert(table, rows) {
         method: 'POST',
         headers: {
             apikey: SUPABASE_KEY,
-            Authorization: `Bearer ${SUPABASE_KEY}`,
+            Authorization: `Bearer ${await authTokenDashboard()}`,
             'Content-Type': 'application/json',
             Prefer: 'resolution=merge-duplicates'
         },
@@ -250,7 +306,7 @@ async function supabaseInsert(table, rows) {
         method: 'POST',
         headers: {
             apikey: SUPABASE_KEY,
-            Authorization: `Bearer ${SUPABASE_KEY}`,
+            Authorization: `Bearer ${await authTokenDashboard()}`,
             'Content-Type': 'application/json',
             Prefer: 'return=minimal'
         },
@@ -263,7 +319,7 @@ async function supabaseInsert(table, rows) {
 async function supabaseDelete(table, id) {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {
         method: 'DELETE',
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${await authTokenDashboard()}` }
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
     invalidarCacheTabela(table);
@@ -278,7 +334,7 @@ async function supabaseDeleteMany(table, ids) {
     const lista = ids.map(id => encodeURIComponent(id)).join(',');
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=in.(${lista})`, {
         method: 'DELETE',
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${await authTokenDashboard()}` }
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
     invalidarCacheTabela(table);

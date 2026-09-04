@@ -74,6 +74,60 @@ async function supabaseFetchCacheado(table, query) {
     return data;
 }
 
+// ============================================
+// IDENTIFICAÇÃO DE USO DO PAINEL (NÃO É LOGIN) - o painel não tem senha nem controle de
+// acesso (isso é um projeto à parte, maior - ver roteiro_apr_login_auditoria.txt em
+// scratch/). Isso aqui só pergunta, uma vez por computador/navegador, "quem está usando o
+// painel agora" e guarda no localStorage DESSE aparelho - serve só pra preencher o "quem"
+// no histórico de alterações (audit_log), de boa-fé. Não impede ninguém de usar o painel
+// nem de mentir o nome - é um registro de controle interno, não uma trava de segurança.
+// ============================================
+
+function usuarioDashboardAtual() {
+    try { return localStorage.getItem('dashboard_usuario_atual') || ''; } catch (e) { return ''; }
+}
+
+function atualizarBadgeUsuarioDashboard() {
+    const el = document.getElementById('badgeUsuarioDashboard');
+    if (el) el.textContent = usuarioDashboardAtual() || '(não identificado)';
+}
+
+function garantirUsuarioDashboard() {
+    if (!usuarioDashboardAtual()) {
+        const nome = (prompt('Quem está usando o painel agora?\n\nIsso NÃO é uma senha - é só pra registrar quem fez cada alteração no histórico das APRs (e futuramente de outros módulos). Fica guardado só neste computador/navegador; dá pra trocar quando quiser clicando no nome no topo da tela.', 'JOÃO EVERTON DE SOUZA LIMEIRA') || '').trim();
+        if (nome) { try { localStorage.setItem('dashboard_usuario_atual', nome); } catch (e) { /* localStorage indisponível - segue sem identificação */ } }
+    }
+    atualizarBadgeUsuarioDashboard();
+}
+
+function trocarUsuarioDashboard() {
+    const nome = (prompt('Trocar identificação de uso do painel (não é senha/login, só pro histórico de alterações):', usuarioDashboardAtual()) || '').trim();
+    if (nome) {
+        try { localStorage.setItem('dashboard_usuario_atual', nome); } catch (e) { /* localStorage indisponível */ }
+        atualizarBadgeUsuarioDashboard();
+    }
+}
+
+// Grava uma linha no audit_log (mesma tabela que o app de celular já usa e já tem tela de
+// consulta pra ela) - reaproveita a estrutura pronta em vez de criar uma tabela nova só
+// pro painel. Nunca deixa uma falha aqui derrubar o salvamento/exclusão principal - só
+// avisa no console, o histórico é um "extra", não pode travar o trabalho de verdade.
+async function registrarAuditLogDashboard(action, tableName, recordId, recordLabel, details) {
+    try {
+        await supabaseInsert('audit_log', [{
+            actor_matricula: null,
+            actor_nome: usuarioDashboardAtual() || '(não identificado)',
+            action,
+            table_name: tableName,
+            record_id: (recordId !== undefined && recordId !== null) ? String(recordId) : null,
+            record_label: recordLabel || null,
+            details: details || null
+        }]);
+    } catch (e) {
+        console.error('Erro ao registrar log de auditoria:', e);
+    }
+}
+
 // Limpa qualquer entrada em cache (todas as variações de query) da tabela escrita - sem
 // isso, um upsert/delete numa tabela cacheada (ver supabaseFetchCacheado) ficaria
 // invisível pro próprio usuário que acabou de salvar até o TTL expirar. Não-op pra
@@ -100,6 +154,23 @@ async function supabaseUpsert(table, rows) {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
     invalidarCacheTabela(table);
+    return true;
+}
+
+// Insert puro (sem on_conflict/upsert) - pra tabelas como audit_log, onde o id é gerado
+// automaticamente pelo banco a cada linha nova, nunca é o mesmo id de novo.
+async function supabaseInsert(table, rows) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+        method: 'POST',
+        headers: {
+            apikey: SUPABASE_KEY,
+            Authorization: `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json',
+            Prefer: 'return=minimal'
+        },
+        body: JSON.stringify(rows)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
     return true;
 }
 
@@ -16407,7 +16478,21 @@ async function loadAprData() {
     }
 }
 
-function showAprSubtab(tab) {
+let allAprAuditLog = [];
+
+// Busca o histórico de alterações de todas as APRs de uma vez (mesma tabela audit_log que
+// o app de celular já usa) - carregado só quando a aba Histórico é aberta, não no
+// carregamento inicial do painel, pra não pesar à toa em quem nunca abre essa aba.
+async function carregarAprAuditLog() {
+    try {
+        allAprAuditLog = await supabaseFetch('audit_log', '?table_name=eq.apr_registros&select=*&order=created_at.desc&limit=1000');
+    } catch (e) {
+        console.error('Erro ao carregar histórico de alterações da APR:', e);
+        allAprAuditLog = [];
+    }
+}
+
+async function showAprSubtab(tab) {
     ['visao', 'nova', 'historico'].forEach(t => {
         const content = document.getElementById('aprSubtab-' + t);
         const btn = document.getElementById('aprSubtabBtn-' + t);
@@ -16415,7 +16500,7 @@ function showAprSubtab(tab) {
         if (btn) btn.classList.toggle('active', t === tab);
     });
     if (tab === 'visao') renderAprPanel();
-    if (tab === 'historico') renderAprHistoricoLista();
+    if (tab === 'historico') { await carregarAprAuditLog(); renderAprHistoricoLista(); }
 }
 
 function renderAprPanel() {
@@ -16767,12 +16852,31 @@ async function salvarApr() {
         statusEl.style.color = 'var(--success)';
         document.getElementById('aprForm_id').value = row.id;
         document.getElementById('aprForm_btnImprimir').style.display = 'inline-block';
+        registrarAuditLogDashboard(existente ? 'update' : 'create', 'apr_registros', row.id, row.titulo, resumoAlteracoesApr(existente, row));
         renderAprHistoricoLista();
     } catch (err) {
         console.error('Erro ao salvar APR:', err);
         statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
         statusEl.style.color = 'var(--danger)';
     }
+}
+
+// Resumo em texto das principais diferenças entre a APR antes e depois de salvar - não é
+// uma cópia campo a campo (isso deixaria o histórico ilegível), é o suficiente pra alguém
+// entender rapidamente o que mudou numa edição sem abrir a APR toda.
+function resumoAlteracoesApr(antigo, novo) {
+    if (!antigo) return 'APR criada.';
+    const partes = [];
+    if ((antigo.titulo || '') !== (novo.titulo || '')) partes.push(`Título: "${antigo.titulo || ''}" → "${novo.titulo || ''}"`);
+    if ((antigo.data_emissao || '') !== (novo.data_emissao || '')) partes.push(`Emissão: ${antigo.data_emissao || '—'} → ${novo.data_emissao || '—'}`);
+    if ((antigo.validade_ate || '') !== (novo.validade_ate || '')) partes.push(`Validade até: ${antigo.validade_ate || '—'} → ${novo.validade_ate || '—'}`);
+    if ((antigo.setor_unidade || '') !== (novo.setor_unidade || '')) partes.push(`Setor: "${antigo.setor_unidade || ''}" → "${novo.setor_unidade || ''}"`);
+    if ((antigo.local_especifico || '') !== (novo.local_especifico || '')) partes.push(`Local: "${antigo.local_especifico || ''}" → "${novo.local_especifico || ''}"`);
+    if ((antigo.responsavel || '') !== (novo.responsavel || '')) partes.push(`Responsável/Frente: "${antigo.responsavel || ''}" → "${novo.responsavel || ''}"`);
+    const riscosAntes = Array.isArray(antigo.riscos) ? antigo.riscos.length : 0;
+    const riscosDepois = Array.isArray(novo.riscos) ? novo.riscos.length : 0;
+    if (riscosAntes !== riscosDepois) partes.push(`Riscos: ${riscosAntes} → ${riscosDepois}`);
+    return partes.length > 0 ? partes.join(' · ') : 'Salva novamente, sem mudança nos campos principais (pode ter mudado só detalhe de algum risco).';
 }
 
 // ---- Histórico / exclusão ----
@@ -16811,6 +16915,8 @@ function renderAprHistoricoLista() {
                 : '<span class="badge" style="background:#e6f7ee; color:#1a7f4b; border:1px solid #b8e6cc;">✅ Ativa</span>';
         const riscos = Array.isArray(a.riscos) ? a.riscos : [];
         const expandido = aprItemExpandidoId === a.id;
+        const logsDesta = allAprAuditLog.filter(l => l.record_id === a.id);
+        const acaoLabelHistorico = { create: '🟢 Criou', update: '🟡 Editou', delete: '🔴 Excluiu' };
         const detalheHtml = expandido ? `
             <div style="flex-basis:100%; margin-top:8px; padding:10px; background:var(--bg); border-radius:8px; font-size:12px;">
                 <div><b>Local:</b> ${escapeHTML(a.local_especifico || '—')} · <b>Setor:</b> ${escapeHTML(a.setor_unidade || '—')} · <b>Frente:</b> ${escapeHTML(a.responsavel || '—')}</div>
@@ -16823,6 +16929,12 @@ function renderAprHistoricoLista() {
                         return `<li>${escapeHTML(r.evento_risco || r.perigo_fonte || '')} — Residual: <b style="color:${residual.cor}">${residual.valor ?? '—'} (${residual.label})</b></li>`;
                     }).join('')}
                 </ul>
+                <div style="margin-top:10px;"><b>🕘 Histórico de Alterações (${logsDesta.length}):</b></div>
+                ${logsDesta.length === 0
+                    ? '<div style="color:var(--text-light); font-size:11.5px; margin-top:4px;">Nenhum registro ainda - só passa a valer pra alterações feitas a partir de agora.</div>'
+                    : `<ul style="margin:4px 0 0; padding-left:18px; font-size:11.5px;">
+                        ${logsDesta.map(l => `<li>${acaoLabelHistorico[l.action] || l.action} — <b>${escapeHTML(l.actor_nome || '(não identificado)')}</b> em ${l.created_at ? new Date(l.created_at).toLocaleString('pt-BR') : '—'}${l.details ? ' — ' + escapeHTML(l.details) : ''}</li>`).join('')}
+                    </ul>`}
             </div>` : '';
         return `
         <div class="db-list-item" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -16848,6 +16960,7 @@ async function excluirApr(id) {
     try {
         await supabaseDelete('apr_registros', id);
         allAprRegistros = allAprRegistros.filter(x => x.id !== id);
+        registrarAuditLogDashboard('delete', 'apr_registros', id, a.titulo || a.descricao_atividade || a.setor_unidade || '', null);
         renderAprHistoricoLista();
         if (document.getElementById('aprSubtabBtn-visao')?.classList.contains('active')) renderAprPanel();
     } catch (err) {
@@ -18668,6 +18781,7 @@ function init() {
     // só dentro de showDbPage() (que só roda quando o usuário clica em algum item).
     destacarGrupoAtivo('checklists');
     setReportFilter('mes');
+    garantirUsuarioDashboard();
     loadData();
     iniciarAutoRefresh();
 }

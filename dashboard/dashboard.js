@@ -17298,6 +17298,9 @@ function imprimirApr(id) {
     .campo b { margin-right:4px; }
     .secao-titulo { font-weight:700; text-align:center; background:#e5e5e5; padding:4px; border-bottom:1px solid #000; border-top:1px solid #000; font-size:11.5px; }
     .checklist { padding:8px 10px; font-size:10.5px; line-height:1.9; border-bottom:1px solid #000; }
+    .legenda-matriz { padding:4px 8px; font-size:8.5px; line-height:1.7; border-bottom:1px solid #000; background:#fafafa; }
+    .legenda-matriz b { font-size:8.5px; }
+    .legenda-matriz .nivel { padding:1px 6px; border-radius:3px; font-weight:700; white-space:nowrap; }
     table { width:100%; border-collapse:collapse; }
     th, td { border:1px solid #000; padding:3px 5px; font-size:9.5px; vertical-align:top; }
     th { background:#e5e5e5; font-size:9px; }
@@ -17327,15 +17330,38 @@ function imprimirApr(id) {
             <div class="campo"><b>FRENTE/ENCARREGADO:</b> ${escapeHTML(a.responsavel || '')}</div>
         </div>
         <div class="linha">
-            <div class="campo" style="flex:3;"><b>DESCRIÇÃO DA ATIVIDADE:</b> ${escapeHTML(a.descricao_atividade || '')}</div>
-        </div>
-        <div class="secao-titulo">ATIVIDADES CRÍTICAS VINCULADAS</div>
-        <div class="checklist">
-            ${marcadoAtiv('Trabalho em Altura (NR-35)')} Trabalho em Altura (NR-35) &nbsp;&nbsp; ${marcadoAtiv('Espaço Confinado (NR-33)')} Espaço Confinado (NR-33) &nbsp;&nbsp; ${marcadoAtiv('Eletricidade / SEP (NR-10)')} Eletricidade / SEP (NR-10)<br>
-            ${marcadoAtiv('Içamento / Cargas Críticas')} Içamento / Cargas Críticas &nbsp;&nbsp; ${marcadoAtiv('Trabalho a Quente / Fogo')} Trabalho a Quente / Fogo &nbsp;&nbsp; ${marcadoAtiv('Escavação / Solo (NR-18)')} Escavação / Solo (NR-18)<br>
-            ${marcadoAtiv('Produtos Químicos Perigosos')} Produtos Químicos Perigosos &nbsp;&nbsp; ${marcadoAtiv('Bloqueio / LOTO (NR-12)')} Bloqueio / LOTO (NR-12) &nbsp;&nbsp; ${outrosAtiv ? '☑' : '☐'} Outros: ${escapeHTML(outrosAtiv ? outrosAtiv.replace(/^Outros:\s*/, '') : '')}
+            <div class="campo" style="flex:1.8;"><b>DESCRIÇÃO DA ATIVIDADE:</b> ${escapeHTML(a.descricao_atividade || '')}</div>
+            <div class="campo" style="flex:2.5; font-size:9.5px; line-height:1.55;">
+                <b style="display:block; margin-bottom:3px; font-size:10px;">ATIVIDADES CRÍTICAS VINCULADAS</b>
+                <div style="display:flex; gap:10px;">
+                    <div style="flex:1;">
+                        ${marcadoAtiv('Trabalho em Altura (NR-35)')} Trabalho em Altura (NR-35)<br>
+                        ${marcadoAtiv('Espaço Confinado (NR-33)')} Espaço Confinado (NR-33)<br>
+                        ${marcadoAtiv('Eletricidade / SEP (NR-10)')} Eletricidade / SEP (NR-10)<br>
+                        ${marcadoAtiv('Içamento / Cargas Críticas')} Içamento / Cargas Críticas<br>
+                        ${marcadoAtiv('Trabalho a Quente / Fogo')} Trabalho a Quente / Fogo
+                    </div>
+                    <div style="flex:1;">
+                        ${marcadoAtiv('Escavação / Solo (NR-18)')} Escavação / Solo (NR-18)<br>
+                        ${marcadoAtiv('Produtos Químicos Perigosos')} Produtos Químicos Perigosos<br>
+                        ${marcadoAtiv('Bloqueio / LOTO (NR-12)')} Bloqueio / LOTO (NR-12)<br>
+                        ${outrosAtiv ? '☑' : '☐'} Outros: ${escapeHTML(outrosAtiv ? outrosAtiv.replace(/^Outros:\s*/, '') : '')}
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="secao-titulo">AVALIAÇÃO E CONTROLE DE RISCOS (Matriz 5×5 - P×S)</div>
+        <div class="legenda-matriz">
+            <b>P (Probabilidade):</b> 1 Raro &middot; 2 Improvável &middot; 3 Possível &middot; 4 Provável &middot; 5 Frequente
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <b>S (Severidade):</b> 1 Leve s/ afastamento &middot; 2 Ambulatorial &middot; 3 Com afastamento &middot; 4 Grave/incapacitante &middot; 5 Fatalidade
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <b>Risco = P×S:</b>
+            <span class="nivel" style="background:#e6f7ee; color:#1a7f4b;">1-4 Baixo</span>
+            <span class="nivel" style="background:#fff9e6; color:#b78a00;">5-9 Moderado</span>
+            <span class="nivel" style="background:#fef1e0; color:#c2650a;">10-16 Alto</span>
+            <span class="nivel" style="background:#fdf2f2; color:#c0392b;">17-25 Crítico</span>
+        </div>
         <table>
             <thead><tr>
                 <th>Item</th><th>Passo</th><th>Perigo/Fonte</th><th>Evento/Risco</th><th>Danos</th>

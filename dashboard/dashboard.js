@@ -16860,6 +16860,17 @@ function removerRiscoAprForm(i) {
     renderRiscosAprForm();
 }
 
+// Troca a posição do risco no índice i com o vizinho (direcao -1 = sobe, +1 = desce) -
+// não faz nada se já estiver na ponta (primeiro não sobe, último não desce). Só reordena
+// o array em memória - o número "Risco N" exibido é sempre a posição atual (recalculado
+// no render), não fica salvo nenhum número fixo por risco.
+function moverRiscoAprForm(i, direcao) {
+    const j = i + direcao;
+    if (j < 0 || j >= aprRiscosForm.length) return;
+    [aprRiscosForm[i], aprRiscosForm[j]] = [aprRiscosForm[j], aprRiscosForm[i]];
+    renderRiscosAprForm();
+}
+
 // Um "cartão" por risco (não uma linha só, como em Compras) - com 13 campos por risco
 // (passo/perigo/evento/danos/P/S/puro/medidas/P/S/residual/responsável), uma linha
 // horizontal única ficaria ilegível. Os selects de P/S disparam um re-render pra
@@ -16887,7 +16898,11 @@ function renderRiscosAprForm() {
         <div style="border:1px solid ${residualRuim ? 'var(--danger)' : 'var(--border)'}; border-radius:10px; padding:10px; margin-bottom:10px; background:var(--bg);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                 <b style="font-size:12px;">Risco ${i + 1}</b>
-                <button onclick="removerRiscoAprForm(${i})" title="Remover" style="border:none; background:none; color:var(--danger); cursor:pointer; font-size:15px;">🗑️</button>
+                <div style="display:flex; gap:2px; align-items:center;">
+                    <button onclick="moverRiscoAprForm(${i}, -1)" title="Mover para cima" ${i === 0 ? 'disabled' : ''} style="border:none; background:none; color:${i === 0 ? 'var(--text-light)' : 'var(--text)'}; cursor:${i === 0 ? 'default' : 'pointer'}; font-size:15px; padding:2px 4px;">▲</button>
+                    <button onclick="moverRiscoAprForm(${i}, 1)" title="Mover para baixo" ${i === aprRiscosForm.length - 1 ? 'disabled' : ''} style="border:none; background:none; color:${i === aprRiscosForm.length - 1 ? 'var(--text-light)' : 'var(--text)'}; cursor:${i === aprRiscosForm.length - 1 ? 'default' : 'pointer'}; font-size:15px; padding:2px 4px;">▼</button>
+                    <button onclick="removerRiscoAprForm(${i})" title="Remover" style="border:none; background:none; color:var(--danger); cursor:pointer; font-size:15px; padding:2px 4px;">🗑️</button>
+                </div>
             </div>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:6px; margin-bottom:6px;">
                 <input type="text" placeholder="Passo da Tarefa" value="${escapeHTML(r.passo_tarefa)}" oninput="aprRiscosForm[${i}].passo_tarefa=this.value" style="${campoEstilo}">

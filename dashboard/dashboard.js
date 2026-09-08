@@ -17932,8 +17932,38 @@ function formatarDataExtensoCipa(dateStr) {
 
 async function gerarAtaCipa() {
     const id = document.getElementById('cipaReuniaoFormCard').dataset.id;
-    const r = allCipaReunioes.find(x => x.id === id);
-    if (!r) return;
+    const salvo = allCipaReunioes.find(x => x.id === id);
+    if (!salvo) return;
+
+    // Usa os valores que estão na tela AGORA, não só o que já foi salvo no banco - sem
+    // isso, editar Presença/Pauta/Assuntos e clicar em "Gerar Ata" sem clicar em "Salvar"
+    // antes gerava a ata com os dados de ANTES da edição (achado real: participante
+    // removido da lista de Presença continuava aparecendo na ata como "Ausência
+    // Injustificada", porque a geração lia allCipaReunioes - a cópia já salva - em vez do
+    // rascunho em edição). Mesma lista de campos que salvarReuniaoCipa() grava, só que
+    // sem salvar nada - é só um "retrato" do formulário aberto agora.
+    const quaseAcidentesStrAta = document.getElementById('cipaReuniaoForm_quaseAcidentes').value;
+    const acidentesTrajetoStrAta = document.getElementById('cipaReuniaoForm_acidentesTrajeto').value;
+    const r = {
+        ...salvo,
+        tipo: document.getElementById('cipaReuniaoForm_tipo').value,
+        data_reuniao: document.getElementById('cipaReuniaoForm_data').value,
+        horario: document.getElementById('cipaReuniaoForm_horario').value || null,
+        hora_termino: document.getElementById('cipaReuniaoForm_horaTermino').value || null,
+        local: document.getElementById('cipaReuniaoForm_local').value.trim() || null,
+        cidade_uf: document.getElementById('cipaReuniaoForm_cidadeUf').value.trim() || null,
+        modalidade: document.getElementById('cipaReuniaoForm_modalidade').value,
+        descricao: document.getElementById('cipaReuniaoForm_descricao').value.trim() || null,
+        pauta: cipaReuniaoPautaAtual,
+        assuntos_tratados: cipaReuniaoAssuntosAtual,
+        quase_acidentes_qtd: quaseAcidentesStrAta !== '' ? parseInt(quaseAcidentesStrAta, 10) : null,
+        acidentes_trajeto_qtd: acidentesTrajetoStrAta !== '' ? parseInt(acidentesTrajetoStrAta, 10) : null,
+        detalhamento_acidentes: document.getElementById('cipaReuniaoForm_detalhamentoAcidentes').value.trim() || null,
+        acoes_assedio: document.getElementById('cipaReuniaoForm_acoesAssedio').value.trim() || null,
+        relato_inspecoes: document.getElementById('cipaReuniaoForm_relatoInspecoes').value.trim() || null,
+        participantes: cipaReuniaoParticipantesAtual
+    };
+
     await garantirDocumentosControleCarregados();
     const codigoAta = codigoRevisaoDocumento('ata_cipa');
 

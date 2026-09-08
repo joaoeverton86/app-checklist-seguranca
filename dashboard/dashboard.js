@@ -17772,7 +17772,12 @@ function atualizarJustificativaParticipanteCipa(i, valor) {
 }
 
 function toggleParticipanteCipa(i, checked) {
-    if (cipaReuniaoParticipantesAtual[i]) cipaReuniaoParticipantesAtual[i].presente = checked;
+    if (!cipaReuniaoParticipantesAtual[i]) return;
+    cipaReuniaoParticipantesAtual[i].presente = checked;
+    // Sem isso, o campo de justificativa (que só aparece quando a pessoa está
+    // desmarcada) nunca surgia na tela: o checkbox mudava visualmente, mas a lista
+    // não era redesenhada pra mostrar/esconder o campo de texto ao lado.
+    renderCipaParticipantesForm();
 }
 
 function removerParticipanteCipa(i) {

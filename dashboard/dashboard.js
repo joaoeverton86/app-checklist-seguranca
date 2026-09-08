@@ -17621,6 +17621,7 @@ function popularCipaColabDatalist() {
 let cipaReuniaoParticipantesAtual = [];
 let cipaReuniaoPautaAtual = [];
 let cipaReuniaoAssuntosAtual = [];
+let cipaAssuntoEditandoIndex = null;
 
 // Compatibilidade: reuniões salvas antes da itemização guardavam pauta/assuntos_tratados
 // como texto livre (TEXT). Depois da migração pra JSONB isso não deve mais acontecer,
@@ -17668,7 +17669,21 @@ function renderCipaAssuntosForm() {
         container.innerHTML = '<div class="db-list-empty">Nenhum assunto tratado adicionado.</div>';
         return;
     }
-    container.innerHTML = cipaReuniaoAssuntosAtual.map((item, i) => `
+    container.innerHTML = cipaReuniaoAssuntosAtual.map((item, i) => {
+        if (i === cipaAssuntoEditandoIndex) {
+            return `
+        <div style="display:flex; flex-direction:column; gap:6px; padding:8px; border:1px solid var(--primary); border-radius:8px; background:#f8f8ff;">
+            <div style="font-weight:700; font-size:11px; color:var(--text-light);">ITEM ${String(i + 1).padStart(2, '0')} — editando</div>
+            <input type="text" id="cipaAssuntoEdit_texto_${i}" value="${escapeHTML(item.texto || '')}" placeholder="Assunto tratado..." style="padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px;">
+            <input type="text" id="cipaAssuntoEdit_resposta_${i}" value="${escapeHTML(item.resposta || '')}" placeholder="Resposta / decisão..." style="padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px;">
+            <input type="text" id="cipaAssuntoEdit_responsavel_${i}" value="${escapeHTML(item.responsavel || '')}" placeholder="Responsável..." style="padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px;">
+            <div style="display:flex; gap:8px; justify-content:flex-end;">
+                <button onclick="cancelarEdicaoItemAssuntoCipa()" style="border:1px solid var(--border); background:#fff; color:var(--text); cursor:pointer; font-size:12px; padding:5px 12px; border-radius:6px;">Cancelar</button>
+                <button onclick="salvarEdicaoItemAssuntoCipa(${i})" style="border:none; background:var(--primary); color:#fff; cursor:pointer; font-size:12px; padding:5px 12px; border-radius:6px; font-weight:600;">✓ Salvar</button>
+            </div>
+        </div>`;
+        }
+        return `
         <div style="display:flex; align-items:flex-start; gap:8px; padding:8px; border:1px solid var(--border); border-radius:8px;">
             <div style="font-weight:700; font-size:11px; color:var(--text-light); min-width:52px; padding-top:2px;">ITEM ${String(i + 1).padStart(2, '0')}</div>
             <div style="flex:1; font-size:12.5px; display:flex; flex-direction:column; gap:2px;">
@@ -17676,8 +17691,10 @@ function renderCipaAssuntosForm() {
                 ${item.resposta ? `<div style="color:var(--text-light);"><b>Resposta:</b> ${escapeHTML(item.resposta)}</div>` : ''}
                 ${item.responsavel ? `<div style="color:var(--text-light);"><b>Responsável:</b> ${escapeHTML(item.responsavel)}</div>` : ''}
             </div>
-            <button class="db-clear-btn" style="padding:4px 8px; font-size:11px;" onclick="removerItemAssuntoCipa(${i})">✕</button>
-        </div>`).join('');
+            <button class="db-clear-btn" style="padding:4px 8px; font-size:11px;" onclick="editarItemAssuntoCipa(${i})" title="Editar">✎</button>
+            <button class="db-clear-btn" style="padding:4px 8px; font-size:11px;" onclick="removerItemAssuntoCipa(${i})" title="Remover">✕</button>
+        </div>`;
+    }).join('');
 }
 
 function adicionarItemAssuntoCipa() {
@@ -17699,6 +17716,38 @@ function adicionarItemAssuntoCipa() {
 
 function removerItemAssuntoCipa(i) {
     cipaReuniaoAssuntosAtual.splice(i, 1);
+    if (cipaAssuntoEditandoIndex === i) cipaAssuntoEditandoIndex = null;
+    else if (cipaAssuntoEditandoIndex !== null && cipaAssuntoEditandoIndex > i) cipaAssuntoEditandoIndex--;
+    renderCipaAssuntosForm();
+}
+
+// Edição feita dentro do próprio item da lista (não mais em caixas de diálogo
+// separadas que ficavam flutuando por cima da página). Clicar em "✎" troca o item
+// pelos 3 campos de edição no lugar; "Salvar" grava e "Cancelar" descarta, sem sair
+// do item nem perder a posição dele na lista.
+function editarItemAssuntoCipa(i) {
+    cipaAssuntoEditandoIndex = i;
+    renderCipaAssuntosForm();
+}
+
+function cancelarEdicaoItemAssuntoCipa() {
+    cipaAssuntoEditandoIndex = null;
+    renderCipaAssuntosForm();
+}
+
+function salvarEdicaoItemAssuntoCipa(i) {
+    const inputTexto = document.getElementById(`cipaAssuntoEdit_texto_${i}`);
+    const inputResposta = document.getElementById(`cipaAssuntoEdit_resposta_${i}`);
+    const inputResponsavel = document.getElementById(`cipaAssuntoEdit_responsavel_${i}`);
+    if (!inputTexto) return;
+    const texto = inputTexto.value.trim();
+    if (!texto) { alert('O campo "Assunto tratado" não pode ficar vazio.'); return; }
+    cipaReuniaoAssuntosAtual[i] = {
+        texto,
+        resposta: inputResposta.value.trim() || null,
+        responsavel: inputResponsavel.value.trim() || null
+    };
+    cipaAssuntoEditandoIndex = null;
     renderCipaAssuntosForm();
 }
 
@@ -17807,6 +17856,7 @@ function abrirReuniaoCipa(id) {
     document.getElementById('cipaReuniaoForm_addAssuntoTexto').value = '';
     document.getElementById('cipaReuniaoForm_addAssuntoResposta').value = '';
     document.getElementById('cipaReuniaoForm_addAssuntoResponsavel').value = '';
+    cipaAssuntoEditandoIndex = null;
     renderCipaPautaForm();
     renderCipaAssuntosForm();
     renderCipaParticipantesForm();
@@ -17980,6 +18030,15 @@ async function gerarAtaCipa() {
         const papelLabel = m?.papel ? ` (${CIPA_PAPEL_LABELS[m.papel]})` : '';
         return `<li>${escapeHTML(p.nome)}${papelLabel}</li>`;
     };
+    // Suplentes normalmente não têm um "papel" especial (presidente/vice/secretário),
+    // então sem isso o nome saía sem nenhuma indicação de representação na ata. Aqui
+    // mostramos o cargo estrutural (Suplente - Empregados/Empregador) quando não há
+    // papel especial, do mesmo jeito que já aparece no cadastro de Membros da CIPA.
+    const linhaSuplente = p => {
+        const m = membroDoParticipante(p);
+        const label = m?.papel ? ` (${CIPA_PAPEL_LABELS[m.papel]})` : (m?.cargo ? ` (${CIPA_CARGO_LABELS[m.cargo]})` : '');
+        return `<li>${escapeHTML(p.nome)}${label}</li>`;
+    };
     const gruposPresentes = {
         titular_empregador: presentes.filter(p => membroDoParticipante(p)?.cargo === 'titular_empregador'),
         titular_empregado: presentes.filter(p => membroDoParticipante(p)?.cargo === 'titular_empregado'),
@@ -18102,7 +18161,7 @@ async function gerarAtaCipa() {
         <div class="subsecao-titulo">Membros Efetivos Presentes (Representantes dos Empregados):</div>
         <ol class="lista">${gruposPresentes.titular_empregado.map(linhaMembro).join('') || '<li style="color:#888;">Nenhum</li>'}</ol>
         <div class="subsecao-titulo">Suplentes / Convidados / Especialistas:</div>
-        <ul class="lista">${gruposPresentes.suplente_empregado.map(linhaMembro).join('')}${gruposPresentes.suplente_empregador.map(linhaMembro).join('')}${gruposPresentes.convidados.map(p => `<li>${escapeHTML(p.nome)} — ${escapeHTML(p.funcao || 'Convidado(a)')}</li>`).join('') || (gruposPresentes.suplente_empregado.length + gruposPresentes.suplente_empregador.length === 0 ? '<li style="color:#888;">Nenhum</li>' : '')}</ul>
+        <ul class="lista">${gruposPresentes.suplente_empregado.map(linhaSuplente).join('')}${gruposPresentes.suplente_empregador.map(linhaSuplente).join('')}${gruposPresentes.convidados.map(p => `<li>${escapeHTML(p.nome)} — ${escapeHTML(p.funcao || 'Convidado(a)')}</li>`).join('') || (gruposPresentes.suplente_empregado.length + gruposPresentes.suplente_empregador.length === 0 ? '<li style="color:#888;">Nenhum</li>' : '')}</ul>
         <div class="subsecao-titulo">Ausências Justificadas / Injustificadas:</div>
         <ul class="lista">${linhasAusentes || '<li style="color:#888;">Nenhuma</li>'}</ul>
 

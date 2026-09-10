@@ -11550,6 +11550,7 @@ async function excluirAcidenteAtual() {
 
 let allAsoExames = [];
 let allAtestadosOcupacionais = [];
+let allPressaoArterial = [];
 let saudeLoaded = false;
 let saudeFilter = 'mes';
 let saudeFiltroAno = '';
@@ -11630,12 +11631,14 @@ function onSaudeFiltroAnoMesChange() {
 
 async function loadSaudeData() {
     try {
-        const [asoRows, atestadoRows] = await Promise.all([
+        const [asoRows, atestadoRows, pressaoRows] = await Promise.all([
             supabaseFetch('aso_exames', '?select=*'),
-            supabaseFetch('atestados_ocupacionais', '?select=*')
+            supabaseFetch('atestados_ocupacionais', '?select=*'),
+            supabaseFetch('pressao_arterial', '?select=*')
         ]);
         allAsoExames = asoRows;
         allAtestadosOcupacionais = atestadoRows;
+        allPressaoArterial = pressaoRows;
         // Precisa do efetivo (quem está ativo hoje), da configuração de dias trabalhados
         // (denominador da HHT) e dos acidentes (dias perdidos por acidente também contam
         // no absenteísmo ocupacional) - carrega tudo que ainda não tiver sido carregado.
@@ -11653,7 +11656,7 @@ async function loadSaudeData() {
 }
 
 function popularSaudeColabDatalists() {
-    ['asoColabList', 'atestadoColabList'].forEach(dlId => {
+    ['asoColabList', 'atestadoColabList', 'pressaoColabList'].forEach(dlId => {
         const dl = document.getElementById(dlId);
         if (!dl || dl.options.length > 0) return;
         allEfetivo.filter(colaboradorEstaAtivo).sort((a, b) => (a.nome || '').localeCompare(b.nome || '')).forEach(e => {
@@ -12660,7 +12663,7 @@ function renderSaudePanel() {
 }
 
 function showSaudeSubtab(tab) {
-    ['visao', 'aso', 'atestado', 'previsao', 'relatorio'].forEach(t => {
+    ['visao', 'aso', 'atestado', 'pressao', 'previsao', 'relatorio'].forEach(t => {
         const content = document.getElementById('saudeSubtab-' + t);
         const btn = document.getElementById('saudeSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -12670,6 +12673,7 @@ function showSaudeSubtab(tab) {
     if (tab === 'visao') renderSaudePanel();
     if (tab === 'aso') { renderAsoResumo(); filterAsoLista(document.getElementById('asoSearchInput')?.value || ''); }
     if (tab === 'atestado') { renderAtestadoResumo(); filterAtestadoLista(document.getElementById('atestadoSearchInput')?.value || ''); }
+    if (tab === 'pressao') { renderPressaoResumo(); filterPressaoLista(document.getElementById('pressaoSearchInput')?.value || ''); }
     if (tab === 'previsao') renderPrevisaoExames();
     // A aba de Relatório usa os mesmos números já calculados pela Visão Geral
     // (window.saudeReportData) - por isso, ao abrir ela, força um recálculo da Visão Geral
@@ -13018,6 +13022,204 @@ async function excluirAsoAtual() {
         setTimeout(() => { fecharFormAso(); showSaudeSubtab('aso'); }, 900);
     } catch (err) {
         console.error('Erro ao excluir exame ASO:', err);
+        statusEl.textContent = '❌ Falha ao excluir: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// ---- CRUD: Aferições de Pressão Arterial ----
+// Classificação de referência (adulto, aferição de triagem/acompanhamento ocupacional -
+// não substitui avaliação clínica do PCMSO). Usa o maior dos dois valores (sistólica ou
+// diastólica) pra definir o nível. Mesma paleta de cores já usada na Matriz de Risco da
+// APR (nivelRiscoApr), pra manter a linguagem visual consistente em todo o painel.
+function classificarPressaoArterial(sistolica, diastolica) {
+    if (sistolica == null || diastolica == null || isNaN(sistolica) || isNaN(diastolica)) {
+        return { nivel: '—', cor: 'var(--text-light)', bg: 'transparent' };
+    }
+    if (sistolica >= 180 || diastolica >= 120) return { nivel: 'Crise Hipertensiva', cor: '#c0392b', bg: '#fdf2f2' };
+    if (sistolica >= 140 || diastolica >= 90) return { nivel: 'Hipertensão Estágio 2', cor: '#c2650a', bg: '#fef1e0' };
+    if (sistolica >= 130 || diastolica >= 80) return { nivel: 'Hipertensão Estágio 1', cor: '#b78a00', bg: '#fff9e6' };
+    if (sistolica >= 120) return { nivel: 'Elevada', cor: '#b78a00', bg: '#fff9e6' };
+    return { nivel: 'Normal', cor: '#1a7f4b', bg: '#e6f7ee' };
+}
+
+function renderPressaoResumo() {
+    const el = document.getElementById('pressaoResumo');
+    if (!el) return;
+    const total = allPressaoArterial.length;
+    const alteradas = allPressaoArterial.filter(p => {
+        const c = classificarPressaoArterial(p.pressao_sistolica, p.pressao_diastolica);
+        return c.nivel !== 'Normal' && c.nivel !== '—';
+    }).length;
+    el.textContent = `${total} aferição(ões) registrada(s)${alteradas > 0 ? ` — ${alteradas} com pressão alterada (recomenda-se encaminhar ao médico do trabalho / PCMSO)` : ''}`;
+}
+
+function filterPressaoLista(query) {
+    const resultsEl = document.getElementById('pressaoSearchResults');
+    if (!resultsEl) return;
+    const q = (query || '').trim().toLowerCase();
+    let lista = allPressaoArterial.slice();
+    if (q.length >= 2) {
+        lista = lista.filter(p => (p.matricula || '').toLowerCase().includes(q) || (p.nome_colaborador || '').toLowerCase().includes(q));
+    }
+    lista.sort((a, b) => (b.data_afericao || '').localeCompare(a.data_afericao || ''));
+
+    if (lista.length === 0) {
+        resultsEl.innerHTML = '<div class="db-list-empty">Nenhuma aferição encontrada</div>';
+        return;
+    }
+    resultsEl.innerHTML = lista.map(p => {
+        const c = classificarPressaoArterial(p.pressao_sistolica, p.pressao_diastolica);
+        return `
+        <div class="db-list-item" style="cursor:pointer;" onclick="abrirFormPressao('${escapeHTML(p.id)}')">
+            <div class="db-list-item-title">${escapeHTML(p.nome_colaborador || 'Não identificado')} — ${p.pressao_sistolica ?? '—'}/${p.pressao_diastolica ?? '—'} mmHg
+                <span style="font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:10px; margin-left:6px; color:${c.cor}; background:${c.bg};">${escapeHTML(c.nivel)}</span>
+            </div>
+            <div class="db-list-item-sub">${formatSimpleDate(p.data_afericao)}${p.hora_afericao ? ' às ' + escapeHTML(p.hora_afericao) : ''}${p.responsavel_afericao ? ' — aferido por ' + escapeHTML(p.responsavel_afericao) : ''}</div>
+        </div>`;
+    }).join('');
+}
+
+function limparBuscaPressao() {
+    const input = document.getElementById('pressaoSearchInput');
+    if (input) { input.value = ''; input.focus(); }
+    filterPressaoLista('');
+}
+
+function onPressaoColaboradorChange() {
+    const { colab } = buscarColaboradorPorInput('pressaoForm_matricula');
+    document.getElementById('pressaoForm_colabPreview').textContent = colab ? `✓ ${colab.nome} — ${colab.funcao || ''} — ${colab.setor || ''}` : '';
+}
+
+function atualizarPreviewClassificacaoPressao() {
+    const el = document.getElementById('pressaoForm_classificacaoPreview');
+    if (!el) return;
+    const sistolica = parseInt(document.getElementById('pressaoForm_sistolica').value, 10);
+    const diastolica = parseInt(document.getElementById('pressaoForm_diastolica').value, 10);
+    const c = classificarPressaoArterial(sistolica, diastolica);
+    if (c.nivel === '—') { el.innerHTML = ''; return; }
+    el.innerHTML = `Classificação: <span style="font-weight:700; padding:2px 8px; border-radius:10px; color:${c.cor}; background:${c.bg};">${escapeHTML(c.nivel)}</span>${c.nivel !== 'Normal' ? ' — recomenda-se encaminhar ao médico do trabalho / PCMSO' : ''}`;
+}
+
+function abrirFormPressao(id) {
+    const form = document.getElementById('pressaoFormCard');
+    const title = document.getElementById('pressaoFormTitle');
+    const btnExcluir = document.getElementById('pressaoForm_btnExcluir');
+    document.getElementById('pressaoFormStatus').textContent = '';
+    document.getElementById('pressaoForm_colabPreview').textContent = '';
+    document.getElementById('pressaoForm_classificacaoPreview').innerHTML = '';
+    popularSaudeColabDatalists();
+
+    if (id) {
+        const p = allPressaoArterial.find(x => x.id === id);
+        if (!p) return;
+        title.textContent = '✏️ Editar Aferição de Pressão Arterial';
+        form.dataset.editId = id;
+        document.getElementById('pressaoForm_matricula').value = p.matricula ? `${p.matricula} - ${p.nome_colaborador || ''}` : (p.nome_colaborador || '');
+        onPressaoColaboradorChange();
+        document.getElementById('pressaoForm_data').value = p.data_afericao || '';
+        document.getElementById('pressaoForm_hora').value = p.hora_afericao || '';
+        document.getElementById('pressaoForm_sistolica').value = p.pressao_sistolica ?? '';
+        document.getElementById('pressaoForm_diastolica').value = p.pressao_diastolica ?? '';
+        document.getElementById('pressaoForm_responsavel').value = p.responsavel_afericao || '';
+        document.getElementById('pressaoForm_obs').value = p.observacoes || '';
+        atualizarPreviewClassificacaoPressao();
+        btnExcluir.style.display = 'inline-block';
+    } else {
+        title.textContent = '💉 Nova Aferição de Pressão Arterial';
+        delete form.dataset.editId;
+        document.getElementById('pressaoForm_matricula').value = '';
+        document.getElementById('pressaoForm_data').value = new Date().toISOString().split('T')[0];
+        document.getElementById('pressaoForm_hora').value = '';
+        document.getElementById('pressaoForm_sistolica').value = '';
+        document.getElementById('pressaoForm_diastolica').value = '';
+        document.getElementById('pressaoForm_responsavel').value = '';
+        document.getElementById('pressaoForm_obs').value = '';
+        btnExcluir.style.display = 'none';
+    }
+
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function fecharFormPressao() {
+    document.getElementById('pressaoFormCard').style.display = 'none';
+}
+
+async function salvarPressao() {
+    const statusEl = document.getElementById('pressaoFormStatus');
+    const data = document.getElementById('pressaoForm_data').value;
+    const sistolica = parseInt(document.getElementById('pressaoForm_sistolica').value, 10);
+    const diastolica = parseInt(document.getElementById('pressaoForm_diastolica').value, 10);
+
+    if (!data || isNaN(sistolica) || isNaN(diastolica)) {
+        statusEl.textContent = '❌ Data e os dois valores de pressão (sistólica e diastólica) são obrigatórios.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const { matricula, colab } = buscarColaboradorPorInput('pressaoForm_matricula');
+    if (!colab) {
+        statusEl.textContent = '❌ Colaborador não encontrado. Selecione um da lista.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const form = document.getElementById('pressaoFormCard');
+    const editId = form.dataset.editId;
+    const id = editId || ('PA_' + Date.now());
+    const classificacao = classificarPressaoArterial(sistolica, diastolica).nivel;
+
+    const row = {
+        id,
+        matricula,
+        nome_colaborador: colab.nome || null,
+        funcao: colab.funcao || null,
+        setor: colab.setor || null,
+        data_afericao: data,
+        hora_afericao: document.getElementById('pressaoForm_hora').value || null,
+        pressao_sistolica: sistolica,
+        pressao_diastolica: diastolica,
+        classificacao,
+        responsavel_afericao: document.getElementById('pressaoForm_responsavel').value.trim() || null,
+        observacoes: document.getElementById('pressaoForm_obs').value.trim() || null
+    };
+
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('pressao_arterial', [row]);
+        const idx = allPressaoArterial.findIndex(p => p.id === id);
+        if (idx >= 0) allPressaoArterial[idx] = { ...allPressaoArterial[idx], ...row };
+        else allPressaoArterial.push(row);
+
+        statusEl.textContent = '✅ Salvo com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => { fecharFormPressao(); showSaudeSubtab('pressao'); }, 900);
+    } catch (err) {
+        console.error('Erro ao salvar aferição de pressão arterial:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function excluirPressaoAtual() {
+    const form = document.getElementById('pressaoFormCard');
+    const id = form.dataset.editId;
+    if (!id) return;
+    if (!confirm('Excluir esta aferição de pressão arterial? Essa ação não pode ser desfeita.')) return;
+
+    const statusEl = document.getElementById('pressaoFormStatus');
+    statusEl.textContent = 'Excluindo...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseDelete('pressao_arterial', id);
+        allPressaoArterial = allPressaoArterial.filter(p => p.id !== id);
+        statusEl.textContent = '✅ Excluído com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => { fecharFormPressao(); showSaudeSubtab('pressao'); }, 900);
+    } catch (err) {
+        console.error('Erro ao excluir aferição de pressão arterial:', err);
         statusEl.textContent = '❌ Falha ao excluir: ' + err.message;
         statusEl.style.color = 'var(--danger)';
     }

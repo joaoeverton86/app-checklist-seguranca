@@ -2769,6 +2769,7 @@
                         <button id="saudeSubtabBtn-visao" class="db-filter-btn active" onclick="showSaudeSubtab('visao')">📊 Visão Geral</button>
                         <button id="saudeSubtabBtn-aso" class="db-filter-btn" onclick="showSaudeSubtab('aso')">🩺 Registrar ASO</button>
                         <button id="saudeSubtabBtn-atestado" class="db-filter-btn" onclick="showSaudeSubtab('atestado')">🤒 Registrar Atestado</button>
+                        <button id="saudeSubtabBtn-pressao" class="db-filter-btn" onclick="showSaudeSubtab('pressao')">💉 Pressão Arterial</button>
                         <button id="saudeSubtabBtn-previsao" class="db-filter-btn" onclick="showSaudeSubtab('previsao')">📅 Previsão de Exames</button>
                         <button id="saudeSubtabBtn-relatorio" class="db-filter-btn" onclick="showSaudeSubtab('relatorio')">📄 Relatório</button>
                     </div>
@@ -2991,6 +2992,70 @@
                         <button class="db-clear-btn" onclick="fecharFormAtestado()">Cancelar</button>
                         <button id="atestadoForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirAtestadoAtual()">🗑️ Excluir</button>
                         <span id="atestadoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
+                </div>
+
+                <div id="saudeSubtab-pressao" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" style="margin-bottom: 0;">💉 Aferições de Pressão Arterial</div>
+                        <button class="db-apply-btn" onclick="abrirFormPressao()">+ Nova Aferição</button>
+                    </div>
+                    <div id="pressaoResumo" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px;"></div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <input type="text" id="pressaoSearchInput" placeholder="Buscar por matrícula ou nome... (em branco mostra todos)"
+                               oninput="filterPressaoLista(this.value)"
+                               style="flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                        <button class="db-clear-btn" onclick="limparBuscaPressao()">✕ Limpar</button>
+                    </div>
+                    <div id="pressaoSearchResults" class="db-list" style="max-height: 420px;"></div>
+                </div>
+
+                <div class="db-chart-card" id="pressaoFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" id="pressaoFormTitle" style="margin-bottom: 0;">💉 Nova Aferição de Pressão Arterial</div>
+                        <button class="db-clear-btn" onclick="abrirFormPressao()">🔄 Novo Registro</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px;">
+                        <div style="grid-column: 1 / -1;">
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Colaborador (matrícula ou nome) *</label>
+                            <input type="text" id="pressaoForm_matricula" list="pressaoColabList" oninput="onPressaoColaboradorChange()"
+                                   style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <datalist id="pressaoColabList"></datalist>
+                            <div id="pressaoForm_colabPreview" style="font-size: 11px; color: var(--text-light); margin-top: 4px;"></div>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data da Aferição *</label>
+                            <input type="date" id="pressaoForm_data" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Hora (opcional)</label>
+                            <input type="time" id="pressaoForm_hora" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Pressão Sistólica (mmHg) *</label>
+                            <input type="number" id="pressaoForm_sistolica" oninput="atualizarPreviewClassificacaoPressao()" placeholder="Ex.: 120" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Pressão Diastólica (mmHg) *</label>
+                            <input type="number" id="pressaoForm_diastolica" oninput="atualizarPreviewClassificacaoPressao()" placeholder="Ex.: 80" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Responsável pela Aferição</label>
+                            <input type="text" id="pressaoForm_responsavel" placeholder="Ex.: Técnica de Enfermagem..." style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div style="grid-column: 1 / -1;" id="pressaoForm_classificacaoPreview"></div>
+                        <div style="grid-column: 1 / -1;">
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Observações</label>
+                            <textarea id="pressaoForm_obs" rows="2" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-family: inherit; font-size: inherit; resize: vertical;"></textarea>
+                        </div>
+                    </div>
+                    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="salvarPressao()">💾 Salvar</button>
+                        <button class="db-clear-btn" onclick="fecharFormPressao()">Cancelar</button>
+                        <button id="pressaoForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirPressaoAtual()">🗑️ Excluir</button>
+                        <span id="pressaoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
                 </div>
                 </div>

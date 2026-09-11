@@ -13258,6 +13258,56 @@ function renderAnexoModalLista() {
         </div>`).join('');
 }
 
+// Lê um Blob/File como base64 puro (sem o prefixo "data:...;base64," que o
+// FileReader inclui) - usado pra mandar cada pedaço do arquivo dentro de um
+// JSON pro /api/anexo-enviar-pedaco (ver enviarArquivoEmPedacos logo abaixo).
+function lerComoBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const resultado = reader.result || '';
+            const virgula = resultado.indexOf(',');
+            resolve(virgula >= 0 ? resultado.slice(virgula + 1) : resultado);
+        };
+        reader.onerror = () => reject(reader.error || new Error('Falha ao ler arquivo'));
+        reader.readAsDataURL(blob);
+    });
+}
+
+// Plano B do envio de anexo (o navegador não fala mais direto com o Google -
+// CORS bloqueado mesmo depois de mandar o header Origin na abertura da sessão
+// em anexo-iniciar.js, confirmado em produção). Em vez de um único PUT do
+// navegador pro Drive, o arquivo é fatiado em pedaços de 2,5 MiB (múltiplo de
+// 256 KiB, exigido pelo protocolo de upload retomável do Google - só o
+// último pedaço pode ser menor) e cada pedaço é mandado em base64 (~3,3 MB,
+// dentro do limite de 4,5 MB por requisição do Vercel) pra
+// /api/anexo-enviar-pedaco, que repassa servidor-a-servidor pro Google.
+const ANEXO_TAMANHO_PEDACO = 2.5 * 1024 * 1024;
+
+async function enviarArquivoEmPedacos(file, uploadUrl, statusEl) {
+    const total = file.size;
+    const totalPedacos = Math.max(1, Math.ceil(total / ANEXO_TAMANHO_PEDACO));
+    let offset = 0;
+    while (offset < total) {
+        const fim = Math.min(offset + ANEXO_TAMANHO_PEDACO, total);
+        const pedaco = file.slice(offset, fim);
+        const chunkBase64 = await lerComoBase64(pedaco);
+        const numeroPedaco = Math.floor(offset / ANEXO_TAMANHO_PEDACO) + 1;
+        if (statusEl) statusEl.textContent = `Enviando pro Google Drive... (parte ${numeroPedaco}/${totalPedacos})`;
+
+        const resp = await fetch('/api/anexo-enviar-pedaco', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uploadUrl, chunkBase64, offset, tamanhoTotal: total, mimeType: file.type || 'application/octet-stream' })
+        });
+        const dados = await resp.json();
+        if (!resp.ok) throw new Error(dados.erro || `HTTP ${resp.status}`);
+        if (dados.completo) return dados;
+        offset = fim;
+    }
+    throw new Error('Upload não foi concluído pelo Google (resposta inesperada).');
+}
+
 async function enviarAnexoSelecionado() {
     const input = document.getElementById('anexoArquivoInput');
     const statusEl = document.getElementById('anexoModalStatus');
@@ -13288,14 +13338,7 @@ async function enviarAnexoSelecionado() {
         const iniciarDados = await iniciarResp.json();
         if (!iniciarResp.ok) throw new Error(iniciarDados.erro || `HTTP ${iniciarResp.status}`);
 
-        statusEl.textContent = 'Enviando pro Google Drive...';
-        const uploadResp = await fetch(iniciarDados.uploadUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': file.type || 'application/octet-stream' },
-            body: file
-        });
-        const arquivo = await uploadResp.json();
-        if (!uploadResp.ok) throw new Error('Falha ao enviar arquivo pro Drive: ' + JSON.stringify(arquivo));
+        const arquivo = await enviarArquivoEmPedacos(file, iniciarDados.uploadUrl, statusEl);
 
         try {
             await fetch('/api/anexo-finalizar', {

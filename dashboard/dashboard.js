@@ -2535,6 +2535,7 @@ function renderTreinHistLista() {
     popularFiltroAnoTreinHist();
     const el = document.getElementById('listTreinHistorico');
     if (!el) return;
+    garantirAnexosSmsCarregados(renderTreinHistLista);
     const { inicio, fim } = getTreinHistDateRange();
     const periodo = allTreinamentosRealizados.filter(r => {
         if (!r.data_treinamento) return false;
@@ -2584,6 +2585,7 @@ function renderTreinHistLista() {
                 <div class="db-list-item-sub">${s.participantes.length} participante(s)</div>
             </div>
             <button class="db-clear-btn" onclick="abrirSessaoNoRegistro('${escapeHTML(s.cod)}', '${escapeHTML(s.data)}')">🖨️ Abrir no Registro</button>
+            <button class="db-clear-btn" onclick="abrirAnexoModal('treinamentos_realizados', '${escapeHTML(s.chave)}', '${escapeHTML(formatSimpleDate(s.data))} — ${escapeHTML(s.nome || s.cod)}')">📎 Anexos${labelContagemAnexos('treinamentos_realizados', s.chave)}</button>
             ${detalhe}
         </div>`;
     }).join('');
@@ -4383,6 +4385,34 @@ function loteKeyDds(row) {
     return partes.length >= 2 ? `${partes[0]}_${partes[1]}` : row.id;
 }
 
+let allAnexosSms = [];
+let anexosSmsCarregados = false;
+
+// Carrega os anexos (PDFs escaneados/fotos guardados no Google Drive) sob demanda, na
+// primeira vez que a lista de DDS ou Treinamentos for desenhada - função separada e
+// independente do Promise.all de loadTreinamentosData lá em cima, pra não arriscar
+// desalinhar a lista de variáveis desestruturadas daquele carregamento já existente.
+function garantirAnexosSmsCarregados(aoTerminar) {
+    if (anexosSmsCarregados) return;
+    anexosSmsCarregados = true;
+    supabaseFetch('anexos_sms', '?select=*').then(dados => {
+        allAnexosSms = dados;
+        if (aoTerminar) aoTerminar();
+    }).catch(err => {
+        console.error('Erro ao carregar anexos SMS:', err);
+        anexosSmsCarregados = false;
+    });
+}
+
+function anexosDoRegistro(tabela, chave) {
+    return allAnexosSms.filter(a => a.tabela_origem === tabela && a.registro_chave === chave);
+}
+
+function labelContagemAnexos(tabela, chave) {
+    const n = anexosDoRegistro(tabela, chave).length;
+    return n > 0 ? ` (${n})` : '';
+}
+
 function lotesRecentesDds(limite = 20) {
     const mapa = new Map();
     allDdsRealizados.forEach(r => {
@@ -4400,6 +4430,7 @@ function lotesRecentesDds(limite = 20) {
 function renderDdsLancamentosRecentes() {
     const el = document.getElementById('ddsLancamentosRecentesLista');
     if (!el) return;
+    garantirAnexosSmsCarregados(renderDdsLancamentosRecentes);
     const lotes = lotesRecentesDds(20);
     if (lotes.length === 0) {
         el.innerHTML = '<div class="db-list-empty">Nenhum lançamento de DDS ainda.</div>';
@@ -4412,6 +4443,7 @@ function renderDdsLancamentosRecentes() {
                 <div class="db-list-item-sub">${escapeHTML(lote.tema || 'Sem tema')} — ${lote.ids.length} participante(s) — ${lote.horas.toLocaleString('pt-BR')}h</div>
             </div>
             <div style="display:flex; gap:6px;">
+                <button class="db-clear-btn" onclick="abrirAnexoModal('dds_realizados', '${escapeHTML(lote.key)}', '${escapeHTML(formatSimpleDate(lote.data_dds))} — ${escapeHTML(lote.frente_responsavel || '')}')">📎 Anexos${labelContagemAnexos('dds_realizados', lote.key)}</button>
                 <button class="db-clear-btn" onclick="editarLoteDds('${escapeHTML(lote.key)}')">✏️ Editar</button>
                 <button class="db-clear-btn" style="color:var(--danger); border-color:var(--danger);" onclick="excluirLoteDds('${escapeHTML(lote.key)}')">🗑️ Excluir</button>
             </div>
@@ -13180,6 +13212,136 @@ function abrirRelatorioLideresModal() {
 function fecharRelatorioLideresModal() {
     const overlay = document.getElementById('relatorioLideresModalOverlay');
     if (overlay) overlay.style.display = 'none';
+}
+
+// ============================================
+// MODAL DE ANEXOS (DDSMA/Treinamentos) - Google Drive
+// Anexa PDFs escaneados (com assinaturas de campo) e fotos de comprovação
+// guardando o arquivo no Google Drive do responsável (integração via OAuth -
+// ver claude/guia-integracao-google-drive.md no projeto SMS_COP) e só o link
+// na tabela anexos_sms do Supabase. Upload em 2 passos direto navegador->Google
+// (api/anexo-iniciar.js + PUT direto pro Drive + api/anexo-finalizar.js) pra
+// não esbarrar no limite de 4,5 MB por requisição das functions do Vercel.
+// ============================================
+let anexoModalTabela = null;
+let anexoModalChave = null;
+
+function abrirAnexoModal(tabela, chave, tituloRegistro) {
+    anexoModalTabela = tabela;
+    anexoModalChave = chave;
+    document.getElementById('anexoModalTitulo').textContent = tituloRegistro || '';
+    document.getElementById('anexoModalStatus').textContent = '';
+    document.getElementById('anexoArquivoInput').value = '';
+    renderAnexoModalLista();
+    document.getElementById('anexoModalOverlay').style.display = 'flex';
+}
+
+function fecharAnexoModal() {
+    const overlay = document.getElementById('anexoModalOverlay');
+    if (overlay) overlay.style.display = 'none';
+    anexoModalTabela = null;
+    anexoModalChave = null;
+}
+
+function renderAnexoModalLista() {
+    const el = document.getElementById('anexoModalLista');
+    if (!el) return;
+    const lista = anexosDoRegistro(anexoModalTabela, anexoModalChave);
+    if (lista.length === 0) {
+        el.innerHTML = '<div class="db-list-empty">Nenhum anexo ainda.</div>';
+        return;
+    }
+    el.innerHTML = lista.map(a => `
+        <div class="db-list-item" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            <a href="${escapeHTML(a.drive_view_link)}" target="_blank" rel="noopener">📄 ${escapeHTML(a.nome_arquivo)}</a>
+            <button class="db-clear-btn" style="color:var(--danger); border-color:var(--danger);" onclick="excluirAnexo('${escapeHTML(a.id)}')">🗑️</button>
+        </div>`).join('');
+}
+
+async function enviarAnexoSelecionado() {
+    const input = document.getElementById('anexoArquivoInput');
+    const statusEl = document.getElementById('anexoModalStatus');
+    if (!input.files || !input.files[0]) {
+        statusEl.textContent = '❌ Selecione um arquivo primeiro.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const file = input.files[0];
+    if (file.size > 20 * 1024 * 1024) {
+        statusEl.textContent = '❌ Arquivo muito grande (máx. 20 MB).';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    statusEl.textContent = 'Preparando envio...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        const iniciarResp = await fetch('/api/anexo-iniciar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tabela: anexoModalTabela,
+                registroChave: anexoModalChave,
+                nomeArquivo: file.name,
+                mimeType: file.type || 'application/octet-stream'
+            })
+        });
+        const iniciarDados = await iniciarResp.json();
+        if (!iniciarResp.ok) throw new Error(iniciarDados.erro || `HTTP ${iniciarResp.status}`);
+
+        statusEl.textContent = 'Enviando pro Google Drive...';
+        const uploadResp = await fetch(iniciarDados.uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+            body: file
+        });
+        const arquivo = await uploadResp.json();
+        if (!uploadResp.ok) throw new Error('Falha ao enviar arquivo pro Drive: ' + JSON.stringify(arquivo));
+
+        try {
+            await fetch('/api/anexo-finalizar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ driveFileId: arquivo.id })
+            });
+        } catch (finalErr) {
+            console.error('Falha ao tornar o anexo público por link:', finalErr);
+        }
+
+        const novoAnexo = {
+            id: crypto.randomUUID(),
+            tabela_origem: anexoModalTabela,
+            registro_chave: anexoModalChave,
+            nome_arquivo: file.name,
+            drive_file_id: arquivo.id,
+            drive_view_link: arquivo.webViewLink,
+            enviado_por: null
+        };
+        await supabaseUpsert('anexos_sms', [novoAnexo]);
+        allAnexosSms.push(novoAnexo);
+        input.value = '';
+        statusEl.textContent = '✅ Anexo enviado com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        renderAnexoModalLista();
+        renderDdsLancamentosRecentes();
+        renderTreinHistLista();
+    } catch (err) {
+        console.error('Erro ao enviar anexo:', err);
+        statusEl.textContent = '❌ Falha ao enviar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function excluirAnexo(id) {
+    if (!confirm('Excluir este anexo do painel? (o arquivo continua salvo no Google Drive, só o link some daqui)')) return;
+    try {
+        await supabaseDeleteMany('anexos_sms', [id]);
+        allAnexosSms = allAnexosSms.filter(a => a.id !== id);
+        renderAnexoModalLista();
+        renderDdsLancamentosRecentes();
+        renderTreinHistLista();
+    } catch (err) {
+        alert('Falha ao excluir anexo: ' + err.message);
+    }
 }
 
 function setRelatorioLideresModo(modo) {

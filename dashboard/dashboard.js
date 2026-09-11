@@ -10065,6 +10065,814 @@ function popularRelatorioMensalDefaults() {
     if (adicEl && !adicEl.value) adicEl.value = cfg.get('turmas_adicionais') ?? '';
 }
 
+// ================================================================
+// RELATÓRIO MENSAL DE SMS (Word/.docx) - módulo novo, construído por etapas.
+// Fase 1 (concluída): capa + índice + sumário inicial, validando que o mecanismo de
+// gerar/baixar o .docx direto do navegador funciona (biblioteca "docx" carregada via CDN
+// em index.html, mesmo padrão de Chart.js/xlsx/Supabase - ver <script> perto do fim do
+// <body>).
+// Fase 2 (concluída): Seção 1 (Segurança do Trabalho) com dados reais do mês - ver bloco
+// "SEÇÃO 1 DO RELATÓRIO" mais abaixo.
+// Fase 3 (concluída): Seção 2 (ADA/Mão de Obra Local), Seção 3 (Saúde Ocupacional - ASO +
+// Psicossocial) e Seção 4 (Considerações Finais) - ver bloco "SEÇÕES 2 a 4 DO RELATÓRIO"
+// mais abaixo.
+// Fase 4 (atual): Seção 5 (Registros Fotográficos), Anexos, e a filtragem dos itens
+// sensíveis da versão Fiscalização (aplicada dentro das próprias Seções 1/3/4) - ver
+// bloco "SEÇÃO 5 (Registros Fotográficos) E ANEXOS" mais abaixo. Com isso as 4 fases do
+// roteiro combinado com o usuário estão concluídas.
+// ================================================================
+
+// Preenche mês/ano com o mês anterior ao atual (mesmo padrão de
+// popularRelatorioMensalDefaults() acima) só na primeira vez que a aba é aberta.
+function popularRelSmsDefaults() {
+    const hoje = new Date();
+    const mesAnterior = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+    const mesEl = document.getElementById('relSmsMes');
+    const anoEl = document.getElementById('relSmsAno');
+    if (mesEl && !mesEl.dataset.inicializado) { mesEl.value = String(mesAnterior.getMonth()); mesEl.dataset.inicializado = '1'; }
+    if (anoEl && !anoEl.value) anoEl.value = mesAnterior.getFullYear();
+}
+
+// Paleta e helpers de estilo do relatório - mesmas cores/tamanhos usados no modelo Word
+// gerado manualmente (capa, títulos, texto), só reescritos em cima da API do docx.js.
+const RELSMS_NAVY = '1F3864';
+const RELSMS_BLUE = '2E5395';
+const RELSMS_GREY = '595959';
+
+function relSmsH1(text) {
+    return new docx.Paragraph({
+        heading: docx.HeadingLevel.HEADING_1,
+        spacing: { before: 480, after: 200 },
+        border: { bottom: { color: RELSMS_NAVY, space: 4, style: docx.BorderStyle.SINGLE, size: 8 } },
+        children: [new docx.TextRun({ text, bold: true, color: RELSMS_NAVY, size: 30 })],
+    });
+}
+
+function relSmsP(text) {
+    return new docx.Paragraph({
+        spacing: { after: 160, line: 300 },
+        alignment: docx.AlignmentType.JUSTIFIED,
+        children: [new docx.TextRun({ text, size: 21, color: '262626' })],
+    });
+}
+
+function relSmsH2(text) {
+    return new docx.Paragraph({
+        heading: docx.HeadingLevel.HEADING_2,
+        spacing: { before: 320, after: 120 },
+        children: [new docx.TextRun({ text, bold: true, color: RELSMS_BLUE, size: 24 })],
+    });
+}
+
+// Nota curta (itálico, cinza) usada abaixo de uma tabela pra registrar um alerta sem
+// virar mais uma linha de KPI - ex: "3 APR(s) vencida(s) - recomenda-se renovação".
+function relSmsNota(text) {
+    return new docx.Paragraph({
+        spacing: { before: 40, after: 200 },
+        children: [new docx.TextRun({ text, italics: true, size: 18, color: RELSMS_GREY })],
+    });
+}
+
+const RELSMS_BORDA_FINA = { style: docx.BorderStyle.SINGLE, size: 2, color: 'BFBFBF' };
+
+function relSmsCelula(text, header) {
+    return new docx.TableCell({
+        shading: header ? { fill: RELSMS_NAVY } : undefined,
+        margins: { top: 60, bottom: 60, left: 100, right: 100 },
+        borders: { top: RELSMS_BORDA_FINA, bottom: RELSMS_BORDA_FINA, left: RELSMS_BORDA_FINA, right: RELSMS_BORDA_FINA },
+        children: [new docx.Paragraph({
+            children: [new docx.TextRun({ text: String(text ?? '—'), bold: !!header, color: header ? 'FFFFFF' : '262626', size: 19 })],
+        })],
+    });
+}
+
+function relSmsTabela(colunas, linhas) {
+    return new docx.Table({
+        width: { size: 100, type: docx.WidthType.PERCENTAGE },
+        rows: [
+            new docx.TableRow({ children: colunas.map(c => relSmsCelula(c, true)) }),
+            ...linhas.map(l => new docx.TableRow({ children: l.map(c => relSmsCelula(c, false)) })),
+        ],
+    });
+}
+
+// Tabela de 2 colunas (Indicador/Valor) a partir do mesmo formato {key,label,value} que
+// window.checklistReportData/epiReportData/acidReportData já usam pra alimentar a aba
+// "📄 Relatório" de cada módulo - ver garantirDadosSecao1RelSms/coletarDadosSecao1RelSms.
+function relSmsTabelaKpis(kpis) {
+    return relSmsTabela(['Indicador', 'Valor'], kpis.map(k => [k.label, k.value]));
+}
+
+// ================================================================
+// SEÇÃO 1 DO RELATÓRIO (Segurança do Trabalho) - Fase 2. Reaproveita os MESMOS dados/
+// cálculos já usados pelos módulos Checklists, Treinamentos/DDS, APR, Matriz de Risco,
+// EPI, Extintores, Acidentabilidade, Relatos e CIPA, filtrados pro mês/ano escolhido no
+// seletor do relatório - nenhuma consulta ou fórmula nova é criada aqui.
+//
+// Pra Checklists/EPI/Acidentabilidade (que já têm um snapshot window.xReportData
+// alimentado pelo próprio filtro de mês/ano da tela), a estratégia é "hijack": troca
+// TEMPORARIAMENTE a variável de filtro daquele módulo pro mês do relatório, chama o
+// render() de novo (recalcula e resalva o snapshot), lê o snapshot, e devolve o filtro
+// pro valor original + renderiza de novo - se o usuário estiver com aquela aba aberta em
+// outra parte da tela, ela volta exatamente como estava. Treinamentos/DDS já tem uma
+// função própria parametrizada por mês (montarLinhasRelatorioMensal), não precisa de
+// hijack. Os módulos sem filtro de período na tela (Matriz de Risco, Extintores, Relatos,
+// CIPA) são calculados direto aqui, do mesmo jeito que o painel calcula "situação atual".
+//
+// IMPORTANTE: a remoção dos itens sensíveis na versão Fiscalização (APR vencida, CA de
+// EPI vencido/estoque baixo etc. - ver memória do projeto) ainda NÃO está implementada
+// aqui - está planejada pra Fase 4. Por enquanto a Seção 1 sai IGUAL nas duas versões;
+// gerarRelatorioMensalSms() avisa isso na tela depois de gerar.
+// ================================================================
+
+// Garante que todas as tabelas usadas pela Seção 1 já estão em memória, carregando (uma
+// única vez por sessão, reaproveitando os MESMOS flags "xLoaded" que showDbPage() usa
+// pra carregar sob demanda) o que o usuário ainda não tiver aberto manualmente.
+// checklists/extintores/relatos não entram aqui porque loadData() já carrega os três
+// desde o init() do painel, não importa qual página está aberta.
+async function garantirDadosSecao1RelSms() {
+    const tarefas = [];
+    // loadTreinamentosData já cross-carrega allEfetivo e allGheCatalogo se ainda
+    // estiverem vazios (ver comentário dentro dela) - cobre também a Matriz de Risco
+    // (1.4) e o headcountAsOf usado em Treinamentos/DDS (1.2), sem precisar de uma
+    // chamada separada pra Efetivo aqui.
+    if (!treinamentosLoaded) { treinamentosLoaded = true; tarefas.push(loadTreinamentosData()); }
+    if (!acidentesLoaded) { acidentesLoaded = true; tarefas.push(loadAcidentesData()); }
+    if (!epiLoaded) { epiLoaded = true; tarefas.push(loadEpiData()); }
+    if (!aprLoaded) { aprLoaded = true; tarefas.push(loadAprData()); }
+    if (!cipaLoaded) { cipaLoaded = true; tarefas.push(loadCipaData()); }
+    await Promise.all(tarefas);
+}
+
+// Coleta os números já prontos de cada módulo pro mês/ano do relatório. Retorna um objeto
+// plano com um bloco por subseção (1.1 a 1.9) - construirSecao1RelSms() só formata, não
+// recalcula nada.
+function coletarDadosSecao1RelSms(mes, ano) {
+    const inicio = new Date(ano, mes, 1);
+    const fim = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
+    const dentroMes = (dataStr) => {
+        if (!dataStr) return false;
+        const d = parseLocalDate(dataStr);
+        return d >= inicio && d <= fim;
+    };
+    const ultimoDia = fim.getDate();
+    const customFromStr = `${ano}-${String(mes + 1).padStart(2, '0')}-01`;
+    const customToStr = `${ano}-${String(mes + 1).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`;
+
+    // ---- 1.1 Checklists - hijack de reportFilter/customFrom/customTo + filtros de
+    // categoria/empresa (zerados pro relatório sair sempre com o TOTAL do mês, não com
+    // o que a tela de Checklists tiver filtrado no momento). ----
+    const catEl = document.getElementById('filterCategoria');
+    const empEl = document.getElementById('filterEmpresa');
+    const prevFilter = reportFilter, prevFrom = customFrom, prevTo = customTo;
+    const prevCat = catEl ? catEl.value : '', prevEmp = empEl ? empEl.value : '';
+    reportFilter = 'custom';
+    customFrom = customFromStr;
+    customTo = customToStr;
+    if (catEl) catEl.value = '';
+    if (empEl) empEl.value = '';
+    renderAll();
+    const checklistKpis = (window.checklistReportData?.kpis || []).slice();
+    reportFilter = prevFilter; customFrom = prevFrom; customTo = prevTo;
+    if (catEl) catEl.value = prevCat;
+    if (empEl) empEl.value = prevEmp;
+    renderAll();
+
+    // ---- 1.2 Treinamentos e DDSMS - já tem uma função pronta parametrizada por mês
+    // (mesma usada no Excel/PDF do "Relatório Mensal" de Treinamentos), sem precisar de
+    // hijack nenhum. ----
+    const treinamentos = montarLinhasRelatorioMensal(ano, mes, 'semanal');
+    // "Integrações de NR vencidas" (item sensível - ver construirSecao1RelSms/fiscalizacao):
+    // mesmo critério de kpiTreinVencidos em renderTreinamentosPanel - colaboradores ATIVOS
+    // hoje com pelo menos 1 treinamento de validade (NR) com data_proxima_reciclagem
+    // vencida. É "situação atual", não filtrável por mês (mesmo raciocínio de APR/
+    // Extintores/CIPA acima).
+    const hojeNR = new Date(); hojeNR.setHours(0, 0, 0, 0);
+    const efetivoPorMatriculaNR = new Map(allEfetivo.map(e => [e.id, e]));
+    const matriculasComNRVencida = new Set();
+    allTreinamentosStatus.forEach(s => {
+        const efetivo = efetivoPorMatriculaNR.get(s.matricula);
+        const estaAtivo = efetivo ? (!!efetivo.dt_admissao && !efetivo.dt_demissao) : (s.status_colaborador === 'ATIVO');
+        if (!estaAtivo || !s.meses_validade || !s.data_proxima_reciclagem) return;
+        const deadline = parseLocalDate(s.data_proxima_reciclagem); deadline.setHours(0, 0, 0, 0);
+        if (deadline < hojeNR) matriculasComNRVencida.add(s.matricula);
+    });
+    treinamentos.nrVencidas = matriculasComNRVencida.size;
+
+    // ---- 1.3 APR - nº emitidas no mês (por data_emissao) + classificação de risco
+    // residual dessas APRs + situação atual do sistema (ativas/vencendo/vencidas), do
+    // mesmo jeito que o painel calcula "hoje" (não é filtrável por mês na tela). ----
+    const aprEmitidasMes = allAprRegistros.filter(a => dentroMes(a.data_emissao));
+    const aprClassCounts = { Baixo: 0, Moderado: 0, Alto: 0, 'Crítico': 0 };
+    aprEmitidasMes.forEach(a => {
+        (Array.isArray(a.riscos) ? a.riscos : []).forEach(r => {
+            const n = nivelRiscoApr(r.p_residual, r.s_residual);
+            if (n.valor !== null && aprClassCounts[n.label] !== undefined) aprClassCounts[n.label]++;
+        });
+    });
+    const aprStatusAtual = allAprRegistros.map(a => statusApr(a));
+    const apr = {
+        emitidasNoMes: aprEmitidasMes.length,
+        classCounts: aprClassCounts,
+        situacaoAtual: {
+            ativas: aprStatusAtual.filter(s => s.status === 'ativa' || s.status === 'vencendo').length,
+            vencendo: aprStatusAtual.filter(s => s.status === 'vencendo').length,
+            vencidas: aprStatusAtual.filter(s => s.status === 'vencida').length,
+        },
+    };
+
+    // ---- 1.4 Matriz de Risco (GHE) - catálogo de riscos por grupo de exposição, sem
+    // filtro de período na tela (é "situação atual do catálogo", igual ao painel). ----
+    const riscosGhe = todosRiscosGhe();
+    const matrizRiscoPorNivel = {};
+    NIVEIS_RISCO_ORDEM.forEach(n => { matrizRiscoPorNivel[n] = 0; });
+    riscosGhe.forEach(r => { if (matrizRiscoPorNivel[r.gravidade_label] !== undefined) matrizRiscoPorNivel[r.gravidade_label]++; });
+    const matrizRisco = { total: riscosGhe.length, porNivel: matrizRiscoPorNivel };
+
+    // ---- 1.5 EPI - hijack de epiFiltroAno/epiFiltroMes (mesmo padrão do 1.1). ----
+    const prevEpiAno = epiFiltroAno, prevEpiMes = epiFiltroMes, prevEpiFilter = epiFilter;
+    epiFiltroAno = String(ano); epiFiltroMes = String(mes);
+    renderEpiPanel();
+    const epiKpis = (window.epiReportData?.kpis || []).slice();
+    epiFiltroAno = prevEpiAno; epiFiltroMes = prevEpiMes; epiFilter = prevEpiFilter;
+    renderEpiPanel();
+
+    // ---- 1.6 Extintores - inspeções do mês (conforme/não conforme/pendente, mesmo
+    // critério de renderExtintorPanel) + situação atual de vencimento (não é filtrável
+    // por mês na tela). ----
+    const extintoresAtivos = allExtintores.filter(e => e.ativo !== false);
+    const anoMesExt = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+    const ultimaInspecaoMesExt = {};
+    allInspecoesExtintores.forEach(i => {
+        if (!(i.date || '').startsWith(anoMesExt)) return;
+        const existing = ultimaInspecaoMesExt[i.extintor_id];
+        if (!existing || new Date(i.created_at || 0) > new Date(existing.created_at || 0)) {
+            ultimaInspecaoMesExt[i.extintor_id] = i;
+        }
+    });
+    let extConf = 0, extNaoConf = 0, extPendentes = 0;
+    extintoresAtivos.forEach(e => {
+        const insp = ultimaInspecaoMesExt[e.id];
+        if (!insp) extPendentes++;
+        else if (insp.status_geral === 'nao_conforme') extNaoConf++;
+        else extConf++;
+    });
+    const hojeExt = new Date(); hojeExt.setHours(0, 0, 0, 0);
+    let extVencidos = 0, extVencendo = 0;
+    extintoresAtivos.forEach(e => {
+        if (!e.proxima_recarga) return;
+        const deadline = parseLocalDate(e.proxima_recarga); deadline.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((deadline.getTime() - hojeExt.getTime()) / 86400000);
+        if (diffDays < 0) extVencidos++; else if (diffDays <= 30) extVencendo++;
+    });
+    const extintores = { totalAtivos: extintoresAtivos.length, conf: extConf, naoConf: extNaoConf, pendentes: extPendentes, vencidos: extVencidos, vencendo: extVencendo };
+
+    // ---- 1.7 Acidentabilidade - hijack de acidentesFiltroAno/acidentesFiltroMes (mesmo
+    // padrão do 1.1/1.5). ----
+    const prevAcidAno = acidentesFiltroAno, prevAcidMes = acidentesFiltroMes, prevAcidFilter = acidentesFilter;
+    acidentesFiltroAno = String(ano); acidentesFiltroMes = String(mes);
+    renderAcidentesPanel();
+    const acidentesKpis = (window.acidReportData?.kpis || []).slice();
+    acidentesFiltroAno = prevAcidAno; acidentesFiltroMes = prevAcidMes; acidentesFilter = prevAcidFilter;
+    renderAcidentesPanel();
+
+    // ---- 1.8 Relatos - contagem do mês (por status/tipo) + total ainda aberto/em
+    // andamento HOJE (situação atual, como o painel mostra). ----
+    const relatosMes = allRelatos.filter(r => dentroMes(r.date));
+    const relatosStatusCounts = { aberto: 0, em_andamento: 0, resolvido: 0 };
+    relatosMes.forEach(r => { const st = (r.status || 'aberto').toLowerCase(); if (relatosStatusCounts[st] !== undefined) relatosStatusCounts[st]++; });
+    const relatosTipoCounts = {};
+    relatosMes.forEach(r => { const t = r.tipo || 'Outro'; relatosTipoCounts[t] = (relatosTipoCounts[t] || 0) + 1; });
+    const relatos = {
+        totalMes: relatosMes.length,
+        statusCounts: relatosStatusCounts,
+        tipoCounts: relatosTipoCounts,
+        abertosAtual: allRelatos.filter(r => (r.status || 'aberto').toLowerCase() !== 'resolvido').length,
+    };
+
+    // ---- 1.9 CIPA - reuniões realizadas no mês + situação atual do plano de ação
+    // (pendências abertas/atrasadas, não filtrável por mês na tela). ----
+    const cipaReunioesMes = allCipaReunioes.filter(r => dentroMes(r.data_reuniao)).sort((a, b) => (a.data_reuniao || '').localeCompare(b.data_reuniao || ''));
+    const hojeCipa = new Date(); hojeCipa.setHours(0, 0, 0, 0);
+    const cipa = {
+        reunioesMes: cipaReunioesMes,
+        membrosAtivos: allCipaMembros.filter(m => m.ativo).length,
+        pendenciasAbertas: allCipaPlanoAcao.filter(p => p.status !== 'concluido').length,
+        pendenciasAtrasadas: allCipaPlanoAcao.filter(p => p.status !== 'concluido' && p.prazo && parseLocalDate(p.prazo) < hojeCipa).length,
+    };
+
+    return { checklistKpis, treinamentos, apr, matrizRisco, epiKpis, extintores, acidentesKpis, relatos, cipa };
+}
+
+// Formata os dados coletados acima em Paragraphs/Tables do docx.js - só formatação,
+// nenhum cálculo novo (ver coletarDadosSecao1RelSms). `fiscalizacao` controla a remoção
+// dos itens sensíveis (NR vencida, APR vencida, CA de EPI vencido/estoque baixo - ver
+// memória do projeto "não citar itens sensíveis na versão Fiscalização") - na versão
+// completa (fiscalizacao=false) nada é removido.
+function construirSecao1RelSms(dados, mes, ano, fiscalizacao) {
+    const nomeMes = NOMES_MESES[mes];
+    const out = [relSmsH1('1. Segurança do Trabalho')];
+    out.push(relSmsP(`Indicadores de Segurança do Trabalho referentes a ${nomeMes.toLowerCase()} de ${ano}, com base nos registros de campo consolidados pela equipe de SMS.`));
+
+    // 1.1 Checklists
+    out.push(relSmsH2('1.1. Checklists de Equipamentos'));
+    out.push(dados.checklistKpis.length > 0 ? relSmsTabelaKpis(dados.checklistKpis) : relSmsP('Nenhum dado de checklist disponível para o período.'));
+
+    // 1.2 Treinamentos e DDSMS
+    out.push(relSmsH2('1.2. Treinamentos e DDSMS'));
+    const t = dados.treinamentos;
+    const linhasTrein = [
+        ['Integração (NR-01)', t.totais.participantes.integracao, t.totais.hht.integracao.toFixed(0)],
+        ['Segurança, Saúde e Meio Ambiente', t.totais.participantes.seguranca, t.totais.hht.seguranca.toFixed(0)],
+        ['Treinamentos Adicionais', t.totais.participantes.adicionais, t.totais.hht.adicionais.toFixed(0)],
+        ['DDSMS', t.totais.participantes.dds, t.totais.hht.dds.toFixed(0)],
+        ['TOTAL', t.totais.participantes.geral, t.totais.hht.geral.toFixed(0)],
+    ];
+    out.push(relSmsTabela(['Categoria', 'Participantes', 'HHT (h)'], linhasTrein));
+    out.push(relSmsNota(`Nº total de funcionários (base de cálculo): ${t.totalFuncionarios} — % de HHT sobre Efetivo × 220h: ${t.totais.percHhtEfetivo.toFixed(1)}%.`));
+    // Item sensível (integrações de NR vencidas) - fora da versão Fiscalização.
+    if (!fiscalizacao) {
+        out.push(relSmsNota(`Colaboradores ativos com integração/NR vencida (situação atual): ${t.nrVencidas}.`));
+    }
+
+    // 1.3 APR
+    out.push(relSmsH2('1.3. Análise Preliminar de Risco (APR)'));
+    const linhasApr = [
+        ['APRs emitidas no mês', dados.apr.emitidasNoMes],
+        ['Situação atual — ativas', dados.apr.situacaoAtual.ativas],
+        ['Situação atual — vencendo (≤5 dias)', dados.apr.situacaoAtual.vencendo],
+    ];
+    // Item sensível (APR vencida) - fora da versão Fiscalização.
+    if (!fiscalizacao) linhasApr.push(['Situação atual — vencidas', dados.apr.situacaoAtual.vencidas]);
+    out.push(relSmsTabela(['Indicador', 'Valor'], linhasApr));
+    const classApr = dados.apr.classCounts;
+    out.push(relSmsP(`Classificação de risco residual das APRs emitidas no mês: Baixo ${classApr.Baixo}, Moderado ${classApr.Moderado}, Alto ${classApr.Alto}, Crítico ${classApr['Crítico']}.`));
+    if (!fiscalizacao && dados.apr.situacaoAtual.vencidas > 0) {
+        out.push(relSmsNota(`⚠ ${dados.apr.situacaoAtual.vencidas} APR(s) vencida(s) na data de emissão deste relatório — recomenda-se renovação.`));
+    }
+
+    // 1.4 Matriz de Risco
+    out.push(relSmsH2('1.4. Matriz de Risco (GHE)'));
+    const mr = dados.matrizRisco.porNivel;
+    out.push(relSmsTabela(['Nível de Risco', 'Quantidade'], NIVEIS_RISCO_ORDEM.map(n => [n, mr[n]])));
+    out.push(relSmsNota(`Total de riscos classificados nos Grupos de Exposição Homogênea (GHE) cadastrados: ${dados.matrizRisco.total}.`));
+
+    // 1.5 EPI - itens sensíveis (CA vencido / estoque baixo) fora da versão Fiscalização.
+    out.push(relSmsH2('1.5. Equipamentos de Proteção Individual (EPI)'));
+    const epiKpisVersao = fiscalizacao
+        ? dados.epiKpis.filter(k => k.key !== 'caVencidos' && k.key !== 'estoqueBaixo')
+        : dados.epiKpis;
+    out.push(epiKpisVersao.length > 0 ? relSmsTabelaKpis(epiKpisVersao) : relSmsP('Nenhum dado de EPI disponível para o período.'));
+
+    // 1.6 Extintores
+    out.push(relSmsH2('1.6. Extintores de Incêndio'));
+    out.push(relSmsTabela(['Indicador', 'Valor'], [
+        ['Extintores ativos', dados.extintores.totalAtivos],
+        ['Inspecionados no mês — conforme', dados.extintores.conf],
+        ['Inspecionados no mês — não conforme', dados.extintores.naoConf],
+        ['Sem inspeção no mês', dados.extintores.pendentes],
+        ['Situação atual — vencidos', dados.extintores.vencidos],
+        ['Situação atual — vencendo (≤30 dias)', dados.extintores.vencendo],
+    ]));
+
+    // 1.7 Acidentabilidade
+    out.push(relSmsH2('1.7. Acidentabilidade'));
+    out.push(dados.acidentesKpis.length > 0 ? relSmsTabelaKpis(dados.acidentesKpis) : relSmsP('Nenhum dado de acidentabilidade disponível para o período.'));
+
+    // 1.8 Relatos de Segurança
+    out.push(relSmsH2('1.8. Relatos de Segurança'));
+    const rc = dados.relatos.statusCounts;
+    out.push(relSmsTabela(['Indicador', 'Valor'], [
+        ['Relatos registrados no mês', dados.relatos.totalMes],
+        ['— Abertos', rc.aberto],
+        ['— Em andamento', rc.em_andamento],
+        ['— Resolvidos', rc.resolvido],
+        ['Situação atual — total aberto/em andamento', dados.relatos.abertosAtual],
+    ]));
+    const tiposRelatos = Object.entries(dados.relatos.tipoCounts).sort((a, b) => b[1] - a[1]);
+    if (tiposRelatos.length > 0) {
+        out.push(relSmsP('Relatos do mês por tipo: ' + tiposRelatos.map(([tipo, qtd]) => `${tipo} (${qtd})`).join('; ') + '.'));
+    }
+
+    // 1.9 CIPA
+    out.push(relSmsH2('1.9. CIPA'));
+    out.push(relSmsTabela(['Indicador', 'Valor'], [
+        ['Reuniões realizadas no mês', dados.cipa.reunioesMes.length],
+        ['Membros ativos', dados.cipa.membrosAtivos],
+        ['Plano de ação — pendências abertas', dados.cipa.pendenciasAbertas],
+        ['Plano de ação — pendências atrasadas', dados.cipa.pendenciasAtrasadas],
+    ]));
+    if (dados.cipa.reunioesMes.length > 0) {
+        out.push(relSmsP('Reuniões do mês: ' + dados.cipa.reunioesMes.map(r =>
+            `${CIPA_TIPO_LABELS[r.tipo] || r.tipo}${r.numero_ordinaria ? ' nº ' + r.numero_ordinaria : ''} em ${formatSimpleDate(r.data_reuniao)}`
+        ).join('; ') + '.'));
+    }
+
+    out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
+    return out;
+}
+
+// ================================================================
+// SEÇÕES 2 a 4 DO RELATÓRIO - Fase 3. Seção 2 (ADA/Mão de Obra Local) reaproveita
+// montarQuadrosMaoDeObra() (já parametrizada por mês/ano, mesma função usada no Excel/PDF
+// do módulo Efetivo > Mão de Obra Local). Seção 3.1 (ASO/Absenteísmo) usa o mesmo hijack
+// de window.saudeReportData já usado na Seção 1 pra Checklists/EPI/Acidentabilidade.
+// Seção 3.2 (Psicossocial) não é mensal por natureza (é por "aplicação" do questionário,
+// ver avaliacoes_psicossociais.periodo_inicio/periodo_fim) - entra só se existir uma
+// aplicação cujo período cobre o mês do relatório. Seção 4 (Considerações Finais) não
+// recalcula nada: só sintetiza, em forma de lista, os pontos de atenção já calculados nas
+// Seções 1 e 3 (contagens > 0 apenas - RESUMO, não é uma reanálise nova).
+// ================================================================
+
+// Garante ADA (efetivo + municipios_ada, via loadEfetivoData) e Saúde Ocupacional (ASO +
+// atestados + pressão arterial, via loadSaudeData) + Psicossocial carregados - mesmo
+// padrão de flags "xLoaded" de garantirDadosSecao1RelSms(). loadEfetivoData também
+// cross-carrega Treinamentos se ainda não tiver sido carregado (ver comentário dentro
+// dela), então não há problema em chamar esta função antes ou depois de
+// garantirDadosSecao1RelSms().
+async function garantirDadosSecoes23RelSms() {
+    const tarefas = [];
+    if (!efetivoLoaded) { efetivoLoaded = true; tarefas.push(loadEfetivoData()); }
+    if (!saudeLoaded) { saudeLoaded = true; tarefas.push(loadSaudeData()); }
+    if (!psicossocialLoaded) { psicossocialLoaded = true; tarefas.push(loadPsicossocialData()); }
+    await Promise.all(tarefas);
+}
+
+function coletarDadosSecoes23RelSms(mes, ano) {
+    // ---- Seção 2 - ADA / Mão de Obra Local (Quadros 1 e 2 do RSA) ----
+    const ada = montarQuadrosMaoDeObra(ano, mes);
+
+    // ---- Seção 3.1 - ASO e Absenteísmo Ocupacional - hijack de saudeFiltroAno/Mês
+    // (mesmo padrão do 1.1/1.5/1.7). ----
+    const prevSaudeAno = saudeFiltroAno, prevSaudeMes = saudeFiltroMes, prevSaudeFilter = saudeFilter;
+    saudeFiltroAno = String(ano); saudeFiltroMes = String(mes);
+    renderSaudePanel();
+    const saudeKpis = (window.saudeReportData?.kpis || []).slice();
+    saudeFiltroAno = prevSaudeAno; saudeFiltroMes = prevSaudeMes; saudeFilter = prevSaudeFilter;
+    renderSaudePanel();
+
+    // ---- Seção 3.2 - Avaliação Psicossocial (COPSOQ II) - não é mensal (é por
+    // "aplicação" do questionário); usa a aplicação mais recente cujo período
+    // [periodo_inicio, periodo_fim] sobrepõe o mês do relatório, se existir alguma. ----
+    const inicioMes = new Date(ano, mes, 1);
+    const fimMes = new Date(ano, mes + 1, 0);
+    const aplicacoesNoPeriodo = allAvaliacoesPsicossociais.filter(a => {
+        if (!a.periodo_inicio || !a.periodo_fim) return false;
+        const ini = parseLocalDate(a.periodo_inicio), fimA = parseLocalDate(a.periodo_fim);
+        return ini <= fimMes && fimA >= inicioMes;
+    }).sort((a, b) => (b.periodo_inicio || '').localeCompare(a.periodo_inicio || ''));
+    const aplicacaoPsico = aplicacoesNoPeriodo[0] || null;
+    let psicossocial = null;
+    if (aplicacaoPsico) {
+        const escalas = allEscalasPsicossociais.filter(e => e.aplicacao_id === aplicacaoPsico.id);
+        psicossocial = {
+            aplicacao: aplicacaoPsico,
+            totalEscalas: escalas.length,
+            criticas: escalas.filter(e => Number(e.pct_risco) >= PSICO_LIMIAR_RISCO_CRITICO).sort((a, b) => Number(b.pct_risco) - Number(a.pct_risco)),
+            fortes: escalas.filter(e => Number(e.pct_favoravel) >= PSICO_LIMIAR_FAVORAVEL_FORTE).sort((a, b) => Number(b.pct_favoravel) - Number(a.pct_favoravel)),
+        };
+    }
+
+    return { ada, saudeKpis, psicossocial };
+}
+
+function construirSecao2RelSms(dados, mes, ano) {
+    const nomeMes = NOMES_MESES[mes];
+    const out = [relSmsH1('2. Área Diretamente Afetada (ADA) e Mão de Obra Local')];
+    const a = dados.ada;
+    if (a.linhasQuadro1.length === 0) {
+        out.push(relSmsP(`Nenhum colaborador ativo encontrado em ${nomeMes.toLowerCase()} de ${ano}.`));
+        out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
+        return out;
+    }
+
+    out.push(relSmsH2(`Quadro 1 — Demonstrativo da ocupação da mão de obra local por município (${nomeMes}/${ano})`));
+    out.push(relSmsNota(`Número Total de Funcionários da Obra: ${a.totalFuncionarios}`));
+    out.push(relSmsTabela(
+        ['Município de Origem', 'UF', 'Nº de Trabalhadores'],
+        [...a.linhasQuadro1.map(l => [l.municipio, l.uf, l.qtd]), ['TOTAL', '', a.totalFuncionarios]],
+    ));
+
+    out.push(relSmsH2(`Quadro 2 — Municípios na Área Diretamente Afetada - ADA (${nomeMes}/${ano})`));
+    if (a.linhasQuadro2.length === 0) {
+        out.push(relSmsP('Nenhum colaborador ativo é originário de município cadastrado como ADA neste mês.'));
+    } else {
+        out.push(relSmsTabela(
+            ['Município de Origem ADA', 'UF', 'Nº de Funcionários', '% sobre o Total'],
+            [...a.linhasQuadro2.map(l => [l.municipio, l.uf, l.qtd, r2(l.pct) + '%']), ['TOTAL', '', a.totalAda, r2(a.pctAda) + '%']],
+        ));
+    }
+
+    out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
+    return out;
+}
+
+// `fiscalizacao` remove as dimensões críticas da avaliação psicossocial (item sensível -
+// ver memória do projeto) da versão pra Fiscalização; a versão completa mostra tudo.
+function construirSecao3RelSms(dados, mes, ano, fiscalizacao) {
+    const nomeMes = NOMES_MESES[mes];
+    const out = [relSmsH1('3. Saúde Ocupacional')];
+
+    out.push(relSmsH2('3.1. Atestados de Saúde Ocupacional (ASO) e Absenteísmo'));
+    out.push(dados.saudeKpis.length > 0 ? relSmsTabelaKpis(dados.saudeKpis) : relSmsP('Nenhum dado de ASO disponível para o período.'));
+
+    out.push(relSmsH2('3.2. Avaliação Psicossocial (COPSOQ II)'));
+    const p = dados.psicossocial;
+    if (!p) {
+        out.push(relSmsP(`Nenhuma aplicação do questionário psicossocial com período cobrindo ${nomeMes.toLowerCase()} de ${ano}.`));
+    } else {
+        out.push(relSmsP(`Aplicação referente a ${formatarPeriodoPsicossocial(p.aplicacao)} — taxa de participação: ${fmtPct(p.aplicacao.taxa_participacao)}.`));
+        const linhasPsico = [
+            ['Escalas avaliadas', p.totalEscalas],
+            ['Escalas em situação fortemente favorável (≥ ' + PSICO_LIMIAR_FAVORAVEL_FORTE + '%)', p.fortes.length],
+        ];
+        if (!fiscalizacao) linhasPsico.splice(1, 0, ['Escalas em situação crítica (risco ≥ ' + PSICO_LIMIAR_RISCO_CRITICO + '%)', p.criticas.length]);
+        out.push(relSmsTabela(['Indicador', 'Valor'], linhasPsico));
+        if (!fiscalizacao && p.criticas.length > 0) {
+            out.push(relSmsNota('Dimensões críticas: ' + p.criticas.map(e => `${e.escala} (${fmtPct(e.pct_risco)})`).join('; ') + '.'));
+        }
+    }
+
+    out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
+    return out;
+}
+
+// Considerações Finais - não recalcula nada, só resume (em lista) os pontos de atenção já
+// calculados nas Seções 1 e 3, filtrando só o que tem contagem > 0 (não repete o que já
+// está em dia). `fiscalizacao` pula os mesmos itens sensíveis já removidos das Seções 1 e
+// 3 (NR vencida, APR vencida, CA de EPI vencido/estoque baixo, dimensões psicossociais
+// críticas) - os demais pontos (extintores, relatos, CIPA, ASO) entram nas duas versões.
+function construirSecao4RelSms(dadosSecao1, dadosSecoes23, mes, ano, fiscalizacao) {
+    const nomeMes = NOMES_MESES[mes];
+    const out = [relSmsH1('4. Considerações Finais e Plano de Ação')];
+    out.push(relSmsP(`Síntese dos pontos de atenção identificados em ${nomeMes.toLowerCase()} de ${ano}, a partir dos indicadores apresentados nas seções anteriores deste relatório.`));
+
+    const pontos = [];
+    const d1 = dadosSecao1;
+    if (!fiscalizacao && d1.treinamentos.nrVencidas > 0) pontos.push(`${d1.treinamentos.nrVencidas} colaborador(es) ativo(s) com integração/NR vencida.`);
+    if (!fiscalizacao && d1.apr.situacaoAtual.vencidas > 0) pontos.push(`${d1.apr.situacaoAtual.vencidas} APR(s) vencida(s) — recomenda-se renovação imediata.`);
+    if (d1.apr.situacaoAtual.vencendo > 0) pontos.push(`${d1.apr.situacaoAtual.vencendo} APR(s) vencendo em até 5 dias.`);
+    if (!fiscalizacao) {
+        const epiCaVencidos = d1.epiKpis.find(k => k.key === 'caVencidos');
+        if (epiCaVencidos && Number(epiCaVencidos.value) > 0) pontos.push(`${epiCaVencidos.value} CA(s) de EPI vencido(s) — providenciar substituição do item no catálogo.`);
+        const epiEstoqueBaixo = d1.epiKpis.find(k => k.key === 'estoqueBaixo');
+        if (epiEstoqueBaixo && Number(epiEstoqueBaixo.value) > 0) pontos.push(`${epiEstoqueBaixo.value} item(ns) de EPI com estoque abaixo do mínimo.`);
+    }
+    if (d1.extintores.vencidos > 0) pontos.push(`${d1.extintores.vencidos} extintor(es) com recarga vencida.`);
+    if (d1.extintores.pendentes > 0) pontos.push(`${d1.extintores.pendentes} extintor(es) sem inspeção registrada no mês.`);
+    if (d1.relatos.abertosAtual > 0) pontos.push(`${d1.relatos.abertosAtual} relato(s) de segurança ainda aberto(s) ou em andamento.`);
+    if (d1.cipa.pendenciasAtrasadas > 0) pontos.push(`${d1.cipa.pendenciasAtrasadas} pendência(s) do plano de ação da CIPA em atraso.`);
+    const asoVencidos = dadosSecoes23.saudeKpis.find(k => k.key === 'asoVencidos');
+    if (asoVencidos && Number(asoVencidos.value) > 0) pontos.push(`${asoVencidos.value} colaborador(es) com ASO vencido — agendar exame.`);
+    const asoSemRegistro = dadosSecoes23.saudeKpis.find(k => k.key === 'asoSemRegistro');
+    if (asoSemRegistro && Number(asoSemRegistro.value) > 0) pontos.push(`${asoSemRegistro.value} colaborador(es) ativo(s) sem ASO registrado.`);
+    if (!fiscalizacao && dadosSecoes23.psicossocial && dadosSecoes23.psicossocial.criticas.length > 0) {
+        pontos.push(`${dadosSecoes23.psicossocial.criticas.length} dimensão(ões) da avaliação psicossocial em situação crítica — ver seção 3.2.`);
+    }
+
+    out.push(relSmsH2('Pontos de atenção para o próximo período'));
+    if (pontos.length === 0) {
+        out.push(relSmsP('Nenhum ponto crítico identificado nos indicadores monitorados neste relatório.'));
+    } else {
+        pontos.forEach(texto => out.push(new docx.Paragraph({
+            spacing: { after: 100 },
+            bullet: { level: 0 },
+            children: [new docx.TextRun({ text: texto, size: 21, color: '262626' })],
+        })));
+    }
+
+    out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
+    return out;
+}
+
+// ================================================================
+// SEÇÃO 5 (Registros Fotográficos) E ANEXOS - Fase 4. Não recalcula nada de sensível, só
+// monta a lista cronológica de eventos (treinamentos + DDS) do mês, igual nas duas
+// versões do relatório (nenhum dos itens sensíveis do roteiro - ver Seções 1/3/4 acima -
+// aparece aqui).
+// ================================================================
+
+// Lista cronológica de treinamentos + DDS do mês, um "evento" por linha - reaproveita
+// montarLinhasRelatorioMensal() de novo, mas com agrupamento 'diario' (não 'semanal' como
+// na Seção 1.2), porque aqui cada sessão/dia vira um espaço de foto individual.
+function coletarDadosFase4RelSms(mes, ano) {
+    const treinamentosDiario = montarLinhasRelatorioMensal(ano, mes, 'diario');
+    const eventos = [];
+    treinamentosDiario.categorias.forEach(cat => {
+        cat.linhas.forEach(l => eventos.push({ data: l.data, nome: l.nome, categoria: cat.label }));
+    });
+    eventos.sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+    return { eventos };
+}
+
+// Uma célula de foto: espaço reservado (borda, sem imagem - João insere manualmente
+// depois de gerado o .docx) + legenda "Foto - NN" + data/título, exatamente como descrito
+// na convenção do relatório (quadro 2 colunas, ordem cronológica).
+function relSmsCelulaFoto(numero, dataStr, titulo) {
+    return new docx.TableCell({
+        margins: { top: 100, bottom: 100, left: 100, right: 100 },
+        borders: { top: RELSMS_BORDA_FINA, bottom: RELSMS_BORDA_FINA, left: RELSMS_BORDA_FINA, right: RELSMS_BORDA_FINA },
+        verticalAlign: docx.VerticalAlign.TOP,
+        children: [
+            new docx.Paragraph({
+                alignment: docx.AlignmentType.CENTER,
+                spacing: { before: 600, after: 600 },
+                border: { top: RELSMS_BORDA_FINA, bottom: RELSMS_BORDA_FINA, left: RELSMS_BORDA_FINA, right: RELSMS_BORDA_FINA },
+                children: [new docx.TextRun({ text: '[Espaço reservado para foto]', italics: true, color: RELSMS_GREY, size: 18 })],
+            }),
+            new docx.Paragraph({
+                alignment: docx.AlignmentType.CENTER,
+                spacing: { before: 80, after: 20 },
+                children: [new docx.TextRun({ text: `Foto - ${String(numero).padStart(2, '0')}`, bold: true, size: 18, color: RELSMS_NAVY })],
+            }),
+            new docx.Paragraph({
+                alignment: docx.AlignmentType.CENTER,
+                children: [new docx.TextRun({ text: `${formatSimpleDate(dataStr)} — ${titulo}`, size: 16, color: RELSMS_GREY })],
+            }),
+        ],
+    });
+}
+
+function relSmsCelulaVazia() {
+    return new docx.TableCell({
+        borders: { top: RELSMS_BORDA_FINA, bottom: RELSMS_BORDA_FINA, left: RELSMS_BORDA_FINA, right: RELSMS_BORDA_FINA },
+        children: [new docx.Paragraph({ children: [] })],
+    });
+}
+
+function construirSecao5RelSms(dadosFotos, mes, ano) {
+    const nomeMes = NOMES_MESES[mes];
+    const out = [relSmsH1('5. Registros Fotográficos')];
+    out.push(relSmsP(`Registros fotográficos de treinamentos e DDS/DDSMA realizados em ${nomeMes.toLowerCase()} de ${ano}, em ordem cronológica. Espaços reservados abaixo para inserção manual das fotos após a geração deste documento.`));
+
+    const eventos = dadosFotos.eventos;
+    if (eventos.length === 0) {
+        out.push(relSmsP('Nenhum treinamento ou DDS registrado no período.'));
+        out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
+        return out;
+    }
+
+    const linhasTabela = [];
+    for (let i = 0; i < eventos.length; i += 2) {
+        const par = [eventos[i], eventos[i + 1] || null];
+        linhasTabela.push(new docx.TableRow({
+            height: { value: 2600, rule: docx.HeightRule.ATLEAST },
+            children: par.map((ev, idx) => ev ? relSmsCelulaFoto(i + idx + 1, ev.data, ev.nome) : relSmsCelulaVazia()),
+        }));
+    }
+    out.push(new docx.Table({ width: { size: 100, type: docx.WidthType.PERCENTAGE }, rows: linhasTabela }));
+
+    out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
+    return out;
+}
+
+// ANEXOS - sem numeração de seção (só o título em maiúsculas), conforme convenção do
+// relatório: sempre cita os 2 rótulos fixos + o cronograma do mês do relatório e do mês
+// seguinte, como arquivos separados que João anexa manualmente fora do sistema.
+function construirAnexosRelSms(mes, ano) {
+    const nomeMes = NOMES_MESES[mes];
+    const mesSeguinte = (mes + 1) % 12;
+    const anoSeguinte = mes === 11 ? ano + 1 : ano;
+    const nomeMesSeguinte = NOMES_MESES[mesSeguinte];
+
+    const out = [relSmsH1('ANEXOS')];
+    out.push(relSmsP('Os documentos abaixo acompanham este relatório como arquivos separados:'));
+    [
+        'LISTA DE PRESENÇA TREINAMENTO - ENTREGUE EM ANEXO:',
+        'DDS - ENTREGUE EM ANEXO:',
+        `CRONOGRAMA DE TREINAMENTOS ${nomeMes.toUpperCase()}/${ano} - ENTREGUE EM ANEXO:`,
+        `CRONOGRAMA DE TREINAMENTOS ${nomeMesSeguinte.toUpperCase()}/${anoSeguinte} - ENTREGUE EM ANEXO:`,
+    ].forEach(texto => out.push(new docx.Paragraph({
+        spacing: { after: 100 },
+        bullet: { level: 0 },
+        children: [new docx.TextRun({ text: texto, bold: true, size: 20, color: '262626' })],
+    })));
+
+    return out;
+}
+
+// Monta o Document completo (capa + índice + sumário + Seções 1 a 5 + Anexos) pro
+// mês/ano/versão escolhidos. Só a lib docx carregada globalmente via CDN (window.docx) -
+// ver comentário no topo desta seção.
+async function montarDocRelSms(mes, ano, fiscalizacao) {
+    const nomeMes = NOMES_MESES[mes];
+    const hoje = new Date();
+    const dataEmissao = String(hoje.getDate()).padStart(2, '0') + '/' + String(hoje.getMonth() + 1).padStart(2, '0') + '/' + hoje.getFullYear();
+
+    const capa = [
+        ...Array(6).fill(0).map(() => new docx.Paragraph({ spacing: { after: 200 }, children: [] })),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 100 }, children: [new docx.TextRun({ text: 'COP – CONSÓRCIO OPERADOR DO PISF', bold: true, color: RELSMS_NAVY, size: 26 })] }),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 600 }, children: [new docx.TextRun({ text: 'Obra Ramal do Agreste', color: RELSMS_GREY, size: 22 })] }),
+        new docx.Paragraph({
+            alignment: docx.AlignmentType.CENTER, spacing: { after: 100 },
+            border: { top: { color: RELSMS_NAVY, space: 10, style: docx.BorderStyle.SINGLE, size: 12 }, bottom: { color: RELSMS_NAVY, space: 10, style: docx.BorderStyle.SINGLE, size: 12 } },
+            children: [new docx.TextRun({ text: 'RELATÓRIO MENSAL DE SMS', bold: true, color: RELSMS_NAVY, size: 40 })],
+        }),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 100, after: 40 }, children: [new docx.TextRun({ text: '(Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente)', color: RELSMS_GREY, size: 20, italics: true })] }),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 300, after: fiscalizacao ? 200 : 900 }, children: [new docx.TextRun({ text: (nomeMes + ' / ' + ano).toUpperCase(), bold: true, color: RELSMS_BLUE, size: 32 })] }),
+        ...(fiscalizacao ? [new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 900 }, children: [new docx.TextRun({ text: 'Versão para envio à Fiscalização', bold: true, color: RELSMS_GREY, size: 20 })] })] : []),
+        ...Array(4).fill(0).map(() => new docx.Paragraph({ spacing: { after: 150 }, children: [] })),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'Elaborado por:', color: RELSMS_GREY, size: 20 })] }),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'João Everton de Souza Limeira', bold: true, color: RELSMS_NAVY, size: 22 })] }),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 300 }, children: [new docx.TextRun({ text: 'Engenheiro de Segurança do Trabalho', color: RELSMS_GREY, size: 20 })] }),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, children: [new docx.TextRun({ text: 'Data de emissão: ' + dataEmissao, color: RELSMS_GREY, size: 18 })] }),
+        new docx.Paragraph({ children: [new docx.PageBreak()] }),
+    ];
+
+    const indice = [
+        relSmsH1('Índice'),
+        new docx.TableOfContents('Índice', { hyperlink: true, headingStyleRange: '1-3' }),
+        new docx.Paragraph({ spacing: { after: 150 }, children: [] }),
+        new docx.Paragraph({ spacing: { after: 200 }, children: [new docx.TextRun({ text: 'Sumário gerado automaticamente pelo Word a partir dos títulos do documento. Se os números de página não aparecerem ao abrir o arquivo, clique com o botão direito sobre o índice acima e selecione "Atualizar campo" (ou selecione o índice e pressione F9).', italics: true, size: 18, color: RELSMS_GREY })] }),
+        new docx.Paragraph({ children: [new docx.PageBreak()] }),
+    ];
+
+    const sumario = [
+        relSmsH1('Sumário Executivo'),
+        relSmsP('Este relatório consolida os indicadores de Segurança do Trabalho e Saúde Ocupacional do Consórcio Operador do PISF – Ramal do Agreste referentes a ' + nomeMes.toLowerCase() + ' de ' + ano + ', com base nos registros de campo consolidados pela equipe de SMS.'),
+        relSmsP('Versão gerada automaticamente pelo painel (Fase 4 do módulo Relatório Mensal SMS): Segurança do Trabalho, Área Diretamente Afetada, Saúde Ocupacional, Considerações Finais, Registros Fotográficos e Anexos já trazem os dados reais do mês.'
+            + (fiscalizacao ? ' Versão para Fiscalização: os itens sensíveis (integrações de NR vencidas, CA de EPI vencido/estoque baixo, APR vencida, dimensões críticas da avaliação psicossocial) foram omitidos desta versão.' : '')),
+    ];
+
+    await garantirDadosSecao1RelSms();
+    const dadosSecao1 = coletarDadosSecao1RelSms(mes, ano);
+    const secao1 = construirSecao1RelSms(dadosSecao1, mes, ano, fiscalizacao);
+
+    await garantirDadosSecoes23RelSms();
+    const dadosSecoes23 = coletarDadosSecoes23RelSms(mes, ano);
+    const secao2 = construirSecao2RelSms(dadosSecoes23, mes, ano);
+    const secao3 = construirSecao3RelSms(dadosSecoes23, mes, ano, fiscalizacao);
+    const secao4 = construirSecao4RelSms(dadosSecao1, dadosSecoes23, mes, ano, fiscalizacao);
+
+    const dadosFase4 = coletarDadosFase4RelSms(mes, ano);
+    const secao5 = construirSecao5RelSms(dadosFase4, mes, ano);
+    const anexos = construirAnexosRelSms(mes, ano);
+
+    const header = new docx.Header({
+        children: [new docx.Paragraph({
+            alignment: docx.AlignmentType.RIGHT,
+            border: { bottom: { color: 'BFBFBF', space: 4, style: docx.BorderStyle.SINGLE, size: 4 } },
+            children: [new docx.TextRun({ text: 'Relatório Mensal de SMS — COP Ramal do Agreste — ' + nomeMes + '/' + ano, size: 16, color: RELSMS_GREY })],
+        })],
+    });
+    const footer = new docx.Footer({
+        children: [new docx.Paragraph({
+            alignment: docx.AlignmentType.CENTER,
+            children: [
+                new docx.TextRun({ text: 'Página ', size: 16, color: RELSMS_GREY }),
+                new docx.TextRun({ children: [docx.PageNumber.CURRENT], size: 16, color: RELSMS_GREY }),
+                new docx.TextRun({ text: ' de ', size: 16, color: RELSMS_GREY }),
+                new docx.TextRun({ children: [docx.PageNumber.TOTAL_PAGES], size: 16, color: RELSMS_GREY }),
+            ],
+        })],
+    });
+
+    return new docx.Document({
+        styles: { default: { document: { run: { font: 'Calibri' } } } },
+        sections: [
+            { properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, children: capa },
+            { properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, headers: { default: header }, footers: { default: footer }, children: [...indice, ...sumario, ...secao1, ...secao2, ...secao3, ...secao4, ...secao5, ...anexos] },
+        ],
+    });
+}
+
+// Botão "📄 Gerar Relatório (.docx)" - monta o Document e baixa via <a download> (mesmo
+// padrão de baixarCSV/Ficha de EPI, não usa window.open pra não cair no bloqueador de
+// pop-up).
+async function gerarRelatorioMensalSms() {
+    const statusEl = document.getElementById('relSmsStatus');
+    const mes = parseInt(document.getElementById('relSmsMes').value);
+    const ano = parseInt(document.getElementById('relSmsAno').value);
+    const fiscalizacao = document.getElementById('relSmsFiscalizacao').checked;
+    if (!ano) { alert('Informe o ano.'); return; }
+    if (typeof docx === 'undefined') {
+        if (statusEl) statusEl.textContent = '❌ Biblioteca de geração de Word não carregou. Verifique sua conexão e recarregue a página.';
+        return;
+    }
+    if (statusEl) statusEl.textContent = '⏳ Carregando dados e gerando... pode levar até 1-2 minutos (recalcula vários módulos do painel).';
+    try {
+        const doc = await montarDocRelSms(mes, ano, fiscalizacao);
+        const blob = await docx.Packer.toBlob(doc);
+        const nomeMes = NOMES_MESES[mes];
+        const nomeArquivo = 'Relatorio_Mensal_SMS_' + nomeMes + '_' + ano + (fiscalizacao ? '_Fiscalizacao' : '') + '.docx';
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = nomeArquivo;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+        if (statusEl) {
+            statusEl.textContent = '✅ Relatório gerado (' + nomeMes + '/' + ano + ') — o download deve começar automaticamente. Fase 4: relatório completo (Seções 1 a 5 + Anexos) com dados reais do mês'
+                + (fiscalizacao ? ', versão Fiscalização (itens sensíveis omitidos).' : '.');
+        }
+    } catch (e) {
+        console.error('Erro ao gerar Relatório Mensal SMS:', e);
+        if (statusEl) statusEl.textContent = '❌ Erro ao gerar o relatório: ' + (e?.message || e);
+    }
+}
+
 // Lê os 3 campos de turmas da tela, guarda em memória (usado por
 // montarLinhasRelatorioMensal logo abaixo) e salva no banco pra lembrar da próxima vez -
 // chamado sempre que o usuário gera o Excel ou o PDF.
@@ -15192,6 +16000,7 @@ async function importarEpiCSV() {
 // ============================================
 
 const DB_PAGE_TITLES = {
+    relatoriosms: 'Relatório Mensal SMS',
     checklists: 'Checklists',
     extintores: 'Extintores',
     relatos: 'Relatos de Problemas',
@@ -15220,7 +16029,8 @@ const NAV_GROUP_POR_PAGINA = {
     saude: 'saude', psicossocial: 'saude',
     ambiental: 'ambiente',
     efetivo: 'pessoas',
-    compras: 'gestao', documentos: 'gestao'
+    compras: 'gestao', documentos: 'gestao',
+    relatoriosms: 'relatorios'
     // 'config' fica de fora de propósito - não pertence a nenhum grupo, fica solto no menu.
 };
 
@@ -15293,7 +16103,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', documentos: 'navDocumentos', config: 'navConfig' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', documentos: 'navDocumentos', relatoriosms: 'navRelatorioSms', config: 'navConfig' };
     document.getElementById(navMap[pageId])?.classList.add('active');
     abrirGrupoNavPagina(pageId);
     destacarGrupoAtivo(pageId);
@@ -15373,6 +16183,9 @@ function showDbPage(pageId) {
     if (pageId === 'documentos') {
         if (!documentosControleLoaded) { documentosControleLoaded = true; loadDocumentosControleData(); }
         else renderListaMestraDocumentos();
+    }
+    if (pageId === 'relatoriosms') {
+        popularRelSmsDefaults();
     }
 }
 

@@ -143,6 +143,18 @@
                     </div>
                 </div>
 
+                <div class="db-nav-group" data-group="relatorios">
+                    <button class="db-nav-group-header" onclick="toggleNavGroup('relatorios')">
+                        <span class="db-nav-group-label">Relatórios</span>
+                        <span class="db-nav-group-caret">▾</span>
+                    </button>
+                    <div class="db-nav-group-items" id="navGroupItems-relatorios">
+                        <button class="db-nav-item" id="navRelatorioSms" onclick="showDbPage('relatoriosms')">
+                            <span class="db-nav-icon">📄</span> Relatório Mensal SMS
+                        </button>
+                    </div>
+                </div>
+
                 <div class="db-nav-standalone">
                     <button class="db-nav-item" id="navConfig" onclick="showDbPage('config')">
                         <span class="db-nav-icon">⚙️</span> Configurações
@@ -1392,6 +1404,43 @@
                         </div>
                         <div id="relatorioMensalStatus" style="margin-top:10px; font-size:12.5px;"></div>
                     </div>
+                </div>
+            </section>
+
+            <!-- Página: Relatório Mensal SMS (Fase 1 - capa + índice + sumário; seções completas vêm nas próximas etapas) -->
+            <section class="db-page" id="page-relatoriosms">
+                <div class="db-card">
+                    <h3>📄 Relatório Mensal de SMS</h3>
+                    <p style="font-size:12.5px; color:var(--text-light); margin-top:-6px;">
+                        Gera o relatório mensal consolidado de SMS (Segurança do Trabalho, ADA, Saúde
+                        Ocupacional e Anexos) em Word (.docx), no mesmo modelo já usado hoje. Em construção por
+                        etapas: por enquanto gera capa, índice e um sumário inicial — as demais seções entram
+                        nas próximas atualizações.
+                    </p>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
+                        <div>
+                            <label style="display:block; font-size:12px; margin-bottom:4px;">Mês</label>
+                            <select id="relSmsMes" style="padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                                <option value="0">Janeiro</option><option value="1">Fevereiro</option><option value="2">Março</option>
+                                <option value="3">Abril</option><option value="4">Maio</option><option value="5">Junho</option>
+                                <option value="6">Julho</option><option value="7">Agosto</option><option value="8">Setembro</option>
+                                <option value="9">Outubro</option><option value="10">Novembro</option><option value="11">Dezembro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; margin-bottom:4px;">Ano</label>
+                            <input type="number" id="relSmsAno" style="width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                        </div>
+                        <div>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">
+                                <input type="checkbox" id="relSmsFiscalizacao"> Versão para Fiscalização (remove itens sensíveis)
+                            </label>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="db-apply-btn" onclick="gerarRelatorioMensalSms()">📄 Gerar Relatório (.docx)</button>
+                    </div>
+                    <div id="relSmsStatus" style="margin-top:10px; font-size:12.5px;"></div>
                 </div>
             </section>
 
@@ -4799,8 +4848,9 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=120"></script>
+    <script src="dashboard.js?v=121"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();

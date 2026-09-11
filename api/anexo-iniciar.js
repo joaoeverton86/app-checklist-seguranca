@@ -85,12 +85,20 @@ export default async function handler(req, res) {
         const nomeFinal = `${sanitizarNome(registroChave)}_${sanitizarNome(nomeArquivo)}`;
         const metadata = { name: nomeFinal, parents: [idMes] };
 
+        // A origem que vai fazer o PUT direto pro Google (navegador do usuário).
+        // É preciso mandar esse header 'Origin' já nesta requisição de abertura
+        // da sessão retomável - é isso que faz o Google liberar CORS pra essa
+        // origem na URL de sessão (Location) devolvida logo abaixo. Sem isso, o
+        // navegador recebe "blocked by CORS policy" ao tentar enviar o arquivo.
+        const origemNavegador = req.headers.origin || `https://${req.headers.host}`;
+
         const sessaoRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink', {
             method: 'POST',
             headers: {
                 Authorization: `Bearer ${accessToken}`,
                 'Content-Type': 'application/json; charset=UTF-8',
-                'X-Upload-Content-Type': mimeType || 'application/octet-stream'
+                'X-Upload-Content-Type': mimeType || 'application/octet-stream',
+                'Origin': origemNavegador
             },
             body: JSON.stringify(metadata)
         });

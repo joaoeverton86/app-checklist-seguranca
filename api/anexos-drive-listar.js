@@ -23,19 +23,33 @@ async function chamarDrive(caminho, params) {
     return dados;
 }
 
-// Confirma que a pasta pedida é a raiz permitida ou está dentro dela,
-// subindo pela árvore de pais - evita que este endpoint vire um "proxy
+// Confirma que a pasta pedida está dentro do acervo permitido, descendo a
+// árvore de pastas A PARTIR DA RAIZ (em vez de subir a partir do arquivo) -
+// o Google Drive não devolve o campo "parents" de forma confiável em
+// chamadas anônimas (só com Chave de API), então validar subindo não
+// funciona. A estrutura real só tem 2 níveis abaixo da raiz (ano → mês),
+// então essa busca é rápida. Evita que este endpoint vire um "proxy
 // aberto" pra ler qualquer pasta pública do Google Drive por fora do
 // acervo autorizado.
 async function pastaEhPermitida(pastaId, raizId) {
     if (pastaId === raizId) return true;
-    let atual = pastaId;
-    for (let i = 0; i < 6; i++) {
-        const meta = await chamarDrive(`files/${atual}`, { fields: 'id,parents' });
-        const pais = meta.parents || [];
-        if (pais.includes(raizId)) return true;
-        if (pais.length === 0) return false;
-        atual = pais[0];
+    const MAX_PROFUNDIDADE = 2;
+    let nivelAtual = [raizId];
+    for (let profundidade = 0; profundidade < MAX_PROFUNDIDADE; profundidade++) {
+        const listas = await Promise.all(nivelAtual.map((id) => chamarDrive('files', {
+            q: `'${id}' in parents and trashed = false and mimeType = 'application/vnd.google-apps.folder'`,
+            fields: 'files(id)',
+            pageSize: 1000
+        })));
+        const proximosIds = [];
+        for (const lista of listas) {
+            for (const item of (lista.files || [])) {
+                if (item.id === pastaId) return true;
+                proximosIds.push(item.id);
+            }
+        }
+        if (proximosIds.length === 0) return false;
+        nivelAtual = proximosIds;
     }
     return false;
 }

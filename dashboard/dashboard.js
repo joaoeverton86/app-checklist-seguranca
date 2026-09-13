@@ -16222,6 +16222,7 @@ const DB_PAGE_TITLES = {
     compras: 'Compras',
     cipa: 'CIPA',
     documentos: 'Controle de Documentos',
+    acervodrive: 'Acervo (Drive)',
     config: 'Configurações'
 };
 
@@ -16234,7 +16235,7 @@ const NAV_GROUP_POR_PAGINA = {
     saude: 'saude', psicossocial: 'saude',
     ambiental: 'ambiente',
     efetivo: 'pessoas',
-    compras: 'gestao', documentos: 'gestao',
+    compras: 'gestao', documentos: 'gestao', acervodrive: 'gestao',
     relatoriosms: 'relatorios'
     // 'config' fica de fora de propósito - não pertence a nenhum grupo, fica solto no menu.
 };
@@ -16308,7 +16309,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', documentos: 'navDocumentos', relatoriosms: 'navRelatorioSms', config: 'navConfig' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', config: 'navConfig' };
     document.getElementById(navMap[pageId])?.classList.add('active');
     abrirGrupoNavPagina(pageId);
     destacarGrupoAtivo(pageId);
@@ -16392,6 +16393,155 @@ function showDbPage(pageId) {
     if (pageId === 'relatoriosms') {
         popularRelSmsDefaults();
     }
+    // Sempre reinicia na tela de escolha de categoria (Treinamentos/DDSMA) ao entrar
+    // nesta página - é uma navegação ao vivo no Drive, sem estado pra preservar/cachear
+    // entre visitas (diferente dos outros módulos, que guardam dados já carregados).
+    if (pageId === 'acervodrive') {
+        resetAcervoDrive();
+    }
+}
+
+// ============================================
+// ACERVO (DRIVE) - navegação somente-leitura pelo acervo HISTÓRICO de
+// digitalizações (Treinamentos/DDSMA) já guardadas manualmente no Google Drive, via
+// /api/anexos-drive-listar (Chave de API do Google, separada do OAuth usado pro upload
+// de anexos novos em anexosDoRegistro/enviarAnexoSelecionado - ver bloco "MODAL DE
+// ANEXOS" acima, que continua 100% intacto). Sem cache/estado persistido entre
+// visitas de propósito - é sempre uma consulta ao vivo no Drive.
+// ============================================
+let acervoDriveCategoria = null;
+// Trilha (breadcrumb) - primeiro item é sempre a raiz virtual "Acervo (Drive)" (clicar
+// nela volta pra tela de escolha de categoria); id null significa "raiz da categoria"
+// (o endpoint usa a raiz permitida quando pastaId não é informado).
+let acervoDriveTrilha = [];
+let acervoDriveItens = [];
+let acervoDriveNextPageToken = null;
+
+function resetAcervoDrive() {
+    acervoDriveCategoria = null;
+    acervoDriveTrilha = [];
+    acervoDriveItens = [];
+    acervoDriveNextPageToken = null;
+    const categoriasEl = document.getElementById('acervoDriveCategorias');
+    const listaEl = document.getElementById('acervoDriveLista');
+    const carregarMaisWrap = document.getElementById('acervoDriveCarregarMaisWrap');
+    if (categoriasEl) categoriasEl.style.display = 'flex';
+    if (listaEl) { listaEl.style.display = 'none'; listaEl.innerHTML = ''; }
+    if (carregarMaisWrap) carregarMaisWrap.style.display = 'none';
+    renderAcervoDriveTrilha();
+}
+
+function abrirCategoriaAcervoDrive(categoria) {
+    acervoDriveCategoria = categoria;
+    const nomeCategoria = categoria === 'treinamentos' ? 'Treinamentos' : 'DDSMA';
+    acervoDriveTrilha = [{ id: null, nome: 'Acervo (Drive)' }, { id: null, nome: nomeCategoria }];
+    const categoriasEl = document.getElementById('acervoDriveCategorias');
+    if (categoriasEl) categoriasEl.style.display = 'none';
+    carregarPastaAcervoDrive(null, false);
+}
+
+function abrirPastaAcervoDrive(pastaId, nome) {
+    acervoDriveTrilha.push({ id: pastaId, nome });
+    carregarPastaAcervoDrive(pastaId, false);
+}
+
+// indice 0 = raiz virtual "Acervo (Drive)" (volta pra escolha de categoria); qualquer
+// outro índice recarrega aquele nível da trilha (índice 1 = raiz da categoria, sem
+// pastaId).
+function voltarTrilhaAcervoDrive(indice) {
+    if (indice === 0) { resetAcervoDrive(); return; }
+    acervoDriveTrilha = acervoDriveTrilha.slice(0, indice + 1);
+    const nivel = acervoDriveTrilha[indice];
+    carregarPastaAcervoDrive(nivel.id, false);
+}
+
+async function carregarPastaAcervoDrive(pastaId, appendMode) {
+    const listaEl = document.getElementById('acervoDriveLista');
+    const carregarMaisWrap = document.getElementById('acervoDriveCarregarMaisWrap');
+    if (!listaEl) return;
+    listaEl.style.display = 'block';
+    renderAcervoDriveTrilha();
+    if (!appendMode) {
+        acervoDriveItens = [];
+        acervoDriveNextPageToken = null;
+        listaEl.innerHTML = '<div class="db-list-empty">Carregando...</div>';
+        if (carregarMaisWrap) carregarMaisWrap.style.display = 'none';
+    }
+    try {
+        const params = new URLSearchParams({ categoria: acervoDriveCategoria });
+        if (pastaId) params.set('pastaId', pastaId);
+        if (appendMode && acervoDriveNextPageToken) params.set('pageToken', acervoDriveNextPageToken);
+        const resp = await fetch(`/api/anexos-drive-listar?${params.toString()}`);
+        const dados = await resp.json();
+        if (!resp.ok) throw new Error(dados.erro || `HTTP ${resp.status}`);
+
+        acervoDriveItens = appendMode ? acervoDriveItens.concat(dados.itens || []) : (dados.itens || []);
+        acervoDriveNextPageToken = dados.nextPageToken || null;
+        renderAcervoDriveLista();
+        if (carregarMaisWrap) carregarMaisWrap.style.display = acervoDriveNextPageToken ? 'block' : 'none';
+    } catch (err) {
+        console.error('Erro ao listar acervo do Drive:', err);
+        listaEl.innerHTML = `<div class="db-list-empty">❌ ${escapeHTML(err.message)}</div>`;
+        if (carregarMaisWrap) carregarMaisWrap.style.display = 'none';
+    }
+}
+
+function carregarMaisAcervoDrive() {
+    const nivelAtual = acervoDriveTrilha[acervoDriveTrilha.length - 1];
+    carregarPastaAcervoDrive(nivelAtual ? nivelAtual.id : null, true);
+}
+
+function renderAcervoDriveTrilha() {
+    const el = document.getElementById('acervoDriveTrilha');
+    if (!el) return;
+    if (acervoDriveTrilha.length === 0) {
+        el.style.display = 'none';
+        return;
+    }
+    el.style.display = 'block';
+    el.innerHTML = acervoDriveTrilha.map((nivel, i) => {
+        const separador = i > 0 ? ' <span style="color: var(--text-light);">›</span> ' : '';
+        const ultimo = i === acervoDriveTrilha.length - 1;
+        return separador + (ultimo
+            ? `<strong>${escapeHTML(nivel.nome)}</strong>`
+            : `<a href="#" onclick="voltarTrilhaAcervoDrive(${i}); return false;" style="color: var(--primary); text-decoration:none;">${escapeHTML(nivel.nome)}</a>`);
+    }).join('');
+}
+
+function renderAcervoDriveLista() {
+    const el = document.getElementById('acervoDriveLista');
+    if (!el) return;
+    if (acervoDriveItens.length === 0) {
+        el.innerHTML = '<div class="db-list-empty">Nenhum arquivo nesta pasta.</div>';
+        return;
+    }
+    el.innerHTML = acervoDriveItens.map(item => {
+        const ehPasta = item.mimeType === 'application/vnd.google-apps.folder';
+        const icone = ehPasta ? '📁' : '📄';
+        const detalhe = ehPasta ? 'Pasta' : `${formatarTamanhoArquivoAcervoDrive(item.size)} — ${formatSimpleDate(item.modifiedTime)}`;
+        return `<div class="db-list-item" style="cursor:pointer;" onclick="abrirItemAcervoDrive('${escapeHTML(item.id)}')">
+            <div class="db-list-item-title">${icone} ${escapeHTML(item.name || '(sem nome)')}</div>
+            <div class="db-list-item-sub">${detalhe}</div>
+        </div>`;
+    }).join('');
+}
+
+function abrirItemAcervoDrive(id) {
+    const item = acervoDriveItens.find(i => i.id === id);
+    if (!item) return;
+    if (item.mimeType === 'application/vnd.google-apps.folder') {
+        abrirPastaAcervoDrive(item.id, item.name);
+    } else {
+        window.open(item.webViewLink, '_blank');
+    }
+}
+
+function formatarTamanhoArquivoAcervoDrive(bytes) {
+    const n = parseInt(bytes, 10);
+    if (!n || isNaN(n)) return '—';
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+    return (n / (1024 * 1024)).toFixed(1).replace('.', ',') + ' MB';
 }
 
 function showAcidentesSubtab(tab) {

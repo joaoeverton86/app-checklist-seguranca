@@ -140,6 +140,9 @@
                         <button class="db-nav-item" id="navDocumentos" onclick="showDbPage('documentos')">
                             <span class="db-nav-icon">📄</span> Documentos
                         </button>
+                        <button class="db-nav-item" id="navAcervoDrive" onclick="showDbPage('acervodrive')">
+                            <span class="db-nav-icon">🗄️</span> Acervo (Drive)
+                        </button>
                     </div>
                 </div>
 
@@ -4770,6 +4773,34 @@
                             Toda vez que um documento é gerado, fica registrado aqui automaticamente. O alerta ⚠️ aparece quando a emissão usou uma revisão que já foi superada.
                         </p>
                         <div id="documentosEmissoesLista" class="db-list" style="max-height: 560px;"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Página: Acervo (Drive) - navegação somente-leitura pelo acervo histórico de
+                 digitalizações (Treinamentos/DDSMA) já guardadas no Google Drive. Diferente
+                 do botão "📎 Anexos" (upload de um anexo NUM registro específico). -->
+            <section class="db-page" id="page-acervodrive">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">🗄️ Acervo Histórico (Google Drive)</div>
+                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 12px;">
+                        Navegação somente-leitura pelas digitalizações antigas de Treinamentos e DDSMA já
+                        guardadas no Google Drive. Isto é diferente do botão "📎 Anexos" (que anexa um
+                        arquivo novo a um registro específico) - aqui é só consulta do acervo histórico,
+                        sem nenhuma ação de criar, editar, mover ou apagar.
+                    </p>
+
+                    <div id="acervoDriveTrilha" style="font-size: 12.5px; margin-bottom: 10px; display:none;"></div>
+
+                    <div id="acervoDriveCategorias" style="display:flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="abrirCategoriaAcervoDrive('treinamentos')">📁 Treinamentos</button>
+                        <button class="db-apply-btn" onclick="abrirCategoriaAcervoDrive('dds')">📁 DDSMA</button>
+                    </div>
+
+                    <div id="acervoDriveLista" class="db-list" style="max-height: 480px; margin-top: 12px; display:none;"></div>
+
+                    <div id="acervoDriveCarregarMaisWrap" style="text-align:center; margin-top: 10px; display:none;">
+                        <button class="db-clear-btn" onclick="carregarMaisAcervoDrive()">Carregar mais</button>
                     </div>
                 </div>
             </section>

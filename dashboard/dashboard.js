@@ -3824,30 +3824,34 @@ function onLancTreinCodigoChange() {
 }
 
 // Vem do botão "📋 Programar"/"📋 Programar Grupo" nos alertas de "NRs Vencidas ou
-// Vencendo" (Treinamentos > Visão Geral) - pula direto pra "Lançar Treinamento" já com o
-// treinamento certo e os colaboradores pendentes marcados na lista de presença, em vez do
-// usuário ter que procurar o código no catálogo e montar a equipe na mão toda vez que uma
-// NR vence. matriculas com 1 item = botão individual (por colaborador, dentro do grupo);
+// Vencendo" (Treinamentos > Visão Geral) - pula direto pra "🪪 Kits e Documentos" já com
+// o treinamento certo e os colaboradores pendentes carregados, pronto pra emitir a
+// documentação (OS + Lista de Presença + Certificado + Declaração de Integração + Termo
+// de Recusa) ANTES de levar a campo pra colher assinatura. NÃO vai pra "Lançar
+// Treinamento" de propósito - confirmado com o usuário que o lançamento só acontece DEPOIS
+// da documentação já assinada, então o gargalo real é emitir o documento, não lançar a
+// presença. matriculas com 1 item = botão individual (por colaborador, dentro do grupo);
 // com vários = botão "Programar Grupo" (todo mundo que precisa da mesma NR de uma vez,
-// numa lista de presença só). Mesmo padrão de lancarPresencaDoCronograma(), só que
-// partindo do alerta de NR vencida/vencendo em vez de um item do Cronograma.
+// cada um já com seus 5 botões de documento prontos na lista). Reaproveita o mesmo estado
+// que "🖨️ Kit Completo" já usa (kitsEquipe/kitsCodigoAtual/kitsDataAtual) - não duplica
+// nenhum gerador de documento.
 function programarRenovacaoNR(codigo, matriculas) {
-    showTreinSubtab('lancar');
-    abrirFormLancarTreinamento();
+    showTreinSubtab('kits');
 
     const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
-    document.getElementById('lancTreinCodigo').value = cat ? `${cat.id} - ${cat.nome}` : codigo;
-    onLancTreinCodigoChange();
+    document.getElementById('kitsCodigoInput').value = cat ? `${cat.id} - ${cat.nome}` : codigo;
+    onKitsCodigoChange();
 
+    document.getElementById('kitsDataInput').value = new Date().toISOString().split('T')[0];
+    onKitsDataChange();
+
+    kitsEquipe = new Map();
     matriculas.forEach(matricula => {
         const e = allEfetivo.find(x => x.id === matricula);
-        if (e) lancTreinEquipe.set(matricula, { nome: e.nome, funcao: e.funcao, setor: e.setor, checked: true });
+        if (e) kitsEquipe.set(matricula, { nome: e.nome, funcao: e.funcao, checked: true });
     });
-    renderListaPresencaEquipe();
-
-    const statusEl = document.getElementById('lancTreinStatus');
-    statusEl.style.color = 'var(--text)';
-    statusEl.textContent = `📋 Sessão pré-preenchida com ${matriculas.length} colaborador(es) pendente(s) desta NR. Confira a data e a lista de presença abaixo (dá pra adicionar/remover gente), gere a Lista de Presença pra levar assinada a campo e, depois do treinamento, lance a presença aqui mesmo.`;
+    renderKitsEquipeList();
+    renderKitsDocsIndividuaisList();
 }
 
 // Cada "responsável" identifica uma frente de serviço - a lista de presença é sempre

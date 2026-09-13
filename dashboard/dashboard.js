@@ -2660,12 +2660,42 @@ function renderTreinamentosPanel() {
     if (nrAlerts.length === 0) {
         listEl.innerHTML = '<div class="db-list-empty">✅ Nenhuma NR vencida ou vencendo nos próximos 30 dias</div>';
     } else {
-        listEl.innerHTML = nrAlerts.slice(0, 30).map(({ s, diffDays }) => {
-            const cls = diffDays < 0 ? 'db-item-danger' : 'db-item-warning';
-            const msg = diffDays < 0 ? `Vencida há ${Math.abs(diffDays)} dia(s)` : (diffDays === 0 ? 'Vence hoje' : `Vence em ${diffDays} dia(s)`);
-            return `<div class="db-list-item ${cls}">
-                <div class="db-list-item-title">${escapeHTML(s.nome || s.matricula)}</div>
-                <div class="db-list-item-sub">${escapeHTML(s.treinamento_nome || '')} — ${msg}</div>
+        // Agrupado por treinamento (treinamento_cod) em vez de lista plana - dá pra
+        // programar a sessão de renovação já com todo mundo daquela NR de uma vez
+        // ("Programar Grupo"), além do botão individual por colaborador, direto no
+        // alerta - evita ter que procurar o código no catálogo e montar a equipe na mão
+        // toda vez que uma NR vence. Mantém o mesmo recorte de urgência de antes (top 30
+        // mais urgentes no total), só agrupados por tema em vez de em lista única.
+        const top = nrAlerts.slice(0, 30);
+        const grupos = new Map(); // treinamento_cod -> { nome, itens: [{s, diffDays}] }
+        top.forEach(item => {
+            const cod = item.s.treinamento_cod || '';
+            if (!grupos.has(cod)) grupos.set(cod, { nome: item.s.treinamento_nome || cod, itens: [] });
+            grupos.get(cod).itens.push(item);
+        });
+        const gruposOrdenados = Array.from(grupos.entries())
+            .sort((a, b) => Math.min(...a[1].itens.map(i => i.diffDays)) - Math.min(...b[1].itens.map(i => i.diffDays)));
+
+        listEl.innerHTML = gruposOrdenados.map(([cod, grupo]) => {
+            const matriculasGrupo = JSON.stringify(grupo.itens.map(i => i.s.matricula)).replace(/"/g, '&quot;');
+            const itensHtml = grupo.itens.map(({ s, diffDays }) => {
+                const cls = diffDays < 0 ? 'db-item-danger' : 'db-item-warning';
+                const msg = diffDays < 0 ? `Vencida há ${Math.abs(diffDays)} dia(s)` : (diffDays === 0 ? 'Vence hoje' : `Vence em ${diffDays} dia(s)`);
+                const matriculaJson = JSON.stringify([s.matricula]).replace(/"/g, '&quot;');
+                return `<div class="db-list-item ${cls}" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <div style="flex:1; min-width:160px;">
+                        <div class="db-list-item-title">${escapeHTML(s.nome || s.matricula)}</div>
+                        <div class="db-list-item-sub">${msg}</div>
+                    </div>
+                    <button class="db-clear-btn" style="padding:4px 9px; font-size:11px;" title="Programar sessão só pra este colaborador" onclick="programarRenovacaoNR('${escapeHTML(cod)}', ${matriculaJson})">📋 Programar</button>
+                </div>`;
+            }).join('');
+            return `<div style="margin-bottom:10px; border:1px solid var(--border); border-radius:8px; padding:8px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                    <div style="font-weight:600; font-size:12.5px;">${escapeHTML(grupo.nome)} <span style="font-weight:400; color:var(--text-light);">(${grupo.itens.length} colaborador${grupo.itens.length > 1 ? 'es' : ''})</span></div>
+                    <button class="db-apply-btn" style="padding:5px 10px; font-size:11.5px;" title="Programar uma sessão só com todo mundo que precisa desta NR agora" onclick="programarRenovacaoNR('${escapeHTML(cod)}', ${matriculasGrupo})">📋 Programar Grupo</button>
+                </div>
+                ${itensHtml}
             </div>`;
         }).join('');
     }
@@ -3791,6 +3821,33 @@ function onLancTreinCodigoChange() {
         infoHtml += `<br>📅 Previsto no Cronograma para ${formatSimpleDate(itemCronograma.data_prevista)}${preencheuData ? ' — data preenchida automaticamente acima' : ''}.`;
     }
     infoEl.innerHTML = infoHtml;
+}
+
+// Vem do botão "📋 Programar"/"📋 Programar Grupo" nos alertas de "NRs Vencidas ou
+// Vencendo" (Treinamentos > Visão Geral) - pula direto pra "Lançar Treinamento" já com o
+// treinamento certo e os colaboradores pendentes marcados na lista de presença, em vez do
+// usuário ter que procurar o código no catálogo e montar a equipe na mão toda vez que uma
+// NR vence. matriculas com 1 item = botão individual (por colaborador, dentro do grupo);
+// com vários = botão "Programar Grupo" (todo mundo que precisa da mesma NR de uma vez,
+// numa lista de presença só). Mesmo padrão de lancarPresencaDoCronograma(), só que
+// partindo do alerta de NR vencida/vencendo em vez de um item do Cronograma.
+function programarRenovacaoNR(codigo, matriculas) {
+    showTreinSubtab('lancar');
+    abrirFormLancarTreinamento();
+
+    const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+    document.getElementById('lancTreinCodigo').value = cat ? `${cat.id} - ${cat.nome}` : codigo;
+    onLancTreinCodigoChange();
+
+    matriculas.forEach(matricula => {
+        const e = allEfetivo.find(x => x.id === matricula);
+        if (e) lancTreinEquipe.set(matricula, { nome: e.nome, funcao: e.funcao, setor: e.setor, checked: true });
+    });
+    renderListaPresencaEquipe();
+
+    const statusEl = document.getElementById('lancTreinStatus');
+    statusEl.style.color = 'var(--text)';
+    statusEl.textContent = `📋 Sessão pré-preenchida com ${matriculas.length} colaborador(es) pendente(s) desta NR. Confira a data e a lista de presença abaixo (dá pra adicionar/remover gente), gere a Lista de Presença pra levar assinada a campo e, depois do treinamento, lance a presença aqui mesmo.`;
 }
 
 // Cada "responsável" identifica uma frente de serviço - a lista de presença é sempre

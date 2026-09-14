@@ -12759,6 +12759,13 @@ const PCMSO_EXAMES_POR_GHE = {
         { nome: 'Avaliação Psicossocial', periodicidade: 12, demissional: false },
         { nome: 'Glicose', periodicidade: 12, demissional: true },
         { nome: 'Raio X da Coluna Lombo Sacra', periodicidade: 24, demissional: true }
+    ]},
+    G27: { nome: 'Inspeção e Monitoramento de Estruturas', exames: [
+        { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
+        { nome: 'Audiometria', periodicidade: 12, demissional: true },
+        { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Glicose', periodicidade: 12, demissional: true },
+        { nome: 'IgE Específica - Abelha', periodicidade: null, demissional: false }
     ]}
 };
 

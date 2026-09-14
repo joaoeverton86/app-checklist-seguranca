@@ -35,6 +35,22 @@
                 <button class="db-apply-btn" id="dbLoginBtn" style="margin-top:6px; padding:11px; font-size:14px;" onclick="realizarLoginDashboard()">🔑 Entrar</button>
                 <div id="dbLoginError" style="display:none; font-size:12px; color:var(--danger); font-weight:600; text-align:center;"></div>
                 <div style="font-size:11px; color:var(--text-light); text-align:center; margin-top:6px; line-height:1.5;">Mesma matrícula/senha do app de campo.<br>Não tem conta? Cadastre-se pelo app.</div>
+
+                <div id="dbLoginPainelExternoToggle" style="text-align:center; margin-top:12px;">
+                    <a href="#" style="font-size:12px; color:var(--text-light); text-decoration:underline;" onclick="event.preventDefault(); alternarFormLoginPainelExterno();">Fui convidado como visualizador (e-mail)</a>
+                </div>
+                <div id="dbLoginPainelExternoForm" style="display:none; flex-direction:column; gap:12px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
+                    <div>
+                        <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">E-mail</label>
+                        <input type="email" id="dbLoginExternoEmail" placeholder="seu@email.com" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:14px;" onkeydown="if(event.key==='Enter') document.getElementById('dbLoginExternoSenha').focus();">
+                    </div>
+                    <div>
+                        <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Senha</label>
+                        <input type="password" id="dbLoginExternoSenha" placeholder="Digite sua senha..." style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:14px;" onkeydown="if(event.key==='Enter') realizarLoginPainelExterno();">
+                    </div>
+                    <button class="db-apply-btn" id="dbLoginExternoBtn" style="padding:11px; font-size:14px;" onclick="realizarLoginPainelExterno()">🔑 Entrar como visualizador</button>
+                    <div id="dbLoginExternoError" style="display:none; font-size:12px; color:var(--danger); font-weight:600; text-align:center;"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -161,6 +177,9 @@
                 <div class="db-nav-standalone">
                     <button class="db-nav-item" id="navConfig" onclick="showDbPage('config')">
                         <span class="db-nav-icon">⚙️</span> Configurações
+                    </button>
+                    <button class="db-nav-item" id="navUsuariosPainel" style="display:none;" onclick="showDbPage('usuariospainel')">
+                        <span class="db-nav-icon">🔑</span> Usuários do Painel
                     </button>
                 </div>
             </div>
@@ -4867,6 +4886,63 @@
                     <input type="file" id="manutencaoFileInput" accept=".csv" style="margin-bottom: 10px;">
                     <button class="db-apply-btn" onclick="importarManutencaoCSV()">Importar</button>
                     <div id="manutencaoImportStatus" style="margin-top: 10px; font-size: 12.5px; color: var(--text-light);"></div>
+                </div>
+            </section>
+
+            <section class="db-page" id="page-usuariospainel">
+                <div id="usuariosPainelStatus" style="font-size:12.5px; color:var(--text-light); margin-bottom:10px;"></div>
+
+                <div class="db-chart-card" style="margin-bottom:16px;">
+                    <div class="db-chart-title">✉️ Convidar visualizador</div>
+                    <p style="font-size:12px; color:var(--text-light); margin-bottom:12px;">
+                        Cria uma conta separada, só pra visualização do painel (não mexe no cadastro do app de campo). A pessoa recebe um e-mail do Supabase pra escolher a própria senha - ninguém aqui vê ou define essa senha por ela.
+                    </p>
+                    <div style="display:flex; flex-direction:column; gap:10px; max-width:420px;">
+                        <input type="text" id="painelConviteNome" placeholder="Nome da pessoa" style="padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px;">
+                        <input type="email" id="painelConviteEmail" placeholder="E-mail da pessoa" style="padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px;">
+                        <select id="painelConvitePerfil" style="padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px;"></select>
+                        <button class="db-apply-btn" id="painelConviteBtn" style="padding:10px;" onclick="convidarUsuarioPainel()">✉️ Enviar convite</button>
+                        <div id="painelConviteStatus" style="font-size:12.5px;"></div>
+                    </div>
+                </div>
+
+                <div class="db-chart-card" style="margin-bottom:16px;">
+                    <div class="db-chart-title">👥 Usuários convidados</div>
+                    <div id="listPainelUsuarios"></div>
+                </div>
+
+                <div class="db-chart-card" style="margin-bottom:16px;">
+                    <div class="db-chart-title" style="display:flex; align-items:center; justify-content:space-between;">
+                        <span>📋 Perfis (pacotes de módulos)</span>
+                        <button class="db-clear-btn" style="padding:5px 10px; font-size:12px;" onclick="abrirEdicaoPerfilPainel(null)">+ Novo perfil</button>
+                    </div>
+                    <div id="listPainelPerfis"></div>
+                </div>
+
+                <div class="db-chart-card" id="painelPerfilFormCard" style="display:none; margin-bottom:16px;">
+                    <div class="db-chart-title" id="painelPerfilFormTitulo">Novo perfil</div>
+                    <div style="display:flex; flex-direction:column; gap:10px; max-width:420px;">
+                        <div>
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Identificador (sem espaço, ex: visualizador_cliente)</label>
+                            <input type="text" id="painelPerfilIdInput" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Nome do perfil</label>
+                            <input type="text" id="painelPerfilNome" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:6px;">Módulos liberados</label>
+                            <div id="painelPerfilModulos" style="max-height:220px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:8px 12px;"></div>
+                        </div>
+                        <label style="display:flex; align-items:center; gap:6px; font-size:13px;">
+                            <input type="checkbox" id="painelPerfilAtivo" checked> Perfil ativo
+                        </label>
+                        <div style="display:flex; gap:8px;">
+                            <button class="db-apply-btn" style="padding:9px 14px;" onclick="salvarPerfilPainel()">Salvar</button>
+                            <button class="db-clear-btn" style="padding:9px 14px;" onclick="fecharEdicaoPerfilPainel()">Cancelar</button>
+                        </div>
+                        <div id="painelPerfilFormStatus" style="font-size:12.5px;"></div>
+                    </div>
                 </div>
             </section>
 

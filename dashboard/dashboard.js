@@ -112,12 +112,18 @@ async function supabaseFetchCacheado(table, query) {
 
 // Lê a sessão ativa (mesmo formato que o app de celular grava: matricula/role/nome/
 // loginTime) - null se não tiver ninguém logado ou se o conteúdo salvo estiver corrompido.
+// Lê a sessão ativa - null se não tiver ninguém logado ou se o conteúdo salvo estiver
+// corrompido. Dois formatos possíveis: (1) colaborador interno (mesmo de sempre, vindo do
+// app de celular também: matricula/role/nome/loginTime) e (2) usuário só-painel convidado
+// (RBAC piloto, 2026-09-14 - ver claude/bloco-notas-melhorias.md), sem matrícula nenhuma,
+// identificado por session.tipo === 'painel_externo' e uma lista session.modulos.
 function sessaoDashboardAtual() {
     try {
         const raw = localStorage.getItem('active_session');
         if (!raw) return null;
         const session = JSON.parse(raw);
-        return (session && session.matricula && session.nome) ? session : null;
+        if (!session || !session.nome) return null;
+        return (session.matricula || session.tipo === 'painel_externo') ? session : null;
     } catch (e) {
         return null;
     }
@@ -142,7 +148,85 @@ function aplicarVisibilidadeLoginDashboard() {
     const app = document.getElementById('dashboardApp');
     if (loginScreen) loginScreen.style.display = logado ? 'none' : 'flex';
     if (app) app.style.display = logado ? '' : 'none';
-    if (logado) atualizarBadgeUsuarioDashboard();
+    if (logado) {
+        atualizarBadgeUsuarioDashboard();
+        aplicarRestricaoModulosPainelNoMenu();
+    }
+}
+
+// Módulos usam as mesmas chaves de showDbPage()/DB_PAGE_TITLES - mantenha igual se
+// adicionar uma página nova no menu.
+const MODULOS_PAINEL_DISPONIVEIS = [
+    { key: 'checklists', label: 'Checklists' },
+    { key: 'treinamentos', label: 'Treinamentos' },
+    { key: 'ddsma', label: 'DDSMA' },
+    { key: 'apr', label: 'APR' },
+    { key: 'matrizrisco', label: 'Matriz de Risco (GHE)' },
+    { key: 'epi', label: 'EPI' },
+    { key: 'extintores', label: 'Extintores' },
+    { key: 'acidentes', label: 'Acidentabilidade' },
+    { key: 'relatos', label: 'Relatos' },
+    { key: 'cipa', label: 'CIPA' },
+    { key: 'saude', label: 'Saúde Ocupacional' },
+    { key: 'psicossocial', label: 'Psicossocial' },
+    { key: 'ambiental', label: 'Meio Ambiente' },
+    { key: 'efetivo', label: 'Efetivo' },
+    { key: 'compras', label: 'Compras' },
+    { key: 'documentos', label: 'Documentos' },
+    { key: 'acervodrive', label: 'Acervo (Drive)' },
+    { key: 'relatoriosms', label: 'Relatório Mensal SMS' }
+];
+
+// true pra colaborador interno sempre (nunca restringe quem já usa o sistema hoje). Pra
+// usuário só-painel (painel_externo), só true se o módulo estiver na lista do perfil dele -
+// 'config' e 'usuariospainel' nunca aparecem pra esse tipo de conta, nem que peçam.
+function moduloPermitidoPainel(pageId) {
+    const session = sessaoDashboardAtual();
+    if (!session || session.tipo !== 'painel_externo') return true;
+    if (pageId === 'config' || pageId === 'usuariospainel') return false;
+    return Array.isArray(session.modulos) && session.modulos.includes(pageId);
+}
+
+// Esconde do menu lateral os módulos que o usuário só-painel não tem no perfil (a trava de
+// verdade já é no banco via RLS - isso aqui só evita mostrar um botão que ia dar "sem
+// acesso" se clicado). Colaborador interno nunca é afetado - continua vendo o menu inteiro
+// exatamente como sempre foi.
+function aplicarRestricaoModulosPainelNoMenu() {
+    const session = sessaoDashboardAtual();
+    const ehExterno = !!(session && session.tipo === 'painel_externo');
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms' };
+
+    Object.keys(navMap).forEach(pageId => {
+        const btn = document.getElementById(navMap[pageId]);
+        if (btn) btn.style.display = (!ehExterno || (session.modulos || []).includes(pageId)) ? '' : 'none';
+    });
+
+    const navConfigBtn = document.getElementById('navConfig');
+    if (navConfigBtn) navConfigBtn.style.display = ehExterno ? 'none' : '';
+
+    const navUsuariosPainelBtn = document.getElementById('navUsuariosPainel');
+    if (navUsuariosPainelBtn) {
+        const ehAdminInterno = !!(session && session.tipo !== 'painel_externo' && session.role === 'Admin');
+        navUsuariosPainelBtn.style.display = ehAdminInterno ? '' : 'none';
+    }
+
+    // Some com grupos do menu que ficaram sem nenhum item visível, pra não deixar um
+    // cabeçalho de categoria "morto" sem nada embaixo.
+    document.querySelectorAll('.db-nav-group').forEach(grupo => {
+        const temItemVisivel = Array.from(grupo.querySelectorAll('.db-nav-item')).some(b => b.style.display !== 'none');
+        grupo.style.display = temItemVisivel ? '' : 'none';
+    });
+
+    // Se a página aberta no momento não é mais permitida (ex: acabou de logar como
+    // visualizador), pula pro primeiro módulo liberado do perfil em vez de deixar a tela
+    // em branco.
+    if (ehExterno) {
+        const paginaAtiva = document.querySelector('.db-page.active')?.id?.replace('page-', '');
+        if (!paginaAtiva || !(session.modulos || []).includes(paginaAtiva)) {
+            const primeiro = (session.modulos || [])[0];
+            if (primeiro) showDbPage(primeiro);
+        }
+    }
 }
 
 // Mesmo fluxo do realizarLogin() do app de celular, só que sem o fallback offline/
@@ -237,6 +321,76 @@ async function realizarLoginDashboard() {
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '🔑 Entrar'; }
     }
+}
+
+// Login separado pra quem foi CONVIDADO como visualizador do painel (painel_usuarios) -
+// NÃO usa matrícula nem o RPC verificar_login (isso é só pra colaborador interno). Usa o
+// Supabase Auth direto (signInWithPassword) porque essa conta já nasce no Auth: um Admin
+// convida pela tela "Usuários do Painel", o Supabase manda um e-mail de convite de
+// verdade, e a PRÓPRIA pessoa escolhe a senha lá - eu nunca vejo nem defino essa senha,
+// mesma regra de sempre. Depois de logar, busca o perfil dela (painel_usuarios +
+// painel_perfis) pra saber quais módulos liberar no menu.
+async function realizarLoginPainelExterno() {
+    const emailInput = document.getElementById('dbLoginExternoEmail');
+    const senhaInput = document.getElementById('dbLoginExternoSenha');
+    const errorDiv = document.getElementById('dbLoginExternoError');
+    const btn = document.getElementById('dbLoginExternoBtn');
+    if (!emailInput || !senhaInput) return;
+
+    const email = emailInput.value.trim();
+    const senha = senhaInput.value;
+    if (errorDiv) errorDiv.style.display = 'none';
+    if (!email || !senha) {
+        if (errorDiv) { errorDiv.textContent = '❌ Preencha e-mail e senha.'; errorDiv.style.display = 'block'; }
+        return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Verificando...'; }
+    try {
+        const { data: authData, error: authErr } = await sbAuth.auth.signInWithPassword({ email, password: senha });
+        if (authErr || !authData?.user) {
+            if (errorDiv) { errorDiv.textContent = '❌ E-mail ou senha incorretos.'; errorDiv.style.display = 'block'; }
+            return;
+        }
+
+        const puRows = await supabaseFetch('painel_usuarios', `?select=*,painel_perfis(nome,modulos,ativo)&auth_user_id=eq.${authData.user.id}`);
+        const pu = Array.isArray(puRows) && puRows.length > 0 ? puRows[0] : null;
+        if (!pu || pu.ativo === false || !pu.painel_perfis || pu.painel_perfis.ativo === false) {
+            await sbAuth.auth.signOut();
+            if (errorDiv) { errorDiv.textContent = '❌ Conta sem acesso liberado no momento. Fale com o administrador do painel.'; errorDiv.style.display = 'block'; }
+            return;
+        }
+
+        const session = {
+            tipo: 'painel_externo',
+            matricula: null,
+            role: 'Visualizador',
+            nome: pu.nome,
+            modulos: pu.painel_perfis.modulos || [],
+            loginTime: Date.now()
+        };
+        localStorage.setItem('active_session', JSON.stringify(session));
+
+        emailInput.value = '';
+        senhaInput.value = '';
+        init();
+    } catch (e) {
+        console.error('Erro ao verificar login de visualizador do painel:', e);
+        if (errorDiv) { errorDiv.textContent = '❌ Falha ao verificar login: ' + e.message; errorDiv.style.display = 'block'; }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔑 Entrar como visualizador'; }
+    }
+}
+
+// Alterna a telinha de login entre "colaborador (matrícula)" e "visualizador convidado
+// (e-mail)" - os dois formulários ficam na mesma tela de login, só um por vez visível.
+function alternarFormLoginPainelExterno() {
+    const form = document.getElementById('dbLoginPainelExternoForm');
+    const toggle = document.getElementById('dbLoginPainelExternoToggle');
+    if (!form) return;
+    const vaiAbrir = form.style.display === 'none' || !form.style.display;
+    form.style.display = vaiAbrir ? 'flex' : 'none';
+    if (toggle) toggle.style.display = vaiAbrir ? 'none' : 'block';
 }
 
 async function realizarLogoutDashboard() {
@@ -16310,8 +16464,194 @@ const DB_PAGE_TITLES = {
     cipa: 'CIPA',
     documentos: 'Controle de Documentos',
     acervodrive: 'Acervo (Drive)',
-    config: 'Configurações'
+    config: 'Configurações',
+    usuariospainel: 'Usuários do Painel'
 };
+
+// ============================================
+// USUÁRIOS DO PAINEL (RBAC piloto, 2026-09-14) - ver claude/bloco-notas-melhorias.md
+// Contas SEPARADAS dos colaboradores internos (colaboradores_checklist) - pra gente de
+// fora do time (cliente, fiscalização etc.) que só deve ver alguns módulos, nunca lançar
+// nada. Cada uma tem um "perfil" (painel_perfis) com a lista de módulos liberados. A trava
+// de verdade é no banco (RLS via usuario_tem_acesso_modulo) - esta tela só gerencia quem
+// tem qual perfil, não implementa nenhuma trava por conta própria.
+// ============================================
+let allPainelPerfis = [];
+let allPainelUsuarios = [];
+let usuariosPainelLoaded = false;
+let painelPerfilEditandoId = null;
+
+async function loadUsuariosPainelData() {
+    const statusEl = document.getElementById('usuariosPainelStatus');
+    if (statusEl) statusEl.textContent = '⏳ Carregando...';
+    try {
+        [allPainelPerfis, allPainelUsuarios] = await Promise.all([
+            supabaseFetch('painel_perfis', '?select=*&order=nome'),
+            supabaseFetch('painel_usuarios', '?select=*&order=nome')
+        ]);
+        renderPainelPerfisLista();
+        renderPainelUsuariosLista();
+        popularSelectPerfisPainel();
+        if (statusEl) statusEl.textContent = '';
+    } catch (e) {
+        console.error('Erro ao carregar Usuários do Painel:', e);
+        if (statusEl) statusEl.textContent = '❌ Erro ao carregar: ' + e.message;
+    }
+}
+
+function renderPainelPerfisLista() {
+    const el = document.getElementById('listPainelPerfis');
+    if (!el) return;
+    if (allPainelPerfis.length === 0) {
+        el.innerHTML = '<div class="db-list-empty">Nenhum perfil cadastrado ainda.</div>';
+        return;
+    }
+    el.innerHTML = allPainelPerfis.map(p => `
+        <div class="db-list-item" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:200px;">
+                <div class="db-list-item-title">${escapeHTML(p.nome)}${p.ativo === false ? ' <span style="color:var(--danger); font-weight:600;">(inativo)</span>' : ''}</div>
+                <div class="db-list-item-sub">${(p.modulos || []).map(m => (MODULOS_PAINEL_DISPONIVEIS.find(x => x.key === m) || {}).label || m).join(', ') || '(nenhum módulo)'}</div>
+            </div>
+            <button class="db-clear-btn" style="padding:4px 9px; font-size:11px;" onclick="abrirEdicaoPerfilPainel('${escapeHTML(p.id)}')">✏️ Editar</button>
+        </div>
+    `).join('');
+}
+
+function popularSelectPerfisPainel() {
+    const sel = document.getElementById('painelConvitePerfil');
+    if (!sel) return;
+    const atual = sel.value;
+    sel.innerHTML = allPainelPerfis.filter(p => p.ativo !== false).map(p => `<option value="${escapeHTML(p.id)}">${escapeHTML(p.nome)}</option>`).join('');
+    if (atual) sel.value = atual;
+}
+
+function renderPainelUsuariosLista() {
+    const el = document.getElementById('listPainelUsuarios');
+    if (!el) return;
+    if (allPainelUsuarios.length === 0) {
+        el.innerHTML = '<div class="db-list-empty">Nenhum usuário convidado ainda.</div>';
+        return;
+    }
+    el.innerHTML = allPainelUsuarios.map(u => {
+        const perfil = allPainelPerfis.find(p => p.id === u.perfil_id);
+        return `
+        <div class="db-list-item" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:200px;">
+                <div class="db-list-item-title">${escapeHTML(u.nome)}${u.ativo === false ? ' <span style="color:var(--danger); font-weight:600;">(desativado)</span>' : ''}</div>
+                <div class="db-list-item-sub">${escapeHTML(u.email)} — Perfil: ${escapeHTML(perfil ? perfil.nome : '(nenhum)')}</div>
+            </div>
+            <button class="db-clear-btn" style="padding:4px 9px; font-size:11px;" onclick="alternarAtivoPainelUsuario('${u.id}', ${u.ativo === false})">${u.ativo === false ? '✅ Reativar' : '🚫 Desativar'}</button>
+        </div>`;
+    }).join('');
+}
+
+async function convidarUsuarioPainel() {
+    const nomeInput = document.getElementById('painelConviteNome');
+    const emailInput = document.getElementById('painelConviteEmail');
+    const perfilSelect = document.getElementById('painelConvitePerfil');
+    const statusEl = document.getElementById('painelConviteStatus');
+    const btn = document.getElementById('painelConviteBtn');
+    const nome = nomeInput.value.trim();
+    const email = emailInput.value.trim();
+    const perfil_id = perfilSelect.value;
+
+    if (!nome || !email || !perfil_id) {
+        if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = '❌ Preencha nome, e-mail e perfil.'; }
+        return;
+    }
+    if (btn) { btn.disabled = true; btn.textContent = 'Enviando convite...'; }
+    if (statusEl) { statusEl.style.color = 'var(--text)'; statusEl.textContent = '⏳ Enviando convite...'; }
+    try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/convidar-usuario-painel`, {
+            method: 'POST',
+            headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${await authTokenDashboard()}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ nome, email, perfil_id })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+
+        if (statusEl) { statusEl.style.color = 'var(--success, #16a34a)'; statusEl.textContent = '✅ Convite enviado! A pessoa recebe um e-mail pra criar a própria senha.'; }
+        nomeInput.value = '';
+        emailInput.value = '';
+        await loadUsuariosPainelData();
+        registrarAuditLogDashboard('create', 'painel_usuarios', email, `Convite enviado para ${nome} (${email})`);
+    } catch (e) {
+        console.error('Erro ao convidar usuário do painel:', e);
+        if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = '❌ ' + e.message; }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '✉️ Enviar convite'; }
+    }
+}
+
+async function alternarAtivoPainelUsuario(id, novoAtivo) {
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/painel_usuarios?id=eq.${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${await authTokenDashboard()}`,
+                'Content-Type': 'application/json',
+                Prefer: 'return=minimal'
+            },
+            body: JSON.stringify({ ativo: novoAtivo })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+        await loadUsuariosPainelData();
+        registrarAuditLogDashboard('update', 'painel_usuarios', id, novoAtivo ? 'Usuário do painel reativado' : 'Usuário do painel desativado');
+    } catch (e) {
+        alert('Erro ao atualizar: ' + e.message);
+    }
+}
+
+function abrirEdicaoPerfilPainel(id) {
+    const p = id ? allPainelPerfis.find(x => x.id === id) : null;
+    painelPerfilEditandoId = p ? p.id : null;
+    document.getElementById('painelPerfilFormTitulo').textContent = p ? `Editar perfil: ${p.nome}` : 'Novo perfil';
+    document.getElementById('painelPerfilNome').value = p ? p.nome : '';
+    document.getElementById('painelPerfilIdInput').value = p ? p.id : '';
+    document.getElementById('painelPerfilIdInput').disabled = !!p;
+    document.getElementById('painelPerfilAtivo').checked = p ? p.ativo !== false : true;
+    const modulosAtuais = new Set(p ? (p.modulos || []) : []);
+    document.getElementById('painelPerfilModulos').innerHTML = MODULOS_PAINEL_DISPONIVEIS.map(m => `
+        <label style="display:flex; align-items:center; gap:6px; font-size:13px; padding:3px 0;">
+            <input type="checkbox" value="${m.key}" ${modulosAtuais.has(m.key) ? 'checked' : ''}> ${escapeHTML(m.label)}
+        </label>
+    `).join('');
+    document.getElementById('painelPerfilFormStatus').textContent = '';
+    document.getElementById('painelPerfilFormCard').style.display = 'block';
+    document.getElementById('painelPerfilFormCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function fecharEdicaoPerfilPainel() {
+    document.getElementById('painelPerfilFormCard').style.display = 'none';
+    painelPerfilEditandoId = null;
+}
+
+async function salvarPerfilPainel() {
+    const nome = document.getElementById('painelPerfilNome').value.trim();
+    const idInput = document.getElementById('painelPerfilIdInput').value.trim();
+    const ativo = document.getElementById('painelPerfilAtivo').checked;
+    const modulos = Array.from(document.querySelectorAll('#painelPerfilModulos input[type=checkbox]:checked')).map(cb => cb.value);
+    const statusEl = document.getElementById('painelPerfilFormStatus');
+
+    if (!nome || (!painelPerfilEditandoId && !idInput)) {
+        if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = '❌ Preencha nome e identificador do perfil.'; }
+        return;
+    }
+    const id = painelPerfilEditandoId || idInput.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    try {
+        await supabaseUpsert('painel_perfis', [{ id, nome, modulos, ativo }]);
+        fecharEdicaoPerfilPainel();
+        await loadUsuariosPainelData();
+        registrarAuditLogDashboard(painelPerfilEditandoId ? 'update' : 'create', 'painel_perfis', id, `Perfil "${nome}" - módulos: ${modulos.join(', ') || '(nenhum)'}`);
+    } catch (e) {
+        if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = '❌ Erro ao salvar: ' + e.message; }
+    }
+}
 
 // ================================================================
 // MENU LATERAL EM GRUPOS (accordion por pilar de SSMA)
@@ -16392,11 +16732,19 @@ function restaurarGruposNavAbertos() {
 }
 
 function showDbPage(pageId) {
+    // RBAC piloto (2026-09-14) - trava de front pra usuário só-painel (a trava de verdade
+    // é no banco via RLS; isso aqui só evita abrir uma tela que ia vir vazia/dar erro).
+    // Colaborador interno nunca é bloqueado aqui.
+    if (!moduloPermitidoPainel(pageId)) {
+        alert('Você não tem acesso a este módulo. Fale com o administrador do painel se precisar dele.');
+        return;
+    }
+
     document.querySelectorAll('.db-page').forEach(el => el.classList.remove('active'));
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', config: 'navConfig' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', config: 'navConfig', usuariospainel: 'navUsuariosPainel' };
     document.getElementById(navMap[pageId])?.classList.add('active');
     abrirGrupoNavPagina(pageId);
     destacarGrupoAtivo(pageId);
@@ -16419,6 +16767,10 @@ function showDbPage(pageId) {
     if (pageId === 'treinamentos') {
         if (!treinamentosLoaded) { treinamentosLoaded = true; loadTreinamentosData(); }
         else renderTreinamentosPanel();
+    }
+    if (pageId === 'usuariospainel') {
+        if (!usuariosPainelLoaded) { usuariosPainelLoaded = true; loadUsuariosPainelData(); }
+        else renderPainelPerfisLista(), renderPainelUsuariosLista();
     }
     // DDSMA usa os MESMOS dados já carregados pra Treinamentos (dds_realizados,
     // dds_historico_agregado etc. já vêm juntos em loadTreinamentosData) - só muda a

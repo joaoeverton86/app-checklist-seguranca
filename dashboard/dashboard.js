@@ -14998,13 +14998,22 @@ function renderEpiPanel() {
     if (itensComCa.length === 0) {
         listCa.innerHTML = '<div class="db-list-empty">✅ Nenhum CA vencido ou vencendo nos próximos 30 dias</div>';
     } else {
+        // Botão "✏️ Editar" em cada item - pula direto pro Cadastro do item já aberto pra
+        // edição (mesma tela que já existe em EPI > Cadastro, com o campo "Ativo" e o
+        // botão Excluir), em vez do usuário ter que ir até lá e procurar o item na mão.
+        // Resolve o caso comum de item com CA vencido que já nem tem mais estoque de
+        // verdade (produto descontinuado) - editando e desmarcando "Ativo" ali, o item
+        // some desta lista sozinho (que já só considera itens com ativo !== false).
         listCa.innerHTML = itensComCa
             .sort((a, b) => a.diffDays - b.diffDays)
             .map(x => {
                 const msg = x.diffDays < 0 ? `Vencido há ${Math.abs(x.diffDays)} dia(s)` : x.diffDays === 0 ? 'Vence hoje' : `Vence em ${x.diffDays} dia(s)`;
-                return `<div class="db-list-item ${x.status === 'vencido' ? 'db-item-danger' : 'db-item-warning'}">
-                    <div class="db-list-item-title">${escapeHTML(x.item.descricao || '')}${x.item.ca ? ' — CA ' + escapeHTML(x.item.ca) : ''}</div>
-                    <div class="db-list-item-sub">${msg} — Validade: ${formatSimpleDate(x.item.ca_validade)}</div>
+                return `<div class="db-list-item ${x.status === 'vencido' ? 'db-item-danger' : 'db-item-warning'}" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <div style="flex:1; min-width:180px;">
+                        <div class="db-list-item-title">${escapeHTML(x.item.descricao || '')}${x.item.ca ? ' — CA ' + escapeHTML(x.item.ca) : ''}</div>
+                        <div class="db-list-item-sub">${msg} — Validade: ${formatSimpleDate(x.item.ca_validade)}</div>
+                    </div>
+                    <button class="db-clear-btn" style="padding:4px 9px; font-size:11px;" title="Editar este item (ex: desmarcar 'Ativo' se não tem mais em estoque)" onclick="editarItemEpiDoAlerta('${escapeHTML(x.item.id)}')">✏️ Editar</button>
                 </div>`;
             }).join('');
     }
@@ -15223,6 +15232,16 @@ function proximoCodigoEpiCatalogo() {
         }
     });
     return String(maior + 1);
+}
+
+// Vem do botão "✏️ Editar" nos alertas de "CA's Vencidos / Vencendo" (EPI > Visão Geral) -
+// pula direto pra aba Cadastro já com o item aberto pra edição, em vez do usuário ter que
+// trocar de aba e procurar o item na lista na mão. Não duplica nenhuma lógica de
+// cadastro/edição - só chama, na ordem certa, as duas funções que já existem
+// (showEpiSubtab pra trocar de aba, abrirFormEpiCatalogo pra abrir o item certo).
+function editarItemEpiDoAlerta(id) {
+    showEpiSubtab('cadastro');
+    abrirFormEpiCatalogo(id);
 }
 
 function abrirFormEpiCatalogo(id) {

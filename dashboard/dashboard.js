@@ -16533,13 +16533,16 @@ function renderPainelUsuariosLista() {
         return;
     }
     el.innerHTML = allPainelUsuarios.map(u => {
-        const perfil = allPainelPerfis.find(p => p.id === u.perfil_id);
+        // Seletor de perfil - troca na hora que o usuário escolhe outra opção (sem botão
+        // "Salvar" separado), chamando alterarPerfilPainelUsuario logo abaixo.
+        const opcoesPerfil = allPainelPerfis.map(p => `<option value="${escapeHTML(p.id)}" ${p.id === u.perfil_id ? 'selected' : ''}>${escapeHTML(p.nome)}</option>`).join('');
         return `
         <div class="db-list-item" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <div style="flex:1; min-width:200px;">
                 <div class="db-list-item-title">${escapeHTML(u.nome)}${u.ativo === false ? ' <span style="color:var(--danger); font-weight:600;">(desativado)</span>' : ''}</div>
-                <div class="db-list-item-sub">${escapeHTML(u.email)} — Perfil: ${escapeHTML(perfil ? perfil.nome : '(nenhum)')}</div>
+                <div class="db-list-item-sub">${escapeHTML(u.email)}</div>
             </div>
+            <select style="padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;" onchange="alterarPerfilPainelUsuario('${u.id}', this.value)" title="Trocar perfil">${opcoesPerfil}</select>
             <button class="db-clear-btn" style="padding:4px 9px; font-size:11px;" onclick="alternarAtivoPainelUsuario('${u.id}', ${u.ativo === false})">${u.ativo === false ? '✅ Reativar' : '🚫 Desativar'}</button>
         </div>`;
     }).join('');
@@ -16604,6 +16607,33 @@ async function alternarAtivoPainelUsuario(id, novoAtivo) {
         registrarAuditLogDashboard('update', 'painel_usuarios', id, novoAtivo ? 'Usuário do painel reativado' : 'Usuário do painel desativado');
     } catch (e) {
         alert('Erro ao atualizar: ' + e.message);
+    }
+}
+
+// Troca o perfil (pacote de módulos) de um usuário convidado - ex: de "Visualizador" pra
+// "Editor" e vice-versa. Só muda o vínculo (perfil_id); a conta e o e-mail continuam os
+// mesmos. Efeito imediato: da próxima vez que a pessoa carregar o painel (ou relogar), o
+// menu já reflete os módulos do novo perfil.
+async function alterarPerfilPainelUsuario(id, novoPerfilId) {
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/painel_usuarios?id=eq.${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${await authTokenDashboard()}`,
+                'Content-Type': 'application/json',
+                Prefer: 'return=minimal'
+            },
+            body: JSON.stringify({ perfil_id: novoPerfilId })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+        const usuario = allPainelUsuarios.find(u => u.id === id);
+        const perfilNovo = allPainelPerfis.find(p => p.id === novoPerfilId);
+        registrarAuditLogDashboard('update', 'painel_usuarios', id, `Perfil de ${usuario ? usuario.nome : id} alterado para "${perfilNovo ? perfilNovo.nome : novoPerfilId}"`);
+        await loadUsuariosPainelData();
+    } catch (e) {
+        alert('Erro ao trocar perfil: ' + e.message);
+        await loadUsuariosPainelData(); // recarrega pra desfazer a troca visual se salvar falhou
     }
 }
 

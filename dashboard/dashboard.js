@@ -177,13 +177,23 @@ const MODULOS_PAINEL_DISPONIVEIS = [
     { key: 'relatoriosms', label: 'Relatório Mensal SMS' }
 ];
 
-// true pra colaborador interno sempre (nunca restringe quem já usa o sistema hoje). Pra
-// usuário só-painel (painel_externo), só true se o módulo estiver na lista do perfil dele -
-// 'config' e 'usuariospainel' nunca aparecem pra esse tipo de conta, nem que peçam.
+// Matrículas que podem mexer em "Usuários do Painel" (perfis/convites) - hoje só o
+// usuário responsável pelo módulo. Mantenha igual à lista usada em
+// usuario_e_super_admin() no banco (Supabase) se um dia adicionar mais alguém aqui.
+const SUPER_ADMIN_MATRICULAS = ['76'];
+
+// true pra colaborador interno, EXCETO na página 'usuariospainel' (só libera pra quem
+// está em SUPER_ADMIN_MATRICULAS - a trava de verdade já é no banco via
+// usuario_e_super_admin(), isso aqui só evita abrir a tela à toa). Pra usuário só-painel
+// (painel_externo), só true se o módulo estiver na lista do perfil dele - 'config' e
+// 'usuariospainel' nunca aparecem pra esse tipo de conta, nem que peçam.
 function moduloPermitidoPainel(pageId) {
     const session = sessaoDashboardAtual();
+    if (pageId === 'usuariospainel') {
+        return !!(session && session.tipo !== 'painel_externo' && SUPER_ADMIN_MATRICULAS.includes(session.matricula));
+    }
     if (!session || session.tipo !== 'painel_externo') return true;
-    if (pageId === 'config' || pageId === 'usuariospainel') return false;
+    if (pageId === 'config') return false;
     return Array.isArray(session.modulos) && session.modulos.includes(pageId);
 }
 
@@ -206,8 +216,7 @@ function aplicarRestricaoModulosPainelNoMenu() {
 
     const navUsuariosPainelBtn = document.getElementById('navUsuariosPainel');
     if (navUsuariosPainelBtn) {
-        const ehAdminInterno = !!(session && session.tipo !== 'painel_externo' && session.role === 'Admin');
-        navUsuariosPainelBtn.style.display = ehAdminInterno ? '' : 'none';
+        navUsuariosPainelBtn.style.display = moduloPermitidoPainel('usuariospainel') ? '' : 'none';
     }
 
     // Some com grupos do menu que ficaram sem nenhum item visível, pra não deixar um

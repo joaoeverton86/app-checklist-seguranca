@@ -17588,13 +17588,26 @@ async function salvarResiduoRefeicaoMes(key, ano, mes) {
 // MANIFESTO DE RESÍDUOS (Meio Ambiente - Fase 2, 2026-09-16) - a fiscalização vem cobrando,
 // todo mês desde o início do ano, a quantidade de resíduos gerados nas frentes de serviço. A
 // empresa não tem cadastro no MTR (Manifesto de Transporte de Resíduos) oficial, então este
-// documento supre essa exigência com uma estimativa mensal gerada pelo próprio sistema, no
-// mesmo formato da "Declaração de Transporte e Destinação de Resíduos" que o usuário já
-// assina hoje. Dados fixos de transporte/destinação abaixo, confirmados com o usuário em
-// 2026-09-16 (2 etapas: veículo próprio do Consórcio até Sertânia, depois a empresa Essencial
-// Ambiental Ltda - contratada pela Prefeitura de Sertânia via Acordo de Cooperação - até
-// Arcoverde). Se algum dia esses dados mudarem (novo veículo, nova empresa contratada pela
-// Prefeitura etc.), é só pedir pra atualizar aqui.
+// documento supre essa exigência com a quantidade mensal apurada pelo próprio sistema, no
+// formato da "Declaração de Transporte e Destinação de Resíduos" que o usuário já assina hoje.
+//
+// Pontos importantes decididos com o usuário em 2026-09-16 (feedback dele sobre a 1ª versão):
+// 1. O documento só pode ser gerado com o mês já CONFIRMADO/SALVO na aba de lançamento (não a
+//    partir de uma sugestão automática ainda não confirmada) - pra fiscalização, esses números
+//    têm que ser tratados como reais, sem ressalva de incerteza no texto impresso.
+// 2. O nome do motorista de cada etapa é digitado/confirmado na tela na hora de gerar cada
+//    manifesto (não fica fixo no código) - o motorista pode variar de mês pra mês.
+// 3. Existe uma assinatura de RECEBIMENTO (quem recebeu do lado de Arcoverde), além da
+//    assinatura do Responsável Técnico.
+// 4. A "Data do documento" é um campo editável (padrão: último dia do mês de referência), não
+//    a data real em que o botão foi clicado - evita que o documento entregue que foi gerado
+//    depois do mês a que se refere.
+//
+// Dados fixos de transporte/destinação abaixo (veículo, empresa, placa) foram confirmados com
+// o usuário em 2026-09-16 (2 etapas: veículo próprio do Consórcio até Sertânia, depois a
+// empresa Essencial Ambiental Ltda - contratada pela Prefeitura de Sertânia via Acordo de
+// Cooperação - até Arcoverde). Se algum dia esses dados mudarem (novo veículo, nova empresa
+// contratada pela Prefeitura etc.), é só pedir pra atualizar aqui.
 // ============================================
 
 const MANIFESTO_RESIDUOS_INFO = {
@@ -17602,24 +17615,24 @@ const MANIFESTO_RESIDUOS_INFO = {
     etapa1: {
         titulo: '1ª Etapa — Frente de Serviço → Sertânia-PE',
         descricao: 'Transporte com veículo próprio do Consórcio Operador do PISF — Ramal do Agreste.',
-        veiculo: 'Caminhão Cabinado Mercedes-Benz', placa: 'JHU7E68', motorista: 'José Cláudio da Silva'
+        veiculo: 'Caminhão Cabinado Mercedes-Benz', placa: 'JHU7E68',
+        motoristaPadrao: 'José Cláudio da Silva'
     },
     etapa2: {
         titulo: '2ª Etapa — Sertânia-PE → Arcoverde-PE',
         descricao: 'Coleta e transporte por empresa contratada pela Prefeitura Municipal de Sertânia (CNPJ 11.358.116/0001-13), no âmbito do Acordo de Cooperação para Coleta de Resíduos Classe II-A Não Perigosos (Não Inerte) e Classe II-B Não Perigosos (Inerte).',
         empresa: 'Essencial Ambiental Ltda', cnpj: '46.523.739/0001-89', municipio: 'São José do Egito-PE',
         telefone: '(87) 99990-9440 / (87) 99996-0705', veiculo: 'Caminhão Compactador de Lixo',
-        placa: 'QYP-0J72', motorista: 'José Dimas Reis de Oliveira'
+        placa: 'QYP-0J72', motoristaPadrao: 'José Dimas Reis de Oliveira'
     },
     receptor: {
         empresa: 'Prefeitura Municipal de Arcoverde-PE', destino: 'Aterro Sanitário de Arcoverde-PE',
-        telefone: '(87) 3821-9000', encarregado: 'Josiedson Silva'
+        telefone: '(87) 3821-9000', recebedorPadrao: 'Josiedson Silva'
     },
     baseLegal: 'Acordo de Cooperação firmado entre o Consórcio Operador do PISF — Ramal do Agreste (CNPJ 55.623.017/0001-97) e a Prefeitura Municipal de Sertânia (CNPJ 11.358.116/0001-13), com amparo na Lei Federal nº 8.666/1993 e alterações, Decreto Estadual nº 20.786/1998 e Lei Federal nº 8.080/1990.'
 };
 
-// Preenche o seletor de ano da aba Manifesto uma única vez (não repete se já populado) e
-// define mês/ano atuais como padrão na primeira vez que a aba é aberta.
+// Preenche o seletor de ano da aba Manifesto uma única vez (não repete se já populado).
 function popularSelectAnoManifesto() {
     const sel = document.getElementById('manifestoAno');
     if (!sel || sel.options.length > 0) return;
@@ -17635,11 +17648,37 @@ function popularSelectAnoManifesto() {
     if (mesSel) mesSel.value = new Date().getMonth();
 }
 
+// Preenche os campos de motorista/recebedor só se estiverem vazios (não apaga o que o usuário
+// já digitou pra essa sessão). Já a "Data do documento" é sempre recalculada pro último dia do
+// mês/ano escolhidos acima - pra nunca gerar um documento de um mês com a data de outro mês
+// (o usuário ainda pode ajustar manualmente o dia antes de clicar em "Gerar", se precisar).
+function preencherPadraoManifestoCampos() {
+    const ano = parseInt(document.getElementById('manifestoAno').value, 10);
+    const mes = parseInt(document.getElementById('manifestoMes').value, 10);
+    const m1 = document.getElementById('manifestoMotorista1');
+    const m2 = document.getElementById('manifestoMotorista2');
+    const rec = document.getElementById('manifestoRecebedor');
+    const dataDoc = document.getElementById('manifestoDataDocumento');
+    if (m1 && !m1.value) m1.value = MANIFESTO_RESIDUOS_INFO.etapa1.motoristaPadrao;
+    if (m2 && !m2.value) m2.value = MANIFESTO_RESIDUOS_INFO.etapa2.motoristaPadrao;
+    if (rec && !rec.value) rec.value = MANIFESTO_RESIDUOS_INFO.receptor.recebedorPadrao;
+    if (dataDoc && !isNaN(ano) && !isNaN(mes)) {
+        const ultimoDia = new Date(ano, mes + 1, 0);
+        const yyyy = ultimoDia.getFullYear();
+        const mm = String(ultimoDia.getMonth() + 1).padStart(2, '0');
+        const dd = String(ultimoDia.getDate()).padStart(2, '0');
+        dataDoc.value = `${yyyy}-${mm}-${dd}`;
+    }
+}
+
 // Mostra, na tela, o resumo do mês escolhido antes de gerar o documento - assim o usuário
 // confere os números (e vê o aviso de "ainda não confirmado" quando for só sugestão) antes de
-// imprimir algo pra levar à fiscalização.
+// imprimir algo pra levar à fiscalização. Esse aviso é só interno/na tela - o documento
+// impresso (gerarManifestoResiduosMes) recusa gerar enquanto o mês não estiver salvo de
+// verdade, então esse texto nunca aparece no papel.
 function renderManifestoResiduosResumo() {
     popularSelectAnoManifesto();
+    preencherPadraoManifestoCampos();
     const el = document.getElementById('manifestoResumo');
     if (!el) return;
     const ano = parseInt(document.getElementById('manifestoAno').value, 10);
@@ -17657,20 +17696,22 @@ function renderManifestoResiduosResumo() {
             <div><strong>Quentinhas:</strong> ${linha.quentinhas || 0} un.</div>
             <div><strong>Copos:</strong> ${linha.copos || 0} un.</div>
             <div><strong>EPI usado:</strong> ${epiQtd} un. (${epiKg.toFixed(1)} kg)</div>
-            <div><strong>Total estimado:</strong> ${linha.pesoKg.toFixed(1)} kg</div>
+            <div><strong>Total do mês:</strong> ${linha.pesoKg.toFixed(1)} kg</div>
         </div>
-        ${!linha.salvo ? '<div style="margin-top:8px; color: var(--warning); font-style: italic;">⚠️ Valor ainda não confirmado/salvo — é uma sugestão automática (efetivo × dias trabalhados). Confirme em "🍱 Resíduos (Refeições + EPI)" antes de levar este manifesto à fiscalização.</div>' : ''}`;
+        ${!linha.salvo ? '<div style="margin-top:8px; color: var(--warning); font-style: italic;">⚠️ Esse valor ainda não foi confirmado/salvo — é uma sugestão automática (efetivo × dias trabalhados). Confirme (💾) em "🍱 Resíduos (Refeições + EPI)" antes de gerar o manifesto - o botão abaixo não gera o documento enquanto o mês não estiver salvo.</div>' : ''}`;
 }
 
 // Gera o documento do mês escolhido, no mesmo padrão de blob+<a>+window.print() de todo
 // documento deste sistema ("PDF" é o navegador quem gera, via "Salvar como PDF" na impressão).
+// Só gera se o mês já estiver CONFIRMADO/SALVO (nunca a partir de sugestão automática) - pra
+// fiscalização, os números têm que ser tratados como reais, sem ressalva de incerteza.
 function gerarManifestoResiduosMes() {
     const ano = parseInt(document.getElementById('manifestoAno').value, 10);
     const mes = parseInt(document.getElementById('manifestoMes').value, 10);
     const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
     const linha = calcularResiduosRefeicoesMensal().find(l => l.key === key);
-    if (!linha || linha.pesoKg == null) {
-        alert('Não há quantidade lançada para esse mês ainda. Lance em "Resíduos (Refeições + EPI)" antes de gerar o manifesto.');
+    if (!linha || !linha.salvo) {
+        alert('Esse mês ainda não tem os valores confirmados/salvos em "Resíduos (Refeições + EPI)". Confirme (💾) as quantidades reais desse mês antes de gerar o manifesto — o documento não pode sair com um valor de sugestão automática ainda não confirmado.');
         return;
     }
     const epiQtd = Number(linha.epi || 0);
@@ -17678,8 +17719,15 @@ function gerarManifestoResiduosMes() {
     const quentinhasKg = (linha.quentinhas || 0) * RESIDUO_KG_POR_QUENTINHA;
     const coposKg = (linha.copos || 0) * RESIDUO_KG_POR_COPO;
     const nomeMes = NOMES_MESES[mes];
-    const dataGeracao = new Date().toLocaleDateString('pt-BR');
     const e1 = MANIFESTO_RESIDUOS_INFO.etapa1, e2 = MANIFESTO_RESIDUOS_INFO.etapa2, rcp = MANIFESTO_RESIDUOS_INFO.receptor;
+    const motorista1 = (document.getElementById('manifestoMotorista1').value || '').trim() || e1.motoristaPadrao;
+    const motorista2 = (document.getElementById('manifestoMotorista2').value || '').trim() || e2.motoristaPadrao;
+    const recebedor = (document.getElementById('manifestoRecebedor').value || '').trim() || rcp.recebedorPadrao;
+    const dataDocInput = document.getElementById('manifestoDataDocumento').value;
+    const ultimoDiaMes = new Date(ano, mes + 1, 0);
+    const dataDocumento = dataDocInput
+        ? formatSimpleDate(dataDocInput)
+        : formatSimpleDate(`${ano}-${String(mes + 1).padStart(2, '0')}-${String(ultimoDiaMes.getDate()).padStart(2, '0')}`);
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
@@ -17695,8 +17743,9 @@ function gerarManifestoResiduosMes() {
     th, td { border:1px solid #999; padding:6px 8px; text-align:left; }
     th { background:#d9d9d9; font-weight:700; }
     .total-row td { font-weight: 700; background: #f0f0f0; }
-    .assinatura { margin-top: 60px; text-align: center; }
-    .assinatura .linha { border-top: 1px solid #000; width: 320px; margin: 0 auto 4px; }
+    .assinaturas { display:flex; justify-content:space-between; gap:40px; margin-top:70px; }
+    .assinatura-col { flex:1; text-align:center; }
+    .assinatura-col .linha { border-top: 1px solid #000; margin: 0 0 4px; }
     .no-print { text-align:center; margin:16px 0; }
     .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
     @media print { .no-print { display:none; } body { margin:0; } }
@@ -17705,7 +17754,7 @@ function gerarManifestoResiduosMes() {
     <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
     <div class="cabecalho">
         <img src="${LOGO_COP_BASE64}" alt="COP">
-        <div class="titulo">MANIFESTO DE RESÍDUOS — ESTIMATIVA MENSAL<br>${escapeHTML(nomeMes.toUpperCase())}/${ano}</div>
+        <div class="titulo">MANIFESTO DE RESÍDUOS<br>${escapeHTML(nomeMes.toUpperCase())}/${ano}</div>
         <div style="width:45px;"></div>
     </div>
 
@@ -17715,44 +17764,54 @@ function gerarManifestoResiduosMes() {
 
     <p style="text-align: justify; margin-top: 14px;">
         A empresa não possui cadastro próprio no Manifesto de Transporte de Resíduos (MTR) oficial. Este documento
-        apresenta, para fins de acompanhamento pela fiscalização, a estimativa de geração de resíduos sólidos
-        Classe II-A Não Perigosos (Não Inerte) e Classe II-B Não Perigosos (Inerte) no período de referência acima,
-        com base nos lançamentos do sistema de gestão de SMS do Consórcio.
+        apresenta a quantidade de resíduos sólidos Classe II-A Não Perigosos (Não Inerte) e Classe II-B Não Perigosos
+        (Inerte) gerados no período de referência acima, apurada com base nos registros do sistema de gestão de SMS
+        do Consórcio.
     </p>
 
-    <h3>QUANTIDADE ESTIMADA DE RESÍDUOS NO PERÍODO</h3>
+    <h3>QUANTIDADE DE RESÍDUOS NO PERÍODO</h3>
     <table>
-        <thead><tr><th>Tipo de Resíduo</th><th>Quantidade</th><th>Peso Estimado (kg)</th></tr></thead>
+        <thead><tr><th>Tipo de Resíduo</th><th>Quantidade</th><th>Peso (kg)</th></tr></thead>
         <tbody>
             <tr><td>Quentinhas de isopor com sobra de comida</td><td>${linha.quentinhas || 0} un.</td><td>${quentinhasKg.toFixed(1)}</td></tr>
             <tr><td>Copo descartável</td><td>${linha.copos || 0} un.</td><td>${coposKg.toFixed(1)}</td></tr>
             <tr><td>EPI usado (sem contaminação)</td><td>${epiQtd} un.</td><td>${epiKg.toFixed(1)}</td></tr>
-            <tr class="total-row"><td colspan="2">TOTAL ESTIMADO NO MÊS</td><td>${linha.pesoKg.toFixed(1)} kg</td></tr>
+            <tr class="total-row"><td colspan="2">TOTAL NO MÊS</td><td>${linha.pesoKg.toFixed(1)} kg</td></tr>
         </tbody>
     </table>
     <p style="font-size: 10.5px; color: #555; margin-top: 6px;">
-        Estimativa: quentinha de isopor = 23,9 g/un.; copo descartável PP 200ml = 1,8 g/un.; EPI usado = 500 g/un.
-        (peso médio único, cobrindo desde itens leves até botina/capacete).${linha.salvo ? '' : ' Valor sugerido automaticamente (efetivo × dias trabalhados) — ainda não confirmado manualmente no sistema.'}
+        Memória de cálculo (peso por unidade): quentinha de isopor = 23,9 g; copo descartável PP 200ml = 1,8 g; EPI
+        usado sem contaminação = 500 g (peso médio adotado pelo Consórcio).
     </p>
 
     <h3>TRANSPORTE E DESTINAÇÃO FINAL</h3>
-    <p><strong>${escapeHTML(e1.titulo)}:</strong> ${escapeHTML(e1.descricao)} Veículo: ${escapeHTML(e1.veiculo)}, placa ${escapeHTML(e1.placa)}. Motorista: ${escapeHTML(e1.motorista)}.</p>
-    <p><strong>${escapeHTML(e2.titulo)}:</strong> ${escapeHTML(e2.descricao)} Empresa: ${escapeHTML(e2.empresa)} (CNPJ ${escapeHTML(e2.cnpj)}), ${escapeHTML(e2.municipio)}, telefone ${escapeHTML(e2.telefone)}. Veículo: ${escapeHTML(e2.veiculo)}, placa ${escapeHTML(e2.placa)}. Motorista: ${escapeHTML(e2.motorista)}.</p>
-    <p><strong>Destino Final:</strong> ${escapeHTML(rcp.destino)}, recebido por ${escapeHTML(rcp.empresa)} (telefone ${escapeHTML(rcp.telefone)}), encarregado ${escapeHTML(rcp.encarregado)}.</p>
+    <p><strong>${escapeHTML(e1.titulo)}:</strong> ${escapeHTML(e1.descricao)} Veículo: ${escapeHTML(e1.veiculo)}, placa ${escapeHTML(e1.placa)}. Motorista: ${escapeHTML(motorista1)}.</p>
+    <p><strong>${escapeHTML(e2.titulo)}:</strong> ${escapeHTML(e2.descricao)} Empresa: ${escapeHTML(e2.empresa)} (CNPJ ${escapeHTML(e2.cnpj)}), ${escapeHTML(e2.municipio)}, telefone ${escapeHTML(e2.telefone)}. Veículo: ${escapeHTML(e2.veiculo)}, placa ${escapeHTML(e2.placa)}. Motorista: ${escapeHTML(motorista2)}.</p>
+    <p><strong>Destino Final:</strong> ${escapeHTML(rcp.destino)}, recebido por ${escapeHTML(rcp.empresa)} (telefone ${escapeHTML(rcp.telefone)}).</p>
     <p style="font-size: 10.5px; color: #555;">Base: ${escapeHTML(MANIFESTO_RESIDUOS_INFO.baseLegal)}</p>
 
     <p style="text-align: justify; margin-top: 14px;">
-        Declaro, sob as penas da lei, que as informações acima refletem a estimativa de geração de resíduos das
-        frentes de serviço do Ramal do Agreste no período indicado, e que a destinação final segue o Acordo de
-        Cooperação vigente com a Prefeitura Municipal de Sertânia.
+        Declaro, sob as penas da lei, que as informações acima refletem a geração de resíduos das frentes de
+        serviço do Ramal do Agreste no período indicado, e que a destinação final segue o Acordo de Cooperação
+        vigente com a Prefeitura Municipal de Sertânia.
     </p>
 
-    <div class="assinatura">
-        <div class="linha"></div>
-        João Everton de Souza Limeira<br>
-        Responsável Técnico — Engenheiro de Segurança do Trabalho
+    <p style="margin-top: 24px;">Arcoverde-PE, ${dataDocumento}.</p>
+
+    <div class="assinaturas">
+        <div class="assinatura-col">
+            <div class="linha"></div>
+            João Everton de Souza Limeira<br>
+            Responsável Técnico — Engenheiro de Segurança do Trabalho<br>
+            Consórcio Operador do PISF — Ramal do Agreste
+        </div>
+        <div class="assinatura-col">
+            <div class="linha"></div>
+            ${escapeHTML(recebedor)}<br>
+            Recebimento — ${escapeHTML(rcp.empresa)}<br>
+            ${escapeHTML(rcp.destino)}
+        </div>
     </div>
-    <p style="text-align: center; margin-top: 20px; font-size: 10.5px; color: #777;">Documento gerado em ${dataGeracao} pelo sistema de gestão de SMS do Consórcio.</p>
 </body></html>`;
 
     abrirDocumentoBlob(html);

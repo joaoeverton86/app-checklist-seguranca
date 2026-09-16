@@ -4177,7 +4177,7 @@
                 <div class="db-chart-card">
                     <div class="db-chart-title">🍱🧤 Resíduos de Refeições + EPI por Mês</div>
                     <p style="font-size: 12px; color: var(--text-light); margin-bottom: 14px;">
-                        Estimativa baseada no consumo de quentinhas (isopor), copos descartáveis e EPI usado sem contaminação. Peso considera o descarte real: isopor limpo (8,9g) + resíduo orgânico que sobra dentro (15g) = <strong>23,9g por quentinha descartada</strong>; copo descartável PP 200ml = <strong>1,8g por unidade</strong>; EPI usado = <strong>0,5kg por unidade</strong> (peso médio único, cobrindo desde item leve até botina/capacete). A quantidade sugerida de quentinhas/copos usa o efetivo × dias trabalhados do mês (já configurados em Acidentabilidade → Dias Trabalhados); o EPI não tem sugestão automática — lance manualmente a quantidade descartada no mês.
+                        Consumo de quentinhas (isopor), copos descartáveis e EPI usado sem contaminação, convertido em peso: isopor limpo (8,9g) + resíduo orgânico que sobra dentro (15g) = <strong>23,9g por quentinha descartada</strong>; copo descartável PP 200ml = <strong>1,8g por unidade</strong>; EPI usado = <strong>0,5kg por unidade</strong> (peso médio único, cobrindo desde item leve até botina/capacete). A quantidade sugerida de quentinhas/copos usa o efetivo × dias trabalhados do mês (já configurados em Acidentabilidade → Dias Trabalhados), mas pode ser ajustada aqui se o consumo real foi diferente; o EPI não tem sugestão automática — lance manualmente a quantidade descartada no mês. <strong>Confirme (💾) o valor real do mês aqui antes de gerar o Manifesto de Resíduos</strong> — o manifesto só é gerado a partir de mês já salvo, nunca de sugestão automática.
                     </p>
                     <div id="residuosRefeicoesLista" style="display: flex; flex-direction: column; gap: 6px; max-height: 560px; overflow-y: auto;"></div>
                 </div>
@@ -4258,9 +4258,9 @@
 
                 <div id="ambientalSubtab-manifesto" style="display:none;">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
-                    <div class="db-chart-title">📄 Manifesto de Resíduos (Estimativa Mensal)</div>
+                    <div class="db-chart-title">📄 Manifesto de Resíduos</div>
                     <p style="font-size: 12px; color: var(--text-light); margin-bottom: 14px;">
-                        A empresa não possui cadastro no MTR (Manifesto de Transporte de Resíduos) oficial. Este documento é uma estimativa mensal, gerada pelo próprio sistema, das quantidades de resíduos Classe II-A/II-B geradas nas frentes de serviço — usada para atender à fiscalização, que vem cobrando essa contabilização desde o início do ano. Os dados vêm dos lançamentos da aba "🍱 Resíduos (Refeições + EPI)".
+                        A empresa não possui cadastro no MTR (Manifesto de Transporte de Resíduos) oficial. Este documento apresenta a quantidade de resíduos Classe II-A/II-B gerada nas frentes de serviço em cada mês — usado para atender à fiscalização, que vem cobrando essa contabilização desde o início do ano. Só é gerado a partir de um mês já confirmado/salvo em "🍱 Resíduos (Refeições + EPI)" (nunca de uma sugestão automática ainda não confirmada). Confira e ajuste os motoristas, quem recebeu e a data do documento antes de gerar.
                     </p>
                     <div style="display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center;">
                         <label style="font-size: 12.5px; color: var(--text-light); font-weight: 600;">Mês do manifesto:</label>
@@ -4273,18 +4273,36 @@
                         <select id="manifestoAno" onchange="renderManifestoResiduosResumo()" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;"></select>
                     </div>
                     <div id="manifestoResumo" style="font-size: 13px; margin-bottom: 14px;"></div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 14px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600; font-size: 12px;">Motorista — 1ª etapa (veículo próprio)</label>
+                            <input type="text" id="manifestoMotorista1" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600; font-size: 12px;">Motorista — 2ª etapa (Essencial Ambiental)</label>
+                            <input type="text" id="manifestoMotorista2" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600; font-size: 12px;">Recebido por (assinatura de recebimento)</label>
+                            <input type="text" id="manifestoRecebedor" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600; font-size: 12px;">Data do documento</label>
+                            <input type="date" id="manifestoDataDocumento" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                    </div>
                     <button class="db-apply-btn" onclick="gerarManifestoResiduosMes()">🖨️ Gerar Manifesto do Mês</button>
                 </div>
 
                 <div class="db-chart-card">
                     <div class="db-chart-title">🚚 Dados de Transporte e Destinação (fixos)</div>
                     <p style="font-size: 12px; color: var(--text-light); margin-bottom: 10px;">
-                        Conforme a Declaração de Transporte e Destinação de Resíduos e o Acordo de Cooperação com a Prefeitura Municipal de Sertânia. O transporte é feito em 2 etapas — se algum dado mudar (novo veículo, nova empresa contratada pela Prefeitura etc.), me avise para atualizar aqui.
+                        Conforme a Declaração de Transporte e Destinação de Resíduos e o Acordo de Cooperação com a Prefeitura Municipal de Sertânia. Veículo/empresa de cada etapa são fixos abaixo; o nome do motorista é confirmado/editado na tela acima a cada manifesto gerado, já que pode variar de mês pra mês. Se o veículo ou a empresa contratada mudar, me avise para atualizar aqui.
                     </p>
                     <div style="font-size: 12.5px; line-height: 1.7;">
-                        <strong>1ª etapa</strong> — Frente de serviço → Sertânia-PE: veículo próprio do Consórcio (Caminhão Cabinado Mercedes-Benz, placa JHU7E68, motorista José Cláudio da Silva).<br>
-                        <strong>2ª etapa</strong> — Sertânia-PE → Arcoverde-PE: empresa Essencial Ambiental Ltda (CNPJ 46.523.739/0001-89), contratada pela Prefeitura Municipal de Sertânia no âmbito do Acordo de Cooperação (Caminhão Compactador, placa QYP-0J72, motorista José Dimas Reis de Oliveira).<br>
-                        <strong>Destino final</strong> — Aterro Sanitário de Arcoverde-PE (Prefeitura Municipal de Arcoverde-PE, encarregado Josiedson Silva).
+                        <strong>1ª etapa</strong> — Frente de serviço → Sertânia-PE: veículo próprio do Consórcio (Caminhão Cabinado Mercedes-Benz, placa JHU7E68).<br>
+                        <strong>2ª etapa</strong> — Sertânia-PE → Arcoverde-PE: empresa Essencial Ambiental Ltda (CNPJ 46.523.739/0001-89), contratada pela Prefeitura Municipal de Sertânia no âmbito do Acordo de Cooperação (Caminhão Compactador, placa QYP-0J72).<br>
+                        <strong>Destino final</strong> — Aterro Sanitário de Arcoverde-PE (Prefeitura Municipal de Arcoverde-PE).
                     </div>
                 </div>
                 </div>

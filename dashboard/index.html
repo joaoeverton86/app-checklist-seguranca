@@ -4112,8 +4112,9 @@
                 <div class="db-filters" style="margin-bottom: 16px;">
                     <div class="db-filter-buttons">
                         <button id="ambientalSubtabBtn-visao" class="db-filter-btn active" onclick="showAmbientalSubtab('visao')">📊 Visão Geral</button>
-                        <button id="ambientalSubtabBtn-refeicoes" class="db-filter-btn" onclick="showAmbientalSubtab('refeicoes')">🍱 Resíduos de Refeições</button>
+                        <button id="ambientalSubtabBtn-refeicoes" class="db-filter-btn" onclick="showAmbientalSubtab('refeicoes')">🍱 Resíduos (Refeições + EPI)</button>
                         <button id="ambientalSubtabBtn-manutencao" class="db-filter-btn" onclick="showAmbientalSubtab('manutencao')">🔧 Manutenção Veicular</button>
+                        <button id="ambientalSubtabBtn-manifesto" class="db-filter-btn" onclick="showAmbientalSubtab('manifesto')">📄 Manifesto de Resíduos</button>
                     </div>
                 </div>
 
@@ -4144,7 +4145,7 @@
                 <div class="db-kpi-grid">
                     <div class="db-kpi-card db-kpi-primary">
                         <div class="db-kpi-value" id="kpiAmbResiduoRefeicoesKg">0</div>
-                        <div class="db-kpi-label">Resíduo de Refeições (kg)</div>
+                        <div class="db-kpi-label">Resíduo Sólido - Refeições+EPI (kg)</div>
                     </div>
                     <div class="db-kpi-card">
                         <div class="db-kpi-value" id="kpiAmbLitrosOleo">0</div>
@@ -4162,7 +4163,7 @@
 
                 <div class="db-charts-grid">
                     <div class="db-chart-card" style="grid-column: 1 / -1;">
-                        <div class="db-chart-title">🍱 Resíduo de Refeições por Mês (kg)</div>
+                        <div class="db-chart-title">🍱🧤 Resíduo de Refeições + EPI por Mês (kg)</div>
                         <div class="db-chart-canvas-wrap" style="height: 340px; min-height: 340px;"><canvas id="chartAmbResiduosRefeicoes"></canvas></div>
                     </div>
                     <div class="db-chart-card" style="grid-column: 1 / -1;">
@@ -4174,9 +4175,9 @@
 
                 <div id="ambientalSubtab-refeicoes" style="display:none;">
                 <div class="db-chart-card">
-                    <div class="db-chart-title">🍱 Resíduos de Refeições por Mês</div>
+                    <div class="db-chart-title">🍱🧤 Resíduos de Refeições + EPI por Mês</div>
                     <p style="font-size: 12px; color: var(--text-light); margin-bottom: 14px;">
-                        Estimativa baseada no consumo de quentinhas (isopor) e copos descartáveis. Peso considera o descarte real: isopor limpo (8,9g) + resíduo orgânico que sobra dentro (15g) = <strong>23,9g por quentinha descartada</strong>; copo descartável PP 200ml = <strong>1,8g por unidade</strong>. A quantidade sugerida usa o efetivo × dias trabalhados do mês (já configurados em Acidentabilidade → Dias Trabalhados), mas pode ser ajustada aqui se o consumo real foi diferente.
+                        Estimativa baseada no consumo de quentinhas (isopor), copos descartáveis e EPI usado sem contaminação. Peso considera o descarte real: isopor limpo (8,9g) + resíduo orgânico que sobra dentro (15g) = <strong>23,9g por quentinha descartada</strong>; copo descartável PP 200ml = <strong>1,8g por unidade</strong>; EPI usado = <strong>0,5kg por unidade</strong> (peso médio único, cobrindo desde item leve até botina/capacete). A quantidade sugerida de quentinhas/copos usa o efetivo × dias trabalhados do mês (já configurados em Acidentabilidade → Dias Trabalhados); o EPI não tem sugestão automática — lance manualmente a quantidade descartada no mês.
                     </p>
                     <div id="residuosRefeicoesLista" style="display: flex; flex-direction: column; gap: 6px; max-height: 560px; overflow-y: auto;"></div>
                 </div>
@@ -4251,6 +4252,39 @@
                         <button class="db-clear-btn" onclick="fecharFormManutencao()">Cancelar</button>
                         <button id="manutForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirManutencaoAtual()">🗑️ Excluir</button>
                         <span id="manutencaoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
+                </div>
+
+                <div id="ambientalSubtab-manifesto" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">📄 Manifesto de Resíduos (Estimativa Mensal)</div>
+                    <p style="font-size: 12px; color: var(--text-light); margin-bottom: 14px;">
+                        A empresa não possui cadastro no MTR (Manifesto de Transporte de Resíduos) oficial. Este documento é uma estimativa mensal, gerada pelo próprio sistema, das quantidades de resíduos Classe II-A/II-B geradas nas frentes de serviço — usada para atender à fiscalização, que vem cobrando essa contabilização desde o início do ano. Os dados vêm dos lançamentos da aba "🍱 Resíduos (Refeições + EPI)".
+                    </p>
+                    <div style="display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center;">
+                        <label style="font-size: 12.5px; color: var(--text-light); font-weight: 600;">Mês do manifesto:</label>
+                        <select id="manifestoMes" onchange="renderManifestoResiduosResumo()" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;">
+                            <option value="0">Janeiro</option><option value="1">Fevereiro</option><option value="2">Março</option>
+                            <option value="3">Abril</option><option value="4">Maio</option><option value="5">Junho</option>
+                            <option value="6">Julho</option><option value="7">Agosto</option><option value="8">Setembro</option>
+                            <option value="9">Outubro</option><option value="10">Novembro</option><option value="11">Dezembro</option>
+                        </select>
+                        <select id="manifestoAno" onchange="renderManifestoResiduosResumo()" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;"></select>
+                    </div>
+                    <div id="manifestoResumo" style="font-size: 13px; margin-bottom: 14px;"></div>
+                    <button class="db-apply-btn" onclick="gerarManifestoResiduosMes()">🖨️ Gerar Manifesto do Mês</button>
+                </div>
+
+                <div class="db-chart-card">
+                    <div class="db-chart-title">🚚 Dados de Transporte e Destinação (fixos)</div>
+                    <p style="font-size: 12px; color: var(--text-light); margin-bottom: 10px;">
+                        Conforme a Declaração de Transporte e Destinação de Resíduos e o Acordo de Cooperação com a Prefeitura Municipal de Sertânia. O transporte é feito em 2 etapas — se algum dado mudar (novo veículo, nova empresa contratada pela Prefeitura etc.), me avise para atualizar aqui.
+                    </p>
+                    <div style="font-size: 12.5px; line-height: 1.7;">
+                        <strong>1ª etapa</strong> — Frente de serviço → Sertânia-PE: veículo próprio do Consórcio (Caminhão Cabinado Mercedes-Benz, placa JHU7E68, motorista José Cláudio da Silva).<br>
+                        <strong>2ª etapa</strong> — Sertânia-PE → Arcoverde-PE: empresa Essencial Ambiental Ltda (CNPJ 46.523.739/0001-89), contratada pela Prefeitura Municipal de Sertânia no âmbito do Acordo de Cooperação (Caminhão Compactador, placa QYP-0J72, motorista José Dimas Reis de Oliveira).<br>
+                        <strong>Destino final</strong> — Aterro Sanitário de Arcoverde-PE (Prefeitura Municipal de Arcoverde-PE, encarregado Josiedson Silva).
                     </div>
                 </div>
                 </div>

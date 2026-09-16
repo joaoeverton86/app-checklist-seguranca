@@ -17309,9 +17309,14 @@ let cipaLoaded = false;
 // quentinha; copo descartável PP 200ml = 1,8g por unidade.
 const RESIDUO_KG_POR_QUENTINHA = 0.0239;
 const RESIDUO_KG_POR_COPO = 0.0018;
+// Peso médio único por unidade de EPI usado sem contaminação (luva, bota, capacete etc. -
+// varia muito entre tipos, então o usuário optou por uma média única em vez de detalhar por
+// tipo) - decidido com o usuário em 2026-09-16, pensado pra cobrir desde item leve até
+// botina/capacete.
+const RESIDUO_KG_POR_EPI = 0.5;
 
 function pesoResiduoRefeicoesKg(r) {
-    return (r.quentinhas_qtd || 0) * RESIDUO_KG_POR_QUENTINHA + (r.copos_qtd || 0) * RESIDUO_KG_POR_COPO;
+    return (r.quentinhas_qtd || 0) * RESIDUO_KG_POR_QUENTINHA + (r.copos_qtd || 0) * RESIDUO_KG_POR_COPO + (r.epi_qtd || 0) * RESIDUO_KG_POR_EPI;
 }
 
 async function loadAmbientalData() {
@@ -17335,13 +17340,14 @@ async function loadAmbientalData() {
         renderResiduosRefeicoesConfig();
         renderManutencaoResumo();
         filterManutencaoLista();
+        renderManifestoResiduosResumo();
     } catch (err) {
         console.error('Erro ao carregar dados de Gestão Ambiental:', err);
     }
 }
 
 function showAmbientalSubtab(tab) {
-    ['visao', 'refeicoes', 'manutencao'].forEach(t => {
+    ['visao', 'refeicoes', 'manutencao', 'manifesto'].forEach(t => {
         const content = document.getElementById('ambientalSubtab-' + t);
         const btn = document.getElementById('ambientalSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -17350,6 +17356,7 @@ function showAmbientalSubtab(tab) {
     if (tab === 'visao') renderAmbientalPanel();
     if (tab === 'refeicoes') renderResiduosRefeicoesConfig();
     if (tab === 'manutencao') { fecharFormManutencao(); renderManutencaoResumo(); filterManutencaoLista(); }
+    if (tab === 'manifesto') renderManifestoResiduosResumo();
 }
 
 function popularFiltroAnoAmbiental() {
@@ -17438,9 +17445,13 @@ function calcularResiduosRefeicoesMensal() {
         const label = cursor.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
         const quentinhas = existente ? existente.quentinhas_qtd : sugestao;
         const copos = existente ? existente.copos_qtd : sugestao;
-        const temValor = quentinhas !== '' || copos !== '';
-        const pesoKg = temValor ? Number(quentinhas || 0) * RESIDUO_KG_POR_QUENTINHA + Number(copos || 0) * RESIDUO_KG_POR_COPO : null;
-        linhas.push({ key, ano, mes: mes + 1, label, headcount, diasTrabalhados, quentinhas, copos, pesoKg, salvo: !!existente });
+        // EPI usado não tem uma fórmula de sugestão automática (não existe uma correlação
+        // documentada tipo headcount × dias, diferente de quentinha/copo) - fica em branco até
+        // o usuário lançar manualmente a quantidade do mês.
+        const epi = existente ? existente.epi_qtd : '';
+        const temValor = quentinhas !== '' || copos !== '' || epi !== '';
+        const pesoKg = temValor ? Number(quentinhas || 0) * RESIDUO_KG_POR_QUENTINHA + Number(copos || 0) * RESIDUO_KG_POR_COPO + Number(epi || 0) * RESIDUO_KG_POR_EPI : null;
+        linhas.push({ key, ano, mes: mes + 1, label, headcount, diasTrabalhados, quentinhas, copos, epi, pesoKg, salvo: !!existente });
         cursor = new Date(ano, mes + 1, 1);
     }
     return linhas;
@@ -17534,12 +17545,14 @@ function renderResiduosRefeicoesConfig() {
     container.innerHTML = linhas.map(l => {
         const pesoTexto = l.pesoKg != null ? `${l.pesoKg.toFixed(1)} kg` : '—';
         const pesoEstilo = l.salvo ? 'color: var(--text-light);' : 'color: var(--text-light); font-style: italic;';
-        return `<div style="display: grid; grid-template-columns: 1.3fr 1fr 0.8fr 0.8fr 0.7fr auto; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 8px; background: var(--bg); font-size: 12.5px;">
+        return `<div style="display: grid; grid-template-columns: 1.1fr 0.9fr 0.6fr 0.6fr 0.6fr 0.7fr auto; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 8px; background: var(--bg); font-size: 12.5px;">
             <div style="font-weight: 600; text-transform: capitalize;">${escapeHTML(l.label)}</div>
             <div style="color: var(--text-light);">Efetivo ${l.headcount} × ${l.diasTrabalhados ?? '—'} dias</div>
             <input type="number" min="0" step="1" placeholder="Quentinhas" value="${l.quentinhas}" id="residQuent_${l.key}"
                    style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
             <input type="number" min="0" step="1" placeholder="Copos" value="${l.copos}" id="residCopos_${l.key}"
+                   style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
+            <input type="number" min="0" step="1" placeholder="EPI" value="${l.epi}" id="residEpi_${l.key}" title="Unidades de EPI usado sem contaminação descartadas no mês"
                    style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
             <div style="${pesoEstilo} text-align:right;" title="${l.salvo ? 'Valor salvo' : 'Estimativa não salva ainda'}">${pesoTexto}</div>
             <button class="db-apply-btn" style="padding: 6px 12px;" onclick="salvarResiduoRefeicaoMes('${l.key}', ${l.ano}, ${l.mes + 1})">💾</button>
@@ -17550,22 +17563,199 @@ function renderResiduosRefeicoesConfig() {
 async function salvarResiduoRefeicaoMes(key, ano, mes) {
     const quentinhas = parseInt(document.getElementById(`residQuent_${key}`).value, 10);
     const copos = parseInt(document.getElementById(`residCopos_${key}`).value, 10);
-    if (isNaN(quentinhas) || quentinhas < 0 || isNaN(copos) || copos < 0) {
-        alert('Informe quantidades válidas de quentinhas e copos.');
+    const epiInput = document.getElementById(`residEpi_${key}`).value;
+    const epi = epiInput === '' ? 0 : parseInt(epiInput, 10);
+    if (isNaN(quentinhas) || quentinhas < 0 || isNaN(copos) || copos < 0 || isNaN(epi) || epi < 0) {
+        alert('Informe quantidades válidas de quentinhas, copos e EPI.');
         return;
     }
     try {
-        const row = { id: key, ano, mes, quentinhas_qtd: quentinhas, copos_qtd: copos };
+        const row = { id: key, ano, mes, quentinhas_qtd: quentinhas, copos_qtd: copos, epi_qtd: epi };
         await supabaseUpsert('residuos_refeicoes', [row]);
         const idx = allResiduosRefeicoes.findIndex(r => r.id === key);
         if (idx >= 0) allResiduosRefeicoes[idx] = { ...allResiduosRefeicoes[idx], ...row };
         else allResiduosRefeicoes.push(row);
         renderResiduosRefeicoesConfig();
         if (document.getElementById('ambientalSubtabBtn-visao')?.classList.contains('active')) renderAmbientalPanel();
+        if (document.getElementById('ambientalSubtabBtn-manifesto')?.classList.contains('active')) renderManifestoResiduosResumo();
     } catch (err) {
         console.error('Erro ao salvar resíduo de refeições:', err);
         alert('Falha ao salvar: ' + err.message);
     }
+}
+
+// ============================================
+// MANIFESTO DE RESÍDUOS (Meio Ambiente - Fase 2, 2026-09-16) - a fiscalização vem cobrando,
+// todo mês desde o início do ano, a quantidade de resíduos gerados nas frentes de serviço. A
+// empresa não tem cadastro no MTR (Manifesto de Transporte de Resíduos) oficial, então este
+// documento supre essa exigência com uma estimativa mensal gerada pelo próprio sistema, no
+// mesmo formato da "Declaração de Transporte e Destinação de Resíduos" que o usuário já
+// assina hoje. Dados fixos de transporte/destinação abaixo, confirmados com o usuário em
+// 2026-09-16 (2 etapas: veículo próprio do Consórcio até Sertânia, depois a empresa Essencial
+// Ambiental Ltda - contratada pela Prefeitura de Sertânia via Acordo de Cooperação - até
+// Arcoverde). Se algum dia esses dados mudarem (novo veículo, nova empresa contratada pela
+// Prefeitura etc.), é só pedir pra atualizar aqui.
+// ============================================
+
+const MANIFESTO_RESIDUOS_INFO = {
+    origem: 'Frentes de Serviço e Manutenção Operacional do Ramal do Agreste (Distrito de Henrique Dias, Zona Rural do município de Sertânia-PE)',
+    etapa1: {
+        titulo: '1ª Etapa — Frente de Serviço → Sertânia-PE',
+        descricao: 'Transporte com veículo próprio do Consórcio Operador do PISF — Ramal do Agreste.',
+        veiculo: 'Caminhão Cabinado Mercedes-Benz', placa: 'JHU7E68', motorista: 'José Cláudio da Silva'
+    },
+    etapa2: {
+        titulo: '2ª Etapa — Sertânia-PE → Arcoverde-PE',
+        descricao: 'Coleta e transporte por empresa contratada pela Prefeitura Municipal de Sertânia (CNPJ 11.358.116/0001-13), no âmbito do Acordo de Cooperação para Coleta de Resíduos Classe II-A Não Perigosos (Não Inerte) e Classe II-B Não Perigosos (Inerte).',
+        empresa: 'Essencial Ambiental Ltda', cnpj: '46.523.739/0001-89', municipio: 'São José do Egito-PE',
+        telefone: '(87) 99990-9440 / (87) 99996-0705', veiculo: 'Caminhão Compactador de Lixo',
+        placa: 'QYP-0J72', motorista: 'José Dimas Reis de Oliveira'
+    },
+    receptor: {
+        empresa: 'Prefeitura Municipal de Arcoverde-PE', destino: 'Aterro Sanitário de Arcoverde-PE',
+        telefone: '(87) 3821-9000', encarregado: 'Josiedson Silva'
+    },
+    baseLegal: 'Acordo de Cooperação firmado entre o Consórcio Operador do PISF — Ramal do Agreste (CNPJ 55.623.017/0001-97) e a Prefeitura Municipal de Sertânia (CNPJ 11.358.116/0001-13), com amparo na Lei Federal nº 8.666/1993 e alterações, Decreto Estadual nº 20.786/1998 e Lei Federal nº 8.080/1990.'
+};
+
+// Preenche o seletor de ano da aba Manifesto uma única vez (não repete se já populado) e
+// define mês/ano atuais como padrão na primeira vez que a aba é aberta.
+function popularSelectAnoManifesto() {
+    const sel = document.getElementById('manifestoAno');
+    if (!sel || sel.options.length > 0) return;
+    const anos = new Set([new Date().getFullYear()]);
+    allResiduosRefeicoes.forEach(r => anos.add(r.ano));
+    Array.from(anos).sort((a, b) => b - a).forEach(ano => {
+        const opt = document.createElement('option');
+        opt.value = ano; opt.textContent = ano;
+        sel.appendChild(opt);
+    });
+    sel.value = new Date().getFullYear();
+    const mesSel = document.getElementById('manifestoMes');
+    if (mesSel) mesSel.value = new Date().getMonth();
+}
+
+// Mostra, na tela, o resumo do mês escolhido antes de gerar o documento - assim o usuário
+// confere os números (e vê o aviso de "ainda não confirmado" quando for só sugestão) antes de
+// imprimir algo pra levar à fiscalização.
+function renderManifestoResiduosResumo() {
+    popularSelectAnoManifesto();
+    const el = document.getElementById('manifestoResumo');
+    if (!el) return;
+    const ano = parseInt(document.getElementById('manifestoAno').value, 10);
+    const mes = parseInt(document.getElementById('manifestoMes').value, 10);
+    const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+    const linha = calcularResiduosRefeicoesMensal().find(l => l.key === key);
+    if (!linha || linha.pesoKg == null) {
+        el.innerHTML = `<span style="color: var(--text-light);">Nenhuma quantidade lançada para ${NOMES_MESES[mes]}/${ano} ainda — lance em "🍱 Resíduos (Refeições + EPI)" antes de gerar o manifesto.</span>`;
+        return;
+    }
+    const epiQtd = Number(linha.epi || 0);
+    const epiKg = epiQtd * RESIDUO_KG_POR_EPI;
+    el.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;">
+            <div><strong>Quentinhas:</strong> ${linha.quentinhas || 0} un.</div>
+            <div><strong>Copos:</strong> ${linha.copos || 0} un.</div>
+            <div><strong>EPI usado:</strong> ${epiQtd} un. (${epiKg.toFixed(1)} kg)</div>
+            <div><strong>Total estimado:</strong> ${linha.pesoKg.toFixed(1)} kg</div>
+        </div>
+        ${!linha.salvo ? '<div style="margin-top:8px; color: var(--warning); font-style: italic;">⚠️ Valor ainda não confirmado/salvo — é uma sugestão automática (efetivo × dias trabalhados). Confirme em "🍱 Resíduos (Refeições + EPI)" antes de levar este manifesto à fiscalização.</div>' : ''}`;
+}
+
+// Gera o documento do mês escolhido, no mesmo padrão de blob+<a>+window.print() de todo
+// documento deste sistema ("PDF" é o navegador quem gera, via "Salvar como PDF" na impressão).
+function gerarManifestoResiduosMes() {
+    const ano = parseInt(document.getElementById('manifestoAno').value, 10);
+    const mes = parseInt(document.getElementById('manifestoMes').value, 10);
+    const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+    const linha = calcularResiduosRefeicoesMensal().find(l => l.key === key);
+    if (!linha || linha.pesoKg == null) {
+        alert('Não há quantidade lançada para esse mês ainda. Lance em "Resíduos (Refeições + EPI)" antes de gerar o manifesto.');
+        return;
+    }
+    const epiQtd = Number(linha.epi || 0);
+    const epiKg = epiQtd * RESIDUO_KG_POR_EPI;
+    const quentinhasKg = (linha.quentinhas || 0) * RESIDUO_KG_POR_QUENTINHA;
+    const coposKg = (linha.copos || 0) * RESIDUO_KG_POR_COPO;
+    const nomeMes = NOMES_MESES[mes];
+    const dataGeracao = new Date().toLocaleDateString('pt-BR');
+    const e1 = MANIFESTO_RESIDUOS_INFO.etapa1, e2 = MANIFESTO_RESIDUOS_INFO.etapa2, rcp = MANIFESTO_RESIDUOS_INFO.receptor;
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Manifesto de Resíduos - ${escapeHTML(nomeMes)}/${ano}</title>
+<style>
+    @page { size: portrait; margin: 15mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111; margin: 20px; line-height: 1.5; }
+    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:14px; gap:10px; }
+    .cabecalho img { max-height:45px; }
+    .cabecalho .titulo { font-weight:700; font-size:15px; text-align:center; flex:1; }
+    h3 { font-size: 12.5px; border-bottom: 1px solid #999; padding-bottom: 4px; margin-top: 20px; }
+    table { width:100%; border-collapse:collapse; font-size:11.5px; margin-top: 8px; }
+    th, td { border:1px solid #999; padding:6px 8px; text-align:left; }
+    th { background:#d9d9d9; font-weight:700; }
+    .total-row td { font-weight: 700; background: #f0f0f0; }
+    .assinatura { margin-top: 60px; text-align: center; }
+    .assinatura .linha { border-top: 1px solid #000; width: 320px; margin: 0 auto 4px; }
+    .no-print { text-align:center; margin:16px 0; }
+    .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
+    @media print { .no-print { display:none; } body { margin:0; } }
+</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="cabecalho">
+        <img src="${LOGO_COP_BASE64}" alt="COP">
+        <div class="titulo">MANIFESTO DE RESÍDUOS — ESTIMATIVA MENSAL<br>${escapeHTML(nomeMes.toUpperCase())}/${ano}</div>
+        <div style="width:45px;"></div>
+    </div>
+
+    <p><strong>Razão Social:</strong> ${escapeHTML(EMPRESA_INFO.razaoSocial)} — <strong>CNPJ:</strong> ${escapeHTML(EMPRESA_INFO.cnpj)}</p>
+    <p><strong>Local de Origem dos Resíduos:</strong> ${escapeHTML(MANIFESTO_RESIDUOS_INFO.origem)}</p>
+    <p><strong>Responsável Técnico:</strong> João Everton de Souza Limeira</p>
+
+    <p style="text-align: justify; margin-top: 14px;">
+        A empresa não possui cadastro próprio no Manifesto de Transporte de Resíduos (MTR) oficial. Este documento
+        apresenta, para fins de acompanhamento pela fiscalização, a estimativa de geração de resíduos sólidos
+        Classe II-A Não Perigosos (Não Inerte) e Classe II-B Não Perigosos (Inerte) no período de referência acima,
+        com base nos lançamentos do sistema de gestão de SMS do Consórcio.
+    </p>
+
+    <h3>QUANTIDADE ESTIMADA DE RESÍDUOS NO PERÍODO</h3>
+    <table>
+        <thead><tr><th>Tipo de Resíduo</th><th>Quantidade</th><th>Peso Estimado (kg)</th></tr></thead>
+        <tbody>
+            <tr><td>Quentinhas de isopor com sobra de comida</td><td>${linha.quentinhas || 0} un.</td><td>${quentinhasKg.toFixed(1)}</td></tr>
+            <tr><td>Copo descartável</td><td>${linha.copos || 0} un.</td><td>${coposKg.toFixed(1)}</td></tr>
+            <tr><td>EPI usado (sem contaminação)</td><td>${epiQtd} un.</td><td>${epiKg.toFixed(1)}</td></tr>
+            <tr class="total-row"><td colspan="2">TOTAL ESTIMADO NO MÊS</td><td>${linha.pesoKg.toFixed(1)} kg</td></tr>
+        </tbody>
+    </table>
+    <p style="font-size: 10.5px; color: #555; margin-top: 6px;">
+        Estimativa: quentinha de isopor = 23,9 g/un.; copo descartável PP 200ml = 1,8 g/un.; EPI usado = 500 g/un.
+        (peso médio único, cobrindo desde itens leves até botina/capacete).${linha.salvo ? '' : ' Valor sugerido automaticamente (efetivo × dias trabalhados) — ainda não confirmado manualmente no sistema.'}
+    </p>
+
+    <h3>TRANSPORTE E DESTINAÇÃO FINAL</h3>
+    <p><strong>${escapeHTML(e1.titulo)}:</strong> ${escapeHTML(e1.descricao)} Veículo: ${escapeHTML(e1.veiculo)}, placa ${escapeHTML(e1.placa)}. Motorista: ${escapeHTML(e1.motorista)}.</p>
+    <p><strong>${escapeHTML(e2.titulo)}:</strong> ${escapeHTML(e2.descricao)} Empresa: ${escapeHTML(e2.empresa)} (CNPJ ${escapeHTML(e2.cnpj)}), ${escapeHTML(e2.municipio)}, telefone ${escapeHTML(e2.telefone)}. Veículo: ${escapeHTML(e2.veiculo)}, placa ${escapeHTML(e2.placa)}. Motorista: ${escapeHTML(e2.motorista)}.</p>
+    <p><strong>Destino Final:</strong> ${escapeHTML(rcp.destino)}, recebido por ${escapeHTML(rcp.empresa)} (telefone ${escapeHTML(rcp.telefone)}), encarregado ${escapeHTML(rcp.encarregado)}.</p>
+    <p style="font-size: 10.5px; color: #555;">Base: ${escapeHTML(MANIFESTO_RESIDUOS_INFO.baseLegal)}</p>
+
+    <p style="text-align: justify; margin-top: 14px;">
+        Declaro, sob as penas da lei, que as informações acima refletem a estimativa de geração de resíduos das
+        frentes de serviço do Ramal do Agreste no período indicado, e que a destinação final segue o Acordo de
+        Cooperação vigente com a Prefeitura Municipal de Sertânia.
+    </p>
+
+    <div class="assinatura">
+        <div class="linha"></div>
+        João Everton de Souza Limeira<br>
+        Responsável Técnico — Engenheiro de Segurança do Trabalho
+    </div>
+    <p style="text-align: center; margin-top: 20px; font-size: 10.5px; color: #777;">Documento gerado em ${dataGeracao} pelo sistema de gestão de SMS do Consórcio.</p>
+</body></html>`;
+
+    abrirDocumentoBlob(html);
 }
 
 // ---- Manutenção Veicular (preventivas + trocas de óleo) ----

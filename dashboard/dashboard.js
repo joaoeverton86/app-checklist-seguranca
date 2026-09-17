@@ -701,6 +701,7 @@ let allChecklists = [];
 let allCadastros = [];
 let allExtintores = [];
 let allInspecoesExtintores = [];
+let inspecaoExtintorPainelData = {};
 let allRelatos = [];
 let reportFilter = 'mes';
 let customFrom = null;
@@ -1840,7 +1841,7 @@ function renderExtintorPanel() {
 }
 
 function showExtintoresSubtab(tab) {
-    ['visao', 'cadastro'].forEach(t => {
+    ['visao', 'cadastro', 'inspecao', 'localizacao'].forEach(t => {
         const content = document.getElementById('extintoresSubtab-' + t);
         const btn = document.getElementById('extintoresSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -1852,6 +1853,329 @@ function showExtintoresSubtab(tab) {
         renderExtCadResumo();
         filterExtintoresCadastro(document.getElementById('extCadSearchInput')?.value || '');
     }
+    if (tab === 'inspecao') {
+        popularExtintorInspecaoSelect();
+    }
+    if (tab === 'localizacao') {
+        renderExtintorLocalizacao('');
+    }
+}
+
+// ============================================
+// INSPEÇÃO DE EXTINTORES NO PAINEL — espelha app.js (startInspecaoExtintor /
+// renderInspecaoExtintorItems / saveInspecaoExtintor), mesma tabela
+// inspecoes_extintores e os mesmos itens de EXTINTOR_INSPECTION_ITEMS (data.js).
+// Pedido do usuário: poder registrar a inspeção mensal também pelo painel,
+// não só pelo celular em campo. Não mexe em nada do app de celular.
+// ============================================
+
+function popularExtintorInspecaoSelect() {
+    const sel = document.getElementById('inspExt_extintorId');
+    if (!sel) return;
+    const valorAtual = sel.value;
+    sel.innerHTML = '<option value="">Selecione...</option>';
+    allExtintores
+        .filter(e => e.ativo !== false)
+        .sort((a, b) => (a.setor || '').localeCompare(b.setor || '') || String(a.id).localeCompare(String(b.id)))
+        .forEach(e => {
+            const opt = document.createElement('option');
+            opt.value = e.id;
+            opt.textContent = `${e.id} — ${e.setor || 'Sem setor'} (${e.localizacao || 'sem localização'})`;
+            sel.appendChild(opt);
+        });
+    if (valorAtual) sel.value = valorAtual;
+    if (!document.getElementById('inspExt_data').value) {
+        document.getElementById('inspExt_data').value = toISODateLocal(new Date());
+    }
+    if (!document.getElementById('inspExt_inspetor').value) {
+        document.getElementById('inspExt_inspetor').value = usuarioDashboardAtual();
+    }
+}
+
+function onSelectExtintorInspecaoPainel() {
+    const extintorId = document.getElementById('inspExt_extintorId').value;
+    const itemsWrap = document.getElementById('inspExt_itemsWrap');
+    const semSelecao = document.getElementById('inspExt_semSelecao');
+    if (!extintorId) {
+        itemsWrap.style.display = 'none';
+        semSelecao.style.display = 'block';
+        document.getElementById('inspExtHistorico').innerHTML = '';
+        return;
+    }
+    inspecaoExtintorPainelData = {};
+    itemsWrap.style.display = 'block';
+    semSelecao.style.display = 'none';
+    document.getElementById('inspExtStatus').textContent = '';
+    renderInspecaoExtintorItemsPainel();
+    renderHistoricoInspecoesExtintorPainel(extintorId);
+}
+
+function renderInspecaoExtintorItemsPainel() {
+    const wrap = document.getElementById('inspExt_items');
+    if (!wrap || typeof EXTINTOR_INSPECTION_ITEMS === 'undefined') return;
+    wrap.innerHTML = EXTINTOR_INSPECTION_ITEMS.map(item => {
+        const atual = inspecaoExtintorPainelData[item.id];
+        const status = atual ? atual.status : null;
+        const obsVisivel = status === 'nc';
+        return `<div class="db-list-item" style="margin-bottom: 8px;">
+            <div class="db-list-item-title">${escapeHTML(item.text)}</div>
+            <div class="db-list-item-sub" style="margin-bottom: 6px;">${escapeHTML(item.nr || '')}</div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <button class="db-clear-btn" style="${status === 'c' ? 'background: var(--success); color: #fff; border-color: var(--success);' : ''}" onclick="setStatusExtintorInspecaoPainel('${item.id}', 'c')">✓ Conforme</button>
+                <button class="db-clear-btn" style="${status === 'nc' ? 'background: var(--danger); color: #fff; border-color: var(--danger);' : ''}" onclick="setStatusExtintorInspecaoPainel('${item.id}', 'nc')">✗ Não Conforme</button>
+                <button class="db-clear-btn" style="${status === 'na' ? 'background: var(--text-light); color: #fff; border-color: var(--text-light);' : ''}" onclick="setStatusExtintorInspecaoPainel('${item.id}', 'na')">— N/A</button>
+            </div>
+            <textarea id="inspExt_obs_${item.id}" placeholder="Observação (obrigatória p/ Não Conforme)" oninput="setObservacaoExtintorInspecaoPainel('${item.id}', this.value)" style="display: ${obsVisivel ? 'block' : 'none'}; width: 100%; margin-top: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; font-family: inherit; font-size: 12px;" rows="2">${escapeHTML(atual && atual.obs ? atual.obs : '')}</textarea>
+        </div>`;
+    }).join('');
+}
+
+function setStatusExtintorInspecaoPainel(itemId, status) {
+    if (!inspecaoExtintorPainelData[itemId]) inspecaoExtintorPainelData[itemId] = {};
+    inspecaoExtintorPainelData[itemId].status = status;
+    renderInspecaoExtintorItemsPainel();
+}
+
+function setObservacaoExtintorInspecaoPainel(itemId, valor) {
+    if (!inspecaoExtintorPainelData[itemId]) inspecaoExtintorPainelData[itemId] = {};
+    inspecaoExtintorPainelData[itemId].obs = valor;
+}
+
+async function salvarInspecaoExtintorPainel() {
+    const statusEl = document.getElementById('inspExtStatus');
+    const extintorId = document.getElementById('inspExt_extintorId').value;
+    const data = document.getElementById('inspExt_data').value;
+    const inspetor = document.getElementById('inspExt_inspetor').value.trim();
+
+    if (!extintorId || !data || !inspetor) {
+        statusEl.textContent = '❌ Extintor, data e inspetor são obrigatórios.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const itemsFaltando = EXTINTOR_INSPECTION_ITEMS.filter(item => !inspecaoExtintorPainelData[item.id] || !inspecaoExtintorPainelData[item.id].status);
+    if (itemsFaltando.length > 0) {
+        statusEl.textContent = `❌ Marque o status de todos os itens (faltam ${itemsFaltando.length}).`;
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const ncSemObs = EXTINTOR_INSPECTION_ITEMS.filter(item => inspecaoExtintorPainelData[item.id].status === 'nc' && !(inspecaoExtintorPainelData[item.id].obs || '').trim());
+    if (ncSemObs.length > 0) {
+        statusEl.textContent = '❌ Todo item "Não Conforme" precisa de uma observação.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    let conformes = 0, naoConformes = 0, na = 0;
+    EXTINTOR_INSPECTION_ITEMS.forEach(item => {
+        const st = inspecaoExtintorPainelData[item.id].status;
+        if (st === 'c') conformes++;
+        else if (st === 'nc') naoConformes++;
+        else if (st === 'na') na++;
+    });
+
+    const id = 'INSP_' + Date.now();
+    const row = {
+        id,
+        extintor_id: extintorId,
+        date: data,
+        inspetor,
+        status_geral: naoConformes > 0 ? 'nao_conforme' : 'conforme',
+        conformes,
+        nao_conformes: naoConformes,
+        na,
+        total: EXTINTOR_INSPECTION_ITEMS.length,
+        items: inspecaoExtintorPainelData,
+        observacoes: null,
+        created_at: new Date().toISOString()
+    };
+
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('inspecoes_extintores', [row]);
+        allInspecoesExtintores.push(row);
+        statusEl.textContent = '✅ Inspeção salva com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        inspecaoExtintorPainelData = {};
+        renderInspecaoExtintorItemsPainel();
+        renderHistoricoInspecoesExtintorPainel(extintorId);
+    } catch (err) {
+        console.error('Erro ao salvar inspeção de extintor:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+function renderHistoricoInspecoesExtintorPainel(extintorId) {
+    const el = document.getElementById('inspExtHistorico');
+    if (!el) return;
+    const historico = allInspecoesExtintores
+        .filter(i => i.extintor_id === extintorId)
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 10);
+    if (historico.length === 0) {
+        el.innerHTML = '<div class="db-list-empty">Nenhuma inspeção registrada ainda para este extintor.</div>';
+        return;
+    }
+    el.innerHTML = historico.map(i => {
+        const cls = i.status_geral === 'nao_conforme' ? 'db-item-danger' : '';
+        return `<div class="db-list-item ${cls}">
+            <div class="db-list-item-title">${formatSimpleDate(i.date)} — ${i.status_geral === 'nao_conforme' ? '❌ Não Conforme' : '✅ Conforme'}</div>
+            <div class="db-list-item-sub">Inspetor: ${escapeHTML(i.inspetor || '—')} · Conformes: ${i.conformes} · Não Conformes: ${i.nao_conformes} · N/A: ${i.na}</div>
+        </div>`;
+    }).join('');
+}
+
+// ============================================
+// MAPA DE LOCALIZAÇÃO — lista de extintores organizada por Setor / Localização
+// (decisão confirmada com o usuário: lista simples, sem imagem/planta baixa)
+// ============================================
+
+function renderExtintorLocalizacao(filtro) {
+    const el = document.getElementById('extLocalizacaoLista');
+    if (!el) return;
+    const termo = (filtro !== undefined ? filtro : (document.getElementById('extLocSearchInput')?.value || '')).toLowerCase().trim();
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let lista = allExtintores.slice();
+    if (termo) {
+        lista = lista.filter(e =>
+            (e.setor || '').toLowerCase().includes(termo) ||
+            (e.localizacao || '').toLowerCase().includes(termo) ||
+            String(e.id || '').toLowerCase().includes(termo)
+        );
+    }
+
+    const grupos = {};
+    lista.forEach(e => {
+        const setor = e.setor || 'Sem setor definido';
+        if (!grupos[setor]) grupos[setor] = [];
+        grupos[setor].push(e);
+    });
+
+    const setoresOrdenados = Object.keys(grupos).sort((a, b) => a.localeCompare(b));
+    if (setoresOrdenados.length === 0) {
+        el.innerHTML = '<div class="db-list-empty">Nenhum extintor encontrado.</div>';
+        return;
+    }
+
+    el.innerHTML = setoresOrdenados.map(setor => {
+        const itens = grupos[setor].sort((a, b) => (a.localizacao || '').localeCompare(b.localizacao || '') || String(a.id).localeCompare(String(b.id)));
+        const linhas = itens.map(e => {
+            let statusTxt = '', cls = '';
+            if (e.ativo === false) {
+                statusTxt = '⚪ Inativo';
+            } else if (e.proxima_recarga) {
+                const deadline = parseLocalDate(e.proxima_recarga);
+                deadline.setHours(0, 0, 0, 0);
+                const diffDays = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                if (diffDays < 0) { statusTxt = `🔴 Recarga vencida há ${Math.abs(diffDays)} dia(s)`; cls = 'db-item-danger'; }
+                else if (diffDays <= 30) { statusTxt = `🟡 Recarga vence em ${diffDays} dia(s)`; cls = 'db-item-warning'; }
+                else { statusTxt = '🟢 Em dia'; }
+            } else {
+                statusTxt = '🟢 Ativo (sem data de recarga cadastrada)';
+            }
+            const tipoLabel = (typeof EXTINTOR_TIPOS !== 'undefined' && EXTINTOR_TIPOS.find(t => t.id === e.tipo)?.label) || e.tipo || '';
+            return `<div class="db-list-item ${cls}">
+                <div class="db-list-item-title">${escapeHTML(e.id)} — ${escapeHTML(e.localizacao || 'sem localização')}</div>
+                <div class="db-list-item-sub">${escapeHTML(tipoLabel)} · ${escapeHTML(e.capacidade || '')} · ${statusTxt}</div>
+            </div>`;
+        }).join('');
+        return `<div class="db-chart-card" style="margin-bottom: 12px;">
+            <div class="db-chart-title" style="margin-bottom: 8px;">📍 ${escapeHTML(setor)} (${itens.length})</div>
+            <div class="db-list">${linhas}</div>
+        </div>`;
+    }).join('');
+}
+
+// ============================================
+// FICHA GERAL DE EXTINTORES — documento imprimível/PDF com todos os
+// extintores ativos (diferente do resumo já existente na seção "1.6.
+// Extintores de Incêndio" do Relatório Mensal de SMS — decisão confirmada
+// com o usuário). Segue o mesmo padrão visual (cabeçalho com logo/empresa +
+// abrirDocumentoBlob) já usado em outros documentos deste sistema.
+// ============================================
+
+function gerarFichaGeralExtintores() {
+    const ativos = allExtintores.filter(e => e.ativo !== false).sort((a, b) => (a.setor || '').localeCompare(b.setor || '') || String(a.id).localeCompare(String(b.id)));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const linhas = ativos.map((e, i) => {
+        let statusTxt = '🟢 Em dia';
+        if (e.proxima_recarga) {
+            const deadline = parseLocalDate(e.proxima_recarga);
+            deadline.setHours(0, 0, 0, 0);
+            const diffDays = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            if (diffDays < 0) statusTxt = `🔴 Vencido (${Math.abs(diffDays)}d)`;
+            else if (diffDays <= 30) statusTxt = `🟡 Vence em ${diffDays}d`;
+        }
+        const tipoLabel = (typeof EXTINTOR_TIPOS !== 'undefined' && EXTINTOR_TIPOS.find(t => t.id === e.tipo)?.label) || e.tipo || '';
+        return `<tr>
+            <td>${i + 1}</td>
+            <td>${escapeHTML(e.id)}</td>
+            <td>${escapeHTML(tipoLabel)}</td>
+            <td>${escapeHTML(e.capacidade || '')}</td>
+            <td>${escapeHTML(e.setor || '')}</td>
+            <td>${escapeHTML(e.localizacao || '')}</td>
+            <td>${e.fabricacao ? formatSimpleDate(e.fabricacao) : ''}</td>
+            <td>${e.ultima_recarga ? formatSimpleDate(e.ultima_recarga) : ''}</td>
+            <td>${e.proxima_recarga ? formatSimpleDate(e.proxima_recarga) : ''}</td>
+            <td>${e.ultimo_teste_hidrostatico ? formatSimpleDate(e.ultimo_teste_hidrostatico) : ''}</td>
+            <td>${e.proximo_teste_hidrostatico ? formatSimpleDate(e.proximo_teste_hidrostatico) : ''}</td>
+            <td>${statusTxt}</td>
+        </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Ficha Geral de Extintores - ${escapeHTML(EMPRESA_INFO.razaoSocial)}</title>
+<style>
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
+    .folha { max-width: 1400px; margin: 0 auto; border: 2px solid #000; }
+    .cabecalho { display: flex; align-items: center; border-bottom: 2px solid #000; }
+    .cabecalho .logo { width: 200px; padding: 6px 10px; border-right: 2px solid #000; text-align: center; display: flex; align-items: center; justify-content: center; }
+    .cabecalho .titulo { flex: 1; text-align: center; font-weight: 700; font-size: 14px; padding: 8px; }
+    .linha { display: flex; border-bottom: 1px solid #000; }
+    .campo { flex: 1; padding: 5px 10px; border-right: 1px solid #000; }
+    .campo:last-child { border-right: none; }
+    .campo b { margin-right: 4px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #000; padding: 4px 5px; font-size: 9.5px; vertical-align: top; }
+    th { background: #e5e5e5; text-align: center; }
+    .no-print { text-align: center; margin: 16px 0; }
+    .no-print button { padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; border: none; background: #4f46e5; color: #fff; }
+    @media print { .no-print { display: none; } body { margin: 0; } .folha { border: 2px solid #000; } }
+</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="folha">
+        <div class="cabecalho">
+            <img class="logo" src="${LOGO_COP_BASE64}" alt="COP" style="max-width:100%; max-height:48px; object-fit:contain;">
+            <div class="titulo">FICHA GERAL DE EXTINTORES DE INCÊNDIO<br><span style="font-weight:400; font-size:11px;">Emitida em ${formatSimpleDate(toISODateLocal(new Date()))}</span></div>
+        </div>
+        <div class="linha">
+            <div class="campo" style="flex:2;"><b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
+            <div class="campo"><b>CNPJ:</b> ${escapeHTML(EMPRESA_INFO.cnpj)}</div>
+        </div>
+        <div class="linha">
+            <div class="campo"><b>OBRA:</b> RAMAL DO AGRESTE</div>
+            <div class="campo"><b>TOTAL DE EXTINTORES ATIVOS:</b> ${ativos.length}</div>
+        </div>
+        <table>
+            <thead><tr>
+                <th>Nº</th><th>ID/Tag</th><th>Tipo</th><th>Capacidade</th><th>Setor</th><th>Localização</th>
+                <th>Fabricação</th><th>Última Recarga</th><th>Próx. Recarga</th><th>Últ. Teste Hidro.</th><th>Próx. Teste Hidro.</th><th>Status</th>
+            </tr></thead>
+            <tbody>${linhas || '<tr><td colspan="12" style="text-align:center;">Nenhum extintor ativo cadastrado.</td></tr>'}</tbody>
+        </table>
+    </div>
+</body></html>`;
+
+    abrirDocumentoBlob(html);
 }
 
 // ============================================

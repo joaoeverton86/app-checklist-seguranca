@@ -483,11 +483,14 @@
 
             <!-- Página: Extintores -->
             <section class="db-page" id="page-extintores">
-                <div class="db-filters" style="margin-bottom: 16px;">
+                <div class="db-filters" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div class="db-filter-buttons">
                         <button id="extintoresSubtabBtn-visao" class="db-filter-btn active" onclick="showExtintoresSubtab('visao')">📊 Visão Geral</button>
                         <button id="extintoresSubtabBtn-cadastro" class="db-filter-btn" onclick="showExtintoresSubtab('cadastro')">📋 Cadastro de Extintores</button>
+                        <button id="extintoresSubtabBtn-inspecao" class="db-filter-btn" onclick="showExtintoresSubtab('inspecao')">🧯 Inspeção</button>
+                        <button id="extintoresSubtabBtn-localizacao" class="db-filter-btn" onclick="showExtintoresSubtab('localizacao')">📍 Mapa de Localização</button>
                     </div>
+                    <button class="db-apply-btn" onclick="gerarFichaGeralExtintores()">🖨️ Ficha Geral de Extintores</button>
                 </div>
 
                 <div id="extintoresSubtab-visao">
@@ -607,6 +610,57 @@
                         <button id="extForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirExtintorAtual()">🗑️ Excluir</button>
                         <span id="extintorFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
+                </div>
+                </div>
+
+                <!-- Subaba: Inspeção de Extintores (espelha o checklist do app de celular) -->
+                <div id="extintoresSubtab-inspecao" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">🧯 Inspeção Mensal de Extintores (NBR 12962 / NR-23)</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px; margin-bottom: 14px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Extintor *</label>
+                            <select id="inspExt_extintorId" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;" onchange="onSelectExtintorInspecaoPainel()">
+                                <option value="">Selecione...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data da Inspeção *</label>
+                            <input type="date" id="inspExt_data" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Inspetor *</label>
+                            <input type="text" id="inspExt_inspetor" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                    </div>
+
+                    <div id="inspExt_itemsWrap" style="display:none;">
+                        <div id="inspExt_items"></div>
+                        <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <button class="db-apply-btn" onclick="salvarInspecaoExtintorPainel()">💾 Salvar Inspeção</button>
+                            <span id="inspExtStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                        </div>
+                    </div>
+                    <div id="inspExt_semSelecao" style="color: var(--text-light); font-size: 13px;">Selecione um extintor acima pra iniciar a inspeção.</div>
+                </div>
+
+                <div class="db-chart-card db-list-card">
+                    <div class="db-chart-title">Últimas Inspeções deste Extintor</div>
+                    <div id="inspExtHistorico" class="db-list"></div>
+                </div>
+                </div>
+
+                <!-- Subaba: Mapa de Localização (lista organizada por setor/local) -->
+                <div id="extintoresSubtab-localizacao" style="display:none;">
+                <div class="db-chart-card">
+                    <div class="db-chart-title" style="margin-bottom: 12px;">📍 Extintores por Setor / Localização</div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+                        <input type="text" id="extLocSearchInput" placeholder="Buscar por setor, localização ou ID... (em branco mostra todos)"
+                               oninput="renderExtintorLocalizacao(this.value)"
+                               style="flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                        <button class="db-clear-btn" onclick="document.getElementById('extLocSearchInput').value=''; renderExtintorLocalizacao('');">✕ Limpar</button>
+                    </div>
+                    <div id="extLocalizacaoLista"></div>
                 </div>
                 </div>
             </section>

@@ -2079,9 +2079,10 @@ function renderExtintorLocalizacao(filtro) {
                 statusTxt = '🟢 Ativo (sem data de recarga cadastrada)';
             }
             const tipoLabel = (typeof EXTINTOR_TIPOS !== 'undefined' && EXTINTOR_TIPOS.find(t => t.id === e.tipo)?.label) || e.tipo || '';
+            const formatoTxt = e.formato === 'sobre_rodas' ? ' 🛞 Sobre Rodas' : '';
             return `<div class="db-list-item ${cls}">
                 <div class="db-list-item-title">${escapeHTML(e.id)} — ${escapeHTML(e.localizacao || 'sem localização')}</div>
-                <div class="db-list-item-sub">${escapeHTML(tipoLabel)} · ${escapeHTML(e.capacidade || '')} · ${statusTxt}</div>
+                <div class="db-list-item-sub">${escapeHTML(tipoLabel)} · ${escapeHTML(e.capacidade || '')}${formatoTxt} · ${statusTxt}</div>
             </div>`;
         }).join('');
         return `<div class="db-chart-card" style="margin-bottom: 12px;">
@@ -2114,10 +2115,12 @@ function gerarFichaGeralExtintores() {
             else if (diffDays <= 30) statusTxt = `🟡 Vence em ${diffDays}d`;
         }
         const tipoLabel = (typeof EXTINTOR_TIPOS !== 'undefined' && EXTINTOR_TIPOS.find(t => t.id === e.tipo)?.label) || e.tipo || '';
+        const formatoLabel = e.formato === 'sobre_rodas' ? 'Sobre Rodas' : 'Portátil';
         return `<tr>
             <td>${i + 1}</td>
             <td>${escapeHTML(e.id)}</td>
             <td>${escapeHTML(tipoLabel)}</td>
+            <td>${escapeHTML(formatoLabel)}</td>
             <td>${escapeHTML(e.capacidade || '')}</td>
             <td>${escapeHTML(e.setor || '')}</td>
             <td>${escapeHTML(e.localizacao || '')}</td>
@@ -2167,10 +2170,10 @@ function gerarFichaGeralExtintores() {
         </div>
         <table>
             <thead><tr>
-                <th>Nº</th><th>ID/Tag</th><th>Tipo</th><th>Capacidade</th><th>Setor</th><th>Localização</th>
+                <th>Nº</th><th>ID/Tag</th><th>Tipo</th><th>Formato</th><th>Capacidade</th><th>Setor</th><th>Localização</th>
                 <th>Fabricação</th><th>Última Recarga</th><th>Próx. Recarga</th><th>Últ. Teste Hidro.</th><th>Próx. Teste Hidro.</th><th>Status</th>
             </tr></thead>
-            <tbody>${linhas || '<tr><td colspan="12" style="text-align:center;">Nenhum extintor ativo cadastrado.</td></tr>'}</tbody>
+            <tbody>${linhas || '<tr><td colspan="13" style="text-align:center;">Nenhum extintor ativo cadastrado.</td></tr>'}</tbody>
         </table>
     </div>
 </body></html>`;
@@ -2245,9 +2248,11 @@ function filterExtintoresCadastro(query) {
     }
     resultsEl.innerHTML = lista.map(e => {
         const cls = e.ativo === false ? '' : '';
+        const tipoLabel = (typeof EXTINTOR_TIPOS !== 'undefined' && EXTINTOR_TIPOS.find(t => t.id === e.tipo)?.label) || e.tipo || '—';
+        const formatoTxt = e.formato === 'sobre_rodas' ? ' 🛞' : '';
         return `<div class="db-list-item ${cls}" style="cursor:pointer;" onclick="abrirFormExtintor('${escapeHTML(e.id)}')">
-            <div class="db-list-item-title">${escapeHTML(e.id)} ${e.ativo === false ? '🔴' : '🟢'}</div>
-            <div class="db-list-item-sub">${escapeHTML(e.tipo || '—')} — ${escapeHTML(e.setor || 'Sem setor')} — ${escapeHTML(e.localizacao || 'Sem localização')}</div>
+            <div class="db-list-item-title">${escapeHTML(e.id)}${formatoTxt} ${e.ativo === false ? '🔴' : '🟢'}</div>
+            <div class="db-list-item-sub">${escapeHTML(tipoLabel)} · ${escapeHTML(e.capacidade || '')} — ${escapeHTML(e.setor || 'Sem setor')} — ${escapeHTML(e.localizacao || 'Sem localização')}</div>
         </div>`;
     }).join('');
 }
@@ -2274,6 +2279,7 @@ function abrirFormExtintor(id) {
         idInput.value = e.id || '';
         idInput.readOnly = true;
         document.getElementById('extForm_tipo').value = e.tipo || '';
+        document.getElementById('extForm_formato').value = e.formato || 'portatil';
         document.getElementById('extForm_capacidade').value = e.capacidade || '';
         document.getElementById('extForm_setor').value = e.setor || '';
         document.getElementById('extForm_localizacao').value = e.localizacao || '';
@@ -2292,6 +2298,7 @@ function abrirFormExtintor(id) {
         idInput.value = '';
         idInput.readOnly = false;
         document.getElementById('extForm_tipo').value = '';
+        document.getElementById('extForm_formato').value = 'portatil';
         document.getElementById('extForm_capacidade').value = '';
         document.getElementById('extForm_setor').value = '';
         document.getElementById('extForm_localizacao').value = '';
@@ -2334,6 +2341,7 @@ async function salvarExtintorCad() {
     const row = {
         id: idRaw,
         tipo,
+        formato: document.getElementById('extForm_formato').value || 'portatil',
         capacidade: document.getElementById('extForm_capacidade').value.trim() || null,
         setor: document.getElementById('extForm_setor').value.trim() || null,
         localizacao: document.getElementById('extForm_localizacao').value.trim() || null,

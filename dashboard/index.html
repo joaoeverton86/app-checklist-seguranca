@@ -667,6 +667,14 @@
 
             <!-- Página: Relatos -->
             <section class="db-page" id="page-relatos">
+                <div class="db-filters" style="margin-bottom: 16px;">
+                    <div class="db-filter-buttons">
+                        <button id="relatosSubtabBtn-visao" class="db-filter-btn active" onclick="showRelatosSubtab('visao')">📊 Visão Geral</button>
+                        <button id="relatosSubtabBtn-gestao" class="db-filter-btn" onclick="showRelatosSubtab('gestao')">📋 Gestão de Relatos</button>
+                    </div>
+                </div>
+
+                <div id="relatosSubtab-visao">
                 <div class="db-kpi-grid">
                     <div class="db-kpi-card db-kpi-danger">
                         <div class="db-kpi-value" id="kpiRelatosAbertos">0</div>
@@ -690,6 +698,76 @@
                         <div class="db-chart-title">Relatos Abertos / Em Andamento (mais recentes)</div>
                         <div id="listRelatosAbertos" class="db-list"></div>
                     </div>
+                </div>
+                </div>
+
+                <div id="relatosSubtab-gestao" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" style="margin-bottom: 0;">📋 Gestão de Relatos</div>
+                        <button class="db-apply-btn" onclick="abrirFormRelato()">+ Novo Relato</button>
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <input type="text" id="relGestaoSearchInput" placeholder="Buscar por identificação, descrição, tipo ou relator... (em branco mostra todos)"
+                               oninput="renderRelatosGestaoLista(this.value)"
+                               style="flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                        <button class="db-clear-btn" onclick="document.getElementById('relGestaoSearchInput').value=''; renderRelatosGestaoLista('');">✕ Limpar</button>
+                    </div>
+                    <div id="relGestaoLista" class="db-list" style="max-height: 420px;"></div>
+                </div>
+
+                <div class="db-chart-card" id="relatoFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 8px; flex-wrap: wrap;">
+                        <div class="db-chart-title" id="relatoFormTitle" style="margin-bottom: 0;">⚠️ Novo Relato</div>
+                        <button class="db-clear-btn" onclick="abrirFormRelato()">🔄 Novo Registro</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data</label>
+                            <input type="date" id="relForm_data" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Tipo *</label>
+                            <select id="relForm_tipo" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="infraestrutura">🧱 Infraestrutura / Acessos</option>
+                                <option value="equipamento">🚜 Equipamento / Veículo</option>
+                                <option value="epi">🦺 EPI / EPC</option>
+                                <option value="comportamental">⚠️ Atóxico / Comportamental</option>
+                                <option value="outro">📦 Outros</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Identificação / Local</label>
+                            <input type="text" id="relForm_identificacao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Relator (quem está reportando) *</label>
+                            <input type="text" id="relForm_reporter" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Função do Relator</label>
+                            <input type="text" id="relForm_role" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Status</label>
+                            <select id="relForm_status" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="aberto">🔴 Aberto (Pendente)</option>
+                                <option value="em_andamento">🟡 Em Andamento</option>
+                                <option value="resolvido">🟢 Resolvido</option>
+                            </select>
+                        </div>
+                        <div style="grid-column: 1 / -1;">
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Descrição do Problema *</label>
+                            <textarea id="relForm_descricao" rows="3" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-family: inherit; font-size: inherit; resize: vertical;"></textarea>
+                        </div>
+                    </div>
+                    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="salvarRelato()">💾 Salvar</button>
+                        <button class="db-clear-btn" onclick="fecharFormRelato()">Cancelar</button>
+                        <button id="relForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirRelatoAtual()">🗑️ Excluir</button>
+                        <span id="relatoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
                 </div>
             </section>
 

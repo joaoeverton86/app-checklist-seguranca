@@ -2438,6 +2438,187 @@ function renderRelatosPanel() {
     }
 }
 
+function showRelatosSubtab(tab) {
+    ['visao', 'gestao'].forEach(t => {
+        const content = document.getElementById('relatosSubtab-' + t);
+        const btn = document.getElementById('relatosSubtabBtn-' + t);
+        if (content) content.style.display = (t === tab) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
+    if (tab === 'visao') renderRelatosPanel();
+    if (tab === 'gestao') {
+        fecharFormRelato();
+        renderRelatosGestaoLista(document.getElementById('relGestaoSearchInput')?.value || '');
+    }
+}
+
+// ============================================
+// GESTÃO DE RELATOS (CRUD) — a página de Relatos era só leitura (dados vindo
+// só do app de celular). Pedido do usuário: Adicionar, Editar e Excluir
+// relatos direto pelo painel também. Mesma tabela `relatos` que o app de
+// celular já usa, mesmos tipos e status (espelha editIssueModal de app.js) -
+// nenhuma tabela nova, nenhuma mudança no app de celular.
+// ============================================
+
+const RELATO_TIPOS_LABEL = {
+    infraestrutura: '🧱 Infraestrutura / Acessos',
+    equipamento: '🚜 Equipamento / Veículo',
+    epi: '🦺 EPI / EPC',
+    comportamental: '⚠️ Atóxico / Comportamental',
+    outro: '📦 Outros'
+};
+const RELATO_STATUS_LABEL = {
+    aberto: '🔴 Aberto',
+    em_andamento: '🟡 Em Andamento',
+    resolvido: '🟢 Resolvido'
+};
+
+function renderRelatosGestaoLista(filtro) {
+    const el = document.getElementById('relGestaoLista');
+    if (!el) return;
+    const termo = (filtro !== undefined ? filtro : (document.getElementById('relGestaoSearchInput')?.value || '')).toLowerCase().trim();
+
+    let lista = allRelatos.slice();
+    if (termo) {
+        lista = lista.filter(r =>
+            (r.identificacao || '').toLowerCase().includes(termo) ||
+            (r.description || '').toLowerCase().includes(termo) ||
+            (r.reporter || '').toLowerCase().includes(termo) ||
+            (RELATO_TIPOS_LABEL[r.tipo] || r.tipo || '').toLowerCase().includes(termo)
+        );
+    }
+    lista.sort((a, b) => new Date(b.date || b.created_at || 0) - new Date(a.date || a.created_at || 0));
+
+    if (lista.length === 0) {
+        el.innerHTML = '<div class="db-list-empty">Nenhum relato encontrado.</div>';
+        return;
+    }
+
+    el.innerHTML = lista.map(r => {
+        const st = (r.status || 'aberto').toLowerCase();
+        const cls = st === 'resolvido' ? '' : (st === 'em_andamento' ? 'db-item-warning' : 'db-item-danger');
+        return `<div class="db-list-item ${cls}" style="cursor:pointer;" onclick="abrirFormRelato('${r.id}')">
+            <div class="db-list-item-title">${escapeHTML(r.identificacao || RELATO_TIPOS_LABEL[r.tipo] || 'Relato')} — ${RELATO_STATUS_LABEL[st] || st}</div>
+            <div class="db-list-item-sub">${escapeHTML(RELATO_TIPOS_LABEL[r.tipo] || r.tipo || '')} · ${escapeHTML(r.reporter || '—')} · ${formatSimpleDate(r.date)}</div>
+        </div>`;
+    }).join('');
+}
+
+function abrirFormRelato(id) {
+    const card = document.getElementById('relatoFormCard');
+    const title = document.getElementById('relatoFormTitle');
+    const btnExcluir = document.getElementById('relForm_btnExcluir');
+    const statusEl = document.getElementById('relatoFormStatus');
+    card.style.display = 'block';
+    statusEl.textContent = '';
+
+    if (id) {
+        const r = allRelatos.find(x => x.id === id);
+        if (!r) return;
+        card.dataset.editId = id;
+        title.textContent = '✏️ Editar Relato';
+        btnExcluir.style.display = 'inline-block';
+        document.getElementById('relForm_data').value = r.date ? toISODateLocal(new Date(r.date)) : toISODateLocal(new Date());
+        document.getElementById('relForm_tipo').value = r.tipo || 'outro';
+        document.getElementById('relForm_identificacao').value = r.identificacao || '';
+        document.getElementById('relForm_reporter').value = r.reporter || '';
+        document.getElementById('relForm_role').value = r.role || '';
+        document.getElementById('relForm_status').value = r.status || 'aberto';
+        document.getElementById('relForm_descricao').value = r.description || '';
+    } else {
+        card.dataset.editId = '';
+        title.textContent = '⚠️ Novo Relato';
+        btnExcluir.style.display = 'none';
+        document.getElementById('relForm_data').value = toISODateLocal(new Date());
+        document.getElementById('relForm_tipo').value = 'infraestrutura';
+        document.getElementById('relForm_identificacao').value = '';
+        document.getElementById('relForm_reporter').value = usuarioDashboardAtual();
+        document.getElementById('relForm_role').value = '';
+        document.getElementById('relForm_status').value = 'aberto';
+        document.getElementById('relForm_descricao').value = '';
+    }
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function fecharFormRelato() {
+    const card = document.getElementById('relatoFormCard');
+    if (card) { card.style.display = 'none'; card.dataset.editId = ''; }
+}
+
+async function salvarRelato() {
+    const statusEl = document.getElementById('relatoFormStatus');
+    const tipo = document.getElementById('relForm_tipo').value;
+    const descricao = document.getElementById('relForm_descricao').value.trim();
+    const reporter = document.getElementById('relForm_reporter').value.trim();
+
+    if (!tipo || !descricao || !reporter) {
+        statusEl.textContent = '❌ Tipo, descrição e relator são obrigatórios.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const form = document.getElementById('relatoFormCard');
+    const editId = form.dataset.editId;
+    const id = editId || ('REL_' + Date.now());
+
+    const dataInput = document.getElementById('relForm_data').value;
+    const dateISO = dataInput ? new Date(dataInput + 'T12:00:00').toISOString() : new Date().toISOString();
+
+    const row = {
+        id,
+        date: dateISO,
+        tipo,
+        identificacao: document.getElementById('relForm_identificacao').value.trim() || null,
+        description: descricao,
+        reporter,
+        role: document.getElementById('relForm_role').value.trim() || null,
+        status: document.getElementById('relForm_status').value || 'aberto'
+    };
+
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('relatos', [row]);
+        const idx = allRelatos.findIndex(r => r.id === id);
+        if (idx >= 0) allRelatos[idx] = { ...allRelatos[idx], ...row };
+        else allRelatos.push(row);
+
+        statusEl.textContent = '✅ Salvo com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        renderRelatosGestaoLista(document.getElementById('relGestaoSearchInput')?.value || '');
+        renderRelatosPanel();
+        setTimeout(() => fecharFormRelato(), 900);
+    } catch (err) {
+        console.error('Erro ao salvar relato:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function excluirRelatoAtual() {
+    const form = document.getElementById('relatoFormCard');
+    const id = form.dataset.editId;
+    if (!id) return;
+    if (!confirm('Excluir este relato? Essa ação não pode ser desfeita.')) return;
+
+    const statusEl = document.getElementById('relatoFormStatus');
+    statusEl.textContent = 'Excluindo...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseDelete('relatos', id);
+        allRelatos = allRelatos.filter(r => r.id !== id);
+        statusEl.textContent = '✅ Excluído com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        renderRelatosGestaoLista(document.getElementById('relGestaoSearchInput')?.value || '');
+        renderRelatosPanel();
+        setTimeout(() => fecharFormRelato(), 900);
+    } catch (err) {
+        console.error('Erro ao excluir relato:', err);
+        statusEl.textContent = '❌ Falha ao excluir: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
 // ============================================
 // TREINAMENTOS (Fase 1 - importação + relatório de HHT)
 // Tabelas isoladas (treinamentos_catalogo/treinamentos_realizados/treinamentos_status),
@@ -17211,6 +17392,10 @@ function showDbPage(pageId) {
     if (pageId === 'extintores') {
         if (document.getElementById('extintoresSubtabBtn-visao')?.classList.contains('active')) renderExtintorPanel();
     }
+    if (pageId === 'relatos') {
+        if (document.getElementById('relatosSubtabBtn-visao')?.classList.contains('active')) renderRelatosPanel();
+        else if (document.getElementById('relatosSubtabBtn-gestao')?.classList.contains('active')) renderRelatosGestaoLista(document.getElementById('relGestaoSearchInput')?.value || '');
+    }
     if (pageId === 'treinamentos') {
         if (!treinamentosLoaded) { treinamentosLoaded = true; loadTreinamentosData(); }
         else renderTreinamentosPanel();
@@ -21726,7 +21911,9 @@ function rerenderGraficosDaPaginaAtiva() {
             renderExtintorPanel();
         }
     } else if (paginaAtiva === 'navRelatos') {
-        renderRelatosPanel();
+        if (document.getElementById('relatosSubtabBtn-visao')?.classList.contains('active')) {
+            renderRelatosPanel();
+        }
     } else if (paginaAtiva === 'navTreinamentos') {
         if (document.getElementById('treinSubtabBtn-visao')?.classList.contains('active')) {
             renderTreinamentosPanel();

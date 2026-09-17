@@ -17733,26 +17733,30 @@ function gerarManifestoResiduosMes() {
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Manifesto de Resíduos - ${escapeHTML(nomeMes)}/${ano}</title>
 <style>
-    @page { size: portrait; margin: 12mm; }
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 11.5px; color: #111; margin: 16px; line-height: 1.35; }
-    p { margin: 5px 0; }
-    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:10px; gap:10px; }
-    .cabecalho img { max-height:40px; }
+    @page { size: portrait; margin: 10mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11.5px; color: #111; margin: 14px; line-height: 1.3; }
+    p { margin: 4px 0; }
+    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:6px; margin-bottom:8px; gap:10px; }
+    .cabecalho img { max-height:38px; }
     .cabecalho .titulo { font-weight:700; font-size:14px; text-align:center; flex:1; }
-    h3 { font-size: 12px; border-bottom: 1px solid #999; padding-bottom: 3px; margin: 12px 0 5px; }
-    table { width:100%; border-collapse:collapse; font-size:11px; margin-top: 5px; }
-    th, td { border:1px solid #999; padding:4px 8px; text-align:left; }
+    h3 { font-size: 12px; border-bottom: 1px solid #999; padding-bottom: 3px; margin: 10px 0 4px; }
+    table { width:100%; border-collapse:collapse; font-size:11px; margin-top: 4px; }
+    th, td { border:1px solid #999; padding:3px 8px; text-align:left; }
     th { background:#d9d9d9; font-weight:700; }
     .total-row td { font-weight: 700; background: #f0f0f0; }
-    .assinaturas { display:flex; justify-content:space-between; gap:40px; margin-top:36px; }
+    .assinaturas { display:flex; justify-content:space-between; gap:40px; margin-top:26px; }
     .assinatura-col { flex:1; text-align:center; }
     .assinatura-col .linha { border-top: 1px solid #000; margin: 0 0 4px; }
     .no-print { text-align:center; margin:16px 0; }
     .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
+    .no-print .aviso-cabecalho { max-width: 480px; margin: 10px auto 0; padding: 10px 14px; background: #fff8e1; border: 1px solid #f0c14b; border-radius: 8px; font-size: 12.5px; color: #664d03; text-align: left; }
     @media print { .no-print { display:none; } body { margin:0; } }
 </style></head>
 <body>
-    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="no-print">
+        <button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button>
+        <div class="aviso-cabecalho">⚠️ Na tela de impressão, clique em "Mais configurações" e DESMARQUE a opção "Cabeçalhos e rodapés" — sem isso, o navegador acrescenta sozinho a data/hora atual, o link e o número da página no topo/rodapé do PDF (isso não faz parte do documento, é só uma opção do navegador).</div>
+    </div>
     <div class="cabecalho">
         <img src="${LOGO_COP_BASE64}" alt="COP">
         <div class="titulo">MANIFESTO DE RESÍDUOS<br>${escapeHTML(nomeMes.toUpperCase())}/${ano}</div>
@@ -17791,13 +17795,13 @@ function gerarManifestoResiduosMes() {
     <p><strong>Destino Final:</strong> ${escapeHTML(rcp.destino)}, recebido por ${escapeHTML(rcp.empresa)} (telefone ${escapeHTML(rcp.telefone)}).</p>
     <p style="font-size: 10.5px; color: #555;">Base: ${escapeHTML(MANIFESTO_RESIDUOS_INFO.baseLegal)}</p>
 
-    <p style="text-align: justify; margin-top: 10px;">
+    <p style="text-align: justify; margin-top: 8px;">
         Declaro, sob as penas da lei, que as informações acima refletem a geração de resíduos das frentes de
         serviço do Ramal do Agreste no período indicado, e que a destinação final segue o Acordo de Cooperação
         vigente com a Prefeitura Municipal de Sertânia.
     </p>
 
-    <p style="margin-top: 14px;">Arcoverde-PE, ${dataDocumento}.</p>
+    <p style="margin-top: 10px;">Arcoverde-PE, ${dataDocumento}.</p>
 
     <div class="assinaturas">
         <div class="assinatura-col">

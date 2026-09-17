@@ -1103,12 +1103,22 @@ const CATEGORY_ICONS = {
 // MÓDULO DE EXTINTORES (isolado de EQUIPMENT_TYPES/ITEM_NAMES por pedido)
 // ============================================
 
+// Agentes extintores usuais de mercado, por classe de fogo (ABNT NBR
+// 15808/15809, NR-23). Os ids 'pqs'/'co2'/'agua'/'espuma'/'outro' já
+// existiam e foram mantidos (compatibilidade com extintores já
+// cadastrados) - só o texto ficou mais preciso. Os demais ids são novos,
+// adicionados pra cobrir os agentes que faltavam sem precisar cair em
+// "Outro".
 const EXTINTOR_TIPOS = [
-    { id: 'pqs', label: 'Pó Químico Seco (PQS)' },
-    { id: 'co2', label: 'CO2 (Gás Carbônico)' },
-    { id: 'agua', label: 'Água Pressurizada' },
-    { id: 'espuma', label: 'Espuma Mecânica' },
-    { id: 'outro', label: 'Outro' }
+    { id: 'agua', label: '💧 Água Pressurizada (AP) - Classe A' },
+    { id: 'pqs', label: '🧯 Pó Químico Seco (PQS - BC) - Classes B, C' },
+    { id: 'pqs_abc', label: '🧯 Pó Químico Polivalente (ABC) - Classes A, B, C' },
+    { id: 'co2', label: '❄️ Dióxido de Carbono (CO2) - Classes B, C' },
+    { id: 'espuma', label: '🫧 Espuma Mecânica (EM) - Classes A, B' },
+    { id: 'classe_k', label: '🍳 Classe K (Acetato de Potássio) - Classe K' },
+    { id: 'classe_d', label: '⚙️ Classe D (Metais Pirofóricos) - Classe D' },
+    { id: 'agente_limpo', label: '🖥️ Agente Limpo (Halotron/FE-36/HFC-227) - Classes A, B, C' },
+    { id: 'outro', label: '📦 Outro' }
 ];
 
 // Inspeção visual mensal (NBR 12962 / NR-23) - mesma lista pra qualquer tipo de

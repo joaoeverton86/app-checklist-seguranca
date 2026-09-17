@@ -10853,14 +10853,91 @@ function construirSecao3RelSms(dados, mes, ano, fiscalizacao) {
     return out;
 }
 
-// Considerações Finais - não recalcula nada, só resume (em lista) os pontos de atenção já
-// calculados nas Seções 1 e 3, filtrando só o que tem contagem > 0 (não repete o que já
-// está em dia). `fiscalizacao` pula os mesmos itens sensíveis já removidos das Seções 1 e
-// 3 (NR vencida, APR vencida, CA de EPI vencido/estoque baixo, dimensões psicossociais
-// críticas) - os demais pontos (extintores, relatos, CIPA, ASO) entram nas duas versões.
-function construirSecao4RelSms(dadosSecao1, dadosSecoes23, mes, ano, fiscalizacao) {
+// ================================================================
+// SEÇÃO "MEIO AMBIENTE" DO RELATÓRIO - reaproveita os mesmos dados já usados no módulo
+// "🌱 Meio Ambiente" (aba Resíduos de Refeições + EPI e aba Manutenção Veicular),
+// filtrados pro mês/ano escolhido no seletor do relatório. Nenhuma consulta ou cálculo
+// novo é criado aqui.
+// ================================================================
+
+async function garantirDadosSecaoMeioAmbienteRelSms() {
+    if (!ambientalLoaded) { ambientalLoaded = true; await loadAmbientalData(); }
+}
+
+// Mesma regra de "não falar em estimativa" já usada no Manifesto de Resíduos: só entra no
+// relatório o valor JÁ CONFIRMADO/SALVO em "Resíduos (Refeições + EPI)" pro mês/ano do
+// relatório - nunca uma sugestão automática (efetivo × dias trabalhados) ainda não
+// confirmada.
+function coletarDadosMeioAmbienteRelSms(mes, ano) {
+    const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+    const linhaResiduos = calcularResiduosRefeicoesMensal().find(l => l.key === key) || null;
+    const residuosConfirmados = !!(linhaResiduos && linhaResiduos.salvo);
+
+    const inicioMes = new Date(ano, mes, 1);
+    const fimMes = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
+    const manutMes = allManutencaoVeicular.filter(m => {
+        if (!m.data_servico) return false;
+        const d = parseLocalDate(m.data_servico);
+        return d >= inicioMes && d <= fimMes;
+    });
+    const trocasOleoMes = manutMes.filter(m => m.tipo === 'troca_oleo');
+    const litrosOleoMes = trocasOleoMes.reduce((s, m) => s + (Number(m.litros_oleo) || 0), 0);
+    const trocasSemLitros = trocasOleoMes.filter(m => m.litros_oleo === null || m.litros_oleo === undefined).length;
+
+    return { linhaResiduos, residuosConfirmados, manutRegistrosMes: manutMes.length, trocasOleoMes: trocasOleoMes.length, litrosOleoMes, trocasSemLitros };
+}
+
+function construirSecaoMeioAmbienteRelSms(dados, mes, ano) {
     const nomeMes = NOMES_MESES[mes];
-    const out = [relSmsH1('4. Considerações Finais e Plano de Ação')];
+    const out = [relSmsH1('4. Meio Ambiente')];
+
+    out.push(relSmsH2('4.1. Geração e Destinação de Resíduos'));
+    const l = dados.linhaResiduos;
+    if (!dados.residuosConfirmados) {
+        out.push(relSmsP(`As quantidades de resíduos (quentinhas de isopor, copos descartáveis e EPI usado sem contaminação) de ${nomeMes.toLowerCase()} de ${ano} ainda não foram confirmadas nos registros de campo consolidados pela equipe de SMS.`));
+    } else {
+        const epiQtd = Number(l.epi || 0);
+        const epiKg = epiQtd * RESIDUO_KG_POR_EPI;
+        const quentinhasKg = (l.quentinhas || 0) * RESIDUO_KG_POR_QUENTINHA;
+        const coposKg = (l.copos || 0) * RESIDUO_KG_POR_COPO;
+        out.push(relSmsP(`A empresa não possui cadastro próprio no Manifesto de Transporte de Resíduos (MTR) oficial. A quantidade de resíduos sólidos Classe II-A Não Perigosos (Não Inerte) e Classe II-B Não Perigosos (Inerte) gerados em ${nomeMes.toLowerCase()} de ${ano}, apurada a partir dos registros de campo consolidados pela equipe de SMS, é apresentada a seguir.`));
+        out.push(relSmsTabela(
+            ['Tipo de Resíduo', 'Quantidade', 'Peso (kg)'],
+            [
+                ['Quentinhas de isopor com sobra de comida', `${l.quentinhas || 0} un.`, quentinhasKg.toFixed(1)],
+                ['Copo descartável', `${l.copos || 0} un.`, coposKg.toFixed(1)],
+                ['EPI usado (sem contaminação)', `${epiQtd} un.`, epiKg.toFixed(1)],
+                ['TOTAL NO MÊS', '', l.pesoKg.toFixed(1)],
+            ],
+        ));
+        out.push(relSmsNota('Memória de cálculo (peso por unidade): quentinha de isopor = 23,9 g; copo descartável PP 200ml = 1,8 g; EPI usado sem contaminação = 500 g (peso médio adotado pelo Consórcio).'));
+        out.push(relSmsP(`Transporte e destinação final: 1ª etapa por veículo próprio do Consórcio até Sertânia-PE; 2ª etapa por empresa contratada pela Prefeitura Municipal de Sertânia até o Aterro Sanitário de Arcoverde-PE, no âmbito do Acordo de Cooperação para Coleta de Resíduos firmado entre o Consórcio e a Prefeitura Municipal de Sertânia. Manifesto de Resíduos detalhado do período disponível em anexo, quando emitido.`));
+    }
+
+    out.push(relSmsH2('4.2. Rastreabilidade de Manutenção Veicular (Troca de Óleo)'));
+    if (dados.manutRegistrosMes === 0) {
+        out.push(relSmsP(`Nenhum registro de manutenção veicular no período em ${nomeMes.toLowerCase()} de ${ano}.`));
+    } else {
+        out.push(relSmsTabelaKpis([
+            { label: 'Trocas de óleo registradas no mês', value: dados.trocasOleoMes },
+            { label: 'Litros de óleo trocados no mês', value: dados.litrosOleoMes.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) },
+            { label: 'Trocas sem volume de óleo informado pela terceira', value: dados.trocasSemLitros },
+        ]));
+    }
+
+    out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
+    return out;
+}
+
+// Considerações Finais - não recalcula nada, só resume (em lista) os pontos de atenção já
+// calculados nas Seções 1, 3 e Meio Ambiente, filtrando só o que tem contagem > 0 (não
+// repete o que já está em dia). `fiscalizacao` pula os mesmos itens sensíveis já removidos
+// das Seções 1 e 3 (NR vencida, APR vencida, CA de EPI vencido/estoque baixo, dimensões
+// psicossociais críticas) - os demais pontos (extintores, relatos, CIPA, ASO, Meio
+// Ambiente) entram nas duas versões.
+function construirSecao4RelSms(dadosSecao1, dadosSecoes23, dadosMeioAmbiente, mes, ano, fiscalizacao) {
+    const nomeMes = NOMES_MESES[mes];
+    const out = [relSmsH1('5. Considerações Finais e Plano de Ação')];
     out.push(relSmsP(`Síntese dos pontos de atenção identificados em ${nomeMes.toLowerCase()} de ${ano}, a partir dos indicadores apresentados nas seções anteriores deste relatório.`));
 
     const pontos = [];
@@ -10885,6 +10962,8 @@ function construirSecao4RelSms(dadosSecao1, dadosSecoes23, mes, ano, fiscalizaca
     if (!fiscalizacao && dadosSecoes23.psicossocial && dadosSecoes23.psicossocial.criticas.length > 0) {
         pontos.push(`${dadosSecoes23.psicossocial.criticas.length} dimensão(ões) da avaliação psicossocial em situação crítica — ver seção 3.2.`);
     }
+    if (!dadosMeioAmbiente.residuosConfirmados) pontos.push(`Quantidades de resíduos de ${nomeMes.toLowerCase()} de ${ano} ainda não confirmadas em "Resíduos (Refeições + EPI)" — ver seção 4.1.`);
+    if (dadosMeioAmbiente.trocasSemLitros > 0) pontos.push(`${dadosMeioAmbiente.trocasSemLitros} troca(s) de óleo no mês sem volume informado pela terceira — ver seção 4.2.`);
 
     out.push(relSmsH2('Pontos de atenção para o próximo período'));
     if (pontos.length === 0) {
@@ -10958,7 +11037,7 @@ function relSmsCelulaVazia() {
 
 function construirSecao5RelSms(dadosFotos, mes, ano) {
     const nomeMes = NOMES_MESES[mes];
-    const out = [relSmsH1('5. Registros Fotográficos')];
+    const out = [relSmsH1('6. Registros Fotográficos')];
     out.push(relSmsP(`Registros fotográficos de treinamentos e DDS/DDSMA realizados em ${nomeMes.toLowerCase()} de ${ano}, em ordem cronológica. Espaços reservados abaixo para inserção manual das fotos após a geração deste documento.`));
 
     const eventos = dadosFotos.eventos;
@@ -11045,8 +11124,8 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
 
     const sumario = [
         relSmsH1('Sumário Executivo'),
-        relSmsP('Este relatório consolida os indicadores de Segurança do Trabalho e Saúde Ocupacional do Consórcio Operador do PISF – Ramal do Agreste referentes a ' + nomeMes.toLowerCase() + ' de ' + ano + ', com base nos registros de campo consolidados pela equipe de SMS.'),
-        relSmsP('Versão gerada automaticamente pelo painel (Fase 4 do módulo Relatório Mensal SMS): Segurança do Trabalho, Área Diretamente Afetada, Saúde Ocupacional, Considerações Finais, Registros Fotográficos e Anexos já trazem os dados reais do mês.'
+        relSmsP('Este relatório consolida os indicadores de Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste referentes a ' + nomeMes.toLowerCase() + ' de ' + ano + ', com base nos registros de campo consolidados pela equipe de SMS.'),
+        relSmsP('Versão gerada automaticamente pelo painel (Fase 5 do módulo Relatório Mensal SMS): Segurança do Trabalho, Área Diretamente Afetada, Saúde Ocupacional, Meio Ambiente, Considerações Finais, Registros Fotográficos e Anexos já trazem os dados reais do mês.'
             + (fiscalizacao ? ' Versão para Fiscalização: os itens sensíveis (integrações de NR vencidas, CA de EPI vencido/estoque baixo, APR vencida, dimensões críticas da avaliação psicossocial) foram omitidos desta versão.' : '')),
     ];
 
@@ -11058,7 +11137,12 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
     const dadosSecoes23 = coletarDadosSecoes23RelSms(mes, ano);
     const secao2 = construirSecao2RelSms(dadosSecoes23, mes, ano);
     const secao3 = construirSecao3RelSms(dadosSecoes23, mes, ano, fiscalizacao);
-    const secao4 = construirSecao4RelSms(dadosSecao1, dadosSecoes23, mes, ano, fiscalizacao);
+
+    await garantirDadosSecaoMeioAmbienteRelSms();
+    const dadosMeioAmbiente = coletarDadosMeioAmbienteRelSms(mes, ano);
+    const secaoMeioAmbiente = construirSecaoMeioAmbienteRelSms(dadosMeioAmbiente, mes, ano);
+
+    const secao4 = construirSecao4RelSms(dadosSecao1, dadosSecoes23, dadosMeioAmbiente, mes, ano, fiscalizacao);
 
     const dadosFase4 = coletarDadosFase4RelSms(mes, ano);
     const secao5 = construirSecao5RelSms(dadosFase4, mes, ano);
@@ -11087,7 +11171,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
         styles: { default: { document: { run: { font: 'Calibri' } } } },
         sections: [
             { properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, children: capa },
-            { properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, headers: { default: header }, footers: { default: footer }, children: [...indice, ...sumario, ...secao1, ...secao2, ...secao3, ...secao4, ...secao5, ...anexos] },
+            { properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, headers: { default: header }, footers: { default: footer }, children: [...indice, ...sumario, ...secao1, ...secao2, ...secao3, ...secaoMeioAmbiente, ...secao4, ...secao5, ...anexos] },
         ],
     });
 }

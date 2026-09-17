@@ -17733,18 +17733,18 @@ function gerarManifestoResiduosMes() {
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Manifesto de Resíduos - ${escapeHTML(nomeMes)}/${ano}</title>
 <style>
-    @page { size: portrait; margin: 10mm; }
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 11.5px; color: #111; margin: 14px; line-height: 1.3; }
-    p { margin: 4px 0; }
-    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:6px; margin-bottom:8px; gap:10px; }
-    .cabecalho img { max-height:38px; }
-    .cabecalho .titulo { font-weight:700; font-size:14px; text-align:center; flex:1; }
-    h3 { font-size: 12px; border-bottom: 1px solid #999; padding-bottom: 3px; margin: 10px 0 4px; }
-    table { width:100%; border-collapse:collapse; font-size:11px; margin-top: 4px; }
-    th, td { border:1px solid #999; padding:3px 8px; text-align:left; }
+    @page { size: portrait; margin: 16mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111; margin: 14px; line-height: 1.5; }
+    p { margin: 9px 0; }
+    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:14px; gap:10px; }
+    .cabecalho img { max-height:44px; }
+    .cabecalho .titulo { font-weight:700; font-size:15px; text-align:center; flex:1; }
+    h3 { font-size: 12.5px; border-bottom: 1px solid #999; padding-bottom: 4px; margin: 18px 0 7px; }
+    table { width:100%; border-collapse:collapse; font-size:11.5px; margin-top: 8px; }
+    th, td { border:1px solid #999; padding:6px 9px; text-align:left; }
     th { background:#d9d9d9; font-weight:700; }
     .total-row td { font-weight: 700; background: #f0f0f0; }
-    .assinaturas { display:flex; justify-content:space-between; gap:40px; margin-top:26px; }
+    .assinaturas { display:flex; justify-content:space-between; gap:40px; margin-top:55px; }
     .assinatura-col { flex:1; text-align:center; }
     .assinatura-col .linha { border-top: 1px solid #000; margin: 0 0 4px; }
     .no-print { text-align:center; margin:16px 0; }
@@ -17795,13 +17795,13 @@ function gerarManifestoResiduosMes() {
     <p><strong>Destino Final:</strong> ${escapeHTML(rcp.destino)}, recebido por ${escapeHTML(rcp.empresa)} (telefone ${escapeHTML(rcp.telefone)}).</p>
     <p style="font-size: 10.5px; color: #555;">Base: ${escapeHTML(MANIFESTO_RESIDUOS_INFO.baseLegal)}</p>
 
-    <p style="text-align: justify; margin-top: 8px;">
+    <p style="text-align: justify; margin-top: 14px;">
         Declaro, sob as penas da lei, que as informações acima refletem a geração de resíduos das frentes de
         serviço do Ramal do Agreste no período indicado, e que a destinação final segue o Acordo de Cooperação
         vigente com a Prefeitura Municipal de Sertânia.
     </p>
 
-    <p style="margin-top: 10px;">Arcoverde-PE, ${dataDocumento}.</p>
+    <p style="margin-top: 18px;">Arcoverde-PE, ${dataDocumento}.</p>
 
     <div class="assinaturas">
         <div class="assinatura-col">

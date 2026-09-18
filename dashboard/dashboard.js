@@ -20186,6 +20186,7 @@ async function loadCipaData() {
         if (allAcidentes.length === 0) {
             allAcidentes = await supabaseFetch('acidentes', '?select=*');
         }
+        await loadCipaProcessoEleitoralData();
         renderCipaVisaoGeral();
         renderCipaReunioesLista();
         filterPlanoAcaoLista();
@@ -20233,7 +20234,7 @@ function periodoDesdeUltimaReuniaoCipa(reuniaoAtualId, dataReuniaoAtual) {
 }
 
 function showCipaSubtab(tab) {
-    ['visao', 'calendario', 'plano', 'membros'].forEach(t => {
+    ['visao', 'calendario', 'plano', 'membros', 'eleicao'].forEach(t => {
         const content = document.getElementById('cipaSubtab-' + t);
         const btn = document.getElementById('cipaSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -20243,6 +20244,7 @@ function showCipaSubtab(tab) {
     if (tab === 'calendario') { fecharReuniaoCipa(); renderCipaReunioesLista(); }
     if (tab === 'plano') { fecharFormPlanoAcao(); filterPlanoAcaoLista(); }
     if (tab === 'membros') { fecharFormCipaMembro(); renderCipaMembrosLista(); }
+    if (tab === 'eleicao') { fecharFormCipaCandidato(); renderCipaEleicao(); }
 }
 
 // ---- Visão Geral ----
@@ -20929,6 +20931,649 @@ async function gerarAtaCipa() {
     setTimeout(() => URL.revokeObjectURL(url), 30000);
 
     registrarEmissaoDocumento('ata_cipa', `${tituloReuniao} — ${formatSimpleDate(r.data_reuniao)}`);
+}
+
+// ---- Processo Eleitoral (NR-5) ----
+// Módulo adicionado em 2026-09-18: acompanha o ciclo eleitoral da CIPA (edital,
+// inscrições, votação, apuração, posse) e gera os documentos oficiais do processo.
+// O Termo de Posse é sempre gerado a partir de quem está ATIVO hoje em
+// cipa_membros/allCipaMembros - não é uma foto congelada do dia da posse original -
+// então, se a composição da CIPA mudar depois, regerar o Termo já reflete a mudança.
+
+let allCipaProcessosEleitorais = [];
+let allCipaCandidatos = [];
+
+const CIPA_RESULTADO_LABELS = { titular: 'Titular (eleito)', suplente: 'Suplente (eleito)', nao_eleito: 'Não eleito' };
+const CIPA_PROCESSO_STATUS_LABELS = {
+    planejamento: '🗓️ Planejamento',
+    inscricoes_abertas: '📝 Inscrições Abertas',
+    inscricoes_encerradas: '🔒 Inscrições Encerradas',
+    votacao_realizada: '🗳️ Votação Realizada',
+    concluido: '✅ Concluído'
+};
+
+// Quadro I - Dimensionamento da CIPA (NR-5), conferido linha por linha contra o texto
+// oficial da norma (NR-05, versão atualizada pela Portaria MTP nº 4.219/2022, item
+// "Quadro I – Dimensionamento da CIPA") em 2026-09-18 - já houve tentativa anterior de
+// extrair essa tabela por busca automática na internet e os números vieram
+// contraditórios entre fontes, então desta vez foi conferido direto no PDF oficial do
+// governo (baixado e lido com pdftotext + conferência visual da página renderizada).
+// Cada array é por faixa de nº de empregados, na mesma ordem de QUADRO_I_FAIXAS;
+// null = grau de risco não exige CIPA formal nessa faixa (aplica-se o item 5.4.13 da
+// NR-5 - designação de 1 representante da organização, sem processo eletivo).
+// "acrescentar" = incremento por grupo de 2.500 empregados acima de 10.000.
+const QUADRO_I_FAIXAS = [19, 29, 50, 80, 100, 120, 140, 300, 500, 1000, 2500, 5000, 10000];
+const QUADRO_I_DIMENSIONAMENTO = {
+    '1': { efetivos: [null, null, null, null, 1, 1, 1, 1, 2, 4, 5, 6, 8], suplentes: [null, null, null, null, 1, 1, 1, 1, 2, 3, 4, 5, 6], acrescentar: 1 },
+    '2': { efetivos: [null, null, null, 1, 1, 2, 2, 3, 4, 5, 6, 8, 10], suplentes: [null, null, null, 1, 1, 1, 1, 2, 3, 4, 5, 6, 8], acrescentar: 1 },
+    '3': { efetivos: [null, 1, 1, 2, 2, 2, 3, 4, 5, 6, 8, 10, 12], suplentes: [null, 1, 1, 1, 1, 1, 2, 2, 4, 4, 6, 8, 8], acrescentar: 2 },
+    '4': { efetivos: [null, 1, 2, 3, 3, 4, 4, 4, 5, 6, 9, 11, 13], suplentes: [null, 1, 1, 2, 2, 2, 2, 3, 4, 5, 7, 8, 10], acrescentar: 2 }
+};
+
+// Retorna { faixaLabel, efetivos, suplentes } para o grau de risco e nº de empregados
+// informados, ou null se os dados de entrada forem inválidos. efetivos/suplentes vêm
+// null quando a faixa não exige CIPA formal (grau de risco 1, 2 ou 3 com poucos
+// empregados) - a tela mostra isso como "não exige CIPA formal (NR-5, item 5.4.13)".
+function calcularDimensionamentoCipaQuadroI(grauRisco, totalFuncionarios) {
+    const dim = QUADRO_I_DIMENSIONAMENTO[String(grauRisco)];
+    if (!dim || !totalFuncionarios || totalFuncionarios <= 0) return null;
+    if (totalFuncionarios > 10000) {
+        const gruposAcima = Math.ceil((totalFuncionarios - 10000) / 2500);
+        const baseEfetivos = dim.efetivos[dim.efetivos.length - 1];
+        const baseSuplentes = dim.suplentes[dim.suplentes.length - 1];
+        return {
+            faixaLabel: `Acima de 10.000 (+ ${gruposAcima} grupo(s) de 2.500)`,
+            efetivos: baseEfetivos + gruposAcima * dim.acrescentar,
+            suplentes: baseSuplentes + gruposAcima * dim.acrescentar
+        };
+    }
+    for (let i = 0; i < QUADRO_I_FAIXAS.length; i++) {
+        if (totalFuncionarios <= QUADRO_I_FAIXAS[i]) {
+            const efetivos = dim.efetivos[i];
+            const suplentes = dim.suplentes[i];
+            const faixaMin = i === 0 ? 0 : QUADRO_I_FAIXAS[i - 1] + 1;
+            const faixaLabel = `${faixaMin} a ${QUADRO_I_FAIXAS[i]} empregados`;
+            return { faixaLabel, efetivos, suplentes };
+        }
+    }
+    return null;
+}
+
+async function loadCipaProcessoEleitoralData() {
+    try {
+        const [processos, candidatos] = await Promise.all([
+            supabaseFetch('cipa_processos_eleitorais', '?select=*'),
+            supabaseFetch('cipa_candidatos', '?select=*')
+        ]);
+        allCipaProcessosEleitorais = processos;
+        allCipaCandidatos = candidatos;
+        renderCipaEleicao();
+    } catch (err) {
+        console.error('Erro ao carregar processo eleitoral da CIPA:', err);
+    }
+}
+
+function processoEleitoralAtual() {
+    const select = document.getElementById('cipaProcessoSelect');
+    if (!select || !select.value) return null;
+    return allCipaProcessosEleitorais.find(p => p.id === select.value) || null;
+}
+
+const CIPA_PROCESSO_CAMPO_COL = {
+    gestao: 'gestao', dataInicioGestao: 'data_inicio_gestao', dataFimGestao: 'data_fim_gestao',
+    dataEditalConvocacao: 'data_edital_convocacao', dataEditalInscricao: 'data_edital_inscricao',
+    dataInicioInscricoes: 'data_inicio_inscricoes', dataFimInscricoes: 'data_fim_inscricoes',
+    dataEditalInscritos: 'data_edital_inscritos', dataEleicao: 'data_eleicao',
+    horarioVotacaoInicio: 'horario_votacao_inicio', horarioVotacaoFim: 'horario_votacao_fim',
+    horarioVotacaoNoturnoInicio: 'horario_votacao_noturno_inicio', horarioVotacaoNoturnoFim: 'horario_votacao_noturno_fim',
+    localVotacao: 'local_votacao', dataApuracao: 'data_apuracao', horarioApuracao: 'horario_apuracao',
+    dataPosse: 'data_posse', cidadeUf: 'cidade_uf', totalFuncionarios: 'total_funcionarios',
+    totalVotantes: 'total_votantes', percentualParticipacao: 'percentual_participacao',
+    presidenteComissao: 'presidente_comissao', secretarioComissao: 'secretario_comissao',
+    membroComissao: 'membro_comissao', status: 'status', observacoes: 'observacoes'
+};
+
+function renderCipaEleicao() {
+    const select = document.getElementById('cipaProcessoSelect');
+    if (!select) return;
+    const idAnterior = select.value;
+    const ordenados = allCipaProcessosEleitorais.slice().sort((a, b) => (b.gestao || '').localeCompare(a.gestao || ''));
+    select.innerHTML = ordenados.map(p => `<option value="${escapeHTML(p.id)}">${escapeHTML(p.gestao)} — ${CIPA_PROCESSO_STATUS_LABELS[p.status] || p.status || ''}</option>`).join('');
+    const idParaMostrar = ordenados.some(p => p.id === idAnterior) ? idAnterior : (ordenados[0]?.id || '');
+    select.value = idParaMostrar;
+    carregarFormProcessoEleitoral(idParaMostrar);
+    renderQuadroIReferencia();
+    renderCipaCandidatosLista();
+}
+
+function carregarFormProcessoEleitoral(id) {
+    const p = allCipaProcessosEleitorais.find(x => x.id === id) || null;
+    const card = document.getElementById('cipaProcessoFormCard');
+    if (!card) return;
+    card.dataset.id = id || '';
+    Object.keys(CIPA_PROCESSO_CAMPO_COL).forEach(campo => {
+        const el = document.getElementById('cipaProcessoForm_' + campo);
+        if (!el) return;
+        const col = CIPA_PROCESSO_CAMPO_COL[campo];
+        el.value = p ? (p[col] ?? '') : '';
+    });
+    document.getElementById('cipaProcessoFormStatus').textContent = '';
+}
+
+function abrirNovoProcessoEleitoral() {
+    const gestaoAtualMaisAlta = allCipaProcessosEleitorais
+        .map(p => parseInt((p.gestao || '').split('/')[0], 10))
+        .filter(n => !isNaN(n))
+        .sort((a, b) => b - a)[0];
+    const anoBase = gestaoAtualMaisAlta ? gestaoAtualMaisAlta + 1 : new Date().getFullYear();
+    const id = `CIPA_${anoBase}_${anoBase + 1}`;
+    const novo = { id, gestao: `${anoBase}/${anoBase + 1}`, status: 'planejamento' };
+    allCipaProcessosEleitorais.push(novo);
+    renderCipaEleicao();
+    const select = document.getElementById('cipaProcessoSelect');
+    if (select) select.value = id;
+    carregarFormProcessoEleitoral(id);
+}
+
+async function salvarProcessoEleitoral() {
+    const statusEl = document.getElementById('cipaProcessoFormStatus');
+    const card = document.getElementById('cipaProcessoFormCard');
+    const idAtual = card.dataset.id;
+    const gestao = document.getElementById('cipaProcessoForm_gestao').value.trim();
+    if (!gestao) {
+        statusEl.textContent = '❌ Informe a gestão (ex: 2026/2027).';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const id = idAtual || `CIPA_${gestao.replace(/[^0-9]/g, '_')}`;
+    const row = { id };
+    Object.keys(CIPA_PROCESSO_CAMPO_COL).forEach(campo => {
+        const el = document.getElementById('cipaProcessoForm_' + campo);
+        if (!el) return;
+        const col = CIPA_PROCESSO_CAMPO_COL[campo];
+        const val = el.value.trim ? el.value.trim() : el.value;
+        if (col === 'total_funcionarios' || col === 'total_votantes') {
+            row[col] = val !== '' ? parseInt(val, 10) : null;
+        } else if (col === 'percentual_participacao') {
+            row[col] = val !== '' ? parseFloat(val.replace(',', '.')) : null;
+        } else {
+            row[col] = val !== '' ? val : null;
+        }
+    });
+    row.status = row.status || 'planejamento';
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('cipa_processos_eleitorais', [row]);
+        card.dataset.id = id;
+        const idx = allCipaProcessosEleitorais.findIndex(p => p.id === id);
+        if (idx >= 0) allCipaProcessosEleitorais[idx] = { ...allCipaProcessosEleitorais[idx], ...row };
+        else allCipaProcessosEleitorais.push(row);
+        renderCipaEleicao();
+        const select = document.getElementById('cipaProcessoSelect');
+        if (select) select.value = id;
+        statusEl.textContent = '✅ Salvo com sucesso.';
+        statusEl.style.color = 'var(--success)';
+    } catch (err) {
+        console.error('Erro ao salvar processo eleitoral da CIPA:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function excluirProcessoEleitoralAtual() {
+    const card = document.getElementById('cipaProcessoFormCard');
+    const id = card.dataset.id;
+    if (!id) return;
+    if (!confirm('Excluir este processo eleitoral e todos os candidatos vinculados a ele? Essa ação não pode ser desfeita.')) return;
+    const statusEl = document.getElementById('cipaProcessoFormStatus');
+    statusEl.textContent = 'Excluindo...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseDelete('cipa_processos_eleitorais', id);
+        allCipaProcessosEleitorais = allCipaProcessosEleitorais.filter(p => p.id !== id);
+        allCipaCandidatos = allCipaCandidatos.filter(c => c.processo_id !== id);
+        renderCipaEleicao();
+        statusEl.textContent = '✅ Excluído com sucesso.';
+        statusEl.style.color = 'var(--success)';
+    } catch (err) {
+        console.error('Erro ao excluir processo eleitoral da CIPA:', err);
+        statusEl.textContent = '❌ Falha ao excluir: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// ---- Quadro I - referência de dimensionamento (sempre calculado com o efetivo ATUAL
+// do sistema, não com o total_funcionarios histórico do processo eleitoral - são duas
+// coisas diferentes: o processo guarda o retrato de uma eleição já feita, o Quadro I
+// aqui é uma checagem contínua "a CIPA está dimensionada corretamente hoje?"). ----
+function renderQuadroIReferencia() {
+    const container = document.getElementById('cipaQuadroIReferencia');
+    if (!container) return;
+    const totalAtivos = allEfetivo.filter(colaboradorEstaAtivo).length;
+    const dim = calcularDimensionamentoCipaQuadroI(EMPRESA_INFO.grauRisco, totalAtivos);
+    if (!dim) {
+        container.innerHTML = `<div class="db-list-empty">Não foi possível calcular (grau de risco ou nº de colaboradores ativos indisponível).</div>`;
+        return;
+    }
+    const membrosAtivos = allCipaMembros.filter(m => m.ativo);
+    const titularesEmpregado = membrosAtivos.filter(m => m.cargo === 'titular_empregado').length;
+    const suplentesEmpregado = membrosAtivos.filter(m => m.cargo === 'suplente_empregado').length;
+    const linhaStatus = (exigido, atual, label) => {
+        if (exigido === null) return `<div class="campo">${label}: não exige CIPA formal nesta faixa (NR-5, item 5.4.13)</div>`;
+        const ok = atual >= exigido;
+        return `<div class="campo">${label}: exige ${exigido} — cadastrados hoje: ${atual} ${ok ? '✅' : '⚠️'}</div>`;
+    };
+    container.innerHTML = `
+        <div class="campo"><b>Grau de Risco:</b> ${escapeHTML(EMPRESA_INFO.grauRisco)} — <b>Colaboradores ativos hoje:</b> ${totalAtivos} — <b>Faixa:</b> ${escapeHTML(dim.faixaLabel)}</div>
+        ${linhaStatus(dim.efetivos, titularesEmpregado, 'Titulares (empregados) exigidos pelo Quadro I')}
+        ${linhaStatus(dim.suplentes, suplentesEmpregado, 'Suplentes (empregados) exigidos pelo Quadro I')}
+        <div class="campo" style="color:var(--text-light); font-size:11.5px;">O empregador designa, em igual número (NR-5, item 5.4.1/5.4.3), os representantes titulares e suplentes dele mesmo — não são eleitos.</div>
+    `;
+}
+
+// ---- Candidatos ----
+function renderCipaCandidatosLista() {
+    const container = document.getElementById('cipaCandidatosLista');
+    if (!container) return;
+    const p = processoEleitoralAtual();
+    if (!p) {
+        container.innerHTML = '<div class="db-list-empty">Selecione ou crie um processo eleitoral acima.</div>';
+        return;
+    }
+    const linhas = allCipaCandidatos.filter(c => c.processo_id === p.id).sort((a, b) => (a.seq || 0) - (b.seq || 0));
+    if (linhas.length === 0) {
+        container.innerHTML = '<div class="db-list-empty">Nenhum candidato cadastrado para esta gestão.</div>';
+        return;
+    }
+    container.innerHTML = linhas.map(c => `<div class="db-list-item" style="cursor:pointer;" onclick="abrirFormCipaCandidato('${escapeHTML(c.id)}')">
+        <div class="db-list-item-title">${String(c.seq || '').padStart(2, '0')} — ${escapeHTML(c.nome)}${c.apelido ? ' (' + escapeHTML(c.apelido) + ')' : ''}</div>
+        <div class="db-list-item-sub">${escapeHTML(c.setor || '')}${c.votos != null ? ' — ' + c.votos + ' votos' : ''}${c.resultado ? ' — ' + CIPA_RESULTADO_LABELS[c.resultado] : ''}</div>
+    </div>`).join('');
+}
+
+function abrirFormCipaCandidato(id) {
+    const p = processoEleitoralAtual();
+    if (!p) { alert('Selecione ou crie um processo eleitoral primeiro.'); return; }
+    const form = document.getElementById('cipaCandidatoFormCard');
+    const title = document.getElementById('cipaCandidatoFormTitle');
+    const btnExcluir = document.getElementById('cipaCandidatoForm_btnExcluir');
+    document.getElementById('cipaCandidatoFormStatus').textContent = '';
+    form.dataset.id = id || '';
+    form.dataset.processoId = p.id;
+    if (id) {
+        const c = allCipaCandidatos.find(x => x.id === id);
+        if (!c) return;
+        title.textContent = '✏️ Editar Candidato';
+        document.getElementById('cipaCandidatoForm_seq').value = c.seq ?? '';
+        document.getElementById('cipaCandidatoForm_matricula').value = c.matricula || '';
+        document.getElementById('cipaCandidatoForm_nome').value = c.nome || '';
+        document.getElementById('cipaCandidatoForm_apelido').value = c.apelido || '';
+        document.getElementById('cipaCandidatoForm_funcao').value = c.funcao || '';
+        document.getElementById('cipaCandidatoForm_setor').value = c.setor || '';
+        document.getElementById('cipaCandidatoForm_votos').value = c.votos ?? '';
+        document.getElementById('cipaCandidatoForm_resultado').value = c.resultado || '';
+        btnExcluir.style.display = 'inline-block';
+    } else {
+        title.textContent = '🗳️ Novo Candidato';
+        const proxSeq = Math.max(0, ...allCipaCandidatos.filter(x => x.processo_id === p.id).map(x => x.seq || 0)) + 1;
+        document.getElementById('cipaCandidatoForm_seq').value = proxSeq;
+        document.getElementById('cipaCandidatoForm_matricula').value = '';
+        document.getElementById('cipaCandidatoForm_nome').value = '';
+        document.getElementById('cipaCandidatoForm_apelido').value = '';
+        document.getElementById('cipaCandidatoForm_funcao').value = '';
+        document.getElementById('cipaCandidatoForm_setor').value = '';
+        document.getElementById('cipaCandidatoForm_votos').value = '';
+        document.getElementById('cipaCandidatoForm_resultado').value = '';
+        btnExcluir.style.display = 'none';
+    }
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function fecharFormCipaCandidato() {
+    const form = document.getElementById('cipaCandidatoFormCard');
+    if (form) form.style.display = 'none';
+}
+
+async function salvarCipaCandidato() {
+    const statusEl = document.getElementById('cipaCandidatoFormStatus');
+    const form = document.getElementById('cipaCandidatoFormCard');
+    const idAtual = form.dataset.id;
+    const processoId = form.dataset.processoId;
+    const nome = document.getElementById('cipaCandidatoForm_nome').value.trim();
+    if (!nome) {
+        statusEl.textContent = '❌ Informe o nome do candidato.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const seqStr = document.getElementById('cipaCandidatoForm_seq').value;
+    const votosStr = document.getElementById('cipaCandidatoForm_votos').value;
+    const id = idAtual || `CAND_${processoId}_${Date.now()}`;
+    const row = {
+        id,
+        processo_id: processoId,
+        seq: seqStr !== '' ? parseInt(seqStr, 10) : null,
+        matricula: document.getElementById('cipaCandidatoForm_matricula').value.trim() || null,
+        nome,
+        apelido: document.getElementById('cipaCandidatoForm_apelido').value.trim() || null,
+        funcao: document.getElementById('cipaCandidatoForm_funcao').value.trim() || null,
+        setor: document.getElementById('cipaCandidatoForm_setor').value.trim() || null,
+        votos: votosStr !== '' ? parseInt(votosStr, 10) : null,
+        resultado: document.getElementById('cipaCandidatoForm_resultado').value || null
+    };
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('cipa_candidatos', [row]);
+        form.dataset.id = id;
+        const idx = allCipaCandidatos.findIndex(c => c.id === id);
+        if (idx >= 0) allCipaCandidatos[idx] = { ...allCipaCandidatos[idx], ...row };
+        else allCipaCandidatos.push(row);
+        renderCipaCandidatosLista();
+        statusEl.textContent = '✅ Salvo com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => fecharFormCipaCandidato(), 900);
+    } catch (err) {
+        console.error('Erro ao salvar candidato da CIPA:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function excluirCipaCandidatoAtual() {
+    const form = document.getElementById('cipaCandidatoFormCard');
+    const id = form.dataset.id;
+    if (!id) return;
+    if (!confirm('Excluir este candidato? Essa ação não pode ser desfeita.')) return;
+    const statusEl = document.getElementById('cipaCandidatoFormStatus');
+    statusEl.textContent = 'Excluindo...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseDelete('cipa_candidatos', id);
+        allCipaCandidatos = allCipaCandidatos.filter(c => c.id !== id);
+        renderCipaCandidatosLista();
+        statusEl.textContent = '✅ Excluído com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => fecharFormCipaCandidato(), 900);
+    } catch (err) {
+        console.error('Erro ao excluir candidato da CIPA:', err);
+        statusEl.textContent = '❌ Falha ao excluir: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// ---- Geradores de documentos do Processo Eleitoral ----
+// CSS compartilhado entre os 6 geradores abaixo, pra não repetir o mesmo bloco de
+// estilo 6 vezes (o mesmo padrão visual usado em gerarAtaCipa). Reduz duplicação -
+// tech debt real já registrado no bloco de notas do projeto em 2026-09-18 pra outras
+// partes do dashboard.js; aqui evitamos criar mais do mesmo problema em código novo.
+const CIPA_DOC_CSS = `
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111; margin: 20px; }
+    .folha { max-width: 1000px; margin: 0 auto; border: 2px solid #000; }
+    .cabecalho { display: flex; align-items: stretch; border-bottom: 2px solid #000; }
+    .cabecalho .logo { width: 160px; padding: 8px 10px; border-right: 2px solid #000; text-align: center; display: flex; align-items: center; justify-content: center; }
+    .cabecalho .titulo-wrap { flex: 1; text-align: center; padding: 8px 10px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    .cabecalho .titulo { font-weight: 700; font-size: 14px; }
+    .cabecalho .subtitulo { font-size: 11px; color: #444; margin-top: 2px; }
+    .cabecalho .codigo { width: 120px; padding: 8px 10px; border-left: 2px solid #000; text-align: center; font-weight: 700; font-size: 11px; display:flex; align-items:center; justify-content:center; }
+    .secao-titulo { font-weight: 700; font-size: 12.5px; background: #d9d9d9; padding: 6px 10px; border-bottom: 1px solid #000; border-top: 2px solid #000; }
+    .corpo-texto { padding: 10px; font-size: 12px; text-align: justify; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #000; padding: 5px 6px; font-size: 11px; }
+    th { background: #e5e5e5; font-size: 10.5px; }
+    .fecho { padding: 10px; font-size: 12px; }
+    .assinaturas { display: flex; flex-wrap: wrap; gap: 20px; padding: 16px 10px; }
+    .assinatura-item { width: 220px; text-align: center; font-size: 11px; }
+    .assinatura-item .linha-assinatura { border-top: 1px solid #000; margin-top: 30px; padding-top: 4px; }
+    .no-print { text-align: center; margin: 16px 0; }
+    .no-print button { padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; border: none; background: #4f46e5; color: #fff; }
+    @media print { .no-print { display: none; } body { margin: 0; } .folha { border: 2px solid #000; } }
+`;
+
+// Abre o HTML gerado numa nova aba (mesmo padrão de gerarAtaCipa), registra a emissão
+// no controle de documentos e devolve o controle pra quem chamou.
+function abrirDocumentoCipaEleicao(html, documentoControleId, referencia) {
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    registrarEmissaoDocumento(documentoControleId, referencia);
+}
+
+function cabecalhoDocCipaEleicao(titulo, subtitulo, codigo) {
+    return `<div class="cabecalho">
+        <div class="logo"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-width:100%; max-height:56px; object-fit:contain;"></div>
+        <div class="titulo-wrap">
+            <div class="titulo">${escapeHTML(titulo)}</div>
+            <div class="subtitulo">${escapeHTML(subtitulo)}</div>
+        </div>
+        ${codigo ? `<div class="codigo">${escapeHTML(codigo)}</div>` : ''}
+    </div>`;
+}
+
+function assinaturaComissaoEleitoral(p) {
+    return `<div class="assinaturas">
+        ${p.presidente_comissao ? `<div class="assinatura-item"><div class="linha-assinatura">${escapeHTML(p.presidente_comissao)}<br>Presidente da Comissão Eleitoral</div></div>` : ''}
+        ${p.secretario_comissao ? `<div class="assinatura-item"><div class="linha-assinatura">${escapeHTML(p.secretario_comissao)}<br>Secretário(a) da Comissão</div></div>` : ''}
+        ${p.membro_comissao ? `<div class="assinatura-item"><div class="linha-assinatura">${escapeHTML(p.membro_comissao)}<br>Membro da Comissão</div></div>` : ''}
+    </div>`;
+}
+
+async function gerarEditalConvocacaoCipa() {
+    const p = processoEleitoralAtual();
+    if (!p) { alert('Selecione ou crie e salve um processo eleitoral primeiro.'); return; }
+    await garantirDocumentosControleCarregados();
+    const codigo = codigoRevisaoDocumento('edital_convocacao_cipa');
+    const diasInscricao = (p.data_inicio_inscricoes && p.data_fim_inscricoes)
+        ? Math.round((parseLocalDate(p.data_fim_inscricoes) - parseLocalDate(p.data_inicio_inscricoes)) / 86400000) + 1
+        : null;
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Edital de Convocação CIPA ${escapeHTML(p.gestao || '')}</title>
+<style>${CIPA_DOC_CSS}</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="folha">
+        ${cabecalhoDocCipaEleicao(`EDITAL DE CONVOCAÇÃO DA CIPA ${p.gestao || ''}`, 'COMISSÃO INTERNA DE PREVENÇÃO DE ACIDENTES E ASSÉDIO — CIPA', codigo)}
+        <div class="corpo-texto">
+            <p>Ficam convidados todos os empregados da empresa <b>${escapeHTML(EMPRESA_INFO.razaoSocial)}</b>, a se inscreverem como candidatos para a eleição da CIPA (COMISSÃO INTERNA DE PREVENÇÃO DE ACIDENTES E DE ASSÉDIO), gestão ${escapeHTML(p.gestao || '')}, cumprindo exigências da Norma Regulamentadora - NR-5, aprovada pela Portaria nº 3214 de 08 de junho 1978, a realizar-se, em votação secreta, no dia <b>${p.data_eleicao ? formatarDataExtensoCipa(p.data_eleicao) : '(data a definir)'}</b>.</p>
+            <p>Os interessados poderão efetuar suas inscrições no canteiro de Obra, junto ao Técnico de Segurança do Trabalho${diasInscricao ? `, no período de ${diasInscricao} dias` : ''}, de <u>${p.data_inicio_inscricoes ? formatSimpleDate(p.data_inicio_inscricoes) : '____/____/______'}</u> até o dia <u>${p.data_fim_inscricoes ? formatSimpleDate(p.data_fim_inscricoes) : '____/____/______'}</u>, no horário das 07:00h às 17:00h de segunda a quinta-feira e as sextas-feiras até as 16:00h.</p>
+            <p>${escapeHTML(p.cidade_uf || 'Arcoverde-PE')}, ${p.data_edital_convocacao ? formatarDataExtensoCipa(p.data_edital_convocacao) : formatarDataExtensoCipa(new Date().toISOString().slice(0, 10))}.</p>
+        </div>
+        <div class="assinaturas">
+            ${p.presidente_comissao ? `<div class="assinatura-item"><div class="linha-assinatura">${escapeHTML(p.presidente_comissao)}<br>Presidente da Comissão</div></div>` : ''}
+        </div>
+    </div>
+</body></html>`;
+    abrirDocumentoCipaEleicao(html, 'edital_convocacao_cipa', `Edital de Convocação — CIPA ${p.gestao || ''}`);
+}
+
+async function gerarEditalInscricaoCipa() {
+    const p = processoEleitoralAtual();
+    if (!p) { alert('Selecione ou crie e salve um processo eleitoral primeiro.'); return; }
+    await garantirDocumentosControleCarregados();
+    const codigo = codigoRevisaoDocumento('edital_inscricao_cipa');
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Edital de Abertura de Inscrições CIPA ${escapeHTML(p.gestao || '')}</title>
+<style>${CIPA_DOC_CSS}</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="folha">
+        ${cabecalhoDocCipaEleicao('EDITAL DE ABERTURA DE INSCRIÇÕES DA CIPA', `GESTÃO ${p.gestao || ''}`, codigo)}
+        <div class="corpo-texto">
+            <p>Ficam todos os funcionários desta empresa informados que se encontra aberta a inscrição para a candidatura dos membros da Comissão Interna de Prevenção de Acidentes (CIPA), gestão ${escapeHTML(p.gestao || '')}.</p>
+            <p>Todos os funcionários que desejarem se inscrever devem procurar um membro da Comissão Eleitoral no horário de trabalho, entre os dias ${p.data_inicio_inscricoes ? formatSimpleDate(p.data_inicio_inscricoes) : '____/____/______'} e ${p.data_fim_inscricoes ? formatSimpleDate(p.data_fim_inscricoes) : '____/____/______'}, para preencherem a ficha de inscrição. Não serão aceitas inscrições após esta data.</p>
+            <p>Toda e qualquer informação adicional sobre o processo eleitoral poderá ser obtida junto à Comissão Eleitoral.</p>
+            <p>A eleição está programada para o dia ${p.data_eleicao ? formatarDataExtensoCipa(p.data_eleicao) : '(data a definir)'}.</p>
+            <p>${escapeHTML(p.cidade_uf || 'Arcoverde-PE')}, ${p.data_edital_inscricao ? formatarDataExtensoCipa(p.data_edital_inscricao) : formatarDataExtensoCipa(new Date().toISOString().slice(0, 10))}.</p>
+        </div>
+        ${assinaturaComissaoEleitoral(p)}
+    </div>
+</body></html>`;
+    abrirDocumentoCipaEleicao(html, 'edital_inscricao_cipa', `Edital de Abertura de Inscrições — CIPA ${p.gestao || ''}`);
+}
+
+async function gerarEditalInscritosCipa() {
+    const p = processoEleitoralAtual();
+    if (!p) { alert('Selecione ou crie e salve um processo eleitoral primeiro.'); return; }
+    await garantirDocumentosControleCarregados();
+    const codigo = codigoRevisaoDocumento('edital_inscritos_cipa');
+    const candidatos = allCipaCandidatos.filter(c => c.processo_id === p.id).sort((a, b) => (a.seq || 0) - (b.seq || 0));
+    const linhasCandidatos = candidatos.map(c => `<tr>
+        <td style="text-align:center;">${String(c.seq || '').padStart(2, '0')}</td>
+        <td>${escapeHTML(c.nome)}</td>
+        <td>${escapeHTML(c.apelido || '')}</td>
+        <td>${escapeHTML(c.setor || '')}</td>
+    </tr>`).join('') || '<tr><td colspan="4" style="text-align:center; color:#888;">Nenhum candidato cadastrado</td></tr>';
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Edital de Inscritos CIPA ${escapeHTML(p.gestao || '')}</title>
+<style>${CIPA_DOC_CSS}</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="folha">
+        ${cabecalhoDocCipaEleicao('EDITAL DE INSCRITOS — HOMOLOGAÇÃO DE CANDIDATOS', `CIPA — GESTÃO ${p.gestao || ''}`, codigo)}
+        <div class="corpo-texto">
+            <p>Ficam convocados os empregados desta empresa para eleição dos membros da Comissão Interna de Prevenção de Acidentes e Assédio - CIPA, de acordo com a Norma Regulamentadora – NR-05, aprovada pela Portaria n.° 3214 de 1978, baixada pelo Ministério do Trabalho e Emprego, a ser realizada em escrutínio secreto, no dia ${p.data_eleicao ? formatarDataExtensoCipa(p.data_eleicao) : '(data a definir)'}, no período diurno das ${escapeHTML(p.horario_votacao_inicio || '07:00')}hs às ${escapeHTML(p.horario_votacao_fim || '17:00')}hs${p.horario_votacao_noturno_inicio ? ` e noturno das ${escapeHTML(p.horario_votacao_noturno_inicio)} às ${escapeHTML(p.horario_votacao_noturno_fim || '')} horas` : ''}.</p>
+        </div>
+        <table>
+            <thead><tr><th>Local da Urna</th><th>Horário (diurno)</th><th>Horário (noturno)</th></tr></thead>
+            <tbody><tr>
+                <td>${escapeHTML(p.local_votacao || '')}</td>
+                <td style="text-align:center;">${escapeHTML(p.horario_votacao_inicio || '')} às ${escapeHTML(p.horario_votacao_fim || '')}</td>
+                <td style="text-align:center;">${p.horario_votacao_noturno_inicio ? escapeHTML(p.horario_votacao_noturno_inicio) + ' às ' + escapeHTML(p.horario_votacao_noturno_fim || '') : '—'}</td>
+            </tr></tbody>
+        </table>
+        <div class="secao-titulo">APRESENTARAM-SE E SERÃO VOTADOS OS SEGUINTES CANDIDATOS</div>
+        <table>
+            <thead><tr><th style="width:50px;">Seq</th><th>Candidato</th><th style="width:140px;">Apelido</th><th style="width:160px;">Setor de Trabalho</th></tr></thead>
+            <tbody>${linhasCandidatos}</tbody>
+        </table>
+        <div class="corpo-texto">
+            <p>${escapeHTML(p.cidade_uf || 'Arcoverde-PE')}, ${p.data_edital_inscritos ? formatarDataExtensoCipa(p.data_edital_inscritos) : formatarDataExtensoCipa(new Date().toISOString().slice(0, 10))}.</p>
+            <p>Atenciosamente.</p>
+        </div>
+        <div class="assinaturas">
+            ${p.presidente_comissao ? `<div class="assinatura-item"><div class="linha-assinatura">${escapeHTML(p.presidente_comissao)}<br>Presidente da Comissão Eleitoral</div></div>` : ''}
+        </div>
+    </div>
+</body></html>`;
+    abrirDocumentoCipaEleicao(html, 'edital_inscritos_cipa', `Edital de Inscritos — CIPA ${p.gestao || ''}`);
+}
+
+async function gerarMapaApuracaoCipa() {
+    const p = processoEleitoralAtual();
+    if (!p) { alert('Selecione ou crie e salve um processo eleitoral primeiro.'); return; }
+    await garantirDocumentosControleCarregados();
+    const codigo = codigoRevisaoDocumento('mapa_apuracao_cipa');
+    const candidatos = allCipaCandidatos.filter(c => c.processo_id === p.id);
+    const titular = candidatos.find(c => c.resultado === 'titular');
+    const suplente = candidatos.find(c => c.resultado === 'suplente');
+    const demais = candidatos.filter(c => c.resultado === 'nao_eleito' || !c.resultado).sort((a, b) => (b.votos || 0) - (a.votos || 0));
+    const linhaResultado = c => c ? `<tr><td>Sr(a). ${escapeHTML(c.nome)}</td><td style="text-align:center; width:80px;">${c.votos ?? ''}</td><td style="width:60px;">Votos</td></tr>` : '<tr><td colspan="3" style="text-align:center; color:#888;">Não apurado</td></tr>';
+    const linhasDemais = demais.map(c => `<tr><td>Sr(a). ${escapeHTML(c.nome)}</td><td style="text-align:center; width:80px;">${c.votos ?? ''}</td><td style="width:60px;">Votos</td></tr>`).join('') || '<tr><td colspan="3" style="text-align:center; color:#888;">Nenhum</td></tr>';
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Mapa de Apuração CIPA ${escapeHTML(p.gestao || '')}</title>
+<style>${CIPA_DOC_CSS}</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="folha">
+        ${cabecalhoDocCipaEleicao('MAPA / ATA DE APURAÇÃO DO RESULTADO', `CIPA — GESTÃO ${p.gestao || ''}`, codigo)}
+        <div class="corpo-texto">
+            <p>No dia ${p.data_apuracao ? formatarDataExtensoCipa(p.data_apuracao) : '(data a definir)'}, no ${escapeHTML(p.local_votacao || 'local de votação')} da empresa ${escapeHTML(EMPRESA_INFO.razaoSocial)}, com a presença dos senhores <b>${escapeHTML(p.presidente_comissao || '')}</b> (Presidente da Comissão Eleitoral)${p.secretario_comissao ? `, <b>${escapeHTML(p.secretario_comissao)}</b> (Secretário(a) da Comissão)` : ''}${p.membro_comissao ? ` e <b>${escapeHTML(p.membro_comissao)}</b> (Membro da Comissão)` : ''}, instalou-se a mesa receptora e apuradora dos votos dos representantes dos empregados para a CIPA, Gestão ${escapeHTML(p.gestao || '')}.</p>
+            <p>Às ${escapeHTML(p.horario_apuracao || '')} horas, o(a) Sr(a). ${escapeHTML(p.presidente_comissao || '')}, Presidente da Comissão Eleitoral, declarou aberta a apuração dos votos, verificando que votaram <b>${p.total_votantes ?? '(não informado)'}</b> empregados de um total de <b>${p.total_funcionarios ?? '(não informado)'}</b> funcionários${p.percentual_participacao ? `, contabilizando <b>${p.percentual_participacao}%</b> dos empregados` : ''}. Em seguida, passando à apuração na presença de quantos desejassem, após abertura das urnas e a contagem dos votos chegou-se ao seguinte resultado:</p>
+        </div>
+        <div class="secao-titulo">REPRESENTANTES DOS EMPREGADOS</div>
+        <table><tbody>
+            <tr><td colspan="3" style="font-weight:700; background:#f0f0f0;">TITULAR</td></tr>
+            ${linhaResultado(titular)}
+            <tr><td colspan="3" style="font-weight:700; background:#f0f0f0;">SUPLENTE</td></tr>
+            ${linhaResultado(suplente)}
+        </tbody></table>
+        <div class="secao-titulo">DEMAIS VOTADOS, EM ORDEM DECRESCENTE DE VOTOS</div>
+        <table><tbody>${linhasDemais}</tbody></table>
+        <div class="corpo-texto">
+            <p>Obs.: ${escapeHTML(p.observacoes || 'Fica registrado que não houve votos em branco nem rasurados.')}</p>
+            <p>Eu, ${escapeHTML(p.secretario_comissao || p.presidente_comissao || '')}, lavrei a presente ata que, lida e aprovada, segue assinada por todos os presentes no ato da apuração dos votos.</p>
+            <p>${escapeHTML(p.cidade_uf || 'Arcoverde-PE')}, ${p.data_apuracao ? formatarDataExtensoCipa(p.data_apuracao) : formatarDataExtensoCipa(new Date().toISOString().slice(0, 10))}.</p>
+        </div>
+        ${assinaturaComissaoEleitoral(p)}
+    </div>
+</body></html>`;
+    abrirDocumentoCipaEleicao(html, 'mapa_apuracao_cipa', `Mapa/Ata de Apuração — CIPA ${p.gestao || ''}`);
+}
+
+async function gerarTermoPosseCipa() {
+    const p = processoEleitoralAtual();
+    if (!p) { alert('Selecione ou crie e salve um processo eleitoral primeiro.'); return; }
+    await garantirDocumentosControleCarregados();
+    const codigo = codigoRevisaoDocumento('termo_posse_cipa');
+    const ordemCargo = { titular_empregador: 0, suplente_empregador: 1, titular_empregado: 2, suplente_empregado: 3 };
+    const membrosAtivos = allCipaMembros.filter(m => m.ativo).sort((a, b) => (ordemCargo[a.cargo] ?? 9) - (ordemCargo[b.cargo] ?? 9));
+    const linhasMembros = membrosAtivos.map(m => `<tr>
+        <td>${escapeHTML(m.nome)}</td>
+        <td>${CIPA_CARGO_LABELS[m.cargo] || m.cargo || ''}</td>
+        <td>${m.papel ? CIPA_PAPEL_LABELS[m.papel] : ''}</td>
+    </tr>`).join('') || '<tr><td colspan="3" style="text-align:center; color:#888;">Nenhum membro ativo cadastrado</td></tr>';
+    const assinaturasMembros = membrosAtivos.map(m => `<div class="assinatura-item"><div class="linha-assinatura">${escapeHTML(m.nome)}${m.papel ? '<br>' + CIPA_PAPEL_LABELS[m.papel] : ''}</div></div>`).join('');
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Termo de Posse CIPA ${escapeHTML(p.gestao || '')}</title>
+<style>${CIPA_DOC_CSS}</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="folha">
+        ${cabecalhoDocCipaEleicao('TERMO DE POSSE DA CIPA', `GESTÃO ${p.gestao || ''}`, codigo)}
+        <div class="corpo-texto">
+            <p>Aos ${p.data_posse ? formatarDataExtensoCipa(p.data_posse) : '(data a definir)'}, na sede da empresa ${escapeHTML(EMPRESA_INFO.razaoSocial)}, CNPJ ${escapeHTML(EMPRESA_INFO.cnpj)}, foram empossados os membros da Comissão Interna de Prevenção de Acidentes e de Assédio (CIPA), gestão ${escapeHTML(p.gestao || '')}, eleitos e designados na forma da Norma Regulamentadora NR-05, conforme composição abaixo:</p>
+        </div>
+        <table>
+            <thead><tr><th>Nome</th><th style="width:190px;">Cargo na Comissão</th><th style="width:150px;">Papel</th></tr></thead>
+            <tbody>${linhasMembros}</tbody>
+        </table>
+        <div class="corpo-texto">
+            <p>Os membros ora empossados declaram estar cientes das atribuições, direitos e responsabilidades inerentes ao cargo, conforme item 5.3 da NR-05, com mandato de 1 (um) ano, permitida uma reeleição, nos termos do item 5.4.6 da mesma norma, e com estabilidade provisória no emprego assegurada aos representantes eleitos dos empregados desde o registro da candidatura até 1 (um) ano após o final do mandato (NR-05, item 5.4.12).</p>
+            <p>${escapeHTML(p.cidade_uf || 'Arcoverde-PE')}, ${p.data_posse ? formatarDataExtensoCipa(p.data_posse) : formatarDataExtensoCipa(new Date().toISOString().slice(0, 10))}.</p>
+        </div>
+        <div class="assinaturas">${assinaturasMembros}</div>
+    </div>
+</body></html>`;
+    abrirDocumentoCipaEleicao(html, 'termo_posse_cipa', `Termo de Posse — CIPA ${p.gestao || ''}`);
+}
+
+async function gerarFichaInscricaoCipa() {
+    const p = processoEleitoralAtual();
+    if (!p) { alert('Selecione ou crie e salve um processo eleitoral primeiro.'); return; }
+    await garantirDocumentosControleCarregados();
+    const codigo = codigoRevisaoDocumento('ficha_inscricao_cipa');
+    const ficha = () => `<table style="margin-bottom:16px;">
+        <tr><td colspan="2" style="text-align:center; font-weight:700; background:#f0f0f0;">FICHA DE INSCRIÇÃO DE CANDIDATO — GESTÃO ${escapeHTML(p.gestao || '')}</td></tr>
+        <tr><td style="width:60%;">Nome: _______________________________________________</td><td>Apelido: ______________________</td></tr>
+        <tr><td>Função: _____________________________________________</td><td>Setor: ________________________</td></tr>
+        <tr><td>Data da Inscrição: ____ / ____ / ________</td><td></td></tr>
+        <tr><td>Assinatura do Candidato: _______________________________</td><td>Comissão Eleitoral: ____________</td></tr>
+    </table>`;
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Ficha de Inscrição CIPA ${escapeHTML(p.gestao || '')}</title>
+<style>${CIPA_DOC_CSS}</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="folha" style="border:none;">
+        ${ficha()}
+        ${ficha()}
+    </div>
+</body></html>`;
+    abrirDocumentoCipaEleicao(html, 'ficha_inscricao_cipa', `Ficha de Inscrição (em branco) — CIPA ${p.gestao || ''}`);
 }
 
 // ---- Plano de Ação ----

@@ -4613,6 +4613,7 @@
                         <button id="cipaSubtabBtn-calendario" class="db-filter-btn" onclick="showCipaSubtab('calendario')">📅 Calendário de Reuniões</button>
                         <button id="cipaSubtabBtn-plano" class="db-filter-btn" onclick="showCipaSubtab('plano')">✅ Plano de Ação</button>
                         <button id="cipaSubtabBtn-membros" class="db-filter-btn" onclick="showCipaSubtab('membros')">👥 Membros da CIPA</button>
+                        <button id="cipaSubtabBtn-eleicao" class="db-filter-btn" onclick="showCipaSubtab('eleicao')">🗳️ Processo Eleitoral</button>
                     </div>
                 </div>
 
@@ -4889,6 +4890,224 @@
                             <button class="db-clear-btn" onclick="fecharFormCipaMembro()">Cancelar</button>
                             <button id="cipaMembroForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirCipaMembroAtual()">🗑️ Excluir</button>
                             <span id="cipaMembroFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="cipaSubtab-eleicao" style="display:none;">
+                    <div class="db-chart-card" style="margin-bottom: 16px;">
+                        <div class="db-chart-title">📐 Quadro I — Dimensionamento da CIPA (NR-5)</div>
+                        <div id="cipaQuadroIReferencia" style="display:flex; flex-direction:column; gap:4px; font-size:12.5px;"></div>
+                    </div>
+
+                    <div class="db-chart-card" style="margin-bottom: 16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+                            <div class="db-chart-title" style="margin-bottom:0;">🗳️ Processo Eleitoral</div>
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                <select id="cipaProcessoSelect" onchange="carregarFormProcessoEleitoral(this.value); renderCipaCandidatosLista();" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;"></select>
+                                <button class="db-apply-btn" onclick="abrirNovoProcessoEleitoral()">+ Nova Gestão</button>
+                            </div>
+                        </div>
+
+                        <div id="cipaProcessoFormCard">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px;">
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Gestão *</label>
+                                    <input type="text" id="cipaProcessoForm_gestao" placeholder="Ex: 2026/2027" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Status</label>
+                                    <select id="cipaProcessoForm_status" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                        <option value="planejamento">🗓️ Planejamento</option>
+                                        <option value="inscricoes_abertas">📝 Inscrições Abertas</option>
+                                        <option value="inscricoes_encerradas">🔒 Inscrições Encerradas</option>
+                                        <option value="votacao_realizada">🗳️ Votação Realizada</option>
+                                        <option value="concluido">✅ Concluído</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Cidade/UF (para os documentos)</label>
+                                    <input type="text" id="cipaProcessoForm_cidadeUf" placeholder="Ex: Arcoverde-PE" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Início da gestão</label>
+                                    <input type="date" id="cipaProcessoForm_dataInicioGestao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Fim da gestão</label>
+                                    <input type="date" id="cipaProcessoForm_dataFimGestao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                            </div>
+
+                            <div class="subsecao-titulo" style="font-weight:700; margin: 14px 0 6px;">Edital de Convocação e Inscrições</div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px;">
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data do Edital de Convocação</label>
+                                    <input type="date" id="cipaProcessoForm_dataEditalConvocacao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data do Edital de Abertura de Inscrições</label>
+                                    <input type="date" id="cipaProcessoForm_dataEditalInscricao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Início das inscrições</label>
+                                    <input type="date" id="cipaProcessoForm_dataInicioInscricoes" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Fim das inscrições</label>
+                                    <input type="date" id="cipaProcessoForm_dataFimInscricoes" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data do Edital de Inscritos</label>
+                                    <input type="date" id="cipaProcessoForm_dataEditalInscritos" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                            </div>
+
+                            <div class="subsecao-titulo" style="font-weight:700; margin: 14px 0 6px;">Votação e Apuração</div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; font-size: 12.5px;">
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data da Eleição</label>
+                                    <input type="date" id="cipaProcessoForm_dataEleicao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Horário votação (diurno) — início</label>
+                                    <input type="time" id="cipaProcessoForm_horarioVotacaoInicio" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Horário votação (diurno) — fim</label>
+                                    <input type="time" id="cipaProcessoForm_horarioVotacaoFim" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Horário votação (noturno) — início</label>
+                                    <input type="time" id="cipaProcessoForm_horarioVotacaoNoturnoInicio" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Horário votação (noturno) — fim</label>
+                                    <input type="time" id="cipaProcessoForm_horarioVotacaoNoturnoFim" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Local da votação</label>
+                                    <input type="text" id="cipaProcessoForm_localVotacao" placeholder="Ex: Canteiro Central" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data da Apuração</label>
+                                    <input type="date" id="cipaProcessoForm_dataApuracao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Horário da Apuração</label>
+                                    <input type="time" id="cipaProcessoForm_horarioApuracao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data da Posse</label>
+                                    <input type="date" id="cipaProcessoForm_dataPosse" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Total de funcionários</label>
+                                    <input type="number" min="0" id="cipaProcessoForm_totalFuncionarios" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Total de votantes</label>
+                                    <input type="number" min="0" id="cipaProcessoForm_totalVotantes" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">% de participação</label>
+                                    <input type="text" id="cipaProcessoForm_percentualParticipacao" placeholder="Ex: 75.65" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                            </div>
+
+                            <div class="subsecao-titulo" style="font-weight:700; margin: 14px 0 6px;">Comissão Eleitoral</div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px;">
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Presidente da Comissão</label>
+                                    <input type="text" id="cipaProcessoForm_presidenteComissao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Secretário(a) da Comissão</label>
+                                    <input type="text" id="cipaProcessoForm_secretarioComissao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Membro da Comissão</label>
+                                    <input type="text" id="cipaProcessoForm_membroComissao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                </div>
+                            </div>
+
+                            <div style="margin-top:10px;">
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600; font-size:12.5px;">Observações (aparece no Mapa/Ata de Apuração)</label>
+                                <textarea id="cipaProcessoForm_observacoes" rows="2" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-family: inherit; font-size: 12.5px;" placeholder="Ex: Fica registrado que não houve votos em branco nem rasurados."></textarea>
+                            </div>
+
+                            <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <button class="db-apply-btn" onclick="salvarProcessoEleitoral()">💾 Salvar Processo Eleitoral</button>
+                                <button id="cipaProcessoForm_btnExcluir" class="db-clear-btn" style="color: var(--danger); border-color: var(--danger);" onclick="excluirProcessoEleitoralAtual()">🗑️ Excluir Gestão</button>
+                                <span id="cipaProcessoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                            </div>
+
+                            <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button class="db-apply-btn" style="background: var(--success);" onclick="gerarEditalConvocacaoCipa()">🖨️ Edital de Convocação</button>
+                                <button class="db-apply-btn" style="background: var(--success);" onclick="gerarEditalInscricaoCipa()">🖨️ Edital de Abertura de Inscrições</button>
+                                <button class="db-apply-btn" style="background: var(--success);" onclick="gerarFichaInscricaoCipa()">🖨️ Ficha de Inscrição (em branco)</button>
+                                <button class="db-apply-btn" style="background: var(--success);" onclick="gerarEditalInscritosCipa()">🖨️ Edital de Inscritos / Homologação</button>
+                                <button class="db-apply-btn" style="background: var(--success);" onclick="gerarMapaApuracaoCipa()">🖨️ Mapa/Ata de Apuração</button>
+                                <button class="db-apply-btn" style="background: var(--success);" onclick="gerarTermoPosseCipa()">🖨️ Termo de Posse</button>
+                            </div>
+                            <div style="font-size: 11.5px; color: var(--text-light); margin-top: 6px;">⚠️ Salve o processo eleitoral antes de gerar os documentos — os geradores usam os dados já salvos, não o que está digitado e ainda não salvo na tela.</div>
+                        </div>
+                    </div>
+
+                    <div class="db-chart-card" style="margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                            <div class="db-chart-title" style="margin-bottom: 0;">👤 Candidatos</div>
+                            <button class="db-apply-btn" onclick="abrirFormCipaCandidato()">+ Novo Candidato</button>
+                        </div>
+                        <div id="cipaCandidatosLista" class="db-list" style="max-height: 400px;"></div>
+                    </div>
+
+                    <div class="db-chart-card" id="cipaCandidatoFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                        <div class="db-chart-title" id="cipaCandidatoFormTitle">🗳️ Novo Candidato</div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; font-size: 12.5px;">
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Seq</label>
+                                <input type="number" min="1" id="cipaCandidatoForm_seq" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Matrícula</label>
+                                <input type="text" id="cipaCandidatoForm_matricula" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Nome *</label>
+                                <input type="text" id="cipaCandidatoForm_nome" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Apelido</label>
+                                <input type="text" id="cipaCandidatoForm_apelido" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Função</label>
+                                <input type="text" id="cipaCandidatoForm_funcao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Setor</label>
+                                <input type="text" id="cipaCandidatoForm_setor" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Votos (após apuração)</label>
+                                <input type="number" min="0" id="cipaCandidatoForm_votos" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Resultado</label>
+                                <select id="cipaCandidatoForm_resultado" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                    <option value="">(ainda não apurado)</option>
+                                    <option value="titular">Titular (eleito)</option>
+                                    <option value="suplente">Suplente (eleito)</option>
+                                    <option value="nao_eleito">Não eleito</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <button class="db-apply-btn" onclick="salvarCipaCandidato()">💾 Salvar</button>
+                            <button class="db-clear-btn" onclick="fecharFormCipaCandidato()">Cancelar</button>
+                            <button id="cipaCandidatoForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirCipaCandidatoAtual()">🗑️ Excluir</button>
+                            <span id="cipaCandidatoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
                         </div>
                     </div>
                 </div>

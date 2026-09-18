@@ -21310,7 +21310,8 @@ async function excluirCipaCandidatoAtual() {
 // partes do dashboard.js; aqui evitamos criar mais do mesmo problema em código novo.
 const CIPA_DOC_CSS = `
     body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111; margin: 20px; }
-    .folha { max-width: 1000px; margin: 0 auto; border: 2px solid #000; }
+    @page { size: portrait; margin: 12mm; }
+    .folha { max-width: 1000px; min-height: 273mm; margin: 0 auto; border: 2px solid #000; display: flex; flex-direction: column; }
     .cabecalho { display: flex; align-items: stretch; border-bottom: 2px solid #000; }
     .cabecalho .logo { width: 160px; padding: 8px 10px; border-right: 2px solid #000; text-align: center; display: flex; align-items: center; justify-content: center; }
     .cabecalho .titulo-wrap { flex: 1; text-align: center; padding: 8px 10px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
@@ -21318,14 +21319,15 @@ const CIPA_DOC_CSS = `
     .cabecalho .subtitulo { font-size: 11px; color: #444; margin-top: 2px; }
     .cabecalho .codigo { width: 120px; padding: 8px 10px; border-left: 2px solid #000; text-align: center; font-weight: 700; font-size: 11px; display:flex; align-items:center; justify-content:center; }
     .secao-titulo { font-weight: 700; font-size: 12.5px; background: #d9d9d9; padding: 6px 10px; border-bottom: 1px solid #000; border-top: 2px solid #000; }
-    .corpo-texto { padding: 10px; font-size: 12px; text-align: justify; }
+    .corpo-texto { padding: 10px; font-size: 12px; text-align: justify; line-height: 1.6; }
     table { width: 100%; border-collapse: collapse; }
     th, td { border: 1px solid #000; padding: 5px 6px; font-size: 11px; }
     th { background: #e5e5e5; font-size: 10.5px; }
     .fecho { padding: 10px; font-size: 12px; }
-    .assinaturas { display: flex; flex-wrap: wrap; gap: 20px; padding: 16px 10px; }
+    .assinaturas { display: flex; flex-wrap: wrap; gap: 20px; padding: 16px 10px; margin-top: auto; }
     .assinatura-item { width: 220px; text-align: center; font-size: 11px; }
     .assinatura-item .linha-assinatura { border-top: 1px solid #000; margin-top: 30px; padding-top: 4px; }
+    .rodape-doc { padding: 6px 10px; border-top: 1px solid #ccc; font-size: 9.5px; color: #666; text-align: center; }
     .no-print { text-align: center; margin: 16px 0; }
     .no-print button { padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; border: none; background: #4f46e5; color: #fff; }
     @media print { .no-print { display: none; } body { margin: 0; } .folha { border: 2px solid #000; } }
@@ -21366,6 +21368,15 @@ function assinaturaComissaoEleitoral(p) {
     </div>`;
 }
 
+// Rodapé institucional discreto, acrescentado em 2026-09-18 junto com a correção de
+// formatação dos 6 documentos do Processo Eleitoral (documentos com pouco conteúdo
+// ficavam com muito espaço em branco na folha impressa). Fica logo abaixo das
+// assinaturas, já empurrado pra base da página pelo `.folha { display:flex }` +
+// `.assinaturas { margin-top:auto }` do CIPA_DOC_CSS.
+function rodapeInstitucionalCipaEleicao() {
+    return `<div class="rodape-doc">${escapeHTML(EMPRESA_INFO.razaoSocial)} — CNPJ ${escapeHTML(EMPRESA_INFO.cnpj)} — Documento gerado pelo sistema em ${new Date().toLocaleString('pt-BR')}</div>`;
+}
+
 async function gerarEditalConvocacaoCipa() {
     const p = processoEleitoralAtual();
     if (!p) { alert('Selecione ou crie e salve um processo eleitoral primeiro.'); return; }
@@ -21390,6 +21401,7 @@ async function gerarEditalConvocacaoCipa() {
         <div class="assinaturas">
             ${p.presidente_comissao ? `<div class="assinatura-item"><div class="linha-assinatura">${escapeHTML(p.presidente_comissao)}<br>Presidente da Comissão</div></div>` : ''}
         </div>
+        ${rodapeInstitucionalCipaEleicao()}
     </div>
 </body></html>`;
     abrirDocumentoCipaEleicao(html, 'edital_convocacao_cipa', `Edital de Convocação — CIPA ${p.gestao || ''}`);
@@ -21416,6 +21428,7 @@ async function gerarEditalInscricaoCipa() {
             <p>${escapeHTML(p.cidade_uf || 'Arcoverde-PE')}, ${p.data_edital_inscricao ? formatarDataExtensoCipa(p.data_edital_inscricao) : formatarDataExtensoCipa(new Date().toISOString().slice(0, 10))}.</p>
         </div>
         ${assinaturaComissaoEleitoral(p)}
+        ${rodapeInstitucionalCipaEleicao()}
     </div>
 </body></html>`;
     abrirDocumentoCipaEleicao(html, 'edital_inscricao_cipa', `Edital de Abertura de Inscrições — CIPA ${p.gestao || ''}`);
@@ -21464,6 +21477,7 @@ async function gerarEditalInscritosCipa() {
         <div class="assinaturas">
             ${p.presidente_comissao ? `<div class="assinatura-item"><div class="linha-assinatura">${escapeHTML(p.presidente_comissao)}<br>Presidente da Comissão Eleitoral</div></div>` : ''}
         </div>
+        ${rodapeInstitucionalCipaEleicao()}
     </div>
 </body></html>`;
     abrirDocumentoCipaEleicao(html, 'edital_inscritos_cipa', `Edital de Inscritos — CIPA ${p.gestao || ''}`);
@@ -21507,6 +21521,7 @@ async function gerarMapaApuracaoCipa() {
             <p>${escapeHTML(p.cidade_uf || 'Arcoverde-PE')}, ${p.data_apuracao ? formatarDataExtensoCipa(p.data_apuracao) : formatarDataExtensoCipa(new Date().toISOString().slice(0, 10))}.</p>
         </div>
         ${assinaturaComissaoEleitoral(p)}
+        ${rodapeInstitucionalCipaEleicao()}
     </div>
 </body></html>`;
     abrirDocumentoCipaEleicao(html, 'mapa_apuracao_cipa', `Mapa/Ata de Apuração — CIPA ${p.gestao || ''}`);
@@ -21545,6 +21560,7 @@ async function gerarTermoPosseCipa() {
             <p>${escapeHTML(p.cidade_uf || 'Arcoverde-PE')}, ${p.data_posse ? formatarDataExtensoCipa(p.data_posse) : formatarDataExtensoCipa(new Date().toISOString().slice(0, 10))}.</p>
         </div>
         <div class="assinaturas">${assinaturasMembros}</div>
+        ${rodapeInstitucionalCipaEleicao()}
     </div>
 </body></html>`;
     abrirDocumentoCipaEleicao(html, 'termo_posse_cipa', `Termo de Posse — CIPA ${p.gestao || ''}`);

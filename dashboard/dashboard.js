@@ -16255,12 +16255,18 @@ function renderEpiEstoquePanel() {
     filterEpiEstoqueLista(document.getElementById('epiEstoqueSearchInput')?.value || '');
 }
 
+const EPI_ESTOQUE_FILTRO_LABELS = { todos: 'Todos', com: 'Com saldo', sem: 'Sem saldo' };
+
 function filtrarEpiEstoquePorSaldo(filtro) {
     epiEstoqueFiltroAtual = filtro;
     ['todos', 'com', 'sem'].forEach(f => {
         const btn = document.getElementById('epiEstoqueFiltroBtn-' + f);
         if (btn) btn.classList.toggle('active', f === filtro);
     });
+    // O Relatório de Estoque passa a respeitar este mesmo filtro (pedido do João em
+    // 2026-09-20) — o texto do botão avisa qual recorte vai sair antes de clicar.
+    const btnRelatorio = document.getElementById('epiEstoqueRelatorioBtn');
+    if (btnRelatorio) btnRelatorio.textContent = `🖨️ Relatório de Estoque (${EPI_ESTOQUE_FILTRO_LABELS[filtro]})`;
     filterEpiEstoqueLista(document.getElementById('epiEstoqueSearchInput')?.value || '');
 }
 
@@ -16309,10 +16315,18 @@ function limparBuscaEpiEstoque() {
 // documentos_controle — relatório operacional, não documento controlado do SMS).
 function gerarRelatorioEstoqueEpi() {
     const estoquePorId = new Map(allEpiEstoque.map(es => [es.epi_catalogo_id, es]));
-    const itens = allEpiCatalogo
-        .filter(c => c.ativo !== false)
-        .slice()
-        .sort((a, b) => (a.descricao || '').localeCompare(b.descricao || ''));
+
+    // Respeita o filtro Todos/Com saldo/Sem saldo já selecionado na tela (pedido do
+    // João em 2026-09-20) — antes o relatório sempre trazia tudo, agora sai exatamente
+    // o recorte escolhido.
+    let itens = allEpiCatalogo.filter(c => c.ativo !== false);
+    if (epiEstoqueFiltroAtual === 'com') {
+        itens = itens.filter(c => (estoquePorId.get(c.id)?.quantidade_atual || 0) > 0);
+    } else if (epiEstoqueFiltroAtual === 'sem') {
+        itens = itens.filter(c => (estoquePorId.get(c.id)?.quantidade_atual || 0) <= 0);
+    }
+    itens = itens.slice().sort((a, b) => (a.descricao || '').localeCompare(b.descricao || ''));
+    const filtroLabel = EPI_ESTOQUE_FILTRO_LABELS[epiEstoqueFiltroAtual] || 'Todos';
 
     let comSaldo = 0, semSaldo = 0, abaixoMinimo = 0;
     const linhas = itens.map((c, i) => {
@@ -16339,7 +16353,7 @@ function gerarRelatorioEstoqueEpi() {
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
-<title>Relatório de Estoque de EPI - ${escapeHTML(EMPRESA_INFO.razaoSocial)}</title>
+<title>Relatório de Estoque de EPI (${escapeHTML(filtroLabel)}) - ${escapeHTML(EMPRESA_INFO.razaoSocial)}</title>
 <style>
     body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
     .folha { max-width: 1400px; margin: 0 auto; border: 2px solid #000; }
@@ -16367,9 +16381,10 @@ function gerarRelatorioEstoqueEpi() {
         <div class="linha">
             <div class="campo" style="flex:2;"><b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
             <div class="campo"><b>CNPJ:</b> ${escapeHTML(EMPRESA_INFO.cnpj)}</div>
+            <div class="campo"><b>FILTRO APLICADO:</b> ${escapeHTML(filtroLabel)}</div>
         </div>
         <div class="linha">
-            <div class="campo"><b>TOTAL DE ITENS ATIVOS:</b> ${itens.length}</div>
+            <div class="campo"><b>TOTAL DE ITENS NESTE RELATÓRIO:</b> ${itens.length}</div>
             <div class="campo"><b>COM SALDO:</b> ${comSaldo}</div>
             <div class="campo"><b>SEM SALDO:</b> ${semSaldo}</div>
             <div class="campo"><b>ABAIXO DO MÍNIMO:</b> ${abaixoMinimo}</div>
@@ -16378,7 +16393,7 @@ function gerarRelatorioEstoqueEpi() {
             <thead><tr>
                 <th style="width:30px;">Nº</th><th>Descrição</th><th style="width:70px;">CA</th><th style="width:70px;">Saldo Sistema</th><th style="width:60px;">Mínimo</th><th style="width:100px;">Status</th><th style="width:90px;">Contagem Física</th><th style="width:140px;">Observações</th>
             </tr></thead>
-            <tbody>${linhas || '<tr><td colspan="8" style="text-align:center;">Nenhum item ativo cadastrado.</td></tr>'}</tbody>
+            <tbody>${linhas || '<tr><td colspan="8" style="text-align:center;">Nenhum item encontrado para este filtro.</td></tr>'}</tbody>
         </table>
     </div>
 </body></html>`;

@@ -16247,7 +16247,20 @@ async function confirmarMesclarExcluirEpi() {
 
 // ---- Estoque ----
 
+// 'todos' | 'com' (saldo atual > 0) | 'sem' (saldo atual <= 0) — controla a lista de
+// Estoque, além da busca por texto. Acrescentado em 2026-09-19 a pedido do João.
+let epiEstoqueFiltroAtual = 'todos';
+
 function renderEpiEstoquePanel() {
+    filterEpiEstoqueLista(document.getElementById('epiEstoqueSearchInput')?.value || '');
+}
+
+function filtrarEpiEstoquePorSaldo(filtro) {
+    epiEstoqueFiltroAtual = filtro;
+    ['todos', 'com', 'sem'].forEach(f => {
+        const btn = document.getElementById('epiEstoqueFiltroBtn-' + f);
+        if (btn) btn.classList.toggle('active', f === filtro);
+    });
     filterEpiEstoqueLista(document.getElementById('epiEstoqueSearchInput')?.value || '');
 }
 
@@ -16259,6 +16272,11 @@ function filterEpiEstoqueLista(query) {
     let itens = allEpiCatalogo.filter(c => c.ativo !== false);
     if (q.length >= 2) {
         itens = itens.filter(c => (c.descricao || '').toLowerCase().includes(q) || (c.ca || '').toLowerCase().includes(q));
+    }
+    if (epiEstoqueFiltroAtual === 'com') {
+        itens = itens.filter(c => (estoquePorId.get(c.id)?.quantidade_atual || 0) > 0);
+    } else if (epiEstoqueFiltroAtual === 'sem') {
+        itens = itens.filter(c => (estoquePorId.get(c.id)?.quantidade_atual || 0) <= 0);
     }
     itens = itens.slice().sort((a, b) => (a.descricao || '').localeCompare(b.descricao || ''));
 
@@ -16282,6 +16300,90 @@ function limparBuscaEpiEstoque() {
     const input = document.getElementById('epiEstoqueSearchInput');
     if (input) { input.value = ''; input.focus(); }
     filterEpiEstoqueLista('');
+}
+
+// Relatório de Estoque de EPI (2026-09-19) — sempre lista TODOS os itens ativos do
+// catálogo, independente do filtro/busca selecionado na tela (é um documento pra
+// conferência física, não pode esconder item sem o usuário perceber). Mesmo padrão
+// visual/técnico de gerarFichaGeralExtintores (abrirDocumentoBlob, sem registrar em
+// documentos_controle — relatório operacional, não documento controlado do SMS).
+function gerarRelatorioEstoqueEpi() {
+    const estoquePorId = new Map(allEpiEstoque.map(es => [es.epi_catalogo_id, es]));
+    const itens = allEpiCatalogo
+        .filter(c => c.ativo !== false)
+        .slice()
+        .sort((a, b) => (a.descricao || '').localeCompare(b.descricao || ''));
+
+    let comSaldo = 0, semSaldo = 0, abaixoMinimo = 0;
+    const linhas = itens.map((c, i) => {
+        const es = estoquePorId.get(c.id);
+        const atual = es ? (es.quantidade_atual || 0) : 0;
+        const minimo = es ? (es.quantidade_minima || 0) : 0;
+        let statusTxt = '🟢 OK';
+        if (atual <= 0) { statusTxt = '🚫 Sem saldo'; semSaldo++; }
+        else {
+            comSaldo++;
+            if (atual <= minimo) { statusTxt = '🟡 Abaixo do mínimo'; abaixoMinimo++; }
+        }
+        return `<tr>
+            <td style="text-align:center;">${i + 1}</td>
+            <td>${escapeHTML(c.descricao || '')}</td>
+            <td style="text-align:center;">${escapeHTML(c.ca || '')}</td>
+            <td style="text-align:center;">${atual}</td>
+            <td style="text-align:center;">${minimo}</td>
+            <td style="text-align:center;">${statusTxt}</td>
+            <td></td>
+            <td></td>
+        </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Relatório de Estoque de EPI - ${escapeHTML(EMPRESA_INFO.razaoSocial)}</title>
+<style>
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
+    .folha { max-width: 1400px; margin: 0 auto; border: 2px solid #000; }
+    .cabecalho { display: flex; align-items: center; border-bottom: 2px solid #000; }
+    .cabecalho .logo { width: 200px; padding: 6px 10px; border-right: 2px solid #000; text-align: center; display: flex; align-items: center; justify-content: center; }
+    .cabecalho .titulo { flex: 1; text-align: center; font-weight: 700; font-size: 14px; padding: 8px; }
+    .linha { display: flex; border-bottom: 1px solid #000; }
+    .campo { flex: 1; padding: 5px 10px; border-right: 1px solid #000; }
+    .campo:last-child { border-right: none; }
+    .campo b { margin-right: 4px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #000; padding: 4px 5px; font-size: 9.5px; vertical-align: top; }
+    th { background: #e5e5e5; text-align: center; }
+    .no-print { text-align: center; margin: 16px 0; }
+    .no-print button { padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; border: none; background: #4f46e5; color: #fff; }
+    @media print { .no-print { display: none; } body { margin: 0; } .folha { border: 2px solid #000; } }
+</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="folha">
+        <div class="cabecalho">
+            <img class="logo" src="${LOGO_COP_BASE64}" alt="COP" style="max-width:100%; max-height:48px; object-fit:contain;">
+            <div class="titulo">RELATÓRIO DE ESTOQUE DE EPI<br><span style="font-weight:400; font-size:11px;">Emitido em ${formatSimpleDate(toISODateLocal(new Date()))} — para conferência com a contagem física</span></div>
+        </div>
+        <div class="linha">
+            <div class="campo" style="flex:2;"><b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
+            <div class="campo"><b>CNPJ:</b> ${escapeHTML(EMPRESA_INFO.cnpj)}</div>
+        </div>
+        <div class="linha">
+            <div class="campo"><b>TOTAL DE ITENS ATIVOS:</b> ${itens.length}</div>
+            <div class="campo"><b>COM SALDO:</b> ${comSaldo}</div>
+            <div class="campo"><b>SEM SALDO:</b> ${semSaldo}</div>
+            <div class="campo"><b>ABAIXO DO MÍNIMO:</b> ${abaixoMinimo}</div>
+        </div>
+        <table>
+            <thead><tr>
+                <th style="width:30px;">Nº</th><th>Descrição</th><th style="width:70px;">CA</th><th style="width:70px;">Saldo Sistema</th><th style="width:60px;">Mínimo</th><th style="width:100px;">Status</th><th style="width:90px;">Contagem Física</th><th style="width:140px;">Observações</th>
+            </tr></thead>
+            <tbody>${linhas || '<tr><td colspan="8" style="text-align:center;">Nenhum item ativo cadastrado.</td></tr>'}</tbody>
+        </table>
+    </div>
+</body></html>`;
+
+    abrirDocumentoBlob(html);
 }
 
 // Dois modos no mesmo formulário: "+ Registrar Entrada" (sem argumento) abre em branco pra

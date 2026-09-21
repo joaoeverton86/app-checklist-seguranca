@@ -7566,6 +7566,7 @@ function construirFolhaDeclaracaoIntegracao(r, cat, campos, data) {
     const obrigacoesEmpregado = (cat?.integracao_obrigacoes_empregado || '').split('\n').filter(l => l.trim()).map(l => `<li>${escapeHTML(l.replace(/^\d+\.\s*/, ''))}</li>`).join('');
     const topicos = (cat?.integracao_programa || '').split('\n').filter(l => l.trim()).map(l => `<div>${escapeHTML(l.trim())}</div>`).join('');
     return `<div class="folha folha-compacta">
+        <div style="text-align:center; margin-bottom: 10px;"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:56px; object-fit:contain;"></div>
         <div class="titulo">DECLARAÇÃO DE INTEGRAÇÃO</div>
         <div class="subtitulo">${escapeHTML(codigoIntegracao)}</div>
         <div class="texto"><b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
@@ -7603,6 +7604,7 @@ function construirFolhaDeclaracaoIntegracao(r, cat, campos, data) {
 function construirFolhaTermoRecusa(r, cat, campos, data) {
     const codigoRecusa = codigoRevisaoDocumento('termo_recusa') || 'FORM.SMS.002';
     return `<div class="folha">
+        <div style="text-align:center; margin-bottom: 10px;"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:56px; object-fit:contain;"></div>
         <div class="titulo">TERMO DE CONHECIMENTO — DIREITO DE RECUSA</div>
         <div class="subtitulo">${escapeHTML(codigoRecusa)}</div>
         <div class="texto" style="margin-top:10px;">
@@ -7936,6 +7938,7 @@ function construirFolhaOrdemServico(matricula, r, campos, data) {
     const responsabilidadesEmpregado = allDocumentosControle.find(d => d.id === 'ordem_servico')?.observacoes || '';
 
     return `<div class="folha folha-compacta">
+        <div style="text-align:center; margin-bottom: 10px;"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:56px; object-fit:contain;"></div>
         <div class="titulo" style="font-size:16px;">ORDEM DE SERVIÇO DE SEGURANÇA E SAÚDE NO TRABALHO</div>
         ${codigoOs ? `<div class="subtitulo">${escapeHTML(codigoOs)}</div>` : ''}
         ${avisoCargo ? `<div style="background:#fff3cd; border:1px solid #f0ad4e; color:#7a5b00; border-radius:6px; padding:8px 10px; font-size:11px; font-weight:600; margin-bottom:10px;">${escapeHTML(avisoCargo)}</div>` : ''}
@@ -10680,6 +10683,21 @@ function mostrarDetalheColaborador(matricula) {
     detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+// Sugere a próxima matrícula sequencial disponível, olhando pro maior número já
+// cadastrado em colaboradores_efetivo. Só considera matrículas 100% numéricas no
+// cálculo (evita sugestão estranha se algum cadastro antigo tiver letra/prefixo) - isso
+// não afeta cadastros não-numéricos existentes, eles continuam funcionando normalmente
+// em todo o resto do sistema, só não entram nessa conta. Campo continua editável, então
+// é só uma sugestão de ponto de partida, não uma trava.
+function sugerirProximaMatricula() {
+    const numericas = allEfetivo
+        .map(e => e.id)
+        .filter(id => /^\d+$/.test(id))
+        .map(id => parseInt(id, 10));
+    if (numericas.length === 0) return '';
+    return String(Math.max(...numericas) + 1);
+}
+
 // Cadastro/edição manual de colaborador, complementando a importação em massa por CSV -
 // depois que a base estiver preenchida, o dia a dia (admissão/demissão/correção pontual)
 // não precisa mais passar por planilha.
@@ -10722,6 +10740,7 @@ function abrirFormEfetivo(matricula) {
         document.getElementById('efForm_sexo').value = 'MASCULINO';
         matriculaInput.readOnly = false;
         matriculaInput.style.background = '';
+        matriculaInput.value = sugerirProximaMatricula();
     }
 
     form.style.display = 'block';
@@ -10739,6 +10758,19 @@ async function salvarColaboradorEfetivo() {
 
     if (!matricula || !nome) {
         statusEl.textContent = '❌ Matrícula e nome são obrigatórios.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    // Trava de segurança: supabaseUpsert faz merge automático em caso de conflito de ID,
+    // então sem essa checagem um "Novo Colaborador" salvo por engano com matrícula já
+    // existente sobrescreveria/misturaria silenciosamente os dados do colaborador antigo.
+    // Só se aplica a cadastro NOVO (campo editável) - edição de colaborador existente
+    // (campo bloqueado/readOnly) sempre usa a própria matrícula dele, então não entra
+    // nessa checagem.
+    const matriculaEhEditavel = !document.getElementById('efForm_matricula').readOnly;
+    if (matriculaEhEditavel && allEfetivo.some(e => e.id === matricula)) {
+        statusEl.textContent = `❌ Já existe um colaborador cadastrado com a matrícula "${matricula}". Escolha outra matrícula.`;
         statusEl.style.color = 'var(--danger)';
         return;
     }
@@ -10999,6 +11031,7 @@ function construirFolhaTermoTrocaFuncao(colab, atual, novo, sugeridos, examesObs
     const agDepois = novo.cargoInfo?.agentes || {};
 
     return `<div class="folha folha-compacta">
+        <div style="text-align:center; margin-bottom: 10px;"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:56px; object-fit:contain;"></div>
         <div class="titulo" style="font-size:16px;">TERMO DE COMUNICAÇÃO DE TROCA DE FUNÇÃO</div>
         ${codigo ? `<div class="subtitulo">${escapeHTML(codigo)}</div>` : ''}
         <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:10px;">

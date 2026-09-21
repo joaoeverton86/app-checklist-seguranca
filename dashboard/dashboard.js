@@ -8545,6 +8545,7 @@ async function loadEfetivoData() {
         allEfetivo = await supabaseFetch('colaboradores_efetivo', '?select=*');
         allGheCatalogo = await supabaseFetch('ghe_catalogo', '?select=*');
         allMunicipiosAda = await supabaseFetch('municipios_ada', '?select=*');
+        allHistoricoTrocaFuncao = await supabaseFetch('historico_troca_funcao', '?select=*');
         popularGheCatalogoDatalist();
         if (!treinamentosLoaded) {
             treinamentosLoaded = true;
@@ -10655,6 +10656,7 @@ function mostrarDetalheColaborador(matricula) {
             <div style="display:flex; gap:8px; align-items:center;">
                 ${statusBadge}
                 <button class="db-clear-btn" onclick="abrirFormEfetivo('${escapeHTML(matricula)}')">✏️ Editar</button>
+                <button class="db-clear-btn" onclick="abrirTrocaFuncao('${escapeHTML(matricula)}')">🔄 Troca de Função</button>
             </div>
         </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 14px; font-size: 12.5px;">
@@ -10672,6 +10674,7 @@ function mostrarDetalheColaborador(matricula) {
             <div><strong>Sexo:</strong> ${escapeHTML(e.sexo || '—')}</div>
         </div>
         ${treinHtml}
+        ${renderHistoricoTrocaFuncaoColab(matricula)}
     `;
     detail.style.display = 'block';
     detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -10783,6 +10786,296 @@ async function salvarColaboradorEfetivo() {
         statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
         statusEl.style.color = 'var(--danger)';
     }
+}
+
+// ============================================
+// TROCA DE FUNÇÃO — altera setor/função/GHE do colaborador, gera a Ordem de Serviço
+// atualizada + um Termo de Comunicação de Troca de Função, e guarda um histórico
+// separado (historico_troca_funcao) pra consulta/auditoria depois (pedido explícito do
+// usuário). Reaproveita a mesma resolução de cargo/riscos já usada na Ordem de Serviço
+// (resolverCargoInfoDoColaborador) e a mesma lista de exames por GHE já usada na Saúde
+// Ocupacional (examesGheColaborador) - não duplica nenhuma das duas regras.
+// ============================================
+
+let allHistoricoTrocaFuncao = [];
+let trocaFuncaoMatriculaAtual = null;
+
+// Monta um "colaborador" hipotético só com setor/função/ghe pra reaproveitar
+// resolverCargoInfoDoColaborador e examesGheColaborador tanto pra situação atual quanto
+// pra situação nova, sem duplicar a lógica de resolução em cada lado.
+function resolverSituacaoCargo(setor, funcao, ghe) {
+    const gheObj = ghe ? allGheCatalogo.find(g => g.id === normalizarGhe(ghe)) : null;
+    const { cargoInfo, ambiguo } = resolverCargoInfoDoColaborador(gheObj, funcao);
+    const exames = examesGheColaborador({ setor, funcao, ghe });
+    return { setor, funcao, ghe, gheObj, cargoInfo, ambiguo, exames };
+}
+
+function renderHistoricoTrocaFuncaoColab(matricula) {
+    const linhas = allHistoricoTrocaFuncao.filter(h => h.matricula === matricula)
+        .sort((a, b) => (b.data_troca || '').localeCompare(a.data_troca || ''));
+    if (linhas.length === 0) return '';
+    return `
+        <div style="margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border);">
+            <div style="font-size: 11px; color: var(--text-light); font-weight: 700; text-transform: uppercase; margin-bottom: 6px;">Histórico de Trocas de Função (${linhas.length})</div>
+            ${linhas.map(h => `<div style="font-size:12px; padding:6px 0; border-bottom:1px solid var(--border);">
+                <b>${formatSimpleDate(h.data_troca)}</b> — ${escapeHTML(h.setor_anterior)} / ${escapeHTML(h.funcao_anterior)} (GHE ${escapeHTML(h.ghe_anterior)}) → ${escapeHTML(h.setor_novo)} / ${escapeHTML(h.funcao_novo)} (GHE ${escapeHTML(h.ghe_novo)})
+            </div>`).join('')}
+        </div>`;
+}
+
+function abrirTrocaFuncao(matricula) {
+    const colab = allEfetivo.find(e => e.id === matricula);
+    if (!colab) return;
+    trocaFuncaoMatriculaAtual = matricula;
+
+    const atual = resolverSituacaoCargo(colab.setor, colab.funcao, colab.ghe);
+    const avisoAtual = !atual.cargoInfo ? textoAvisoCargoOs({ ghe: atual.gheObj, funcao: colab.funcao, ambiguo: atual.ambiguo }) : '';
+
+    document.getElementById('trocaFuncaoAtualResumo').innerHTML = `
+        <b>Situação atual de ${escapeHTML(colab.nome)} (matrícula ${escapeHTML(matricula)}):</b><br>
+        Setor: ${escapeHTML(colab.setor || '—')} &nbsp; | &nbsp; Cargo: ${escapeHTML(atual.cargoInfo?.cargo || '—')} &nbsp; | &nbsp;
+        Função: ${escapeHTML(colab.funcao || '—')} &nbsp; | &nbsp; GHE: ${escapeHTML(colab.ghe || '—')} &nbsp; | &nbsp;
+        CBO: ${escapeHTML(atual.cargoInfo?.cbo || '—')}
+        ${avisoAtual ? `<div style="color:#b91c1c; margin-top:6px;">${escapeHTML(avisoAtual)}</div>` : ''}
+    `;
+
+    document.getElementById('tfForm_data').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('tfForm_setor').value = colab.setor || '';
+    document.getElementById('tfForm_funcao').value = '';
+    document.getElementById('tfForm_ghe').value = colab.ghe || '';
+    document.getElementById('tfForm_examesObs').value = '';
+    document.getElementById('tfForm_examesObs').dataset.editadoManualmente = '';
+    document.getElementById('tfForm_motivo').value = '';
+    document.getElementById('trocaFuncaoStatus').textContent = '';
+    document.getElementById('trocaFuncaoPreview').style.display = 'none';
+
+    const form = document.getElementById('trocaFuncaoFormCard');
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function fecharTrocaFuncao() {
+    document.getElementById('trocaFuncaoFormCard').style.display = 'none';
+    trocaFuncaoMatriculaAtual = null;
+}
+
+// Compara os exames exigidos pelo GHE novo com os do GHE atual - só entra na sugestão
+// automática quem é novo na lista (nome do exame ainda não exigido antes). Pedido
+// explícito do usuário foi "automático + campo pra ajustar", então isso aqui só
+// preenche o ponto de partida do textarea - o texto final digitado é sempre o que vale,
+// nunca é sobrescrito de novo depois que o usuário editar (ver dataset.editadoManualmente).
+function examesNovosSugeridos(examesAtual, examesNovo) {
+    if (!examesNovo) return [];
+    const nomesAtual = new Set((examesAtual?.exames || []).map(e => e.nome));
+    return (examesNovo.exames || []).filter(e => !nomesAtual.has(e.nome));
+}
+
+function atualizarPreviewTrocaFuncao() {
+    const colab = allEfetivo.find(e => e.id === trocaFuncaoMatriculaAtual);
+    if (!colab) return;
+    const setor = document.getElementById('tfForm_setor').value.trim();
+    const funcao = document.getElementById('tfForm_funcao').value.trim();
+    const ghe = document.getElementById('tfForm_ghe').value.trim();
+    const preview = document.getElementById('trocaFuncaoPreview');
+
+    if (!funcao && !ghe) { preview.style.display = 'none'; return; }
+
+    const atual = resolverSituacaoCargo(colab.setor, colab.funcao, colab.ghe);
+    const novo = resolverSituacaoCargo(setor, funcao, ghe);
+    const avisoNovo = !novo.cargoInfo ? textoAvisoCargoOs({ ghe: novo.gheObj, funcao, ambiguo: novo.ambiguo }) : '';
+    const ag = novo.cargoInfo?.agentes || {};
+    const sugeridos = examesNovosSugeridos(atual.exames, novo.exames);
+
+    preview.style.display = 'block';
+    preview.innerHTML = `
+        <b>Pré-visualização da nova situação:</b><br>
+        Cargo: ${escapeHTML(novo.cargoInfo?.cargo || '—')} &nbsp; | &nbsp; CBO: ${escapeHTML(novo.cargoInfo?.cbo || '—')}<br>
+        Riscos (agentes): Físico: ${escapeHTML(ag.fisico || '—')} · Químico: ${escapeHTML(ag.quimico || '—')} · Biológico: ${escapeHTML(ag.biologico || '—')} · Ergonômico: ${escapeHTML(ag.ergonomico || '—')} · Acidentes: ${escapeHTML(ag.acidentes || '—')}
+        ${avisoNovo ? `<div style="color:#b91c1c; margin-top:6px;">${escapeHTML(avisoNovo)}</div>` : ''}
+        ${sugeridos.length ? `<div style="margin-top:6px;"><b>Exames novos sugeridos (não exigidos na função atual):</b> ${sugeridos.map(e => escapeHTML(e.nome)).join(', ')}</div>` : '<div style="margin-top:6px; color:var(--text-light);">Nenhum exame novo identificado em relação à função atual.</div>'}
+    `;
+
+    const obsEl = document.getElementById('tfForm_examesObs');
+    if (!obsEl.dataset.editadoManualmente && sugeridos.length) {
+        obsEl.value = `Avaliar necessidade de: ${sugeridos.map(e => e.nome).join(', ')}.`;
+    }
+}
+
+async function confirmarTrocaFuncao() {
+    const statusEl = document.getElementById('trocaFuncaoStatus');
+    const matricula = trocaFuncaoMatriculaAtual;
+    const colab = allEfetivo.find(e => e.id === matricula);
+    if (!colab) return;
+
+    const data = document.getElementById('tfForm_data').value;
+    const setorNovo = document.getElementById('tfForm_setor').value.trim();
+    const funcaoNovo = document.getElementById('tfForm_funcao').value.trim();
+    const gheNovo = document.getElementById('tfForm_ghe').value.trim();
+    const examesObs = document.getElementById('tfForm_examesObs').value.trim();
+    const motivo = document.getElementById('tfForm_motivo').value.trim();
+
+    if (!data || !setorNovo || !funcaoNovo || !gheNovo) {
+        statusEl.textContent = '❌ Preencha data, setor, função e GHE novos.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    statusEl.textContent = 'Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+
+    try {
+        await garantirDocumentosControleCarregados();
+        // Captura a situação ANTES de sobrescrever o cadastro - senão colab.setor/funcao/ghe
+        // já estariam com os valores novos quando fossem usados aqui embaixo.
+        const atual = resolverSituacaoCargo(colab.setor, colab.funcao, colab.ghe);
+        const novo = resolverSituacaoCargo(setorNovo, funcaoNovo, gheNovo);
+        const sugeridos = examesNovosSugeridos(atual.exames, novo.exames);
+
+        const historicoRow = {
+            id: `TF_${matricula}_${Date.now()}`,
+            matricula,
+            nome_colaborador: colab.nome,
+            data_troca: data,
+            setor_anterior: colab.setor || '',
+            funcao_anterior: colab.funcao || '',
+            ghe_anterior: colab.ghe || '',
+            cargo_anterior: atual.cargoInfo?.cargo || '',
+            setor_novo: setorNovo,
+            funcao_novo: funcaoNovo,
+            ghe_novo: gheNovo,
+            cargo_novo: novo.cargoInfo?.cargo || '',
+            exames_sugeridos: sugeridos.map(e => e.nome),
+            exames_observacao: examesObs,
+            motivo: motivo,
+            responsavel_registro: CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_nome
+        };
+        await supabaseUpsert('historico_troca_funcao', [historicoRow]);
+        allHistoricoTrocaFuncao.push(historicoRow);
+
+        const rowEfetivo = { ...colab, setor: setorNovo, funcao: funcaoNovo, ghe: gheNovo };
+        await supabaseUpsert('colaboradores_efetivo', [rowEfetivo]);
+        const idx = allEfetivo.findIndex(e => e.id === matricula);
+        if (idx >= 0) allEfetivo[idx] = rowEfetivo;
+
+        const folhas = [
+            construirFolhaOrdemServico(matricula, { nome: colab.nome, funcao: funcaoNovo }, CRONOGRAMA_DEFAULTS_SESSAO, data),
+            construirFolhaTermoTrocaFuncao(colab, atual, novo, sugeridos, examesObs, motivo, data)
+        ].join('');
+
+        const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Troca de Função - ${escapeHTML(colab.nome)} - ${formatSimpleDate(data)}</title>
+<style>${DOC_INDIVIDUAL_CSS}</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    ${folhas}
+</body></html>`;
+
+        abrirDocumentoBlob(html);
+        registrarEmissaoDocumento('ordem_servico', colab.nome);
+        registrarEmissaoDocumento('termo_troca_funcao', colab.nome);
+
+        statusEl.textContent = '✅ Troca registrada. Os documentos foram abertos numa nova aba pra impressão.';
+        statusEl.style.color = 'var(--success)';
+        renderEfetivoPanel();
+        filterEfetivoColaboradores(document.getElementById('efetivoSearchInput').value);
+        setTimeout(() => {
+            fecharTrocaFuncao();
+            mostrarDetalheColaborador(matricula);
+        }, 900);
+    } catch (err) {
+        console.error('Erro ao confirmar troca de função:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// Termo de Comunicação de Troca de Função - documento próprio (separado da Ordem de
+// Serviço) só pra registrar formalmente a mudança em si (situação anterior x nova,
+// motivo, exames a avaliar) - pedido explícito do usuário de ter os dois documentos.
+function construirFolhaTermoTrocaFuncao(colab, atual, novo, sugeridos, examesObs, motivo, data) {
+    const codigo = codigoRevisaoDocumento('termo_troca_funcao');
+    const agAntes = atual.cargoInfo?.agentes || {};
+    const agDepois = novo.cargoInfo?.agentes || {};
+
+    return `<div class="folha folha-compacta">
+        <div class="titulo" style="font-size:16px;">TERMO DE COMUNICAÇÃO DE TROCA DE FUNÇÃO</div>
+        ${codigo ? `<div class="subtitulo">${escapeHTML(codigo)}</div>` : ''}
+        <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:10px;">
+            <tr><td style="border:1px solid #ccc; padding:4px 6px;"><b>Emissão:</b> ${formatSimpleDate(data)}</td>
+                <td style="border:1px solid #ccc; padding:4px 6px;"><b>Empresa:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</td>
+                <td style="border:1px solid #ccc; padding:4px 6px;"><b>CNPJ:</b> ${escapeHTML(EMPRESA_INFO.cnpj)}</td></tr>
+            <tr><td style="border:1px solid #ccc; padding:4px 6px;" colspan="2"><b>Funcionário:</b> ${escapeHTML(colab.nome)}</td>
+                <td style="border:1px solid #ccc; padding:4px 6px;"><b>Matrícula:</b> ${escapeHTML(colab.id)}</td></tr>
+        </table>
+
+        <div class="bloco"><div class="bloco-titulo">Situação Anterior:</div>
+            <table style="width:100%; border-collapse:collapse; font-size:11px;">
+                <thead><tr style="background:#f2f2f2;">
+                    <th style="border:1px solid #ccc; padding:4px 6px;">Setor</th><th style="border:1px solid #ccc; padding:4px 6px;">Cargo</th>
+                    <th style="border:1px solid #ccc; padding:4px 6px;">Função</th><th style="border:1px solid #ccc; padding:4px 6px;">CBO</th>
+                </tr></thead>
+                <tbody><tr>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(atual.setor || '')}</td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(atual.cargoInfo?.cargo || '')}</td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(atual.funcao || '')}</td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(atual.cargoInfo?.cbo || '')}</td>
+                </tr></tbody>
+            </table>
+        </div>
+
+        <div class="bloco"><div class="bloco-titulo">Nova Situação:</div>
+            <table style="width:100%; border-collapse:collapse; font-size:11px;">
+                <thead><tr style="background:#f2f2f2;">
+                    <th style="border:1px solid #ccc; padding:4px 6px;">Setor</th><th style="border:1px solid #ccc; padding:4px 6px;">Cargo</th>
+                    <th style="border:1px solid #ccc; padding:4px 6px;">Função</th><th style="border:1px solid #ccc; padding:4px 6px;">CBO</th>
+                </tr></thead>
+                <tbody><tr>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(novo.setor || '')}</td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(novo.cargoInfo?.cargo || '')}</td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(novo.funcao || '')}</td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(novo.cargoInfo?.cbo || '')}</td>
+                </tr></tbody>
+            </table>
+        </div>
+
+        <div class="bloco"><div class="bloco-titulo">Riscos (Agentes) — Antes x Depois:</div>
+            <table style="width:100%; border-collapse:collapse; font-size:11px;">
+                <thead><tr style="background:#f2f2f2;">
+                    <th style="border:1px solid #ccc; padding:4px 6px;"></th><th style="border:1px solid #ccc; padding:4px 6px;">Físico</th><th style="border:1px solid #ccc; padding:4px 6px;">Químico</th>
+                    <th style="border:1px solid #ccc; padding:4px 6px;">Biológico</th><th style="border:1px solid #ccc; padding:4px 6px;">Ergonômico</th><th style="border:1px solid #ccc; padding:4px 6px;">Acidentes</th>
+                </tr></thead>
+                <tbody>
+                <tr><td style="border:1px solid #ccc; padding:4px 6px;"><b>Antes</b></td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(agAntes.fisico || '')}</td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(agAntes.quimico || '')}</td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(agAntes.biologico || '')}</td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(agAntes.ergonomico || '')}</td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(agAntes.acidentes || '')}</td></tr>
+                <tr><td style="border:1px solid #ccc; padding:4px 6px;"><b>Depois</b></td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(agDepois.fisico || '')}</td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(agDepois.quimico || '')}</td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(agDepois.biologico || '')}</td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(agDepois.ergonomico || '')}</td>
+                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(agDepois.acidentes || '')}</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="bloco"><div class="bloco-titulo">Exames Ocupacionais a Avaliar:</div>
+            <div class="texto">${examesObs ? escapeHTML(examesObs) : '<span style="color:#888;">—</span>'}</div>
+        </div>
+        ${motivo ? `<div class="bloco"><div class="bloco-titulo">Motivo da Troca:</div><div class="texto">${escapeHTML(motivo)}</div></div>` : ''}
+
+        <div class="texto" style="margin-top:16px;">
+            Declaro estar ciente da mudança de função acima descrita, dos riscos a ela associados e da entrega, nesta mesma data, da Ordem de Serviço
+            atualizada com as orientações de segurança referentes à nova função.
+        </div>
+        <div class="assinaturas">
+            ${blocoAssinatura(`${escapeHTML(colab.nome)}<br>Colaborador`)}
+            ${blocoAssinatura(`${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_nome)}<br>${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_qualificacao)}<br>${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_registro)}`)}
+        </div>
+    </div>`;
 }
 
 function headcountAsOf(dateEnd) {

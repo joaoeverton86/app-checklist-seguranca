@@ -2335,6 +2335,47 @@
                         <span id="efetivoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
                 </div>
+
+                <div class="db-chart-card" id="trocaFuncaoFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                    <div class="db-chart-title">🔄 Troca de Função</div>
+                    <div id="trocaFuncaoAtualResumo" style="font-size:12.5px; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:14px;"></div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data da Troca *</label>
+                            <input type="date" id="tfForm_data" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Novo Setor *</label>
+                            <input type="text" id="tfForm_setor" oninput="atualizarPreviewTrocaFuncao()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Nova Função *</label>
+                            <input type="text" id="tfForm_funcao" oninput="atualizarPreviewTrocaFuncao()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Novo GHE *</label>
+                            <input type="text" id="tfForm_ghe" list="gheCatalogoList" oninput="atualizarPreviewTrocaFuncao()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                    </div>
+
+                    <div id="trocaFuncaoPreview" style="margin-top:14px; font-size:12.5px; background:#fffbea; border:1px solid #f0ad4e; border-radius:8px; padding:10px; display:none;"></div>
+
+                    <div style="margin-top: 14px;">
+                        <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Exames ocupacionais a avaliar (sugestão automática — revise e complete antes de confirmar)</label>
+                        <textarea id="tfForm_examesObs" rows="3" oninput="this.dataset.editadoManualmente='1'" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-family: inherit;"></textarea>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Motivo da troca (opcional)</label>
+                        <input type="text" id="tfForm_motivo" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                    </div>
+
+                    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center;">
+                        <button class="db-apply-btn" onclick="confirmarTrocaFuncao()">✅ Confirmar Troca e Gerar Documentos</button>
+                        <button class="db-clear-btn" onclick="fecharTrocaFuncao()">Cancelar</button>
+                        <span id="trocaFuncaoStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
+                </div>
                 </div>
 
                 <div id="efetivoSubtab-relatorio" style="display:none;">

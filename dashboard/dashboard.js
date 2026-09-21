@@ -7619,7 +7619,7 @@ function construirFolhaTermoRecusa(r, cat, campos, data) {
         </div>
         ${cat?.recusa_base_legal ? `<div class="rodape-legal">${escapeHTML(cat.recusa_base_legal)}</div>` : ''}
         <div class="texto" style="margin-top:24px;">${escapeHTML(campos.local_realizacao || '_____________________')}, ${formatSimpleDate(data)}.</div>
-        <div style="height:150mm;"></div>
+        <div style="height:90mm;"></div>
         <div class="assinaturas">
             ${blocoAssinatura(`${escapeHTML(r.nome)}<br>Assinatura do Colaborador`)}
         </div>

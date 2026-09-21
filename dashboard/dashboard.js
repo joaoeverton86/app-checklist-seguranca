@@ -7839,6 +7839,7 @@ async function gerarGabaritoProva() {
 <body>
     <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
     <div class="folha">
+        <div style="text-align:center; margin-bottom: 10px;"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:56px; object-fit:contain;"></div>
         <div class="titulo" style="font-size:20px;">GABARITO — PROVA DE EFICÁCIA</div>
         <div class="texto"><b>Treinamento:</b> ${escapeHTML(cat.nome)} &nbsp; <b>Data:</b> ${formatSimpleDate(data)}</div>
         <div class="texto" style="margin:6px 0 14px; color:#b91c1c;"><b>Uso restrito de quem aplica/corrige a prova - não distribuir ao colaborador.</b></div>
@@ -22014,7 +22015,8 @@ async function gerarFichaInscricaoCipa() {
     if (!p) { alert('Selecione ou crie e salve um processo eleitoral primeiro.'); return; }
     await garantirDocumentosControleCarregados();
     const codigo = codigoRevisaoDocumento('ficha_inscricao_cipa');
-    const ficha = () => `<table style="margin-bottom:16px;">
+    const ficha = () => `<div style="text-align:center; margin-bottom:4px;"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:40px; object-fit:contain;"></div>
+    <table style="margin-bottom:16px;">
         <tr><td colspan="2" style="text-align:center; font-weight:700; background:#f0f0f0;">FICHA DE INSCRIÇÃO DE CANDIDATO — GESTÃO ${escapeHTML(p.gestao || '')}</td></tr>
         <tr><td style="width:60%;">Nome: _______________________________________________</td><td>Apelido: ______________________</td></tr>
         <tr><td>Função: _____________________________________________</td><td>Setor: ________________________</td></tr>

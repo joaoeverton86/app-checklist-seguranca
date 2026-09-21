@@ -102,6 +102,9 @@
                         <button class="db-nav-item" id="navCipa" onclick="showDbPage('cipa')">
                             <span class="db-nav-icon">🤝</span> CIPA
                         </button>
+                        <button class="db-nav-item" id="navBrigada" onclick="showDbPage('brigada')">
+                            <span class="db-nav-icon">🚨</span> Brigada de Incêndio
+                        </button>
                     </div>
                 </div>
 
@@ -5161,6 +5164,159 @@
                             <button id="cipaCandidatoForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirCipaCandidatoAtual()">🗑️ Excluir</button>
                             <span id="cipaCandidatoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Página: Brigada de Incêndio -->
+            <section class="db-page" id="page-brigada">
+                <div class="db-filters" style="margin-bottom: 16px;">
+                    <div class="db-filter-buttons">
+                        <button id="brigadaSubtabBtn-dimensionamento" class="db-filter-btn active" onclick="showBrigadaSubtab('dimensionamento')">📐 Dimensionamento</button>
+                        <button id="brigadaSubtabBtn-organograma" class="db-filter-btn" onclick="showBrigadaSubtab('organograma')">🧑‍🤝‍🧑 Organograma</button>
+                        <button id="brigadaSubtabBtn-treinamento" class="db-filter-btn" onclick="showBrigadaSubtab('treinamento')">🎓 Controle de Treinados</button>
+                    </div>
+                </div>
+
+                <div id="brigadaSubtab-dimensionamento">
+                    <div class="db-chart-card" style="margin-bottom: 16px; border: 1px solid var(--warning); background: #fffbeb;">
+                        <div style="font-size: 12.5px; line-height: 1.5;">
+                            ⚠️ <strong>Base normativa:</strong> NR-23 (Proteção Contra Incêndios) exige brigada treinada, mas não traz tabela de dimensionamento. Quem traz é a <strong>ABNT NBR 14276:2020</strong> (norma técnica paga - texto oficial não consultado nesta implementação) e, possivelmente, a Instrução Técnica do Corpo de Bombeiros Militar de Pernambuco (CBMPE/COSCIP) aplicável ao canteiro. Os parâmetros abaixo (percentual do efetivo e mínimo de pessoas) são <strong>valores de referência</strong> para você calibrar como responsável técnico - ajuste-os conforme a norma vigente aplicável antes de tratar o resultado como definitivo.
+                        </div>
+                    </div>
+                    <div class="db-kpi-grid">
+                        <div class="db-kpi-card db-kpi-primary">
+                            <div class="db-kpi-value" id="kpiBrigadaEfetivoAtivo">0</div>
+                            <div class="db-kpi-label">Efetivo Ativo (Total da Obra)</div>
+                        </div>
+                        <div class="db-kpi-card db-kpi-warning">
+                            <div class="db-kpi-value" id="kpiBrigadaNecessarios">0</div>
+                            <div class="db-kpi-label">Brigadistas Necessários (calculado)</div>
+                        </div>
+                        <div class="db-kpi-card">
+                            <div class="db-kpi-value" id="kpiBrigadaDesignados">0</div>
+                            <div class="db-kpi-label">Brigadistas Designados (ativos)</div>
+                        </div>
+                        <div class="db-kpi-card db-kpi-success">
+                            <div class="db-kpi-value" id="kpiBrigadaTreinados">0</div>
+                            <div class="db-kpi-label">Designados já Treinados (NR-23)</div>
+                        </div>
+                    </div>
+                    <div class="db-chart-card" style="margin-bottom: 16px;">
+                        <div id="brigadaDimensionamentoStatus" style="font-size: 13px; font-weight: 600;"></div>
+                    </div>
+                    <div class="db-chart-card">
+                        <div class="db-chart-title">📐 Parâmetros de Dimensionamento (editável)</div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px;">
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Grau de Risco (referência)</label>
+                                <select id="cfgBrigadaGrauRisco" onchange="onBrigadaGrauRiscoChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                    <option value="baixo">Baixo</option>
+                                    <option value="medio">Médio</option>
+                                    <option value="alto">Alto</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">% do Efetivo Ativo</label>
+                                <input type="number" id="cfgBrigadaPercentual" min="0.1" step="0.1" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Mínimo de Brigadistas</label>
+                                <input type="number" id="cfgBrigadaMinimo" min="1" step="1" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                        </div>
+                        <div style="margin-top: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <button class="db-apply-btn" onclick="salvarBrigadaParametros()">💾 Salvar Parâmetros</button>
+                            <span id="cfgBrigadaStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="brigadaSubtab-organograma" style="display:none;">
+                    <div class="db-chart-card" style="margin-bottom: 16px;">
+                        <div class="db-chart-title">🧑‍🤝‍🧑 Organograma da Brigada</div>
+                        <div id="brigadaOrganogramaChart"></div>
+                    </div>
+                    <div class="db-chart-card" style="margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                            <div class="db-chart-title" style="margin-bottom: 0;">👥 Membros da Brigada</div>
+                            <button class="db-apply-btn" onclick="abrirFormBrigadaMembro()">+ Novo Membro</button>
+                        </div>
+                        <div id="brigadaMembrosLista" class="db-list" style="max-height: 520px;"></div>
+                    </div>
+
+                    <div class="db-chart-card" id="brigadaMembroFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                        <div class="db-chart-title" id="brigadaMembroFormTitle">🚨 Novo Membro da Brigada</div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px;">
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Matrícula</label>
+                                <input type="text" id="brigadaMembroForm_matricula" list="brigadaMembroColabList" placeholder="Matrícula - nome..." onchange="onBrigadaMembroMatriculaChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <datalist id="brigadaMembroColabList"></datalist>
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Nome *</label>
+                                <input type="text" id="brigadaMembroForm_nome" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Função</label>
+                                <input type="text" id="brigadaMembroForm_funcao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Setor</label>
+                                <input type="text" id="brigadaMembroForm_setor" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Cargo na Brigada *</label>
+                                <select id="brigadaMembroForm_cargo" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                    <option value="coordenador_geral">Coordenador Geral da Brigada</option>
+                                    <option value="chefe_brigada">Chefe de Brigada</option>
+                                    <option value="lider_area">Líder de Área/Turno</option>
+                                    <option value="brigadista" selected>Brigadista</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Área/Turno/Frente</label>
+                                <input type="text" id="brigadaMembroForm_area" placeholder="Ex: Frente 3 - Diurno" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Ativo</label>
+                                <select id="brigadaMembroForm_ativo" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                    <option value="true">Sim</option>
+                                    <option value="false">Não</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <button class="db-apply-btn" onclick="salvarBrigadaMembro()">💾 Salvar</button>
+                            <button class="db-clear-btn" onclick="fecharFormBrigadaMembro()">Cancelar</button>
+                            <button id="brigadaMembroForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirBrigadaMembroAtual()">🗑️ Excluir</button>
+                            <span id="brigadaMembroFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="brigadaSubtab-treinamento" style="display:none;">
+                    <div class="db-kpi-grid">
+                        <div class="db-kpi-card db-kpi-success">
+                            <div class="db-kpi-value" id="kpiBrigadaTreinEmDia">0</div>
+                            <div class="db-kpi-label">Em Dia</div>
+                        </div>
+                        <div class="db-kpi-card db-kpi-warning">
+                            <div class="db-kpi-value" id="kpiBrigadaTreinVencendo">0</div>
+                            <div class="db-kpi-label">Vencendo (30 dias)</div>
+                        </div>
+                        <div class="db-kpi-card db-kpi-danger">
+                            <div class="db-kpi-value" id="kpiBrigadaTreinVencido">0</div>
+                            <div class="db-kpi-label">Vencido ou Nunca Treinado</div>
+                        </div>
+                    </div>
+                    <div class="db-chart-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                            <div class="db-chart-title" style="margin-bottom: 0;">🎓 Situação de Treinamento (NR-23) dos Membros Designados</div>
+                            <button id="btnBrigadaProgramarTreinamento" class="db-apply-btn" style="display:none;" onclick="abrirProgramacaoTreinamentoBrigada()">📋 Programar Treinamento</button>
+                        </div>
+                        <div style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">Reaproveita o treinamento "NR 23 - Proteção Contra Incêndio (Brigada de Emergência)" já cadastrado em Treinamentos - lançar uma sessão nova continua sendo feito lá (o botão acima só leva direto pra Treinamentos &gt; Kits e Documentos com a equipe pendente já marcada).</div>
+                        <div id="listBrigadaControleTreinados" class="db-list" style="max-height: 520px;"></div>
                     </div>
                 </div>
             </section>

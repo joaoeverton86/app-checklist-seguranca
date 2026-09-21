@@ -167,6 +167,7 @@ const MODULOS_PAINEL_DISPONIVEIS = [
     { key: 'acidentes', label: 'Acidentabilidade' },
     { key: 'relatos', label: 'Relatos' },
     { key: 'cipa', label: 'CIPA' },
+    { key: 'brigada', label: 'Brigada de Incêndio' },
     { key: 'saude', label: 'Saúde Ocupacional' },
     { key: 'psicossocial', label: 'Psicossocial' },
     { key: 'ambiental', label: 'Meio Ambiente' },
@@ -205,7 +206,13 @@ function moduloPermitidoPainel(pageId) {
 function aplicarRestricaoModulosPainelNoMenu() {
     const session = sessaoDashboardAtual();
     const ehExterno = !!(session && session.tipo === 'painel_externo');
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', importexport: 'navImportExport', relatoriosms: 'navRelatorioSms' };
+    // ACHADO (2026-09-21): 'importexport' tinha ficado de fora deste mapa desde a
+    // separação do módulo de Importar/Exportar Planilhas - o botão "navImportExport"
+    // nunca era escondido de um usuário só-painel sem essa permissão (o acesso aos
+    // DADOS já era barrado pelo RLS, então não vazava informação nenhuma - só o botão
+    // ficava visível à toa). Corrigido aqui, junto com a inclusão do módulo novo de
+    // Brigada de Incêndio.
 
     Object.keys(navMap).forEach(pageId => {
         const btn = document.getElementById(navMap[pageId]);
@@ -17514,6 +17521,7 @@ const DB_PAGE_TITLES = {
     ambiental: 'Gestão Ambiental',
     compras: 'Compras',
     cipa: 'CIPA',
+    brigada: 'Brigada de Incêndio',
     documentos: 'Controle de Documentos',
     acervodrive: 'Acervo (Drive)',
     importexport: 'Importar/Exportar Planilhas',
@@ -17741,7 +17749,7 @@ async function salvarPerfilPainel() {
 // ================================================================
 const NAV_GROUP_POR_PAGINA = {
     checklists: 'seguranca', treinamentos: 'seguranca', ddsma: 'seguranca', apr: 'seguranca', matrizrisco: 'seguranca',
-    epi: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca',
+    epi: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca', brigada: 'seguranca',
     saude: 'saude', psicossocial: 'saude',
     ambiental: 'ambiente',
     efetivo: 'pessoas',
@@ -17827,7 +17835,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel' };
     document.getElementById(navMap[pageId])?.classList.add('active');
     abrirGrupoNavPagina(pageId);
     destacarGrupoAtivo(pageId);
@@ -17914,6 +17922,10 @@ function showDbPage(pageId) {
     if (pageId === 'cipa') {
         if (!cipaLoaded) { cipaLoaded = true; loadCipaData(); }
         else if (document.getElementById('cipaSubtabBtn-visao')?.classList.contains('active')) renderCipaVisaoGeral();
+    }
+    if (pageId === 'brigada') {
+        if (!brigadaLoaded) { brigadaLoaded = true; loadBrigadaData(); }
+        else if (document.getElementById('brigadaSubtabBtn-dimensionamento')?.classList.contains('active')) renderBrigadaDimensionamento();
     }
     if (pageId === 'documentos') {
         if (!documentosControleLoaded) { documentosControleLoaded = true; loadDocumentosControleData(); }
@@ -18353,6 +18365,26 @@ let allCipaMembros = [];
 let allCipaReunioes = [];
 let allCipaPlanoAcao = [];
 let cipaLoaded = false;
+
+// Brigada de Incêndio (2026-09-21) - ver claude/bloco-notas-melhorias.md. Reaproveita o
+// treinamento já cadastrado em treinamentos_catalogo (id='15', NR-23) e o efetivo de
+// colaboradores_efetivo - só o organograma (tabela brigada_membros) e os parâmetros de
+// dimensionamento (BRIGADA_PARAMETROS, dentro de configuracoes_sistema) são dados novos.
+let allBrigadaMembros = [];
+let brigadaLoaded = false;
+let brigadaMatriculasPendentesTreinamento = [];
+let BRIGADA_PARAMETROS = {
+    grau_risco: 'medio',
+    percentual_efetivo: 10,
+    minimo_brigadistas: 2
+};
+const BRIGADA_CARGO_LABELS = {
+    coordenador_geral: 'Coordenador Geral da Brigada',
+    chefe_brigada: 'Chefe de Brigada',
+    lider_area: 'Líder de Área/Turno',
+    brigadista: 'Brigadista'
+};
+const BRIGADA_CARGO_ORDEM = { coordenador_geral: 0, chefe_brigada: 1, lider_area: 2, brigadista: 3 };
 
 // Constantes documentadas na própria planilha do usuário (aba RESIDUOS, ESTIMATIVA_
 // RESIDUOS_COP_RAMAL_DO_AGRESTE.xlsx) e conferidas batendo com os valores calculados lá:
@@ -23010,10 +23042,12 @@ async function carregarConfiguracoesSistema() {
         if (typeof porId.logo_base64 === 'string' && porId.logo_base64.indexOf('data:image/') === 0) {
             LOGO_COP_BASE64 = porId.logo_base64;
         }
+        if (porId.brigada_parametros) Object.assign(BRIGADA_PARAMETROS, porId.brigada_parametros);
 
         configuracoesSistemaCarregadas = true;
         iniciarAutoRefresh(); // reaplica o intervalo (pode ter mudado desde a última visita)
         if (document.getElementById('page-config')?.classList.contains('active')) renderConfigGeral();
+        if (document.getElementById('page-brigada')?.classList.contains('active') && brigadaLoaded) renderBrigadaDimensionamento();
     } catch (e) {
         console.error('Erro ao carregar configurações do sistema (mantendo os valores padrão do código):', e);
     }
@@ -23230,6 +23264,392 @@ async function salvarConfigRefresh() {
         statusEl.style.color = 'var(--danger)';
     }
 }
+
+// ============================================
+// BRIGADA DE INCÊNDIO (2026-09-21) - módulo novo: Dimensionamento, Organograma e
+// Controle de Treinados, com base na NR-23 (Proteção Contra Incêndios, Portaria MTP nº
+// 2.769/2022) e na ABNT NBR 14276 (Brigada de Incêndio). AVISO IMPORTANTE pra quem for
+// mexer aqui depois: o texto oficial da NBR 14276:2020 é uma norma paga e não pôde ser
+// consultado na íntegra nesta entrega - os parâmetros de dimensionamento abaixo
+// (BRIGADA_PARAMETROS, espelhado em configuracoes_sistema/brigada_parametros) são
+// valores de referência SIMPLIFICADOS (percentual do efetivo + mínimo de pessoas),
+// editáveis na própria tela de Dimensionamento, pro João calibrar contra a norma vigente
+// aplicável (NBR 14276 e/ou Instrução Técnica do Corpo de Bombeiros Militar de
+// Pernambuco - CBMPE/COSCIP - já que o canteiro é obra linear a céu aberto, não
+// edificação, e a aplicabilidade exata de uma IT de bombeiro precisa ser julgada por ele
+// como responsável técnico). Treinamento/Controle de Treinados NÃO cria nenhuma tabela
+// nova: reaproveita 100% o treinamento id='15' ("NR 23 - PROTEÇÃO CONTRA INCÊNDIO
+// (BRIGADA DE EMERGÊNCIA)") já cadastrado em treinamentos_catalogo e a mesma
+// treinamentos_status que o módulo Treinamentos usa - lançar ou renovar uma sessão de
+// treinamento continua sendo feito em Treinamentos > Kits e Documentos; este módulo só
+// oferece um atalho (abrirProgramacaoTreinamentoBrigada) que já leva pra lá com a
+// equipe certa marcada.
+// ============================================
+
+async function loadBrigadaData() {
+    const tarefas = [];
+    if (!efetivoLoaded) { efetivoLoaded = true; tarefas.push(loadEfetivoData()); }
+    if (!treinamentosLoaded) { treinamentosLoaded = true; tarefas.push(loadTreinamentosData()); }
+    if (tarefas.length) await Promise.all(tarefas);
+    try {
+        allBrigadaMembros = await supabaseFetch('brigada_membros', '?select=*');
+    } catch (err) {
+        console.error('Erro ao carregar organograma da Brigada de Incêndio:', err);
+        allBrigadaMembros = [];
+    }
+    showBrigadaSubtab('dimensionamento');
+}
+
+function showBrigadaSubtab(tab) {
+    ['dimensionamento', 'organograma', 'treinamento'].forEach(t => {
+        const content = document.getElementById('brigadaSubtab-' + t);
+        const btn = document.getElementById('brigadaSubtabBtn-' + t);
+        if (content) content.style.display = (t === tab) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
+    if (tab === 'dimensionamento') renderBrigadaDimensionamento();
+    if (tab === 'organograma') { fecharFormBrigadaMembro(); renderBrigadaMembrosLista(); renderBrigadaOrganograma(); }
+    if (tab === 'treinamento') renderBrigadaControleTreinados();
+}
+
+// ---- Dimensionamento ----
+
+function brigadistasDesignadosAtivos() {
+    return allBrigadaMembros.filter(m => m.ativo);
+}
+
+function calcularBrigadistasNecessarios(efetivoAtivo) {
+    const percentual = Number(BRIGADA_PARAMETROS.percentual_efetivo) || 0;
+    const minimo = Number(BRIGADA_PARAMETROS.minimo_brigadistas) || 0;
+    return Math.max(minimo, Math.ceil(efetivoAtivo * percentual / 100));
+}
+
+function renderBrigadaDimensionamento() {
+    if (!document.getElementById('kpiBrigadaEfetivoAtivo')) return;
+    const efetivoAtivo = allEfetivo.filter(colaboradorEstaAtivo).length;
+    const necessarios = calcularBrigadistasNecessarios(efetivoAtivo);
+    const designados = brigadistasDesignadosAtivos();
+    const matriculasStatus15 = new Set(
+        allTreinamentosStatus.filter(s => s.treinamento_cod === '15').map(s => s.matricula)
+    );
+    const designadosTreinados = designados.filter(m => m.matricula && matriculasStatus15.has(m.matricula)).length;
+
+    document.getElementById('kpiBrigadaEfetivoAtivo').textContent = efetivoAtivo;
+    document.getElementById('kpiBrigadaNecessarios').textContent = necessarios;
+    document.getElementById('kpiBrigadaDesignados').textContent = designados.length;
+    document.getElementById('kpiBrigadaTreinados').textContent = designadosTreinados;
+
+    const statusEl = document.getElementById('brigadaDimensionamentoStatus');
+    if (statusEl) {
+        if (designados.length >= necessarios) {
+            statusEl.innerHTML = `✅ Efetivo de brigada suficiente (${designados.length} designado(s) para um mínimo calculado de ${necessarios}).`;
+            statusEl.style.color = 'var(--success)';
+        } else {
+            const faltam = necessarios - designados.length;
+            statusEl.innerHTML = `⚠️ Faltam designar ${faltam} brigadista(s) (${designados.length} de ${necessarios} necessário(s)).`;
+            statusEl.style.color = 'var(--warning)';
+        }
+    }
+
+    document.getElementById('cfgBrigadaGrauRisco').value = BRIGADA_PARAMETROS.grau_risco || 'medio';
+    document.getElementById('cfgBrigadaPercentual').value = BRIGADA_PARAMETROS.percentual_efetivo;
+    document.getElementById('cfgBrigadaMinimo').value = BRIGADA_PARAMETROS.minimo_brigadistas;
+}
+
+// Só sugere valores diferentes ao trocar o grau de risco (não trava o usuário num
+// percentual fixo - ele pode ajustar livremente antes de salvar). Sugestões numa faixa
+// comum de referência - NÃO substitui a NBR 14276 (ver aviso no topo deste bloco).
+function onBrigadaGrauRiscoChange() {
+    const grau = document.getElementById('cfgBrigadaGrauRisco').value;
+    const sugestoes = { baixo: { percentual: 5, minimo: 2 }, medio: { percentual: 10, minimo: 2 }, alto: { percentual: 12, minimo: 4 } };
+    const s = sugestoes[grau];
+    if (s) {
+        document.getElementById('cfgBrigadaPercentual').value = s.percentual;
+        document.getElementById('cfgBrigadaMinimo').value = s.minimo;
+    }
+}
+
+async function salvarBrigadaParametros() {
+    const statusEl = document.getElementById('cfgBrigadaStatus');
+    const percentual = parseFloat(document.getElementById('cfgBrigadaPercentual').value);
+    const minimo = parseInt(document.getElementById('cfgBrigadaMinimo').value, 10);
+    if (!(percentual > 0) || !(minimo >= 1)) {
+        statusEl.textContent = '❌ Informe um percentual maior que zero e um mínimo de ao menos 1.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const valor = {
+        grau_risco: document.getElementById('cfgBrigadaGrauRisco').value,
+        percentual_efetivo: percentual,
+        minimo_brigadistas: minimo
+    };
+    statusEl.textContent = '⏳ Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('configuracoes_sistema', [{ id: 'brigada_parametros', valor, descricao: 'Parâmetros de dimensionamento da Brigada de Incêndio (referência - ajustar conforme NBR 14276 e norma local do Corpo de Bombeiros).', atualizado_em: new Date().toISOString(), atualizado_por: usuarioDashboardAtual() || 'painel' }]);
+        Object.assign(BRIGADA_PARAMETROS, valor);
+        renderBrigadaDimensionamento();
+        statusEl.textContent = '✅ Salvo. Já vale a partir de agora.';
+        statusEl.style.color = 'var(--success)';
+    } catch (e) {
+        console.error('Erro ao salvar parâmetros da Brigada de Incêndio:', e);
+        statusEl.textContent = '❌ Falha ao salvar: ' + e.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// ---- Organograma ----
+
+function renderBrigadaMembrosLista() {
+    const container = document.getElementById('brigadaMembrosLista');
+    if (!container) return;
+    const linhas = allBrigadaMembros.slice().sort((a, b) =>
+        (b.ativo ? 1 : 0) - (a.ativo ? 1 : 0) ||
+        (BRIGADA_CARGO_ORDEM[a.cargo_brigada] ?? 9) - (BRIGADA_CARGO_ORDEM[b.cargo_brigada] ?? 9) ||
+        (a.nome || '').localeCompare(b.nome || '')
+    );
+    if (linhas.length === 0) {
+        container.innerHTML = '<div class="db-list-empty">Nenhum membro da brigada cadastrado.</div>';
+        return;
+    }
+    container.innerHTML = linhas.map(m => `<div class="db-list-item" style="cursor:pointer;${m.ativo ? '' : ' opacity:0.55;'}" onclick="abrirFormBrigadaMembro('${escapeHTML(m.id)}')">
+        <div class="db-list-item-title">${escapeHTML(m.nome)}${m.ativo ? '' : ' (inativo)'}</div>
+        <div class="db-list-item-sub">${BRIGADA_CARGO_LABELS[m.cargo_brigada] || m.cargo_brigada || ''} — ${escapeHTML(m.funcao || '')} — ${escapeHTML(m.setor || '')}${m.area ? ' — Área/Turno: ' + escapeHTML(m.area) : ''}</div>
+    </div>`).join('');
+}
+
+function renderBrigadaOrganograma() {
+    const container = document.getElementById('brigadaOrganogramaChart');
+    if (!container) return;
+    const ativos = brigadistasDesignadosAtivos();
+    if (ativos.length === 0) {
+        container.innerHTML = '<div class="db-list-empty">Cadastre membros abaixo para ver o organograma.</div>';
+        return;
+    }
+    const grupos = { coordenador_geral: [], chefe_brigada: [], lider_area: [], brigadista: [] };
+    ativos.forEach(m => { (grupos[m.cargo_brigada] || grupos.brigadista).push(m); });
+
+    const caixa = (m) => `<div style="display:inline-block; border:2px solid var(--primary); border-radius:8px; padding:8px 12px; margin:4px; background:var(--card-bg,#fff); font-size:12px; text-align:center; vertical-align:top;">
+        <div style="font-weight:600;">${escapeHTML(m.nome)}</div>
+        <div style="color:var(--text-light); font-size:11px;">${escapeHTML(m.funcao || '')}${m.area ? ' — ' + escapeHTML(m.area) : ''}</div>
+    </div>`;
+
+    const nivel = (titulo, itens) => itens.length === 0 ? '' : `<div style="margin-bottom:14px;">
+        <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-light); margin-bottom:4px;">${titulo}</div>
+        <div style="text-align:center;">${itens.map(caixa).join('')}</div>
+    </div>`;
+
+    container.innerHTML = `<div style="text-align:center;">
+        ${nivel('Coordenação Geral', grupos.coordenador_geral)}
+        ${nivel('Chefia de Brigada', grupos.chefe_brigada)}
+        ${nivel('Líderes de Área/Turno', grupos.lider_area)}
+        ${nivel('Brigadistas', grupos.brigadista)}
+    </div>`;
+}
+
+function popularBrigadaMembroColabDatalist() {
+    const dl = document.getElementById('brigadaMembroColabList');
+    if (!dl) return;
+    dl.innerHTML = '';
+    allEfetivo.filter(colaboradorEstaAtivo).sort((a, b) => (a.nome || '').localeCompare(b.nome || '')).forEach(e => {
+        const opt = document.createElement('option');
+        opt.value = `${e.id} - ${e.nome}`;
+        dl.appendChild(opt);
+    });
+}
+
+function onBrigadaMembroMatriculaChange() {
+    const { colab } = buscarColaboradorPorInput('brigadaMembroForm_matricula');
+    if (colab) {
+        document.getElementById('brigadaMembroForm_nome').value = colab.nome || '';
+        document.getElementById('brigadaMembroForm_funcao').value = colab.funcao || '';
+        document.getElementById('brigadaMembroForm_setor').value = colab.setor || '';
+    }
+}
+
+function abrirFormBrigadaMembro(id) {
+    const form = document.getElementById('brigadaMembroFormCard');
+    const title = document.getElementById('brigadaMembroFormTitle');
+    const btnExcluir = document.getElementById('brigadaMembroForm_btnExcluir');
+    document.getElementById('brigadaMembroFormStatus').textContent = '';
+    form.dataset.id = id || '';
+    popularBrigadaMembroColabDatalist();
+
+    if (id) {
+        const m = allBrigadaMembros.find(x => x.id === id);
+        if (!m) return;
+        title.textContent = '✏️ Editar Membro da Brigada';
+        document.getElementById('brigadaMembroForm_matricula').value = m.matricula ? `${m.matricula} - ${m.nome}` : '';
+        document.getElementById('brigadaMembroForm_nome').value = m.nome || '';
+        document.getElementById('brigadaMembroForm_funcao').value = m.funcao || '';
+        document.getElementById('brigadaMembroForm_setor').value = m.setor || '';
+        document.getElementById('brigadaMembroForm_cargo').value = m.cargo_brigada || 'brigadista';
+        document.getElementById('brigadaMembroForm_area').value = m.area || '';
+        document.getElementById('brigadaMembroForm_ativo').value = m.ativo === false ? 'false' : 'true';
+        btnExcluir.style.display = 'inline-block';
+    } else {
+        title.textContent = '🚨 Novo Membro da Brigada';
+        document.getElementById('brigadaMembroForm_matricula').value = '';
+        document.getElementById('brigadaMembroForm_nome').value = '';
+        document.getElementById('brigadaMembroForm_funcao').value = '';
+        document.getElementById('brigadaMembroForm_setor').value = '';
+        document.getElementById('brigadaMembroForm_cargo').value = 'brigadista';
+        document.getElementById('brigadaMembroForm_area').value = '';
+        document.getElementById('brigadaMembroForm_ativo').value = 'true';
+        btnExcluir.style.display = 'none';
+    }
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function fecharFormBrigadaMembro() {
+    const form = document.getElementById('brigadaMembroFormCard');
+    if (form) form.style.display = 'none';
+}
+
+async function salvarBrigadaMembro() {
+    const statusEl = document.getElementById('brigadaMembroFormStatus');
+    const idAtual = document.getElementById('brigadaMembroFormCard').dataset.id;
+    const nome = document.getElementById('brigadaMembroForm_nome').value.trim();
+    if (!nome) {
+        statusEl.textContent = '❌ Informe o nome do membro.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const matriculaRaw = document.getElementById('brigadaMembroForm_matricula').value.trim();
+    const matricula = matriculaRaw.includes(' - ') ? matriculaRaw.split(' - ')[0].trim() : (matriculaRaw || null);
+    const id = idAtual || (matricula ? `BRIGADA_${matricula}` : `BRIGADA_${Date.now()}`);
+    if (!idAtual && matricula && allBrigadaMembros.some(m => m.id === id)) {
+        statusEl.textContent = '❌ Essa matrícula já está cadastrada na Brigada. Edite o registro existente em vez de criar um novo.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const cargo = document.getElementById('brigadaMembroForm_cargo').value;
+    // Coordenador Geral é um papel único no organograma - sem essa checagem dois
+    // membros poderiam ficar marcados como Coordenador Geral ao mesmo tempo.
+    if (cargo === 'coordenador_geral') {
+        const conflito = allBrigadaMembros.find(m => m.id !== id && m.ativo && m.cargo_brigada === 'coordenador_geral');
+        if (conflito) {
+            statusEl.textContent = `❌ Já existe um Coordenador Geral da Brigada (${conflito.nome}). Altere o cargo dele(a) antes de atribuir a outra pessoa.`;
+            statusEl.style.color = 'var(--danger)';
+            return;
+        }
+    }
+    const row = {
+        id,
+        matricula,
+        nome,
+        funcao: document.getElementById('brigadaMembroForm_funcao').value.trim() || null,
+        setor: document.getElementById('brigadaMembroForm_setor').value.trim() || null,
+        cargo_brigada: cargo,
+        area: document.getElementById('brigadaMembroForm_area').value.trim() || null,
+        ativo: document.getElementById('brigadaMembroForm_ativo').value === 'true'
+    };
+    statusEl.textContent = '⏳ Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseUpsert('brigada_membros', [row]);
+        document.getElementById('brigadaMembroFormCard').dataset.id = id;
+        const idx = allBrigadaMembros.findIndex(m => m.id === id);
+        if (idx >= 0) allBrigadaMembros[idx] = { ...allBrigadaMembros[idx], ...row };
+        else allBrigadaMembros.push(row);
+        renderBrigadaMembrosLista();
+        renderBrigadaOrganograma();
+        renderBrigadaDimensionamento();
+        statusEl.textContent = '✅ Salvo com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => fecharFormBrigadaMembro(), 900);
+    } catch (err) {
+        console.error('Erro ao salvar membro da Brigada de Incêndio:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function excluirBrigadaMembroAtual() {
+    const id = document.getElementById('brigadaMembroFormCard').dataset.id;
+    if (!id) return;
+    if (!confirm('Excluir este membro da Brigada de Incêndio? Essa ação não pode ser desfeita.')) return;
+    const statusEl = document.getElementById('brigadaMembroFormStatus');
+    statusEl.textContent = '⏳ Excluindo...';
+    statusEl.style.color = 'var(--text-light)';
+    try {
+        await supabaseDelete('brigada_membros', id);
+        allBrigadaMembros = allBrigadaMembros.filter(m => m.id !== id);
+        renderBrigadaMembrosLista();
+        renderBrigadaOrganograma();
+        renderBrigadaDimensionamento();
+        statusEl.textContent = '✅ Excluído com sucesso.';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => fecharFormBrigadaMembro(), 900);
+    } catch (err) {
+        console.error('Erro ao excluir membro da Brigada de Incêndio:', err);
+        statusEl.textContent = '❌ Falha ao excluir: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// ---- Treinamento / Controle de Treinados ----
+// Não existe tabela própria aqui de propósito: reaproveita treinamentos_status
+// (treinamento_cod === '15', o mesmo id do catálogo de Treinamentos) - lançar uma sessão
+// nova continua sendo feito em Treinamentos > Kits e Documentos (ver
+// abrirProgramacaoTreinamentoBrigada, que só leva pra lá com a equipe da brigada já
+// marcada).
+
+function statusTreinamentoBrigadaDoMembro(m) {
+    if (!m.matricula) return { situacao: 'sem_matricula', label: 'Sem matrícula vinculada ao efetivo' };
+    const status = allTreinamentosStatus.find(s => s.matricula === m.matricula && s.treinamento_cod === '15');
+    if (!status || !status.data_proxima_reciclagem) return { situacao: 'nunca_treinado', label: 'Nunca treinado nesta NR' };
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const deadline = parseLocalDate(status.data_proxima_reciclagem); deadline.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return { situacao: 'vencido', label: `Vencido há ${Math.abs(diffDays)} dia(s)` };
+    if (diffDays <= 30) return { situacao: 'vencendo', label: `Vence em ${diffDays} dia(s)` };
+    return { situacao: 'em_dia', label: `Em dia (válido até ${formatSimpleDate(status.data_proxima_reciclagem)})` };
+}
+
+function renderBrigadaControleTreinados() {
+    const designados = brigadistasDesignadosAtivos();
+    const situacoes = designados.map(m => ({ m, st: statusTreinamentoBrigadaDoMembro(m) }));
+
+    const contagem = { em_dia: 0, vencendo: 0, vencido: 0, nunca_treinado: 0, sem_matricula: 0 };
+    situacoes.forEach(({ st }) => { contagem[st.situacao] = (contagem[st.situacao] || 0) + 1; });
+
+    document.getElementById('kpiBrigadaTreinEmDia').textContent = contagem.em_dia;
+    document.getElementById('kpiBrigadaTreinVencendo').textContent = contagem.vencendo;
+    document.getElementById('kpiBrigadaTreinVencido').textContent = contagem.vencido + contagem.nunca_treinado;
+
+    const listEl = document.getElementById('listBrigadaControleTreinados');
+    if (designados.length === 0) {
+        listEl.innerHTML = '<div class="db-list-empty">Nenhum membro da brigada cadastrado ainda (cadastre na aba Organograma).</div>';
+        const btn = document.getElementById('btnBrigadaProgramarTreinamento');
+        if (btn) btn.style.display = 'none';
+        brigadaMatriculasPendentesTreinamento = [];
+        return;
+    }
+    const ordem = { vencido: 0, nunca_treinado: 1, sem_matricula: 2, vencendo: 3, em_dia: 4 };
+    const ordenados = situacoes.slice().sort((a, b) => (ordem[a.st.situacao] ?? 9) - (ordem[b.st.situacao] ?? 9));
+    const pendentes = ordenados.filter(({ st }) => st.situacao === 'vencido' || st.situacao === 'nunca_treinado' || st.situacao === 'vencendo');
+
+    listEl.innerHTML = ordenados.map(({ m, st }) => {
+        const cls = (st.situacao === 'vencido' || st.situacao === 'nunca_treinado') ? 'db-item-danger' : (st.situacao === 'vencendo' ? 'db-item-warning' : '');
+        return `<div class="db-list-item ${cls}">
+            <div class="db-list-item-title">${escapeHTML(m.nome)} — ${BRIGADA_CARGO_LABELS[m.cargo_brigada] || m.cargo_brigada}</div>
+            <div class="db-list-item-sub">${escapeHTML(st.label)}</div>
+        </div>`;
+    }).join('');
+
+    const btnPrograma = document.getElementById('btnBrigadaProgramarTreinamento');
+    if (btnPrograma) btnPrograma.style.display = pendentes.length > 0 ? 'inline-block' : 'none';
+    brigadaMatriculasPendentesTreinamento = pendentes.map(({ m }) => m.matricula).filter(Boolean);
+}
+
+function abrirProgramacaoTreinamentoBrigada() {
+    if (brigadaMatriculasPendentesTreinamento.length === 0) return;
+    showDbPage('treinamentos');
+    programarRenovacaoNR('15', brigadaMatriculasPendentesTreinamento);
+}
+
 
 // ============================================
 // INICIALIZAÇÃO

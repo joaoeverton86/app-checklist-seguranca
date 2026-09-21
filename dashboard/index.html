@@ -159,6 +159,9 @@
                         <button class="db-nav-item" id="navAcervoDrive" onclick="showDbPage('acervodrive')">
                             <span class="db-nav-icon">🗄️</span> Acervo (Drive)
                         </button>
+                        <button class="db-nav-item" id="navImportExport" onclick="showDbPage('importexport')">
+                            <span class="db-nav-icon">📥</span> Importar/Exportar Planilhas
+                        </button>
                     </div>
                 </div>
 
@@ -5284,7 +5287,172 @@
             </section>
 
             <!-- Página: Configurações -->
+            <!-- Página: Configurações Gerais do Sistema -->
             <section class="db-page" id="page-config">
+                <p style="font-size: 12.5px; color: var(--text-light); margin-bottom: 16px;">
+                    Ajustes que valem para o sistema inteiro. Mudou aqui, muda em todos os documentos e telas que usam essa informação a partir de agora (não altera nada que já foi gerado antes).
+                </p>
+
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">🏢 Dados da Empresa</div>
+                    <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
+                        Aparecem no cabeçalho/rodapé da maioria dos documentos gerados pelo sistema (Ordem de Serviço, Declarações, Termos, PGR, etc.).
+                    </p>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; max-width:640px;">
+                        <div style="grid-column: 1 / -1;">
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Razão Social</label>
+                            <input type="text" id="cfgEmpresaRazaoSocial" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">CNPJ</label>
+                            <input type="text" id="cfgEmpresaCnpj" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Grau de Risco (NR-04)</label>
+                            <input type="text" id="cfgEmpresaGrauRisco" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">CNAE Principal</label>
+                            <input type="text" id="cfgEmpresaCnae" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Natureza Jurídica</label>
+                            <input type="text" id="cfgEmpresaNatureza" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                    </div>
+                    <button class="db-apply-btn" style="margin-top:12px;" onclick="salvarConfigEmpresa()">Salvar</button>
+                    <div id="cfgEmpresaStatus" style="margin-top: 8px; font-size: 12.5px;"></div>
+                </div>
+
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">🖼️ Logo da Empresa</div>
+                    <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
+                        Usada nos documentos que já trazem a logo (Ordem de Serviço, Declaração de Integração, Termo de Recusa, Termo de Troca de Função, Gabarito, Ficha de Inscrição CIPA). Envie uma imagem PNG ou JPG pequena (até 300px de altura já fica boa).
+                    </p>
+                    <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+                        <img id="cfgLogoPreview" src="" alt="Logo atual" style="max-height:70px; border:1px solid var(--border); border-radius:6px; padding:6px; background:#fff;">
+                        <div>
+                            <input type="file" id="cfgLogoFileInput" accept="image/png,image/jpeg" style="margin-bottom: 10px;">
+                            <br>
+                            <button class="db-apply-btn" onclick="salvarConfigLogo()">Salvar nova logo</button>
+                        </div>
+                    </div>
+                    <div id="cfgLogoStatus" style="margin-top: 8px; font-size: 12.5px;"></div>
+                </div>
+
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">🎓 Padrão de Treinamentos</div>
+                    <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
+                        Nome/qualificação/registro que já vêm preenchidos ao lançar um item do cronograma de treinamentos.
+                    </p>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; max-width:760px;">
+                        <div>
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Instrutor - Nome</label>
+                            <input type="text" id="cfgInstrutorNome" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Instrutor - Qualificação</label>
+                            <input type="text" id="cfgInstrutorQualificacao" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Instrutor - Registro</label>
+                            <input type="text" id="cfgInstrutorRegistro" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Responsável Técnico - Nome</label>
+                            <input type="text" id="cfgRespTecnicoNome" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Responsável Técnico - Qualificação</label>
+                            <input type="text" id="cfgRespTecnicoQualificacao" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Responsável Técnico - Registro</label>
+                            <input type="text" id="cfgRespTecnicoRegistro" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                    </div>
+                    <button class="db-apply-btn" style="margin-top:12px;" onclick="salvarConfigCronograma()">Salvar</button>
+                    <div id="cfgCronogramaStatus" style="margin-top: 8px; font-size: 12.5px;"></div>
+                </div>
+
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">📅 Início do Contrato</div>
+                    <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
+                        Usado para calcular os meses do histórico de Acidentabilidade. Só muda se o contrato for renovado com uma data-base diferente.
+                    </p>
+                    <div style="display:flex; gap:10px; max-width:320px;">
+                        <div style="flex:1;">
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Mês</label>
+                            <select id="cfgContratoMes" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;"></select>
+                        </div>
+                        <div style="flex:1;">
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Ano</label>
+                            <input type="number" id="cfgContratoAno" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                    </div>
+                    <button class="db-apply-btn" style="margin-top:12px;" onclick="salvarConfigContrato()">Salvar</button>
+                    <div id="cfgContratoStatus" style="margin-top: 8px; font-size: 12.5px;"></div>
+                </div>
+
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">🧠 Limiares do Psicossocial</div>
+                    <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
+                        Só definem a partir de qual % a tela pinta o resultado como "risco crítico" ou "favorável forte". Não vêm do PGR nem do instrumento de avaliação - é só um destaque visual.
+                    </p>
+                    <div style="display:flex; gap:10px; max-width:320px;">
+                        <div style="flex:1;">
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Risco crítico a partir de (%)</label>
+                            <input type="number" id="cfgPsicoCritico" min="0" max="100" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div style="flex:1;">
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Favorável forte a partir de (%)</label>
+                            <input type="number" id="cfgPsicoFavoravel" min="0" max="100" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                    </div>
+                    <button class="db-apply-btn" style="margin-top:12px;" onclick="salvarConfigPsico()">Salvar</button>
+                    <div id="cfgPsicoStatus" style="margin-top: 8px; font-size: 12.5px;"></div>
+                </div>
+
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">♻️ Fatores de Resíduos</div>
+                    <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
+                        Usados no relatório de estimativa de geração de resíduos, pra converter quantidade em quilos. Ajuste se o fornecedor/embalagem mudar.
+                    </p>
+                    <div style="display:flex; gap:10px; max-width:480px; flex-wrap: wrap;">
+                        <div style="flex:1; min-width:140px;">
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Kg por quentinha</label>
+                            <input type="number" step="0.0001" id="cfgResiduoQuentinha" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div style="flex:1; min-width:140px;">
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Kg por copo</label>
+                            <input type="number" step="0.0001" id="cfgResiduoCopo" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div style="flex:1; min-width:140px;">
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Kg por EPI</label>
+                            <input type="number" step="0.0001" id="cfgResiduoEpi" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                    </div>
+                    <button class="db-apply-btn" style="margin-top:12px;" onclick="salvarConfigResiduos()">Salvar</button>
+                    <div id="cfgResiduosStatus" style="margin-top: 8px; font-size: 12.5px;"></div>
+                </div>
+
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title">🔄 Atualização Automática do Painel</div>
+                    <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
+                        De quantos em quantos minutos o painel busca dados novos do banco sozinho, sem precisar clicar em "Atualizar agora".
+                    </p>
+                    <div style="max-width:200px;">
+                        <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Intervalo (minutos)</label>
+                        <input type="number" min="1" id="cfgRefreshMinutos" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                    </div>
+                    <button class="db-apply-btn" style="margin-top:12px;" onclick="salvarConfigRefresh()">Salvar</button>
+                    <div id="cfgRefreshStatus" style="margin-top: 8px; font-size: 12.5px;"></div>
+                </div>
+            </section>
+
+            <!-- Página: Importar/Exportar Planilhas (antigos cards que moravam dentro de
+                 "Configurações" - mesmas funções de sempre, só mudaram de lugar no menu) -->
+            <section class="db-page" id="page-importexport">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
                     <div class="db-chart-title">📥 Importar Planilha de Treinamentos</div>
                     <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
@@ -5347,6 +5515,7 @@
                     <div id="manutencaoImportStatus" style="margin-top: 10px; font-size: 12.5px; color: var(--text-light);"></div>
                 </div>
             </section>
+
 
             <section class="db-page" id="page-usuariospainel">
                 <div id="usuariosPainelStatus" style="font-size:12.5px; color:var(--text-light); margin-bottom:10px;"></div>

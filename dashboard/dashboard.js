@@ -18366,10 +18366,17 @@ let allCipaReunioes = [];
 let allCipaPlanoAcao = [];
 let cipaLoaded = false;
 
-// Brigada de Incêndio (2026-09-21) - ver claude/bloco-notas-melhorias.md. Reaproveita o
-// treinamento já cadastrado em treinamentos_catalogo (id='15', NR-23) e o efetivo de
-// colaboradores_efetivo - só o organograma (tabela brigada_membros) e os parâmetros de
-// dimensionamento (BRIGADA_PARAMETROS, dentro de configuracoes_sistema) são dados novos.
+// Brigada de Incêndio (2026-09-21, texto da ABNT NBR 14276:2020 conferido em 2026-09-22 -
+// ver claude/bloco-notas-melhorias.md). Reaproveita o treinamento já cadastrado em
+// treinamentos_catalogo (id='15', NR-23) e o efetivo de colaboradores_efetivo - só o
+// organograma (tabela brigada_membros) e os parâmetros de dimensionamento
+// (BRIGADA_PARAMETROS, dentro de configuracoes_sistema) são dados novos.
+// O "minimo_brigadistas" default por grau_risco (2/2/4) já reflete o piso real da norma
+// (item 4.1.3): 2 brigadistas para risco baixo/médio, 4 para risco alto - ver
+// BRIGADA_PISO_NORMATIVO_NBR14276, adiante neste arquivo. O "percentual_efetivo" continua
+// sendo uma estimativa nossa (a norma não define percentual: ela soma o dimensionamento
+// por área/tempo de resposta, itens 4.1.6 a 4.1.8, que exige estudo formal do profissional
+// habilitado).
 let allBrigadaMembros = [];
 let brigadaLoaded = false;
 let brigadaMatriculasPendentesTreinamento = [];
@@ -23357,8 +23364,11 @@ function renderBrigadaDimensionamento() {
 }
 
 // Só sugere valores diferentes ao trocar o grau de risco (não trava o usuário num
-// percentual fixo - ele pode ajustar livremente antes de salvar). Sugestões numa faixa
-// comum de referência - NÃO substitui a NBR 14276 (ver aviso no topo deste bloco).
+// percentual fixo - ele pode ajustar livremente antes de salvar). O "minimo" sugerido
+// aqui (2/2/4) é o piso real da ABNT NBR 14276:2020, item 4.1.3 (conferido em
+// 2026-09-22) - o "percentual" continua sendo estimativa nossa, pois a norma não define
+// percentual (ver aviso no topo deste bloco e salvarBrigadaParametros/
+// BRIGADA_PISO_NORMATIVO_NBR14276 para a validação desse piso).
 function onBrigadaGrauRiscoChange() {
     const grau = document.getElementById('cfgBrigadaGrauRisco').value;
     const sugestoes = { baixo: { percentual: 5, minimo: 2 }, medio: { percentual: 10, minimo: 2 }, alto: { percentual: 12, minimo: 4 } };
@@ -23369,17 +23379,29 @@ function onBrigadaGrauRiscoChange() {
     }
 }
 
+// Piso mínimo de brigadistas por grau de risco, conforme ABNT NBR 14276:2020, item 4.1.3
+// (verificado no texto oficial da norma em 2026-09-21): baixo/médio risco = mínimo 2
+// brigadistas (para população > 4 na área); alto risco = mínimo 4 brigadistas (para
+// população > 10 na área). Isto é o piso normativo por equipe/área de resposta - aqui
+// aplicado, por simplificação já acordada com o usuário, ao efetivo total da obra.
+const BRIGADA_PISO_NORMATIVO_NBR14276 = { baixo: 2, medio: 2, alto: 4 };
+
 async function salvarBrigadaParametros() {
     const statusEl = document.getElementById('cfgBrigadaStatus');
     const percentual = parseFloat(document.getElementById('cfgBrigadaPercentual').value);
     const minimo = parseInt(document.getElementById('cfgBrigadaMinimo').value, 10);
+    const grauRisco = document.getElementById('cfgBrigadaGrauRisco').value;
     if (!(percentual > 0) || !(minimo >= 1)) {
         statusEl.textContent = '❌ Informe um percentual maior que zero e um mínimo de ao menos 1.';
         statusEl.style.color = 'var(--danger)';
         return;
     }
+    const pisoNormativo = BRIGADA_PISO_NORMATIVO_NBR14276[grauRisco];
+    const avisoPiso = (pisoNormativo && minimo < pisoNormativo)
+        ? ` ⚠️ Abaixo do piso da ABNT NBR 14276:2020 (item 4.1.3), que prevê mínimo de ${pisoNormativo} brigadistas para grau de risco "${grauRisco}" - salvo mesmo assim, mas registre a justificativa técnica.`
+        : '';
     const valor = {
-        grau_risco: document.getElementById('cfgBrigadaGrauRisco').value,
+        grau_risco: grauRisco,
         percentual_efetivo: percentual,
         minimo_brigadistas: minimo
     };
@@ -23389,8 +23411,8 @@ async function salvarBrigadaParametros() {
         await supabaseUpsert('configuracoes_sistema', [{ id: 'brigada_parametros', valor, descricao: 'Parâmetros de dimensionamento da Brigada de Incêndio (referência - ajustar conforme NBR 14276 e norma local do Corpo de Bombeiros).', atualizado_em: new Date().toISOString(), atualizado_por: usuarioDashboardAtual() || 'painel' }]);
         Object.assign(BRIGADA_PARAMETROS, valor);
         renderBrigadaDimensionamento();
-        statusEl.textContent = '✅ Salvo. Já vale a partir de agora.';
-        statusEl.style.color = 'var(--success)';
+        statusEl.textContent = '✅ Salvo. Já vale a partir de agora.' + avisoPiso;
+        statusEl.style.color = avisoPiso ? 'var(--warning)' : 'var(--success)';
     } catch (e) {
         console.error('Erro ao salvar parâmetros da Brigada de Incêndio:', e);
         statusEl.textContent = '❌ Falha ao salvar: ' + e.message;

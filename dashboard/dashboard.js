@@ -23316,7 +23316,7 @@ function showBrigadaSubtab(tab) {
     });
     if (tab === 'dimensionamento') renderBrigadaDimensionamento();
     if (tab === 'organograma') { fecharFormBrigadaMembro(); renderBrigadaMembrosLista(); renderBrigadaOrganograma(); }
-    if (tab === 'treinamento') renderBrigadaControleTreinados();
+    if (tab === 'treinamento') { fecharFormTreinamentoBrigada(); renderBrigadaControleTreinados(); }
 }
 
 // ---- Dimensionamento ----
@@ -23422,6 +23422,12 @@ async function salvarBrigadaParametros() {
 
 // ---- Organograma ----
 
+const BRIGADA_NIVEL_LABELS = {
+    basico: 'Nível Básico',
+    intermediario: 'Nível Intermediário',
+    avancado: 'Nível Avançado'
+};
+
 function renderBrigadaMembrosLista() {
     const container = document.getElementById('brigadaMembrosLista');
     if (!container) return;
@@ -23434,10 +23440,18 @@ function renderBrigadaMembrosLista() {
         container.innerHTML = '<div class="db-list-empty">Nenhum membro da brigada cadastrado.</div>';
         return;
     }
-    container.innerHTML = linhas.map(m => `<div class="db-list-item" style="cursor:pointer;${m.ativo ? '' : ' opacity:0.55;'}" onclick="abrirFormBrigadaMembro('${escapeHTML(m.id)}')">
-        <div class="db-list-item-title">${escapeHTML(m.nome)}${m.ativo ? '' : ' (inativo)'}</div>
-        <div class="db-list-item-sub">${BRIGADA_CARGO_LABELS[m.cargo_brigada] || m.cargo_brigada || ''} — ${escapeHTML(m.funcao || '')} — ${escapeHTML(m.setor || '')}${m.area ? ' — Área/Turno: ' + escapeHTML(m.area) : ''}</div>
-    </div>`).join('');
+    container.innerHTML = linhas.map(m => {
+        const datasStr = m.data_designacao 
+            ? ` — Designado em ${formatSimpleDate(m.data_designacao)}${m.data_fim ? ' até ' + formatSimpleDate(m.data_fim) : ''}`
+            : (m.data_fim ? ` — Vigência até ${formatSimpleDate(m.data_fim)}` : '');
+        const turnoStr = m.turno ? ` — Turno: ${escapeHTML(m.turno)}` : '';
+        const telStr = m.telefone ? ` — Contato: ${escapeHTML(m.telefone)}` : '';
+        const nivelStr = m.nivel ? ` — ${BRIGADA_NIVEL_LABELS[m.nivel] || m.nivel}` : '';
+        return `<div class="db-list-item" style="cursor:pointer;${m.ativo ? '' : ' opacity:0.55;'}" onclick="abrirFormBrigadaMembro('${escapeHTML(m.id)}')">
+            <div class="db-list-item-title">${escapeHTML(m.nome)}${m.ativo ? '' : ' (inativo)'}</div>
+            <div class="db-list-item-sub">${BRIGADA_CARGO_LABELS[m.cargo_brigada] || m.cargo_brigada || ''} — ${escapeHTML(m.funcao || '')} — ${escapeHTML(m.setor || '')}${m.area ? ' — Área: ' + escapeHTML(m.area) : ''}${turnoStr}${nivelStr}${datasStr}${telStr}</div>
+        </div>`;
+    }).join('');
 }
 
 function renderBrigadaOrganograma() {
@@ -23451,9 +23465,11 @@ function renderBrigadaOrganograma() {
     const grupos = { coordenador_geral: [], chefe_brigada: [], lider_area: [], brigadista: [] };
     ativos.forEach(m => { (grupos[m.cargo_brigada] || grupos.brigadista).push(m); });
 
-    const caixa = (m) => `<div style="display:inline-block; border:2px solid var(--primary); border-radius:8px; padding:8px 12px; margin:4px; background:var(--card-bg,#fff); font-size:12px; text-align:center; vertical-align:top;">
-        <div style="font-weight:600;">${escapeHTML(m.nome)}</div>
-        <div style="color:var(--text-light); font-size:11px;">${escapeHTML(m.funcao || '')}${m.area ? ' — ' + escapeHTML(m.area) : ''}</div>
+    const caixa = (m) => `<div onclick="abrirFormBrigadaMembro('${escapeHTML(m.id)}')" title="Clique para editar este membro da brigada" style="display:inline-block; border:2px solid var(--primary); border-radius:8px; padding:10px 14px; margin:5px; background:var(--card-bg,#fff); font-size:12px; text-align:center; vertical-align:top; cursor:pointer; transition:transform 0.15s, box-shadow 0.15s; box-shadow:0 1px 3px rgba(0,0,0,0.08);" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.12)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 1px 3px rgba(0,0,0,0.08)'">
+        <div style="font-weight:700; color:var(--text, #1e293b);">${escapeHTML(m.nome)}</div>
+        <div style="color:var(--text-light); font-size:11px; margin-top:2px;">${escapeHTML(m.funcao || '')}${m.area ? ' — ' + escapeHTML(m.area) : ''}${m.turno ? ' (' + escapeHTML(m.turno) + ')' : ''}</div>
+        ${m.data_designacao ? `<div style="color:var(--primary); font-size:10.5px; margin-top:3px; font-weight:600;">📅 Desde: ${formatSimpleDate(m.data_designacao)}</div>` : ''}
+        ${m.telefone ? `<div style="color:var(--text-light); font-size:10.5px; margin-top:2px;">📞 ${escapeHTML(m.telefone)}</div>` : ''}
     </div>`;
 
     const nivel = (titulo, itens) => itens.length === 0 ? '' : `<div style="margin-bottom:14px;">
@@ -23506,6 +23522,11 @@ function abrirFormBrigadaMembro(id) {
         document.getElementById('brigadaMembroForm_funcao').value = m.funcao || '';
         document.getElementById('brigadaMembroForm_setor').value = m.setor || '';
         document.getElementById('brigadaMembroForm_cargo').value = m.cargo_brigada || 'brigadista';
+        document.getElementById('brigadaMembroForm_nivel').value = m.nivel || 'basico';
+        document.getElementById('brigadaMembroForm_dataDesignacao').value = m.data_designacao || '';
+        document.getElementById('brigadaMembroForm_dataFim').value = m.data_fim || '';
+        document.getElementById('brigadaMembroForm_turno').value = m.turno || 'Diurno';
+        document.getElementById('brigadaMembroForm_telefone').value = m.telefone || '';
         document.getElementById('brigadaMembroForm_area').value = m.area || '';
         document.getElementById('brigadaMembroForm_ativo').value = m.ativo === false ? 'false' : 'true';
         btnExcluir.style.display = 'inline-block';
@@ -23516,6 +23537,11 @@ function abrirFormBrigadaMembro(id) {
         document.getElementById('brigadaMembroForm_funcao').value = '';
         document.getElementById('brigadaMembroForm_setor').value = '';
         document.getElementById('brigadaMembroForm_cargo').value = 'brigadista';
+        document.getElementById('brigadaMembroForm_nivel').value = 'basico';
+        document.getElementById('brigadaMembroForm_dataDesignacao').value = new Date().toISOString().slice(0, 10);
+        document.getElementById('brigadaMembroForm_dataFim').value = '';
+        document.getElementById('brigadaMembroForm_turno').value = 'Diurno';
+        document.getElementById('brigadaMembroForm_telefone').value = '';
         document.getElementById('brigadaMembroForm_area').value = '';
         document.getElementById('brigadaMembroForm_ativo').value = 'true';
         btnExcluir.style.display = 'none';
@@ -23564,6 +23590,11 @@ async function salvarBrigadaMembro() {
         funcao: document.getElementById('brigadaMembroForm_funcao').value.trim() || null,
         setor: document.getElementById('brigadaMembroForm_setor').value.trim() || null,
         cargo_brigada: cargo,
+        nivel: document.getElementById('brigadaMembroForm_nivel').value || 'basico',
+        data_designacao: document.getElementById('brigadaMembroForm_dataDesignacao').value || null,
+        data_fim: document.getElementById('brigadaMembroForm_dataFim').value || null,
+        turno: document.getElementById('brigadaMembroForm_turno').value || null,
+        telefone: document.getElementById('brigadaMembroForm_telefone').value.trim() || null,
         area: document.getElementById('brigadaMembroForm_area').value.trim() || null,
         ativo: document.getElementById('brigadaMembroForm_ativo').value === 'true'
     };
@@ -23612,11 +23643,13 @@ async function excluirBrigadaMembroAtual() {
 }
 
 // ---- Treinamento / Controle de Treinados ----
-// Não existe tabela própria aqui de propósito: reaproveita treinamentos_status
-// (treinamento_cod === '15', o mesmo id do catálogo de Treinamentos) - lançar uma sessão
-// nova continua sendo feito em Treinamentos > Kits e Documentos (ver
-// abrirProgramacaoTreinamentoBrigada, que só leva pra lá com a equipe da brigada já
-// marcada).
+
+function buscarUltimoTreinamentoBrigada(matricula) {
+    if (!matricula) return null;
+    return allTreinamentosRealizados
+        .filter(r => r.matricula === matricula && r.treinamento_cod === '15')
+        .sort((a, b) => (b.data_treinamento || '').localeCompare(a.data_treinamento || ''))[0] || null;
+}
 
 function statusTreinamentoBrigadaDoMembro(m) {
     if (!m.matricula) return { situacao: 'sem_matricula', label: 'Sem matrícula vinculada ao efetivo' };
@@ -23632,7 +23665,10 @@ function statusTreinamentoBrigadaDoMembro(m) {
 
 function renderBrigadaControleTreinados() {
     const designados = brigadistasDesignadosAtivos();
-    const situacoes = designados.map(m => ({ m, st: statusTreinamentoBrigadaDoMembro(m) }));
+    const situacoes = designados.map(m => {
+        const reg = buscarUltimoTreinamentoBrigada(m.matricula);
+        return { m, st: statusTreinamentoBrigadaDoMembro(m), reg };
+    });
 
     const contagem = { em_dia: 0, vencendo: 0, vencido: 0, nunca_treinado: 0, sem_matricula: 0 };
     situacoes.forEach(({ st }) => { contagem[st.situacao] = (contagem[st.situacao] || 0) + 1; });
@@ -23653,17 +23689,204 @@ function renderBrigadaControleTreinados() {
     const ordenados = situacoes.slice().sort((a, b) => (ordem[a.st.situacao] ?? 9) - (ordem[b.st.situacao] ?? 9));
     const pendentes = ordenados.filter(({ st }) => st.situacao === 'vencido' || st.situacao === 'nunca_treinado' || st.situacao === 'vencendo');
 
-    listEl.innerHTML = ordenados.map(({ m, st }) => {
+    listEl.innerHTML = ordenados.map(({ m, st, reg }) => {
         const cls = (st.situacao === 'vencido' || st.situacao === 'nunca_treinado') ? 'db-item-danger' : (st.situacao === 'vencendo' ? 'db-item-warning' : '');
-        return `<div class="db-list-item ${cls}">
-            <div class="db-list-item-title">${escapeHTML(m.nome)} — ${BRIGADA_CARGO_LABELS[m.cargo_brigada] || m.cargo_brigada}</div>
-            <div class="db-list-item-sub">${escapeHTML(st.label)}</div>
+        const dataTreinStr = reg?.data_treinamento ? `Realizado em: ${formatSimpleDate(reg.data_treinamento)}` : 'Sem data informada';
+        const validadeStr = reg?.data_proxima_reciclagem ? ` • Vence em: ${formatSimpleDate(reg.data_proxima_reciclagem)}` : '';
+        const cargaStr = reg?.carga_horaria ? ` • ${reg.carga_horaria}h` : '';
+        const instrutorStr = reg?.instrutor_nome ? ` • Instrutor: ${escapeHTML(reg.instrutor_nome)}` : '';
+
+        return `<div class="db-list-item ${cls}" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;" onclick="abrirFormTreinamentoBrigada('${escapeHTML(m.matricula || '')}')">
+            <div style="flex:1; min-width:260px;">
+                <div class="db-list-item-title" style="font-weight:600; font-size:13px;">
+                    ${escapeHTML(m.nome)} — <span style="font-weight:normal; color:var(--text-light);">${BRIGADA_CARGO_LABELS[m.cargo_brigada] || m.cargo_brigada}</span>
+                </div>
+                <div class="db-list-item-sub" style="margin-top:3px; font-size:12px;">
+                    <strong style="color:${st.situacao === 'em_dia' ? 'var(--success)' : (st.situacao === 'vencendo' ? 'var(--warning)' : 'var(--danger)')};">${escapeHTML(st.label)}</strong>
+                    <span style="color:var(--text-light); margin-left:6px;">(${dataTreinStr}${validadeStr}${cargaStr}${instrutorStr})</span>
+                </div>
+            </div>
+            <div>
+                <button class="db-apply-btn" style="padding:6px 12px; font-size:11.5px; white-space:nowrap;" onclick="event.stopPropagation(); abrirFormTreinamentoBrigada('${escapeHTML(m.matricula || '')}')">
+                    ✏️ Editar Treinamento
+                </button>
+            </div>
         </div>`;
     }).join('');
 
     const btnPrograma = document.getElementById('btnBrigadaProgramarTreinamento');
     if (btnPrograma) btnPrograma.style.display = pendentes.length > 0 ? 'inline-block' : 'none';
     brigadaMatriculasPendentesTreinamento = pendentes.map(({ m }) => m.matricula).filter(Boolean);
+}
+
+function onBrigadaTreinDataChange() {
+    const dataTrein = document.getElementById('brigadaTreinForm_data').value;
+    const meses = parseInt(document.getElementById('brigadaTreinForm_meses').value, 10) || 12;
+    if (dataTrein) {
+        const d = parseLocalDate(dataTrein);
+        if (!isNaN(d.getTime())) {
+            const alvo = new Date(d.getFullYear(), d.getMonth() + meses, d.getDate());
+            document.getElementById('brigadaTreinForm_reciclagem').value = 
+                `${alvo.getFullYear()}-${String(alvo.getMonth() + 1).padStart(2, '0')}-${String(alvo.getDate()).padStart(2, '0')}`;
+        }
+    }
+}
+
+function abrirFormTreinamentoBrigada(matricula) {
+    if (!matricula) {
+        alert('Este membro não possui matrícula vinculada ao efetivo. Acesse a aba Organograma, vincule a matrícula do colaborador e tente novamente.');
+        return;
+    }
+    const membro = allBrigadaMembros.find(m => m.matricula === matricula);
+    if (!membro) return;
+
+    const form = document.getElementById('brigadaTreinamentoFormCard');
+    const title = document.getElementById('brigadaTreinFormTitle');
+    const statusEl = document.getElementById('brigadaTreinFormStatus');
+    statusEl.textContent = '';
+    
+    document.getElementById('brigadaTreinForm_matricula').value = matricula;
+    document.getElementById('brigadaTreinForm_colabNome').textContent = membro.nome || '-';
+    document.getElementById('brigadaTreinForm_colabMatricula').textContent = matricula;
+    document.getElementById('brigadaTreinForm_colabCargo').textContent = BRIGADA_CARGO_LABELS[membro.cargo_brigada] || membro.cargo_brigada;
+
+    const reg = buscarUltimoTreinamentoBrigada(matricula);
+    const cat = allTreinamentosCatalogo.find(c => c.id === '15');
+    const mesesPadrao = cat?.meses_validade || 12;
+    const cargaPadrao = cat?.carga_horaria || 20;
+
+    if (reg) {
+        title.textContent = '✏️ Editar Treinamento NR-23 da Brigada';
+        form.dataset.regId = reg.id;
+        document.getElementById('brigadaTreinForm_data').value = reg.data_treinamento || '';
+        document.getElementById('brigadaTreinForm_meses').value = reg.meses_validade || mesesPadrao;
+        document.getElementById('brigadaTreinForm_reciclagem').value = reg.data_proxima_reciclagem || '';
+        document.getElementById('brigadaTreinForm_carga').value = reg.carga_horaria || cargaPadrao;
+        document.getElementById('brigadaTreinForm_instrutor').value = reg.instrutor_nome || '';
+        document.getElementById('brigadaTreinForm_local').value = reg.local_realizacao || '';
+        document.getElementById('brigadaTreinForm_turma').value = reg.numero_turma || '';
+        document.getElementById('brigadaTreinForm_obs').value = reg.observacoes || '';
+    } else {
+        title.textContent = '🎓 Registrar Novo Treinamento NR-23 da Brigada';
+        form.dataset.regId = '';
+        const hojeStr = new Date().toISOString().slice(0, 10);
+        document.getElementById('brigadaTreinForm_data').value = hojeStr;
+        document.getElementById('brigadaTreinForm_meses').value = mesesPadrao;
+        document.getElementById('brigadaTreinForm_carga').value = cargaPadrao;
+        document.getElementById('brigadaTreinForm_instrutor').value = 'MARIA GESSICA DA SILVA ROQUE';
+        document.getElementById('brigadaTreinForm_local').value = 'Canteiro de Obras / Frente';
+        document.getElementById('brigadaTreinForm_turma').value = '';
+        document.getElementById('brigadaTreinForm_obs').value = 'Treinamento de Brigada de Incêndio (NR-23)';
+        onBrigadaTreinDataChange();
+    }
+
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function fecharFormTreinamentoBrigada() {
+    const form = document.getElementById('brigadaTreinamentoFormCard');
+    if (form) form.style.display = 'none';
+}
+
+async function salvarTreinamentoBrigada() {
+    const statusEl = document.getElementById('brigadaTreinFormStatus');
+    const matricula = document.getElementById('brigadaTreinForm_matricula').value;
+    const form = document.getElementById('brigadaTreinamentoFormCard');
+    const regIdAtual = form.dataset.regId;
+    const dataTrein = document.getElementById('brigadaTreinForm_data').value;
+    const dataReciclagem = document.getElementById('brigadaTreinForm_reciclagem').value;
+    const meses = parseInt(document.getElementById('brigadaTreinForm_meses').value, 10) || null;
+    const carga = parseFloat(document.getElementById('brigadaTreinForm_carga').value) || null;
+    const instrutor = document.getElementById('brigadaTreinForm_instrutor').value.trim() || null;
+    const local = document.getElementById('brigadaTreinForm_local').value.trim() || null;
+    const turma = document.getElementById('brigadaTreinForm_turma').value.trim() || null;
+    const obs = document.getElementById('brigadaTreinForm_obs').value.trim() || null;
+
+    if (!dataTrein) {
+        statusEl.textContent = '❌ Informe a data do treinamento.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    if (!dataReciclagem) {
+        statusEl.textContent = '❌ Informe a data de próxima reciclagem / validade.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const membro = allBrigadaMembros.find(m => m.matricula === matricula);
+    const colabEfetivo = allEfetivo.find(e => e.id === matricula);
+    const nome = membro?.nome || colabEfetivo?.nome || '';
+    const funcao = membro?.funcao || colabEfetivo?.funcao || null;
+    const setor = membro?.setor || colabEfetivo?.setor || null;
+    const cat = allTreinamentosCatalogo.find(c => c.id === '15');
+    const treinamentoNome = cat?.nome || 'NR 23 - PROTEÇÃO CONTRA INCÊNDIO (BRIGADA DE EMERGÊNCIA)';
+
+    const id = regIdAtual || `${matricula}_15_${dataTrein}`;
+
+    const row = {
+        id,
+        matricula,
+        nome,
+        funcao,
+        setor,
+        status_colaborador: 'Ativo',
+        treinamento_cod: '15',
+        treinamento_nome: treinamentoNome,
+        carga_horaria: carga,
+        data_treinamento: dataTrein,
+        meses_validade: meses,
+        data_proxima_reciclagem: dataReciclagem,
+        instrutor_nome: instrutor,
+        local_realizacao: local,
+        numero_turma: turma,
+        observacoes: obs
+    };
+
+    statusEl.textContent = '⏳ Salvando...';
+    statusEl.style.color = 'var(--text-light)';
+
+    try {
+        await supabaseUpsert('treinamentos_realizados', [row]);
+        form.dataset.regId = id;
+
+        // Atualiza memória local de allTreinamentosRealizados
+        const idxReal = allTreinamentosRealizados.findIndex(r => r.id === id);
+        if (idxReal >= 0) allTreinamentosRealizados[idxReal] = { ...allTreinamentosRealizados[idxReal], ...row };
+        else allTreinamentosRealizados.push(row);
+
+        // Atualiza memória local de allTreinamentosStatus
+        const statusRow = {
+            id: `${matricula}_15`,
+            matricula,
+            nome,
+            funcao,
+            setor,
+            status_colaborador: 'Ativo',
+            treinamento_cod: '15',
+            treinamento_nome: treinamentoNome,
+            carga_horaria: carga,
+            data_treinamento: dataTrein,
+            meses_validade: meses,
+            data_proxima_reciclagem: dataReciclagem,
+            created_at: new Date().toISOString()
+        };
+        const idxStatus = allTreinamentosStatus.findIndex(s => s.matricula === matricula && s.treinamento_cod === '15');
+        if (idxStatus >= 0) allTreinamentosStatus[idxStatus] = { ...allTreinamentosStatus[idxStatus], ...statusRow };
+        else allTreinamentosStatus.push(statusRow);
+
+        // Re-renderiza interface da Brigada instantaneamente
+        renderBrigadaControleTreinados();
+        renderBrigadaDimensionamento();
+
+        statusEl.textContent = '✅ Treinamento salvo com sucesso!';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => fecharFormTreinamentoBrigada(), 900);
+    } catch (err) {
+        console.error('Erro ao salvar treinamento da Brigada:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
 }
 
 function abrirProgramacaoTreinamentoBrigada() {

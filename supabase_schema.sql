@@ -1304,6 +1304,31 @@ CREATE POLICY "Acesso total a avaliacoes psicossociais perguntas" ON public.aval
 GRANT ALL ON public.avaliacoes_psicossociais_perguntas TO anon;
 
 -- ============================================================
+-- BRIGADA DE INCÊNDIO (Módulo 2026-09-21 / Atualizado 2026-09-22)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.brigada_membros (
+    id TEXT PRIMARY KEY,                  -- 'BRIGADA_<matricula>' ou 'BRIGADA_<timestamp>'
+    matricula TEXT,                       -- FK solta pra colaboradores_efetivo.id
+    nome TEXT NOT NULL,
+    funcao TEXT,
+    setor TEXT,
+    cargo_brigada TEXT NOT NULL,          -- 'coordenador_geral', 'chefe_brigada', 'lider_area', 'brigadista'
+    area TEXT,                            -- Área/Turno/Frente
+    data_designacao DATE,                 -- Data de designação/posse na brigada
+    data_fim DATE,                        -- Data limite ou término da vigência/mandato
+    telefone TEXT,                        -- Telefone ou ramal de emergência
+    turno TEXT,                           -- 'Diurno', 'Noturno', 'Revezamento', etc.
+    nivel TEXT DEFAULT 'basico',          -- 'basico', 'intermediario', 'avancado'
+    ativo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.brigada_membros ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total a brigada_membros" ON public.brigada_membros;
+CREATE POLICY "Acesso total a brigada_membros" ON public.brigada_membros FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.brigada_membros TO anon;
+
+-- ============================================================
 -- RISCOS RESIDUAIS CONHECIDOS (documentados, não corrigidos nesta versão)
 -- ============================================================
 -- 1. cadastros, checklists, relatos, checklist_items e nao_conformidades continuam

@@ -5275,8 +5275,37 @@
                                 </select>
                             </div>
                             <div>
-                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Área/Turno/Frente</label>
-                                <input type="text" id="brigadaMembroForm_area" placeholder="Ex: Frente 3 - Diurno" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Nível na Brigada</label>
+                                <select id="brigadaMembroForm_nivel" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                    <option value="basico" selected>Básico (NBR 14276)</option>
+                                    <option value="intermediario">Intermediário (NBR 14276)</option>
+                                    <option value="avancado">Avançado (NBR 14276)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data de Designação / Início</label>
+                                <input type="date" id="brigadaMembroForm_dataDesignacao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data de Término / Vigência</label>
+                                <input type="date" id="brigadaMembroForm_dataFim" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Turno</label>
+                                <select id="brigadaMembroForm_turno" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                    <option value="Diurno" selected>Diurno</option>
+                                    <option value="Noturno">Noturno</option>
+                                    <option value="Revezamento">Revezamento</option>
+                                    <option value="Comercial">Comercial</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Telefone / Ramal de Emergência</label>
+                                <input type="text" id="brigadaMembroForm_telefone" placeholder="Ex: (87) 99999-9999 ou ramal" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Área / Frente de Atuação</label>
+                                <input type="text" id="brigadaMembroForm_area" placeholder="Ex: Canteiro Central / Frente 3" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
                             </div>
                             <div>
                                 <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Ativo</label>
@@ -5310,12 +5339,63 @@
                             <div class="db-kpi-label">Vencido ou Nunca Treinado</div>
                         </div>
                     </div>
+
+                    <!-- Formulário Direto de Registro/Edição de Treinamento da Brigada -->
+                    <div class="db-chart-card" id="brigadaTreinamentoFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                        <div class="db-chart-title" id="brigadaTreinFormTitle">🎓 Registrar / Editar Treinamento NR-23</div>
+                        <input type="hidden" id="brigadaTreinForm_matricula">
+                        <div style="margin-bottom: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
+                            <strong>Brigadista:</strong> <span id="brigadaTreinForm_colabNome" style="color:var(--primary); font-weight:600;">-</span> &nbsp;|&nbsp; 
+                            <strong>Matrícula:</strong> <span id="brigadaTreinForm_colabMatricula">-</span> &nbsp;|&nbsp; 
+                            <strong>Cargo na Brigada:</strong> <span id="brigadaTreinForm_colabCargo">-</span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px;">
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data do Treinamento *</label>
+                                <input type="date" id="brigadaTreinForm_data" onchange="onBrigadaTreinDataChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Validade (meses)</label>
+                                <input type="number" id="brigadaTreinForm_meses" min="1" max="60" value="12" onchange="onBrigadaTreinDataChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Próxima Reciclagem / Validade *</label>
+                                <input type="date" id="brigadaTreinForm_reciclagem" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Carga Horária (horas)</label>
+                                <input type="number" id="brigadaTreinForm_carga" min="1" step="0.5" value="20" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Instrutor(a)</label>
+                                <input type="text" id="brigadaTreinForm_instrutor" placeholder="Ex: Maria Gessica da Silva Roque" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Local da Realização</label>
+                                <input type="text" id="brigadaTreinForm_local" placeholder="Ex: Canteiro Central / Pátio" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Nº Turma / Certificado</label>
+                                <input type="text" id="brigadaTreinForm_turma" placeholder="Ex: Turma 01 / Cert. 2026-09" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Observações</label>
+                                <input type="text" id="brigadaTreinForm_obs" placeholder="Ex: Treinamento teórico e prático com simulado" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            </div>
+                        </div>
+                        <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <button class="db-apply-btn" onclick="salvarTreinamentoBrigada()">💾 Salvar Treinamento</button>
+                            <button class="db-clear-btn" onclick="fecharFormTreinamentoBrigada()">Cancelar</button>
+                            <span id="brigadaTreinFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                        </div>
+                    </div>
+
                     <div class="db-chart-card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
                             <div class="db-chart-title" style="margin-bottom: 0;">🎓 Situação de Treinamento (NR-23) dos Membros Designados</div>
-                            <button id="btnBrigadaProgramarTreinamento" class="db-apply-btn" style="display:none;" onclick="abrirProgramacaoTreinamentoBrigada()">📋 Programar Treinamento</button>
+                            <button id="btnBrigadaProgramarTreinamento" class="db-apply-btn" style="display:none;" onclick="abrirProgramacaoTreinamentoBrigada()">📋 Programar em Lote (Treinamentos)</button>
                         </div>
-                        <div style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">Reaproveita o treinamento "NR 23 - Proteção Contra Incêndio (Brigada de Emergência)" já cadastrado em Treinamentos - lançar uma sessão nova continua sendo feito lá (o botão acima só leva direto pra Treinamentos &gt; Kits e Documentos com a equipe pendente já marcada).</div>
+                        <div style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">Clique em qualquer brigadista abaixo para registrar ou atualizar o treinamento dele individualmente (data, validade, reciclagem, instrutor etc.), ou use o botão acima para programar turma em lote.</div>
                         <div id="listBrigadaControleTreinados" class="db-list" style="max-height: 520px;"></div>
                     </div>
                 </div>

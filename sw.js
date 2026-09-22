@@ -1,4 +1,4 @@
-const CACHE_NAME = 'checklist-v158';
+const CACHE_NAME = 'checklist-v159';
 const SHELL_URLS = [
     './',
     './index.html',
@@ -22,20 +22,20 @@ const CDN_URLS = [
     'https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js'
 ];
 
+// Ouvinte para atualização sob demanda: acionado pelo banner "Atualizar Agora"
+self.addEventListener('message', event => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
+});
+
 self.addEventListener('install', event => {
     event.waitUntil(
-        caches.keys().then(names => {
-            return Promise.all(
-                names.filter(n => n !== CACHE_NAME).map(n => caches.delete(n))
-            );
-        }).then(() => caches.open(CACHE_NAME))
-        .then(cache => cache.addAll(SHELL_URLS).then(() =>
-            // Melhor esforço: um CDN fora do ar não pode derrubar a instalação do app
-            // inteiro (diferente do addAll acima, que é tudo-ou-nada de propósito só
-            // pros arquivos essenciais do próprio site).
-            Promise.allSettled(CDN_URLS.map(url => cache.add(url)))
-        ))
-        .then(() => self.skipWaiting())
+        caches.open(CACHE_NAME).then(cache => {
+            return cache.addAll(SHELL_URLS).then(() => {
+                return Promise.allSettled(CDN_URLS.map(url => cache.add(url)));
+            });
+        })
     );
 });
 

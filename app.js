@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v158';
+const APP_VERSION = 'v159';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -350,7 +350,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         navigator.serviceWorker.register('sw.js')
             .then(reg => {
                 reg.update();
-                console.log('SW registrado e updated');
+                console.log('SW registrado e checando atualizações');
+
+                // Se já existe uma nova versão aguardando ativação
+                if (reg.waiting) {
+                    newWorkerWaiting = reg.waiting;
+                    const loginPage = document.getElementById('pageLogin');
+                    if (loginPage && loginPage.classList.contains('active')) {
+                        newWorkerWaiting.postMessage({ type: 'SKIP_WAITING' });
+                    } else {
+                        exibirBannerAtualizacao();
+                    }
+                }
+
+                // Detecta quando um novo Service Worker é baixado em segundo plano
+                reg.addEventListener('updatefound', () => {
+                    const installingWorker = reg.installing;
+                    if (!installingWorker) return;
+                    installingWorker.addEventListener('statechange', () => {
+                        if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            newWorkerWaiting = installingWorker;
+                            const loginPage = document.getElementById('pageLogin');
+                            if (loginPage && loginPage.classList.contains('active')) {
+                                newWorkerWaiting.postMessage({ type: 'SKIP_WAITING' });
+                            } else {
+                                exibirBannerAtualizacao();
+                            }
+                        }
+                    });
+                });
             })
             .catch(err => console.log('SW erro:', err));
             
@@ -363,6 +391,50 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 });
+
+let newWorkerWaiting = null;
+
+function exibirBannerAtualizacao() {
+    const banner = document.getElementById('pwaUpdateBanner');
+    if (banner) {
+        banner.style.display = 'flex';
+    }
+}
+
+function aplicarAtualizacaoApp() {
+    const btn = document.getElementById('pwaUpdateBtn');
+    if (btn) {
+        btn.textContent = 'Atualizando...';
+        btn.disabled = true;
+    }
+    if (newWorkerWaiting) {
+        newWorkerWaiting.postMessage({ type: 'SKIP_WAITING' });
+    } else {
+        limparCacheSeguro();
+    }
+}
+
+async function limparCacheSeguro() {
+    if (typeof showToast === 'function') showToast('Verificando atualizações e limpando cache seguro...');
+    try {
+        if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            for (const r of regs) {
+                await r.update();
+            }
+        }
+        const cacheKeys = await caches.keys();
+        await Promise.all(cacheKeys.map(k => caches.delete(k)));
+        localStorage.setItem('app_version', APP_VERSION);
+        if (typeof showToast === 'function') showToast('Cache atualizado! Recarregando...');
+        setTimeout(() => {
+            window.location.reload(true);
+        }, 600);
+    } catch (e) {
+        console.error('Erro na limpeza segura de cache:', e);
+        window.location.reload(true);
+    }
+}
 
 async function initApp() {
     console.log('App Checklist Segurança inicializado - ' + APP_VERSION);

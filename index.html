@@ -14,6 +14,15 @@
 </head>
 <body>
 
+    <!-- PWA Update Notification Banner -->
+    <div id="pwaUpdateBanner" class="pwa-update-banner" style="display:none;">
+        <div class="pwa-update-content">
+            <span class="pwa-update-icon">🚀</span>
+            <span id="pwaUpdateText" class="pwa-update-text">Nova versão do app disponível!</span>
+        </div>
+        <button id="pwaUpdateBtn" class="btn-update-pwa" onclick="aplicarAtualizacaoApp()">Atualizar Agora</button>
+    </div>
+
     <!-- Header -->
     <div class="header" style="position: relative;">
         <button class="back-btn" id="backBtn" onclick="goBack()">←</button>
@@ -1074,8 +1083,15 @@
         <div class="content">
             <div class="section-title">⚙️ Configurações</div>
 
-            <div id="versionCard" style="text-align: center; padding: 8px; margin-bottom: 12px; font-size: 11px; color: var(--text-light); background: #f0f2f5; border-radius: 8px;">
-                Versão: <strong id="versionDisplay">...</strong>
+            <div id="versionCard" style="text-align: center; padding: 14px; margin-bottom: 12px; font-size: 12px; color: var(--text-light); background: #f0f2f5; border-radius: 12px; border: 1px solid #e2e8f0;">
+                <div>Versão Atual: <strong id="versionDisplay" style="color: var(--primary);">...</strong></div>
+                <div style="font-size: 11px; margin-top: 4px; color: #64748b;">Instalado via PWA com suporte offline ativo</div>
+                <button class="save-btn" style="background: #0284c7; width: 100%; margin-top: 10px; padding: 10px; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px;" onclick="limparCacheSeguro()">
+                    🔄 Verificar Atualizações / Limpar Cache Seguro
+                </button>
+                <div style="font-size: 10.5px; color: #64748b; margin-top: 6px;">
+                    🛡️ Seguro: atualiza o aplicativo sem apagar seus checklists ou fotos offline.
+                </div>
             </div>
 
             <div class="card" style="border: 2px solid #10b981; background: #f4fcf8;">

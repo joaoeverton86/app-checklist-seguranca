@@ -18417,58 +18417,501 @@ function gerarPdfAcidentes() {
     statusEl.style.color = 'var(--success)';
 }
 
-// Contrato começou em 12/07/2024 - mês inicial fixo pra listar a configuração de "dias
-// trabalhados" desde o começo, mesmo que ainda não haja nenhum efetivo/acidente antes disso.
-const ACIDENTES_MES_INICIO_CONTRATO = { ano: 2024, mes: 6 }; // mes 0-indexado (6 = julho)
+// ============================================
+// CALENDÁRIO OPERACIONAL & DIAS TRABALHADOS (HHT) - ARCOVERDE / PE
+// Escala da Obra: Seg-Qui (07h às 17h, 1h almoço = 9h) | Sex (07h às 16h, 1h almoço = 8h)
+// Feriados Nacionais, Estaduais (PE) e Municipais de Arcoverde (11/09 e 23/09)
+// Suporte total a compensações de dias/pontes (ex: 23/09 trabalhado +9h e 25/09 folga compensada 0h)
+// ============================================
 
+const ACIDENTES_MES_INICIO_CONTRATO = { ano: 2024, mes: 6 }; // mes 0-indexado (6 = julho)
+let calHhtAnoAtual = new Date().getFullYear();
+let calHhtMesAtual = new Date().getMonth();
+let calHhtCompensacoesCache = {}; // { 'YYYY-MM': { [dia]: { horas: number, motivo: string } } }
+
+// Cálculo do Domingo de Páscoa (Algoritmo astronômico de Meeus/Jones/Butcher)
+function calcularPascoa(ano) {
+    const a = ano % 19;
+    const b = Math.floor(ano / 100);
+    const c = ano % 100;
+    const d = Math.floor(b / 4);
+    const e = b % 4;
+    const f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4);
+    const k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const mes = Math.floor((h + l - 7 * m + 114) / 31) - 1; // 0-based
+    const dia = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(ano, mes, dia);
+}
+
+// Catálogo oficial de feriados aplicáveis à obra em Arcoverde - PE
+function getFeriadosArcoverdeAno(ano) {
+    const pascoa = calcularPascoa(ano);
+    const addDias = (d, n) => {
+        const r = new Date(d);
+        r.setDate(r.getDate() + n);
+        return r;
+    };
+    const formatKey = d => `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    const feriados = {
+        '01-01': { nome: 'Ano Novo (Confraternização Universal)', tipo: 'Nacional' },
+        '03-06': { nome: 'Data Magna de Pernambuco', tipo: 'Estadual (PE)' },
+        '04-21': { nome: 'Tiradentes', tipo: 'Nacional' },
+        '05-01': { nome: 'Dia do Trabalho', tipo: 'Nacional' },
+        '06-24': { nome: 'São João', tipo: 'Regional' },
+        '09-07': { nome: 'Independência do Brasil', tipo: 'Nacional' },
+        '09-11': { nome: 'Emancipação Política de Arcoverde (Lei nº 2.566/2020)', tipo: 'Municipal (Arcoverde)' },
+        '09-23': { nome: 'Nossa Senhora do Livramento (Padroeira de Arcoverde)', tipo: 'Municipal (Arcoverde)' },
+        '10-12': { nome: 'Nossa Senhora Aparecida', tipo: 'Nacional' },
+        '11-02': { nome: 'Finados', tipo: 'Nacional' },
+        '11-15': { nome: 'Proclamação da República', tipo: 'Nacional' },
+        '11-20': { nome: 'Dia da Consciência Negra', tipo: 'Nacional' },
+        '12-25': { nome: 'Natal', tipo: 'Nacional' },
+        // Feriados móveis
+        [formatKey(addDias(pascoa, -48))]: { nome: 'Carnaval (Segunda-feira)', tipo: 'Facultativo / Acordo' },
+        [formatKey(addDias(pascoa, -47))]: { nome: 'Carnaval (Terça-feira)', tipo: 'Facultativo / Acordo' },
+        [formatKey(addDias(pascoa, -2))]: { nome: 'Sexta-feira da Paixão', tipo: 'Nacional' },
+        [formatKey(addDias(pascoa, 60))]: { nome: 'Corpus Christi', tipo: 'Municipal / Religioso' }
+    };
+    return feriados;
+}
+
+// Carregar compensações salvas em configuracoes_sistema para o mês
+async function carregarCompensacoesMes(ano, mes) {
+    const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+    if (calHhtCompensacoesCache[key] !== undefined) return calHhtCompensacoesCache[key];
+
+    try {
+        const rows = await supabaseFetch('configuracoes_sistema', `?id=eq.cal_hht_${key}`);
+        if (rows && rows.length > 0 && rows[0].valor) {
+            calHhtCompensacoesCache[key] = rows[0].valor.compensacoes || {};
+        } else {
+            calHhtCompensacoesCache[key] = {};
+        }
+    } catch (e) {
+        console.warn('Erro ao carregar compensações de calendário:', e);
+        calHhtCompensacoesCache[key] = {};
+    }
+    return calHhtCompensacoesCache[key];
+}
+
+function popularSelectsMesAnoHht() {
+    const selMes = document.getElementById('calHhtMes');
+    const selAno = document.getElementById('calHhtAno');
+    if (!selMes || !selAno) return;
+
+    if (selMes.options.length === 0) {
+        selMes.innerHTML = NOMES_MESES.map((nome, idx) => `<option value="${idx}">${nome}</option>`).join('');
+    }
+    selMes.value = calHhtMesAtual;
+
+    const anoAtual = new Date().getFullYear();
+    const anos = [];
+    for (let a = ACIDENTES_MES_INICIO_CONTRATO.ano; a <= anoAtual + 1; a++) {
+        anos.push(a);
+    }
+    if (selAno.options.length === 0) {
+        selAno.innerHTML = anos.map(a => `<option value="${a}">${a}</option>`).join('');
+    }
+    selAno.value = calHhtAnoAtual;
+}
+
+function onMesAnoCalendarioHhtChange() {
+    const selMes = document.getElementById('calHhtMes');
+    const selAno = document.getElementById('calHhtAno');
+    if (selMes) calHhtMesAtual = parseInt(selMes.value, 10);
+    if (selAno) calHhtAnoAtual = parseInt(selAno.value, 10);
+    renderCalendarioHht();
+}
+
+function mudarMesCalendarioHht(delta) {
+    calHhtMesAtual += delta;
+    if (calHhtMesAtual < 0) {
+        calHhtMesAtual = 11;
+        calHhtAnoAtual--;
+    } else if (calHhtMesAtual > 11) {
+        calHhtMesAtual = 0;
+        calHhtAnoAtual++;
+    }
+    popularSelectsMesAnoHht();
+    renderCalendarioHht();
+}
+
+function irParaMesAtualCalendarioHht() {
+    const hoje = new Date();
+    calHhtAnoAtual = hoje.getFullYear();
+    calHhtMesAtual = hoje.getMonth();
+    popularSelectsMesAnoHht();
+    renderCalendarioHht();
+}
+
+function abrirMesNoCalendarioHht(ano, mesIndex0) {
+    calHhtAnoAtual = ano;
+    calHhtMesAtual = mesIndex0;
+    popularSelectsMesAnoHht();
+    renderCalendarioHht();
+    document.getElementById('calHhtGrid')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// Renderizar o calendário operacional do mês atual com a escala e feriados
+async function renderCalendarioHht() {
+    popularSelectsMesAnoHht();
+    const gridEl = document.getElementById('calHhtGrid');
+    if (!gridEl) return;
+
+    const ano = calHhtAnoAtual;
+    const mes = calHhtMesAtual;
+    const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+
+    // Carrega compensações salvas se houver
+    const compensacoes = await carregarCompensacoesMes(ano, mes);
+    const feriadosAno = getFeriadosArcoverdeAno(ano);
+    const primeiroDia = new Date(ano, mes, 1);
+    const ultimoDia = new Date(ano, mes + 1, 0);
+    const totalDiasMes = ultimoDia.getDate();
+    const diaSemanaInicio = primeiroDia.getDay(); // 0=Dom ... 6=Sab
+
+    let totalDiasTrabalhados = 0;
+    let totalHorasTrabalhadas = 0;
+    const diasData = [];
+
+    for (let dia = 1; dia <= totalDiasMes; dia++) {
+        const dataObj = new Date(ano, mes, dia);
+        const diaSemana = dataObj.getDay();
+        const mmDd = `${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+        const feriado = feriadosAno[mmDd];
+
+        // Regra Padrão da Escala da Obra:
+        // Seg-Qui: 9h (07h às 17h, 1h almoço)
+        // Sex: 8h (07h às 16h, 1h almoço)
+        // Sáb/Dom: 0h (Folga)
+        let horasPadrao = 0;
+        let tipoPadrao = 'folga';
+
+        if (diaSemana >= 1 && diaSemana <= 4) {
+            horasPadrao = 9;
+            tipoPadrao = 'seg_qui';
+        } else if (diaSemana === 5) {
+            horasPadrao = 8;
+            tipoPadrao = 'sexta';
+        }
+
+        if (feriado) {
+            horasPadrao = 0;
+            tipoPadrao = 'feriado';
+        }
+
+        // Verifica se há compensação manual para o dia
+        const comp = compensacoes[dia];
+        let horasFinais = horasPadrao;
+        let ehCompensado = false;
+        let labelCompensado = '';
+
+        if (comp !== undefined) {
+            ehCompensado = true;
+            horasFinais = comp.horas;
+            labelCompensado = comp.motivo || (horasFinais > 0 ? 'Trabalho compensado' : 'Folga compensada');
+        }
+
+        if (horasFinais > 0) {
+            totalDiasTrabalhados++;
+            totalHorasTrabalhadas += horasFinais;
+        }
+
+        diasData.push({
+            dia,
+            diaSemana,
+            feriado,
+            tipoPadrao,
+            horasPadrao,
+            horasFinais,
+            ehCompensado,
+            labelCompensado
+        });
+    }
+
+    // Efetivo e HHT do mês
+    const headcount = headcountAsOf(new Date(ano, mes + 1, 0));
+    const totalHht = headcount * totalHorasTrabalhadas;
+    const mediaHorasDia = totalDiasTrabalhados > 0 ? (totalHorasTrabalhadas / totalDiasTrabalhados).toFixed(2) : '0';
+
+    // Atualiza KPIs
+    const elKpiDias = document.getElementById('calHhtKpiDias');
+    const elKpiHoras = document.getElementById('calHhtKpiHoras');
+    const elKpiMedia = document.getElementById('calHhtKpiMediaDia');
+    const elKpiEfetivo = document.getElementById('calHhtKpiEfetivo');
+    const elKpiTotalHht = document.getElementById('calHhtKpiTotalHht');
+
+    if (elKpiDias) elKpiDias.textContent = `${totalDiasTrabalhados} dias`;
+    if (elKpiHoras) elKpiHoras.textContent = `${totalHorasTrabalhadas} h`;
+    if (elKpiMedia) elKpiMedia.textContent = `média ${mediaHorasDia} h/dia`;
+    if (elKpiEfetivo) elKpiEfetivo.textContent = `${headcount}`;
+    if (elKpiTotalHht) elKpiTotalHht.textContent = totalHht > 0 ? totalHht.toLocaleString('pt-BR') : '—';
+
+    // Monta o grid de dias
+    let htmlGrid = '';
+
+    // Células vazias antes do primeiro dia
+    for (let v = 0; v < diaSemanaInicio; v++) {
+        htmlGrid += `<div style="min-height: 85px; background: rgba(0,0,0,0.02); opacity: 0.3;"></div>`;
+    }
+
+    // Células dos dias
+    diasData.forEach(item => {
+        let bg = 'var(--card)';
+        let borda = 'var(--border)';
+        let badgeBg = '#f1f5f9';
+        let badgeColor = '#475569';
+        let badgeTexto = 'Folga (0h)';
+        let extraInfo = '';
+
+        if (item.ehCompensado) {
+            bg = '#faf5ff';
+            borda = '#d8b4fe';
+            badgeBg = '#f3e8ff';
+            badgeColor = '#7e22ce';
+            badgeTexto = item.horasFinais > 0 ? `Compensado (${item.horasFinais}h)` : 'Folga Compensada (0h)';
+            if (item.feriado) extraInfo = `<div style="font-size: 9.5px; color: #dc2626; font-weight: 600; margin-top: 2px;">Feriado: ${escapeHTML(item.feriado.nome)}</div>`;
+        } else if (item.feriado) {
+            bg = '#fff7ed';
+            borda = '#fed7aa';
+            badgeBg = '#ffedd5';
+            badgeColor = '#c2410c';
+            badgeTexto = 'Feriado (0h)';
+            extraInfo = `<div style="font-size: 9.5px; color: #c2410c; font-weight: 600; margin-top: 2px;" title="${escapeHTML(item.feriado.nome)}">${escapeHTML(item.feriado.nome)}</div>`;
+        } else if (item.tipoPadrao === 'seg_qui') {
+            bg = '#f8fafc';
+            badgeBg = '#dbeafe';
+            badgeColor = '#1d4ed8';
+            badgeTexto = 'Trabalho (9h)';
+        } else if (item.tipoPadrao === 'sexta') {
+            bg = '#f8fafc';
+            badgeBg = '#dcfce7';
+            badgeColor = '#15803d';
+            badgeTexto = 'Trabalho (8h)';
+        } else {
+            bg = '#f8fafc';
+            badgeBg = '#f1f5f9';
+            badgeColor = '#64748b';
+            badgeTexto = 'Fim de Semana (0h)';
+        }
+
+        const hojeDia = (new Date().getFullYear() === ano && new Date().getMonth() === mes && new Date().getDate() === item.dia);
+
+        htmlGrid += `
+            <div onclick="toggleDiaCalendarioHht(${item.dia})"
+                 title="Clique para alternar dia trabalhado / compensação de escala"
+                 style="min-height: 85px; padding: 6px 8px; background: ${bg}; cursor: pointer; transition: all 0.15s ease; border: 1px solid ${hojeDia ? '#2563eb' : borda}; border-radius: 4px; display: flex; flex-direction: column; justify-content: space-between; user-select: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 800; font-size: 13px; color: ${hojeDia ? '#2563eb' : 'var(--text)'};">${item.dia} ${hojeDia ? '📍' : ''}</span>
+                    <span style="font-size: 9px; font-weight: 700; padding: 2px 4px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; white-space: nowrap;">${badgeTexto}</span>
+                </div>
+                ${extraInfo}
+                <div style="font-size: 9.5px; color: var(--text-light); text-align: right; margin-top: 4px;">
+                    ${item.horasFinais > 0 ? `<strong>${item.horasFinais}h</strong> úteis` : '—'}
+                </div>
+            </div>
+        `;
+    });
+
+    // Células vazias para fechar a última semana
+    const sobra = (diaSemanaInicio + totalDiasMes) % 7;
+    if (sobra > 0) {
+        for (let s = sobra; s < 7; s++) {
+            htmlGrid += `<div style="min-height: 85px; background: rgba(0,0,0,0.02); opacity: 0.3;"></div>`;
+        }
+    }
+
+    gridEl.innerHTML = htmlGrid;
+}
+
+// Alternar dia ao clicar no calendário (trabalhado vs folga/compensação)
+async function toggleDiaCalendarioHht(dia) {
+    const ano = calHhtAnoAtual;
+    const mes = calHhtMesAtual;
+    const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+    const compMap = await carregarCompensacoesMes(ano, mes);
+
+    const dataObj = new Date(ano, mes, dia);
+    const diaSemana = dataObj.getDay();
+    const mmDd = `${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+    const feriado = getFeriadosArcoverdeAno(ano)[mmDd];
+
+    // Calcula horas padrão daquele dia da semana
+    let horasPadrao = 0;
+    if (diaSemana >= 1 && diaSemana <= 4) horasPadrao = 9;
+    else if (diaSemana === 5) horasPadrao = 8;
+    if (feriado) horasPadrao = 0;
+
+    const atual = compMap[dia];
+
+    if (atual === undefined) {
+        if (horasPadrao > 0) {
+            // Era trabalhado -> vira folga compensada (0h)
+            compMap[dia] = { horas: 0, motivo: 'Folga compensada / Troca' };
+        } else {
+            // Era folga ou feriado -> vira trabalhado
+            const horasTrabalho = diaSemana === 5 ? 8 : (diaSemana === 6 ? 8 : 9);
+            compMap[dia] = { horas: horasTrabalho, motivo: feriado ? `Trabalho em feriado (${feriado.nome})` : 'Trabalho compensado / Extra' };
+        }
+    } else {
+        // Se já tinha compensação, remove para retornar ao padrão
+        delete compMap[dia];
+    }
+
+    calHhtCompensacoesCache[key] = compMap;
+    renderCalendarioHht();
+}
+
+// Resetar compensações para o padrão da escala
+async function resetarCompensacoesMesAtual() {
+    const ano = calHhtAnoAtual;
+    const mes = calHhtMesAtual;
+    const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+    if (!confirm(`Deseja restaurar a escala padrão de ${NOMES_MESES[mes]}/${ano} (removendo as compensações manuais)?`)) return;
+
+    calHhtCompensacoesCache[key] = {};
+    renderCalendarioHht();
+}
+
+// Salvar calendário apurado no Supabase e recalcular indicadores
+async function salvarCalendarioHhtMes() {
+    const statusEl = document.getElementById('calHhtStatus');
+    const ano = calHhtAnoAtual;
+    const mes = calHhtMesAtual;
+    const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+
+    if (statusEl) { statusEl.textContent = '⏳ Salvando...'; statusEl.style.color = 'var(--text-light)'; }
+
+    try {
+        const compMap = await carregarCompensacoesMes(ano, mes);
+        const feriadosAno = getFeriadosArcoverdeAno(ano);
+        const ultimoDia = new Date(ano, mes + 1, 0).getDate();
+
+        let totalDias = 0;
+        let totalHoras = 0;
+
+        for (let dia = 1; dia <= ultimoDia; dia++) {
+            const dataObj = new Date(ano, mes, dia);
+            const diaSemana = dataObj.getDay();
+            const mmDd = `${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+            const feriado = feriadosAno[mmDd];
+
+            let horas = 0;
+            if (diaSemana >= 1 && diaSemana <= 4) horas = 9;
+            else if (diaSemana === 5) horas = 8;
+            if (feriado) horas = 0;
+
+            if (compMap[dia] !== undefined) {
+                horas = compMap[dia].horas;
+            }
+
+            if (horas > 0) {
+                totalDias++;
+                totalHoras += horas;
+            }
+        }
+
+        const mediaHorasDia = totalDias > 0 ? parseFloat((totalHoras / totalDias).toFixed(2)) : 8;
+
+        // 1. Salva na tabela hht_dias_trabalhados
+        await supabaseUpsert('hht_dias_trabalhados', [{
+            id: key,
+            ano,
+            mes: mes + 1,
+            dias_trabalhados: totalDias,
+            horas_por_dia: mediaHorasDia
+        }]);
+
+        // 2. Salva o detalhamento em configuracoes_sistema
+        await supabaseUpsert('configuracoes_sistema', [{
+            id: `cal_hht_${key}`,
+            valor: {
+                ano,
+                mes: mes + 1,
+                total_horas: totalHoras,
+                dias_trabalhados: totalDias,
+                horas_por_dia: mediaHorasDia,
+                compensacoes: compMap
+            },
+            descricao: `Detalhamento de dias trabalhados e compensações para ${key}`,
+            atualizado_em: new Date().toISOString(),
+            atualizado_por: usuarioDashboardAtual ? (usuarioDashboardAtual.nome || usuarioDashboardAtual.matricula) : 'sistema'
+        }]);
+
+        // Atualiza cache em memória
+        hhtDiasTrabalhadosMap[key] = {
+            id: key,
+            ano,
+            mes: mes + 1,
+            dias_trabalhados: totalDias,
+            horas_por_dia: mediaHorasDia
+        };
+
+        if (statusEl) {
+            statusEl.textContent = `✅ Calendário salvo com sucesso! (${totalDias} dias, ${totalHoras}h apuradas)`;
+            statusEl.style.color = 'var(--success)';
+            setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 4500);
+        }
+
+        // Atualiza a tabela histórica abaixo e recalcula Acidentabilidade
+        renderDiasTrabalhadosConfig();
+        renderAcidentesPanel();
+
+    } catch (err) {
+        console.error('Erro ao salvar calendário HHT:', err);
+        if (statusEl) {
+            statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+            statusEl.style.color = 'var(--danger)';
+        }
+    }
+}
+
+// Renderiza a lista consolidada de meses históricos
 function renderDiasTrabalhadosConfig() {
     const container = document.getElementById('diasTrabalhadosLista');
     if (!container) return;
 
+    // Renderiza também o calendário interativo no topo
+    renderCalendarioHht();
+
     const hoje = new Date();
     const linhas = [];
     let cursor = new Date(ACIDENTES_MES_INICIO_CONTRATO.ano, ACIDENTES_MES_INICIO_CONTRATO.mes, 1);
-    const limite = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    const limite = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1);
+
     while (cursor <= limite) {
         const ano = cursor.getFullYear(), mes = cursor.getMonth();
         const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
         const config = hhtDiasTrabalhadosMap[key] || {};
         const headcount = headcountAsOf(new Date(ano, mes + 1, 0));
         const label = cursor.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-        linhas.push({ key, ano, mes, label, headcount, dias: config.dias_trabalhados ?? '', horas: config.horas_por_dia ?? 8 });
+        const dias = config.dias_trabalhados ?? '';
+        const horasDia = config.horas_por_dia ?? 8;
+        const totalHoras = dias !== '' ? Math.round(dias * horasDia) : '';
+        const hhtTotal = dias !== '' && headcount > 0 ? Math.round(headcount * dias * horasDia) : '';
+
+        linhas.push({ key, ano, mes, label, headcount, dias, horas: horasDia, totalHoras, hhtTotal });
         cursor = new Date(ano, mes + 1, 1);
     }
 
-    // Mais recente primeiro - é o mês que normalmente precisa de atenção.
     linhas.reverse();
 
     container.innerHTML = linhas.map(l => `
-        <div style="display: grid; grid-template-columns: 1.4fr 0.7fr 0.7fr 0.7fr auto; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 8px; background: var(--bg); font-size: 12.5px;">
-            <div style="font-weight: 600; text-transform: capitalize;">${escapeHTML(l.label)}</div>
+        <div style="display: grid; grid-template-columns: 1.3fr 0.7fr 0.6fr 0.6fr 0.8fr auto; gap: 8px; align-items: center; padding: 9px 12px; border-radius: 8px; background: var(--bg); font-size: 12px; border: 1px solid var(--border);">
+            <div style="font-weight: 700; text-transform: capitalize; color: var(--text);">${escapeHTML(l.label)}</div>
             <div style="color: var(--text-light);">Efetivo: <strong>${l.headcount}</strong></div>
-            <input type="number" min="0" step="1" placeholder="Dias" value="${l.dias}" id="hhtDias_${l.key}"
-                   style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
-            <input type="number" min="0" step="1" value="${l.horas}" id="hhtHoras_${l.key}"
-                   style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
-            <button class="db-apply-btn" style="padding: 6px 12px;" onclick="salvarDiasTrabalhadoMes('${l.key}', ${l.ano}, ${l.mes + 1})">💾</button>
+            <div style="color: #10b981; font-weight: 600;">${l.dias !== '' ? l.dias + ' dias' : '<span style="color:#94a3b8;">Não apurado</span>'}</div>
+            <div style="color: #2563eb; font-weight: 600;">${l.totalHoras !== '' ? l.totalHoras + ' h' : '—'}</div>
+            <div style="color: #047857; font-weight: 700;">${l.hhtTotal !== '' ? l.hhtTotal.toLocaleString('pt-BR') + ' HHT' : '—'}</div>
+            <button class="db-clear-btn" style="padding: 5px 12px; font-size: 11.5px; white-space: nowrap; font-weight: 600;" onclick="abrirMesNoCalendarioHht(${l.ano}, ${l.mes})">🗓️ Ver no Calendário</button>
         </div>
     `).join('');
-}
-
-async function salvarDiasTrabalhadoMes(key, ano, mes) {
-    const dias = parseInt(document.getElementById(`hhtDias_${key}`).value, 10);
-    const horas = parseInt(document.getElementById(`hhtHoras_${key}`).value, 10) || 8;
-    if (!dias || dias < 0) {
-        alert('Informe um número válido de dias trabalhados.');
-        return;
-    }
-    try {
-        await supabaseUpsert('hht_dias_trabalhados', [{ id: key, ano, mes, dias_trabalhados: dias, horas_por_dia: horas }]);
-        hhtDiasTrabalhadosMap[key] = { id: key, ano, mes, dias_trabalhados: dias, horas_por_dia: horas };
-    } catch (err) {
-        console.error('Erro ao salvar dias trabalhados:', err);
-        alert('Falha ao salvar: ' + err.message);
-    }
 }
 
 // ============================================

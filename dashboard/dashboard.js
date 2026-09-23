@@ -17779,7 +17779,8 @@ function renderColaboradoresInternos() {
                 <td style="padding:9px 8px; text-align:right; white-space:nowrap;">
                     <button class="db-clear-btn" style="padding:4px 8px; font-size:11px; margin-right:4px;" onclick="abrirModalRedefinirSenhaColaborador('${escapeHTML(c.id)}')" title="Redefinir senha de acesso">🔑 Senha</button>
                     <button class="db-clear-btn" style="padding:4px 8px; font-size:11px; margin-right:4px;" onclick="abrirModalEditarColaborador('${escapeHTML(c.id)}')" title="Editar dados cadastrais">✏️ Editar</button>
-                    <button class="db-clear-btn" style="padding:4px 8px; font-size:11px;" onclick="alternarAtivoColaborador('${escapeHTML(c.id)}', ${isAtivo})" title="${isAtivo ? 'Desativar acesso' : 'Reativar acesso'}">${isAtivo ? '🚫' : '✅'}</button>
+                    <button class="db-clear-btn" style="padding:4px 8px; font-size:11px; margin-right:4px;" onclick="alternarAtivoColaborador('${escapeHTML(c.id)}', ${isAtivo})" title="${isAtivo ? 'Desativar acesso' : 'Reativar acesso'}">${isAtivo ? '🚫' : '✅'}</button>
+                    <button class="db-clear-btn" style="padding:4px 8px; font-size:11px; color:var(--danger); border-color:rgba(239,68,68,0.3);" onclick="excluirColaboradorInterno('${escapeHTML(c.id)}')" title="Excluir cadastro permanentemente">🗑️</button>
                 </td>
             </tr>
         `;
@@ -18058,6 +18059,38 @@ async function alternarAtivoColaborador(id, ativoAtual) {
     }
 }
 
+async function excluirColaboradorInterno(id) {
+    const colab = allColaboradoresInternos.find(c => String(c.id) === String(id));
+    const nome = colab ? colab.nome : id;
+    const matricula = colab ? (colab.matricula || colab.id) : id;
+
+    if (!confirm(`Deseja realmente EXCLUIR permanentemente o cadastro de "${nome}" (Matrícula ${matricula})?\n\n⚠️ Esta ação removerá o colaborador da lista. (Checklists e inspeções antigas já salvas manterão o nome registrado).`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/colaboradores_checklist?id=eq.${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${await authTokenDashboard()}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!res.ok) {
+            const errTxt = await res.text();
+            throw new Error(`HTTP ${res.status}: ${errTxt}`);
+        }
+
+        await registrarAuditLogDashboard('delete', 'colaboradores_checklist', id, `${nome} (Mat. ${matricula})`, 'Colaborador excluído pelo Administrador no Painel');
+        await carregarColaboradoresInternos();
+    } catch (e) {
+        console.error('Erro ao excluir colaborador:', e);
+        alert('❌ Falha ao excluir colaborador: ' + e.message);
+    }
+}
+
 function abrirModalNovoColaborador() {
     const modal = document.getElementById('modalNovoColab');
     document.getElementById('novoColabMatricula').value = '';
@@ -18227,6 +18260,7 @@ function renderPainelUsuariosLista() {
             </div>
             <select style="padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;" onchange="alterarPerfilPainelUsuario('${u.id}', this.value)" title="Trocar perfil">${opcoesPerfil}</select>
             <button class="db-clear-btn" style="padding:4px 9px; font-size:11px;" onclick="alternarAtivoPainelUsuario('${u.id}', ${u.ativo === false})">${u.ativo === false ? '✅ Reativar' : '🚫 Desativar'}</button>
+            <button class="db-clear-btn" style="padding:4px 9px; font-size:11px; color:var(--danger); border-color:rgba(239,68,68,0.3);" onclick="excluirPainelUsuario('${u.id}')" title="Excluir usuário convidado permanentemente">🗑️ Excluir</button>
         </div>`;
     }).join('');
 }
@@ -18290,6 +18324,38 @@ async function alternarAtivoPainelUsuario(id, novoAtivo) {
         registrarAuditLogDashboard('update', 'painel_usuarios', id, novoAtivo ? 'Usuário do painel reativado' : 'Usuário do painel desativado');
     } catch (e) {
         alert('Erro ao atualizar: ' + e.message);
+    }
+}
+
+async function excluirPainelUsuario(id) {
+    const usuario = allPainelUsuarios.find(u => String(u.id) === String(id));
+    const nome = usuario ? usuario.nome : id;
+    const email = usuario ? usuario.email : '';
+
+    if (!confirm(`Deseja realmente EXCLUIR o usuário convidado "${nome}" (${email})?\n\nEsta ação é definitiva e removerá o acesso desta pessoa ao painel.`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/painel_usuarios?id=eq.${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${await authTokenDashboard()}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!res.ok) {
+            const errTxt = await res.text();
+            throw new Error(`HTTP ${res.status}: ${errTxt}`);
+        }
+
+        await registrarAuditLogDashboard('delete', 'painel_usuarios', id, `${nome} (${email})`, 'Usuário convidado excluído pelo Administrador');
+        await loadUsuariosPainelData();
+    } catch (e) {
+        console.error('Erro ao excluir usuário convidado:', e);
+        alert('❌ Falha ao excluir usuário: ' + e.message);
     }
 }
 

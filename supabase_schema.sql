@@ -214,8 +214,10 @@ CREATE POLICY "Acesso total aos registros excluidos" ON public.deleted_records F
 -- alterar ou apagar um registro já gravado via API, mesmo tendo a anon key.
 DROP POLICY IF EXISTS "Leitura publica audit_log" ON public.audit_log;
 DROP POLICY IF EXISTS "Insercao publica audit_log" ON public.audit_log;
-CREATE POLICY "Leitura publica audit_log" ON public.audit_log FOR SELECT USING (true);
-CREATE POLICY "Insercao publica audit_log" ON public.audit_log FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Inserção audit log" ON public.audit_log;
+DROP POLICY IF EXISTS "Leitura autenticada audit log" ON public.audit_log;
+CREATE POLICY "Inserção audit log" ON public.audit_log FOR INSERT TO anon, authenticated WITH CHECK (true);
+CREATE POLICY "Leitura autenticada audit log" ON public.audit_log FOR SELECT TO authenticated USING (auth.uid() IS NOT NULL);
 
 -- ============================================================
 -- PERMISSÕES (GRANTs) PARA A API REST ANON
@@ -422,9 +424,61 @@ BEGIN
 END;
 $function$;
 
+-- Redefinição de senha de colaborador por Administrador (direto no Painel Gerencial)
+CREATE OR REPLACE FUNCTION public.redefinir_senha_por_admin(
+    p_admin_matricula text,
+    p_admin_senha text,
+    p_target_id text,
+    p_nova_senha text
+)
+ RETURNS text
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+DECLARE
+    v_admin_row colaboradores_checklist%ROWTYPE;
+    v_admin_ok boolean := false;
+    v_nova_hash text;
+BEGIN
+    SELECT * INTO v_admin_row FROM colaboradores_checklist c
+    WHERE upper(c.matricula) = upper(p_admin_matricula)
+      AND c.nivel_acesso ILIKE 'admin%'
+      AND c.ativo IS NOT FALSE
+    LIMIT 1;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Não autorizado: administrador não encontrado ou inativo';
+    END IF;
+
+    IF p_admin_senha LIKE '$2%' THEN
+        v_admin_ok := (v_admin_row.senha = p_admin_senha);
+    ELSE
+        v_admin_ok := (crypt(p_admin_senha, v_admin_row.senha) = v_admin_row.senha);
+    END IF;
+
+    IF NOT v_admin_ok THEN
+        RAISE EXCEPTION 'Não autorizado: senha do administrador incorreta';
+    END IF;
+
+    IF p_nova_senha IS NULL OR trim(p_nova_senha) = '' THEN
+        RAISE EXCEPTION 'A nova senha não pode ser vazia';
+    END IF;
+
+    v_nova_hash := crypt(p_nova_senha, gen_salt('bf', 10));
+
+    UPDATE colaboradores_checklist
+    SET senha = v_nova_hash
+    WHERE id = upper(trim(p_target_id)) OR matricula = trim(p_target_id);
+
+    RETURN v_nova_hash;
+END;
+$function$;
+
 GRANT EXECUTE ON FUNCTION public.verificar_login(text, text) TO anon;
 GRANT EXECUTE ON FUNCTION public.cadastrar_conta(text, text, text, text, text, text) TO anon;
 GRANT EXECUTE ON FUNCTION public.alterar_nivel_acesso(text, text, text, text) TO anon;
+GRANT EXECUTE ON FUNCTION public.redefinir_senha_por_admin(text, text, text, text) TO anon, authenticated;
 
 REVOKE ALL ON FUNCTION public.definir_senha_colaborador(text, text) FROM public, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.definir_senha_colaborador(text, text) TO service_role;
@@ -674,10 +728,10 @@ CREATE TABLE IF NOT EXISTS public.colaboradores_efetivo (
 
 ALTER TABLE public.colaboradores_efetivo ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Acesso total ao efetivo" ON public.colaboradores_efetivo;
-CREATE POLICY "Acesso total ao efetivo" ON public.colaboradores_efetivo FOR ALL USING (true) WITH CHECK (true);
-
-GRANT ALL ON public.colaboradores_efetivo TO anon;
+REVOKE ALL ON public.colaboradores_efetivo FROM anon;
+GRANT SELECT (id, nome, funcao, setor, status) ON public.colaboradores_efetivo TO anon;
+GRANT ALL ON public.colaboradores_efetivo TO authenticated;
+GRANT ALL ON public.colaboradores_efetivo TO service_role;
 
 CREATE TABLE IF NOT EXISTS public.acidentes (
     id TEXT PRIMARY KEY,
@@ -776,9 +830,9 @@ CREATE TABLE IF NOT EXISTS public.atestados_ocupacionais (
 ALTER TABLE public.atestados_ocupacionais ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Acesso total aos atestados ocupacionais" ON public.atestados_ocupacionais;
-CREATE POLICY "Acesso total aos atestados ocupacionais" ON public.atestados_ocupacionais FOR ALL USING (true) WITH CHECK (true);
-
-GRANT ALL ON public.atestados_ocupacionais TO anon;
+DROP POLICY IF EXISTS "Acesso restrito autenticados atestados" ON public.atestados_ocupacionais;
+CREATE POLICY "Acesso restrito autenticados atestados" ON public.atestados_ocupacionais
+    FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 CREATE INDEX IF NOT EXISTS idx_atest_matricula ON public.atestados_ocupacionais(matricula);
 CREATE INDEX IF NOT EXISTS idx_atest_data_inicio ON public.atestados_ocupacionais(data_inicio);
@@ -996,8 +1050,9 @@ CREATE TABLE IF NOT EXISTS public.cipa_membros (
 
 ALTER TABLE public.cipa_membros ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Acesso total aos membros da CIPA" ON public.cipa_membros;
-CREATE POLICY "Acesso total aos membros da CIPA" ON public.cipa_membros FOR ALL USING (true) WITH CHECK (true);
-GRANT ALL ON public.cipa_membros TO anon;
+DROP POLICY IF EXISTS "Acesso restrito autenticados cipa membros" ON public.cipa_membros;
+CREATE POLICY "Acesso restrito autenticados cipa membros" ON public.cipa_membros
+    FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 -- Uma linha por reunião (agendada ou já realizada). participantes fica jsonb (não
 -- tabela filha) por só ser consultado dentro do próprio registro da reunião, mesmo
@@ -1030,8 +1085,9 @@ CREATE TABLE IF NOT EXISTS public.cipa_reunioes (
 
 ALTER TABLE public.cipa_reunioes ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Acesso total às reuniões da CIPA" ON public.cipa_reunioes;
-CREATE POLICY "Acesso total às reuniões da CIPA" ON public.cipa_reunioes FOR ALL USING (true) WITH CHECK (true);
-GRANT ALL ON public.cipa_reunioes TO anon;
+DROP POLICY IF EXISTS "Acesso restrito autenticados cipa reunioes" ON public.cipa_reunioes;
+CREATE POLICY "Acesso restrito autenticados cipa reunioes" ON public.cipa_reunioes
+    FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 -- Pendências geradas nas reuniões. reuniao_id é FK solta pra cipa_reunioes.id (mesmo
 -- padrão sem constraint real já usado por treinamento_cod).
@@ -1048,8 +1104,9 @@ CREATE TABLE IF NOT EXISTS public.cipa_plano_acao (
 
 ALTER TABLE public.cipa_plano_acao ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Acesso total ao plano de ação da CIPA" ON public.cipa_plano_acao;
-CREATE POLICY "Acesso total ao plano de ação da CIPA" ON public.cipa_plano_acao FOR ALL USING (true) WITH CHECK (true);
-GRANT ALL ON public.cipa_plano_acao TO anon;
+DROP POLICY IF EXISTS "Acesso restrito autenticados cipa plano" ON public.cipa_plano_acao;
+CREATE POLICY "Acesso restrito autenticados cipa plano" ON public.cipa_plano_acao
+    FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 -- ============================================================
 -- CONTROLE DE DOCUMENTOS - codificação padronizada, matriz de revisões e log de
@@ -1273,8 +1330,9 @@ CREATE TABLE IF NOT EXISTS public.avaliacoes_psicossociais (
 
 ALTER TABLE public.avaliacoes_psicossociais ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Acesso total a avaliacoes psicossociais" ON public.avaliacoes_psicossociais;
-CREATE POLICY "Acesso total a avaliacoes psicossociais" ON public.avaliacoes_psicossociais FOR ALL USING (true) WITH CHECK (true);
-GRANT ALL ON public.avaliacoes_psicossociais TO anon;
+DROP POLICY IF EXISTS "Acesso restrito autenticados psicossocial" ON public.avaliacoes_psicossociais;
+CREATE POLICY "Acesso restrito autenticados psicossocial" ON public.avaliacoes_psicossociais
+    FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 CREATE TABLE IF NOT EXISTS public.avaliacoes_psicossociais_escalas (
     id TEXT PRIMARY KEY,              -- '<aplicacao_id>_<slug da escala>'
@@ -1287,8 +1345,9 @@ CREATE TABLE IF NOT EXISTS public.avaliacoes_psicossociais_escalas (
 
 ALTER TABLE public.avaliacoes_psicossociais_escalas ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Acesso total a avaliacoes psicossociais escalas" ON public.avaliacoes_psicossociais_escalas;
-CREATE POLICY "Acesso total a avaliacoes psicossociais escalas" ON public.avaliacoes_psicossociais_escalas FOR ALL USING (true) WITH CHECK (true);
-GRANT ALL ON public.avaliacoes_psicossociais_escalas TO anon;
+DROP POLICY IF EXISTS "Acesso restrito autenticados psicossocial escalas" ON public.avaliacoes_psicossociais_escalas;
+CREATE POLICY "Acesso restrito autenticados psicossocial escalas" ON public.avaliacoes_psicossociais_escalas
+    FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 CREATE TABLE IF NOT EXISTS public.avaliacoes_psicossociais_perguntas (
     id TEXT PRIMARY KEY,              -- '<aplicacao_id>_q<numero>'
@@ -1300,8 +1359,9 @@ CREATE TABLE IF NOT EXISTS public.avaliacoes_psicossociais_perguntas (
 
 ALTER TABLE public.avaliacoes_psicossociais_perguntas ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Acesso total a avaliacoes psicossociais perguntas" ON public.avaliacoes_psicossociais_perguntas;
-CREATE POLICY "Acesso total a avaliacoes psicossociais perguntas" ON public.avaliacoes_psicossociais_perguntas FOR ALL USING (true) WITH CHECK (true);
-GRANT ALL ON public.avaliacoes_psicossociais_perguntas TO anon;
+DROP POLICY IF EXISTS "Acesso restrito autenticados psicossocial perguntas" ON public.avaliacoes_psicossociais_perguntas;
+CREATE POLICY "Acesso restrito autenticados psicossocial perguntas" ON public.avaliacoes_psicossociais_perguntas
+    FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 -- ============================================================
 -- BRIGADA DE INCÊNDIO (Módulo 2026-09-21 / Atualizado 2026-09-22)
@@ -1325,8 +1385,9 @@ CREATE TABLE IF NOT EXISTS public.brigada_membros (
 
 ALTER TABLE public.brigada_membros ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Acesso total a brigada_membros" ON public.brigada_membros;
-CREATE POLICY "Acesso total a brigada_membros" ON public.brigada_membros FOR ALL USING (true) WITH CHECK (true);
-GRANT ALL ON public.brigada_membros TO anon;
+DROP POLICY IF EXISTS "Acesso restrito autenticados brigada" ON public.brigada_membros;
+CREATE POLICY "Acesso restrito autenticados brigada" ON public.brigada_membros
+    FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 -- ============================================================
 -- RISCOS RESIDUAIS CONHECIDOS (documentados, não corrigidos nesta versão)

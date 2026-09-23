@@ -17669,17 +17669,512 @@ let allPainelUsuarios = [];
 let usuariosPainelLoaded = false;
 let painelPerfilEditandoId = null;
 
+let allColaboradoresInternos = [];
+let filtroColabsInternosTexto = '';
+
+function showUsuariosPainelSubtab(subtab) {
+    const btnColabs = document.getElementById('usuariosSubtabBtn-colabs');
+    const btnConvidados = document.getElementById('usuariosSubtabBtn-convidados');
+    const btnPerfis = document.getElementById('usuariosSubtabBtn-perfis');
+    const tabColabs = document.getElementById('usuariosSubtab-colabs');
+    const tabConvidados = document.getElementById('usuariosSubtab-convidados');
+    const tabPerfis = document.getElementById('usuariosSubtab-perfis');
+
+    if (btnColabs) btnColabs.classList.toggle('active', subtab === 'colabs');
+    if (btnConvidados) btnConvidados.classList.toggle('active', subtab === 'convidados');
+    if (btnPerfis) btnPerfis.classList.toggle('active', subtab === 'perfis');
+
+    if (tabColabs) tabColabs.style.display = subtab === 'colabs' ? 'block' : 'none';
+    if (tabConvidados) tabConvidados.style.display = subtab === 'convidados' ? 'block' : 'none';
+    if (tabPerfis) tabPerfis.style.display = subtab === 'perfis' ? 'block' : 'none';
+
+    if (subtab === 'colabs' && allColaboradoresInternos.length === 0) {
+        carregarColaboradoresInternos();
+    }
+}
+
+async function carregarColaboradoresInternos() {
+    const statusEl = document.getElementById('colabsInternosStatus');
+    const tbody = document.getElementById('tabelaColaboradoresInternosBody');
+    if (statusEl) statusEl.textContent = '⏳ Carregando colaboradores...';
+    try {
+        const rows = await supabaseFetch('colaboradores_checklist', '?select=id,nome,funcao,setor,matricula,email,nivel_acesso,ativo&order=nome');
+        allColaboradoresInternos = Array.isArray(rows) ? rows : [];
+        if (statusEl) statusEl.textContent = '';
+        renderColaboradoresInternos();
+        atualizarKpisColaboradoresInternos();
+    } catch (e) {
+        console.error('Erro ao carregar colaboradores internos:', e);
+        if (statusEl) statusEl.textContent = '❌ Erro ao carregar colaboradores: ' + e.message;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="padding:20px; text-align:center; color:var(--danger);">Falha ao carregar: ${escapeHTML(e.message)}</td></tr>`;
+    }
+}
+
+function atualizarKpisColaboradoresInternos() {
+    const kpiTotal = document.getElementById('kpiColabsTotal');
+    const kpiAdmins = document.getElementById('kpiColabsAdmins');
+    const kpiTecnicos = document.getElementById('kpiColabsTecnicos');
+    const kpiEmail = document.getElementById('kpiColabsComEmail');
+
+    const total = allColaboradoresInternos.length;
+    const admins = allColaboradoresInternos.filter(c => (c.nivel_acesso || '').toLowerCase().includes('admin')).length;
+    const tecnicos = total - admins;
+    const comEmail = allColaboradoresInternos.filter(c => c.email && c.email.trim() !== '').length;
+
+    if (kpiTotal) kpiTotal.textContent = total;
+    if (kpiAdmins) kpiAdmins.textContent = admins;
+    if (kpiTecnicos) kpiTecnicos.textContent = tecnicos;
+    if (kpiEmail) kpiEmail.textContent = comEmail;
+}
+
+function filtrarColaboradoresInternos(texto) {
+    filtroColabsInternosTexto = (texto || '').trim().toLowerCase();
+    renderColaboradoresInternos();
+}
+
+function renderColaboradoresInternos() {
+    const tbody = document.getElementById('tabelaColaboradoresInternosBody');
+    if (!tbody) return;
+
+    let lista = allColaboradoresInternos;
+    if (filtroColabsInternosTexto) {
+        lista = lista.filter(c => 
+            (c.nome || '').toLowerCase().includes(filtroColabsInternosTexto) ||
+            (c.matricula || '').toLowerCase().includes(filtroColabsInternosTexto) ||
+            (c.funcao || '').toLowerCase().includes(filtroColabsInternosTexto) ||
+            (c.setor || '').toLowerCase().includes(filtroColabsInternosTexto) ||
+            (c.email || '').toLowerCase().includes(filtroColabsInternosTexto)
+        );
+    }
+
+    if (lista.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="padding:24px; text-align:center; color:var(--text-light);">Nenhum colaborador encontrado com os critérios de busca.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = lista.map(c => {
+        const isAdmin = (c.nivel_acesso || '').toLowerCase().includes('admin');
+        const badgeNivel = isAdmin
+            ? `<span style="display:inline-block; padding:3px 8px; border-radius:12px; font-size:11px; font-weight:600; background:rgba(59,130,246,0.15); color:var(--primary); border:1px solid rgba(59,130,246,0.3);">🛡️ Admin</span>`
+            : `<span style="display:inline-block; padding:3px 8px; border-radius:12px; font-size:11px; font-weight:600; background:rgba(100,116,139,0.12); color:var(--text); border:1px solid rgba(100,116,139,0.25);">👷 Técnico</span>`;
+
+        const isAtivo = c.ativo !== false;
+        const badgeStatus = isAtivo
+            ? `<span style="display:inline-block; padding:2px 7px; border-radius:10px; font-size:11px; font-weight:600; background:rgba(16,185,129,0.15); color:#10b981;">Ativo</span>`
+            : `<span style="display:inline-block; padding:2px 7px; border-radius:10px; font-size:11px; font-weight:600; background:rgba(239,68,68,0.15); color:var(--danger);">Inativo</span>`;
+
+        const emailExibido = c.email && c.email.trim()
+            ? `<span style="color:var(--text);">${escapeHTML(c.email)}</span>`
+            : `<span style="color:var(--text-light); font-style:italic;">⚠️ Sem e-mail</span>`;
+
+        return `
+            <tr style="border-bottom:1px solid var(--border); transition:background 0.15s ease;" onmouseover="this.style.background='rgba(0,0,0,0.02)'" onmouseout="this.style.background='transparent'">
+                <td style="padding:9px 8px; font-weight:700; font-family:monospace; color:var(--primary);">${escapeHTML(c.matricula || c.id)}</td>
+                <td style="padding:9px 8px; font-weight:600; color:var(--text);">${escapeHTML(c.nome || '-')}</td>
+                <td style="padding:9px 8px; color:var(--text); font-size:12px;">${escapeHTML(c.funcao || '-')}</td>
+                <td style="padding:9px 8px; color:var(--text-light); font-size:12px;">${escapeHTML(c.setor || '-')}</td>
+                <td style="padding:9px 8px; font-size:12px;">${emailExibido}</td>
+                <td style="padding:9px 8px; text-align:center;">${badgeNivel}</td>
+                <td style="padding:9px 8px; text-align:center;">${badgeStatus}</td>
+                <td style="padding:9px 8px; text-align:right; white-space:nowrap;">
+                    <button class="db-clear-btn" style="padding:4px 8px; font-size:11px; margin-right:4px;" onclick="abrirModalRedefinirSenhaColaborador('${escapeHTML(c.id)}')" title="Redefinir senha de acesso">🔑 Senha</button>
+                    <button class="db-clear-btn" style="padding:4px 8px; font-size:11px; margin-right:4px;" onclick="abrirModalEditarColaborador('${escapeHTML(c.id)}')" title="Editar dados cadastrais">✏️ Editar</button>
+                    <button class="db-clear-btn" style="padding:4px 8px; font-size:11px;" onclick="alternarAtivoColaborador('${escapeHTML(c.id)}', ${isAtivo})" title="${isAtivo ? 'Desativar acesso' : 'Reativar acesso'}">${isAtivo ? '🚫' : '✅'}</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function alternarVisibilidadeSenha(inputId, btn) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    if (input.type === 'password') {
+        input.type = 'text';
+        if (btn) btn.textContent = '🔒';
+    } else {
+        input.type = 'password';
+        if (btn) btn.textContent = '👁️';
+    }
+}
+
+function abrirModalRedefinirSenhaColaborador(id) {
+    const colab = allColaboradoresInternos.find(c => String(c.id) === String(id));
+    if (!colab) return;
+
+    const modal = document.getElementById('modalRedefinirSenhaColab');
+    const targetInput = document.getElementById('redefSenhaTargetId');
+    const infoDiv = document.getElementById('redefSenhaColabInfo');
+    const novaInput = document.getElementById('redefSenhaNova');
+    const confInput = document.getElementById('redefSenhaConfirma');
+    const adminPassInput = document.getElementById('redefSenhaAdminPass');
+    const statusDiv = document.getElementById('redefSenhaStatus');
+
+    if (targetInput) targetInput.value = colab.id;
+    if (infoDiv) {
+        infoDiv.innerHTML = `
+            <strong>Colaborador:</strong> ${escapeHTML(colab.nome)}<br>
+            <strong>Matrícula:</strong> ${escapeHTML(colab.matricula || colab.id)} | <strong>Função:</strong> ${escapeHTML(colab.funcao || '-')}
+        `;
+    }
+    if (novaInput) { novaInput.value = ''; novaInput.type = 'password'; }
+    if (confInput) { confInput.value = ''; confInput.type = 'password'; }
+    if (adminPassInput) adminPassInput.value = '';
+    if (statusDiv) { statusDiv.textContent = ''; statusDiv.style.color = ''; }
+
+    if (modal) modal.style.display = 'flex';
+}
+
+function fecharModalRedefinirSenha() {
+    const modal = document.getElementById('modalRedefinirSenhaColab');
+    if (modal) modal.style.display = 'none';
+}
+
+async function salvarNovaSenhaColaborador() {
+    const id = document.getElementById('redefSenhaTargetId').value;
+    const novaSenha = document.getElementById('redefSenhaNova').value;
+    const confirma = document.getElementById('redefSenhaConfirma').value;
+    const adminPass = document.getElementById('redefSenhaAdminPass').value;
+    const statusEl = document.getElementById('redefSenhaStatus');
+    const btn = document.getElementById('btnSalvarRedefSenha');
+
+    if (!novaSenha || novaSenha.length < 4) {
+        if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = '❌ A nova senha deve ter no mínimo 4 caracteres.'; }
+        return;
+    }
+    if (novaSenha !== confirma) {
+        if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = '❌ A nova senha e a confirmação não conferem.'; }
+        return;
+    }
+    if (!adminPass) {
+        if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = '❌ Digite sua senha de Administrador para autorizar a operação.'; }
+        return;
+    }
+
+    const sessionStr = localStorage.getItem('active_session');
+    const session = sessionStr ? JSON.parse(sessionStr) : null;
+    const adminMatricula = (session && session.matricula) || '76';
+
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando...'; }
+    if (statusEl) { statusEl.style.color = 'var(--text)'; statusEl.textContent = '⏳ Redefinindo senha no servidor...'; }
+
+    try {
+        const rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/redefinir_senha_por_admin`, {
+            method: 'POST',
+            headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${await authTokenDashboard()}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                p_admin_matricula: adminMatricula,
+                p_admin_senha: adminPass,
+                p_target_id: id,
+                p_nova_senha: novaSenha
+            })
+        });
+
+        if (!rpcRes.ok) {
+            const errTxt = await rpcRes.text();
+            throw new Error(`Falha ao redefinir senha (${rpcRes.status}): ${errTxt}`);
+        }
+
+        await registrarAuditLogDashboard('update', 'colaboradores_checklist', id, `Colaborador ${id}`, 'Senha redefinida pelo Administrador no Painel');
+
+        if (statusEl) {
+            statusEl.style.color = '#10b981';
+            statusEl.textContent = '✅ Senha redefinida com sucesso!';
+        }
+
+        setTimeout(() => {
+            fecharModalRedefinirSenha();
+            carregarColaboradoresInternos();
+        }, 1200);
+    } catch (e) {
+        console.error('Erro ao redefinir senha:', e);
+        if (statusEl) {
+            statusEl.style.color = 'var(--danger)';
+            statusEl.textContent = '❌ Erro: ' + e.message;
+        }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar Nova Senha'; }
+    }
+}
+
+function abrirModalEditarColaborador(id) {
+    const colab = allColaboradoresInternos.find(c => String(c.id) === String(id));
+    if (!colab) return;
+
+    const modal = document.getElementById('modalEditarColab');
+    document.getElementById('editColabId').value = colab.id;
+    document.getElementById('editColabMatricula').value = colab.matricula || colab.id;
+    document.getElementById('editColabNome').value = colab.nome || '';
+    document.getElementById('editColabFuncao').value = colab.funcao || '';
+    document.getElementById('editColabSetor').value = colab.setor || '';
+    document.getElementById('editColabEmail').value = colab.email || '';
+    
+    const nivel = (colab.nivel_acesso || '').toLowerCase().includes('admin') ? 'Admin' : 'Tecnico';
+    document.getElementById('editColabNivel').value = nivel;
+
+    document.getElementById('wrapEditColabAdminPass').style.display = 'none';
+    document.getElementById('editColabAdminPass').value = '';
+    const statusDiv = document.getElementById('editColabStatus');
+    if (statusDiv) statusDiv.textContent = '';
+
+    if (modal) modal.style.display = 'flex';
+}
+
+function aoMudarNivelColabEdit(novoNivel) {
+    const id = document.getElementById('editColabId').value;
+    const colabAtual = allColaboradoresInternos.find(c => String(c.id) === String(id));
+    const nivelAtual = (colabAtual && (colabAtual.nivel_acesso || '').toLowerCase().includes('admin')) ? 'Admin' : 'Tecnico';
+    const wrap = document.getElementById('wrapEditColabAdminPass');
+    if (wrap) wrap.style.display = novoNivel !== nivelAtual ? 'block' : 'none';
+}
+
+function fecharModalEditarColab() {
+    const modal = document.getElementById('modalEditarColab');
+    if (modal) modal.style.display = 'none';
+}
+
+async function salvarEdicaoColaborador() {
+    const id = document.getElementById('editColabId').value;
+    const nome = document.getElementById('editColabNome').value.trim();
+    const funcao = document.getElementById('editColabFuncao').value.trim();
+    const setor = document.getElementById('editColabSetor').value.trim();
+    const email = document.getElementById('editColabEmail').value.trim().toLowerCase();
+    const nivel = document.getElementById('editColabNivel').value;
+    const adminPass = document.getElementById('editColabAdminPass').value;
+    const statusEl = document.getElementById('editColabStatus');
+    const btn = document.getElementById('btnSalvarEditColab');
+
+    if (!nome) {
+        if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = '❌ O nome é obrigatório.'; }
+        return;
+    }
+
+    const colabAtual = allColaboradoresInternos.find(c => String(c.id) === String(id));
+    const nivelAtual = (colabAtual && (colabAtual.nivel_acesso || '').toLowerCase().includes('admin')) ? 'Admin' : 'Tecnico';
+    const nivelMudou = nivelAtual !== nivel;
+
+    if (nivelMudou && !adminPass) {
+        if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = '❌ Digite sua senha de Administrador para confirmar a alteração do nível de acesso.'; }
+        return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando...'; }
+    if (statusEl) { statusEl.style.color = 'var(--text)'; statusEl.textContent = '⏳ Salvando dados do colaborador...'; }
+
+    try {
+        const updatePayload = { nome, funcao, setor, email };
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/colaboradores_checklist?id=eq.${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${await authTokenDashboard()}`,
+                'Content-Type': 'application/json',
+                Prefer: 'return=representation'
+            },
+            body: JSON.stringify(updatePayload)
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+
+        if (nivelMudou) {
+            const sessionStr = localStorage.getItem('active_session');
+            const session = sessionStr ? JSON.parse(sessionStr) : null;
+            const adminMatricula = (session && session.matricula) || '76';
+
+            const rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/verificar_login`, {
+                method: 'POST',
+                headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ p_login: adminMatricula, p_senha: adminPass })
+            });
+            const adminData = await rpcRes.json().catch(() => null);
+            if (!rpcRes.ok || !Array.isArray(adminData) || adminData.length === 0) {
+                throw new Error('Senha de Administrador incorreta ao tentar alterar nível de acesso.');
+            }
+            const adminRow = adminData[0];
+            const rpcNivel = await fetch(`${SUPABASE_URL}/rest/v1/rpc/alterar_nivel_acesso`, {
+                method: 'POST',
+                headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    p_admin_matricula: adminRow.matricula || adminRow.id,
+                    p_admin_senha_hash: adminRow.senha,
+                    p_target_id: id,
+                    p_novo_nivel: nivel
+                })
+            });
+            if (!rpcNivel.ok) throw new Error(`Falha ao alterar nível de acesso: ${await rpcNivel.text()}`);
+        }
+
+        await registrarAuditLogDashboard('update', 'colaboradores_checklist', id, `${nome} (Mat. ${id})`, `Dados atualizados. Nível: ${nivel}`);
+
+        if (statusEl) {
+            statusEl.style.color = '#10b981';
+            statusEl.textContent = '✅ Colaborador atualizado com sucesso!';
+        }
+
+        setTimeout(() => {
+            fecharModalEditarColab();
+            carregarColaboradoresInternos();
+        }, 1200);
+    } catch (e) {
+        console.error('Erro ao salvar colaborador:', e);
+        if (statusEl) {
+            statusEl.style.color = 'var(--danger)';
+            statusEl.textContent = '❌ Erro: ' + e.message;
+        }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar Alterações'; }
+    }
+}
+
+async function alternarAtivoColaborador(id, ativoAtual) {
+    const novoStatus = !ativoAtual;
+    const acaoTexto = novoStatus ? 'reativar' : 'desativar';
+    const colab = allColaboradoresInternos.find(c => String(c.id) === String(id));
+    const nome = colab ? colab.nome : id;
+
+    if (!confirm(`Deseja realmente ${acaoTexto} o acesso de "${nome}" (Matrícula ${id})?`)) return;
+
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/colaboradores_checklist?id=eq.${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${await authTokenDashboard()}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ ativo: novoStatus })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        await registrarAuditLogDashboard('update', 'colaboradores_checklist', id, `${nome} (Mat. ${id})`, `Status alterado para ${novoStatus ? 'Ativo' : 'Inativo'}`);
+        await carregarColaboradoresInternos();
+    } catch (e) {
+        console.error('Erro ao alterar status:', e);
+        alert('❌ Falha ao alterar status do colaborador: ' + e.message);
+    }
+}
+
+function abrirModalNovoColaborador() {
+    const modal = document.getElementById('modalNovoColab');
+    document.getElementById('novoColabMatricula').value = '';
+    document.getElementById('novoColabNome').value = '';
+    document.getElementById('novoColabFuncao').value = '';
+    document.getElementById('novoColabSetor').value = '';
+    document.getElementById('novoColabEmail').value = '';
+    document.getElementById('novoColabSenha').value = '';
+    document.getElementById('novoColabNivel').value = 'Tecnico';
+    const statusDiv = document.getElementById('novoColabStatus');
+    if (statusDiv) statusDiv.textContent = '';
+    if (modal) modal.style.display = 'flex';
+}
+
+function fecharModalNovoColab() {
+    const modal = document.getElementById('modalNovoColab');
+    if (modal) modal.style.display = 'none';
+}
+
+async function salvarNovoColaboradorInterno() {
+    const matricula = document.getElementById('novoColabMatricula').value.trim().toUpperCase();
+    const nome = document.getElementById('novoColabNome').value.trim();
+    const funcao = document.getElementById('novoColabFuncao').value.trim();
+    const setor = document.getElementById('novoColabSetor').value.trim();
+    const email = document.getElementById('novoColabEmail').value.trim().toLowerCase();
+    const nivel = document.getElementById('novoColabNivel').value;
+    const senha = document.getElementById('novoColabSenha').value;
+    const statusEl = document.getElementById('novoColabStatus');
+    const btn = document.getElementById('btnSalvarNovoColab');
+
+    if (!matricula || !nome || !senha) {
+        if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = '❌ Matrícula, Nome e Senha são obrigatórios.'; }
+        return;
+    }
+    if (senha.length < 4) {
+        if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = '❌ A senha deve ter pelo menos 4 caracteres.'; }
+        return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Cadastrando...'; }
+    if (statusEl) { statusEl.style.color = 'var(--text)'; statusEl.textContent = '⏳ Criando cadastro...'; }
+
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/cadastrar_conta`, {
+            method: 'POST',
+            headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${await authTokenDashboard()}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                p_matricula: matricula,
+                p_nome: nome,
+                p_funcao: funcao,
+                p_setor: setor,
+                p_email: email || '',
+                p_senha: senha
+            })
+        });
+
+        if (!res.ok) {
+            const errTxt = await res.text();
+            throw new Error(errTxt);
+        }
+
+        if (nivel === 'Admin') {
+            await fetch(`${SUPABASE_URL}/rest/v1/colaboradores_checklist?id=eq.${encodeURIComponent(matricula)}`, {
+                method: 'PATCH',
+                headers: {
+                    apikey: SUPABASE_KEY,
+                    Authorization: `Bearer ${await authTokenDashboard()}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ nivel_acesso: 'Admin' })
+            }).catch(() => null);
+        }
+
+        await registrarAuditLogDashboard('create', 'colaboradores_checklist', matricula, `${nome} (Mat. ${matricula})`, `Novo colaborador criado. Nível: ${nivel}`);
+
+        if (statusEl) {
+            statusEl.style.color = '#10b981';
+            statusEl.textContent = '✅ Colaborador cadastrado com sucesso!';
+        }
+
+        setTimeout(() => {
+            fecharModalNovoColab();
+            carregarColaboradoresInternos();
+        }, 1200);
+    } catch (e) {
+        console.error('Erro ao cadastrar novo colaborador:', e);
+        if (statusEl) {
+            statusEl.style.color = 'var(--danger)';
+            statusEl.textContent = '❌ Erro ao cadastrar: ' + e.message;
+        }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '➕ Cadastrar Colaborador'; }
+    }
+}
+
 async function loadUsuariosPainelData() {
     const statusEl = document.getElementById('usuariosPainelStatus');
     if (statusEl) statusEl.textContent = '⏳ Carregando...';
     try {
-        [allPainelPerfis, allPainelUsuarios] = await Promise.all([
-            supabaseFetch('painel_perfis', '?select=*&order=nome'),
-            supabaseFetch('painel_usuarios', '?select=*&order=nome')
+        await Promise.all([
+            carregarColaboradoresInternos(),
+            (async () => {
+                const [perfis, usuarios] = await Promise.all([
+                    supabaseFetch('painel_perfis', '?select=*&order=nome'),
+                    supabaseFetch('painel_usuarios', '?select=*&order=nome')
+                ]);
+                allPainelPerfis = perfis || [];
+                allPainelUsuarios = usuarios || [];
+                renderPainelPerfisLista();
+                renderPainelUsuariosLista();
+                popularSelectPerfisPainel();
+            })()
         ]);
-        renderPainelPerfisLista();
-        renderPainelUsuariosLista();
-        popularSelectPerfisPainel();
         if (statusEl) statusEl.textContent = '';
     } catch (e) {
         console.error('Erro ao carregar Usuários do Painel:', e);

@@ -8562,6 +8562,21 @@ async function realizarLogin() {
             loginTime: Date.now()
         };
         localStorage.setItem('active_session', JSON.stringify(session));
+
+        // Fase 2: Ativação transparente no Supabase Auth em segundo plano (se online)
+        // Permite que operadores e motoristas ganhem identidade oficial no Supabase Auth
+        // sem atrito nem necessidade de e-mail formal prévio.
+        if (navigator.onLine && isSupabaseConfigured()) {
+            fetch(`${getSupabaseUrl()}/functions/v1/ativar-conta-auth`, {
+                method: 'POST',
+                headers: {
+                    apikey: getSupabaseKey(),
+                    Authorization: `Bearer ${getSupabaseKey()}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ login: loginVal, senha })
+            }).catch(() => null);
+        }
         
         // Limpar inputs
         matriculaInput.value = '';

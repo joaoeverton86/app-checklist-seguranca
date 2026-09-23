@@ -5835,32 +5835,107 @@
             <section class="db-page" id="page-usuariospainel">
                 <div id="usuariosPainelStatus" style="font-size:12.5px; color:var(--text-light); margin-bottom:10px;"></div>
 
-                <div class="db-chart-card" style="margin-bottom:16px;">
-                    <div class="db-chart-title">✉️ Convidar visualizador</div>
-                    <p style="font-size:12px; color:var(--text-light); margin-bottom:12px;">
-                        Cria uma conta separada, só pra visualização do painel (não mexe no cadastro do app de campo). A pessoa recebe um e-mail do Supabase pra escolher a própria senha - ninguém aqui vê ou define essa senha por ela.
+                <!-- Navegação por Sub-abas -->
+                <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; border-bottom:1px solid var(--border); padding-bottom:12px;">
+                    <button id="usuariosSubtabBtn-colabs" class="db-filter-btn active" onclick="showUsuariosPainelSubtab('colabs')">👷 Colaboradores Internos (App & Obra)</button>
+                    <button id="usuariosSubtabBtn-convidados" class="db-filter-btn" onclick="showUsuariosPainelSubtab('convidados')">✉️ Visualizadores Externos</button>
+                    <button id="usuariosSubtabBtn-perfis" class="db-filter-btn" onclick="showUsuariosPainelSubtab('perfis')">📋 Perfis de Acesso</button>
+                </div>
+
+                <!-- SUB-ABA 1: COLABORADORES INTERNOS (APP & OBRA) -->
+                <div id="usuariosSubtab-colabs">
+                    <p style="font-size: 12.5px; color: var(--text-light); margin-bottom: 14px;">
+                        Gestão das contas operacionais utilizadas no aplicativo de campo e no sistema. O Administrador pode cadastrar novos colaboradores, atualizar e-mails e <strong>redefinir senhas diretamente</strong> sem depender de e-mail OTP.
                     </p>
-                    <div style="display:flex; flex-direction:column; gap:10px; max-width:420px;">
-                        <input type="text" id="painelConviteNome" placeholder="Nome da pessoa" style="padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px;">
-                        <input type="email" id="painelConviteEmail" placeholder="E-mail da pessoa" style="padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px;">
-                        <select id="painelConvitePerfil" style="padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px;"></select>
-                        <button class="db-apply-btn" id="painelConviteBtn" style="padding:10px;" onclick="convidarUsuarioPainel()">✉️ Enviar convite</button>
-                        <div id="painelConviteStatus" style="font-size:12.5px;"></div>
+
+                    <!-- Barra de Ações e Filtro -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+                        <div style="display:flex; gap:10px; align-items:center; flex:1; min-width:280px; max-width:500px;">
+                            <input type="text" id="filtroColabsInternos" placeholder="🔍 Buscar por nome, matrícula ou função..." oninput="filtrarColaboradoresInternos(this.value)" style="width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px; background:var(--card); color:var(--text);">
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <button class="db-clear-btn" style="padding:8px 12px; font-size:12px;" onclick="carregarColaboradoresInternos()">🔄 Atualizar</button>
+                            <button class="db-apply-btn" style="padding:8px 14px; font-size:12px;" onclick="abrirModalNovoColaborador()">➕ Novo Colaborador</button>
+                        </div>
+                    </div>
+
+                    <!-- Cards de Resumo -->
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:16px;">
+                        <div class="db-chart-card" style="padding:12px; margin-bottom:0;">
+                            <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; font-weight:600;">Total de Colaboradores</div>
+                            <div id="kpiColabsTotal" style="font-size:22px; font-weight:700; color:var(--text); margin-top:4px;">-</div>
+                        </div>
+                        <div class="db-chart-card" style="padding:12px; margin-bottom:0;">
+                            <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; font-weight:600;">Administradores</div>
+                            <div id="kpiColabsAdmins" style="font-size:22px; font-weight:700; color:var(--primary); margin-top:4px;">-</div>
+                        </div>
+                        <div class="db-chart-card" style="padding:12px; margin-bottom:0;">
+                            <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; font-weight:600;">Técnicos & Operadores</div>
+                            <div id="kpiColabsTecnicos" style="font-size:22px; font-weight:700; color:var(--text); margin-top:4px;">-</div>
+                        </div>
+                        <div class="db-chart-card" style="padding:12px; margin-bottom:0;">
+                            <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; font-weight:600;">Com E-mail Cadastrado</div>
+                            <div id="kpiColabsComEmail" style="font-size:22px; font-weight:700; color:#10b981; margin-top:4px;">-</div>
+                        </div>
+                    </div>
+
+                    <!-- Tabela de Colaboradores Internos -->
+                    <div class="db-chart-card" style="margin-bottom:16px;">
+                        <div class="db-chart-title">👷 Lista de Colaboradores Cadastrados</div>
+                        <div id="colabsInternosStatus" style="font-size:12.5px; color:var(--text-light); margin-bottom:8px;"></div>
+                        <div style="overflow-x:auto;">
+                            <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+                                <thead>
+                                    <tr style="border-bottom:2px solid var(--border); text-align:left; color:var(--text-light); font-size:11.5px; text-transform:uppercase;">
+                                        <th style="padding:10px 8px;">Matrícula</th>
+                                        <th style="padding:10px 8px;">Nome</th>
+                                        <th style="padding:10px 8px;">Função / Cargo</th>
+                                        <th style="padding:10px 8px;">Setor</th>
+                                        <th style="padding:10px 8px;">E-mail</th>
+                                        <th style="padding:10px 8px; text-align:center;">Nível</th>
+                                        <th style="padding:10px 8px; text-align:center;">Status</th>
+                                        <th style="padding:10px 8px; text-align:right;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaColaboradoresInternosBody">
+                                    <tr><td colspan="8" style="padding:20px; text-align:center; color:var(--text-light);">Carregando colaboradores...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
-                <div class="db-chart-card" style="margin-bottom:16px;">
-                    <div class="db-chart-title">👥 Usuários convidados</div>
-                    <div id="listPainelUsuarios"></div>
+                <!-- SUB-ABA 2: VISUALIZADORES CONVIDADOS (EXTERNOS) -->
+                <div id="usuariosSubtab-convidados" style="display:none;">
+                    <div class="db-chart-card" style="margin-bottom:16px;">
+                        <div class="db-chart-title">✉️ Convidar visualizador</div>
+                        <p style="font-size:12px; color:var(--text-light); margin-bottom:12px;">
+                            Cria uma conta separada, só pra visualização do painel (não mexe no cadastro do app de campo). A pessoa recebe um e-mail do Supabase pra escolher a própria senha - ninguém aqui vê ou define essa senha por ela.
+                        </p>
+                        <div style="display:flex; flex-direction:column; gap:10px; max-width:420px;">
+                            <input type="text" id="painelConviteNome" placeholder="Nome da pessoa" style="padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px;">
+                            <input type="email" id="painelConviteEmail" placeholder="E-mail da pessoa" style="padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px;">
+                            <select id="painelConvitePerfil" style="padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px;"></select>
+                            <button class="db-apply-btn" id="painelConviteBtn" style="padding:10px;" onclick="convidarUsuarioPainel()">✉️ Enviar convite</button>
+                            <div id="painelConviteStatus" style="font-size:12.5px;"></div>
+                        </div>
+                    </div>
+
+                    <div class="db-chart-card" style="margin-bottom:16px;">
+                        <div class="db-chart-title">👥 Usuários convidados</div>
+                        <div id="listPainelUsuarios"></div>
+                    </div>
                 </div>
 
-                <div class="db-chart-card" style="margin-bottom:16px;">
-                    <div class="db-chart-title" style="display:flex; align-items:center; justify-content:space-between;">
-                        <span>📋 Perfis (pacotes de módulos)</span>
-                        <button class="db-clear-btn" style="padding:5px 10px; font-size:12px;" onclick="abrirEdicaoPerfilPainel(null)">+ Novo perfil</button>
+                <!-- SUB-ABA 3: PERFIS DE ACESSO -->
+                <div id="usuariosSubtab-perfis" style="display:none;">
+                    <div class="db-chart-card" style="margin-bottom:16px;">
+                        <div class="db-chart-title" style="display:flex; align-items:center; justify-content:space-between;">
+                            <span>📋 Perfis (pacotes de módulos)</span>
+                            <button class="db-clear-btn" style="padding:5px 10px; font-size:12px;" onclick="abrirEdicaoPerfilPainel(null)">+ Novo perfil</button>
+                        </div>
+                        <div id="listPainelPerfis"></div>
                     </div>
-                    <div id="listPainelPerfis"></div>
-                </div>
 
                 <div class="db-chart-card" id="painelPerfilFormCard" style="display:none; margin-bottom:16px;">
                     <div class="db-chart-title" id="painelPerfilFormTitulo">Novo perfil</div>
@@ -5900,7 +5975,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=121"></script>
+    <script src="dashboard.js?v=122"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();
@@ -5935,6 +6010,148 @@ function filterMatrizEpi(q) {
             <input type="file" id="anexoArquivoInput" accept=".pdf,image/*" style="margin-bottom: 10px; width: 100%;">
             <button class="db-clear-btn" onclick="enviarAnexoSelecionado()">⬆️ Enviar Anexo</button>
             <div id="anexoModalStatus" style="margin-top: 8px; font-size: 12px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 1: Redefinir Senha de Colaborador (Admin) -->
+<div id="modalRedefinirSenhaColab" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:1050; align-items:center; justify-content:center; padding:20px;" onclick="if (event.target === this) fecharModalRedefinirSenha();">
+    <div style="background:var(--card); border-radius:12px; max-width:440px; width:100%; padding:22px; box-shadow:var(--shadow); border:1px solid var(--border);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div class="db-chart-title" style="margin-bottom:0;">🔑 Redefinir Senha</div>
+            <button class="db-clear-btn" style="padding:4px 8px;" onclick="fecharModalRedefinirSenha()">✕</button>
+        </div>
+        <div id="redefSenhaColabInfo" style="padding:10px 12px; background:rgba(59,130,246,0.08); border-left:3px solid var(--primary); border-radius:6px; font-size:12.5px; margin-bottom:14px; line-height:1.4;">
+            <!-- Preenchido via JS: Colaborador e Matrícula -->
+        </div>
+        <input type="hidden" id="redefSenhaTargetId">
+        <div style="display:flex; flex-direction:column; gap:12px;">
+            <div>
+                <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Nova Senha para o Colaborador</label>
+                <div style="position:relative;">
+                    <input type="password" id="redefSenhaNova" placeholder="Digite a nova senha (mínimo 4 caracteres)" style="width:100%; padding:9px 38px 9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+                    <button type="button" onclick="alternarVisibilidadeSenha('redefSenhaNova', this)" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:14px; color:var(--text-light);" title="Mostrar/ocultar senha">👁️</button>
+                </div>
+            </div>
+            <div>
+                <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Confirmar Nova Senha</label>
+                <input type="password" id="redefSenhaConfirma" placeholder="Repita a nova senha" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+            </div>
+            <div style="border-top:1px dashed var(--border); padding-top:10px; margin-top:2px;">
+                <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Sua Senha de Administrador (para autorizar a troca)</label>
+                <input type="password" id="redefSenhaAdminPass" placeholder="Digite sua senha de login" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+            </div>
+            <div style="display:flex; gap:8px; margin-top:6px;">
+                <button class="db-apply-btn" id="btnSalvarRedefSenha" style="flex:1; padding:10px;" onclick="salvarNovaSenhaColaborador()">💾 Salvar Nova Senha</button>
+                <button class="db-clear-btn" style="padding:10px;" onclick="fecharModalRedefinirSenha()">Cancelar</button>
+            </div>
+            <div id="redefSenhaStatus" style="font-size:12.5px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 2: Editar Dados do Colaborador (Admin) -->
+<div id="modalEditarColab" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:1050; align-items:center; justify-content:center; padding:20px;" onclick="if (event.target === this) fecharModalEditarColab();">
+    <div style="background:var(--card); border-radius:12px; max-width:480px; width:100%; padding:22px; box-shadow:var(--shadow); border:1px solid var(--border);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <div class="db-chart-title" style="margin-bottom:0;">✏️ Editar Colaborador</div>
+            <button class="db-clear-btn" style="padding:4px 8px;" onclick="fecharModalEditarColab()">✕</button>
+        </div>
+        <input type="hidden" id="editColabId">
+        <div style="display:flex; flex-direction:column; gap:11px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Matrícula</label>
+                    <input type="text" id="editColabMatricula" readonly style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:rgba(0,0,0,0.04); color:var(--text-light);">
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Nível de Acesso</label>
+                    <select id="editColabNivel" onchange="aoMudarNivelColabEdit(this.value)" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+                        <option value="Tecnico">👷 Técnico (App de Campo)</option>
+                        <option value="Admin">🛡️ Administrador (Painel + App)</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Nome Completo</label>
+                <input type="text" id="editColabNome" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Função / Cargo</label>
+                    <input type="text" id="editColabFuncao" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Setor</label>
+                    <input type="text" id="editColabSetor" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+                </div>
+            </div>
+            <div>
+                <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">E-mail do Colaborador</label>
+                <input type="email" id="editColabEmail" placeholder="nome@copramal.com.br" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+                <div style="font-size:11px; color:var(--text-light); margin-top:3px;">Necessário para login oficial com chave criptográfica no Supabase Auth.</div>
+            </div>
+            <div id="wrapEditColabAdminPass" style="display:none; border-top:1px dashed var(--border); padding-top:10px;">
+                <label style="font-size:12px; font-weight:600; color:var(--primary); display:block; margin-bottom:4px;">Sua Senha de Administrador (exigida para alterar nível de acesso)</label>
+                <input type="password" id="editColabAdminPass" placeholder="Digite sua senha de login" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+            </div>
+            <div style="display:flex; gap:8px; margin-top:6px;">
+                <button class="db-apply-btn" id="btnSalvarEditColab" style="flex:1; padding:10px;" onclick="salvarEdicaoColaborador()">💾 Salvar Alterações</button>
+                <button class="db-clear-btn" style="padding:10px;" onclick="fecharModalEditarColab()">Cancelar</button>
+            </div>
+            <div id="editColabStatus" style="font-size:12.5px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 3: Novo Colaborador (Admin) -->
+<div id="modalNovoColab" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:1050; align-items:center; justify-content:center; padding:20px;" onclick="if (event.target === this) fecharModalNovoColab();">
+    <div style="background:var(--card); border-radius:12px; max-width:480px; width:100%; padding:22px; box-shadow:var(--shadow); border:1px solid var(--border);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <div class="db-chart-title" style="margin-bottom:0;">➕ Cadastrar Novo Colaborador</div>
+            <button class="db-clear-btn" style="padding:4px 8px;" onclick="fecharModalNovoColab()">✕</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:11px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Matrícula *</label>
+                    <input type="text" id="novoColabMatricula" placeholder="Ex: 215" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Nível de Acesso</label>
+                    <select id="novoColabNivel" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+                        <option value="Tecnico" selected>👷 Técnico (App de Campo)</option>
+                        <option value="Admin">🛡️ Administrador (Painel + App)</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Nome Completo *</label>
+                <input type="text" id="novoColabNome" placeholder="Nome do profissional" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Função / Cargo</label>
+                    <input type="text" id="novoColabFuncao" placeholder="Ex: MOTORISTA" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Setor</label>
+                    <input type="text" id="novoColabSetor" placeholder="Ex: TRANSPORTE" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+                </div>
+            </div>
+            <div>
+                <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">E-mail (opcional)</label>
+                <input type="email" id="novoColabEmail" placeholder="nome@copramal.com.br" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+            </div>
+            <div>
+                <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Senha Inicial de Acesso *</label>
+                <input type="password" id="novoColabSenha" placeholder="Digite a senha de acesso" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+            </div>
+            <div style="display:flex; gap:8px; margin-top:6px;">
+                <button class="db-apply-btn" id="btnSalvarNovoColab" style="flex:1; padding:10px;" onclick="salvarNovoColaboradorInterno()">➕ Cadastrar Colaborador</button>
+                <button class="db-clear-btn" style="padding:10px;" onclick="fecharModalNovoColab()">Cancelar</button>
+            </div>
+            <div id="novoColabStatus" style="font-size:12.5px;"></div>
         </div>
     </div>
 </div>

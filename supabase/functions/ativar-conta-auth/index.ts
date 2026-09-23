@@ -68,12 +68,12 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, already_active: true });
     }
 
-    if (!colabRow.email) {
-      return json({ success: false, error: "Este colaborador não tem e-mail cadastrado - fale com o administrador do sistema pra completar o cadastro antes de ativar o acesso protegido." }, 400);
-    }
+    const emailAuth = (colabRow.email && colabRow.email.trim())
+      ? colabRow.email.trim().toLowerCase()
+      : `mat${String(colaborador.matricula || colaborador.id).trim().toLowerCase()}@copramal.local`;
 
     const { data: created, error: createErr } = await supabase.auth.admin.createUser({
-      email: colabRow.email,
+      email: emailAuth,
       password: senha,
       email_confirm: true,
     });
@@ -83,9 +83,11 @@ Deno.serve(async (req: Request) => {
       // existente por e-mail e linka em vez de tratar como erro.
       if (String(createErr?.message || "").toLowerCase().includes("already registered")) {
         const { data: listData } = await supabase.auth.admin.listUsers();
-        const existente = listData?.users?.find((u) => (u.email || "").toLowerCase() === colabRow.email.toLowerCase());
+        const existente = listData?.users?.find((u) => (u.email || "").toLowerCase() === emailAuth.toLowerCase());
         if (existente) {
-          await supabase.from("colaboradores_checklist").update({ auth_user_id: existente.id }).eq("id", colabRow.id);
+          const updateData: Record<string, unknown> = { auth_user_id: existente.id };
+          if (!colabRow.email) updateData.email = emailAuth;
+          await supabase.from("colaboradores_checklist").update(updateData).eq("id", colabRow.id);
           return json({ success: true });
         }
       }

@@ -2219,7 +2219,8 @@
                 <div class="db-chart-card" style="margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
                         <div class="db-chart-title" style="margin-bottom: 0;">🔍 Buscar Colaborador</div>
-                        <div style="display:flex; gap:8px;">
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <button class="db-clear-btn" id="btnExportarExcelEfetivo" onclick="gerarExcelEfetivo()" title="Exportar efetivo em planilha Excel (.xlsx) para realização de filtros" style="border-color: #10b981; color: #047857; background: #ecfdf5; font-weight: 700; display: inline-flex; align-items: center; gap: 5px;">📊 Gerar Excel</button>
                             <button class="db-clear-btn" onclick="toggleFormPdfEfetivo()">🖨️ Gerar PDF</button>
                             <button class="db-apply-btn" onclick="abrirFormEfetivo()">+ Novo Colaborador</button>
                         </div>
@@ -2236,7 +2237,7 @@
                 </div>
 
                 <div class="db-chart-card" id="efetivoPdfCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
-                    <div class="db-chart-title">🖨️ Gerar PDF de Colaboradores</div>
+                    <div class="db-chart-title">📄 Exportar Colaboradores (PDF ou Excel)</div>
                     <label style="display:block; margin: 10px 0 6px; color: var(--text-light); font-weight: 600; font-size: 12.5px;">Quem incluir</label>
                     <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
                         <button id="efPdfStatusBtn-ativos" class="db-filter-btn active" onclick="setEfetivoPdfStatus('ativos')">Ativos</button>
@@ -2245,8 +2246,11 @@
                     </div>
                     <label style="display:block; margin-bottom: 6px; color: var(--text-light); font-weight: 600; font-size: 12.5px;">Colunas a incluir</label>
                     <div id="efetivoPdfColunas" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap:6px; margin-bottom:16px; font-size:12.5px;"></div>
-                    <button class="db-apply-btn" onclick="gerarPdfEfetivo()">🖨️ Gerar PDF</button>
-                    <span id="efetivoPdfStatus" style="font-size:12px; color:var(--text-light); margin-left:8px;"></span>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <button class="db-apply-btn" onclick="gerarPdfEfetivo()">🖨️ Gerar PDF</button>
+                        <button class="db-apply-btn" onclick="gerarExcelEfetivo()" style="background: #10b981;">📊 Gerar Excel</button>
+                        <span id="efetivoPdfStatus" style="font-size:12px; color:var(--text-light); margin-left:8px;"></span>
+                    </div>
                 </div>
 
                 <div class="db-chart-card" id="efetivoFormCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">

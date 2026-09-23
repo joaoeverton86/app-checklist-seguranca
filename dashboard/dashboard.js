@@ -10407,21 +10407,32 @@ function limparBuscaEfetivo() {
 const EFETIVO_PDF_COLUNAS = [
     { id: 'matricula', label: 'Matrícula', get: e => e.id },
     { id: 'nome', label: 'Nome', get: e => e.nome },
-    { id: 'status', label: 'Status', get: e => e.status },
+    { id: 'status', label: 'Status', get: e => e.status || (colaboradorEstaAtivo(e) ? 'ATIVO' : 'DEMITIDO') },
     { id: 'funcao', label: 'Função', get: e => e.funcao },
     { id: 'setor', label: 'Setor', get: e => e.setor },
     { id: 'responsavel', label: 'Responsável/Frente', get: e => e.responsavel },
     { id: 'ghe', label: 'GHE', get: e => e.ghe },
     { id: 'cpf', label: 'CPF', get: e => e.cpf },
+    { id: 'rg', label: 'RG', get: e => e.rg },
     { id: 'dt_admissao', label: 'Admissão', get: e => formatSimpleDate(e.dt_admissao) },
     { id: 'dt_demissao', label: 'Demissão', get: e => formatSimpleDate(e.dt_demissao) },
     { id: 'dt_nascimento', label: 'Nascimento', get: e => formatSimpleDate(e.dt_nascimento) },
     { id: 'cidade', label: 'Cidade', get: e => e.cidade },
     { id: 'estado', label: 'UF', get: e => e.estado },
+    { id: 'ada', label: 'Mão de Obra ADA', get: e => {
+        if (typeof allMunicipiosAda !== 'undefined' && Array.isArray(allMunicipiosAda) && allMunicipiosAda.length > 0) {
+            const cid = (e.cidade || '').toUpperCase().trim();
+            return allMunicipiosAda.some(m => (m.municipio || '').toUpperCase().trim() === cid) ? 'SIM' : 'NÃO';
+        }
+        return '';
+    }},
     { id: 'estabilidade', label: 'Estabilidade', get: e => e.estabilidade },
-    { id: 'sexo', label: 'Sexo', get: e => e.sexo }
+    { id: 'sexo', label: 'Sexo', get: e => e.sexo },
+    { id: 'calca', label: 'Calça', get: e => e.calca },
+    { id: 'camisa', label: 'Camisa', get: e => e.camisa },
+    { id: 'bota', label: 'Bota', get: e => e.bota }
 ];
-const EFETIVO_PDF_COLUNAS_PADRAO = new Set(['matricula', 'nome', 'status', 'funcao', 'setor']);
+const EFETIVO_PDF_COLUNAS_PADRAO = new Set(['matricula', 'nome', 'status', 'funcao', 'setor', 'responsavel', 'ghe']);
 let efetivoPdfStatusFiltro = 'ativos';
 
 function toggleFormPdfEfetivo() {
@@ -10500,6 +10511,122 @@ function gerarPdfEfetivo() {
     abrirDocumentoBlob(html);
     statusEl.textContent = `✅ PDF gerado com ${lista.length} colaborador(es).`;
     statusEl.style.color = 'var(--success)';
+}
+
+// ---- Gerar Planilha Excel de Colaboradores (com autofiltro e todas as colunas) ----
+function gerarExcelEfetivo() {
+    const statusEl = document.getElementById('efetivoPdfStatus');
+    const cardEl = document.getElementById('efetivoPdfCard');
+    const cardAberto = cardEl && cardEl.style.display !== 'none';
+    const buscaInput = document.getElementById('efetivoSearchInput');
+    const buscaAtual = (buscaInput ? buscaInput.value : '').trim().toLowerCase();
+
+    let lista = (allEfetivo || []).slice();
+    let colunas = [];
+    let filtroLabel = 'Completo';
+
+    if (cardAberto) {
+        // Se o card de opções estiver aberto, respeita as opções escolhidas pelo usuário
+        const colunasMarcadas = Array.from(document.querySelectorAll('.efetivoPdfColunaCheckbox:checked')).map(cb => cb.value);
+        if (colunasMarcadas.length === 0) {
+            const aviso = '❌ Selecione pelo menos uma coluna para exportar.';
+            if (statusEl) { statusEl.textContent = aviso; statusEl.style.color = 'var(--danger)'; }
+            alert(aviso);
+            return;
+        }
+        colunas = EFETIVO_PDF_COLUNAS.filter(c => colunasMarcadas.includes(c.id));
+
+        if (efetivoPdfStatusFiltro === 'ativos') {
+            lista = lista.filter(colaboradorEstaAtivo);
+            filtroLabel = 'Ativos';
+        } else if (efetivoPdfStatusFiltro === 'demitidos') {
+            lista = lista.filter(e => !colaboradorEstaAtivo(e));
+            filtroLabel = 'Demitidos';
+        } else {
+            filtroLabel = 'Completo';
+        }
+    } else {
+        // Se o card estiver fechado:
+        // Se houver texto digitado na busca da tela, exporta os filtrados da busca
+        if (buscaAtual.length >= 2) {
+            lista = lista.filter(e => (e.nome && e.nome.toLowerCase().includes(buscaAtual)) || (e.id && e.id.toLowerCase().includes(buscaAtual)));
+            filtroLabel = 'Filtrados_Busca';
+        } else {
+            filtroLabel = 'Completo';
+        }
+        // Exporta com todas as colunas disponíveis para máxima riqueza no Excel
+        colunas = EFETIVO_PDF_COLUNAS.slice();
+    }
+
+    lista.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+
+    if (lista.length === 0) {
+        const aviso = 'Nenhum colaborador encontrado para exportar.';
+        if (statusEl) { statusEl.textContent = aviso; statusEl.style.color = 'var(--text-light)'; }
+        alert(aviso);
+        return;
+    }
+
+    const agora = new Date();
+    const dataFormatada = agora.toLocaleDateString('pt-BR');
+    const horaFormatada = agora.toLocaleTimeString('pt-BR');
+
+    // Estrutura de linhas (Array of Arrays) para a planilha Excel
+    const aoa = [
+        ['LISTA DE COLABORADORES — PISF RAMAL DO AGRESTE'],
+        [`Filtro: ${filtroLabel.toUpperCase()} | Total: ${lista.length} colaborador(es) | Gerado em: ${dataFormatada} às ${horaFormatada}`],
+        [], // Linha em branco separadora
+        colunas.map(c => c.label.toUpperCase()) // Linha 4: Cabeçalho das colunas
+    ];
+
+    lista.forEach(colab => {
+        const linha = colunas.map(c => {
+            const val = c.get(colab);
+            return val !== null && val !== undefined ? String(val) : '';
+        });
+        aoa.push(linha);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Ativar o autofiltro nativo do Excel na linha de cabeçalho (linha 4, índice 3 em 0-based)
+    const headerRow = 3;
+    const startCell = XLSX.utils.encode_cell({ r: headerRow, c: 0 });
+    const endCell = XLSX.utils.encode_cell({ r: aoa.length - 1, c: colunas.length - 1 });
+    ws['!autofilter'] = { ref: `${startCell}:${endCell}` };
+
+    // Auto-ajuste de largura de cada coluna com base no conteúdo
+    ws['!cols'] = colunas.map(c => {
+        let maxLen = c.label.length;
+        lista.forEach(colab => {
+            const val = String(c.get(colab) || '');
+            if (val.length > maxLen) maxLen = Math.min(val.length, 45);
+        });
+        return { wch: Math.max(maxLen + 4, 12) };
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'EFETIVO');
+
+    const dataSlug = agora.toISOString().slice(0, 10);
+    const fileName = `EFETIVO_COLABORADORES_${filtroLabel.toUpperCase()}_${dataSlug}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+
+    const msg = `✅ Planilha Excel gerada com sucesso! (${lista.length} colaboradores)`;
+    if (statusEl) {
+        statusEl.textContent = msg;
+        statusEl.style.color = 'var(--success)';
+    }
+
+    // Feedback visual temporário no card de busca
+    const resumoEl = document.getElementById('efetivoResumo');
+    if (resumoEl) {
+        const textoOriginal = resumoEl.textContent;
+        resumoEl.innerHTML = `<span style="color: #047857; font-weight: 700; background: #ecfdf5; padding: 4px 8px; border-radius: 6px; border: 1px solid #10b981;">📊 ${msg}</span>`;
+        setTimeout(() => {
+            if (resumoEl) resumoEl.textContent = textoOriginal;
+        }, 5000);
+    }
 }
 
 function filterEfetivoColaboradores(query) {

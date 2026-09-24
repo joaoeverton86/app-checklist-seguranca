@@ -3260,6 +3260,7 @@
                     <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <button class="db-apply-btn" onclick="salvarAso()">💾 Salvar</button>
                         <button class="db-clear-btn" onclick="fecharFormAso()">Cancelar</button>
+                        <button id="asoForm_btnAnexos" type="button" class="db-clear-btn" style="display:none;" onclick="abrirAnexosAsoAtual()">📎 Anexar Ficha Clínica / ASO</button>
                         <button id="asoForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirAsoAtual()">🗑️ Excluir</button>
                         <span id="asoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
@@ -3327,6 +3328,7 @@
                     <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <button class="db-apply-btn" onclick="salvarAtestado()">💾 Salvar</button>
                         <button class="db-clear-btn" onclick="fecharFormAtestado()">Cancelar</button>
+                        <button id="atestadoForm_btnAnexos" type="button" class="db-clear-btn" style="display:none;" onclick="abrirAnexosAtestadoAtual()">📎 Anexo (Atestado Médico Físico)</button>
                         <button id="atestadoForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirAtestadoAtual()">🗑️ Excluir</button>
                         <span id="atestadoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
@@ -4344,6 +4346,7 @@
                     <div style="margin-top:16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <button class="db-apply-btn" onclick="salvarApr()">💾 Salvar APR</button>
                         <button id="aprForm_btnImprimir" class="db-clear-btn" style="display:none;" onclick="imprimirApr(document.getElementById('aprForm_id').value)">🖨️ Imprimir</button>
+                        <button type="button" id="aprForm_btnAnexos" class="db-clear-btn" style="display:none;" onclick="abrirAnexosAprAtual()">📎 Anexos (Assinaturas)</button>
                         <span id="aprFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
                 </div>
@@ -4524,6 +4527,7 @@
                     <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <button class="db-apply-btn" onclick="salvarManutencao()">💾 Salvar</button>
                         <button class="db-clear-btn" onclick="fecharFormManutencao()">Cancelar</button>
+                        <button id="manutForm_btnAnexos" type="button" class="db-clear-btn" style="display:none;" onclick="abrirAnexosManutAtual()">📎 Anexos (Comprovante / O.S.)</button>
                         <button id="manutForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirManutencaoAtual()">🗑️ Excluir</button>
                         <span id="manutencaoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
@@ -4565,7 +4569,10 @@
                             <input type="date" id="manifestoDataDocumento" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
                         </div>
                     </div>
-                    <button class="db-apply-btn" onclick="gerarManifestoResiduosMes()">🖨️ Gerar Manifesto do Mês</button>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" onclick="gerarManifestoResiduosMes()">🖨️ Gerar Manifesto do Mês</button>
+                        <button id="manifesto_btnAnexos" type="button" class="db-clear-btn" onclick="abrirAnexosManifestoMesAtual()">📎 Anexar MTR / Comprovante deste Mês</button>
+                    </div>
                 </div>
 
                 <div class="db-chart-card">
@@ -5436,6 +5443,7 @@
                         <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                             <button class="db-apply-btn" onclick="salvarBrigadaMembro()">💾 Salvar</button>
                             <button class="db-clear-btn" onclick="fecharFormBrigadaMembro()">Cancelar</button>
+                            <button id="brigadaMembroForm_btnAnexos" type="button" class="db-clear-btn" style="display:none;" onclick="abrirAnexosBrigadaMembroAtual()">📎 Anexos (Certificado / Atas)</button>
                             <button id="brigadaMembroForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirBrigadaMembroAtual()">🗑️ Excluir</button>
                             <span id="brigadaMembroFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
                         </div>
@@ -5504,6 +5512,7 @@
                         <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                             <button class="db-apply-btn" onclick="salvarTreinamentoBrigada()">💾 Salvar Treinamento</button>
                             <button class="db-clear-btn" onclick="fecharFormTreinamentoBrigada()">Cancelar</button>
+                            <button id="brigadaTreinForm_btnAnexos" type="button" class="db-clear-btn" style="display:none;" onclick="abrirAnexosBrigadaTreinAtual()">📎 Anexo (Certificado)</button>
                             <span id="brigadaTreinFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
                         </div>
                     </div>
@@ -5511,7 +5520,10 @@
                     <div class="db-chart-card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
                             <div class="db-chart-title" style="margin-bottom: 0;">🎓 Situação de Treinamento (NR-23) dos Membros Designados</div>
-                            <button id="btnBrigadaProgramarTreinamento" class="db-apply-btn" style="display:none;" onclick="abrirProgramacaoTreinamentoBrigada()">📋 Programar em Lote (Treinamentos)</button>
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                <button type="button" id="btnBrigadaSimuladosGeral" class="db-clear-btn" onclick="abrirAnexoModal('brigada_membros', 'SIMULADOS_GERAL', 'Atas de Simulados de Emergência — Brigada')">📎 Atas de Simulados</button>
+                                <button id="btnBrigadaProgramarTreinamento" class="db-apply-btn" style="display:none;" onclick="abrirProgramacaoTreinamentoBrigada()">📋 Programar em Lote (Treinamentos)</button>
+                            </div>
                         </div>
                         <div style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">Clique em qualquer brigadista abaixo para registrar ou atualizar o treinamento dele individualmente (data, validade, reciclagem, instrutor etc.), ou use o botão acima para programar turma em lote.</div>
                         <div id="listBrigadaControleTreinados" class="db-list" style="max-height: 520px;"></div>

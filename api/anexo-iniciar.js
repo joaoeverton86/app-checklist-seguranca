@@ -17,9 +17,14 @@ const SUBPASTA_POR_TABELA = {
     extintores_inspecoes: 'Extintores',
     extintores_catalogo: 'Extintores',
     brigada_treinados: 'Brigada_Incendio',
+    brigada_membros: 'Brigada_Incendio',
     apr_registros: 'APR',
     saude_ambulatorio: 'Saude_Ocupacional',
+    atestados_ocupacionais: 'Saude_Ocupacional',
+    aso_exames: 'Saude_Ocupacional',
     residuos_manifestos: 'Meio_Ambiente',
+    residuos_refeicoes: 'Meio_Ambiente',
+    manutencao_veicular: 'Meio_Ambiente',
     relatorios_mensais: 'Relatorios_Mensais'
 };
 

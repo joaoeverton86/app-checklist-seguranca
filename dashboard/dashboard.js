@@ -14709,6 +14709,123 @@ function atualizarBotoesAnexosAposMudanca() {
         const btn = document.getElementById('extForm_btnAnexos');
         if (btn) btn.textContent = `📎 Anexos (Laudos / NF)${labelContagemAnexos('extintores_catalogo', extForm.dataset.editId)}`;
     }
+    // Módulo APR
+    if (typeof renderAprHistoricoLista === 'function') {
+        try { renderAprHistoricoLista(); } catch (_) {}
+    }
+    const aprId = document.getElementById('aprForm_id')?.value;
+    if (aprId) {
+        const btn = document.getElementById('aprForm_btnAnexos');
+        if (btn) btn.textContent = `📎 Anexos (Assinaturas)${labelContagemAnexos('apr_registros', aprId)}`;
+    }
+    // Módulo Brigada de Incêndio
+    if (typeof renderBrigadaMembrosLista === 'function') {
+        try { renderBrigadaMembrosLista(); } catch (_) {}
+    }
+    if (typeof renderBrigadaControleTreinados === 'function') {
+        try { renderBrigadaControleTreinados(); } catch (_) {}
+    }
+    const brigadaMembroCard = document.getElementById('brigadaMembroFormCard');
+    if (brigadaMembroCard && brigadaMembroCard.dataset.id) {
+        const btn = document.getElementById('brigadaMembroForm_btnAnexos');
+        if (btn) btn.textContent = `📎 Anexos (Certificado / Atas)${labelContagemAnexos('brigada_membros', brigadaMembroCard.dataset.id)}`;
+    }
+    const btnSimulados = document.getElementById('btnBrigadaSimuladosGeral');
+    if (btnSimulados) {
+        btnSimulados.textContent = `📎 Atas de Simulados${labelContagemAnexos('brigada_membros', 'SIMULADOS_GERAL')}`;
+    }
+    // Módulo Saúde Ocupacional
+    if (typeof filterAsoLista === 'function') {
+        try { filterAsoLista(document.getElementById('asoSearchInput')?.value || ''); } catch (_) {}
+    }
+    if (typeof filterAtestadoLista === 'function') {
+        try { filterAtestadoLista(document.getElementById('atestadoSearchInput')?.value || ''); } catch (_) {}
+    }
+    const asoForm = document.getElementById('asoFormCard');
+    if (asoForm && asoForm.dataset.editId) {
+        const btn = document.getElementById('asoForm_btnAnexos');
+        if (btn) btn.textContent = `📎 Anexar Ficha Clínica / ASO${labelContagemAnexos('aso_exames', asoForm.dataset.editId)}`;
+    }
+    const atestadoForm = document.getElementById('atestadoFormCard');
+    if (atestadoForm && atestadoForm.dataset.editId) {
+        const btn = document.getElementById('atestadoForm_btnAnexos');
+        if (btn) btn.textContent = `📎 Anexo (Atestado Médico Físico)${labelContagemAnexos('atestados_ocupacionais', atestadoForm.dataset.editId)}`;
+    }
+    // Módulo Meio Ambiente
+    if (typeof renderResiduosRefeicoesConfig === 'function') {
+        try { renderResiduosRefeicoesConfig(); } catch (_) {}
+    }
+    if (typeof filterManutencaoLista === 'function') {
+        try { filterManutencaoLista(); } catch (_) {}
+    }
+    if (typeof renderManifestoResiduosResumo === 'function') {
+        try { renderManifestoResiduosResumo(); } catch (_) {}
+    }
+    const manutForm = document.getElementById('manutencaoFormCard');
+    if (manutForm && manutForm.dataset.id) {
+        const btn = document.getElementById('manutForm_btnAnexos');
+        if (btn) btn.textContent = `📎 Anexos (Comprovante / O.S.)${labelContagemAnexos('manutencao_veicular', manutForm.dataset.id)}`;
+    }
+}
+
+// Funções de atalho para abertura de modal de anexos nos formulários
+function abrirAnexosAprAtual() {
+    const id = document.getElementById('aprForm_id')?.value || document.getElementById('aprForm_numero')?.value;
+    if (!id) return;
+    const a = (typeof allAprRegistros !== 'undefined' && Array.isArray(allAprRegistros)) ? allAprRegistros.find(x => x.id === id) : null;
+    const tit = a ? (a.titulo || a.descricao_atividade || id) : id;
+    abrirAnexoModal('apr_registros', id, `APR ${id} — Folha Física de Assinaturas (${tit})`);
+}
+
+function abrirAnexosBrigadaMembroAtual() {
+    const id = document.getElementById('brigadaMembroFormCard')?.dataset?.id;
+    if (!id) return;
+    const m = (typeof allBrigadaMembros !== 'undefined' && Array.isArray(allBrigadaMembros)) ? allBrigadaMembros.find(x => x.id === id) : null;
+    const nome = m ? m.nome : id;
+    abrirAnexoModal('brigada_membros', id, `Certificado / Designação — ${nome}`);
+}
+
+function abrirAnexosBrigadaTreinAtual() {
+    const matricula = document.getElementById('brigadaTreinForm_matricula')?.value;
+    const m = (typeof allBrigadaMembros !== 'undefined' && Array.isArray(allBrigadaMembros)) ? allBrigadaMembros.find(x => x.matricula === matricula) : null;
+    const id = m ? m.id : (matricula ? `BRIGADA_${matricula}` : null);
+    if (!id) return;
+    const nome = m ? m.nome : matricula;
+    abrirAnexoModal('brigada_membros', id, `Certificado de Brigadista — ${nome}`);
+}
+
+function abrirAnexosAsoAtual() {
+    const id = document.getElementById('asoFormCard')?.dataset?.editId;
+    if (!id) return;
+    const a = (typeof allAsoExames !== 'undefined' && Array.isArray(allAsoExames)) ? allAsoExames.find(x => x.id === id) : null;
+    const nome = a ? (a.nome_colaborador || a.matricula) : id;
+    abrirAnexoModal('aso_exames', id, `ASO / Ficha Clínica — ${nome}`);
+}
+
+function abrirAnexosAtestadoAtual() {
+    const id = document.getElementById('atestadoFormCard')?.dataset?.editId;
+    if (!id) return;
+    const a = (typeof allAtestadosOcupacionais !== 'undefined' && Array.isArray(allAtestadosOcupacionais)) ? allAtestadosOcupacionais.find(x => x.id === id) : null;
+    const nome = a ? (a.nome_colaborador || a.matricula) : id;
+    abrirAnexoModal('atestados_ocupacionais', id, `Atestado Médico Físico — ${nome}`);
+}
+
+function abrirAnexosManutAtual() {
+    const id = document.getElementById('manutencaoFormCard')?.dataset?.id;
+    if (!id) return;
+    const m = (typeof allManutencaoVeicular !== 'undefined' && Array.isArray(allManutencaoVeicular)) ? allManutencaoVeicular.find(x => x.id === id) : null;
+    const tit = m ? (m.ativo || m.equipamento || id) : id;
+    abrirAnexoModal('manutencao_veicular', id, `Manutenção / Destinação de Óleo — ${tit}`);
+}
+
+function abrirAnexosManifestoMesAtual() {
+    if (typeof popularSelectAnoManifesto === 'function') popularSelectAnoManifesto();
+    const ano = parseInt(document.getElementById('manifestoAno')?.value, 10);
+    const mes = parseInt(document.getElementById('manifestoMes')?.value, 10);
+    if (isNaN(ano) || isNaN(mes)) return;
+    const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+    const nomeMes = (typeof NOMES_MESES !== 'undefined' && NOMES_MESES[mes]) ? NOMES_MESES[mes] : (mes + 1);
+    abrirAnexoModal('residuos_refeicoes', key, `Manifesto MTR e Destinação de Resíduos — ${nomeMes}/${ano}`);
 }
 
 async function excluirAnexo(id) {
@@ -15226,9 +15343,14 @@ function filterAsoLista(query) {
         return;
     }
     resultsEl.innerHTML = lista.map(a => `
-        <div class="db-list-item" style="cursor:pointer;" onclick="abrirFormAso('${escapeHTML(a.id)}')">
-            <div class="db-list-item-title">${escapeHTML(a.nome_colaborador || 'Não identificado')} — ${escapeHTML(ASO_TIPO_LABELS[a.tipo_aso] || a.tipo_aso || '—')}</div>
-            <div class="db-list-item-sub">${formatSimpleDate(a.data_exame)}${a.data_vencimento ? ' — vence ' + formatSimpleDate(a.data_vencimento) : ' — sem vencimento definido'}</div>
+        <div class="db-list-item" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:200px; cursor:pointer;" onclick="abrirFormAso('${escapeHTML(a.id)}')">
+                <div class="db-list-item-title">${escapeHTML(a.nome_colaborador || 'Não identificado')} — ${escapeHTML(ASO_TIPO_LABELS[a.tipo_aso] || a.tipo_aso || '—')}</div>
+                <div class="db-list-item-sub">${formatSimpleDate(a.data_exame)}${a.data_vencimento ? ' — vence ' + formatSimpleDate(a.data_vencimento) : ' — sem vencimento definido'}</div>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <button class="db-clear-btn" style="padding:4px 8px; font-size:11.5px;" onclick="event.stopPropagation(); abrirAnexoModal('aso_exames', '${escapeHTML(a.id)}', 'ASO / Ficha Clínica — ${escapeHTML(a.nome_colaborador || a.matricula)}')">📎 Ficha / ASO${labelContagemAnexos('aso_exames', a.id)}</button>
+            </div>
         </div>
     `).join('');
 }
@@ -15263,6 +15385,11 @@ function abrirFormAso(id) {
         document.getElementById('asoForm_medico').value = a.medico_responsavel || '';
         document.getElementById('asoForm_obs').value = a.obs || '';
         btnExcluir.style.display = 'inline-block';
+        const btnAnexos = document.getElementById('asoForm_btnAnexos');
+        if (btnAnexos) {
+            btnAnexos.style.display = 'inline-block';
+            btnAnexos.textContent = `📎 Anexar Ficha Clínica / ASO${labelContagemAnexos('aso_exames', id)}`;
+        }
     } else {
         title.textContent = '🩺 Novo Exame ASO';
         delete form.dataset.editId;
@@ -15274,6 +15401,8 @@ function abrirFormAso(id) {
         document.getElementById('asoForm_medico').value = '';
         document.getElementById('asoForm_obs').value = '';
         btnExcluir.style.display = 'none';
+        const btnAnexos = document.getElementById('asoForm_btnAnexos');
+        if (btnAnexos) btnAnexos.style.display = 'none';
     }
 
     form.style.display = 'block';
@@ -15598,9 +15727,14 @@ function filterAtestadoLista(query) {
         return;
     }
     resultsEl.innerHTML = lista.map(a => `
-        <div class="db-list-item" style="cursor:pointer;" onclick="abrirFormAtestado('${escapeHTML(a.id)}')">
-            <div class="db-list-item-title">${escapeHTML(a.nome_colaborador || 'Não identificado')} — ${a.dias_afastamento || 0} dia(s)</div>
-            <div class="db-list-item-sub">${formatSimpleDate(a.data_inicio)}${a.data_fim ? ' a ' + formatSimpleDate(a.data_fim) : ''}${a.motivo ? ' — ' + escapeHTML(a.motivo) : ''}</div>
+        <div class="db-list-item" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:200px; cursor:pointer;" onclick="abrirFormAtestado('${escapeHTML(a.id)}')">
+                <div class="db-list-item-title">${escapeHTML(a.nome_colaborador || 'Não identificado')} — ${a.dias_afastamento || 0} dia(s)</div>
+                <div class="db-list-item-sub">${formatSimpleDate(a.data_inicio)}${a.data_fim ? ' a ' + formatSimpleDate(a.data_fim) : ''}${a.motivo ? ' — ' + escapeHTML(a.motivo) : ''}</div>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <button class="db-clear-btn" style="padding:4px 8px; font-size:11.5px;" onclick="event.stopPropagation(); abrirAnexoModal('atestados_ocupacionais', '${escapeHTML(a.id)}', 'Atestado Médico — ${escapeHTML(a.nome_colaborador || a.matricula)}')">📎 Atestado Físico${labelContagemAnexos('atestados_ocupacionais', a.id)}</button>
+            </div>
         </div>
     `).join('');
 }
@@ -15632,6 +15766,11 @@ function abrirFormAtestado(id) {
         document.getElementById('atestadoForm_motivo').value = a.motivo || '';
         document.getElementById('atestadoForm_obs').value = a.obs || '';
         btnExcluir.style.display = 'inline-block';
+        const btnAnexos = document.getElementById('atestadoForm_btnAnexos');
+        if (btnAnexos) {
+            btnAnexos.style.display = 'inline-block';
+            btnAnexos.textContent = `📎 Anexo (Atestado Médico Físico)${labelContagemAnexos('atestados_ocupacionais', id)}`;
+        }
     } else {
         title.textContent = '🤒 Novo Atestado';
         delete form.dataset.editId;
@@ -15642,6 +15781,8 @@ function abrirFormAtestado(id) {
         document.getElementById('atestadoForm_motivo').value = '';
         document.getElementById('atestadoForm_obs').value = '';
         btnExcluir.style.display = 'none';
+        const btnAnexos = document.getElementById('atestadoForm_btnAnexos');
+        if (btnAnexos) btnAnexos.style.display = 'none';
     }
 
     form.style.display = 'block';
@@ -19812,7 +19953,7 @@ function renderResiduosRefeicoesConfig() {
     container.innerHTML = linhas.map(l => {
         const pesoTexto = l.pesoKg != null ? `${l.pesoKg.toFixed(1)} kg` : '—';
         const pesoEstilo = l.salvo ? 'color: var(--text-light);' : 'color: var(--text-light); font-style: italic;';
-        return `<div style="display: grid; grid-template-columns: 1.1fr 0.9fr 0.6fr 0.6fr 0.6fr 0.7fr auto; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 8px; background: var(--bg); font-size: 12.5px;">
+        return `<div style="display: grid; grid-template-columns: 1fr 0.8fr 0.5fr 0.5fr 0.5fr 0.6fr auto auto; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 8px; background: var(--bg); font-size: 12.5px;">
             <div style="font-weight: 600; text-transform: capitalize;">${escapeHTML(l.label)}</div>
             <div style="color: var(--text-light);">Efetivo ${l.headcount} × ${l.diasTrabalhados ?? '—'} dias</div>
             <input type="number" min="0" step="1" placeholder="Quentinhas" value="${l.quentinhas}" id="residQuent_${l.key}"
@@ -19823,6 +19964,7 @@ function renderResiduosRefeicoesConfig() {
                    style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
             <div style="${pesoEstilo} text-align:right;" title="${l.salvo ? 'Valor salvo' : 'Estimativa não salva ainda'}">${pesoTexto}</div>
             <button class="db-apply-btn" style="padding: 6px 12px;" onclick="salvarResiduoRefeicaoMes('${l.key}', ${l.ano}, ${l.mes + 1})">💾</button>
+            <button class="db-clear-btn" style="padding: 6px 10px; font-size: 11.5px;" onclick="abrirAnexoModal('residuos_refeicoes', '${l.key}', 'Manifesto MTR e Destinação de Resíduos — ${escapeHTML(l.label)}')">📎 MTR${labelContagemAnexos('residuos_refeicoes', l.key)}</button>
         </div>`;
     }).join('');
 }
@@ -19966,6 +20108,10 @@ function renderManifestoResiduosResumo() {
             <div><strong>Total do mês:</strong> ${linha.pesoKg.toFixed(1)} kg</div>
         </div>
         ${!linha.salvo ? '<div style="margin-top:8px; color: var(--warning); font-style: italic;">⚠️ Esse valor ainda não foi confirmado/salvo — é uma sugestão automática (efetivo × dias trabalhados). Confirme (💾) em "🍱 Resíduos (Refeições + EPI)" antes de gerar o manifesto - o botão abaixo não gera o documento enquanto o mês não estiver salvo.</div>' : ''}`;
+    const btnAnexos = document.getElementById('manifesto_btnAnexos');
+    if (btnAnexos) {
+        btnAnexos.textContent = `📎 Anexar MTR / Comprovante deste Mês${labelContagemAnexos('residuos_refeicoes', key)}`;
+    }
 }
 
 // Gera o documento do mês escolhido, no mesmo padrão de blob+<a>+window.print() de todo
@@ -20123,9 +20269,14 @@ function filterManutencaoLista() {
     container.innerHTML = linhas.map(m => {
         const tipoLabel = m.tipo === 'troca_oleo' ? '🛢️ Troca de Óleo' : '🔧 Preventiva';
         const litrosLabel = m.tipo === 'troca_oleo' ? (m.litros_oleo != null ? ` — ${m.litros_oleo}L` : ' — sem litros informado') : '';
-        return `<div class="db-list-item" style="cursor:pointer;" onclick="abrirFormManutencao('${escapeHTML(m.id)}')">
-            <div class="db-list-item-title">${escapeHTML(m.ativo || '(sem identificação)')} — ${escapeHTML(m.equipamento || '')}</div>
-            <div class="db-list-item-sub">${tipoLabel}${litrosLabel} — ${escapeHTML(m.empresa || '')} — ${formatSimpleDate(m.data_servico)}</div>
+        return `<div class="db-list-item" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:200px; cursor:pointer;" onclick="abrirFormManutencao('${escapeHTML(m.id)}')">
+                <div class="db-list-item-title">${escapeHTML(m.ativo || '(sem identificação)')} — ${escapeHTML(m.equipamento || '')}</div>
+                <div class="db-list-item-sub">${tipoLabel}${litrosLabel} — ${escapeHTML(m.empresa || '')} — ${formatSimpleDate(m.data_servico)}</div>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <button class="db-clear-btn" style="padding:4px 8px; font-size:11.5px;" onclick="event.stopPropagation(); abrirAnexoModal('manutencao_veicular', '${escapeHTML(m.id)}', 'Manutenção — ${escapeHTML(m.ativo || m.equipamento || '')}')">📎 Anexo${labelContagemAnexos('manutencao_veicular', m.id)}</button>
+            </div>
         </div>`;
     }).join('');
 }
@@ -20156,6 +20307,11 @@ function abrirFormManutencao(id) {
         document.getElementById('manutForm_descricao').value = m.descricao_servico || '';
         document.getElementById('manutForm_observacoes').value = m.observacoes || '';
         btnExcluir.style.display = 'inline-block';
+        const btnAnexos = document.getElementById('manutForm_btnAnexos');
+        if (btnAnexos) {
+            btnAnexos.style.display = 'inline-block';
+            btnAnexos.textContent = `📎 Anexos (Comprovante / O.S.)${labelContagemAnexos('manutencao_veicular', id)}`;
+        }
     } else {
         title.textContent = '🔧 Novo Registro de Manutenção';
         document.getElementById('manutForm_tipo').value = 'troca_oleo';
@@ -20168,6 +20324,8 @@ function abrirFormManutencao(id) {
         document.getElementById('manutForm_descricao').value = '';
         document.getElementById('manutForm_observacoes').value = '';
         btnExcluir.style.display = 'none';
+        const btnAnexos = document.getElementById('manutForm_btnAnexos');
+        if (btnAnexos) btnAnexos.style.display = 'none';
     }
     onManutTipoChange();
     form.style.display = 'block';
@@ -21162,6 +21320,8 @@ function abrirFormNovaApr() {
     document.getElementById('aprForm_responsavelArea').value = '';
     document.getElementById('aprFormTitle').textContent = '➕ Nova APR';
     document.getElementById('aprForm_btnImprimir').style.display = 'none';
+    const btnAnexosNova = document.getElementById('aprForm_btnAnexos');
+    if (btnAnexosNova) btnAnexosNova.style.display = 'none';
     document.getElementById('aprFormStatus').textContent = '';
     aprRiscosForm = [rowRiscoVazio()];
     renderRiscosAprForm();
@@ -21214,6 +21374,11 @@ function editarApr(id) {
 
     document.getElementById('aprFormTitle').textContent = `✏️ Editando APR ${escapeHTML(a.id)}`;
     document.getElementById('aprForm_btnImprimir').style.display = 'inline-block';
+    const btnAnexosEdit = document.getElementById('aprForm_btnAnexos');
+    if (btnAnexosEdit) {
+        btnAnexosEdit.style.display = 'inline-block';
+        btnAnexosEdit.textContent = `📎 Anexos (Assinaturas)${labelContagemAnexos('apr_registros', a.id)}`;
+    }
     document.getElementById('aprFormStatus').textContent = '';
     document.getElementById('aprFormTitle').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -21392,6 +21557,11 @@ async function salvarApr() {
         statusEl.style.color = 'var(--success)';
         document.getElementById('aprForm_id').value = row.id;
         document.getElementById('aprForm_btnImprimir').style.display = 'inline-block';
+        const btnAnexosSalvo = document.getElementById('aprForm_btnAnexos');
+        if (btnAnexosSalvo) {
+            btnAnexosSalvo.style.display = 'inline-block';
+            btnAnexosSalvo.textContent = `📎 Anexos (Assinaturas)${labelContagemAnexos('apr_registros', row.id)}`;
+        }
         registrarAuditLogDashboard(existente ? 'update' : 'create', 'apr_registros', row.id, row.titulo, resumoAlteracoesApr(existente, row));
         renderAprHistoricoLista();
     } catch (err) {
@@ -21484,6 +21654,7 @@ function renderAprHistoricoLista() {
             </div>
             ${badge}
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button class="db-clear-btn" onclick="abrirAnexoModal('apr_registros', '${escapeHTML(a.id)}', 'APR ${escapeHTML(a.id)} — Folha Assinada')">📎 Anexos (Assinaturas)${labelContagemAnexos('apr_registros', a.id)}</button>
                 <button class="db-clear-btn" onclick="imprimirApr('${escapeHTML(a.id)}')">🖨️</button>
                 <button class="db-clear-btn" onclick="editarApr('${escapeHTML(a.id)}')">✏️</button>
                 <button class="db-clear-btn" style="color:var(--danger); border-color:var(--danger);" onclick="excluirApr('${escapeHTML(a.id)}')">🗑️</button>
@@ -25212,9 +25383,14 @@ function renderBrigadaMembrosLista() {
         const turnoStr = m.turno ? ` — Turno: ${escapeHTML(m.turno)}` : '';
         const telStr = m.telefone ? ` — Contato: ${escapeHTML(m.telefone)}` : '';
         const nivelStr = m.nivel ? ` — ${BRIGADA_NIVEL_LABELS[m.nivel] || m.nivel}` : '';
-        return `<div class="db-list-item" style="cursor:pointer;${m.ativo ? '' : ' opacity:0.55;'}" onclick="abrirFormBrigadaMembro('${escapeHTML(m.id)}')">
-            <div class="db-list-item-title">${escapeHTML(m.nome)}${m.ativo ? '' : ' (inativo)'}</div>
-            <div class="db-list-item-sub">${BRIGADA_CARGO_LABELS[m.cargo_brigada] || m.cargo_brigada || ''} — ${escapeHTML(m.funcao || '')} — ${escapeHTML(m.setor || '')}${m.area ? ' — Área: ' + escapeHTML(m.area) : ''}${turnoStr}${nivelStr}${datasStr}${telStr}</div>
+        return `<div class="db-list-item" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;${m.ativo ? '' : ' opacity:0.55;'}">
+            <div style="flex:1; min-width:220px; cursor:pointer;" onclick="abrirFormBrigadaMembro('${escapeHTML(m.id)}')">
+                <div class="db-list-item-title">${escapeHTML(m.nome)}${m.ativo ? '' : ' (inativo)'}</div>
+                <div class="db-list-item-sub">${BRIGADA_CARGO_LABELS[m.cargo_brigada] || m.cargo_brigada || ''} — ${escapeHTML(m.funcao || '')} — ${escapeHTML(m.setor || '')}${m.area ? ' — Área: ' + escapeHTML(m.area) : ''}${turnoStr}${nivelStr}${datasStr}${telStr}</div>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <button class="db-clear-btn" style="padding:4px 8px; font-size:11.5px;" onclick="event.stopPropagation(); abrirAnexoModal('brigada_membros', '${escapeHTML(m.id)}', 'Certificado / Designação — ${escapeHTML(m.nome)}')">📎 Anexos${labelContagemAnexos('brigada_membros', m.id)}</button>
+            </div>
         </div>`;
     }).join('');
 }
@@ -25295,6 +25471,11 @@ function abrirFormBrigadaMembro(id) {
         document.getElementById('brigadaMembroForm_area').value = m.area || '';
         document.getElementById('brigadaMembroForm_ativo').value = m.ativo === false ? 'false' : 'true';
         btnExcluir.style.display = 'inline-block';
+        const btnAnexos = document.getElementById('brigadaMembroForm_btnAnexos');
+        if (btnAnexos) {
+            btnAnexos.style.display = 'inline-block';
+            btnAnexos.textContent = `📎 Anexos (Certificado / Atas)${labelContagemAnexos('brigada_membros', id)}`;
+        }
     } else {
         title.textContent = '🚨 Novo Membro da Brigada';
         document.getElementById('brigadaMembroForm_matricula').value = '';
@@ -25310,6 +25491,8 @@ function abrirFormBrigadaMembro(id) {
         document.getElementById('brigadaMembroForm_area').value = '';
         document.getElementById('brigadaMembroForm_ativo').value = 'true';
         btnExcluir.style.display = 'none';
+        const btnAnexos = document.getElementById('brigadaMembroForm_btnAnexos');
+        if (btnAnexos) btnAnexos.style.display = 'none';
     }
     form.style.display = 'block';
     form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -25471,7 +25654,8 @@ function renderBrigadaControleTreinados() {
                     <span style="color:var(--text-light); margin-left:6px;">(${dataTreinStr}${validadeStr}${cargaStr}${instrutorStr})</span>
                 </div>
             </div>
-            <div>
+            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                <button class="db-clear-btn" style="padding:6px 10px; font-size:11.5px; white-space:nowrap;" onclick="event.stopPropagation(); abrirAnexoModal('brigada_membros', '${escapeHTML(m.id)}', 'Certificado — ${escapeHTML(m.nome)}')">📎 Certificado${labelContagemAnexos('brigada_membros', m.id)}</button>
                 <button class="db-apply-btn" style="padding:6px 12px; font-size:11.5px; white-space:nowrap;" onclick="event.stopPropagation(); abrirFormTreinamentoBrigada('${escapeHTML(m.matricula || '')}')">
                     ✏️ Editar Treinamento
                 </button>
@@ -25543,6 +25727,12 @@ function abrirFormTreinamentoBrigada(matricula) {
         document.getElementById('brigadaTreinForm_turma').value = '';
         document.getElementById('brigadaTreinForm_obs').value = 'Treinamento de Brigada de Incêndio (NR-23)';
         onBrigadaTreinDataChange();
+    }
+
+    const btnAnexosTrein = document.getElementById('brigadaTreinForm_btnAnexos');
+    if (btnAnexosTrein) {
+        btnAnexosTrein.style.display = 'inline-block';
+        btnAnexosTrein.textContent = `📎 Anexo (Certificado)${labelContagemAnexos('brigada_membros', membro.id)}`;
     }
 
     form.style.display = 'block';

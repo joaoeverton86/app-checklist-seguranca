@@ -619,6 +619,7 @@
                     </div>
                     <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <button class="db-apply-btn" onclick="salvarExtintorCad()">💾 Salvar</button>
+                        <button type="button" id="extForm_btnAnexos" class="db-clear-btn" style="display:none;" onclick="abrirAnexoExtintorAtual()">📎 Anexos (Laudos / NF)</button>
                         <button class="db-clear-btn" onclick="fecharFormExtintor()">Cancelar</button>
                         <button id="extForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirExtintorAtual()">🗑️ Excluir</button>
                         <span id="extintorFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
@@ -4893,6 +4894,7 @@
                             <button class="db-apply-btn" onclick="salvarReuniaoCipa()">💾 Salvar</button>
                             <button class="db-apply-btn" id="cipaReuniaoForm_btnRealizada" style="display:none;" onclick="salvarReuniaoCipa(true)">✅ Marcar como Realizada</button>
                             <button class="db-apply-btn" id="cipaReuniaoForm_btnAta" style="display:none; background: var(--success);" onclick="gerarAtaCipa()">🖨️ Gerar Ata</button>
+                            <button type="button" class="db-clear-btn" id="cipaReuniaoForm_btnAnexos" style="display:none;" onclick="abrirAnexoReuniaoCipaAtual()">📎 Anexos da Reunião</button>
                             <button class="db-clear-btn" onclick="fecharReuniaoCipa()">Cancelar</button>
                             <button id="cipaReuniaoForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirReuniaoCipaAtual()">🗑️ Excluir</button>
                             <span id="cipaReuniaoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
@@ -5208,6 +5210,7 @@
 
                             <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                                 <button class="db-apply-btn" onclick="salvarProcessoEleitoral()">💾 Salvar Processo Eleitoral</button>
+                                <button type="button" id="cipaProcessoForm_btnAnexos" class="db-clear-btn" onclick="abrirAnexoProcessoEleitoralCipaAtual()">📎 Anexos da Eleição</button>
                                 <button id="cipaProcessoForm_btnExcluir" class="db-clear-btn" style="color: var(--danger); border-color: var(--danger);" onclick="excluirProcessoEleitoralAtual()">🗑️ Excluir Gestão</button>
                                 <span id="cipaProcessoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
                             </div>

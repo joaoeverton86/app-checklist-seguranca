@@ -2300,9 +2300,16 @@ function abrirFormExtintor(id) {
         document.getElementById('extForm_status').value = e.ativo === false ? 'inativo' : 'ativo';
         document.getElementById('extForm_grupoStatus').style.display = 'block';
         btnExcluir.style.display = 'inline-block';
+        const btnAnexosExt = document.getElementById('extForm_btnAnexos');
+        if (btnAnexosExt) {
+            btnAnexosExt.style.display = 'inline-block';
+            btnAnexosExt.textContent = `📎 Anexos (Laudos / NF)${labelContagemAnexos('extintores_catalogo', id)}`;
+        }
     } else {
         title.textContent = '🧯 Novo Extintor';
         delete form.dataset.editId;
+        const btnAnexosExt = document.getElementById('extForm_btnAnexos');
+        if (btnAnexosExt) btnAnexosExt.style.display = 'none';
         idInput.value = '';
         idInput.readOnly = false;
         document.getElementById('extForm_tipo').value = '';
@@ -2326,6 +2333,15 @@ function abrirFormExtintor(id) {
 
 function fecharFormExtintor() {
     document.getElementById('extintorFormCard').style.display = 'none';
+    const btnAnexosExt = document.getElementById('extForm_btnAnexos');
+    if (btnAnexosExt) btnAnexosExt.style.display = 'none';
+}
+
+function abrirAnexoExtintorAtual() {
+    const form = document.getElementById('extintorFormCard');
+    const id = form?.dataset.editId;
+    if (!id) return;
+    abrirAnexoModal('extintores_catalogo', id, 'Extintor ' + id);
 }
 
 async function salvarExtintorCad() {
@@ -14523,6 +14539,9 @@ function abrirAnexoModal(tabela, chave, tituloRegistro) {
     document.getElementById('anexoModalTitulo').textContent = tituloRegistro || '';
     document.getElementById('anexoModalStatus').textContent = '';
     document.getElementById('anexoArquivoInput').value = '';
+    garantirAnexosSmsCarregados(() => {
+        renderAnexoModalLista();
+    });
     renderAnexoModalLista();
     document.getElementById('anexoModalOverlay').style.display = 'flex';
 }
@@ -14532,6 +14551,7 @@ function fecharAnexoModal() {
     if (overlay) overlay.style.display = 'none';
     anexoModalTabela = null;
     anexoModalChave = null;
+    atualizarBotoesAnexosAposMudanca();
 }
 
 function renderAnexoModalLista() {
@@ -14656,12 +14676,38 @@ async function enviarAnexoSelecionado() {
         statusEl.textContent = '✅ Anexo enviado com sucesso.';
         statusEl.style.color = 'var(--success)';
         renderAnexoModalLista();
-        renderDdsLancamentosRecentes();
-        renderTreinHistLista();
+        atualizarBotoesAnexosAposMudanca();
     } catch (err) {
         console.error('Erro ao enviar anexo:', err);
         statusEl.textContent = '❌ Falha ao enviar: ' + err.message;
         statusEl.style.color = 'var(--danger)';
+    }
+}
+
+function atualizarBotoesAnexosAposMudanca() {
+    if (typeof renderDdsLancamentosRecentes === 'function') {
+        try { renderDdsLancamentosRecentes(); } catch (_) {}
+    }
+    if (typeof renderTreinHistLista === 'function') {
+        try { renderTreinHistLista(); } catch (_) {}
+    }
+    if (typeof renderCipaReunioesLista === 'function') {
+        try { renderCipaReunioesLista(); } catch (_) {}
+    }
+    const cipaReuniaoCard = document.getElementById('cipaReuniaoFormCard');
+    if (cipaReuniaoCard && cipaReuniaoCard.dataset.id) {
+        const btn = document.getElementById('cipaReuniaoForm_btnAnexos');
+        if (btn) btn.textContent = `📎 Anexos da Reunião${labelContagemAnexos('cipa_reunioes', cipaReuniaoCard.dataset.id)}`;
+    }
+    const cipaProcCard = document.getElementById('cipaProcessoFormCard');
+    if (cipaProcCard && cipaProcCard.dataset.id) {
+        const btn = document.getElementById('cipaProcessoForm_btnAnexos');
+        if (btn) btn.textContent = `📎 Anexos da Eleição${labelContagemAnexos('cipa_processos_eleitorais', cipaProcCard.dataset.id)}`;
+    }
+    const extForm = document.getElementById('extintorFormCard');
+    if (extForm && extForm.dataset.editId) {
+        const btn = document.getElementById('extForm_btnAnexos');
+        if (btn) btn.textContent = `📎 Anexos (Laudos / NF)${labelContagemAnexos('extintores_catalogo', extForm.dataset.editId)}`;
     }
 }
 
@@ -14671,8 +14717,7 @@ async function excluirAnexo(id) {
         await supabaseDeleteMany('anexos_sms', [id]);
         allAnexosSms = allAnexosSms.filter(a => a.id !== id);
         renderAnexoModalLista();
-        renderDdsLancamentosRecentes();
-        renderTreinHistLista();
+        atualizarBotoesAnexosAposMudanca();
     } catch (err) {
         alert('Falha ao excluir anexo: ' + err.message);
     }
@@ -17051,6 +17096,7 @@ function renderEpiHistoricoColaborador() {
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
                     <button class="db-apply-btn" onclick="abrirFichaEpiColaborador('${escapeHTML(matricula)}', false, document.getElementById('epiFichaDataInicio').value, document.getElementById('epiFichaDataFim').value)">🖨️ Gerar Ficha de EPI</button>
                     <button class="db-apply-btn" style="background: var(--text-light);" onclick="abrirFichaEpiColaborador('${escapeHTML(matricula)}', true)" title="Gera a ficha sem listar as entregas já registradas, com linhas em branco pra preencher na mão">🖨️ Gerar Ficha em Branco</button>
+                    <button class="db-clear-btn" onclick="abrirAnexoModal('epi_entregas', '${escapeHTML(matricula)}', 'Ficha Assinada — ${escapeHTML(colab.nome || matricula)}')">📎 Anexos (Ficha Assinada)${labelContagemAnexos('epi_entregas', matricula)}</button>
                 </div>
             </div>
             <div style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border);">
@@ -22158,6 +22204,11 @@ function abrirReuniaoCipa(id) {
         btnExcluir.style.display = 'inline-block';
         btnRealizada.style.display = r.status === 'agendada' ? 'inline-block' : 'none';
         btnAta.style.display = r.status === 'realizada' ? 'inline-block' : 'none';
+        const btnAnexosReuniao = document.getElementById('cipaReuniaoForm_btnAnexos');
+        if (btnAnexosReuniao) {
+            btnAnexosReuniao.style.display = 'inline-block';
+            btnAnexosReuniao.textContent = `📎 Anexos da Reunião${labelContagemAnexos('cipa_reunioes', id)}`;
+        }
         renderCipaStatsAcidentes(periodoDesdeUltimaReuniaoCipa(r.id, r.data_reuniao));
     } else {
         title.textContent = '📅 Nova Reunião';
@@ -22180,6 +22231,8 @@ function abrirReuniaoCipa(id) {
         btnExcluir.style.display = 'none';
         btnRealizada.style.display = 'none';
         btnAta.style.display = 'none';
+        const btnAnexosReuniao = document.getElementById('cipaReuniaoForm_btnAnexos');
+        if (btnAnexosReuniao) btnAnexosReuniao.style.display = 'none';
         document.getElementById('cipaReuniaoForm_statsAcidentes').innerHTML = '';
     }
     document.getElementById('cipaReuniaoForm_addPauta').value = '';
@@ -22212,6 +22265,17 @@ function renderCipaStatsAcidentes(periodo) {
 function fecharReuniaoCipa() {
     const form = document.getElementById('cipaReuniaoFormCard');
     if (form) form.style.display = 'none';
+    const btnAnexos = document.getElementById('cipaReuniaoForm_btnAnexos');
+    if (btnAnexos) btnAnexos.style.display = 'none';
+}
+
+function abrirAnexoReuniaoCipaAtual() {
+    const form = document.getElementById('cipaReuniaoFormCard');
+    const id = form?.dataset.id;
+    if (!id) return;
+    const r = allCipaReunioes.find(x => x.id === id);
+    const desc = r ? `Reunião CIPA (${CIPA_TIPO_LABELS[r.tipo] || r.tipo}) — ${formatSimpleDate(r.data_reuniao)}` : 'Reunião CIPA';
+    abrirAnexoModal('cipa_reunioes', id, desc);
 }
 
 async function salvarReuniaoCipa(marcarRealizada) {
@@ -23231,6 +23295,23 @@ function carregarFormProcessoEleitoral(id) {
         containerResultado.style.display = 'none';
         containerResultado.innerHTML = '';
     }
+
+    const btnAnexosProc = document.getElementById('cipaProcessoForm_btnAnexos');
+    if (btnAnexosProc) {
+        btnAnexosProc.textContent = `📎 Anexos da Eleição${labelContagemAnexos('cipa_processos_eleitorais', id)}`;
+    }
+}
+
+function abrirAnexoProcessoEleitoralCipaAtual() {
+    const card = document.getElementById('cipaProcessoFormCard');
+    const id = card?.dataset.id;
+    if (!id) {
+        alert('Selecione ou crie um processo eleitoral primeiro.');
+        return;
+    }
+    const p = processoEleitoralAtual();
+    const desc = p ? `Processo Eleitoral CIPA — ${p.gestao || ''}` : 'Processo Eleitoral CIPA';
+    abrirAnexoModal('cipa_processos_eleitorais', id, desc);
 }
 
 function abrirNovoProcessoEleitoral() {

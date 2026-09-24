@@ -10,7 +10,17 @@
 const PASTA_RAIZ = 'SMS_COP';
 const SUBPASTA_POR_TABELA = {
     dds_realizados: 'DDSMA',
-    treinamentos_realizados: 'Treinamentos'
+    treinamentos_realizados: 'Treinamentos',
+    cipa_reunioes: 'CIPA',
+    cipa_processos_eleitorais: 'CIPA',
+    epi_entregas: 'EPI',
+    extintores_inspecoes: 'Extintores',
+    extintores_catalogo: 'Extintores',
+    brigada_treinados: 'Brigada_Incendio',
+    apr_registros: 'APR',
+    saude_ambulatorio: 'Saude_Ocupacional',
+    residuos_manifestos: 'Meio_Ambiente',
+    relatorios_mensais: 'Relatorios_Mensais'
 };
 
 function sanitizarNome(texto) {

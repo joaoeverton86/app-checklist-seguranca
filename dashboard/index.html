@@ -5073,6 +5073,42 @@
                                 </div>
                             </div>
 
+                            <!-- Assistente Inteligente de Cronograma (NR-05) -->
+                            <div class="cipa-cronograma-card" style="background: linear-gradient(135deg, rgba(79, 70, 229, 0.05) 0%, rgba(16, 185, 129, 0.05) 100%); border: 1.5px solid rgba(79, 70, 229, 0.25); border-radius: 12px; padding: 16px; margin: 16px 0;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                                    <div style="font-weight: 700; font-size: 14px; color: var(--primary); display: flex; align-items: center; gap: 6px;">
+                                        <span>⚡</span> Assistente de Cronograma Automático (NR-05)
+                                    </div>
+                                    <span style="font-size: 11.5px; background: rgba(79, 70, 229, 0.12); color: var(--primary); padding: 3px 10px; border-radius: 20px; font-weight: 600;">Regras da Portaria MTP nº 422 / NR-05</span>
+                                </div>
+                                
+                                <div style="font-size: 12px; color: var(--text-light); margin-bottom: 12px; line-height: 1.45;">
+                                    Defina apenas <b>uma data de referência</b> (início ou fim do processo) para calcular todas as etapas regulamentares. O assistente <b>identifica sábados e domingos</b> e ajusta as datas para dias úteis conforme as exigências da norma.
+                                </div>
+
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; align-items: flex-end; margin-bottom: 12px;">
+                                    <div>
+                                        <label style="display:block; margin-bottom: 4px; color: var(--text); font-weight: 600; font-size: 12px;">Calcular a partir de:</label>
+                                        <select id="cipaCronograma_tipoCalculo" onchange="atualizarLabelDataBaseCipa()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text);">
+                                            <option value="fim">🏁 Término do Mandato Atual / Posse (Regressivo)</option>
+                                            <option value="inicio">🚀 Convocação da Eleição / Início (Progressivo)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label id="cipaCronograma_labelDataBase" style="display:block; margin-bottom: 4px; color: var(--text); font-weight: 600; font-size: 12px;">Data da Posse / Fim do Mandato *</label>
+                                        <input type="date" id="cipaCronograma_dataBase" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text);">
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <button type="button" class="db-apply-btn" onclick="gerarSugestaoCronogramaCipa()" style="padding: 8px 16px; font-size: 12.5px; white-space: nowrap; width: 100%; justify-content: center; display: inline-flex; align-items: center; gap: 6px;">
+                                            <span>✨</span> Calcular Cronograma
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Container onde o cronograma calculado será exibido -->
+                                <div id="cipaCronograma_resultado" style="display: none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed rgba(79, 70, 229, 0.2);"></div>
+                            </div>
+
                             <div class="subsecao-titulo" style="font-weight:700; margin: 14px 0 6px;">Edital de Convocação e Inscrições</div>
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px;">
                                 <div>

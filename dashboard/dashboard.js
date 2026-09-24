@@ -22666,6 +22666,543 @@ function renderCipaEleicao() {
     renderCipaCandidatosLista();
 }
 
+// =========================================================================
+// ASSISTENTE INTELIGENTE DE CRONOGRAMA ELEITORAL DA CIPA (NR-05)
+// =========================================================================
+
+let cipaUltimoCronogramaCalculado = null;
+
+const DIAS_SEMANA_NOMES_PT = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+
+function cipaParseDataLocal(str) {
+    if (!str || typeof str !== 'string') return null;
+    const parts = str.trim().split('-');
+    if (parts.length !== 3) return null;
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
+    return new Date(y, m, d, 12, 0, 0);
+}
+
+function cipaFormatDateInput(d) {
+    if (!d || isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+function cipaFormatDateBR(d) {
+    if (!d || isNaN(d.getTime())) return '';
+    const day = String(d.getDate()).padStart(2, '0');
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const y = d.getFullYear();
+    return `${day}/${m}/${y}`;
+}
+
+function cipaAdicionarDias(d, numDias) {
+    const res = new Date(d.getTime());
+    res.setDate(res.getDate() + numDias);
+    return res;
+}
+
+function cipaAjustarDiaUtil(d, direcao = 'anterior') {
+    const original = new Date(d.getTime());
+    const dayOfWeek = original.getDay(); // 0 = Dom, 6 = Sáb
+    let ajustada = new Date(d.getTime());
+    let ajustado = false;
+    let motivo = '';
+
+    if (dayOfWeek === 6) { // Sábado
+        ajustado = true;
+        if (direcao === 'anterior') {
+            ajustada.setDate(ajustada.getDate() - 1); // Sexta-feira
+            motivo = 'Caiu no Sábado ➡️ Antecipado para Sexta-feira útil';
+        } else {
+            ajustada.setDate(ajustada.getDate() + 2); // Segunda-feira
+            motivo = 'Caiu no Sábado ➡️ Prorrogado para Segunda-feira útil';
+        }
+    } else if (dayOfWeek === 0) { // Domingo
+        ajustado = true;
+        if (direcao === 'anterior') {
+            ajustada.setDate(ajustada.getDate() - 2); // Sexta-feira
+            motivo = 'Caiu no Domingo ➡️ Antecipado para Sexta-feira útil';
+        } else {
+            ajustada.setDate(ajustada.getDate() + 1); // Segunda-feira
+            motivo = 'Caiu no Domingo ➡️ Prorrogado para Segunda-feira útil';
+        }
+    }
+
+    return {
+        dataOriginal: original,
+        data: ajustada,
+        ajustado,
+        motivo,
+        diaOriginalNome: DIAS_SEMANA_NOMES_PT[dayOfWeek],
+        diaFinalNome: DIAS_SEMANA_NOMES_PT[ajustada.getDay()]
+    };
+}
+
+function atualizarLabelDataBaseCipa() {
+    const tipo = document.getElementById('cipaCronograma_tipoCalculo')?.value || 'fim';
+    const label = document.getElementById('cipaCronograma_labelDataBase');
+    const input = document.getElementById('cipaCronograma_dataBase');
+    if (!label) return;
+
+    if (tipo === 'fim') {
+        label.textContent = 'Data da Posse / Fim do Mandato *';
+        const p = processoEleitoralAtual();
+        if (input && (!input.value || input.value === p?.data_edital_convocacao)) {
+            input.value = p?.data_posse || p?.data_fim_gestao || '';
+        }
+    } else {
+        label.textContent = 'Data de Convocação da Eleição *';
+        const p = processoEleitoralAtual();
+        if (input && (!input.value || input.value === p?.data_posse || input.value === p?.data_fim_gestao)) {
+            input.value = p?.data_edital_convocacao || '';
+        }
+    }
+}
+
+function calcularCronogramaCipaNR05(tipo, dataBaseStr) {
+    const dataBase = cipaParseDataLocal(dataBaseStr);
+    if (!dataBase) return null;
+
+    let etapas = [];
+    let datasForm = {};
+
+    if (tipo === 'fim') {
+        // Cálculo Regressivo baseado na Posse / Fim do Mandato anterior
+        const infoPosse = cipaAjustarDiaUtil(dataBase, 'posterior');
+        const dataPosse = infoPosse.data;
+
+        // 1. Convocação: Mínimo 60 dias antes da posse (Item 5.5.1 'a')
+        const rawConvocacao = cipaAdicionarDias(dataPosse, -60);
+        const infoConvocacao = cipaAjustarDiaUtil(rawConvocacao, 'anterior');
+
+        // 2. Comissão Eleitoral: Mínimo 55 dias antes da posse (Item 5.5.1 'b')
+        const rawComissao = cipaAdicionarDias(dataPosse, -55);
+        const infoComissao = cipaAjustarDiaUtil(rawComissao, 'anterior');
+
+        // 3. Edital de Abertura / Início Inscrições: Mínimo 45 dias antes da posse (Item 5.5.1 'c')
+        // Adotamos 50 dias antes da posse para que as inscrições durem 15 dias corridos e terminem a 35 dias da posse,
+        // garantindo prazo seguro para homologação e campanha antes da eleição (30 dias antes).
+        const rawInscricao = cipaAdicionarDias(dataPosse, -50);
+        const infoInscricao = cipaAjustarDiaUtil(rawInscricao, 'anterior');
+
+        // 4. Encerramento das Inscrições: Mínimo 15 dias corridos (Item 5.5.1 'd')
+        const rawFimInscricao = cipaAdicionarDias(infoInscricao.data, 14);
+        const infoFimInscricao = cipaAjustarDiaUtil(rawFimInscricao, 'posterior');
+
+        // 5. Homologação / Edital de Inscritos: 1º dia útil após fim das inscrições (Item 5.5.1 'e')
+        const rawEditalInscritos = cipaAdicionarDias(infoFimInscricao.data, 1);
+        const infoEditalInscritos = cipaAjustarDiaUtil(rawEditalInscritos, 'posterior');
+
+        // 6. Eleição: Mínimo 30 dias antes do término do mandato (Item 5.5.1 'f')
+        const rawEleicao = cipaAdicionarDias(dataPosse, -30);
+        const infoEleicao = cipaAjustarDiaUtil(rawEleicao, 'anterior');
+
+        // 7. Apuração dos Votos: Imediatamente após a eleição (Item 5.5.1 'g')
+        const infoApuracao = {
+            dataOriginal: infoEleicao.data,
+            data: infoEleicao.data,
+            ajustado: false,
+            motivo: 'Realizada no mesmo dia da votação',
+            diaOriginalNome: infoEleicao.diaFinalNome,
+            diaFinalNome: infoEleicao.diaFinalNome
+        };
+
+        // 8. Fim da Gestão Eleita: 1 ano após a posse (Item 5.4.6)
+        const rawFimGestao = new Date(dataPosse.getTime());
+        rawFimGestao.setFullYear(rawFimGestao.getFullYear() + 1);
+
+        datasForm = {
+            dataEditalConvocacao: cipaFormatDateInput(infoConvocacao.data),
+            dataEditalInscricao: cipaFormatDateInput(infoInscricao.data),
+            dataInicioInscricoes: cipaFormatDateInput(infoInscricao.data),
+            dataFimInscricoes: cipaFormatDateInput(infoFimInscricao.data),
+            dataEditalInscritos: cipaFormatDateInput(infoEditalInscritos.data),
+            dataEleicao: cipaFormatDateInput(infoEleicao.data),
+            dataApuracao: cipaFormatDateInput(infoApuracao.data),
+            dataPosse: cipaFormatDateInput(dataPosse),
+            dataInicioGestao: cipaFormatDateInput(dataPosse),
+            dataFimGestao: cipaFormatDateInput(rawFimGestao)
+        };
+
+        etapas = [
+            {
+                num: '1',
+                nome: 'Convocação das Eleições',
+                norma: 'NR-05, Item 5.5.1 (a)',
+                regra: 'Mínimo de 60 dias antes do término do mandato',
+                info: infoConvocacao,
+                campoForm: 'dataEditalConvocacao'
+            },
+            {
+                num: '2',
+                nome: 'Constituição da Comissão Eleitoral (CE)',
+                norma: 'NR-05, Item 5.5.1 (b)',
+                regra: 'Mínimo de 55 dias antes do término do mandato',
+                info: infoComissao,
+                campoForm: null
+            },
+            {
+                num: '3',
+                nome: 'Edital de Abertura & Início das Inscrições',
+                norma: 'NR-05, Item 5.5.1 (c)',
+                regra: 'Mínimo de 45 dias antes do término do mandato',
+                info: infoInscricao,
+                campoForm: 'dataEditalInscricao / dataInicioInscricoes'
+            },
+            {
+                num: '4',
+                nome: 'Encerramento das Inscrições',
+                norma: 'NR-05, Item 5.5.1 (d)',
+                regra: 'Período mínimo de 15 dias corridos de inscrições',
+                info: infoFimInscricao,
+                campoForm: 'dataFimInscricoes'
+            },
+            {
+                num: '5',
+                nome: 'Edital de Inscritos (Homologação)',
+                norma: 'NR-05, Item 5.5.1 (e)',
+                regra: 'Divulgação oficial logo após o fim das inscrições',
+                info: infoEditalInscritos,
+                campoForm: 'dataEditalInscritos'
+            },
+            {
+                num: '6',
+                nome: 'Realização da Eleição (Votação Secreta)',
+                norma: 'NR-05, Item 5.5.1 (f)',
+                regra: 'Mínimo de 30 dias antes do término do mandato',
+                info: infoEleicao,
+                campoForm: 'dataEleicao'
+            },
+            {
+                num: '7',
+                nome: 'Apuração dos Votos e Lavratura da Ata',
+                norma: 'NR-05, Item 5.5.1 (g)',
+                regra: 'Imediatamente após o encerramento da votação',
+                info: infoApuracao,
+                campoForm: 'dataApuracao'
+            },
+            {
+                num: '8',
+                nome: 'Período para Treinamento Obrigatório CIPA',
+                norma: 'NR-05, Item 5.7',
+                regra: 'Obrigatório para titulares e suplentes antes da posse',
+                info: {
+                    data: infoEleicao.data,
+                    ajustado: false,
+                    motivo: `Entre ${cipaFormatDateBR(cipaAdicionarDias(infoEleicao.data, 1))} e ${cipaFormatDateBR(cipaAdicionarDias(dataPosse, -1))}`,
+                    diaFinalNome: 'Período Intermediário'
+                },
+                campoForm: null
+            },
+            {
+                num: '9',
+                nome: 'Posse da CIPA e Início do Mandato',
+                norma: 'NR-05, Item 5.5.1 (i)',
+                regra: '1º dia útil após término do mandato anterior',
+                info: infoPosse,
+                campoForm: 'dataPosse / dataInicioGestao'
+            }
+        ];
+    } else {
+        // Cálculo Progressivo baseado na Convocação
+        const rawConvocacao = dataBase;
+        const infoConvocacao = cipaAjustarDiaUtil(rawConvocacao, 'anterior');
+        const dataConvocacao = infoConvocacao.data;
+
+        // Comissão Eleitoral: D+5
+        const rawComissao = cipaAdicionarDias(dataConvocacao, 5);
+        const infoComissao = cipaAjustarDiaUtil(rawComissao, 'posterior');
+
+        // Edital e Início de Inscrições: D+10
+        const rawInscricao = cipaAdicionarDias(dataConvocacao, 10);
+        const infoInscricao = cipaAjustarDiaUtil(rawInscricao, 'posterior');
+
+        // Fim das Inscrições: Início + 14 dias corridos
+        const rawFimInscricao = cipaAdicionarDias(infoInscricao.data, 14);
+        const infoFimInscricao = cipaAjustarDiaUtil(rawFimInscricao, 'posterior');
+
+        // Edital de Inscritos: D+1 dia útil
+        const rawEditalInscritos = cipaAdicionarDias(infoFimInscricao.data, 1);
+        const infoEditalInscritos = cipaAjustarDiaUtil(rawEditalInscritos, 'posterior');
+
+        // Eleição: D+30 dias
+        const rawEleicao = cipaAdicionarDias(dataConvocacao, 30);
+        const infoEleicao = cipaAjustarDiaUtil(rawEleicao, 'anterior');
+
+        // Apuração: mesmo dia da eleição
+        const infoApuracao = {
+            dataOriginal: infoEleicao.data,
+            data: infoEleicao.data,
+            ajustado: false,
+            motivo: 'Realizada no mesmo dia da votação',
+            diaOriginalNome: infoEleicao.diaFinalNome,
+            diaFinalNome: infoEleicao.diaFinalNome
+        };
+
+        // Posse: D+60 dias
+        const rawPosse = cipaAdicionarDias(dataConvocacao, 60);
+        const infoPosse = cipaAjustarDiaUtil(rawPosse, 'posterior');
+
+        // Fim da Gestão: Posse + 1 ano
+        const rawFimGestao = new Date(infoPosse.data.getTime());
+        rawFimGestao.setFullYear(rawFimGestao.getFullYear() + 1);
+
+        datasForm = {
+            dataEditalConvocacao: cipaFormatDateInput(dataConvocacao),
+            dataEditalInscricao: cipaFormatDateInput(infoInscricao.data),
+            dataInicioInscricoes: cipaFormatDateInput(infoInscricao.data),
+            dataFimInscricoes: cipaFormatDateInput(infoFimInscricao.data),
+            dataEditalInscritos: cipaFormatDateInput(infoEditalInscritos.data),
+            dataEleicao: cipaFormatDateInput(infoEleicao.data),
+            dataApuracao: cipaFormatDateInput(infoApuracao.data),
+            dataPosse: cipaFormatDateInput(infoPosse.data),
+            dataInicioGestao: cipaFormatDateInput(infoPosse.data),
+            dataFimGestao: cipaFormatDateInput(rawFimGestao)
+        };
+
+        etapas = [
+            {
+                num: '1',
+                nome: 'Convocação das Eleições',
+                norma: 'NR-05, Item 5.5.1 (a)',
+                regra: 'Início oficial do processo eleitoral',
+                info: infoConvocacao,
+                campoForm: 'dataEditalConvocacao'
+            },
+            {
+                num: '2',
+                nome: 'Constituição da Comissão Eleitoral (CE)',
+                norma: 'NR-05, Item 5.5.1 (b)',
+                regra: 'Até 5 dias após a convocação',
+                info: infoComissao,
+                campoForm: null
+            },
+            {
+                num: '3',
+                nome: 'Edital de Abertura & Início das Inscrições',
+                norma: 'NR-05, Item 5.5.1 (c)',
+                regra: 'Abertura das inscrições para os empregados',
+                info: infoInscricao,
+                campoForm: 'dataEditalInscricao / dataInicioInscricoes'
+            },
+            {
+                num: '4',
+                nome: 'Encerramento das Inscrições',
+                norma: 'NR-05, Item 5.5.1 (d)',
+                regra: 'Período mínimo de 15 dias corridos',
+                info: infoFimInscricao,
+                campoForm: 'dataFimInscricoes'
+            },
+            {
+                num: '5',
+                nome: 'Edital de Inscritos (Homologação)',
+                norma: 'NR-05, Item 5.5.1 (e)',
+                regra: 'Divulgação oficial logo após o fim das inscrições',
+                info: infoEditalInscritos,
+                campoForm: 'dataEditalInscritos'
+            },
+            {
+                num: '6',
+                nome: 'Realização da Eleição (Votação Secreta)',
+                norma: 'NR-05, Item 5.5.1 (f)',
+                regra: '30 dias antes da posse prevista',
+                info: infoEleicao,
+                campoForm: 'dataEleicao'
+            },
+            {
+                num: '7',
+                nome: 'Apuração dos Votos e Lavratura da Ata',
+                norma: 'NR-05, Item 5.5.1 (g)',
+                regra: 'Imediatamente após o encerramento da votação',
+                info: infoApuracao,
+                campoForm: 'dataApuracao'
+            },
+            {
+                num: '8',
+                nome: 'Período para Treinamento Obrigatório CIPA',
+                norma: 'NR-05, Item 5.7',
+                regra: 'Obrigatório para titulares e suplentes antes da posse',
+                info: {
+                    data: infoEleicao.data,
+                    ajustado: false,
+                    motivo: `Entre ${cipaFormatDateBR(cipaAdicionarDias(infoEleicao.data, 1))} e ${cipaFormatDateBR(cipaAdicionarDias(infoPosse.data, -1))}`,
+                    diaFinalNome: 'Período Intermediário'
+                },
+                campoForm: null
+            },
+            {
+                num: '9',
+                nome: 'Posse da CIPA e Início do Mandato',
+                norma: 'NR-05, Item 5.5.1 (i)',
+                regra: '60 dias após a convocação (1º dia útil)',
+                info: infoPosse,
+                campoForm: 'dataPosse / dataInicioGestao'
+            }
+        ];
+    }
+
+    return { tipo, dataBaseStr, etapas, datasForm };
+}
+
+function gerarSugestaoCronogramaCipa() {
+    const tipo = document.getElementById('cipaCronograma_tipoCalculo')?.value || 'fim';
+    const dataBaseStr = document.getElementById('cipaCronograma_dataBase')?.value;
+    const container = document.getElementById('cipaCronograma_resultado');
+    if (!container) return;
+
+    if (!dataBaseStr) {
+        alert('Por favor, selecione uma data no campo de referência para calcular o cronograma.');
+        return;
+    }
+
+    const cronograma = calcularCronogramaCipaNR05(tipo, dataBaseStr);
+    if (!cronograma) {
+        alert('Data inválida selecionada.');
+        return;
+    }
+
+    cipaUltimoCronogramaCalculado = cronograma;
+
+    const linhasHtml = cronograma.etapas.map(e => {
+        const dataFormatada = cipaFormatDateBR(e.info.data);
+        const badgeAjuste = e.info.ajustado
+            ? `<span style="background: rgba(239, 68, 68, 0.12); color: var(--danger); font-size: 11px; padding: 2px 7px; border-radius: 6px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">⚠️ ${escapeHTML(e.info.motivo)}</span>`
+            : (e.info.diaFinalNome === 'Período Intermediário'
+                ? `<span style="background: rgba(79, 70, 229, 0.1); color: var(--primary); font-size: 11px; padding: 2px 7px; border-radius: 6px; font-weight: 600;">${escapeHTML(e.info.motivo)}</span>`
+                : `<span style="background: rgba(16, 185, 129, 0.12); color: var(--success); font-size: 11px; padding: 2px 7px; border-radius: 6px; font-weight: 600;">✅ Dia útil (${escapeHTML(e.info.diaFinalNome)})</span>`);
+
+        return `
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 10px 8px; font-weight: 700; color: var(--primary); text-align: center; width: 36px;">
+                    ${e.num}
+                </td>
+                <td style="padding: 10px 8px;">
+                    <div style="font-weight: 600; color: var(--text);">${escapeHTML(e.nome)}</div>
+                    <div style="font-size: 11px; color: var(--text-light); margin-top: 2px;">
+                        <b>${escapeHTML(e.norma)}</b>: ${escapeHTML(e.regra)}
+                    </div>
+                </td>
+                <td style="padding: 10px 8px; font-weight: 700; color: var(--text); white-space: nowrap;">
+                    ${e.info.diaFinalNome === 'Período Intermediário' ? '—' : dataFormatada}
+                </td>
+                <td style="padding: 10px 8px;">
+                    ${badgeAjuste}
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <div style="background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; box-shadow: var(--shadow);">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom: 12px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13.5px; color: var(--text);">
+                        📋 Cronograma Oficial Sugerido (NR-05)
+                    </div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">
+                        Cálculo ${tipo === 'fim' ? 'regressivo baseado na posse' : 'progressivo baseado na convocação'}. Todas as datas em finais de semana foram ajustadas para o dia útil legal.
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="db-apply-btn" style="background: var(--success); font-weight: 700; display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 12.5px;" onclick="aplicarSugestaoCronogramaCipa()">
+                        <span>📥</span> Aplicar Datas no Formulário
+                    </button>
+                    <button type="button" class="db-clear-btn" style="padding: 8px 12px; font-size: 12.5px;" onclick="fecharSugestaoCronogramaCipa()">
+                        Fechar
+                    </button>
+                </div>
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                    <thead>
+                        <tr style="background: var(--bg); border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; color: var(--text-light);">
+                            <th style="padding: 8px; text-align:center;">#</th>
+                            <th style="padding: 8px;">Etapa do Processo & Fundamento Legal</th>
+                            <th style="padding: 8px;">Data Sugerida</th>
+                            <th style="padding: 8px;">Validação de Dia Útil / Fim de Semana</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${linhasHtml}
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; background: rgba(79, 70, 229, 0.05); padding: 10px 12px; border-radius: 8px;">
+                <div style="font-size: 11.5px; color: var(--text-light);">
+                    💡 <b>Dica:</b> Ao clicar em <b>Aplicar Datas</b>, todos os campos abaixo serão preenchidos automaticamente. Você ainda pode editar qualquer campo manualmente se desejar antes de salvar.
+                </div>
+                <button type="button" class="db-apply-btn" style="background: var(--success); font-weight: 700; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px;" onclick="aplicarSugestaoCronogramaCipa()">
+                    <span>📥</span> Aplicar Datas no Formulário
+                </button>
+            </div>
+        </div>
+    `;
+
+    container.style.display = 'block';
+    container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function fecharSugestaoCronogramaCipa() {
+    const container = document.getElementById('cipaCronograma_resultado');
+    if (container) container.style.display = 'none';
+}
+
+function aplicarSugestaoCronogramaCipa() {
+    if (!cipaUltimoCronogramaCalculado || !cipaUltimoCronogramaCalculado.datasForm) {
+        alert('Calcule o cronograma primeiro.');
+        return;
+    }
+
+    const { datasForm } = cipaUltimoCronogramaCalculado;
+    const camposMapeados = [
+        { id: 'cipaProcessoForm_dataEditalConvocacao', val: datasForm.dataEditalConvocacao },
+        { id: 'cipaProcessoForm_dataEditalInscricao', val: datasForm.dataEditalInscricao },
+        { id: 'cipaProcessoForm_dataInicioInscricoes', val: datasForm.dataInicioInscricoes },
+        { id: 'cipaProcessoForm_dataFimInscricoes', val: datasForm.dataFimInscricoes },
+        { id: 'cipaProcessoForm_dataEditalInscritos', val: datasForm.dataEditalInscritos },
+        { id: 'cipaProcessoForm_dataEleicao', val: datasForm.dataEleicao },
+        { id: 'cipaProcessoForm_dataApuracao', val: datasForm.dataApuracao },
+        { id: 'cipaProcessoForm_dataPosse', val: datasForm.dataPosse },
+        { id: 'cipaProcessoForm_dataInicioGestao', val: datasForm.dataInicioGestao },
+        { id: 'cipaProcessoForm_dataFimGestao', val: datasForm.dataFimGestao }
+    ];
+
+    camposMapeados.forEach(c => {
+        const el = document.getElementById(c.id);
+        if (el && c.val) {
+            el.value = c.val;
+            el.style.transition = 'all 0.3s ease';
+            el.style.borderColor = 'var(--success)';
+            el.style.boxShadow = '0 0 0 2px rgba(16, 185, 129, 0.2)';
+            setTimeout(() => {
+                el.style.borderColor = '';
+                el.style.boxShadow = '';
+            }, 3000);
+        }
+    });
+
+    const statusEl = document.getElementById('cipaProcessoFormStatus');
+    if (statusEl) {
+        statusEl.textContent = '✨ Prazos da NR-05 preenchidos no formulário! Clique em "Salvar Processo Eleitoral" para gravar.';
+        statusEl.style.color = 'var(--success)';
+    }
+
+    fecharSugestaoCronogramaCipa();
+
+    const primeiroCampo = document.getElementById('cipaProcessoForm_dataEditalConvocacao');
+    if (primeiroCampo) {
+        primeiroCampo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
 function carregarFormProcessoEleitoral(id) {
     const p = allCipaProcessosEleitorais.find(x => x.id === id) || null;
     const card = document.getElementById('cipaProcessoFormCard');
@@ -22678,6 +23215,22 @@ function carregarFormProcessoEleitoral(id) {
         el.value = p ? (p[col] ?? '') : '';
     });
     document.getElementById('cipaProcessoFormStatus').textContent = '';
+
+    // Atualiza campo do assistente inteligente de cronograma
+    const dataBaseInput = document.getElementById('cipaCronograma_dataBase');
+    if (dataBaseInput) {
+        const tipoCalc = document.getElementById('cipaCronograma_tipoCalculo')?.value || 'fim';
+        if (tipoCalc === 'fim') {
+            dataBaseInput.value = p?.data_posse || p?.data_fim_gestao || '';
+        } else {
+            dataBaseInput.value = p?.data_edital_convocacao || '';
+        }
+    }
+    const containerResultado = document.getElementById('cipaCronograma_resultado');
+    if (containerResultado) {
+        containerResultado.style.display = 'none';
+        containerResultado.innerHTML = '';
+    }
 }
 
 function abrirNovoProcessoEleitoral() {

@@ -3957,18 +3957,37 @@
                         </div>
                     </div>
 
-                    <!-- Modal / Card de Sugestão de Compras (Ponto de Pedido) -->
+                    <!-- Modal / Card de Sugestão de Compras (Ponto de Pedido Interativo) -->
                     <div class="db-chart-card" id="epiSugestaoComprasModal" style="display:none; margin-bottom: 16px; border: 2px solid #2563eb;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
-                            <div class="db-chart-title" style="margin-bottom: 0;">🛒 Sugestão de Compras (Ponto de Pedido)</div>
-                            <div style="display: flex; gap: 8px;">
-                                <button class="db-apply-btn" style="background: var(--success);" onclick="imprimirSugestaoComprasEpi()">🖨️ Imprimir / Enviar p/ Compras</button>
+                            <div class="db-chart-title" style="margin-bottom: 0;">🛒 Requisição / Sugestão de Compras (Ponto de Pedido)</div>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <button class="db-apply-btn" style="background: #0284c7;" onclick="toggleFormAdicionarItemCompras()">+ Adicionar Item</button>
+                                <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; color: var(--text-light); margin-right: 4px;" title="Por padrão desmarcado para que o Setor de Compras receba apenas as especificações e quantidades, sem valores">
+                                    <input type="checkbox" id="chkImprimirValoresCompras" style="width: 15px; height: 15px;">
+                                    <span>Incluir valores na impressão</span>
+                                </label>
+                                <button class="db-apply-btn" style="background: var(--success);" onclick="imprimirSugestaoComprasEpi()">🖨️ Imprimir Requisição p/ Compras</button>
                                 <button class="db-clear-btn" onclick="fecharEpiSugestaoComprasModal()">✕ Fechar</button>
                             </div>
                         </div>
                         <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
-                            Itens com cobertura inferior a 30 dias ou saldo abaixo do estoque mínimo. A quantidade sugerida busca garantir abastecimento para os próximos 45 dias com base no consumo médio do canteiro.
+                            Lista gerada a partir dos itens em giro com cobertura inferior a 30 dias. <b>Você pode ajustar as quantidades diretamente na coluna "Qtd Pedida", excluir itens que não deseja cotar agora ou adicionar itens manuais.</b> A impressão oficial sai sem valores monetários para envio ao setor de suprimentos.
                         </p>
+
+                        <!-- Mini painel para adicionar item avulso à solicitação -->
+                        <div id="formAdicionarItemComprasPanel" style="display:none; background: var(--bg); padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; border: 1px dashed var(--border);">
+                            <div style="font-weight: 600; font-size: 12px; margin-bottom: 6px;">➕ Adicionar Item Avulso à Solicitação de Compras:</div>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <input type="text" id="addCompras_itemInput" list="epiCatalogoList" placeholder="Selecione o EPI do catálogo..."
+                                       style="flex: 2; min-width: 220px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px;">
+                                <input type="number" id="addCompras_qtdInput" min="1" step="1" placeholder="Qtd" value="10"
+                                       style="width: 90px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; text-align: center;">
+                                <button class="db-apply-btn" style="padding: 7px 14px; font-size: 12px;" onclick="confirmarAdicionarItemCompras()">Inserir</button>
+                                <button class="db-clear-btn" style="padding: 7px 10px; font-size: 12px;" onclick="toggleFormAdicionarItemCompras()">Cancelar</button>
+                            </div>
+                        </div>
+
                         <div id="epiSugestaoComprasList" style="max-height: 480px; overflow-y: auto;"></div>
                     </div>
                 </div>

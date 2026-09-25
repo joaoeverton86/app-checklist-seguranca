@@ -17192,128 +17192,255 @@ function limparBuscaEpiEstoque() {
     filterEpiEstoqueLista('');
 }
 
-// ---- Sugestão de Compras (Ponto de Pedido) ----
+// ---- Sugestão de Compras Interativa (Ponto de Pedido) ----
+
+let epiItensSolicitacaoCompras = [];
+
+function toggleFormAdicionarItemCompras() {
+    const p = document.getElementById('formAdicionarItemComprasPanel');
+    if (!p) return;
+    const abrindo = p.style.display === 'none';
+    p.style.display = abrindo ? 'block' : 'none';
+    if (abrindo) {
+        const input = document.getElementById('addCompras_itemInput');
+        if (input) { input.value = ''; input.focus(); }
+    }
+}
+
+function confirmarAdicionarItemCompras() {
+    const itemInput = document.getElementById('addCompras_itemInput');
+    const qtdInput = document.getElementById('addCompras_qtdInput');
+    if (!itemInput) return;
+    const { id, cat } = buscarEpiCatalogoPorInput('addCompras_itemInput');
+    if (!cat) {
+        alert('Selecione um item válido do catálogo.');
+        return;
+    }
+    const qtd = parseInt(qtdInput?.value, 10);
+    if (isNaN(qtd) || qtd <= 0) {
+        alert('Informe uma quantidade válida maior que zero.');
+        return;
+    }
+
+    const jaExiste = epiItensSolicitacaoCompras.find(i => i.catalogoId === id);
+    if (jaExiste) {
+        jaExiste.sugestaoQtd += qtd;
+        jaExiste.valorSugestao = jaExiste.sugestaoQtd * jaExiste.custoUnit;
+    } else {
+        const m = calcularMetricasEpi(id);
+        m.sugestaoQtd = qtd;
+        m.valorSugestao = qtd * m.custoUnit;
+        epiItensSolicitacaoCompras.unshift(m);
+    }
+
+    toggleFormAdicionarItemCompras();
+    renderEpiTabelaItensCompras();
+}
+
+function alterarQtdItemCompras(id, novaQtdStr) {
+    const item = epiItensSolicitacaoCompras.find(i => i.catalogoId === id);
+    if (!item) return;
+    const qtd = parseInt(novaQtdStr, 10);
+    if (isNaN(qtd) || qtd <= 0) return;
+    item.sugestaoQtd = qtd;
+    item.valorSugestao = qtd * item.custoUnit;
+    atualizarResumoTotaisCompras();
+}
+
+function removerItemSolicitacaoCompras(id) {
+    epiItensSolicitacaoCompras = epiItensSolicitacaoCompras.filter(i => i.catalogoId !== id);
+    renderEpiTabelaItensCompras();
+}
+
+function atualizarResumoTotaisCompras() {
+    let valorTotal = 0;
+    let totalPecas = 0;
+    epiItensSolicitacaoCompras.forEach(i => {
+        valorTotal += (i.valorSugestao || 0);
+        totalPecas += (i.sugestaoQtd || 0);
+    });
+
+    const totalItensEl = document.getElementById('comprasResumo_totalItens');
+    if (totalItensEl) totalItensEl.textContent = `${epiItensSolicitacaoCompras.length} modelos (${totalPecas} peças)`;
+    const totalValorEl = document.getElementById('comprasResumo_totalValor');
+    if (totalValorEl) totalValorEl.textContent = 'R$ ' + valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+
+    // Atualiza subtotais de cada linha
+    epiItensSolicitacaoCompras.forEach(i => {
+        const subEl = document.getElementById(`subtotalCompra_${i.catalogoId}`);
+        if (subEl) {
+            subEl.textContent = i.valorSugestao > 0 ? `R$ ${i.valorSugestao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—';
+        }
+    });
+}
 
 function abrirEpiSugestaoComprasModal() {
     const modal = document.getElementById('epiSugestaoComprasModal');
-    const container = document.getElementById('epiSugestaoComprasList');
-    if (!modal || !container) return;
+    if (!modal) return;
 
+    // Regra Inteligente: só sugere automaticamente itens que estão em giro real ou com estoque mínimo configurado
+    // Itens antigos/descontinuados de lotes anteriores com saldo zerado e consumo zero NÃO entram
     const ativos = allEpiCatalogo.filter(c => c.ativo !== false);
-    const itensNecessarios = [];
-    let valorTotalEstimado = 0;
-    let totalPecasSugeridas = 0;
+    epiItensSolicitacaoCompras = [];
 
     ativos.forEach(c => {
         const m = calcularMetricasEpi(c.id);
-        if (m.sugestaoQtd > 0) {
-            itensNecessarios.push(m);
-            valorTotalEstimado += m.valorSugestao;
-            totalPecasSugeridas += m.sugestaoQtd;
+        const temGiroRecente = m.consumoMensal > 0.4; // Pelo menos 1 saída a cada 2 meses
+        const temMinimoConfigurado = m.minimo > 0;
+
+        if (temGiroRecente || temMinimoConfigurado) {
+            if (m.coberturaDias <= 30 || (temMinimoConfigurado && m.saldo <= m.minimo)) {
+                if (m.sugestaoQtd > 0) {
+                    epiItensSolicitacaoCompras.push(m);
+                }
+            }
         }
     });
 
-    itensNecessarios.sort((a, b) => (a.coberturaDias - b.coberturaDias) || (b.valorSugestao - a.valorSugestao));
+    // Ordena priorizando menor cobertura (mais urgente primeiro)
+    epiItensSolicitacaoCompras.sort((a, b) => (a.coberturaDias - b.coberturaDias) || (b.valorSugestao - a.valorSugestao));
 
-    if (itensNecessarios.length === 0) {
-        container.innerHTML = `
-        <div style="text-align:center; padding: 24px 10px; color: var(--success); font-weight:600;">
-            🎉 Excelente! Todos os EPIs ativos possuem estoque seguro para mais de 30 dias de trabalho. Nenhuma compra urgente necessária no momento.
-        </div>`;
-    } else {
-        const linhasHtml = itensNecessarios.map((m, idx) => {
-            const cat = m.cat;
-            const tamStr = cat.tamanho || (cat.descricao.match(/TAMANHO:\s*([^\s\-]+)/i)?.[1] || 'Único');
-            const custoStr = m.custoUnit > 0 ? `R$ ${m.custoUnit.toFixed(2)}` : '<span style="color:var(--text-light);">Não informado</span>';
-            const totalStr = m.valorSugestao > 0 ? `R$ ${m.valorSugestao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—';
-            return `
-            <tr style="border-bottom: 1px solid var(--border);">
-                <td style="padding: 8px 6px; text-align: center;">${idx + 1}</td>
-                <td style="padding: 8px 6px;"><b>${escapeHTML(cat.descricao)}</b></td>
-                <td style="padding: 8px 6px; text-align: center;">${escapeHTML(tamStr)}</td>
-                <td style="padding: 8px 6px; text-align: center;">${escapeHTML(cat.ca || '—')}</td>
-                <td style="padding: 8px 6px; text-align: center;">${m.saldo}</td>
-                <td style="padding: 8px 6px; text-align: center;">${m.consumoMensal.toFixed(1)}</td>
-                <td style="padding: 8px 6px; text-align: center;">${m.badgeHtml}</td>
-                <td style="padding: 8px 6px; text-align: center; font-weight: 700; color: #2563eb; background: rgba(37,99,235,0.06); font-size: 13px;">${m.sugestaoQtd}</td>
-                <td style="padding: 8px 6px; text-align: right;">${custoStr}</td>
-                <td style="padding: 8px 6px; text-align: right; font-weight: 600;">${totalStr}</td>
-            </tr>`;
-        }).join('');
-
-        container.innerHTML = `
-        <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12.5px; background: var(--bg); padding: 8px 12px; border-radius: 8px;">
-            <div><b>Total de Itens p/ Comprar:</b> ${itensNecessarios.length} modelos (${totalPecasSugeridas} peças)</div>
-            <div><b>Orçamento Total Estimado:</b> <b style="color:var(--success); font-size:14px;">R$ ${valorTotalEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</b></div>
-        </div>
-        <table style="width: 100%; border-collapse: collapse; font-size: 11.5px;">
-            <thead>
-                <tr style="background: var(--bg); text-align: left; border-bottom: 2px solid var(--border);">
-                    <th style="padding: 6px; text-align: center;">#</th>
-                    <th style="padding: 6px;">Item de EPI</th>
-                    <th style="padding: 6px; text-align: center;">Tam</th>
-                    <th style="padding: 6px; text-align: center;">CA</th>
-                    <th style="padding: 6px; text-align: center;">Saldo</th>
-                    <th style="padding: 6px; text-align: center;">Consumo/mês</th>
-                    <th style="padding: 6px; text-align: center;">Cobertura</th>
-                    <th style="padding: 6px; text-align: center; color: #2563eb;">Sugerido (45d)</th>
-                    <th style="padding: 6px; text-align: right;">Custo Unit.</th>
-                    <th style="padding: 6px; text-align: right;">Total Estimado</th>
-                </tr>
-            </thead>
-            <tbody>${linhasHtml}</tbody>
-        </table>`;
-    }
-
+    renderEpiTabelaItensCompras();
     modal.style.display = 'block';
     modal.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function renderEpiTabelaItensCompras() {
+    const container = document.getElementById('epiSugestaoComprasList');
+    if (!container) return;
+
+    if (epiItensSolicitacaoCompras.length === 0) {
+        container.innerHTML = `
+        <div style="text-align:center; padding: 24px 10px; color: var(--success); font-weight:600;">
+            🎉 Nenhum item pendente de reposição! Todos os EPIs ativos possuem estoque seguro para mais de 30 dias de trabalho.
+            <div style="margin-top: 8px; font-weight: normal; font-size: 12px; color: var(--text-light);">
+                Se desejar cotar algum item manualmente, clique em <b>"+ Adicionar Item"</b> acima.
+            </div>
+        </div>`;
+        return;
+    }
+
+    let valorTotalEstimado = 0;
+    let totalPecasSugeridas = 0;
+    epiItensSolicitacaoCompras.forEach(i => {
+        valorTotalEstimado += i.valorSugestao;
+        totalPecasSugeridas += i.sugestaoQtd;
+    });
+
+    const linhasHtml = epiItensSolicitacaoCompras.map((m, idx) => {
+        const cat = m.cat;
+        const tamStr = cat.tamanho || (cat.descricao.match(/TAMANHO:\s*([^\s\-]+)/i)?.[1] || 'Único');
+        const custoStr = m.custoUnit > 0 ? `R$ ${m.custoUnit.toFixed(2)}` : '<span style="color:var(--text-light);">—</span>';
+        const totalStr = m.valorSugestao > 0 ? `R$ ${m.valorSugestao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—';
+
+        return `
+        <tr style="border-bottom: 1px solid var(--border);">
+            <td style="padding: 6px; text-align: center;">
+                <button onclick="removerItemSolicitacaoCompras('${escapeHTML(m.catalogoId)}')" title="Remover este item da solicitação de compras"
+                        style="background: transparent; border: none; cursor: pointer; color: var(--danger); font-size: 14px; padding: 2px 4px;">🗑️</button>
+            </td>
+            <td style="padding: 6px; text-align: center;">${idx + 1}</td>
+            <td style="padding: 6px;"><b>${escapeHTML(cat.descricao)}</b></td>
+            <td style="padding: 6px; text-align: center;">${escapeHTML(tamStr)}</td>
+            <td style="padding: 6px; text-align: center;">${escapeHTML(cat.ca || '—')}</td>
+            <td style="padding: 6px; text-align: center;">${m.saldo}</td>
+            <td style="padding: 6px; text-align: center;">${m.consumoMensal.toFixed(1)}</td>
+            <td style="padding: 6px; text-align: center;">${m.badgeHtml}</td>
+            <td style="padding: 6px; text-align: center;">
+                <input type="number" min="1" step="1" value="${m.sugestaoQtd}" id="qtdCompra_${m.catalogoId}"
+                       oninput="alterarQtdItemCompras('${m.catalogoId}', this.value)"
+                       style="width: 70px; text-align: center; padding: 5px 6px; font-weight: 700; font-size: 13px; color: #2563eb; border: 1px solid #2563eb; border-radius: 6px; background: rgba(37,99,235,0.06);">
+            </td>
+            <td style="padding: 6px; text-align: right; color: var(--text-light); font-size: 11px;">${custoStr}</td>
+            <td style="padding: 6px; text-align: right; font-weight: 600;" id="subtotalCompra_${m.catalogoId}">${totalStr}</td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+    <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12.5px; background: var(--bg); padding: 8px 12px; border-radius: 8px;">
+        <div><b>Itens na Solicitação:</b> <span id="comprasResumo_totalItens">${epiItensSolicitacaoCompras.length} modelos (${totalPecasSugeridas} peças)</span></div>
+        <div><b>Estimativa Interna (R$):</b> <b style="color:var(--success); font-size:14px;" id="comprasResumo_totalValor">R$ ${valorTotalEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</b></div>
+    </div>
+    <table style="width: 100%; border-collapse: collapse; font-size: 11.5px;">
+        <thead>
+            <tr style="background: var(--bg); text-align: left; border-bottom: 2px solid var(--border);">
+                <th style="padding: 6px; width: 30px; text-align: center;">Excluir</th>
+                <th style="padding: 6px; width: 25px; text-align: center;">#</th>
+                <th style="padding: 6px;">Item de EPI (Descrição Técnica)</th>
+                <th style="padding: 6px; width: 55px; text-align: center;">Tam</th>
+                <th style="padding: 6px; width: 65px; text-align: center;">CA Ref.</th>
+                <th style="padding: 6px; width: 50px; text-align: center;">Saldo</th>
+                <th style="padding: 6px; width: 65px; text-align: center;">Giro/mês</th>
+                <th style="padding: 6px; width: 85px; text-align: center;">Cobertura</th>
+                <th style="padding: 6px; width: 85px; text-align: center; color: #2563eb;">Qtd Pedida</th>
+                <th style="padding: 6px; width: 75px; text-align: right; color: var(--text-light);">Custo Est.</th>
+                <th style="padding: 6px; width: 90px; text-align: right;">Total Est.</th>
+            </tr>
+        </thead>
+        <tbody>${linhasHtml}</tbody>
+    </table>`;
 }
 
 function fecharEpiSugestaoComprasModal() {
     const modal = document.getElementById('epiSugestaoComprasModal');
     if (modal) modal.style.display = 'none';
+    const formAdd = document.getElementById('formAdicionarItemComprasPanel');
+    if (formAdd) formAdd.style.display = 'none';
 }
 
 function imprimirSugestaoComprasEpi() {
-    const ativos = allEpiCatalogo.filter(c => c.ativo !== false);
-    const itensNecessarios = [];
-    let valorTotalEstimado = 0;
-    let totalPecasSugeridas = 0;
+    if (epiItensSolicitacaoCompras.length === 0) {
+        alert('A lista de compras está vazia.');
+        return;
+    }
 
-    ativos.forEach(c => {
-        const m = calcularMetricasEpi(c.id);
-        if (m.sugestaoQtd > 0) {
-            itensNecessarios.push(m);
-            valorTotalEstimado += m.valorSugestao;
-            totalPecasSugeridas += m.sugestaoQtd;
-        }
+    const incluirValores = !!document.getElementById('chkImprimirValoresCompras')?.checked;
+    const dataHoje = formatSimpleDate(toISODateLocal(new Date()));
+
+    let totalPecas = 0;
+    let totalValor = 0;
+    epiItensSolicitacaoCompras.forEach(i => {
+        totalPecas += (i.sugestaoQtd || 0);
+        totalValor += (i.valorSugestao || 0);
     });
 
-    itensNecessarios.sort((a, b) => (a.coberturaDias - b.coberturaDias) || (b.valorSugestao - a.valorSugestao));
-
-    const dataHoje = formatSimpleDate(toISODateLocal(new Date()));
-    const linhas = itensNecessarios.map((m, i) => {
+    const linhas = epiItensSolicitacaoCompras.map((m, i) => {
         const cat = m.cat;
         const tamStr = cat.tamanho || (cat.descricao.match(/TAMANHO:\s*([^\s\-]+)/i)?.[1] || 'Único');
-        const custoStr = m.custoUnit > 0 ? `R$ ${m.custoUnit.toFixed(2)}` : '—';
-        const totalStr = m.valorSugestao > 0 ? `R$ ${m.valorSugestao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—';
+        const caStr = cat.ca ? `CA ${escapeHTML(cat.ca)}` : 'Conforme especificação';
+        const colunasValoresHtml = incluirValores ? `
+            <td style="text-align:right;">${m.custoUnit > 0 ? 'R$ ' + m.custoUnit.toFixed(2) : '—'}</td>
+            <td style="text-align:right; font-weight:600;">${m.valorSugestao > 0 ? 'R$ ' + m.valorSugestao.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '—'}</td>
+        ` : `<td style="text-align:center; color:#555;">${m.saldo} un (cobertura: ${m.coberturaDias}d)</td>
+             <td style="color:#777; font-size:8.5px;">Aguardando cotação de suprimentos</td>`;
+
         return `<tr>
             <td style="text-align:center;">${i + 1}</td>
             <td><b>${escapeHTML(cat.descricao)}</b></td>
-            <td style="text-align:center;">${escapeHTML(tamStr)}</td>
-            <td style="text-align:center;">${escapeHTML(cat.ca || '')}</td>
-            <td style="text-align:center;">${m.saldo}</td>
-            <td style="text-align:center;">${m.consumoMensal.toFixed(1)}</td>
-            <td style="text-align:center;">${m.coberturaDias} dias</td>
+            <td style="text-align:center;"><b>${escapeHTML(tamStr)}</b></td>
+            <td style="text-align:center;">${caStr}</td>
             <td style="text-align:center; font-weight:700; font-size:11px; background:#f0f4ff;">${m.sugestaoQtd}</td>
-            <td style="text-align:right;">${custoStr}</td>
-            <td style="text-align:right; font-weight:600;">${totalStr}</td>
+            ${colunasValoresHtml}
         </tr>`;
     }).join('');
 
+    const cabecalhoValoresTh = incluirValores ? `
+        <th style="width:75px;">Custo Unit. Est.</th>
+        <th style="width:85px;">Total Est.</th>
+    ` : `
+        <th style="width:110px;">Estoque Atual</th>
+        <th style="width:130px;">Observações da Cotação</th>
+    `;
+
+    const resumoOrcamentoHtml = incluirValores ? `
+        <div class="campo" style="flex:1.5;"><b>ORÇAMENTO TOTAL ESTIMADO:</b> R$ ${totalValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+    ` : '';
+
+    const tituloDoc = incluirValores ? 'ESTIMATIVA DE COMPRAS DE EPI (ORÇAMENTO INTERNO)' : 'REQUISIÇÃO DE COMPRA DE EPI / MATERIAL (SESMT)';
+
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
-<title>Sugestão de Compras de EPI - ${escapeHTML(EMPRESA_INFO.razaoSocial)}</title>
+<title>${tituloDoc} - ${escapeHTML(EMPRESA_INFO.razaoSocial)}</title>
 <style>
     body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
     .folha { max-width: 1400px; margin: 0 auto; border: 2px solid #000; }
@@ -17336,7 +17463,7 @@ function imprimirSugestaoComprasEpi() {
     <div class="folha">
         <div class="cabecalho">
             <img class="logo" src="${LOGO_COP_BASE64}" alt="COP" style="max-width:100%; max-height:48px; object-fit:contain;">
-            <div class="titulo">SOLICITAÇÃO / SUGESTÃO DE COMPRAS DE EPI<br><span style="font-weight:400; font-size:11px;">Baseada no Consumo Médio do Canteiro (Últimos 90 dias) e Cobertura p/ 45 dias</span></div>
+            <div class="titulo">${tituloDoc}<br><span style="font-weight:400; font-size:11px;">Solicitação de Suprimentos para Atendimento ao Canteiro de Obras</span></div>
         </div>
         <div class="linha">
             <div class="campo" style="flex:2;"><b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
@@ -17344,19 +17471,24 @@ function imprimirSugestaoComprasEpi() {
             <div class="campo"><b>DATA DE EMISSÃO:</b> ${dataHoje}</div>
         </div>
         <div class="linha">
-            <div class="campo"><b>ITENS A REPOR:</b> ${itensNecessarios.length} itens</div>
-            <div class="campo"><b>TOTAL DE PEÇAS:</b> ${totalPecasSugeridas} un</div>
-            <div class="campo" style="flex:1.5;"><b>ORÇAMENTO TOTAL ESTIMADO:</b> R$ ${valorTotalEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+            <div class="campo"><b>TOTAL DE ITENS:</b> ${epiItensSolicitacaoCompras.length} modelos</div>
+            <div class="campo"><b>QUANTIDADE TOTAL DE PEÇAS:</b> ${totalPecas} un/pares</div>
+            ${resumoOrcamentoHtml}
         </div>
         <table>
             <thead><tr>
-                <th style="width:25px;">#</th><th>Item de EPI</th><th style="width:45px;">Tam</th><th style="width:65px;">CA</th><th style="width:50px;">Saldo</th><th style="width:65px;">Consumo/mês</th><th style="width:70px;">Cobertura</th><th style="width:75px; background:#e0e7ff;">Sugerido (45d)</th><th style="width:75px;">Custo Unit.</th><th style="width:85px;">Total Est.</th>
+                <th style="width:25px;">#</th>
+                <th>Especificação Técnica do EPI</th>
+                <th style="width:45px;">Tam</th>
+                <th style="width:85px;">CA Referência</th>
+                <th style="width:80px; background:#e0e7ff;">Qtd Solicitada</th>
+                ${cabecalhoValoresTh}
             </tr></thead>
-            <tbody>${linhas || '<tr><td colspan="10" style="text-align:center;">Nenhum item com necessidade de compra identificado.</td></tr>'}</tbody>
+            <tbody>${linhas}</tbody>
         </table>
         <div style="padding: 16px; margin-top: 24px; display: flex; justify-content: space-around; border-top: 1px solid #000; text-align: center; font-size: 11px;">
-            <div>____________________________________________<br><b>Engenharia de Segurança do Trabalho / SESMT</b></div>
-            <div>____________________________________________<br><b>Setor de Compras / Suprimentos</b></div>
+            <div>____________________________________________<br><b>Engenharia de Segurança do Trabalho / Solicitante</b></div>
+            <div>____________________________________________<br><b>Setor de Compras / Aprovação de Cotação</b></div>
         </div>
     </div>
 </body></html>`;

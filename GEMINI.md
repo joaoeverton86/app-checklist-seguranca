@@ -8,3 +8,8 @@
 - **GitHub**: Repositório vinculado a `https://github.com/joaoeverton86/app-checklist-seguranca.git` (autenticado via `gh`).
 - **Vercel**: Projeto vinculado a `app-checklist-v2`. Deploys ocorrem automaticamente no push da branch `main` ou via Vercel CLI.
 - **Supabase**: Banco de dados central em `https://qqtcwxvbjmybyzubocgd.supabase.co`.
+
+## Contexto de Negócio e Sistemas Externos
+- **SGG**: A empresa do usuário utiliza o software SGG como sistema de SST corporativo. Sempre que documentos, relatórios ou demandas forem extraídos do SGG, o objetivo é replicar suas funcionalidades de forma substancialmente melhorada, mais intuitiva e completa no nosso projeto.
+- **Clínica Engmed**: É apenas a clínica prestadora cadastrada no SGG pela contratante e deve ser totalmente desconsiderada em qualquer menção ou escopo do projeto (a responsabilidade técnica e autoria no projeto é da Engenharia de Segurança interna).
+

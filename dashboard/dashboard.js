@@ -15878,6 +15878,8 @@ async function excluirAtestadoAtual() {
 let allEpiCatalogo = [];
 let allEpiEstoque = [];
 let allEpiEntregas = [];
+let allEpiEntradas = [];
+let epiModoVisaoEstoque = 'grade'; // 'grade' (Modo Família/Grade) ou 'lista' (Modo Detalhado)
 let epiLoaded = false;
 let epiFilter = 'mes';
 let epiFiltroAno = '';
@@ -15919,6 +15921,11 @@ async function loadEpiData() {
         allEpiCatalogo = catalogo;
         allEpiEstoque = estoque;
         allEpiEntregas = entregas;
+        try {
+            allEpiEntradas = await supabaseFetch('epi_entradas', '?select=*&order=data_entrada.desc');
+        } catch (_) {
+            allEpiEntradas = [];
+        }
         if (allEfetivo.length === 0) {
             allEfetivo = await supabaseFetch('colaboradores_efetivo', '?select=*');
         }
@@ -16676,6 +16683,8 @@ function abrirFormEpiCatalogo(id) {
         document.getElementById('epiCatForm_tamanho').value = c.tamanho || '';
         document.getElementById('epiCatForm_ca').value = c.ca || '';
         document.getElementById('epiCatForm_caValidade').value = c.ca_validade || '';
+        const custoEl = document.getElementById('epiCatForm_custoUnitario');
+        if (custoEl) custoEl.value = c.custo_unitario != null ? c.custo_unitario : '';
         document.getElementById('epiCatForm_ativo').checked = c.ativo !== false;
         btnExcluir.style.display = 'inline-block';
     } else {
@@ -16690,6 +16699,8 @@ function abrirFormEpiCatalogo(id) {
         document.getElementById('epiCatForm_tamanho').value = '';
         document.getElementById('epiCatForm_ca').value = '';
         document.getElementById('epiCatForm_caValidade').value = '';
+        const custoEl = document.getElementById('epiCatForm_custoUnitario');
+        if (custoEl) custoEl.value = '';
         document.getElementById('epiCatForm_ativo').checked = true;
         btnExcluir.style.display = 'none';
     }
@@ -16722,6 +16733,7 @@ async function salvarEpiCatalogo() {
         return;
     }
 
+    const custoVal = document.getElementById('epiCatForm_custoUnitario')?.value;
     const row = {
         id,
         descricao,
@@ -16730,6 +16742,7 @@ async function salvarEpiCatalogo() {
         tamanho: document.getElementById('epiCatForm_tamanho').value.trim() || null,
         ca: document.getElementById('epiCatForm_ca').value.trim() || null,
         ca_validade: document.getElementById('epiCatForm_caValidade').value || null,
+        custo_unitario: (custoVal !== '' && !isNaN(parseFloat(custoVal))) ? parseFloat(custoVal) : null,
         ativo: document.getElementById('epiCatForm_ativo').checked
     };
 
@@ -16894,11 +16907,18 @@ async function confirmarMesclarExcluirEpi() {
     }
 }
 
-// ---- Estoque ----
+// ---- Estoque Inteligente (Consumo, Cobertura, Famílias de Tamanhos e Sugestão de Compras) ----
 
-// 'todos' | 'com' (saldo atual > 0) | 'sem' (saldo atual <= 0) — controla a lista de
-// Estoque, além da busca por texto. Acrescentado em 2026-09-19 a pedido do João.
 let epiEstoqueFiltroAtual = 'todos';
+
+function setEpiModoVisualizacao(modo) {
+    epiModoVisaoEstoque = modo;
+    const btnGrade = document.getElementById('epiModoVisaoBtn-grade');
+    const btnLista = document.getElementById('epiModoVisaoBtn-lista');
+    if (btnGrade) btnGrade.classList.toggle('active', modo === 'grade');
+    if (btnLista) btnLista.classList.toggle('active', modo === 'lista');
+    filterEpiEstoqueLista(document.getElementById('epiEstoqueSearchInput')?.value || '');
+}
 
 function renderEpiEstoquePanel() {
     filterEpiEstoqueLista(document.getElementById('epiEstoqueSearchInput')?.value || '');
@@ -16912,11 +16932,99 @@ function filtrarEpiEstoquePorSaldo(filtro) {
         const btn = document.getElementById('epiEstoqueFiltroBtn-' + f);
         if (btn) btn.classList.toggle('active', f === filtro);
     });
-    // O Relatório de Estoque passa a respeitar este mesmo filtro (pedido do João em
-    // 2026-09-20) — o texto do botão avisa qual recorte vai sair antes de clicar.
     const btnRelatorio = document.getElementById('epiEstoqueRelatorioBtn');
     if (btnRelatorio) btnRelatorio.textContent = `🖨️ Relatório de Estoque (${EPI_ESTOQUE_FILTRO_LABELS[filtro]})`;
     filterEpiEstoqueLista(document.getElementById('epiEstoqueSearchInput')?.value || '');
+}
+
+// Extrai o nome da "Família / Modelo" de um EPI para agrupar as grades de tamanhos (ex: Botas, Calças, Macacões)
+function extrairFamiliaEpi(cat) {
+    if (!cat) return 'Outros';
+    if (cat.modelo_base && cat.modelo_base.trim()) return cat.modelo_base.trim();
+    const desc = (cat.descricao || '').trim();
+    let base = desc
+        .replace(/\s*-\s*TAMANHO\s*:\s*([0-9]+|[PPMGp-z]+|ÚNICO|UNICO)[^\-]*/i, '')
+        .replace(/\s*TAMANHO\s*:\s*([0-9]+|[PPMGp-z]+|ÚNICO|UNICO)[^\-]*/i, '')
+        .replace(/\s*-\s*TAM\s*:\s*([0-9]+|[PPMGp-z]+)[^\-]*/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return base || desc;
+}
+
+// Calcula métricas de consumo mensal (últimos 90 dias), dias de cobertura restante e sugestão de compras
+function calcularMetricasEpi(catalogoId) {
+    const hoje = new Date();
+    const data90 = new Date(hoje.getTime() - 90 * 24 * 60 * 60 * 1000);
+    const limite90Str = toISODateLocal(data90);
+
+    const entregas90 = allEpiEntregas.filter(e => e.epi_catalogo_id === catalogoId && e.data_entrega >= limite90Str);
+    const qtdTotal90 = entregas90.reduce((acc, e) => acc + (Number(e.quantidade) || 1), 0);
+    const consumoMensal = qtdTotal90 > 0 ? (qtdTotal90 / 3) : 0;
+    const consumoDiario = consumoMensal / 30;
+
+    const es = allEpiEstoque.find(x => x.epi_catalogo_id === catalogoId);
+    const cat = allEpiCatalogo.find(x => x.id === catalogoId);
+    const saldo = es ? (es.quantidade_atual || 0) : 0;
+    const minimo = es ? (es.quantidade_minima || 0) : 0;
+    const custoUnit = Number(cat?.custo_unitario) || 0;
+    const valorEstoque = saldo * custoUnit;
+
+    let coberturaDias = 0;
+    if (consumoDiario > 0) {
+        coberturaDias = Math.round(saldo / consumoDiario);
+    } else {
+        coberturaDias = saldo > 0 ? 999 : 0;
+    }
+
+    let nivel = 'seguro';
+    let badgeHtml = '<span class="badge" style="background:#e6f7ee; color:#1a7f4b; border:1px solid #b8e6cc;">🟢 Seguro</span>';
+    let label = '🟢 Seguro';
+
+    if (saldo <= 0) {
+        nivel = 'zerado';
+        badgeHtml = '<span class="badge" style="background:#fdf2f2; color:#c0392b; border:1px solid #f3c6c6;">🚫 Sem Saldo</span>';
+        label = '🚫 Sem Saldo';
+    } else if (coberturaDias < 15 || (minimo > 0 && saldo <= minimo)) {
+        nivel = 'critico';
+        badgeHtml = `<span class="badge" style="background:#fdf2f2; color:#c0392b; border:1px solid #f3c6c6;">🔴 Crítico (${coberturaDias}d)</span>`;
+        label = `🔴 Crítico (${coberturaDias}d)`;
+    } else if (coberturaDias <= 30) {
+        nivel = 'reposicao';
+        badgeHtml = `<span class="badge" style="background:#fff9e6; color:#b78a00; border:1px solid #ffe8a1;">🟡 Reposição (${coberturaDias}d)</span>`;
+        label = `🟡 Reposição (${coberturaDias}d)`;
+    } else if (coberturaDias > 90 && consumoDiario > 0) {
+        nivel = 'excesso';
+        badgeHtml = `<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">🔵 Excesso (${coberturaDias}d)</span>`;
+        label = `🔵 Excesso (${coberturaDias}d)`;
+    } else {
+        const dStr = coberturaDias >= 999 ? 'Estável' : `${coberturaDias}d`;
+        badgeHtml = `<span class="badge" style="background:#e6f7ee; color:#1a7f4b; border:1px solid #b8e6cc;">🟢 ${dStr}</span>`;
+        label = `🟢 ${dStr}`;
+    }
+
+    // Sugestão de compra p/ 45 dias de cobertura (ou cobrir o estoque mínimo)
+    const alvoQtd = Math.ceil(consumoDiario * 45);
+    const difMinimo = minimo > saldo ? (minimo - saldo) : 0;
+    const sugestaoQtd = (saldo <= minimo || coberturaDias <= 30) ? Math.max(0, alvoQtd - saldo, difMinimo) : 0;
+    const valorSugestao = sugestaoQtd * custoUnit;
+
+    return {
+        catalogoId,
+        cat,
+        es,
+        saldo,
+        minimo,
+        custoUnit,
+        valorEstoque,
+        consumoMensal,
+        consumoDiario,
+        coberturaDias,
+        nivel,
+        badgeHtml,
+        label,
+        sugestaoQtd,
+        valorSugestao
+    };
 }
 
 function filterEpiEstoqueLista(query) {
@@ -16924,31 +17032,158 @@ function filterEpiEstoqueLista(query) {
     if (!container) return;
     const q = (query || '').toLowerCase().trim();
     const estoquePorId = new Map(allEpiEstoque.map(es => [es.epi_catalogo_id, es]));
-    let itens = allEpiCatalogo.filter(c => c.ativo !== false);
+    const ativos = allEpiCatalogo.filter(c => c.ativo !== false);
+
+    // 1. Atualizar os 4 KPIs no topo do Estoque
+    let totalComSaldo = 0;
+    let totalCriticos = 0;
+    let totalReposicao = 0;
+    let valorTotalEstoque = 0;
+
+    ativos.forEach(c => {
+        const m = calcularMetricasEpi(c.id);
+        if (m.saldo > 0) totalComSaldo++;
+        if (m.nivel === 'zerado' || m.nivel === 'critico') totalCriticos++;
+        else if (m.nivel === 'reposicao') totalReposicao++;
+        valorTotalEstoque += m.valorEstoque;
+    });
+
+    const kpiTotal = document.getElementById('kpiEpiEstoqueTotalItens');
+    if (kpiTotal) kpiTotal.textContent = `${totalComSaldo} / ${ativos.length}`;
+    const kpiCrit = document.getElementById('kpiEpiEstoqueCritico');
+    if (kpiCrit) kpiCrit.textContent = totalCriticos;
+    const kpiRep = document.getElementById('kpiEpiEstoqueReposicao');
+    if (kpiRep) kpiRep.textContent = totalReposicao;
+    const kpiValor = document.getElementById('kpiEpiEstoqueValorTotal');
+    if (kpiValor) kpiValor.textContent = 'R$ ' + valorTotalEstoque.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // 2. Filtragem de itens por busca e saldo
+    let itens = ativos.slice();
     if (q.length >= 2) {
-        itens = itens.filter(c => (c.descricao || '').toLowerCase().includes(q) || (c.ca || '').toLowerCase().includes(q));
+        itens = itens.filter(c => (c.descricao || '').toLowerCase().includes(q) || (c.ca || '').toLowerCase().includes(q) || (c.marca || '').toLowerCase().includes(q));
     }
     if (epiEstoqueFiltroAtual === 'com') {
         itens = itens.filter(c => (estoquePorId.get(c.id)?.quantidade_atual || 0) > 0);
     } else if (epiEstoqueFiltroAtual === 'sem') {
         itens = itens.filter(c => (estoquePorId.get(c.id)?.quantidade_atual || 0) <= 0);
     }
-    itens = itens.slice().sort((a, b) => (a.descricao || '').localeCompare(b.descricao || ''));
 
     if (itens.length === 0) {
-        container.innerHTML = '<div class="db-list-empty">Nenhum item encontrado</div>';
+        container.innerHTML = '<div class="db-list-empty">Nenhum item encontrado para este filtro</div>';
         return;
     }
-    container.innerHTML = itens.map(c => {
-        const es = estoquePorId.get(c.id);
-        const atual = es ? (es.quantidade_atual || 0) : 0;
-        const minimo = es ? (es.quantidade_minima || 0) : 0;
-        const baixo = !!es && atual <= minimo;
-        return `<div class="db-list-item ${baixo ? 'db-item-danger' : ''}" style="cursor:pointer;" onclick="abrirFormEpiEntrada('${escapeHTML(c.id)}')">
-            <div class="db-list-item-title">${escapeHTML(c.descricao || '')}</div>
-            <div class="db-list-item-sub">Saldo atual: ${atual}${es ? ' — Mínimo: ' + minimo : ' (sem controle de estoque ainda — clique pra começar)'}</div>
-        </div>`;
-    }).join('');
+
+    // 3. Renderização no MODO FAMÍLIA (GRADE COMPACTA)
+    if (epiModoVisaoEstoque === 'grade') {
+        const familiasMap = new Map();
+        itens.forEach(c => {
+            const famNome = extrairFamiliaEpi(c);
+            if (!familiasMap.has(famNome)) {
+                familiasMap.set(famNome, []);
+            }
+            familiasMap.get(famNome).push(c);
+        });
+
+        const familias = Array.from(familiasMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+
+        container.innerHTML = familias.map(([famNome, itensDaFamilia]) => {
+            let saldoTotalFam = 0;
+            let consumoMensalFam = 0;
+            let valorEstoqueFam = 0;
+            let temCritico = false;
+            let temZerado = false;
+
+            itensDaFamilia.sort((a, b) => {
+                const tamA = a.tamanho || '';
+                const tamB = b.tamanho || '';
+                const numA = parseInt(tamA, 10);
+                const numB = parseInt(tamB, 10);
+                if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                return tamA.localeCompare(tamB);
+            });
+
+            const gradeBotoesHtml = itensDaFamilia.map(c => {
+                const m = calcularMetricasEpi(c.id);
+                saldoTotalFam += m.saldo;
+                consumoMensalFam += m.consumoMensal;
+                valorEstoqueFam += m.valorEstoque;
+                if (m.nivel === 'zerado') temZerado = true;
+                if (m.nivel === 'critico') temCritico = true;
+
+                let btnBg = 'var(--bg)';
+                let btnBorder = 'var(--border)';
+                let btnColor = 'var(--text)';
+                let statusIcon = '';
+
+                if (m.saldo <= 0) {
+                    btnBg = '#fdf2f2'; btnBorder = '#f87171'; btnColor = '#c0392b'; statusIcon = '🚫 ';
+                } else if (m.nivel === 'critico') {
+                    btnBg = '#fff5f5'; btnBorder = '#ef4444'; btnColor = '#c0392b'; statusIcon = '🔴 ';
+                } else if (m.nivel === 'reposicao') {
+                    btnBg = '#fffdf0'; btnBorder = '#f59e0b'; btnColor = '#b78a00'; statusIcon = '🟡 ';
+                }
+
+                const tamLabel = c.tamanho ? c.tamanho : (c.descricao.match(/TAMANHO:\s*([^\s\-]+)/i)?.[1] || 'Único');
+                const tooltip = `Item ${c.id} - ${c.descricao}\nSaldo: ${m.saldo} un (Mín: ${m.minimo})\nConsumo: ${m.consumoMensal.toFixed(1)}/mês\nCobertura: ${m.coberturaDias} dias\nClique p/ registrar entrada ou ajuste`;
+
+                return `<button onclick="abrirFormEpiEntrada('${escapeHTML(c.id)}')" title="${escapeHTML(tooltip)}"
+                    style="padding: 6px 10px; border-radius: 6px; font-size: 11.5px; font-weight: 600; cursor: pointer; background: ${btnBg}; border: 1px solid ${btnBorder}; color: ${btnColor}; transition: all 0.15s; display: inline-flex; align-items: center; gap: 4px;">
+                    ${statusIcon}<span>${escapeHTML(tamLabel)}</span>: <b>${m.saldo}</b>
+                </button>`;
+            }).join('');
+
+            const consumoDiarioFam = consumoMensalFam / 30;
+            const cobFamDias = consumoDiarioFam > 0 ? Math.round(saldoTotalFam / consumoDiarioFam) : (saldoTotalFam > 0 ? 999 : 0);
+            const statusGeralBadge = temZerado
+                ? '<span class="badge" style="background:#fdf2f2; color:#c0392b; border:1px solid #f3c6c6;">⚠️ Há tamanho zerado</span>'
+                : (temCritico
+                    ? '<span class="badge" style="background:#fff9e6; color:#b78a00; border:1px solid #ffe8a1;">⚠️ Tamanho em risco</span>'
+                    : '<span class="badge" style="background:#e6f7ee; color:#1a7f4b; border:1px solid #b8e6cc;">✅ Grade OK</span>');
+
+            const caExemplo = itensDaFamilia[0]?.ca ? `CA: ${escapeHTML(itensDaFamilia[0].ca)}` : '';
+            const marcaExemplo = itensDaFamilia[0]?.marca ? ` · Marca: ${escapeHTML(itensDaFamilia[0].marca)}` : '';
+            const valorFamStr = valorEstoqueFam > 0 ? ` · Valor: R$ ${valorEstoqueFam.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '';
+
+            return `
+            <div class="db-list-item" style="padding: 12px 14px; margin-bottom: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--card);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 8px;">
+                    <div>
+                        <div style="font-weight: 700; font-size: 13.5px; color: var(--text);">${escapeHTML(famNome)}</div>
+                        <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">
+                            ${caExemplo}${marcaExemplo} · Total: <b>${saldoTotalFam} un</b> · Consumo: <b>${consumoMensalFam.toFixed(1)}/mês</b> · Cobertura: <b>${cobFamDias >= 999 ? 'Estável' : cobFamDias + ' dias'}</b>${valorFamStr}
+                        </div>
+                    </div>
+                    <div>${statusGeralBadge}</div>
+                </div>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding-top: 4px; border-top: 1px dashed var(--border);">
+                    <span style="font-size: 11px; font-weight: 600; color: var(--text-light); margin-right: 4px;">Grade de Tamanhos:</span>
+                    ${gradeBotoesHtml}
+                </div>
+            </div>`;
+        }).join('');
+
+    } else {
+        // 4. Renderização no MODO DETALHADO (LISTA ITEM A ITEM)
+        container.innerHTML = itens.map(c => {
+            const m = calcularMetricasEpi(c.id);
+            const caStr = c.ca ? ` · CA: ${escapeHTML(c.ca)}` : '';
+            const custoStr = m.custoUnit > 0 ? ` · R$ ${m.custoUnit.toFixed(2)}/un` : '';
+            const valorTotalItemStr = m.valorEstoque > 0 ? ` · Total: R$ ${m.valorEstoque.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '';
+
+            return `
+            <div class="db-list-item ${m.nivel === 'critico' || m.nivel === 'zerado' ? 'db-item-danger' : (m.nivel === 'reposicao' ? 'db-item-warning' : '')}"
+                 style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;"
+                 onclick="abrirFormEpiEntrada('${escapeHTML(c.id)}')">
+                <div style="flex:1; min-width:240px;">
+                    <div class="db-list-item-title">${escapeHTML(c.descricao || '')}</div>
+                    <div class="db-list-item-sub">
+                        Saldo: <b>${m.saldo}</b> (Mín: ${m.minimo}) · Consumo: <b>${m.consumoMensal.toFixed(1)}/mês</b> · Cobertura: <b>${m.coberturaDias >= 999 ? 'Estável' : m.coberturaDias + ' dias'}</b>${caStr}${custoStr}${valorTotalItemStr}
+                    </div>
+                </div>
+                <div>${m.badgeHtml}</div>
+            </div>`;
+        }).join('');
+    }
 }
 
 function limparBuscaEpiEstoque() {
@@ -16957,17 +17192,181 @@ function limparBuscaEpiEstoque() {
     filterEpiEstoqueLista('');
 }
 
-// Relatório de Estoque de EPI (2026-09-19) — sempre lista TODOS os itens ativos do
-// catálogo, independente do filtro/busca selecionado na tela (é um documento pra
-// conferência física, não pode esconder item sem o usuário perceber). Mesmo padrão
-// visual/técnico de gerarFichaGeralExtintores (abrirDocumentoBlob, sem registrar em
-// documentos_controle — relatório operacional, não documento controlado do SMS).
+// ---- Sugestão de Compras (Ponto de Pedido) ----
+
+function abrirEpiSugestaoComprasModal() {
+    const modal = document.getElementById('epiSugestaoComprasModal');
+    const container = document.getElementById('epiSugestaoComprasList');
+    if (!modal || !container) return;
+
+    const ativos = allEpiCatalogo.filter(c => c.ativo !== false);
+    const itensNecessarios = [];
+    let valorTotalEstimado = 0;
+    let totalPecasSugeridas = 0;
+
+    ativos.forEach(c => {
+        const m = calcularMetricasEpi(c.id);
+        if (m.sugestaoQtd > 0) {
+            itensNecessarios.push(m);
+            valorTotalEstimado += m.valorSugestao;
+            totalPecasSugeridas += m.sugestaoQtd;
+        }
+    });
+
+    itensNecessarios.sort((a, b) => (a.coberturaDias - b.coberturaDias) || (b.valorSugestao - a.valorSugestao));
+
+    if (itensNecessarios.length === 0) {
+        container.innerHTML = `
+        <div style="text-align:center; padding: 24px 10px; color: var(--success); font-weight:600;">
+            🎉 Excelente! Todos os EPIs ativos possuem estoque seguro para mais de 30 dias de trabalho. Nenhuma compra urgente necessária no momento.
+        </div>`;
+    } else {
+        const linhasHtml = itensNecessarios.map((m, idx) => {
+            const cat = m.cat;
+            const tamStr = cat.tamanho || (cat.descricao.match(/TAMANHO:\s*([^\s\-]+)/i)?.[1] || 'Único');
+            const custoStr = m.custoUnit > 0 ? `R$ ${m.custoUnit.toFixed(2)}` : '<span style="color:var(--text-light);">Não informado</span>';
+            const totalStr = m.valorSugestao > 0 ? `R$ ${m.valorSugestao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—';
+            return `
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 8px 6px; text-align: center;">${idx + 1}</td>
+                <td style="padding: 8px 6px;"><b>${escapeHTML(cat.descricao)}</b></td>
+                <td style="padding: 8px 6px; text-align: center;">${escapeHTML(tamStr)}</td>
+                <td style="padding: 8px 6px; text-align: center;">${escapeHTML(cat.ca || '—')}</td>
+                <td style="padding: 8px 6px; text-align: center;">${m.saldo}</td>
+                <td style="padding: 8px 6px; text-align: center;">${m.consumoMensal.toFixed(1)}</td>
+                <td style="padding: 8px 6px; text-align: center;">${m.badgeHtml}</td>
+                <td style="padding: 8px 6px; text-align: center; font-weight: 700; color: #2563eb; background: rgba(37,99,235,0.06); font-size: 13px;">${m.sugestaoQtd}</td>
+                <td style="padding: 8px 6px; text-align: right;">${custoStr}</td>
+                <td style="padding: 8px 6px; text-align: right; font-weight: 600;">${totalStr}</td>
+            </tr>`;
+        }).join('');
+
+        container.innerHTML = `
+        <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12.5px; background: var(--bg); padding: 8px 12px; border-radius: 8px;">
+            <div><b>Total de Itens p/ Comprar:</b> ${itensNecessarios.length} modelos (${totalPecasSugeridas} peças)</div>
+            <div><b>Orçamento Total Estimado:</b> <b style="color:var(--success); font-size:14px;">R$ ${valorTotalEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</b></div>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 11.5px;">
+            <thead>
+                <tr style="background: var(--bg); text-align: left; border-bottom: 2px solid var(--border);">
+                    <th style="padding: 6px; text-align: center;">#</th>
+                    <th style="padding: 6px;">Item de EPI</th>
+                    <th style="padding: 6px; text-align: center;">Tam</th>
+                    <th style="padding: 6px; text-align: center;">CA</th>
+                    <th style="padding: 6px; text-align: center;">Saldo</th>
+                    <th style="padding: 6px; text-align: center;">Consumo/mês</th>
+                    <th style="padding: 6px; text-align: center;">Cobertura</th>
+                    <th style="padding: 6px; text-align: center; color: #2563eb;">Sugerido (45d)</th>
+                    <th style="padding: 6px; text-align: right;">Custo Unit.</th>
+                    <th style="padding: 6px; text-align: right;">Total Estimado</th>
+                </tr>
+            </thead>
+            <tbody>${linhasHtml}</tbody>
+        </table>`;
+    }
+
+    modal.style.display = 'block';
+    modal.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function fecharEpiSugestaoComprasModal() {
+    const modal = document.getElementById('epiSugestaoComprasModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function imprimirSugestaoComprasEpi() {
+    const ativos = allEpiCatalogo.filter(c => c.ativo !== false);
+    const itensNecessarios = [];
+    let valorTotalEstimado = 0;
+    let totalPecasSugeridas = 0;
+
+    ativos.forEach(c => {
+        const m = calcularMetricasEpi(c.id);
+        if (m.sugestaoQtd > 0) {
+            itensNecessarios.push(m);
+            valorTotalEstimado += m.valorSugestao;
+            totalPecasSugeridas += m.sugestaoQtd;
+        }
+    });
+
+    itensNecessarios.sort((a, b) => (a.coberturaDias - b.coberturaDias) || (b.valorSugestao - a.valorSugestao));
+
+    const dataHoje = formatSimpleDate(toISODateLocal(new Date()));
+    const linhas = itensNecessarios.map((m, i) => {
+        const cat = m.cat;
+        const tamStr = cat.tamanho || (cat.descricao.match(/TAMANHO:\s*([^\s\-]+)/i)?.[1] || 'Único');
+        const custoStr = m.custoUnit > 0 ? `R$ ${m.custoUnit.toFixed(2)}` : '—';
+        const totalStr = m.valorSugestao > 0 ? `R$ ${m.valorSugestao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—';
+        return `<tr>
+            <td style="text-align:center;">${i + 1}</td>
+            <td><b>${escapeHTML(cat.descricao)}</b></td>
+            <td style="text-align:center;">${escapeHTML(tamStr)}</td>
+            <td style="text-align:center;">${escapeHTML(cat.ca || '')}</td>
+            <td style="text-align:center;">${m.saldo}</td>
+            <td style="text-align:center;">${m.consumoMensal.toFixed(1)}</td>
+            <td style="text-align:center;">${m.coberturaDias} dias</td>
+            <td style="text-align:center; font-weight:700; font-size:11px; background:#f0f4ff;">${m.sugestaoQtd}</td>
+            <td style="text-align:right;">${custoStr}</td>
+            <td style="text-align:right; font-weight:600;">${totalStr}</td>
+        </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Sugestão de Compras de EPI - ${escapeHTML(EMPRESA_INFO.razaoSocial)}</title>
+<style>
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
+    .folha { max-width: 1400px; margin: 0 auto; border: 2px solid #000; }
+    .cabecalho { display: flex; align-items: center; border-bottom: 2px solid #000; }
+    .cabecalho .logo { width: 200px; padding: 6px 10px; border-right: 2px solid #000; text-align: center; display: flex; align-items: center; justify-content: center; }
+    .cabecalho .titulo { flex: 1; text-align: center; font-weight: 700; font-size: 14px; padding: 8px; }
+    .linha { display: flex; border-bottom: 1px solid #000; }
+    .campo { flex: 1; padding: 5px 10px; border-right: 1px solid #000; }
+    .campo:last-child { border-right: none; }
+    .campo b { margin-right: 4px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #000; padding: 5px 6px; font-size: 9.5px; vertical-align: top; }
+    th { background: #e5e5e5; text-align: center; }
+    .no-print { text-align: center; margin: 16px 0; }
+    .no-print button { padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; border: none; background: #2563eb; color: #fff; }
+    @media print { .no-print { display: none; } body { margin: 0; } .folha { border: 2px solid #000; } }
+</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    <div class="folha">
+        <div class="cabecalho">
+            <img class="logo" src="${LOGO_COP_BASE64}" alt="COP" style="max-width:100%; max-height:48px; object-fit:contain;">
+            <div class="titulo">SOLICITAÇÃO / SUGESTÃO DE COMPRAS DE EPI<br><span style="font-weight:400; font-size:11px;">Baseada no Consumo Médio do Canteiro (Últimos 90 dias) e Cobertura p/ 45 dias</span></div>
+        </div>
+        <div class="linha">
+            <div class="campo" style="flex:2;"><b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
+            <div class="campo"><b>CNPJ:</b> ${escapeHTML(EMPRESA_INFO.cnpj)}</div>
+            <div class="campo"><b>DATA DE EMISSÃO:</b> ${dataHoje}</div>
+        </div>
+        <div class="linha">
+            <div class="campo"><b>ITENS A REPOR:</b> ${itensNecessarios.length} itens</div>
+            <div class="campo"><b>TOTAL DE PEÇAS:</b> ${totalPecasSugeridas} un</div>
+            <div class="campo" style="flex:1.5;"><b>ORÇAMENTO TOTAL ESTIMADO:</b> R$ ${valorTotalEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+        </div>
+        <table>
+            <thead><tr>
+                <th style="width:25px;">#</th><th>Item de EPI</th><th style="width:45px;">Tam</th><th style="width:65px;">CA</th><th style="width:50px;">Saldo</th><th style="width:65px;">Consumo/mês</th><th style="width:70px;">Cobertura</th><th style="width:75px; background:#e0e7ff;">Sugerido (45d)</th><th style="width:75px;">Custo Unit.</th><th style="width:85px;">Total Est.</th>
+            </tr></thead>
+            <tbody>${linhas || '<tr><td colspan="10" style="text-align:center;">Nenhum item com necessidade de compra identificado.</td></tr>'}</tbody>
+        </table>
+        <div style="padding: 16px; margin-top: 24px; display: flex; justify-content: space-around; border-top: 1px solid #000; text-align: center; font-size: 11px;">
+            <div>____________________________________________<br><b>Engenharia de Segurança do Trabalho / SESMT</b></div>
+            <div>____________________________________________<br><b>Setor de Compras / Suprimentos</b></div>
+        </div>
+    </div>
+</body></html>`;
+
+    abrirDocumentoBlob(html);
+}
+
+// Relatório de Estoque de EPI (2026-09-19)
 function gerarRelatorioEstoqueEpi() {
     const estoquePorId = new Map(allEpiEstoque.map(es => [es.epi_catalogo_id, es]));
-
-    // Respeita o filtro Todos/Com saldo/Sem saldo já selecionado na tela (pedido do
-    // João em 2026-09-20) — antes o relatório sempre trazia tudo, agora sai exatamente
-    // o recorte escolhido.
     let itens = allEpiCatalogo.filter(c => c.ativo !== false);
     if (epiEstoqueFiltroAtual === 'com') {
         itens = itens.filter(c => (estoquePorId.get(c.id)?.quantidade_atual || 0) > 0);
@@ -17050,19 +17449,23 @@ function gerarRelatorioEstoqueEpi() {
     abrirDocumentoBlob(html);
 }
 
-// Dois modos no mesmo formulário: "+ Registrar Entrada" (sem argumento) abre em branco pra
-// SOMAR uma quantidade ao saldo (compra chegando); clicar num item da lista de Estoque abre
-// já preenchido com o saldo/mínimo atuais pra CORRIGIR o número direto (contagem física,
-// ajuste de inventário) - é o caminho que faltava pra "editar o estoque".
+// Formulário de Entrada de Estoque / Compra
 function abrirFormEpiEntrada(catalogoId) {
     const form = document.getElementById('epiEntradaFormCard');
     const itemInput = document.getElementById('epiEntradaForm_item');
     const qtdInput = document.getElementById('epiEntradaForm_quantidade');
     const qtdLabel = document.getElementById('epiEntradaForm_quantidadeLabel');
     const minInput = document.getElementById('epiEntradaForm_minimo');
+    const dataInput = document.getElementById('epiEntradaForm_data');
+    const nfInput = document.getElementById('epiEntradaForm_nf');
+    const fornecInput = document.getElementById('epiEntradaForm_fornecedor');
+    const custoInput = document.getElementById('epiEntradaForm_custo');
     const title = document.getElementById('epiEntradaFormTitle');
     const btnSalvar = document.getElementById('epiEntradaForm_btnSalvar');
     document.getElementById('epiEntradaFormStatus').textContent = '';
+
+    const hojeStr = toISODateLocal(new Date());
+    if (dataInput) dataInput.value = hojeStr;
 
     if (catalogoId) {
         const cat = allEpiCatalogo.find(c => c.id === catalogoId);
@@ -17077,10 +17480,13 @@ function abrirFormEpiEntrada(catalogoId) {
         qtdInput.min = 0;
         qtdInput.value = es ? es.quantidade_atual : 0;
         minInput.value = es ? es.quantidade_minima : 0;
+        if (custoInput) custoInput.value = cat.custo_unitario != null ? cat.custo_unitario : '';
+        if (nfInput) nfInput.value = '';
+        if (fornecInput) fornecInput.value = 'NEOBETEL EPI';
         btnSalvar.textContent = '💾 Salvar Correção';
     } else {
         delete form.dataset.editCatalogoId;
-        title.textContent = '📥 Entrada de Estoque';
+        title.textContent = '📥 Entrada de Estoque / Nova Compra';
         itemInput.value = '';
         itemInput.readOnly = false;
         itemInput.style.background = '';
@@ -17088,6 +17494,9 @@ function abrirFormEpiEntrada(catalogoId) {
         qtdInput.min = 1;
         qtdInput.value = '';
         minInput.value = '';
+        if (custoInput) custoInput.value = '';
+        if (nfInput) nfInput.value = '';
+        if (fornecInput) fornecInput.value = 'NEOBETEL EPI';
         btnSalvar.textContent = '💾 Adicionar ao Estoque';
     }
 
@@ -17105,6 +17514,11 @@ async function salvarEpiEntrada() {
     const editCatalogoId = form.dataset.editCatalogoId;
     const valor = parseInt(document.getElementById('epiEntradaForm_quantidade').value, 10);
     const minimoStr = document.getElementById('epiEntradaForm_minimo').value;
+    const dataEntrada = document.getElementById('epiEntradaForm_data')?.value || toISODateLocal(new Date());
+    const notaFiscal = document.getElementById('epiEntradaForm_nf')?.value.trim() || null;
+    const fornecedor = document.getElementById('epiEntradaForm_fornecedor')?.value.trim() || null;
+    const custoStr = document.getElementById('epiEntradaForm_custo')?.value;
+    const custoUnit = (custoStr !== '' && !isNaN(parseFloat(custoStr))) ? parseFloat(custoStr) : null;
 
     let catalogoId, cat;
     if (editCatalogoId) {
@@ -17126,9 +17540,10 @@ async function salvarEpiEntrada() {
     }
 
     const existente = allEpiEstoque.find(es => es.epi_catalogo_id === catalogoId);
+    const novoSaldo = editCatalogoId ? valor : ((existente?.quantidade_atual || 0) + valor);
     const row = {
         epi_catalogo_id: catalogoId,
-        quantidade_atual: editCatalogoId ? valor : ((existente?.quantidade_atual || 0) + valor),
+        quantidade_atual: novoSaldo,
         quantidade_minima: minimoStr !== '' ? parseInt(minimoStr, 10) : (existente?.quantidade_minima || 0)
     };
 
@@ -17140,8 +17555,40 @@ async function salvarEpiEntrada() {
         if (idx >= 0) allEpiEstoque[idx] = { ...allEpiEstoque[idx], ...row };
         else allEpiEstoque.push(row);
 
+        // Se for registro de compra/entrada real (e não correção direta de saldo)
+        if (!editCatalogoId && valor > 0) {
+            const entradaRow = {
+                id: 'ENT_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                epi_catalogo_id: catalogoId,
+                quantidade: valor,
+                data_entrada: dataEntrada,
+                nota_fiscal: notaFiscal,
+                fornecedor: fornecedor,
+                custo_unitario: custoUnit,
+                valor_total: custoUnit != null ? (valor * custoUnit) : null,
+                observacoes: 'Entrada registrada via Painel Gerencial',
+                registrado_por: (typeof usuarioLogadoNome === 'function' ? usuarioLogadoNome() : null) || 'SESMT'
+            };
+            try {
+                await supabaseUpsert('epi_entradas', [entradaRow]);
+                allEpiEntradas.unshift(entradaRow);
+            } catch (errEntrada) {
+                console.warn('Aviso ao registrar histórico de entrada:', errEntrada);
+            }
+        }
+
+        // Se o usuário informou ou atualizou o custo unitário, memoriza no catálogo
+        if (custoUnit != null && custoUnit !== cat.custo_unitario) {
+            try {
+                await supabaseUpsert('epi_catalogo', [{ id: catalogoId, custo_unitario: custoUnit }]);
+                cat.custo_unitario = custoUnit;
+            } catch (errCusto) {
+                console.warn('Aviso ao atualizar custo no catálogo:', errCusto);
+            }
+        }
+
         filterEpiEstoqueLista(document.getElementById('epiEstoqueSearchInput')?.value || '');
-        statusEl.textContent = '✅ Estoque atualizado.';
+        statusEl.textContent = '✅ Estoque atualizado com sucesso.';
         statusEl.style.color = 'var(--success)';
         setTimeout(() => fecharFormEpiEntrada(), 900);
     } catch (err) {

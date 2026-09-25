@@ -877,6 +877,8 @@ CREATE TABLE IF NOT EXISTS public.epi_catalogo (
     tamanho TEXT,
     ca TEXT,                              -- Certificado de Aprovação (NR-06)
     ca_validade DATE,                     -- vencimento do CA - alimenta o alerta vencidos/vencendo (30 dias) na Visão Geral de EPI
+    custo_unitario NUMERIC(10,2),         -- Custo unitário de referência em R$ (alimentado por cotações e entradas)
+    modelo_base TEXT,                     -- Identificador de modelo/família para agrupar grades de calçados/vestimentas
     ativo BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -901,6 +903,29 @@ ALTER TABLE public.epi_estoque ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Acesso total ao estoque de EPI" ON public.epi_estoque;
 CREATE POLICY "Acesso total ao estoque de EPI" ON public.epi_estoque FOR ALL USING (true) WITH CHECK (true);
 GRANT ALL ON public.epi_estoque TO anon;
+
+-- Histórico de Compras / Entradas no Almoxarifado (adicionado em 2026-09-25)
+CREATE TABLE IF NOT EXISTS public.epi_entradas (
+    id TEXT PRIMARY KEY,
+    epi_catalogo_id TEXT REFERENCES public.epi_catalogo(id) ON DELETE CASCADE,
+    quantidade INTEGER NOT NULL,
+    data_entrada DATE NOT NULL DEFAULT CURRENT_DATE,
+    nota_fiscal TEXT,
+    fornecedor TEXT,
+    custo_unitario NUMERIC(10,2),
+    valor_total NUMERIC(10,2),
+    observacoes TEXT,
+    registrado_por TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.epi_entradas ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total a epi_entradas" ON public.epi_entradas;
+CREATE POLICY "Acesso total a epi_entradas" ON public.epi_entradas FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.epi_entradas TO anon;
+
+CREATE INDEX IF NOT EXISTS idx_epi_entradas_catalogo ON public.epi_entradas(epi_catalogo_id);
+CREATE INDEX IF NOT EXISTS idx_epi_entradas_data ON public.epi_entradas(data_entrada);
 
 -- Log de entregas - linha central do módulo, mesmo papel de inspecoes_extintores/
 -- treinamentos_realizados. Entregas históricas importadas do CSV usam

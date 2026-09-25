@@ -1422,6 +1422,65 @@ CREATE POLICY "Acesso total a brigada_membros" ON public.brigada_membros
 GRANT ALL ON public.brigada_membros TO anon, authenticated;
 
 -- ============================================================
+-- ERGONOMIA (NR-17) - AEP E PLANO DE AÇÃO DE MELHORIAS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.ergonomia_aep (
+    id TEXT PRIMARY KEY,
+    codigo TEXT NOT NULL,
+    data_avaliacao DATE NOT NULL,
+    setor TEXT NOT NULL,
+    posto_trabalho TEXT NOT NULL,
+    funcao_avaliada TEXT NOT NULL,
+    ghe TEXT,
+    num_trabalhadores INTEGER DEFAULT 1,
+    avaliador_nome TEXT,
+    avaliador_registro TEXT,
+    fator_levantamento_carga TEXT DEFAULT 'baixo',
+    obs_levantamento_carga TEXT,
+    fator_posturas_repetitividade TEXT DEFAULT 'baixo',
+    obs_posturas_repetitividade TEXT,
+    fator_mobiliario_equipamentos TEXT DEFAULT 'baixo',
+    obs_mobiliario_equipamentos TEXT,
+    fator_condicoes_ambientais TEXT DEFAULT 'baixo',
+    obs_condicoes_ambientais TEXT,
+    fator_organizacao_trabalho TEXT DEFAULT 'baixo',
+    obs_organizacao_trabalho TEXT,
+    nivel_risco_global TEXT NOT NULL DEFAULT 'baixo',
+    necessidade_aet BOOLEAN DEFAULT false,
+    parecer_conclusivo TEXT,
+    status TEXT DEFAULT 'concluida',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.ergonomia_aep ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total a avaliacoes ergonomicas aep" ON public.ergonomia_aep;
+CREATE POLICY "Acesso total a avaliacoes ergonomicas aep" ON public.ergonomia_aep
+    FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+GRANT ALL ON public.ergonomia_aep TO anon, authenticated;
+
+CREATE TABLE IF NOT EXISTS public.ergonomia_plano_acao (
+    id TEXT PRIMARY KEY,
+    aep_id TEXT REFERENCES public.ergonomia_aep(id) ON DELETE CASCADE,
+    posto_trabalho TEXT NOT NULL,
+    fator_ergonomico TEXT NOT NULL,
+    acao_proposta TEXT NOT NULL,
+    tipo_medida TEXT DEFAULT 'administrativa',
+    responsavel TEXT NOT NULL,
+    prazo DATE NOT NULL,
+    status TEXT DEFAULT 'pendente',
+    custo_estimado NUMERIC DEFAULT 0,
+    evidencia_conclusao TEXT,
+    data_conclusao DATE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.ergonomia_plano_acao ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total ao plano de acao de ergonomia" ON public.ergonomia_plano_acao;
+CREATE POLICY "Acesso total ao plano de acao de ergonomia" ON public.ergonomia_plano_acao
+    FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+GRANT ALL ON public.ergonomia_plano_acao TO anon, authenticated;
+
+-- ============================================================
 -- RISCOS RESIDUAIS CONHECIDOS (documentados, não corrigidos nesta versão)
 -- ============================================================
 -- 1. cadastros, checklists, relatos, checklist_items e nao_conformidades continuam

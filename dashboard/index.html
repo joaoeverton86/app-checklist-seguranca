@@ -120,6 +120,9 @@
                         <button class="db-nav-item" id="navPsicossocial" onclick="showDbPage('psicossocial')">
                             <span class="db-nav-icon">🧠</span> Psicossocial
                         </button>
+                        <button class="db-nav-item" id="navErgonomia" onclick="showDbPage('ergonomia')">
+                            <span class="db-nav-icon">🧘</span> Ergonomia (NR-17)
+                        </button>
                     </div>
                 </div>
 
@@ -3643,6 +3646,395 @@
 
                         <button class="db-apply-btn" onclick="salvarAplicacaoPsicossocial()">💾 Salvar Aplicação</button>
                         <div id="psicoAplicacaoFormStatus" style="margin-top: 8px; font-size: 12.5px;"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Página: Ergonomia (NR-17) -->
+            <section class="db-page" id="page-ergonomia">
+                <div class="db-filters" style="margin-bottom: 16px;">
+                    <div class="db-filter-buttons">
+                        <button id="ergonomiaSubtabBtn-visao" class="db-filter-btn active" onclick="showErgonomiaSubtab('visao')">📋 Avaliações Ergonômicas (AEP)</button>
+                        <button id="ergonomiaSubtabBtn-plano" class="db-filter-btn" onclick="showErgonomiaSubtab('plano')">🎯 Plano de Ação de Melhorias</button>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" style="background: var(--success); font-size: 12.5px; padding: 7px 12px;" onclick="abrirModalNovaAep()">+ Nova AEP</button>
+                        <button class="db-apply-btn" style="background: #0284c7; font-size: 12.5px; padding: 7px 12px;" onclick="abrirModalNovaAcaoErgonomia()">+ Nova Ação de Melhoria</button>
+                        <button class="db-clear-btn" style="font-size: 12.5px; padding: 7px 12px;" onclick="imprimirPlanoGeralErgonomia()">🖨️ Relatório Geral NR-17</button>
+                    </div>
+                </div>
+
+                <!-- KPIs do Módulo de Ergonomia -->
+                <div class="db-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 20px;">
+                    <div class="db-kpi-card db-kpi-primary">
+                        <div class="db-kpi-value" id="kpiErgonomiaTotalAep">0</div>
+                        <div class="db-kpi-label">AEPs Realizadas</div>
+                    </div>
+                    <div class="db-kpi-card" style="border-left: 4px solid var(--success);">
+                        <div class="db-kpi-value" id="kpiErgonomiaRiscoBaixo" style="color: var(--success);">0</div>
+                        <div class="db-kpi-label">Postos Risco Baixo (🟢)</div>
+                    </div>
+                    <div class="db-kpi-card" style="border-left: 4px solid var(--warning);">
+                        <div class="db-kpi-value" id="kpiErgonomiaRiscoMedio" style="color: #d97706;">0</div>
+                        <div class="db-kpi-label">Postos Risco Médio (🟡)</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-danger">
+                        <div class="db-kpi-value" id="kpiErgonomiaRiscoAlto">0</div>
+                        <div class="db-kpi-label">Postos Risco Alto (🔴)</div>
+                    </div>
+                    <div class="db-kpi-card" style="border-left: 4px solid #7c3aed;">
+                        <div class="db-kpi-value" id="kpiErgonomiaAetNecessaria" style="color: #7c3aed;">0</div>
+                        <div class="db-kpi-label">Indicação de AET (⚠️)</div>
+                    </div>
+                    <div class="db-kpi-card" style="border-left: 4px solid #0284c7;">
+                        <div class="db-kpi-value" id="kpiErgonomiaAcoesStatus" style="color: #0284c7;">0/0</div>
+                        <div class="db-kpi-label">Ações Concluídas</div>
+                    </div>
+                </div>
+
+                <!-- Sub-aba 1: Visão Geral / Lista de AEPs -->
+                <div id="ergonomiaSubtab-visao">
+                    <div class="db-chart-card" style="margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                            <div class="db-chart-title" style="margin-bottom: 0;">📋 Inventário de Avaliações Ergonômicas Preliminares (AEP - NR-17)</div>
+                            <div style="font-size: 12px; color: var(--text-light);">
+                                Obrigatório conforme NR-17 (Portaria MTP nº 423/2021) e integrado ao PGR (NR-01)
+                            </div>
+                        </div>
+
+                        <!-- Barra de Filtros de AEP -->
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; background: var(--bg); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);">
+                            <input type="text" id="ergonomiaAepSearchInput" placeholder="Buscar por posto, setor, função ou código..."
+                                   oninput="filtrarErgonomiaAepLista()"
+                                   style="flex: 2; min-width: 220px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px;">
+                            <select id="ergonomiaFiltroRisco" onchange="filtrarErgonomiaAepLista()"
+                                    style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px;">
+                                <option value="">Todos os Riscos</option>
+                                <option value="alto">🔴 Alto / Crítico</option>
+                                <option value="medio">🟡 Médio / Atenção</option>
+                                <option value="baixo">🟢 Baixo / Confortável</option>
+                            </select>
+                            <select id="ergonomiaFiltroSetor" onchange="filtrarErgonomiaAepLista()"
+                                    style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px;">
+                                <option value="">Todos os Setores</option>
+                            </select>
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; color: var(--text-light); margin-left: 4px;">
+                                <input type="checkbox" id="ergonomiaChkFiltroAet" onchange="filtrarErgonomiaAepLista()" style="width: 15px; height: 15px;">
+                                <span>Apenas com indicação de AET</span>
+                            </label>
+                            <button class="db-clear-btn" style="padding: 6px 12px; font-size: 12px;" onclick="limparFiltrosErgonomiaAep()">Limpar</button>
+                        </div>
+
+                        <!-- Tabela de AEPs -->
+                        <div id="ergonomiaAepListaContainer" style="overflow-x: auto;"></div>
+                    </div>
+                </div>
+
+                <!-- Sub-aba 2: Plano de Ação de Melhorias Ergonômicas -->
+                <div id="ergonomiaSubtab-plano" style="display: none;">
+                    <div class="db-chart-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                            <div class="db-chart-title" style="margin-bottom: 0;">🎯 Plano de Ação de Melhorias de Postos de Trabalho (5W2H)</div>
+                            <div style="font-size: 12px; color: var(--text-light);">
+                                Gestão contínua de medidas corretivas e preventivas de ergonomia física, cognitiva e organizacional
+                            </div>
+                        </div>
+
+                        <!-- Barra de Filtros do Plano de Ação -->
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; background: var(--bg); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);">
+                            <input type="text" id="ergonomiaPlanoSearchInput" placeholder="Buscar por posto, ação ou responsável..."
+                                   oninput="filtrarErgonomiaPlanoLista()"
+                                   style="flex: 2; min-width: 220px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px;">
+                            <select id="ergonomiaFiltroPlanoStatus" onchange="filtrarErgonomiaPlanoLista()"
+                                    style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px;">
+                                <option value="">Todos os Status</option>
+                                <option value="pendente">⏳ Pendentes</option>
+                                <option value="em_andamento">⚙️ Em Andamento</option>
+                                <option value="atrasado">⚠️ Atrasadas</option>
+                                <option value="concluido">✅ Concluídas</option>
+                            </select>
+                            <select id="ergonomiaFiltroPlanoTipo" onchange="filtrarErgonomiaPlanoLista()"
+                                    style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px;">
+                                <option value="">Todos os Tipos de Medida</option>
+                                <option value="engenharia">Engenharia / Modificação Física</option>
+                                <option value="equipamento">Equipamento / Mobiliário</option>
+                                <option value="organizacional">Organizacional / Pausas</option>
+                                <option value="administrativa">Administrativa / Treinamento</option>
+                            </select>
+                            <button class="db-clear-btn" style="padding: 6px 12px; font-size: 12px;" onclick="limparFiltrosErgonomiaPlano()">Limpar</button>
+                        </div>
+
+                        <!-- Tabela do Plano de Ação -->
+                        <div id="ergonomiaPlanoListaContainer" style="overflow-x: auto;"></div>
+                    </div>
+                </div>
+
+                <!-- Modal de Cadastro / Edição de AEP -->
+                <div id="modalErgonomiaAep" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; padding: 16px; overflow-y: auto;">
+                    <div style="background: var(--card-bg, #fff); border-radius: 12px; max-width: 900px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border: 1px solid var(--border);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+                            <div style="font-size: 17px; font-weight: 700; color: var(--primary);" id="modalErgonomiaAepTitulo">📋 Nova Avaliação Ergonômica Preliminar (AEP - NR-17)</div>
+                            <button onclick="fecharModalErgonomiaAep()" style="background: transparent; border: none; font-size: 18px; cursor: pointer; color: var(--text-light); font-weight: 700;">✕</button>
+                        </div>
+
+                        <input type="hidden" id="aepForm_id">
+
+                        <!-- Seção 1: Identificação do Posto -->
+                        <div style="font-weight: 600; font-size: 13.5px; color: var(--text-primary); margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                            <span>🏢</span> Identificação do Posto de Trabalho e Função
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 16px;">
+                            <label style="font-size: 12px; font-weight: 600;">Código da AEP *<br>
+                                <input type="text" id="aepForm_codigo" placeholder="Ex: AEP-2026-004" required
+                                       style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                            </label>
+                            <label style="font-size: 12px; font-weight: 600;">Data da Avaliação *<br>
+                                <input type="date" id="aepForm_data" required
+                                       style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                            </label>
+                            <label style="font-size: 12px; font-weight: 600;">Setor / Frente de Obra *<br>
+                                <input type="text" id="aepForm_setor" placeholder="Ex: Almoxarifado, Escritório..." required
+                                       style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                            </label>
+                            <label style="font-size: 12px; font-weight: 600;">Posto de Trabalho *<br>
+                                <input type="text" id="aepForm_posto" placeholder="Ex: Recepção e Descarga de Sacarias" required
+                                       style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                            </label>
+                            <label style="font-size: 12px; font-weight: 600;">Função Avaliada *<br>
+                                <input type="text" id="aepForm_funcao" placeholder="Ex: Auxiliar de Almoxarife" required
+                                       style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                            </label>
+                            <label style="font-size: 12px; font-weight: 600;">GHE (Grupo Homogêneo)<br>
+                                <input type="text" id="aepForm_ghe" placeholder="Ex: GHE 04 - Apoio"
+                                       style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                            </label>
+                            <label style="font-size: 12px; font-weight: 600;">Nº Trabalhadores Expostos<br>
+                                <input type="number" id="aepForm_numTrab" min="1" value="1"
+                                       style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                            </label>
+                            <label style="font-size: 12px; font-weight: 600;">Avaliador (SESMT)<br>
+                                <input type="text" id="aepForm_avaliador" placeholder="Nome do Responsável Técnico"
+                                       style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                            </label>
+                            <label style="font-size: 12px; font-weight: 600;">Registro Profissional<br>
+                                <input type="text" id="aepForm_registro" placeholder="Ex: CREA / MTE"
+                                       style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                            </label>
+                        </div>
+
+                        <!-- Seção 2: Fatores Ergonômicos NR-17 -->
+                        <div style="font-weight: 600; font-size: 13.5px; color: var(--text-primary); margin-top: 18px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                            <span>⚖️</span> Análise dos 5 Fatores de Risco Ergonômico (NR-17)
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px;">
+                            <!-- Fator 1: Cargas -->
+                            <div style="border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--bg);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                                    <span style="font-size: 12.5px; font-weight: 700;">1. Levantamento, Transporte e Descarga Manual de Cargas</span>
+                                    <select id="aepForm_fatorCarga" onchange="atualizarSugestaoRiscoGlobalAep()"
+                                            style="padding: 4px 8px; border-radius: 5px; font-size: 12px; border: 1px solid var(--border); font-weight: 600;">
+                                        <option value="baixo">🟢 Baixo / Risco Desprezível</option>
+                                        <option value="medio">🟡 Médio / Exige Atenção</option>
+                                        <option value="alto">🔴 Alto / Sobrecarga Crítica</option>
+                                    </select>
+                                </div>
+                                <input type="text" id="aepForm_obsCarga" placeholder="Descreva o peso, frequência, distância do corpo, empunhadura e esforços..."
+                                       style="width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                            </div>
+
+                            <!-- Fator 2: Postura e Repetitividade -->
+                            <div style="border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--bg);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                                    <span style="font-size: 12.5px; font-weight: 700;">2. Posturas Críticas e Movimentos Repetitivos</span>
+                                    <select id="aepForm_fatorPostura" onchange="atualizarSugestaoRiscoGlobalAep()"
+                                            style="padding: 4px 8px; border-radius: 5px; font-size: 12px; border: 1px solid var(--border); font-weight: 600;">
+                                        <option value="baixo">🟢 Baixo / Risco Desprezível</option>
+                                        <option value="medio">🟡 Médio / Exige Atenção</option>
+                                        <option value="alto">🔴 Alto / Sobrecarga Crítica</option>
+                                    </select>
+                                </div>
+                                <input type="text" id="aepForm_obsPostura" placeholder="Descreva flexão/torção de coluna, braços suspensos, postura estática prolongada..."
+                                       style="width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                            </div>
+
+                            <!-- Fator 3: Mobiliário e Equipamentos -->
+                            <div style="border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--bg);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                                    <span style="font-size: 12.5px; font-weight: 700;">3. Mobiliário dos Postos e Ferramentas Manuais</span>
+                                    <select id="aepForm_fatorMobiliario" onchange="atualizarSugestaoRiscoGlobalAep()"
+                                            style="padding: 4px 8px; border-radius: 5px; font-size: 12px; border: 1px solid var(--border); font-weight: 600;">
+                                        <option value="baixo">🟢 Baixo / Risco Desprezível</option>
+                                        <option value="medio">🟡 Médio / Exige Atenção</option>
+                                        <option value="alto">🔴 Alto / Sobrecarga Crítica</option>
+                                    </select>
+                                </div>
+                                <input type="text" id="aepForm_obsMobiliario" placeholder="Descreva altura da bancada, regulagem da cadeira, apoio de pés, vibração e peso de ferramentas..."
+                                       style="width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                            </div>
+
+                            <!-- Fator 4: Condições Ambientais -->
+                            <div style="border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--bg);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                                    <span style="font-size: 12.5px; font-weight: 700;">4. Condições Ambientais de Trabalho (Iluminação, Ruído, Conforto Térmico)</span>
+                                    <select id="aepForm_fatorAmbiental" onchange="atualizarSugestaoRiscoGlobalAep()"
+                                            style="padding: 4px 8px; border-radius: 5px; font-size: 12px; border: 1px solid var(--border); font-weight: 600;">
+                                        <option value="baixo">🟢 Baixo / Risco Desprezível</option>
+                                        <option value="medio">🟡 Médio / Exige Atenção</option>
+                                        <option value="alto">🔴 Alto / Sobrecarga Crítica</option>
+                                    </select>
+                                </div>
+                                <input type="text" id="aepForm_obsAmbiental" placeholder="Descreva nível de iluminamento, ruído perturbador, calor radiante, ventilação..."
+                                       style="width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                            </div>
+
+                            <!-- Fator 5: Organização do Trabalho -->
+                            <div style="border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--bg);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                                    <span style="font-size: 12.5px; font-weight: 700;">5. Organização do Trabalho, Ritmo e Pausas</span>
+                                    <select id="aepForm_fatorOrganizacao" onchange="atualizarSugestaoRiscoGlobalAep()"
+                                            style="padding: 4px 8px; border-radius: 5px; font-size: 12px; border: 1px solid var(--border); font-weight: 600;">
+                                        <option value="baixo">🟢 Baixo / Risco Desprezível</option>
+                                        <option value="medio">🟡 Médio / Exige Atenção</option>
+                                        <option value="alto">🔴 Alto / Sobrecarga Crítica</option>
+                                    </select>
+                                </div>
+                                <input type="text" id="aepForm_obsOrganizacao" placeholder="Descreva pausas psicofisiológicas, pressão por tempo, horas extras habituais, metas..."
+                                       style="width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                            </div>
+                        </div>
+
+                        <!-- Seção 3: Conclusão, Parecer e AET -->
+                        <div style="border-top: 1px solid var(--border); padding-top: 12px; margin-bottom: 16px;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 12px;">
+                                <label style="font-size: 12px; font-weight: 600;">Nível de Risco Global do Posto *<br>
+                                    <select id="aepForm_riscoGlobal"
+                                            style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-weight: 700; margin-top: 3px;">
+                                        <option value="baixo">🟢 Baixo / Tolerável (Confortável)</option>
+                                        <option value="medio">🟡 Médio / Moderado (Exige Ações de Melhoria)</option>
+                                        <option value="alto">🔴 Alto / Crítico (Intervenção Imediata)</option>
+                                    </select>
+                                </label>
+                                <div style="display: flex; align-items: center; gap: 8px; margin-top: 16px; background: rgba(124,58,237,0.06); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(124,58,237,0.2);">
+                                    <input type="checkbox" id="aepForm_necessidadeAet" style="width: 18px; height: 18px; cursor: pointer;">
+                                    <label for="aepForm_necessidadeAet" style="font-size: 12px; font-weight: 600; cursor: pointer; color: #7c3aed;">
+                                        Requer Análise Ergonômica do Trabalho (AET) detalhada
+                                        <div style="font-weight: 400; font-size: 11px; color: var(--text-light);">Conforme subitem 17.3.2 da NR-17 para postos de alta complexidade</div>
+                                    </label>
+                                </div>
+                            </div>
+                            <label style="font-size: 12px; font-weight: 600;">Parecer Conclusivo e Recomendações Técnicas do SESMT *<br>
+                                <textarea id="aepForm_parecer" rows="3" placeholder="Sintetize a situação observada, medidas já implementadas e diretrizes de melhoria..." required
+                                          style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px; font-family: inherit;"></textarea>
+                            </label>
+                        </div>
+
+                        <!-- Botões de Ação do Formulário -->
+                        <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border); padding-top: 14px;">
+                            <button class="db-clear-btn" onclick="fecharModalErgonomiaAep()">Cancelar</button>
+                            <button class="db-apply-btn" onclick="salvarFormularioAep()">💾 Salvar Avaliação AEP</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de Cadastro / Edição de Ação de Melhoria Ergonômica -->
+                <div id="modalErgonomiaAcao" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; padding: 16px; overflow-y: auto;">
+                    <div style="background: var(--card-bg, #fff); border-radius: 12px; max-width: 650px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border: 1px solid var(--border);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+                            <div style="font-size: 16px; font-weight: 700; color: var(--primary);" id="modalErgonomiaAcaoTitulo">🎯 Ação de Melhoria Ergonômica (5W2H)</div>
+                            <button onclick="fecharModalErgonomiaAcao()" style="background: transparent; border: none; font-size: 18px; cursor: pointer; color: var(--text-light); font-weight: 700;">✕</button>
+                        </div>
+
+                        <input type="hidden" id="acaoErgForm_id">
+
+                        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+                            <label style="font-size: 12px; font-weight: 600;">Vincular à AEP / Posto de Trabalho<br>
+                                <select id="acaoErgForm_aepId" onchange="aoSelecionarAepNaAcao()"
+                                        style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                                    <option value="">Ação Avulsa (Não vinculada a uma AEP específica)</option>
+                                </select>
+                            </label>
+                            <label style="font-size: 12px; font-weight: 600;">Posto de Trabalho *<br>
+                                <input type="text" id="acaoErgForm_posto" placeholder="Ex: Recepção e Descarga de Sacarias" required
+                                       style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                            </label>
+                            <label style="font-size: 12px; font-weight: 600;">Fator Ergonômico de Foco *<br>
+                                <select id="acaoErgForm_fator" required
+                                        style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                                    <option value="Levantamento de Cargas">Levantamento, Transporte e Carga Manual</option>
+                                    <option value="Postura e Repetitividade">Postura Crítica e Repetitividade</option>
+                                    <option value="Mobiliário e Ferramentas">Mobiliário, Bancadas e Ferramentas</option>
+                                    <option value="Condições Ambientais">Condições Ambientais (Conforto Térmico / Iluminação)</option>
+                                    <option value="Organização do Trabalho">Organização do Trabalho e Pausas</option>
+                                </select>
+                            </label>
+                            <label style="font-size: 12px; font-weight: 600;">Ação Proposta (O que fazer) *<br>
+                                <textarea id="acaoErgForm_acao" rows="3" placeholder="Descreva claramente a intervenção (ex: aquisição de suporte para pés, implantação de rodízio de tarefas...)" required
+                                          style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px; font-family: inherit;"></textarea>
+                            </label>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
+                                <label style="font-size: 12px; font-weight: 600;">Tipo de Medida *<br>
+                                    <select id="acaoErgForm_tipo"
+                                            style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                                        <option value="engenharia">Engenharia / Modificação Física</option>
+                                        <option value="equipamento">Equipamento / Mobiliário</option>
+                                        <option value="organizacional">Organizacional / Pausas</option>
+                                        <option value="administrativa">Administrativa / Procedimento</option>
+                                    </select>
+                                </label>
+                                <label style="font-size: 12px; font-weight: 600;">Responsável (Quem) *<br>
+                                    <input type="text" id="acaoErgForm_responsavel" placeholder="Ex: Compras, Encarregado..." required
+                                           style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                                </label>
+                                <label style="font-size: 12px; font-weight: 600;">Prazo Limite *<br>
+                                    <input type="date" id="acaoErgForm_prazo" required
+                                           style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                                </label>
+                                <label style="font-size: 12px; font-weight: 600;">Custo Estimado (R$)<br>
+                                    <input type="number" step="0.01" min="0" id="acaoErgForm_custo" placeholder="0.00"
+                                           style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                                </label>
+                                <label style="font-size: 12px; font-weight: 600;">Status da Ação *<br>
+                                    <select id="acaoErgForm_status"
+                                            style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                                        <option value="pendente">⏳ Pendente</option>
+                                        <option value="em_andamento">⚙️ Em Andamento</option>
+                                        <option value="concluido">✅ Concluído</option>
+                                        <option value="cancelado">🚫 Cancelado</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <label style="font-size: 12px; font-weight: 600;">Evidência de Conclusão (Opcional)<br>
+                                <input type="text" id="acaoErgForm_evidencia" placeholder="Ex: NF de compra do suporte, foto da bancada adaptada, ata de DDS..."
+                                       style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                            </label>
+                        </div>
+
+                        <!-- Botões do Modal de Ação -->
+                        <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border); padding-top: 14px;">
+                            <button class="db-clear-btn" onclick="fecharModalErgonomiaAcao()">Cancelar</button>
+                            <button class="db-apply-btn" onclick="salvarFormularioAcaoErgonomia()">💾 Salvar Ação</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de Baixa Rápida / Conclusão de Ação -->
+                <div id="modalConcluirAcaoErgonomia" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; padding: 16px;">
+                    <div style="background: var(--card-bg, #fff); border-radius: 12px; max-width: 500px; width: 100%; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border: 1px solid var(--border);">
+                        <div style="font-size: 16px; font-weight: 700; color: var(--success); margin-bottom: 12px;">✅ Concluir Ação de Melhoria Ergonômica</div>
+                        <p style="font-size: 12.5px; color: var(--text-light); margin-bottom: 12px;" id="modalConcluirAcaoTexto"></p>
+                        <input type="hidden" id="concluirAcao_id">
+                        <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 10px;">Data de Conclusão *<br>
+                            <input type="date" id="concluirAcao_data" required
+                                   style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px;">
+                        </label>
+                        <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 16px;">Evidência da Solução / Observações *<br>
+                            <textarea id="concluirAcao_evidencia" rows="3" placeholder="Descreva como a ação foi executada (ex: Bancada regulada e aprovada pelos operadores; aquisição entregue conforme NF...)" required
+                                      style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; box-sizing: border-box; margin-top: 3px; font-family: inherit;"></textarea>
+                        </label>
+                        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                            <button class="db-clear-btn" onclick="fecharModalConcluirAcaoErgonomia()">Cancelar</button>
+                            <button class="db-apply-btn" style="background: var(--success);" onclick="confirmarConclusaoAcaoErgonomia()">Confirmar Conclusão</button>
+                        </div>
                     </div>
                 </div>
             </section>

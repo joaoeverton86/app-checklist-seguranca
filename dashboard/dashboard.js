@@ -176,7 +176,8 @@ const MODULOS_PAINEL_DISPONIVEIS = [
     { key: 'documentos', label: 'Documentos' },
     { key: 'acervodrive', label: 'Acervo (Drive)' },
     { key: 'importexport', label: 'Importar/Exportar Planilhas' },
-    { key: 'relatoriosms', label: 'Relatório Mensal SMS' }
+    { key: 'relatoriosms', label: 'Relatório Mensal SMS' },
+    { key: 'ergonomia', label: 'Ergonomia (NR-17)' }
 ];
 
 // Matrículas que podem mexer em "Usuários do Painel" (perfis/convites) - hoje só o
@@ -18419,7 +18420,8 @@ const DB_PAGE_TITLES = {
     acervodrive: 'Acervo (Drive)',
     importexport: 'Importar/Exportar Planilhas',
     config: 'Configurações',
-    usuariospainel: 'Usuários do Painel'
+    usuariospainel: 'Usuários do Painel',
+    ergonomia: 'Ergonomia (NR-17)'
 };
 
 // ============================================
@@ -19289,7 +19291,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia' };
     document.getElementById(navMap[pageId])?.classList.add('active');
     abrirGrupoNavPagina(pageId);
     destacarGrupoAtivo(pageId);
@@ -19387,6 +19389,11 @@ function showDbPage(pageId) {
     }
     if (pageId === 'relatoriosms') {
         popularRelSmsDefaults();
+    }
+    if (pageId === 'ergonomia') {
+        if (!ergonomiaLoaded) { ergonomiaLoaded = true; loadErgonomiaData(); }
+        else if (document.getElementById('ergonomiaSubtabBtn-visao')?.classList.contains('active')) renderErgonomiaVisao();
+        else if (document.getElementById('ergonomiaSubtabBtn-plano')?.classList.contains('active')) renderErgonomiaPlano();
     }
     // Sempre reinicia na tela de escolha de categoria (Treinamentos/DDSMA) ao entrar
     // nesta página - é uma navegação ao vivo no Drive, sem estado pra preservar/cachear
@@ -29913,3 +29920,1001 @@ const MODELOS_APR_SEED = [
         "observacoes": "Modelo importado do formato físico anterior (código legado 004.17). Revise e classifique P/S de cada risco antes de emitir uma APR real a partir deste modelo."
     }
 ];
+
+// ============================================
+// MÓDULO DE ERGONOMIA (NR-17) - AEP E PLANO DE AÇÃO
+// ============================================
+
+let allErgonomiaAep = [];
+let allErgonomiaPlanoAcao = [];
+let ergonomiaLoaded = false;
+
+async function loadErgonomiaData() {
+    try {
+        allErgonomiaAep = await supabaseFetch('ergonomia_aep', '?select=*&order=data_avaliacao.desc');
+        allErgonomiaPlanoAcao = await supabaseFetch('ergonomia_plano_acao', '?select=*&order=prazo.asc');
+        popularFiltroSetorErgonomia();
+        renderErgonomiaKpis();
+        renderErgonomiaVisao();
+        renderErgonomiaPlano();
+    } catch (err) {
+        console.error('Erro ao carregar dados de Ergonomia:', err);
+    }
+}
+
+function showErgonomiaSubtab(tab) {
+    ['visao', 'plano'].forEach(t => {
+        const content = document.getElementById('ergonomiaSubtab-' + t);
+        const btn = document.getElementById('ergonomiaSubtabBtn-' + t);
+        if (content) content.style.display = (t === tab) ? 'block' : 'none';
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
+    if (tab === 'visao') renderErgonomiaVisao();
+    if (tab === 'plano') renderErgonomiaPlano();
+}
+
+function renderErgonomiaKpis() {
+    const totalAep = allErgonomiaAep.length;
+    const riscoBaixo = allErgonomiaAep.filter(a => a.nivel_risco_global === 'baixo').length;
+    const riscoMedio = allErgonomiaAep.filter(a => a.nivel_risco_global === 'medio').length;
+    const riscoAlto = allErgonomiaAep.filter(a => a.nivel_risco_global === 'alto').length;
+    const aetNec = allErgonomiaAep.filter(a => !!a.necessidade_aet).length;
+
+    const totalAcoes = allErgonomiaPlanoAcao.length;
+    const concluidas = allErgonomiaPlanoAcao.filter(p => p.status === 'concluido').length;
+    const pct = totalAcoes > 0 ? Math.round((concluidas / totalAcoes) * 100) : 0;
+
+    const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setKpi('kpiErgonomiaTotalAep', totalAep);
+    setKpi('kpiErgonomiaRiscoBaixo', riscoBaixo);
+    setKpi('kpiErgonomiaRiscoMedio', riscoMedio);
+    setKpi('kpiErgonomiaRiscoAlto', riscoAlto);
+    setKpi('kpiErgonomiaAetNecessaria', aetNec);
+    setKpi('kpiErgonomiaAcoesStatus', `${concluidas}/${totalAcoes} (${pct}%)`);
+}
+
+function popularFiltroSetorErgonomia() {
+    const select = document.getElementById('ergonomiaFiltroSetor');
+    if (!select) return;
+    const setorAtual = select.value;
+    const setores = Array.from(new Set(allErgonomiaAep.map(a => a.setor).filter(Boolean))).sort();
+    select.innerHTML = '<option value="">Todos os Setores</option>' +
+        setores.map(s => `<option value="${escapeHTML(s)}">${escapeHTML(s)}</option>`).join('');
+    if (setorAtual && setores.includes(setorAtual)) select.value = setorAtual;
+}
+
+function renderErgonomiaVisao() {
+    renderErgonomiaKpis();
+    filtrarErgonomiaAepLista();
+}
+
+function filtrarErgonomiaAepLista() {
+    const container = document.getElementById('ergonomiaAepListaContainer');
+    if (!container) return;
+
+    const termo = (document.getElementById('ergonomiaAepSearchInput')?.value || '').trim().toLowerCase();
+    const risco = document.getElementById('ergonomiaFiltroRisco')?.value || '';
+    const setor = document.getElementById('ergonomiaFiltroSetor')?.value || '';
+    const apenasAet = !!document.getElementById('ergonomiaChkFiltroAet')?.checked;
+
+    const filtradas = allErgonomiaAep.filter(a => {
+        if (risco && a.nivel_risco_global !== risco) return false;
+        if (setor && a.setor !== setor) return false;
+        if (apenasAet && !a.necessidade_aet) return false;
+        if (termo) {
+            const busca = `${a.codigo || ''} ${a.setor || ''} ${a.posto_trabalho || ''} ${a.funcao_avaliada || ''} ${a.ghe || ''}`.toLowerCase();
+            if (!busca.includes(termo)) return false;
+        }
+        return true;
+    });
+
+    if (filtradas.length === 0) {
+        container.innerHTML = `<div class="db-list-empty" style="padding: 30px; text-align: center; color: var(--text-light);">
+            Nenhuma Avaliação Ergonômica Preliminar (AEP) encontrada com os filtros selecionados.
+        </div>`;
+        return;
+    }
+
+    const badgeRisco = (r) => {
+        if (r === 'alto') return `<span style="background: rgba(220,38,38,0.12); color: #dc2626; border: 1px solid rgba(220,38,38,0.3); padding: 3px 8px; border-radius: 12px; font-weight: 700; font-size: 11px;">🔴 ALTO</span>`;
+        if (r === 'medio') return `<span style="background: rgba(217,119,6,0.12); color: #d97706; border: 1px solid rgba(217,119,6,0.3); padding: 3px 8px; border-radius: 12px; font-weight: 700; font-size: 11px;">🟡 MÉDIO</span>`;
+        return `<span style="background: rgba(22,163,74,0.12); color: #16a34a; border: 1px solid rgba(22,163,74,0.3); padding: 3px 8px; border-radius: 12px; font-weight: 700; font-size: 11px;">🟢 BAIXO</span>`;
+    };
+
+    const chipsFatores = (a) => {
+        const chips = [];
+        if (a.fator_levantamento_carga === 'alto' || a.fator_levantamento_carga === 'medio') {
+            chips.push(`<span title="${escapeHTML(a.obs_levantamento_carga || 'Sobrecarga de cargas')}" style="background: rgba(239,68,68,0.1); color: #b91c1c; font-size: 10.5px; padding: 2px 6px; border-radius: 4px; font-weight:600;">📦 Cargas</span>`);
+        }
+        if (a.fator_posturas_repetitividade === 'alto' || a.fator_posturas_repetitividade === 'medio') {
+            chips.push(`<span title="${escapeHTML(a.obs_posturas_repetitividade || 'Posturas inadequadas/repetitivas')}" style="background: rgba(245,158,11,0.1); color: #b45309; font-size: 10.5px; padding: 2px 6px; border-radius: 4px; font-weight:600;">🧘 Postura</span>`);
+        }
+        if (a.fator_mobiliario_equipamentos === 'alto' || a.fator_mobiliario_equipamentos === 'medio') {
+            chips.push(`<span title="${escapeHTML(a.obs_mobiliario_equipamentos || 'Mobiliário/ferramentas')}" style="background: rgba(59,130,246,0.1); color: #1d4ed8; font-size: 10.5px; padding: 2px 6px; border-radius: 4px; font-weight:600;">🪑 Mobiliário</span>`);
+        }
+        if (a.fator_condicoes_ambientais === 'alto' || a.fator_condicoes_ambientais === 'medio') {
+            chips.push(`<span title="${escapeHTML(a.obs_condicoes_ambientais || 'Condições ambientais')}" style="background: rgba(16,185,129,0.1); color: #047857; font-size: 10.5px; padding: 2px 6px; border-radius: 4px; font-weight:600;">🌡️ Ambiente</span>`);
+        }
+        if (a.fator_organizacao_trabalho === 'alto' || a.fator_organizacao_trabalho === 'medio') {
+            chips.push(`<span title="${escapeHTML(a.obs_organizacao_trabalho || 'Organização/pausas')}" style="background: rgba(139,92,246,0.1); color: #6d28d9; font-size: 10.5px; padding: 2px 6px; border-radius: 4px; font-weight:600;">⏱️ Organização</span>`);
+        }
+        return chips.length > 0 ? chips.join(' ') : '<span style="color:var(--text-light); font-size:11px;">Sob controle</span>';
+    };
+
+    const linhasHtml = filtradas.map((a, idx) => {
+        const acoesDaAep = allErgonomiaPlanoAcao.filter(p => p.aep_id === a.id);
+        const acoesBadge = acoesDaAep.length > 0
+            ? `<span onclick="filtrarPlanoPorAep('${escapeHTML(a.id)}')" style="cursor: pointer; text-decoration: underline; color: #2563eb; font-weight: 600;">${acoesDaAep.length} ação(ões)</span>`
+            : '<span style="color:var(--text-light);">0</span>';
+
+        const aetBadge = a.necessidade_aet
+            ? '<span style="background: rgba(124,58,237,0.12); color: #7c3aed; padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 10.5px;">⚠️ SIM</span>'
+            : '<span style="color:var(--text-light); font-size:11px;">Não</span>';
+
+        return `
+        <tr style="border-bottom: 1px solid var(--border);">
+            <td style="padding: 8px 6px; text-align: center; color: var(--text-light); font-size: 11px;">${idx + 1}</td>
+            <td style="padding: 8px 6px; font-weight: 700; color: var(--primary); font-size: 12px; white-space: nowrap;">${escapeHTML(a.codigo || '—')}</td>
+            <td style="padding: 8px 6px; text-align: center; font-size: 11.5px; white-space: nowrap;">${formatSimpleDate(a.data_avaliacao)}</td>
+            <td style="padding: 8px 6px; font-size: 12px;"><b>${escapeHTML(a.setor)}</b></td>
+            <td style="padding: 8px 6px; font-size: 12px;">
+                <div style="font-weight: 600;">${escapeHTML(a.posto_trabalho)}</div>
+                <div style="font-size: 11px; color: var(--text-light);">${escapeHTML(a.funcao_avaliada)}${a.ghe ? ' · ' + escapeHTML(a.ghe) : ''} (${a.num_trabalhadores || 1} trab.)</div>
+            </td>
+            <td style="padding: 8px 6px; text-align: center;">${badgeRisco(a.nivel_risco_global)}</td>
+            <td style="padding: 8px 6px;">${chipsFatores(a)}</td>
+            <td style="padding: 8px 6px; text-align: center;">${aetBadge}</td>
+            <td style="padding: 8px 6px; text-align: center; font-size: 12px;">${acoesBadge}</td>
+            <td style="padding: 8px 6px; text-align: right; white-space: nowrap;">
+                <button onclick="imprimirLaudoAep('${escapeHTML(a.id)}')" title="Imprimir Laudo Técnico da AEP (NR-17)"
+                        style="background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 4px 7px; cursor: pointer; font-size: 12px; margin-right: 3px;">🖨️</button>
+                <button onclick="abrirModalNovaAcaoErgonomia('${escapeHTML(a.id)}')" title="Adicionar Ação de Melhoria p/ esta AEP"
+                        style="background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 4px 7px; cursor: pointer; font-size: 12px; margin-right: 3px; color: #0284c7;">+🎯</button>
+                <button onclick="editarAep('${escapeHTML(a.id)}')" title="Editar AEP"
+                        style="background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 4px 7px; cursor: pointer; font-size: 12px; margin-right: 3px;">✏️</button>
+                <button onclick="excluirAep('${escapeHTML(a.id)}')" title="Excluir AEP"
+                        style="background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 4px 7px; cursor: pointer; font-size: 12px; color: var(--danger);">🗑️</button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+        <thead>
+            <tr style="background: var(--bg); text-align: left; border-bottom: 2px solid var(--border);">
+                <th style="padding: 8px 6px; width: 25px; text-align: center;">#</th>
+                <th style="padding: 8px 6px; width: 95px;">Código</th>
+                <th style="padding: 8px 6px; width: 75px; text-align: center;">Data</th>
+                <th style="padding: 8px 6px; width: 140px;">Setor</th>
+                <th style="padding: 8px 6px;">Posto de Trabalho / Função</th>
+                <th style="padding: 8px 6px; width: 90px; text-align: center;">Risco Global</th>
+                <th style="padding: 8px 6px; width: 150px;">Fatores NR-17</th>
+                <th style="padding: 8px 6px; width: 65px; text-align: center;">AET?</th>
+                <th style="padding: 8px 6px; width: 75px; text-align: center;">Plano</th>
+                <th style="padding: 8px 6px; width: 130px; text-align: right;">Ações</th>
+            </tr>
+        </thead>
+        <tbody>${linhasHtml}</tbody>
+    </table>`;
+}
+
+function limparFiltrosErgonomiaAep() {
+    const busca = document.getElementById('ergonomiaAepSearchInput');
+    const risco = document.getElementById('ergonomiaFiltroRisco');
+    const setor = document.getElementById('ergonomiaFiltroSetor');
+    const chkAet = document.getElementById('ergonomiaChkFiltroAet');
+    if (busca) busca.value = '';
+    if (risco) risco.value = '';
+    if (setor) setor.value = '';
+    if (chkAet) chkAet.checked = false;
+    filtrarErgonomiaAepLista();
+}
+
+function filtrarPlanoPorAep(aepId) {
+    showErgonomiaSubtab('plano');
+    const aep = allErgonomiaAep.find(a => a.id === aepId);
+    const input = document.getElementById('ergonomiaPlanoSearchInput');
+    if (input && aep) {
+        input.value = aep.posto_trabalho || aep.codigo || '';
+        filtrarErgonomiaPlanoLista();
+    }
+}
+
+function renderErgonomiaPlano() {
+    renderErgonomiaKpis();
+    filtrarErgonomiaPlanoLista();
+}
+
+function filtrarErgonomiaPlanoLista() {
+    const container = document.getElementById('ergonomiaPlanoListaContainer');
+    if (!container) return;
+
+    const termo = (document.getElementById('ergonomiaPlanoSearchInput')?.value || '').trim().toLowerCase();
+    const statusFiltro = document.getElementById('ergonomiaFiltroPlanoStatus')?.value || '';
+    const tipoFiltro = document.getElementById('ergonomiaFiltroPlanoTipo')?.value || '';
+
+    const hoje = toISODateLocal(new Date());
+
+    const filtradas = allErgonomiaPlanoAcao.filter(p => {
+        if (tipoFiltro && p.tipo_medida !== tipoFiltro) return false;
+        if (statusFiltro === 'atrasado') {
+            if (p.status === 'concluido' || p.status === 'cancelado' || !p.prazo || p.prazo >= hoje) return false;
+        } else if (statusFiltro && p.status !== statusFiltro) {
+            return false;
+        }
+        if (termo) {
+            const busca = `${p.posto_trabalho || ''} ${p.fator_ergonomico || ''} ${p.acao_proposta || ''} ${p.responsavel || ''} ${p.evidencia_conclusao || ''}`.toLowerCase();
+            if (!busca.includes(termo)) return false;
+        }
+        return true;
+    });
+
+    if (filtradas.length === 0) {
+        container.innerHTML = `<div class="db-list-empty" style="padding: 30px; text-align: center; color: var(--text-light);">
+            Nenhuma ação de melhoria ergonômica encontrada com os filtros atuais.
+        </div>`;
+        return;
+    }
+
+    const tipoBadge = (t) => {
+        const mapa = {
+            engenharia: { label: 'Engenharia', cor: '#0369a1', bg: 'rgba(3,105,161,0.1)' },
+            equipamento: { label: 'Equipamento', cor: '#7c3aed', bg: 'rgba(124,58,237,0.1)' },
+            organizacional: { label: 'Organizacional', cor: '#d97706', bg: 'rgba(217,119,6,0.1)' },
+            administrativa: { label: 'Administrativa', cor: '#475569', bg: 'rgba(71,85,105,0.1)' }
+        };
+        const m = mapa[t] || { label: t || 'Geral', cor: '#555', bg: '#eee' };
+        return `<span style="background: ${m.bg}; color: ${m.cor}; padding: 2px 7px; border-radius: 4px; font-weight: 600; font-size: 10.5px;">${m.label}</span>`;
+    };
+
+    const statusBadge = (p) => {
+        if (p.status === 'concluido') {
+            return `<span style="background: rgba(22,163,74,0.12); color: #16a34a; border: 1px solid rgba(22,163,74,0.3); padding: 3px 8px; border-radius: 12px; font-weight: 700; font-size: 11px;">✅ Concluído</span>`;
+        }
+        if (p.status === 'cancelado') {
+            return `<span style="background: rgba(100,116,139,0.12); color: #64748b; padding: 3px 8px; border-radius: 12px; font-weight: 600; font-size: 11px;">🚫 Cancelado</span>`;
+        }
+        if (p.prazo && p.prazo < hoje) {
+            return `<span style="background: rgba(220,38,38,0.12); color: #dc2626; border: 1px solid rgba(220,38,38,0.3); padding: 3px 8px; border-radius: 12px; font-weight: 700; font-size: 11px;">⚠️ Atrasado</span>`;
+        }
+        if (p.status === 'em_andamento') {
+            return `<span style="background: rgba(2,132,199,0.12); color: #0284c7; border: 1px solid rgba(2,132,199,0.3); padding: 3px 8px; border-radius: 12px; font-weight: 700; font-size: 11px;">⚙️ Em Andamento</span>`;
+        }
+        return `<span style="background: rgba(217,119,6,0.12); color: #d97706; border: 1px solid rgba(217,119,6,0.3); padding: 3px 8px; border-radius: 12px; font-weight: 700; font-size: 11px;">⏳ Pendente</span>`;
+    };
+
+    const prazoHtml = (p) => {
+        if (!p.prazo) return '—';
+        const str = formatSimpleDate(p.prazo);
+        if (p.status === 'concluido') {
+            return `<span style="color: var(--success); font-weight:600;">${str}<br><span style="font-size:10px; color:var(--text-light);">Concluído: ${p.data_conclusao ? formatSimpleDate(p.data_conclusao) : 'Sim'}</span></span>`;
+        }
+        if (p.prazo < hoje) {
+            const diasAtraso = Math.round((parseLocalDate(hoje) - parseLocalDate(p.prazo)) / 86400000);
+            return `<span style="color: #dc2626; font-weight: 700;">${str}<br><span style="font-size:10px;">Vencido há ${diasAtraso}d</span></span>`;
+        }
+        const diasRestantes = Math.round((parseLocalDate(p.prazo) - parseLocalDate(hoje)) / 86400000);
+        if (diasRestantes <= 7) {
+            return `<span style="color: #d97706; font-weight: 700;">${str}<br><span style="font-size:10px;">Em ${diasRestantes}d</span></span>`;
+        }
+        return `<span style="color: var(--text-primary);">${str}</span>`;
+    };
+
+    const linhasHtml = filtradas.map((p, idx) => {
+        const custoStr = p.custo_estimado > 0 ? `R$ ${parseFloat(p.custo_estimado).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '<span style="color:var(--text-light);">—</span>';
+        const btnConcluir = (p.status !== 'concluido' && p.status !== 'cancelado')
+            ? `<button onclick="abrirModalConcluirAcaoErgonomia('${escapeHTML(p.id)}')" title="Concluir Ação / Registrar Evidência"
+                       style="background: rgba(22,163,74,0.1); border: 1px solid #16a34a; color: #16a34a; border-radius: 4px; padding: 3px 6px; cursor: pointer; font-size: 11px; font-weight: 700; margin-right: 3px;">✔️ Baixa</button>`
+            : '';
+
+        return `
+        <tr style="border-bottom: 1px solid var(--border);">
+            <td style="padding: 8px 6px; text-align: center; color: var(--text-light); font-size: 11px;">${idx + 1}</td>
+            <td style="padding: 8px 6px; font-size: 12px;">
+                <div style="font-weight: 700;">${escapeHTML(p.posto_trabalho)}</div>
+                <div style="font-size: 11px; color: var(--text-light);">${escapeHTML(p.fator_ergonomico)}</div>
+            </td>
+            <td style="padding: 8px 6px; font-size: 12px;">
+                <div><b>${escapeHTML(p.acao_proposta)}</b></div>
+                ${p.evidencia_conclusao ? `<div style="font-size: 11px; color: #15803d; margin-top: 2px;">📌 <i>${escapeHTML(p.evidencia_conclusao)}</i></div>` : ''}
+            </td>
+            <td style="padding: 8px 6px; text-align: center;">${tipoBadge(p.tipo_medida)}</td>
+            <td style="padding: 8px 6px; font-size: 11.5px;">${escapeHTML(p.responsavel)}</td>
+            <td style="padding: 8px 6px; text-align: center; font-size: 11.5px;">${prazoHtml(p)}</td>
+            <td style="padding: 8px 6px; text-align: right; font-size: 11.5px;">${custoStr}</td>
+            <td style="padding: 8px 6px; text-align: center;">${statusBadge(p)}</td>
+            <td style="padding: 8px 6px; text-align: right; white-space: nowrap;">
+                ${btnConcluir}
+                <button onclick="editarAcaoErgonomia('${escapeHTML(p.id)}')" title="Editar Ação"
+                        style="background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font-size: 11.5px; margin-right: 2px;">✏️</button>
+                <button onclick="excluirAcaoErgonomia('${escapeHTML(p.id)}')" title="Excluir Ação"
+                        style="background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font-size: 11.5px; color: var(--danger);">🗑️</button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+        <thead>
+            <tr style="background: var(--bg); text-align: left; border-bottom: 2px solid var(--border);">
+                <th style="padding: 8px 6px; width: 25px; text-align: center;">#</th>
+                <th style="padding: 8px 6px; width: 170px;">Posto / Fator</th>
+                <th style="padding: 8px 6px;">Ação de Melhoria (O que fazer)</th>
+                <th style="padding: 8px 6px; width: 105px; text-align: center;">Tipo</th>
+                <th style="padding: 8px 6px; width: 130px;">Responsável</th>
+                <th style="padding: 8px 6px; width: 100px; text-align: center;">Prazo</th>
+                <th style="padding: 8px 6px; width: 85px; text-align: right;">Custo Est.</th>
+                <th style="padding: 8px 6px; width: 110px; text-align: center;">Status</th>
+                <th style="padding: 8px 6px; width: 120px; text-align: right;">Operações</th>
+            </tr>
+        </thead>
+        <tbody>${linhasHtml}</tbody>
+    </table>`;
+}
+
+function limparFiltrosErgonomiaPlano() {
+    const busca = document.getElementById('ergonomiaPlanoSearchInput');
+    const status = document.getElementById('ergonomiaFiltroPlanoStatus');
+    const tipo = document.getElementById('ergonomiaFiltroPlanoTipo');
+    if (busca) busca.value = '';
+    if (status) status.value = '';
+    if (tipo) tipo.value = '';
+    filtrarErgonomiaPlanoLista();
+}
+
+// ---- Modais e CRUD de AEP ----
+
+function abrirModalNovaAep() {
+    const modal = document.getElementById('modalErgonomiaAep');
+    if (!modal) return;
+
+    document.getElementById('modalErgonomiaAepTitulo').textContent = '📋 Nova Avaliação Ergonômica Preliminar (AEP - NR-17)';
+    document.getElementById('aepForm_id').value = '';
+    
+    // Sugestão de código sequencial
+    const anoAtual = new Date().getFullYear();
+    const countAno = allErgonomiaAep.filter(a => (a.codigo || '').includes(String(anoAtual))).length + 1;
+    document.getElementById('aepForm_codigo').value = `AEP-${anoAtual}-${String(countAno).padStart(3, '0')}`;
+    document.getElementById('aepForm_data').value = toISODateLocal(new Date());
+    document.getElementById('aepForm_setor').value = '';
+    document.getElementById('aepForm_posto').value = '';
+    document.getElementById('aepForm_funcao').value = '';
+    document.getElementById('aepForm_ghe').value = '';
+    document.getElementById('aepForm_numTrab').value = '1';
+    document.getElementById('aepForm_avaliador').value = 'Eng. João Everton';
+    document.getElementById('aepForm_registro').value = 'CREA/MTE Ativo';
+
+    document.getElementById('aepForm_fatorCarga').value = 'baixo';
+    document.getElementById('aepForm_obsCarga').value = '';
+    document.getElementById('aepForm_fatorPostura').value = 'baixo';
+    document.getElementById('aepForm_obsPostura').value = '';
+    document.getElementById('aepForm_fatorMobiliario').value = 'baixo';
+    document.getElementById('aepForm_obsMobiliario').value = '';
+    document.getElementById('aepForm_fatorAmbiental').value = 'baixo';
+    document.getElementById('aepForm_obsAmbiental').value = '';
+    document.getElementById('aepForm_fatorOrganizacao').value = 'baixo';
+    document.getElementById('aepForm_obsOrganizacao').value = '';
+
+    document.getElementById('aepForm_riscoGlobal').value = 'baixo';
+    document.getElementById('aepForm_necessidadeAet').checked = false;
+    document.getElementById('aepForm_parecer').value = '';
+
+    modal.style.display = 'flex';
+}
+
+function editarAep(id) {
+    const a = allErgonomiaAep.find(item => item.id === id);
+    if (!a) return;
+    const modal = document.getElementById('modalErgonomiaAep');
+    if (!modal) return;
+
+    document.getElementById('modalErgonomiaAepTitulo').textContent = `✏️ Editar AEP — ${a.codigo || a.posto_trabalho}`;
+    document.getElementById('aepForm_id').value = a.id;
+    document.getElementById('aepForm_codigo').value = a.codigo || '';
+    document.getElementById('aepForm_data').value = a.data_avaliacao || '';
+    document.getElementById('aepForm_setor').value = a.setor || '';
+    document.getElementById('aepForm_posto').value = a.posto_trabalho || '';
+    document.getElementById('aepForm_funcao').value = a.funcao_avaliada || '';
+    document.getElementById('aepForm_ghe').value = a.ghe || '';
+    document.getElementById('aepForm_numTrab').value = a.num_trabalhadores || 1;
+    document.getElementById('aepForm_avaliador').value = a.avaliador_nome || '';
+    document.getElementById('aepForm_registro').value = a.avaliador_registro || '';
+
+    document.getElementById('aepForm_fatorCarga').value = a.fator_levantamento_carga || 'baixo';
+    document.getElementById('aepForm_obsCarga').value = a.obs_levantamento_carga || '';
+    document.getElementById('aepForm_fatorPostura').value = a.fator_posturas_repetitividade || 'baixo';
+    document.getElementById('aepForm_obsPostura').value = a.obs_posturas_repetitividade || '';
+    document.getElementById('aepForm_fatorMobiliario').value = a.fator_mobiliario_equipamentos || 'baixo';
+    document.getElementById('aepForm_obsMobiliario').value = a.obs_mobiliario_equipamentos || '';
+    document.getElementById('aepForm_fatorAmbiental').value = a.fator_condicoes_ambientais || 'baixo';
+    document.getElementById('aepForm_obsAmbiental').value = a.obs_condicoes_ambientais || '';
+    document.getElementById('aepForm_fatorOrganizacao').value = a.fator_organizacao_trabalho || 'baixo';
+    document.getElementById('aepForm_obsOrganizacao').value = a.obs_organizacao_trabalho || '';
+
+    document.getElementById('aepForm_riscoGlobal').value = a.nivel_risco_global || 'baixo';
+    document.getElementById('aepForm_necessidadeAet').checked = !!a.necessidade_aet;
+    document.getElementById('aepForm_parecer').value = a.parecer_conclusivo || '';
+
+    modal.style.display = 'flex';
+}
+
+function fecharModalErgonomiaAep() {
+    const modal = document.getElementById('modalErgonomiaAep');
+    if (modal) modal.style.display = 'none';
+}
+
+function atualizarSugestaoRiscoGlobalAep() {
+    const fatores = [
+        document.getElementById('aepForm_fatorCarga')?.value,
+        document.getElementById('aepForm_fatorPostura')?.value,
+        document.getElementById('aepForm_fatorMobiliario')?.value,
+        document.getElementById('aepForm_fatorAmbiental')?.value,
+        document.getElementById('aepForm_fatorOrganizacao')?.value
+    ];
+    const riscoSelect = document.getElementById('aepForm_riscoGlobal');
+    const chkAet = document.getElementById('aepForm_necessidadeAet');
+    if (!riscoSelect) return;
+
+    if (fatores.includes('alto')) {
+        riscoSelect.value = 'alto';
+        if (chkAet && !chkAet.checked) {
+            // Sugere marcar AET se houver risco crítico
+            chkAet.checked = true;
+        }
+    } else if (fatores.includes('medio')) {
+        riscoSelect.value = 'medio';
+    } else {
+        riscoSelect.value = 'baixo';
+    }
+}
+
+async function salvarFormularioAep() {
+    const idExistente = document.getElementById('aepForm_id').value;
+    const codigo = document.getElementById('aepForm_codigo').value.trim();
+    const dataAvaliacao = document.getElementById('aepForm_data').value;
+    const setor = document.getElementById('aepForm_setor').value.trim();
+    const posto = document.getElementById('aepForm_posto').value.trim();
+    const funcao = document.getElementById('aepForm_funcao').value.trim();
+
+    if (!codigo || !dataAvaliacao || !setor || !posto || !funcao) {
+        alert('Por favor, preencha os campos obrigatórios: Código, Data, Setor, Posto de Trabalho e Função.');
+        return;
+    }
+
+    const payload = {
+        codigo,
+        data_avaliacao: dataAvaliacao,
+        setor,
+        posto_trabalho: posto,
+        funcao_avaliada: funcao,
+        ghe: document.getElementById('aepForm_ghe').value.trim(),
+        num_trabalhadores: parseInt(document.getElementById('aepForm_numTrab').value, 10) || 1,
+        avaliador_nome: document.getElementById('aepForm_avaliador').value.trim(),
+        avaliador_registro: document.getElementById('aepForm_registro').value.trim(),
+        fator_levantamento_carga: document.getElementById('aepForm_fatorCarga').value,
+        obs_levantamento_carga: document.getElementById('aepForm_obsCarga').value.trim(),
+        fator_posturas_repetitividade: document.getElementById('aepForm_fatorPostura').value,
+        obs_posturas_repetitividade: document.getElementById('aepForm_obsPostura').value.trim(),
+        fator_mobiliario_equipamentos: document.getElementById('aepForm_fatorMobiliario').value,
+        obs_mobiliario_equipamentos: document.getElementById('aepForm_obsMobiliario').value.trim(),
+        fator_condicoes_ambientais: document.getElementById('aepForm_fatorAmbiental').value,
+        obs_condicoes_ambientais: document.getElementById('aepForm_obsAmbiental').value.trim(),
+        fator_organizacao_trabalho: document.getElementById('aepForm_fatorOrganizacao').value,
+        obs_organizacao_trabalho: document.getElementById('aepForm_obsOrganizacao').value.trim(),
+        nivel_risco_global: document.getElementById('aepForm_riscoGlobal').value,
+        necessidade_aet: !!document.getElementById('aepForm_necessidadeAet').checked,
+        parecer_conclusivo: document.getElementById('aepForm_parecer').value.trim(),
+        status: 'concluida'
+    };
+
+    try {
+        if (idExistente) {
+            await supabaseUpdate('ergonomia_aep', idExistente, payload);
+            const idx = allErgonomiaAep.findIndex(a => a.id === idExistente);
+            if (idx >= 0) allErgonomiaAep[idx] = { ...allErgonomiaAep[idx], ...payload };
+        } else {
+            const novoId = 'AEP_' + Date.now();
+            const novoItem = { id: novoId, ...payload, created_at: new Date().toISOString() };
+            await supabaseInsert('ergonomia_aep', novoItem);
+            allErgonomiaAep.unshift(novoItem);
+        }
+
+        fecharModalErgonomiaAep();
+        popularFiltroSetorErgonomia();
+        renderErgonomiaVisao();
+        alert('Avaliação Ergonômica Preliminar (AEP) salva com sucesso!');
+    } catch (err) {
+        console.error('Erro ao salvar AEP:', err);
+        alert('Erro ao salvar no banco de dados: ' + (err.message || err));
+    }
+}
+
+async function excluirAep(id) {
+    const a = allErgonomiaAep.find(item => item.id === id);
+    if (!a) return;
+    const acoesVinculadas = allErgonomiaPlanoAcao.filter(p => p.aep_id === id).length;
+    let aviso = `Tem certeza que deseja excluir a avaliação "${a.codigo} - ${a.posto_trabalho}"?`;
+    if (acoesVinculadas > 0) {
+        aviso += `\n\nATENÇÃO: Existem ${acoesVinculadas} ação(ões) no plano vinculadas a esta AEP que também serão removidas.`;
+    }
+    if (!confirm(aviso)) return;
+
+    try {
+        await supabaseDelete('ergonomia_aep', id);
+        allErgonomiaAep = allErgonomiaAep.filter(item => item.id !== id);
+        allErgonomiaPlanoAcao = allErgonomiaPlanoAcao.filter(p => p.aep_id !== id);
+        popularFiltroSetorErgonomia();
+        renderErgonomiaVisao();
+        renderErgonomiaPlano();
+    } catch (err) {
+        console.error('Erro ao excluir AEP:', err);
+        alert('Erro ao excluir: ' + (err.message || err));
+    }
+}
+
+// ---- Modais e CRUD de Ações no Plano ----
+
+function abrirModalNovaAcaoErgonomia(aepId) {
+    const modal = document.getElementById('modalErgonomiaAcao');
+    if (!modal) return;
+
+    document.getElementById('modalErgonomiaAcaoTitulo').textContent = '🎯 Nova Ação de Melhoria Ergonômica (5W2H)';
+    document.getElementById('acaoErgForm_id').value = '';
+
+    // Popula select de AEPs
+    const selectAep = document.getElementById('acaoErgForm_aepId');
+    if (selectAep) {
+        selectAep.innerHTML = '<option value="">Ação Avulsa (Não vinculada a uma AEP específica)</option>' +
+            allErgonomiaAep.map(a => `<option value="${escapeHTML(a.id)}">${escapeHTML(a.codigo)} — ${escapeHTML(a.posto_trabalho)} (${escapeHTML(a.setor)})</option>`).join('');
+        if (aepId) selectAep.value = aepId;
+    }
+
+    if (aepId) {
+        const aep = allErgonomiaAep.find(a => a.id === aepId);
+        document.getElementById('acaoErgForm_posto').value = aep ? aep.posto_trabalho : '';
+    } else {
+        document.getElementById('acaoErgForm_posto').value = '';
+    }
+
+    document.getElementById('acaoErgForm_fator').value = 'Levantamento de Cargas';
+    document.getElementById('acaoErgForm_acao').value = '';
+    document.getElementById('acaoErgForm_tipo').value = 'equipamento';
+    document.getElementById('acaoErgForm_responsavel').value = 'SESMT / Engenharia';
+
+    // Prazo padrão: +30 dias
+    const d30 = new Date(); d30.setDate(d30.getDate() + 30);
+    document.getElementById('acaoErgForm_prazo').value = toISODateLocal(d30);
+    document.getElementById('acaoErgForm_custo').value = '';
+    document.getElementById('acaoErgForm_status').value = 'pendente';
+    document.getElementById('acaoErgForm_evidencia').value = '';
+
+    modal.style.display = 'flex';
+}
+
+function aoSelecionarAepNaAcao() {
+    const aepId = document.getElementById('acaoErgForm_aepId')?.value;
+    if (!aepId) return;
+    const aep = allErgonomiaAep.find(a => a.id === aepId);
+    if (aep) {
+        document.getElementById('acaoErgForm_posto').value = aep.posto_trabalho || '';
+        // Sugere o pior fator da AEP
+        if (aep.fator_levantamento_carga === 'alto') document.getElementById('acaoErgForm_fator').value = 'Levantamento de Cargas';
+        else if (aep.fator_posturas_repetitividade === 'alto') document.getElementById('acaoErgForm_fator').value = 'Postura e Repetitividade';
+        else if (aep.fator_mobiliario_equipamentos === 'alto') document.getElementById('acaoErgForm_fator').value = 'Mobiliário e Ferramentas';
+    }
+}
+
+function editarAcaoErgonomia(id) {
+    const p = allErgonomiaPlanoAcao.find(item => item.id === id);
+    if (!p) return;
+    const modal = document.getElementById('modalErgonomiaAcao');
+    if (!modal) return;
+
+    document.getElementById('modalErgonomiaAcaoTitulo').textContent = '✏️ Editar Ação de Melhoria Ergonômica';
+    document.getElementById('acaoErgForm_id').value = p.id;
+
+    const selectAep = document.getElementById('acaoErgForm_aepId');
+    if (selectAep) {
+        selectAep.innerHTML = '<option value="">Ação Avulsa (Não vinculada a uma AEP específica)</option>' +
+            allErgonomiaAep.map(a => `<option value="${escapeHTML(a.id)}">${escapeHTML(a.codigo)} — ${escapeHTML(a.posto_trabalho)} (${escapeHTML(a.setor)})</option>`).join('');
+        selectAep.value = p.aep_id || '';
+    }
+
+    document.getElementById('acaoErgForm_posto').value = p.posto_trabalho || '';
+    document.getElementById('acaoErgForm_fator').value = p.fator_ergonomico || 'Levantamento de Cargas';
+    document.getElementById('acaoErgForm_acao').value = p.acao_proposta || '';
+    document.getElementById('acaoErgForm_tipo').value = p.tipo_medida || 'administrativa';
+    document.getElementById('acaoErgForm_responsavel').value = p.responsavel || '';
+    document.getElementById('acaoErgForm_prazo').value = p.prazo || '';
+    document.getElementById('acaoErgForm_custo').value = p.custo_estimado || '';
+    document.getElementById('acaoErgForm_status').value = p.status || 'pendente';
+    document.getElementById('acaoErgForm_evidencia').value = p.evidencia_conclusao || '';
+
+    modal.style.display = 'flex';
+}
+
+function fecharModalErgonomiaAcao() {
+    const modal = document.getElementById('modalErgonomiaAcao');
+    if (modal) modal.style.display = 'none';
+}
+
+async function salvarFormularioAcaoErgonomia() {
+    const idExistente = document.getElementById('acaoErgForm_id').value;
+    const posto = document.getElementById('acaoErgForm_posto').value.trim();
+    const acao = document.getElementById('acaoErgForm_acao').value.trim();
+    const responsavel = document.getElementById('acaoErgForm_responsavel').value.trim();
+    const prazo = document.getElementById('acaoErgForm_prazo').value;
+
+    if (!posto || !acao || !responsavel || !prazo) {
+        alert('Por favor, preencha os campos obrigatórios: Posto, Ação Proposta, Responsável e Prazo.');
+        return;
+    }
+
+    const custoVal = parseFloat(document.getElementById('acaoErgForm_custo').value);
+    const aepIdVal = document.getElementById('acaoErgForm_aepId').value || null;
+    const statusVal = document.getElementById('acaoErgForm_status').value;
+    const evidenciaVal = document.getElementById('acaoErgForm_evidencia').value.trim();
+
+    const payload = {
+        aep_id: aepIdVal,
+        posto_trabalho: posto,
+        fator_ergonomico: document.getElementById('acaoErgForm_fator').value,
+        acao_proposta: acao,
+        tipo_medida: document.getElementById('acaoErgForm_tipo').value,
+        responsavel: responsavel,
+        prazo: prazo,
+        custo_estimado: isNaN(custoVal) ? 0 : custoVal,
+        status: statusVal,
+        evidencia_conclusao: evidenciaVal,
+        data_conclusao: statusVal === 'concluido' ? toISODateLocal(new Date()) : null
+    };
+
+    try {
+        if (idExistente) {
+            await supabaseUpdate('ergonomia_plano_acao', idExistente, payload);
+            const idx = allErgonomiaPlanoAcao.findIndex(item => item.id === idExistente);
+            if (idx >= 0) allErgonomiaPlanoAcao[idx] = { ...allErgonomiaPlanoAcao[idx], ...payload };
+        } else {
+            const novoId = 'ACAO_ERG_' + Date.now();
+            const novoItem = { id: novoId, ...payload, created_at: new Date().toISOString() };
+            await supabaseInsert('ergonomia_plano_acao', novoItem);
+            allErgonomiaPlanoAcao.unshift(novoItem);
+        }
+
+        fecharModalErgonomiaAcao();
+        renderErgonomiaPlano();
+        renderErgonomiaVisao();
+        alert('Ação de melhoria ergonômica salva com sucesso!');
+    } catch (err) {
+        console.error('Erro ao salvar ação de ergonomia:', err);
+        alert('Erro ao salvar ação: ' + (err.message || err));
+    }
+}
+
+async function excluirAcaoErgonomia(id) {
+    const p = allErgonomiaPlanoAcao.find(item => item.id === id);
+    if (!p) return;
+    if (!confirm(`Deseja excluir a ação "${p.acao_proposta}"?`)) return;
+
+    try {
+        await supabaseDelete('ergonomia_plano_acao', id);
+        allErgonomiaPlanoAcao = allErgonomiaPlanoAcao.filter(item => item.id !== id);
+        renderErgonomiaPlano();
+        renderErgonomiaVisao();
+    } catch (err) {
+        console.error('Erro ao excluir ação:', err);
+        alert('Erro ao excluir ação: ' + (err.message || err));
+    }
+}
+
+// ---- Baixa Rápida de Ação ----
+
+function abrirModalConcluirAcaoErgonomia(id) {
+    const p = allErgonomiaPlanoAcao.find(item => item.id === id);
+    if (!p) return;
+    const modal = document.getElementById('modalConcluirAcaoErgonomia');
+    if (!modal) return;
+
+    document.getElementById('concluirAcao_id').value = p.id;
+    document.getElementById('modalConcluirAcaoTexto').innerHTML = `<b>Posto:</b> ${escapeHTML(p.posto_trabalho)}<br><b>Ação:</b> ${escapeHTML(p.acao_proposta)}`;
+    document.getElementById('concluirAcao_data').value = toISODateLocal(new Date());
+    document.getElementById('concluirAcao_evidencia').value = p.evidencia_conclusao || '';
+
+    modal.style.display = 'flex';
+}
+
+function fecharModalConcluirAcaoErgonomia() {
+    const modal = document.getElementById('modalConcluirAcaoErgonomia');
+    if (modal) modal.style.display = 'none';
+}
+
+async function confirmarConclusaoAcaoErgonomia() {
+    const id = document.getElementById('concluirAcao_id').value;
+    const dataConclusao = document.getElementById('concluirAcao_data').value;
+    const evidencia = document.getElementById('concluirAcao_evidencia').value.trim();
+
+    if (!dataConclusao || !evidencia) {
+        alert('Por favor, informe a Data de Conclusão e a Evidência/Descrição de como a ação foi executada.');
+        return;
+    }
+
+    try {
+        const payload = {
+            status: 'concluido',
+            data_conclusao: dataConclusao,
+            evidencia_conclusao: evidencia
+        };
+        await supabaseUpdate('ergonomia_plano_acao', id, payload);
+        const item = allErgonomiaPlanoAcao.find(p => p.id === id);
+        if (item) Object.assign(item, payload);
+
+        fecharModalConcluirAcaoErgonomia();
+        renderErgonomiaPlano();
+        renderErgonomiaVisao();
+        alert('Ação concluída com sucesso!');
+    } catch (err) {
+        console.error('Erro ao concluir ação:', err);
+        alert('Erro ao concluir ação: ' + (err.message || err));
+    }
+}
+
+// ---- Relatórios Oficiais e Impressão NR-17 ----
+
+function imprimirLaudoAep(id) {
+    const a = allErgonomiaAep.find(item => item.id === id);
+    if (!a) return;
+
+    const acoes = allErgonomiaPlanoAcao.filter(p => p.aep_id === a.id);
+    const dataEmissao = formatSimpleDate(toISODateLocal(new Date()));
+
+    const badgeTexto = (r) => {
+        if (r === 'alto') return '<b style="color:#b91c1c;">ALTO / CRÍTICO</b>';
+        if (r === 'medio') return '<b style="color:#b45309;">MÉDIO / ATENÇÃO</b>';
+        return '<b style="color:#15803d;">BAIXO / TOLERÁVEL</b>';
+    };
+
+    const linhaFator = (num, nome, nivel, obs) => `
+        <tr>
+            <td style="text-align:center; font-weight:700;">${num}</td>
+            <td><b>${nome}</b></td>
+            <td style="text-align:center;">${badgeTexto(nivel)}</td>
+            <td>${escapeHTML(obs || 'Sem apontamentos críticos. Condição ergonômica em conformidade.')}</td>
+        </tr>`;
+
+    const linhasAcoes = acoes.length > 0 ? acoes.map((p, i) => `
+        <tr>
+            <td style="text-align:center;">${i + 1}</td>
+            <td><b>${escapeHTML(p.acao_proposta)}</b></td>
+            <td style="text-align:center;">${escapeHTML(p.tipo_medida || '—')}</td>
+            <td>${escapeHTML(p.responsavel)}</td>
+            <td style="text-align:center;">${p.prazo ? formatSimpleDate(p.prazo) : '—'}</td>
+            <td style="text-align:center; font-weight:600;">${p.status === 'concluido' ? '✅ Concluído' : '⏳ Pendente'}</td>
+        </tr>
+    `).join('') : '<tr><td colspan="6" style="text-align:center; color:#555;">Nenhuma pendência ou ação corretiva aberta para este posto.</td></tr>';
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Laudo AEP - ${escapeHTML(a.codigo)} - ${escapeHTML(EMPRESA_INFO.razaoSocial)}</title>
+<style>
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
+    .folha { max-width: 1100px; margin: 0 auto; border: 2px solid #000; }
+    .cabecalho { display: flex; align-items: center; border-bottom: 2px solid #000; padding: 10px 14px; gap: 16px; }
+    .titulo { flex: 1; text-align: center; font-size: 14px; font-weight: 700; text-transform: uppercase; }
+    .secao-titulo { background: #e5e7eb; font-weight: 700; font-size: 11px; padding: 5px 10px; border-top: 1px solid #000; border-bottom: 1px solid #000; text-transform: uppercase; }
+    .grid-campos { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid #000; font-size: 10.5px; }
+    .campo { padding: 6px 10px; border-right: 1px solid #000; }
+    .campo:last-child { border-right: none; }
+    table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+    th, td { border: 1px solid #000; padding: 5px 8px; }
+    th { background: #f3f4f6; text-align: left; }
+    @media print { body { margin: 0; } .folha { border: none; } }
+</style>
+</head>
+<body onload="window.print()">
+    <div class="folha">
+        <div class="cabecalho">
+            <img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:48px; max-width:180px; object-fit:contain;">
+            <div class="titulo">
+                LAUDO DE AVALIAÇÃO ERGONÔMICA PRELIMINAR (AEP)<br>
+                <span style="font-weight:400; font-size:11px;">Conforme NR-17 (Portaria MTP nº 423/2021) e PGR (NR-01)</span>
+            </div>
+        </div>
+        <div class="secao-titulo">1. Identificação da Empresa e do Posto de Trabalho</div>
+        <div class="grid-campos">
+            <div class="campo"><b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
+            <div class="campo"><b>CNPJ:</b> ${escapeHTML(EMPRESA_INFO.cnpj)}</div>
+            <div class="campo"><b>CÓDIGO DA AEP:</b> <b>${escapeHTML(a.codigo)}</b></div>
+        </div>
+        <div class="grid-campos">
+            <div class="campo"><b>SETOR:</b> ${escapeHTML(a.setor)}</div>
+            <div class="campo"><b>POSTO:</b> <b>${escapeHTML(a.posto_trabalho)}</b></div>
+            <div class="campo"><b>DATA DA AVALIAÇÃO:</b> ${formatSimpleDate(a.data_avaliacao)}</div>
+        </div>
+        <div class="grid-campos" style="border-bottom:none;">
+            <div class="campo"><b>FUNÇÃO:</b> ${escapeHTML(a.funcao_avaliada)}</div>
+            <div class="campo"><b>GHE:</b> ${escapeHTML(a.ghe || 'GHE Operacional')}</div>
+            <div class="campo"><b>TRABALHADORES EXPOSTOS:</b> ${a.num_trabalhadores || 1} colaborador(es)</div>
+        </div>
+
+        <div class="secao-titulo">2. Análise dos Fatores de Risco Ergonômico (NR-17)</div>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:25px; text-align:center;">#</th>
+                    <th style="width:220px;">Fator Ergonômico Analisado</th>
+                    <th style="width:130px; text-align:center;">Classificação de Risco</th>
+                    <th>Diagnóstico Situacional / Observações de Campo</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${linhaFator(1, 'Levantamento e Cargas', a.fator_levantamento_carga, a.obs_levantamento_carga)}
+                ${linhaFator(2, 'Postura e Repetitividade', a.fator_posturas_repetitividade, a.obs_posturas_repetitividade)}
+                ${linhaFator(3, 'Mobiliário e Equipamentos', a.fator_mobiliario_equipamentos, a.obs_mobiliario_equipamentos)}
+                ${linhaFator(4, 'Condições Ambientais', a.fator_condicoes_ambientais, a.obs_condicoes_ambientais)}
+                ${linhaFator(5, 'Organização do Trabalho', a.fator_organizacao_trabalho, a.obs_organizacao_trabalho)}
+            </tbody>
+        </table>
+
+        <div class="secao-titulo">3. Conclusão Técnica e Necessidade de AET</div>
+        <div style="padding: 8px 12px; font-size: 11px; border-bottom: 1px solid #000;">
+            <div style="margin-bottom: 6px;">
+                <b>NÍVEL DE RISCO GLOBAL DO POSTO:</b> ${badgeTexto(a.nivel_risco_global)} &nbsp;&nbsp;|&nbsp;&nbsp;
+                <b>INDICAÇÃO DE AET APROFUNDADA:</b> ${a.necessidade_aet ? '<b style="color:#7c3aed;">SIM (Subitem 17.3.2 da NR-17)</b>' : 'NÃO (Risco controlado por AEP)'}
+            </div>
+            <div><b>PARECER DO SESMT:</b> ${escapeHTML(a.parecer_conclusivo || 'Posto em conformidade ergonômica com as diretrizes da NR-17.')}</div>
+        </div>
+
+        <div class="secao-titulo">4. Plano de Ação de Melhorias de Postos de Trabalho (5W2H)</div>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:25px; text-align:center;">#</th>
+                    <th>Ação Proposta (O que fazer)</th>
+                    <th style="width:110px; text-align:center;">Tipo de Medida</th>
+                    <th style="width:160px;">Responsável</th>
+                    <th style="width:85px; text-align:center;">Prazo</th>
+                    <th style="width:85px; text-align:center;">Status</th>
+                </tr>
+            </thead>
+            <tbody>${linhasAcoes}</tbody>
+        </table>
+
+        <div style="display:flex; justify-content:space-around; text-align:center; padding: 24px 10px 14px; font-size:10.5px;">
+            <div>
+                ____________________________________________________<br>
+                <b>${escapeHTML(a.avaliador_nome || 'Eng. João Everton')}</b><br>
+                Engenharia de Segurança do Trabalho / Avaliador<br>
+                ${escapeHTML(a.avaliador_registro || 'CREA / MTE Ativo')}
+            </div>
+            <div>
+                ____________________________________________________<br>
+                <b>Gestão da Obra / Direção Técnica</b><br>
+                Ciência e Compromisso com o Plano de Ação
+            </div>
+        </div>
+    </div>
+</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (win) {
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+    }
+}
+
+function imprimirPlanoGeralErgonomia() {
+    const dataEmissao = formatSimpleDate(toISODateLocal(new Date()));
+    const totalAep = allErgonomiaAep.length;
+    const altoRisco = allErgonomiaAep.filter(a => a.nivel_risco_global === 'alto').length;
+    const medioRisco = allErgonomiaAep.filter(a => a.nivel_risco_global === 'medio').length;
+    const baixoRisco = allErgonomiaAep.filter(a => a.nivel_risco_global === 'baixo').length;
+
+    const linhasAep = allErgonomiaAep.map((a, i) => `
+        <tr>
+            <td style="text-align:center;">${i + 1}</td>
+            <td><b>${escapeHTML(a.codigo)}</b></td>
+            <td>${escapeHTML(a.setor)}</td>
+            <td><b>${escapeHTML(a.posto_trabalho)}</b></td>
+            <td>${escapeHTML(a.funcao_avaliada)}</td>
+            <td style="text-align:center;">${a.nivel_risco_global.toUpperCase()}</td>
+            <td style="text-align:center;">${a.necessidade_aet ? 'SIM' : 'NÃO'}</td>
+        </tr>
+    `).join('');
+
+    const linhasAcoes = allErgonomiaPlanoAcao.map((p, i) => `
+        <tr>
+            <td style="text-align:center;">${i + 1}</td>
+            <td>${escapeHTML(p.posto_trabalho)}</td>
+            <td><b>${escapeHTML(p.acao_proposta)}</b></td>
+            <td>${escapeHTML(p.tipo_medida || '—')}</td>
+            <td>${escapeHTML(p.responsavel)}</td>
+            <td style="text-align:center;">${p.prazo ? formatSimpleDate(p.prazo) : '—'}</td>
+            <td style="text-align:center;">${p.status.toUpperCase()}</td>
+        </tr>
+    `).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Relatório Geral de Ergonomia NR-17 - ${escapeHTML(EMPRESA_INFO.razaoSocial)}</title>
+<style>
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
+    .folha { max-width: 1200px; margin: 0 auto; border: 2px solid #000; }
+    .cabecalho { display: flex; align-items: center; border-bottom: 2px solid #000; padding: 10px 14px; gap: 16px; }
+    .titulo { flex: 1; text-align: center; font-size: 14px; font-weight: 700; text-transform: uppercase; }
+    .secao-titulo { background: #e5e7eb; font-weight: 700; font-size: 11px; padding: 5px 10px; border-top: 1px solid #000; border-bottom: 1px solid #000; text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 12px; }
+    th, td { border: 1px solid #000; padding: 4px 6px; }
+    th { background: #f3f4f6; text-align: left; }
+</style>
+</head>
+<body onload="window.print()">
+    <div class="folha">
+        <div class="cabecalho">
+            <img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:48px; max-width:180px; object-fit:contain;">
+            <div class="titulo">
+                PROGRAMA DE GESTÃO DE ERGONOMIA (NR-17 / PGR)<br>
+                <span style="font-weight:400; font-size:11px;">Inventário de AEPs e Plano de Ação de Melhorias de Postos</span>
+            </div>
+        </div>
+        <div style="display:flex; padding: 6px 12px; font-size:11px; justify-content:space-between; border-bottom:1px solid #000;">
+            <div><b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)} (${escapeHTML(EMPRESA_INFO.cnpj)})</div>
+            <div><b>DATA DE EMISSÃO:</b> ${dataEmissao}</div>
+            <div><b>POSTOS AVALIADOS:</b> ${totalAep} (🔴 ${altoRisco} | 🟡 ${medioRisco} | 🟢 ${baixoRisco})</div>
+        </div>
+
+        <div class="secao-titulo">1. Inventário de Avaliações Ergonômicas Preliminares (AEP)</div>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:25px; text-align:center;">#</th>
+                    <th style="width:90px;">Código</th>
+                    <th style="width:130px;">Setor</th>
+                    <th>Posto de Trabalho</th>
+                    <th style="width:150px;">Função Avaliada</th>
+                    <th style="width:75px; text-align:center;">Risco</th>
+                    <th style="width:50px; text-align:center;">AET?</th>
+                </tr>
+            </thead>
+            <tbody>${linhasAep || '<tr><td colspan="7" style="text-align:center;">Nenhuma AEP registrada.</td></tr>'}</tbody>
+        </table>
+
+        <div class="secao-titulo">2. Plano de Ação Consolidado de Melhorias Ergonômicas (5W2H)</div>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:25px; text-align:center;">#</th>
+                    <th style="width:160px;">Posto de Trabalho</th>
+                    <th>Ação de Melhoria (O que fazer)</th>
+                    <th style="width:90px;">Tipo</th>
+                    <th style="width:140px;">Responsável</th>
+                    <th style="width:75px; text-align:center;">Prazo</th>
+                    <th style="width:80px; text-align:center;">Status</th>
+                </tr>
+            </thead>
+            <tbody>${linhasAcoes || '<tr><td colspan="7" style="text-align:center;">Nenhuma ação cadastrada.</td></tr>'}</tbody>
+        </table>
+
+        <div style="display:flex; justify-content:space-around; text-align:center; padding: 24px 10px 14px; font-size:10.5px;">
+            <div>
+                ____________________________________________________<br>
+                <b>Engenharia de Segurança do Trabalho / SESMT</b><br>
+                Responsável Técnico pelo Programa de Ergonomia
+            </div>
+            <div>
+                ____________________________________________________<br>
+                <b>Direção / Gerência de Operações</b><br>
+                Aprovação do Plano de Investimento Ergonômico
+            </div>
+        </div>
+    </div>
+</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (win) {
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+    }
+}
+

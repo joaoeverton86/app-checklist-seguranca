@@ -137,7 +137,17 @@ function usuarioDashboardAtual() {
 function atualizarBadgeUsuarioDashboard() {
     const session = sessaoDashboardAtual();
     const el = document.getElementById('badgeUsuarioDashboard');
-    if (el) el.textContent = session ? `${session.nome}${session.role ? ' (' + session.role + ')' : ''}` : '(não identificado)';
+    if (el) {
+        if (!session) {
+            el.textContent = '(não identificado)';
+            return;
+        }
+        if (session.matricula === '98' || session.perfil_id === 'modulo_saude') {
+            el.textContent = `${session.nome} (Saúde - Edição Restrita)`;
+        } else {
+            el.textContent = `${session.nome}${session.role ? ' (' + session.role + ')' : ''}`;
+        }
+    }
 }
 
 // Alterna entre a tela de login e o painel de verdade, de acordo com a sessão atual -
@@ -177,47 +187,118 @@ const MODULOS_PAINEL_DISPONIVEIS = [
     { key: 'acervodrive', label: 'Acervo (Drive)' },
     { key: 'importexport', label: 'Importar/Exportar Planilhas' },
     { key: 'relatoriosms', label: 'Relatório Mensal SMS' },
-    { key: 'ergonomia', label: 'Ergonomia (NR-17)' }
+    { key: 'ergonomia', label: 'Ergonomia (NR-17)' },
+    { key: 'periculosidade', label: 'Periculosidade (NR-16)' }
 ];
 
 // Matrículas que podem mexer em "Usuários do Painel" (perfis/convites) - hoje só o
-// usuário responsável pelo módulo. Mantenha igual à lista usada em
-// usuario_e_super_admin() no banco (Supabase) se um dia adicionar mais alguém aqui.
+// usuário responsável pelo módulo.
 const SUPER_ADMIN_MATRICULAS = ['76'];
 
-// true pra colaborador interno, EXCETO na página 'usuariospainel' (só libera pra quem
-// está em SUPER_ADMIN_MATRICULAS - a trava de verdade já é no banco via
-// usuario_e_super_admin(), isso aqui só evita abrir a tela à toa). Pra usuário só-painel
-// (painel_externo), só true se o módulo estiver na lista do perfil dele - 'config' e
-// 'usuariospainel' nunca aparecem pra esse tipo de conta, nem que peçam.
+// Determina se o usuário pode acessar/ver a página no painel
 function moduloPermitidoPainel(pageId) {
     const session = sessaoDashboardAtual();
     if (pageId === 'usuariospainel') {
         return !!(session && session.tipo !== 'painel_externo' && SUPER_ADMIN_MATRICULAS.includes(session.matricula));
     }
-    if (!session || session.tipo !== 'painel_externo') return true;
+    if (!session) return true;
+    if (session.ver_todos === true) {
+        if (pageId === 'config' && session.tipo === 'painel_externo') return false;
+        return true;
+    }
+    if (session.tipo !== 'painel_externo') return true;
     if (pageId === 'config') return false;
     return Array.isArray(session.modulos) && session.modulos.includes(pageId);
 }
 
-// Esconde do menu lateral os módulos que o usuário só-painel não tem no perfil (a trava de
-// verdade já é no banco via RLS - isso aqui só evita mostrar um botão que ia dar "sem
-// acesso" se clicado). Colaborador interno nunca é afetado - continua vendo o menu inteiro
-// exatamente como sempre foi.
+// Determina se o usuário pode realizar alterações/gravações no módulo
+function usuarioPodeGravarModulo(modulo) {
+    const session = sessaoDashboardAtual();
+    if (!session) return false;
+    if (session.role === 'Admin' || session.matricula === '76') return true;
+    
+    // Amanda (matrícula 98) ou perfil modulo_saude: Edição restrita exclusivamente a Saúde
+    if (session.matricula === '98' || session.perfil_id === 'modulo_saude' || (session.funcao && session.funcao.toUpperCase().includes('ENFERMEIR'))) {
+        return modulo === 'saude';
+    }
+    
+    if (session.modulos_edicao && Array.isArray(session.modulos_edicao) && session.modulos_edicao.length > 0) {
+        return session.modulos_edicao.includes(modulo);
+    }
+    
+    if (session.tipo === 'painel_externo') {
+        return false;
+    }
+    
+    return true;
+}
+
+// Intercepta e bloqueia ações de gravação não autorizadas com alerta explicativo
+function bloquearEdicaoSeNaoAutorizado(modulo) {
+    if (!usuarioPodeGravarModulo(modulo)) {
+        alert('⚠️ Acesso Somente Leitura:\n\nSeu perfil possui permissão para consultar todas as informações do painel, mas novos cadastros, alterações e exclusões são restritos exclusivamente ao módulo de Saúde Ocupacional.');
+        return true;
+    }
+    return false;
+}
+
+// Exibe banner elegante de visualização nas páginas onde a escrita é restrita
+function atualizarAvisosPermissaoPagina(pageId) {
+    const podeEditar = usuarioPodeGravarModulo(pageId);
+    const pageEl = document.getElementById('page-' + pageId);
+    if (!pageEl) return;
+
+    const bannerAntigo = pageEl.querySelector('.db-banner-somente-leitura');
+    if (bannerAntigo) bannerAntigo.remove();
+
+    if (!podeEditar && pageId !== 'saude' && pageId !== 'relatoriosms' && pageId !== 'importexport') {
+        const banner = document.createElement('div');
+        banner.className = 'db-banner-somente-leitura';
+        banner.style.cssText = 'background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.25); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 12.5px; color: #1d4ed8; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 500; box-shadow: 0 1px 3px rgba(0,0,0,0.04);';
+        banner.innerHTML = `
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:16px;">👁️</span>
+                <span><b>Modo de Visualização (Somente Leitura):</b> Seu usuário possui acesso para consultar todos os dados deste módulo. Alterações e novos cadastros são restritos ao módulo de <b>Saúde Ocupacional</b>.</span>
+            </div>
+            <span style="font-size:11px; background:#dbeafe; color:#1e40af; padding:3px 8px; border-radius:4px; font-weight:700; white-space:nowrap;">LEITURA</span>
+        `;
+        pageEl.insertBefore(banner, pageEl.firstChild);
+    }
+}
+
+// Esconde do menu lateral apenas o que não for permitido. Usuários com ver_todos (como Amanda) veem todos os módulos.
 function aplicarRestricaoModulosPainelNoMenu() {
     const session = sessaoDashboardAtual();
     const ehExterno = !!(session && session.tipo === 'painel_externo');
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', importexport: 'navImportExport', relatoriosms: 'navRelatorioSms' };
-    // ACHADO (2026-09-21): 'importexport' tinha ficado de fora deste mapa desde a
-    // separação do módulo de Importar/Exportar Planilhas - o botão "navImportExport"
-    // nunca era escondido de um usuário só-painel sem essa permissão (o acesso aos
-    // DADOS já era barrado pelo RLS, então não vazava informação nenhuma - só o botão
-    // ficava visível à toa). Corrigido aqui, junto com a inclusão do módulo novo de
-    // Brigada de Incêndio.
+    const verTodos = !ehExterno || !!session.ver_todos;
+    const navMap = {
+        checklists: 'navChecklists',
+        extintores: 'navExtintores',
+        relatos: 'navRelatos',
+        treinamentos: 'navTreinamentos',
+        ddsma: 'navDdsma',
+        efetivo: 'navEfetivo',
+        matrizrisco: 'navMatrizRisco',
+        acidentes: 'navAcidentes',
+        saude: 'navSaude',
+        psicossocial: 'navPsicossocial',
+        epi: 'navEpi',
+        apr: 'navApr',
+        ambiental: 'navAmbiental',
+        compras: 'navCompras',
+        cipa: 'navCipa',
+        brigada: 'navBrigada',
+        documentos: 'navDocumentos',
+        acervodrive: 'navAcervoDrive',
+        importexport: 'navImportExport',
+        relatoriosms: 'navRelatorioSms',
+        ergonomia: 'navErgonomia',
+        periculosidade: 'navPericulosidade'
+    };
 
     Object.keys(navMap).forEach(pageId => {
         const btn = document.getElementById(navMap[pageId]);
-        if (btn) btn.style.display = (!ehExterno || (session.modulos || []).includes(pageId)) ? '' : 'none';
+        if (btn) btn.style.display = (verTodos || (session.modulos || []).includes(pageId)) ? '' : 'none';
     });
 
     const navConfigBtn = document.getElementById('navConfig');
@@ -235,10 +316,7 @@ function aplicarRestricaoModulosPainelNoMenu() {
         grupo.style.display = temItemVisivel ? '' : 'none';
     });
 
-    // Se a página aberta no momento não é mais permitida (ex: acabou de logar como
-    // visualizador), pula pro primeiro módulo liberado do perfil em vez de deixar a tela
-    // em branco.
-    if (ehExterno) {
+    if (ehExterno && !verTodos) {
         const paginaAtiva = document.querySelector('.db-page.active')?.id?.replace('page-', '');
         if (!paginaAtiva || !(session.modulos || []).includes(paginaAtiva)) {
             const primeiro = (session.modulos || [])[0];
@@ -286,26 +364,46 @@ async function realizarLoginDashboard() {
             return;
         }
 
-        // Guarda só o essencial pra sessão - nunca o hash da senha (o painel não precisa
-        // dele pra nada, diferente do app de celular que usa pra permitir login offline).
+        // Identifica perfil em painel_usuarios ou por regras do cargo
+        let perfilPainel = null;
+        let perfilData = null;
+        try {
+            const mat = (colab.matricula || colab.id || '').toUpperCase();
+            const mail = (colab.email || '').toLowerCase().trim();
+            const puRows = await supabaseFetch('painel_usuarios', `?select=*,painel_perfis(*)&or=(matricula.eq.${encodeURIComponent(mat)},email.ilike.${encodeURIComponent(mail)})`);
+            if (Array.isArray(puRows) && puRows.length > 0) {
+                perfilPainel = puRows[0];
+                perfilData = perfilPainel.painel_perfis || null;
+            }
+        } catch (e) {
+            console.warn('Verificação de perfil em painel_usuarios:', e);
+        }
+
+        const isSaude = (colab.matricula === '98' || colab.id === '98' || perfilPainel?.perfil_id === 'modulo_saude' || (colab.funcao && colab.funcao.toUpperCase().includes('ENFERMEIR')));
+
+        let roleFinal = (colab.nivel_acesso || '').toLowerCase().includes('admin') ? 'Admin' : 'Tecnico';
+        if (isSaude) {
+            roleFinal = 'Saúde (Enfermagem)';
+        } else if (perfilData?.nome) {
+            roleFinal = perfilData.nome;
+        }
+
+        // Guarda só o essencial pra sessão - nunca o hash da senha
         const session = {
             matricula: colab.matricula || colab.id,
-            role: (colab.nivel_acesso || '').toLowerCase().includes('admin') ? 'Admin' : 'Tecnico',
+            role: roleFinal,
             nome: colab.nome,
+            email: colab.email,
+            funcao: colab.funcao,
+            perfil_id: isSaude ? 'modulo_saude' : (perfilPainel?.perfil_id || null),
+            ver_todos: isSaude ? true : (perfilData ? !!perfilData.ver_todos : true),
+            modulos_edicao: isSaude ? ['saude'] : (perfilData?.modulos_edicao || null),
             loginTime: Date.now()
         };
         localStorage.setItem('active_session', JSON.stringify(session));
 
         // Fase 3 (ver scratch/roteiro_apr_login_auditoria.txt) - além da sessão de sempre,
-        // tenta autenticar de verdade no Supabase Auth com a mesma matrícula/senha, pra
-        // ganhar um JWT real (só ele faz o RLS restrito de apr_registros/apr_modelos/
-        // ghe_catalogo/acidentes/aso_exames enxergar dados). Primeira vez que essa pessoa
-        // loga depois do deploy da Fase 3 (ou se a conta Auth ainda não existe por
-        // qualquer motivo), o signInWithPassword falha - nesse caso chama a Edge Function
-        // que ativa a conta (usando a MESMA senha que acabou de ser digitada) e tenta de
-        // novo. Se mesmo assim falhar, não bloqueia o login do painel (Fase 2 continua
-        // garantindo a entrada) - só fica sem acesso às tabelas com RLS restrita até
-        // resolver, em vez de travar a pessoa fora do painel inteiro por causa disso.
+        // tenta autenticar de verdade no Supabase Auth com a mesma matrícula/senha
         if (colab.email) {
             let { error: authErr } = await sbAuth.auth.signInWithPassword({ email: colab.email, password: senha });
             if (authErr) {
@@ -324,10 +422,10 @@ async function realizarLoginDashboard() {
                 } catch (ativacaoException) {
                     authErr = ativacaoException;
                 }
-                if (authErr) console.error('Não foi possível ativar/entrar no Supabase Auth (Fase 3) - painel segue liberado pela Fase 2, mas tabelas com RLS restrita podem não carregar:', authErr);
+                if (authErr) console.error('Não foi possível ativar/entrar no Supabase Auth (Fase 3):', authErr);
             }
         } else {
-            console.error('Colaborador sem e-mail cadastrado - não é possível ativar o acesso protegido (Fase 3) pra essa conta ainda.');
+            console.error('Colaborador sem e-mail cadastrado.');
         }
 
         matriculaInput.value = '';
@@ -341,13 +439,7 @@ async function realizarLoginDashboard() {
     }
 }
 
-// Login separado pra quem foi CONVIDADO como visualizador do painel (painel_usuarios) -
-// NÃO usa matrícula nem o RPC verificar_login (isso é só pra colaborador interno). Usa o
-// Supabase Auth direto (signInWithPassword) porque essa conta já nasce no Auth: um Admin
-// convida pela tela "Usuários do Painel", o Supabase manda um e-mail de convite de
-// verdade, e a PRÓPRIA pessoa escolhe a senha lá - eu nunca vejo nem defino essa senha,
-// mesma regra de sempre. Depois de logar, busca o perfil dela (painel_usuarios +
-// painel_perfis) pra saber quais módulos liberar no menu.
+// Login separado pra quem foi CONVIDADO como visualizador do painel (painel_usuarios)
 async function realizarLoginPainelExterno() {
     const emailInput = document.getElementById('dbLoginExternoEmail');
     const senhaInput = document.getElementById('dbLoginExternoSenha');
@@ -371,7 +463,7 @@ async function realizarLoginPainelExterno() {
             return;
         }
 
-        const puRows = await supabaseFetch('painel_usuarios', `?select=*,painel_perfis(nome,modulos,ativo)&auth_user_id=eq.${authData.user.id}`);
+        const puRows = await supabaseFetch('painel_usuarios', `?select=*,painel_perfis(*)&auth_user_id=eq.${authData.user.id}`);
         const pu = Array.isArray(puRows) && puRows.length > 0 ? puRows[0] : null;
         if (!pu || pu.ativo === false || !pu.painel_perfis || pu.painel_perfis.ativo === false) {
             await sbAuth.auth.signOut();
@@ -379,12 +471,16 @@ async function realizarLoginPainelExterno() {
             return;
         }
 
+        const isSaude = (pu.matricula === '98' || pu.perfil_id === 'modulo_saude' || (pu.nome && pu.nome.toUpperCase().includes('AMANDA')));
         const session = {
             tipo: 'painel_externo',
-            matricula: null,
-            role: 'Visualizador',
+            matricula: pu.matricula || null,
+            role: isSaude ? 'Saúde (Enfermagem)' : (pu.painel_perfis.nome || 'Visualizador'),
             nome: pu.nome,
+            perfil_id: pu.perfil_id,
+            ver_todos: isSaude ? true : !!pu.painel_perfis.ver_todos,
             modulos: pu.painel_perfis.modulos || [],
+            modulos_edicao: isSaude ? ['saude'] : (pu.painel_perfis.modulos_edicao || []),
             loginTime: Date.now()
         };
         localStorage.setItem('active_session', JSON.stringify(session));
@@ -400,8 +496,7 @@ async function realizarLoginPainelExterno() {
     }
 }
 
-// Alterna a telinha de login entre "colaborador (matrícula)" e "visualizador convidado
-// (e-mail)" - os dois formulários ficam na mesma tela de login, só um por vez visível.
+// Alterna a telinha de login entre "colaborador (matrícula)" e "visualizador convidado (e-mail)"
 function alternarFormLoginPainelExterno() {
     const form = document.getElementById('dbLoginPainelExternoForm');
     const toggle = document.getElementById('dbLoginPainelExternoToggle');
@@ -409,6 +504,124 @@ function alternarFormLoginPainelExterno() {
     const vaiAbrir = form.style.display === 'none' || !form.style.display;
     form.style.display = vaiAbrir ? 'flex' : 'none';
     if (toggle) toggle.style.display = vaiAbrir ? 'none' : 'block';
+}
+
+function abrirModalPrimeiroAcessoDashboard() {
+    const modal = document.getElementById('modalPrimeiroAcessoDashboard');
+    const st = document.getElementById('paStatus');
+    if (st) st.style.display = 'none';
+    if (modal) modal.style.display = 'flex';
+}
+
+function fecharModalPrimeiroAcessoDashboard() {
+    const modal = document.getElementById('modalPrimeiroAcessoDashboard');
+    if (modal) modal.style.display = 'none';
+}
+
+async function realizarCadastroPrimeiroAcessoDashboard() {
+    const matriculaInput = document.getElementById('paMatricula');
+    const nomeInput = document.getElementById('paNome');
+    const emailInput = document.getElementById('paEmail');
+    const funcaoInput = document.getElementById('paFuncao');
+    const setorInput = document.getElementById('paSetor');
+    const senhaInput = document.getElementById('paSenha');
+    const senhaConfirmInput = document.getElementById('paSenhaConfirm');
+    const statusEl = document.getElementById('paStatus');
+    const btn = document.getElementById('btnSalvarPrimeiroAcesso');
+
+    if (statusEl) statusEl.style.display = 'none';
+
+    const matricula = (matriculaInput?.value || '').trim().toUpperCase();
+    const nome = (nomeInput?.value || '').trim();
+    const email = (emailInput?.value || '').trim().toLowerCase();
+    const funcao = (funcaoInput?.value || '').trim().toUpperCase();
+    const setor = (setorInput?.value || '').trim().toUpperCase() || 'GERAL';
+    const senha = senhaInput?.value || '';
+    const senhaConfirm = senhaConfirmInput?.value || '';
+
+    if (!matricula || !nome || !email || !funcao || !senha) {
+        if (statusEl) {
+            statusEl.textContent = '❌ Preencha todos os campos obrigatórios (*).';
+            statusEl.style.color = 'var(--danger)';
+            statusEl.style.display = 'block';
+        }
+        return;
+    }
+
+    if (senha !== senhaConfirm) {
+        if (statusEl) {
+            statusEl.textContent = '❌ As senhas não conferem.';
+            statusEl.style.color = 'var(--danger)';
+            statusEl.style.display = 'block';
+        }
+        return;
+    }
+
+    if (senha.length < 4) {
+        if (statusEl) {
+            statusEl.textContent = '❌ A senha deve ter pelo menos 4 caracteres.';
+            statusEl.style.color = 'var(--danger)';
+            statusEl.style.display = 'block';
+        }
+        return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Ativando conta...'; }
+
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/cadastrar_conta`, {
+            method: 'POST',
+            headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${SUPABASE_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                p_nome: nome,
+                p_email: email,
+                p_matricula: matricula,
+                p_funcao: funcao,
+                p_setor: setor,
+                p_senha: senha
+            })
+        });
+
+        if (!res.ok) {
+            const errTxt = await res.text();
+            let msg = 'Falha ao cadastrar.';
+            try {
+                const errJson = JSON.parse(errTxt);
+                msg = errJson.message || errJson.error || msg;
+            } catch (e) {
+                msg = errTxt || msg;
+            }
+            throw new Error(msg);
+        }
+
+        if (statusEl) {
+            statusEl.textContent = '✅ Conta ativada com sucesso! Entrando...';
+            statusEl.style.color = 'var(--success, #16a34a)';
+            statusEl.style.display = 'block';
+        }
+
+        setTimeout(async () => {
+            fecharModalPrimeiroAcessoDashboard();
+            const loginMatricula = document.getElementById('dbLoginMatricula');
+            const loginSenha = document.getElementById('dbLoginSenha');
+            if (loginMatricula) loginMatricula.value = matricula;
+            if (loginSenha) loginSenha.value = senha;
+            await realizarLoginDashboard();
+        }, 900);
+    } catch (err) {
+        console.error('Erro no primeiro acesso:', err);
+        if (statusEl) {
+            statusEl.textContent = '❌ ' + (err.message || 'Erro ao realizar cadastro.');
+            statusEl.style.color = 'var(--danger)';
+            statusEl.style.display = 'block';
+        }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Cadastrar e Ativar Conta'; }
+    }
 }
 
 async function realizarLogoutDashboard() {
@@ -1951,6 +2164,7 @@ function setObservacaoExtintorInspecaoPainel(itemId, valor) {
 }
 
 async function salvarInspecaoExtintorPainel() {
+    if (bloquearEdicaoSeNaoAutorizado('extintores')) return;
     const statusEl = document.getElementById('inspExtStatus');
     const extintorId = document.getElementById('inspExt_extintorId').value;
     const data = document.getElementById('inspExt_data').value;
@@ -2346,6 +2560,7 @@ function abrirAnexoExtintorAtual() {
 }
 
 async function salvarExtintorCad() {
+    if (bloquearEdicaoSeNaoAutorizado('extintores')) return;
     const statusEl = document.getElementById('extintorFormStatus');
     const form = document.getElementById('extintorFormCard');
     const editId = form.dataset.editId;
@@ -2401,6 +2616,7 @@ async function salvarExtintorCad() {
 }
 
 async function excluirExtintorAtual() {
+    if (bloquearEdicaoSeNaoAutorizado('extintores')) return;
     const form = document.getElementById('extintorFormCard');
     const id = form.dataset.editId;
     if (!id) return;
@@ -2579,6 +2795,7 @@ function fecharFormRelato() {
 }
 
 async function salvarRelato() {
+    if (bloquearEdicaoSeNaoAutorizado('relatos')) return;
     const statusEl = document.getElementById('relatoFormStatus');
     const tipo = document.getElementById('relForm_tipo').value;
     const descricao = document.getElementById('relForm_descricao').value.trim();
@@ -2629,6 +2846,7 @@ async function salvarRelato() {
 }
 
 async function excluirRelatoAtual() {
+    if (bloquearEdicaoSeNaoAutorizado('relatos')) return;
     const form = document.getElementById('relatoFormCard');
     const id = form.dataset.editId;
     if (!id) return;
@@ -3702,6 +3920,7 @@ function limparBuscaTreinColabPeriodo() {
 // um erro de digitação numa sessão) - até aqui esta tabela só tinha caminhos de escrita
 // (importação CSV, Lançar Treinamento, merge de catálogo), nenhum de exclusão.
 async function excluirTreinamentoRealizado(id) {
+    if (bloquearEdicaoSeNaoAutorizado('treinamentos')) return;
     if (!confirm('Excluir este registro de treinamento? Essa ação não pode ser desfeita.')) return;
     try {
         await supabaseDelete('treinamentos_realizados', id);
@@ -4643,6 +4862,7 @@ function renderListaPresencaEquipe() {
 }
 
 async function salvarLancamentoTreinamento() {
+    if (bloquearEdicaoSeNaoAutorizado('treinamentos')) return;
     const statusEl = document.getElementById('lancTreinStatus');
     const codigo = extrairCodigoTreinamento(document.getElementById('lancTreinCodigo').value);
     const data = document.getElementById('lancTreinData').value;
@@ -5037,6 +5257,7 @@ function renderListaPresencaDds() {
 }
 
 async function salvarLancamentoDds() {
+    if (bloquearEdicaoSeNaoAutorizado('ddsma')) return;
     const statusEl = document.getElementById('lancDdsStatus');
     const data = document.getElementById('lancDdsData').value;
     const frente = document.getElementById('lancDdsFrente').value;
@@ -5213,6 +5434,7 @@ function renderDdsLancamentosRecentes() {
 }
 
 async function excluirLoteDds(loteKey) {
+    if (bloquearEdicaoSeNaoAutorizado('ddsma')) return;
     const linhas = allDdsRealizados.filter(r => loteKeyDds(r) === loteKey);
     if (linhas.length === 0) return;
     const ref = linhas[0];
@@ -5482,6 +5704,7 @@ function renderLancDdsSemanaAcoes() {
 }
 
 async function salvarLancamentoDdsSemana() {
+    if (bloquearEdicaoSeNaoAutorizado('ddsma')) return;
     const statusEl = document.getElementById('lancDdsSemanaStatus');
     if (!lancDdsSemanaFrente) { statusEl.textContent = '❌ Selecione a Frente/Encarregado.'; statusEl.style.color = 'var(--danger)'; return; }
     if (lancDdsSemanaDias.length === 0) { statusEl.textContent = '❌ Selecione a data de referência.'; statusEl.style.color = 'var(--danger)'; return; }
@@ -8499,6 +8722,7 @@ async function confirmarMesclarExcluir() {
 }
 
 async function salvarCatalogoTreinamento() {
+    if (bloquearEdicaoSeNaoAutorizado('treinamentos')) return;
     const statusEl = document.getElementById('catalogoFormStatus');
     const codigoInput = document.getElementById('catForm_codigo');
     const codigo = codigoInput.value.trim();
@@ -9798,6 +10022,7 @@ function renderRiscosGheForm() {
 }
 
 async function salvarMapaRiscosGhe() {
+    if (bloquearEdicaoSeNaoAutorizado('matrizrisco')) return;
     const statusEl = document.getElementById('gheMapaRiscosStatus');
     const g = allGheCatalogo.find(x => x.id === gheAtualGerenciado);
     if (!g) return;
@@ -10368,6 +10593,7 @@ function renderMatrizEditFields() {
 }
 
 async function salvarMatrizRiscos() {
+    if (bloquearEdicaoSeNaoAutorizado('matrizrisco')) return;
     const g = allGheCatalogo.find(x => x.id === matrizEditId);
     if (!g) return;
     const statusEl = document.getElementById('mepiEditStatus-' + matrizEditId);
@@ -10906,6 +11132,7 @@ function fecharFormEfetivo() {
 }
 
 async function salvarColaboradorEfetivo() {
+    if (bloquearEdicaoSeNaoAutorizado('efetivo')) return;
     const statusEl = document.getElementById('efetivoFormStatus');
     const matricula = document.getElementById('efForm_matricula').value.trim();
     const nome = document.getElementById('efForm_nome').value.trim();
@@ -13594,6 +13821,7 @@ function fecharFormAcidente() {
 }
 
 async function salvarAcidente() {
+    if (bloquearEdicaoSeNaoAutorizado('acidentes')) return;
     const statusEl = document.getElementById('acidenteFormStatus');
     const data = document.getElementById('acidForm_data').value;
     const tipo = document.getElementById('acidForm_tipo').value;
@@ -13661,6 +13889,7 @@ async function salvarAcidente() {
 }
 
 async function excluirAcidenteAtual() {
+    if (bloquearEdicaoSeNaoAutorizado('acidentes')) return;
     const form = document.getElementById('acidenteFormCard');
     const id = form.dataset.editId;
     if (!id) return;
@@ -16716,6 +16945,7 @@ function fecharFormEpiCatalogo() {
 }
 
 async function salvarEpiCatalogo() {
+    if (bloquearEdicaoSeNaoAutorizado('epi')) return;
     const statusEl = document.getElementById('epiCatalogoFormStatus');
     const idInput = document.getElementById('epiCatForm_id');
     const id = idInput.value.trim();
@@ -16794,6 +17024,7 @@ function iniciarExclusaoEpiCatalogo() {
 }
 
 async function excluirEpiCatalogoDireto(id) {
+    if (bloquearEdicaoSeNaoAutorizado('epi')) return;
     const statusEl = document.getElementById('epiCatalogoFormStatus');
     statusEl.textContent = 'Excluindo...';
     statusEl.style.color = 'var(--text-light)';
@@ -17642,6 +17873,7 @@ function fecharFormEpiEntrada() {
 }
 
 async function salvarEpiEntrada() {
+    if (bloquearEdicaoSeNaoAutorizado('epi')) return;
     const statusEl = document.getElementById('epiEntradaFormStatus');
     const form = document.getElementById('epiEntradaFormCard');
     const editCatalogoId = form.dataset.editCatalogoId;
@@ -18117,6 +18349,7 @@ function fecharFormEpiEntrega() {
 }
 
 async function salvarEpiEntrega() {
+    if (bloquearEdicaoSeNaoAutorizado('epi')) return;
     const statusEl = document.getElementById('epiEntregaFormStatus');
     const data = document.getElementById('epiEntregaForm_data').value;
     const qtd = parseInt(document.getElementById('epiEntregaForm_quantidade').value, 10) || 1;
@@ -18195,6 +18428,7 @@ async function salvarEpiEntrega() {
 }
 
 async function excluirEpiEntregaAtual() {
+    if (bloquearEdicaoSeNaoAutorizado('epi')) return;
     const form = document.getElementById('epiEntregaFormCard');
     const id = form.dataset.editId;
     if (!id) return;
@@ -19406,6 +19640,7 @@ function showDbPage(pageId) {
     if (pageId === 'acervodrive') {
         resetAcervoDrive();
     }
+    atualizarAvisosPermissaoPagina(pageId);
 }
 
 // ============================================
@@ -22060,6 +22295,7 @@ function renderRiscosAprForm() {
 }
 
 async function salvarApr() {
+    if (bloquearEdicaoSeNaoAutorizado('apr')) return;
     const statusEl = document.getElementById('aprFormStatus');
     const numero = document.getElementById('aprForm_numero').value.trim();
     const dataEmissao = document.getElementById('aprForm_dataEmissao').value;
@@ -22256,6 +22492,7 @@ function renderAprHistoricoLista() {
 }
 
 async function excluirApr(id) {
+    if (bloquearEdicaoSeNaoAutorizado('apr')) return;
     const a = allAprRegistros.find(x => x.id === id);
     if (!a) return;
     if (!confirm(`Excluir a APR ${id} (${a.descricao_atividade || a.setor_unidade || ''})? Essa ação não pode ser desfeita.`)) return;
@@ -23041,6 +23278,7 @@ function abrirAnexoReuniaoCipaAtual() {
 }
 
 async function salvarReuniaoCipa(marcarRealizada) {
+    if (bloquearEdicaoSeNaoAutorizado('cipa')) return;
     const statusEl = document.getElementById('cipaReuniaoFormStatus');
     const idAtual = document.getElementById('cipaReuniaoFormCard').dataset.id;
     const tipo = document.getElementById('cipaReuniaoForm_tipo').value;
@@ -23107,6 +23345,7 @@ async function salvarReuniaoCipa(marcarRealizada) {
 }
 
 async function excluirReuniaoCipaAtual() {
+    if (bloquearEdicaoSeNaoAutorizado('cipa')) return;
     const id = document.getElementById('cipaReuniaoFormCard').dataset.id;
     if (!id) return;
     if (!confirm('Excluir esta reunião? Essa ação não pode ser desfeita.')) return;
@@ -24686,6 +24925,7 @@ function fecharFormPlanoAcao() {
 }
 
 async function salvarPlanoAcao() {
+    if (bloquearEdicaoSeNaoAutorizado('cipa')) return;
     const statusEl = document.getElementById('planoAcaoFormStatus');
     const idAtual = document.getElementById('planoAcaoFormCard').dataset.id;
     const descricao = document.getElementById('planoAcaoForm_descricao').value.trim();
@@ -24827,6 +25067,7 @@ function fecharFormCipaMembro() {
 }
 
 async function salvarCipaMembro() {
+    if (bloquearEdicaoSeNaoAutorizado('cipa')) return;
     const statusEl = document.getElementById('cipaMembroFormStatus');
     const idAtual = document.getElementById('cipaMembroFormCard').dataset.id;
     const nome = document.getElementById('cipaMembroForm_nome').value.trim();
@@ -25019,6 +25260,7 @@ function renderHistoricoRevisoes(documentoId) {
 }
 
 async function salvarDocumento() {
+    if (bloquearEdicaoSeNaoAutorizado('documentos')) return;
     const statusEl = document.getElementById('documentoFormStatus');
     const id = document.getElementById('documentoFormCard').dataset.id;
     const existente = allDocumentosControle.find(d => d.id === id);
@@ -26095,6 +26337,7 @@ function fecharFormBrigadaMembro() {
 }
 
 async function salvarBrigadaMembro() {
+    if (bloquearEdicaoSeNaoAutorizado('brigada')) return;
     const statusEl = document.getElementById('brigadaMembroFormStatus');
     const idAtual = document.getElementById('brigadaMembroFormCard').dataset.id;
     const nome = document.getElementById('brigadaMembroForm_nome').value.trim();
@@ -30374,6 +30617,7 @@ function atualizarSugestaoRiscoGlobalAep() {
 }
 
 async function salvarFormularioAep() {
+    if (bloquearEdicaoSeNaoAutorizado('ergonomia')) return;
     const idExistente = document.getElementById('aepForm_id').value;
     const codigo = document.getElementById('aepForm_codigo').value.trim();
     const dataAvaliacao = document.getElementById('aepForm_data').value;
@@ -30435,6 +30679,7 @@ async function salvarFormularioAep() {
 }
 
 async function excluirAep(id) {
+    if (bloquearEdicaoSeNaoAutorizado('ergonomia')) return;
     const a = allErgonomiaAep.find(item => item.id === id);
     if (!a) return;
     const acoesVinculadas = allErgonomiaPlanoAcao.filter(p => p.aep_id === id).length;
@@ -30544,6 +30789,7 @@ function fecharModalErgonomiaAcao() {
 }
 
 async function salvarFormularioAcaoErgonomia() {
+    if (bloquearEdicaoSeNaoAutorizado('ergonomia')) return;
     const idExistente = document.getElementById('acaoErgForm_id').value;
     const posto = document.getElementById('acaoErgForm_posto').value.trim();
     const acao = document.getElementById('acaoErgForm_acao').value.trim();
@@ -30597,6 +30843,7 @@ async function salvarFormularioAcaoErgonomia() {
 }
 
 async function excluirAcaoErgonomia(id) {
+    if (bloquearEdicaoSeNaoAutorizado('ergonomia')) return;
     const p = allErgonomiaPlanoAcao.find(item => item.id === id);
     if (!p) return;
     if (!confirm(`Deseja excluir a ação "${p.acao_proposta}"?`)) return;
@@ -31744,6 +31991,7 @@ function aoAlternarCaracterizacaoPeric(checked) {
 }
 
 async function salvarAnalisePericulosidade() {
+    if (bloquearEdicaoSeNaoAutorizado('periculosidade')) return;
     const setor = (document.getElementById('pericForm_setor')?.value || '').trim();
     const posto = (document.getElementById('pericForm_posto')?.value || '').trim();
     const cargo = (document.getElementById('pericForm_cargo')?.value || '').trim();
@@ -31810,6 +32058,7 @@ async function salvarAnalisePericulosidade() {
 }
 
 async function excluirAnalisePericulosidade(id) {
+    if (bloquearEdicaoSeNaoAutorizado('periculosidade')) return;
     const item = allPericulosidadeAnalises.find(x => x.id === id);
     if (!item) return;
 

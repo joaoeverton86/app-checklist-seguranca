@@ -25,8 +25,8 @@
             </div>
             <div style="display:flex; flex-direction:column; gap:12px;">
                 <div>
-                    <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Matrícula / Usuário</label>
-                    <input type="text" id="dbLoginMatricula" placeholder="Digite sua matrícula..." style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:14px;" onkeydown="if(event.key==='Enter') document.getElementById('dbLoginSenha').focus();">
+                    <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Matrícula ou E-mail corporativo</label>
+                    <input type="text" id="dbLoginMatricula" placeholder="Digite sua matrícula ou e-mail..." style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:14px;" onkeydown="if(event.key==='Enter') document.getElementById('dbLoginSenha').focus();">
                 </div>
                 <div>
                     <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Senha</label>
@@ -34,11 +34,16 @@
                 </div>
                 <button class="db-apply-btn" id="dbLoginBtn" style="margin-top:6px; padding:11px; font-size:14px;" onclick="realizarLoginDashboard()">🔑 Entrar</button>
                 <div id="dbLoginError" style="display:none; font-size:12px; color:var(--danger); font-weight:600; text-align:center;"></div>
-                <div style="font-size:11px; color:var(--text-light); text-align:center; margin-top:6px; line-height:1.5;">Mesma matrícula/senha do app de campo.<br>Não tem conta? Cadastre-se pelo app.</div>
 
-                <div id="dbLoginPainelExternoToggle" style="text-align:center; margin-top:12px;">
-                    <a href="#" style="font-size:12px; color:var(--text-light); text-decoration:underline;" onclick="event.preventDefault(); alternarFormLoginPainelExterno();">Fui convidado como visualizador (e-mail)</a>
+                <div style="display:flex; flex-direction:column; gap:8px; margin-top:10px; text-align:center;">
+                    <button type="button" class="db-clear-btn" style="padding:9px; font-size:13px; font-weight:600; color:var(--primary); border:1px dashed var(--primary); border-radius:8px; background:rgba(37,99,235,0.04); cursor:pointer;" onclick="abrirModalPrimeiroAcessoDashboard()">
+                        📝 Primeiro Acesso / Criar Senha
+                    </button>
+                    <div id="dbLoginPainelExternoToggle" style="margin-top:4px;">
+                        <a href="#" style="font-size:12px; color:var(--text-light); text-decoration:underline;" onclick="event.preventDefault(); alternarFormLoginPainelExterno();">Fui convidado como visualizador (e-mail)</a>
+                    </div>
                 </div>
+
                 <div id="dbLoginPainelExternoForm" style="display:none; flex-direction:column; gap:12px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
                     <div>
                         <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">E-mail</label>
@@ -50,6 +55,62 @@
                     </div>
                     <button class="db-apply-btn" id="dbLoginExternoBtn" style="padding:11px; font-size:14px;" onclick="realizarLoginPainelExterno()">🔑 Entrar como visualizador</button>
                     <div id="dbLoginExternoError" style="display:none; font-size:12px; color:var(--danger); font-weight:600; text-align:center;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Primeiro Acesso / Cadastro no Painel -->
+    <div id="modalPrimeiroAcessoDashboard" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:10000; align-items:center; justify-content:center; padding:16px;">
+        <div style="width:100%; max-width:440px; background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:16px; padding:24px; box-shadow:0 12px 40px rgba(0,0,0,0.25); box-sizing:border-box;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:14px;">
+                <div style="font-size:16px; font-weight:700; color:var(--text-primary);">🛡️ Primeiro Acesso / Criar Senha</div>
+                <button class="db-clear-btn" onclick="fecharModalPrimeiroAcessoDashboard()">✕</button>
+            </div>
+            <div style="font-size:12px; color:var(--text-light); margin-bottom:14px; line-height:1.4;">
+                Cadastre-se ou ative sua senha diretamente pelo painel para ter acesso ao sistema.
+            </div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <div>
+                    <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:3px;">Matrícula *</label>
+                    <input type="text" id="paMatricula" placeholder="Ex: 98" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:7px; font-size:13px; box-sizing:border-box;">
+                </div>
+                <div>
+                    <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:3px;">Nome Completo *</label>
+                    <input type="text" id="paNome" placeholder="Seu nome completo" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:7px; font-size:13px; box-sizing:border-box;">
+                </div>
+                <div>
+                    <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:3px;">E-mail *</label>
+                    <input type="email" id="paEmail" placeholder="seu.email@coppisf.com.br" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:7px; font-size:13px; box-sizing:border-box;">
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <div>
+                        <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:3px;">Função / Cargo *</label>
+                        <input type="text" id="paFuncao" placeholder="Ex: TEC. ENFERMEIRO" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:7px; font-size:13px; box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:3px;">Setor</label>
+                        <input type="text" id="paSetor" placeholder="Ex: SESMT" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:7px; font-size:13px; box-sizing:border-box;">
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <div>
+                        <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:3px;">Senha *</label>
+                        <input type="password" id="paSenha" placeholder="Mínimo 4 dígitos" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:7px; font-size:13px; box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:3px;">Confirmar Senha *</label>
+                        <input type="password" id="paSenhaConfirm" placeholder="Repita a senha" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:7px; font-size:13px; box-sizing:border-box;">
+                    </div>
+                </div>
+                <div id="paStatus" style="display:none; font-size:12px; font-weight:600; text-align:center; margin-top:4px;"></div>
+                <div style="display:flex; gap:8px; margin-top:8px;">
+                    <button type="button" class="db-apply-btn" id="btnSalvarPrimeiroAcesso" style="flex:1; padding:10px; font-size:13.5px;" onclick="realizarCadastroPrimeiroAcessoDashboard()">
+                        💾 Cadastrar e Ativar Conta
+                    </button>
+                    <button type="button" class="db-clear-btn" style="padding:10px; font-size:13.5px;" onclick="fecharModalPrimeiroAcessoDashboard()">
+                        Cancelar
+                    </button>
                 </div>
             </div>
         </div>
@@ -6799,7 +6860,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=123"></script>
+    <script src="dashboard.js?v=124"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();

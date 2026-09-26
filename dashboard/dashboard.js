@@ -30795,12 +30795,7 @@ function imprimirLaudoAep(id) {
     </div>
 </body></html>`;
 
-    const win = window.open('', '_blank');
-    if (win) {
-        win.document.open();
-        win.document.write(html);
-        win.document.close();
-    }
+    abrirDocumentoHtmlParaImpressao(html, `Laudo AEP - ${a.codigo || ''}`);
 }
 
 function imprimirPlanoGeralErgonomia() {
@@ -30910,11 +30905,32 @@ function imprimirPlanoGeralErgonomia() {
     </div>
 </body></html>`;
 
-    const win = window.open('', '_blank');
-    if (win) {
-        win.document.open();
-        win.document.write(html);
-        win.document.close();
+    abrirDocumentoHtmlParaImpressao(html, 'Relatório Geral de Ergonomia NR-17');
+}
+
+function abrirDocumentoHtmlParaImpressao(html, titulo) {
+    try {
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+        console.warn('Erro ao abrir documento via Blob:', err);
+        const win = window.open('', '_blank');
+        if (win) {
+            win.document.open();
+            win.document.write(html);
+            win.document.close();
+        } else {
+            alert('O navegador bloqueou a abertura do documento. Por favor, autorize pop-ups para visualizar a impressão.');
+        }
     }
 }
+
 

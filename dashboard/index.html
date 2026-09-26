@@ -4067,7 +4067,7 @@
                         <span>⚡</span> Matriz Pericial por Função (NR-16)
                     </button>
                     <button class="db-subnav-btn" id="pericSubtabBtn-colaboradores" onclick="showPericulosidadeSubtab('colaboradores')" style="padding: 9px 18px; font-weight: 600; font-size: 13px; border: none; background: transparent; cursor: pointer; border-radius: 6px 6px 0 0; display: inline-flex; align-items: center; gap: 6px;">
-                        <span>👥</span> Colaboradores Elegíveis (Folha / RH) <span id="badgeQtdPericColabs" style="background: #dc2626; color: #fff; font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: 700; margin-left: 4px;">22</span>
+                        <span>👥</span> Colaboradores Elegíveis (Folha / RH) <span id="badgeQtdPericColabs" style="background: #dc2626; color: #fff; font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: 700; margin-left: 4px;">28</span>
                     </button>
                 </div>
 
@@ -4076,15 +4076,15 @@
                     <!-- KPIs de Periculosidade -->
                     <div class="db-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 20px;">
                         <div class="db-kpi-card db-kpi-primary">
-                            <div class="db-kpi-value" id="kpiPericTotalTrabalhadores">129</div>
+                            <div class="db-kpi-value" id="kpiPericTotalTrabalhadores">130</div>
                             <div class="db-kpi-label">👥 Total Mapeado na Obra</div>
                         </div>
                         <div class="db-kpi-card" style="border-left: 4px solid #dc2626;">
-                            <div class="db-kpi-value" id="kpiPericCaracterizados" style="color: #dc2626;">22</div>
+                            <div class="db-kpi-value" id="kpiPericCaracterizados" style="color: #dc2626;">28</div>
                             <div class="db-kpi-label">⚡ Com Periculosidade (30%)</div>
                         </div>
                         <div class="db-kpi-card" style="border-left: 4px solid #16a34a;">
-                            <div class="db-kpi-value" id="kpiPericDescaracterizados" style="color: #16a34a;">107</div>
+                            <div class="db-kpi-value" id="kpiPericDescaracterizados" style="color: #16a34a;">102</div>
                             <div class="db-kpi-label">🛡️ Descaracterizados (0%)</div>
                         </div>
                         <div class="db-kpi-card" style="border-left: 4px solid #0284c7;">
@@ -4092,7 +4092,7 @@
                             <div class="db-kpi-label">📜 Anexos NR-16 Enquadrados</div>
                         </div>
                         <div class="db-kpi-card" style="border-left: 4px solid #7c3aed;">
-                            <div class="db-kpi-value" id="kpiPericImpactoMensal" style="color: #7c3aed; font-size: 20px;">R$ 25.890,00</div>
+                            <div class="db-kpi-value" id="kpiPericImpactoMensal" style="color: #7c3aed; font-size: 20px;">R$ 28.020,00</div>
                             <div class="db-kpi-label">💰 Impacto Estimado / Mês</div>
                         </div>
                     </div>
@@ -4156,15 +4156,15 @@
                             </div>
                             <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
                                 <div style="font-size: 11px; text-transform: uppercase; color: var(--text-light); font-weight: 700;">Setores Abrangidos</div>
-                                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-top: 5px;" id="kpiColabPericSetores">Operação, Manut. Elétrica, Transporte</div>
+                                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-top: 5px;" id="kpiColabPericSetores">Operação, Manut. Elétrica, Conservação</div>
                             </div>
                             <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
                                 <div style="font-size: 11px; text-transform: uppercase; color: var(--text-light); font-weight: 700;">Folha Salarial Base Estimada</div>
-                                <div style="font-size: 18px; font-weight: 800; color: var(--text-primary); margin-top: 2px;" id="kpiColabPericFolhaBase">R$ 86.300,00</div>
+                                <div style="font-size: 18px; font-weight: 800; color: var(--text-primary); margin-top: 2px;" id="kpiColabPericFolhaBase">R$ 93.400,00</div>
                             </div>
                             <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
                                 <div style="font-size: 11px; text-transform: uppercase; color: var(--text-light); font-weight: 700;">Adicional 30% Mensal Estimado</div>
-                                <div style="font-size: 20px; font-weight: 800; color: #7c3aed; margin-top: 2px;" id="kpiColabPericFolhaAdicional">R$ 25.890,00</div>
+                                <div style="font-size: 20px; font-weight: 800; color: #7c3aed; margin-top: 2px;" id="kpiColabPericFolhaAdicional">R$ 28.020,00</div>
                             </div>
                         </div>
 
@@ -4180,6 +4180,7 @@
                                 <option value="">Todos os Setores</option>
                                 <option value="OPERAÇÃO">Operação (Sistemas Hídricos e Subestações)</option>
                                 <option value="MANUTENÇÃO ELÉTRICA">Manutenção Elétrica / SEP</option>
+                                <option value="CONSERVAÇÃO">Conservação e Limpeza (Faixa de Servidão LT 69 kV / Subestação)</option>
                                 <option value="ANALISTA">Engenharia / Analistas Elétricos</option>
                                 <option value="TRANSPORTE">Transporte / Comboio</option>
                             </select>

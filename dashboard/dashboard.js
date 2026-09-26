@@ -31251,6 +31251,14 @@ function obterClassificacaoPericulosidadeColaborador(c) {
         localTrabalho = 'Frentes de Serviço / Caminhão Comboio';
         salBase = 3500;
     }
+    // 6. GRUPO 26: Conservação e Limpeza de Subestação e Faixa de Servidão (LT 69 kV)
+    else if (g === '26' || (s.includes('CONSERVAÇÃO') && (g === '26' || f.includes('SERVENTE') || f.includes('ENCARREGADO') || f.includes('ROÇ')))) {
+        isPeric = true;
+        anexo = 'Anexo 4 - Energia Elétrica';
+        motivo = 'Roço, poda e remoção de vegetação regenerada na Faixa de Servidão da Linha de Transmissão de Alta Tensão (LT 69 kV) e áreas periféricas da Subestação (Risco crítico de choque elétrico por aproximação ou indução magnética no SEP).';
+        localTrabalho = 'Faixa de Servidão LT 69 kV / Subestação';
+        salBase = f.includes('ENC') ? 3800 : 1900;
+    }
 
     const adicional = isPeric ? (salBase * 0.30) : 0;
 
@@ -31572,7 +31580,7 @@ function imprimirRelacaoNominalPericulosidadeRH() {
     <div class="box-info">
         <b>Empresa:</b> ${laudoAtivo.empresa} • <b>CNPJ:</b> ${laudoAtivo.cnpj}<br>
         <b>Laudo Pericial Base:</b> ${laudoAtivo.codigo} (Vigência 20/07/2026 a 20/07/2027) • <b>Resp. Técnico:</b> ${laudoAtivo.responsavel_tecnico} (${laudoAtivo.registro_profissional})<br>
-        <b>Observação Técnica:</b> Inclui o Grupo 10 (Operação de Sistemas Hídricos) por permanência na Estação de Bombeamento em proximidade com painéis de força e determinação corporativa da empresa.
+        <b>Observação Técnica:</b> Inclui o Grupo 10 (Operação de Sistemas Hídricos) e o Grupo 26 (Conservação e Limpeza de Subestação e Faixa de Servidão de Linha de Transmissão LT 69 kV) por atuação em Zonas de Risco e Controlada de Sistemas Elétricos de Potência (SEP) energizados, conforme Anexo 4 da NR-16.
     </div>
 
     <table class="tabela-dados">
@@ -32058,7 +32066,7 @@ function emitirLaudoOficialPericulosidade() {
         <li><b>Anexo 1 (Explosivos):</b> Descaracterizado no canteiro. Não há estocagem ou detonações ativas na fase atual.</li>
         <li><b>Anexo 2 (Inflamáveis):</b> Caracterizado para a operação e condução do Caminhão Comboio (transporte e abastecimento com tanques de óleo diesel com volume superior a 200 litros em bacia/área de risco de raio de 7,5 metros). Descaracterizado para pequenos volumes manuais (< 5L) de roçadeiras conforme Item 4 do Anexo 2.</li>
         <li><b>Anexo 3 (Segurança Pessoal/Patrimonial):</b> Descaracterizado para os Vigias de portaria desarmados. Conforme a Portaria MTE nº 1.885/2013 e o Incidente de Recursos Repetitivos (Tema 16) do Tribunal Superior do Trabalho (TST), o adicional é privativo dos profissionais enquadrados formalmente na Lei Federal nº 7.102/83 (Vigilantes formados).</li>
-        <li><b>Anexo 4 (Energia Elétrica / SEP):</b> Caracterizado para os Técnicos de Manutenção Elétrica, Analistas Elétricos e Operadores de Subestação de Alta Tensão nas Estações de Bombeamento. <b>Adicionalmente, inclui-se os integrantes do Grupo 10 (Operação de Sistemas Hídricos)</b>, cujos encarregados e operadores permanecem no interior das Estações de Bombeamento em proximidade com os painéis de força e controle elétrico, respaldados por determinação corporativa da empresa visando à segurança jurídica e prevenção de passivos trabalhistas.</li>
+        <li><b>Anexo 4 (Energia Elétrica / SEP):</b> Caracterizado para os Técnicos de Manutenção Elétrica, Analistas Elétricos e Operadores de Subestação de Alta Tensão nas Estações de Bombeamento. Adicionalmente, inclui-se os integrantes do <b>Grupo 10 (Operação de Sistemas Hídricos)</b> por permanência na Estação de Bombeamento em proximidade com painéis de força elétricos, e os integrantes do <b>Grupo 26 (Conservação e Limpeza de Subestação e Faixa de Servidão)</b>, que executam roço, poda e remoção de vegetação sob a Linha de Transmissão de Alta Tensão (LT 69 kV) e áreas periféricas da Subestação, expostos ao risco crítico de choque elétrico por aproximação ou indução magnética no Sistema Elétrico de Potência (SEP) energizado.</li>
         <li><b>Anexo 5 (Motocicleta):</b> Descaracterizado. A empresa não utiliza deslocamento em motocicleta como atividade-fim laboral.</li>
     </ul>
 
@@ -32105,8 +32113,9 @@ function emitirLaudoOficialPericulosidade() {
     <ol style="padding-left: 20px; font-size: 10pt;">
         <li><b>Bloqueio e Etiquetagem (LOTO - NR-10):</b> Manter o rigoroso procedimento de desenergização e impedimento mecânico antes de qualquer intervenção da equipe mecânica nos conjuntos motobombas, garantindo a descaracterização do risco elétrico para esses profissionais.</li>
         <li><b>Prontuário das Instalações Elétricas (PIE):</b> Manter atualizados os esquemas unifilares das subestações e laudos de aterramento e SPDA de todas as Estações de Bombeamento.</li>
+        <li><b>Faixa de Servidão de Linha de Transmissão (LT 69 kV - Grupo 26):</b> Garantir treinamento obrigatório em NR-10 (Básico e Complementar SEP) para a equipe de conservação e roço; assegurar distâncias mínimas de segurança em relação aos cabos condutores de alta tensão; exigir uso obrigatório de perneiras de proteção contra animais peçonhentos (cobras, escorpiões) e óculos/protetor facial contra partículas volantes de roçadeiras motorizadas.</li>
         <li><b>Caminhão Comboio:</b> Fiscalizar a certificação INMETRO do tanque de combustível, aterramento prévio durante descargas e porte obrigatório do curso MOPP pelo motorista operador.</li>
-        <li><b>Gestão da Folha de Pagamento:</b> Efetuar o pagamento do adicional de periculosidade de 30% estritamente sobre o salário-base aos profissionais caracterizados nos Grupos de Operação Hídrica (G10/G25), Manutenção Elétrica e Abastecimento, sem inclusão de gratificações conforme art. 193, §1º da CLT.</li>
+        <li><b>Gestão da Folha de Pagamento:</b> Efetuar o pagamento do adicional de periculosidade de 30% estritamente sobre o salário-base aos profissionais caracterizados nos Grupos de Operação Hídrica (G10/G25), Manutenção Elétrica, Conservação de Faixa de Servidão (G26) e Abastecimento, sem inclusão de gratificações conforme art. 193, §1º da CLT.</li>
     </ol>
 
     <h2>7. Termo de Encerramento e Validação Pericial</h2>

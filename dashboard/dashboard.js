@@ -18421,7 +18421,8 @@ const DB_PAGE_TITLES = {
     importexport: 'Importar/Exportar Planilhas',
     config: 'Configurações',
     usuariospainel: 'Usuários do Painel',
-    ergonomia: 'Ergonomia (NR-17)'
+    ergonomia: 'Ergonomia (NR-17)',
+    periculosidade: 'Periculosidade (NR-16) - Laudo Pericial (LP)'
 };
 
 // ============================================
@@ -19291,7 +19292,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia', periculosidade: 'navPericulosidade' };
     document.getElementById(navMap[pageId])?.classList.add('active');
     abrirGrupoNavPagina(pageId);
     destacarGrupoAtivo(pageId);
@@ -19394,6 +19395,10 @@ function showDbPage(pageId) {
         if (!ergonomiaLoaded) { ergonomiaLoaded = true; loadErgonomiaData(); }
         else if (document.getElementById('ergonomiaSubtabBtn-visao')?.classList.contains('active')) renderErgonomiaVisao();
         else if (document.getElementById('ergonomiaSubtabBtn-plano')?.classList.contains('active')) renderErgonomiaPlano();
+    }
+    if (pageId === 'periculosidade') {
+        if (!periculosidadeLoaded) { periculosidadeLoaded = true; loadPericulosidadeData(); }
+        else renderPericulosidadePanel();
     }
     // Sempre reinicia na tela de escolha de categoria (Treinamentos/DDSMA) ao entrar
     // nesta página - é uma navegação ao vivo no Drive, sem estado pra preservar/cachear
@@ -30932,5 +30937,787 @@ function abrirDocumentoHtmlParaImpressao(html, titulo) {
         }
     }
 }
+
+// ================================================================
+// MÓDULO DE PERICULOSIDADE (NR-16) - LAUDO PERICIAL (LP)
+// Consórcio Operador Ramal do Agreste - Gestão Técnica Oficial
+// ================================================================
+let allPericulosidadeLaudos = [];
+let allPericulosidadeAnalises = [];
+let periculosidadeLoaded = false;
+let analisePericEditandoId = null;
+
+async function loadPericulosidadeData() {
+    try {
+        const [laudosRes, analisesRes] = await Promise.all([
+            supabaseFetch('periculosidade_laudos', '?select=*&order=created_at.desc'),
+            supabaseFetch('periculosidade_analises', '?select=*&order=grupo_numero.asc')
+        ]);
+
+        allPericulosidadeLaudos = Array.isArray(laudosRes) ? laudosRes : [];
+        allPericulosidadeAnalises = Array.isArray(analisesRes) ? analisesRes : [];
+
+        // Atualiza cabeçalho do laudo ativo
+        const laudoAtivo = allPericulosidadeLaudos[0];
+        if (laudoAtivo) {
+            const elCod = document.getElementById('pericLaudoCodigo');
+            const elVig = document.getElementById('pericLaudoVigencia');
+            const elResp = document.getElementById('pericLaudoResp');
+            if (elCod) elCod.textContent = laudoAtivo.codigo || 'LP-2026/2027';
+            if (elVig) {
+                const dtIni = laudoAtivo.data_inicio ? laudoAtivo.data_inicio.split('-').reverse().join('/') : '20/07/2026';
+                const dtFim = laudoAtivo.data_fim ? laudoAtivo.data_fim.split('-').reverse().join('/') : '20/07/2027';
+                elVig.textContent = `${dtIni} a ${dtFim}`;
+            }
+            if (elResp) elResp.textContent = `${laudoAtivo.responsavel_tecnico || 'Eng. João Everton'} (${laudoAtivo.registro_profissional || 'CREA 0522078320-BA'})`;
+        }
+
+        renderPericulosidadePanel();
+    } catch (err) {
+        console.error('Erro ao carregar dados de periculosidade:', err);
+        renderPericulosidadePanel();
+    }
+}
+
+function renderPericulosidadePanel() {
+    renderPericulosidadeKpis();
+    filtrarPericulosidadeLista();
+}
+
+function renderPericulosidadeKpis() {
+    let totalTrab = 0;
+    let totalPeric = 0;
+    let totalNaoPeric = 0;
+    let impactoMensal = 0;
+    const anexosSet = new Set();
+
+    allPericulosidadeAnalises.forEach(item => {
+        const n = parseInt(item.num_trabalhadores, 10) || 0;
+        totalTrab += n;
+        if (item.caracterizacao === true || item.caracterizacao === 'true') {
+            totalPeric += n;
+            const sal = parseFloat(item.salario_base_medio) || 0;
+            const perc = (parseFloat(item.percentual_adicional) || 30) / 100;
+            impactoMensal += (sal * perc) * n;
+            if (item.anexo_nr16 && !item.anexo_nr16.includes('Nenhum')) {
+                const anexoCurto = item.anexo_nr16.split('-')[0].trim();
+                anexosSet.add(anexoCurto);
+            }
+        } else {
+            totalNaoPeric += n;
+        }
+    });
+
+    const elTotal = document.getElementById('kpiPericTotalTrabalhadores');
+    const elPeric = document.getElementById('kpiPericCaracterizados');
+    const elNaoPeric = document.getElementById('kpiPericDescaracterizados');
+    const elAnexos = document.getElementById('kpiPericAnexosAtivos');
+    const elImpacto = document.getElementById('kpiPericImpactoMensal');
+
+    if (elTotal) elTotal.textContent = totalTrab;
+    if (elPeric) elPeric.textContent = totalPeric;
+    if (elNaoPeric) elNaoPeric.textContent = totalNaoPeric;
+    if (elAnexos) elAnexos.textContent = anexosSet.size > 0 ? Array.from(anexosSet).join(' e ') : 'Nenhum';
+    if (elImpacto) {
+        elImpacto.textContent = impactoMensal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+}
+
+function filtrarPericulosidadeLista() {
+    const search = (document.getElementById('pericSearchInput')?.value || '').trim().toLowerCase();
+    const filtroConclusao = document.getElementById('pericFiltroConclusao')?.value || '';
+    const filtroAnexo = document.getElementById('pericFiltroAnexo')?.value || '';
+
+    let filtrados = allPericulosidadeAnalises.filter(item => {
+        if (filtroConclusao === 'periculoso' && !(item.caracterizacao === true || item.caracterizacao === 'true')) return false;
+        if (filtroConclusao === 'nao_periculoso' && (item.caracterizacao === true || item.caracterizacao === 'true')) return false;
+        if (filtroAnexo && item.anexo_nr16 !== filtroAnexo) return false;
+
+        if (search) {
+            const haystack = [
+                item.setor, item.cargo_funcao, item.posto_trabalho, item.cbo,
+                item.ghe, item.anexo_nr16, item.agente_periculoso, item.fundamentacao_legal
+            ].map(x => (x || '').toLowerCase()).join(' ');
+            if (!haystack.includes(search)) return false;
+        }
+        return true;
+    });
+
+    // Ordenar: primeiro os periculosos, depois por grupo_numero
+    filtrados.sort((a, b) => {
+        const aPeric = (a.caracterizacao === true || a.caracterizacao === 'true') ? 1 : 0;
+        const bPeric = (b.caracterizacao === true || b.caracterizacao === 'true') ? 1 : 0;
+        if (bPeric !== aPeric) return bPeric - aPeric;
+        return (a.grupo_numero || 99) - (b.grupo_numero || 99);
+    });
+
+    const container = document.getElementById('periculosidadeTabelaContainer');
+    if (!container) return;
+
+    if (filtrados.length === 0) {
+        container.innerHTML = `
+            <div style="padding: 30px; text-align: center; color: var(--text-light);">
+                Nenhuma análise de periculosidade encontrada com os filtros informados.
+            </div>`;
+        return;
+    }
+
+    let html = `
+        <table class="db-table" style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
+            <thead>
+                <tr style="background: var(--bg); border-bottom: 2px solid var(--border); text-align: left;">
+                    <th style="padding: 9px 12px; width: 60px;">Grupo</th>
+                    <th style="padding: 9px 12px; min-width: 180px;">Setor / Posto de Trabalho</th>
+                    <th style="padding: 9px 12px; min-width: 200px;">Função Avaliada (CBO)</th>
+                    <th style="padding: 9px 12px; text-align: center; width: 70px;">Efetivo</th>
+                    <th style="padding: 9px 12px; min-width: 170px;">Anexo NR-16</th>
+                    <th style="padding: 9px 12px; min-width: 190px;">Agente Periculoso & Delimitação</th>
+                    <th style="padding: 9px 12px; width: 140px;">Exposição</th>
+                    <th style="padding: 9px 12px; text-align: center; width: 150px;">Conclusão Pericial</th>
+                    <th style="padding: 9px 12px; text-align: center; width: 110px;">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    filtrados.forEach(row => {
+        const isPeric = (row.caracterizacao === true || row.caracterizacao === 'true');
+        const badgeConclusao = isPeric
+            ? `<span style="background: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #f87171;">
+                 ⚡ PERICULOSO (+30%)
+               </span>`
+            : `<span style="background: #dcfce7; color: #16a34a; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #86efac;">
+                 🛡️ NÃO PERICULOSO
+               </span>`;
+
+        const anexoBadgeColor = isPeric ? 'background: rgba(220, 38, 38, 0.08); color: #dc2626; border: 1px solid rgba(220, 38, 38, 0.2);' : 'background: var(--bg); color: var(--text-light); border: 1px solid var(--border);';
+
+        html += `
+            <tr style="border-bottom: 1px solid var(--border); ${isPeric ? 'background: rgba(239, 68, 68, 0.03);' : ''}">
+                <td style="padding: 10px 12px; font-weight: 700; color: var(--text-light);">
+                    ${row.grupo_numero ? 'G' + String(row.grupo_numero).padStart(2, '0') : '-'}
+                </td>
+                <td style="padding: 10px 12px;">
+                    <div style="font-weight: 600; color: var(--text-primary);">${row.setor || '-'}</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">📍 ${row.posto_trabalho || '-'}</div>
+                </td>
+                <td style="padding: 10px 12px;">
+                    <div style="font-weight: 600; color: var(--text-primary);">${row.cargo_funcao || '-'}</div>
+                    <div style="font-size: 11px; color: var(--text-light); margin-top: 2px;">
+                        ${row.cbo ? 'CBO ' + row.cbo : ''} ${row.ghe ? '• ' + row.ghe : ''}
+                    </div>
+                </td>
+                <td style="padding: 10px 12px; text-align: center; font-weight: 700;">
+                    ${row.num_trabalhadores || 1}
+                </td>
+                <td style="padding: 10px 12px;">
+                    <span style="font-size: 11px; font-weight: 600; padding: 3px 6px; border-radius: 4px; ${anexoBadgeColor}">
+                        ${row.anexo_nr16 || 'Nenhum'}
+                    </span>
+                </td>
+                <td style="padding: 10px 12px;">
+                    <div style="font-weight: 600; color: ${isPeric ? '#dc2626' : 'var(--text-primary)'};">${row.agente_periculoso || '-'}</div>
+                    <div style="font-size: 11px; color: var(--text-light); margin-top: 2px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${row.delimitacao_area_risco || ''}">
+                        📐 ${row.delimitacao_area_risco || '-'}
+                    </div>
+                </td>
+                <td style="padding: 10px 12px; font-size: 11.5px;">
+                    ${row.tempo_exposicao || '-'}
+                </td>
+                <td style="padding: 10px 12px; text-align: center;">
+                    ${badgeConclusao}
+                </td>
+                <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
+                    <button class="db-clear-btn" style="padding: 4px 7px; font-size: 11.5px; margin-right: 3px;" onclick="verFundamentacaoPericulosidade('${row.id}')" title="Ver Fundamentação Técnica e Parecer">👁️</button>
+                    <button class="db-clear-btn" style="padding: 4px 7px; font-size: 11.5px; margin-right: 3px;" onclick="editarAnalisePericulosidade('${row.id}')" title="Editar Análise">✏️</button>
+                    <button class="db-clear-btn" style="padding: 4px 7px; font-size: 11.5px; color: #dc2626;" onclick="excluirAnalisePericulosidade('${row.id}')" title="Excluir">🗑️</button>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+}
+
+function limparFiltrosPericulosidade() {
+    const elS = document.getElementById('pericSearchInput');
+    const elC = document.getElementById('pericFiltroConclusao');
+    const elA = document.getElementById('pericFiltroAnexo');
+    if (elS) elS.value = '';
+    if (elC) elC.value = '';
+    if (elA) elA.value = '';
+    filtrarPericulosidadeLista();
+}
+
+function abrirModalNovaAnalisePericulosidade() {
+    analisePericEditandoId = null;
+    const modal = document.getElementById('modalPericulosidadeAnalise');
+    const titulo = document.getElementById('modalPericTitulo');
+    if (titulo) titulo.textContent = '⚡ Nova Análise Pericial de Função (NR-16)';
+
+    document.getElementById('pericForm_id').value = '';
+    document.getElementById('pericForm_setor').value = '';
+    document.getElementById('pericForm_posto').value = '';
+    document.getElementById('pericForm_cargo').value = '';
+    document.getElementById('pericForm_cbo').value = '';
+    document.getElementById('pericForm_ghe').value = '';
+    document.getElementById('pericForm_numTrab').value = '1';
+    document.getElementById('pericForm_anexo').value = 'Nenhum / Não Aplicável';
+    document.getElementById('pericForm_agente').value = 'Não Aplicável';
+    document.getElementById('pericForm_tempo').value = 'Inexistente';
+    document.getElementById('pericForm_atividade').value = '';
+    document.getElementById('pericForm_areaRisco').value = 'Não há penetração em área de risco.';
+    document.getElementById('pericForm_caracterizacao').checked = false;
+    document.getElementById('pericForm_salario').value = '2500.00';
+    document.getElementById('pericForm_fundamentacao').value = 'Art. 193 da CLT e Norma Regulamentadora nº 16 (NR-16).';
+    document.getElementById('pericForm_parecer').value = 'DESCARACTERIZADA A PERICULOSIDADE. As atividades desempenhadas não se enquadram nos Anexos da NR-16.';
+
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+function editarAnalisePericulosidade(id) {
+    const item = allPericulosidadeAnalises.find(x => x.id === id);
+    if (!item) return;
+
+    analisePericEditandoId = id;
+    const modal = document.getElementById('modalPericulosidadeAnalise');
+    const titulo = document.getElementById('modalPericTitulo');
+    if (titulo) titulo.textContent = `⚡ Editar Análise: ${item.cargo_funcao || item.setor}`;
+
+    document.getElementById('pericForm_id').value = item.id;
+    document.getElementById('pericForm_setor').value = item.setor || '';
+    document.getElementById('pericForm_posto').value = item.posto_trabalho || '';
+    document.getElementById('pericForm_cargo').value = item.cargo_funcao || '';
+    document.getElementById('pericForm_cbo').value = item.cbo || '';
+    document.getElementById('pericForm_ghe').value = item.ghe || '';
+    document.getElementById('pericForm_numTrab').value = item.num_trabalhadores || 1;
+    document.getElementById('pericForm_anexo').value = item.anexo_nr16 || 'Nenhum / Não Aplicável';
+    document.getElementById('pericForm_agente').value = item.agente_periculoso || '';
+    document.getElementById('pericForm_tempo').value = item.tempo_exposicao || 'Inexistente';
+    document.getElementById('pericForm_atividade').value = item.atividade_descrita || '';
+    document.getElementById('pericForm_areaRisco').value = item.delimitacao_area_risco || '';
+    document.getElementById('pericForm_caracterizacao').checked = (item.caracterizacao === true || item.caracterizacao === 'true');
+    document.getElementById('pericForm_salario').value = item.salario_base_medio || '0';
+    document.getElementById('pericForm_fundamentacao').value = item.fundamentacao_legal || '';
+    document.getElementById('pericForm_parecer').value = item.parecer_conclusivo || '';
+
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+function fecharModalAnalisePericulosidade() {
+    const modal = document.getElementById('modalPericulosidadeAnalise');
+    if (modal) modal.style.display = 'none';
+}
+
+function aoMudarAnexoPericForm(anexo) {
+    const isElet = anexo.includes('Energia Elétrica');
+    const isInflam = anexo.includes('Inflamáveis');
+    const isPatrim = anexo.includes('Segurança Patrimonial');
+
+    const elAgente = document.getElementById('pericForm_agente');
+    const elArea = document.getElementById('pericForm_areaRisco');
+    const elTempo = document.getElementById('pericForm_tempo');
+    const elCaract = document.getElementById('pericForm_caracterizacao');
+    const elFund = document.getElementById('pericForm_fundamentacao');
+    const elParecer = document.getElementById('pericForm_parecer');
+
+    if (isElet) {
+        if (elAgente) elAgente.value = 'Energia Elétrica em Alta Tensão / SEP e Barramentos';
+        if (elArea) elArea.value = 'Zonas de Risco e Controladas conforme Tabela da NR-10 e Anexo 4 da NR-16.';
+        if (elTempo) elTempo.value = 'Habitual e Intermitente com Risco Potencial Permanente';
+        if (elCaract) elCaract.checked = true;
+        if (elFund) elFund.value = 'Anexo 4 da NR-16 (Portaria MTE nº 1.078/2014) e Súmula 364 do TST.';
+        if (elParecer) elParecer.value = 'CARACTERIZADA A PERICULOSIDADE com direito à percepção do adicional de 30% sobre o salário-base.';
+    } else if (isInflam) {
+        if (elAgente) elAgente.value = 'Líquidos Inflamáveis / Óleo Diesel (Volume > 200L)';
+        if (elArea) elArea.value = 'Raio de 7,5 metros com centro nas bocas de carga e bicos de descarga (Quadro 3 do Anexo 2 da NR-16).';
+        if (elTempo) elTempo.value = 'Habitual e Intermitente com Risco Potencial Permanente';
+        if (elCaract) elCaract.checked = true;
+        if (elFund) elFund.value = 'Anexo 2 da NR-16, Item 1, alínea "j" e Item 3, alíneas "q" e "s". Súmula 364 do TST.';
+        if (elParecer) elParecer.value = 'CARACTERIZADA A PERICULOSIDADE com direito à percepção do adicional de 30% sobre o salário-base.';
+    } else if (isPatrim) {
+        if (elAgente) elAgente.value = 'Vigilância Patrimonial Desarmada (Vigia)';
+        if (elArea) elArea.value = 'Portarias e guaritas de controle de acesso.';
+        if (elTempo) elTempo.value = 'Permanente desarmada';
+        if (elCaract) elCaract.checked = false;
+        if (elFund) elFund.value = 'O Anexo 3 da NR-16 e a Lei 7.102/83 restringem o adicional a Vigilantes profissionais credenciados na PF. Conforme Tema Repetitivo 16 do TST, a função de Vigia civil desarmado não faz jus ao adicional.';
+        if (elParecer) elParecer.value = 'DESCARACTERIZADA A PERICULOSIDADE para a função de Vigia civil desarmado.';
+    } else {
+        if (elAgente) elAgente.value = 'Não Aplicável';
+        if (elArea) elArea.value = 'Não há penetração em área de risco.';
+        if (elTempo) elTempo.value = 'Inexistente';
+        if (elCaract) elCaract.checked = false;
+        if (elFund) elFund.value = 'Art. 193 da CLT e NR-16 do Ministério do Trabalho.';
+        if (elParecer) elParecer.value = 'DESCARACTERIZADA A PERICULOSIDADE. Não há exposição a nenhum dos agentes taxativos da NR-16.';
+    }
+}
+
+function aoAlternarCaracterizacaoPeric(checked) {
+    const elParecer = document.getElementById('pericForm_parecer');
+    if (!elParecer) return;
+    if (checked) {
+        elParecer.value = 'CARACTERIZADA A PERICULOSIDADE com direito à percepção do adicional de 30% incidente sobre o salário-base do trabalhador.';
+    } else {
+        elParecer.value = 'DESCARACTERIZADA A PERICULOSIDADE. As atividades desempenhadas não se enquadram nos anexos da NR-16.';
+    }
+}
+
+async function salvarAnalisePericulosidade() {
+    const setor = (document.getElementById('pericForm_setor')?.value || '').trim();
+    const posto = (document.getElementById('pericForm_posto')?.value || '').trim();
+    const cargo = (document.getElementById('pericForm_cargo')?.value || '').trim();
+    const cbo = (document.getElementById('pericForm_cbo')?.value || '').trim();
+    const ghe = (document.getElementById('pericForm_ghe')?.value || '').trim();
+    const numTrab = parseInt(document.getElementById('pericForm_numTrab')?.value, 10) || 1;
+    const anexo = document.getElementById('pericForm_anexo')?.value || 'Nenhum / Não Aplicável';
+    const agente = (document.getElementById('pericForm_agente')?.value || '').trim();
+    const tempo = document.getElementById('pericForm_tempo')?.value || 'Inexistente';
+    const atividade = (document.getElementById('pericForm_atividade')?.value || '').trim();
+    const areaRisco = (document.getElementById('pericForm_areaRisco')?.value || '').trim();
+    const caracterizacao = document.getElementById('pericForm_caracterizacao')?.checked === true;
+    const salario = parseFloat(document.getElementById('pericForm_salario')?.value) || 0;
+    const fundamentacao = (document.getElementById('pericForm_fundamentacao')?.value || '').trim();
+    const parecer = (document.getElementById('pericForm_parecer')?.value || '').trim();
+
+    if (!setor || !posto || !cargo || !atividade || !agente || !areaRisco) {
+        alert('Por favor, preencha todos os campos obrigatórios marcados com asterisco (*).');
+        return;
+    }
+
+    const laudoAtivo = allPericulosidadeLaudos[0];
+    const laudoId = laudoAtivo ? laudoAtivo.id : 'LP_2026_2027';
+
+    const payload = {
+        laudo_id: laudoId,
+        setor,
+        posto_trabalho: posto,
+        cargo_funcao: cargo,
+        cbo,
+        ghe,
+        num_trabalhadores: numTrab,
+        anexo_nr16: anexo,
+        agente_periculoso: agente,
+        delimitacao_area_risco: areaRisco,
+        tempo_exposicao: tempo,
+        caracterizacao,
+        percentual_adicional: caracterizacao ? 30.00 : 0.00,
+        salario_base_medio: salario,
+        fundamentacao_legal: fundamentacao,
+        parecer_conclusivo: parecer
+    };
+
+    try {
+        if (analisePericEditandoId) {
+            payload.id = analisePericEditandoId;
+            await supabaseUpdate('periculosidade_analises', payload, `id=eq.${analisePericEditandoId}`);
+            const idx = allPericulosidadeAnalises.findIndex(x => x.id === analisePericEditandoId);
+            if (idx >= 0) allPericulosidadeAnalises[idx] = { ...allPericulosidadeAnalises[idx], ...payload };
+        } else {
+            const newId = 'PERIC_' + Date.now();
+            payload.id = newId;
+            await supabaseInsert('periculosidade_analises', payload);
+            allPericulosidadeAnalises.push(payload);
+        }
+
+        fecharModalAnalisePericulosidade();
+        renderPericulosidadePanel();
+        mostrarFeedbackToast('Análise pericial salva com sucesso!', 'sucesso');
+    } catch (err) {
+        console.error('Erro ao salvar análise de periculosidade:', err);
+        alert('Erro ao salvar no banco de dados. Verifique a conexão.');
+    }
+}
+
+async function excluirAnalisePericulosidade(id) {
+    const item = allPericulosidadeAnalises.find(x => x.id === id);
+    if (!item) return;
+
+    if (!confirm(`Deseja realmente excluir a análise pericial da função "${item.cargo_funcao}" (${item.setor})?`)) {
+        return;
+    }
+
+    try {
+        await supabaseDelete('periculosidade_analises', `id=eq.${id}`);
+        allPericulosidadeAnalises = allPericulosidadeAnalises.filter(x => x.id !== id);
+        renderPericulosidadePanel();
+        mostrarFeedbackToast('Análise pericial excluída.', 'info');
+    } catch (err) {
+        console.error('Erro ao excluir análise:', err);
+        alert('Erro ao excluir análise pericial.');
+    }
+}
+
+function verFundamentacaoPericulosidade(id) {
+    const item = allPericulosidadeAnalises.find(x => x.id === id);
+    if (!item) return;
+
+    const modal = document.getElementById('modalPericulosidadeFundamentacao');
+    const titulo = document.getElementById('modalFundTitulo');
+    const conteudo = document.getElementById('modalFundConteudo');
+
+    if (titulo) titulo.innerHTML = `<span>⚡</span> Parecer Técnico Pericial: <b>${item.cargo_funcao}</b>`;
+
+    const isPeric = (item.caracterizacao === true || item.caracterizacao === 'true');
+    const statusBox = isPeric
+        ? `<div style="background: #fee2e2; border-left: 4px solid #dc2626; padding: 12px; border-radius: 6px; margin-bottom: 14px;">
+             <b style="color: #dc2626; font-size: 13.5px;">⚡ ENQUADRAMENTO FAVORÁVEL À PERICULOSIDADE (Adicional de 30%)</b>
+             <div style="font-size: 12px; color: #7f1d1d; margin-top: 4px;">Esta função faz jus à percepção do adicional de periculosidade incidente sobre o salário-base.</div>
+           </div>`
+        : `<div style="background: #dcfce7; border-left: 4px solid #16a34a; padding: 12px; border-radius: 6px; margin-bottom: 14px;">
+             <b style="color: #16a34a; font-size: 13.5px;">🛡️ DESCARACTERIZADA A PERICULOSIDADE (Adicional Indevido)</b>
+             <div style="font-size: 12px; color: #14532d; margin-top: 4px;">Não há respaldo legal ou técnico para concessão do adicional nos termos da NR-16.</div>
+           </div>`;
+
+    if (conteudo) {
+        conteudo.innerHTML = `
+            ${statusBox}
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; background: var(--bg); padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+                <div><b>Setor / Grupo:</b> ${item.setor || '-'}</div>
+                <div><b>Posto de Trabalho:</b> ${item.posto_trabalho || '-'}</div>
+                <div><b>CBO:</b> ${item.cbo || '-'}</div>
+                <div><b>GHE:</b> ${item.ghe || '-'}</div>
+                <div><b>Nº Colaboradores:</b> ${item.num_trabalhadores || 1}</div>
+                <div><b>Anexo da NR-16:</b> ${item.anexo_nr16 || 'Nenhum'}</div>
+            </div>
+
+            <div style="margin-bottom: 10px;">
+                <b style="color: var(--text-primary); font-size: 12.5px;">🛠️ Descrição Real da Atividade no Canteiro:</b>
+                <div style="background: var(--card-bg, #fff); border: 1px solid var(--border); padding: 8px 10px; border-radius: 6px; margin-top: 4px;">
+                    ${item.atividade_descrita || 'Não informada'}
+                </div>
+            </div>
+
+            <div style="margin-bottom: 10px;">
+                <b style="color: var(--text-primary); font-size: 12.5px;">📐 Delimitação Técnica da Área de Risco:</b>
+                <div style="background: var(--card-bg, #fff); border: 1px solid var(--border); padding: 8px 10px; border-radius: 6px; margin-top: 4px;">
+                    ${item.delimitacao_area_risco || 'Não aplicável'}
+                </div>
+            </div>
+
+            <div style="margin-bottom: 10px;">
+                <b style="color: var(--text-primary); font-size: 12.5px;">⏱️ Frequência e Regime de Exposição:</b>
+                <div style="background: var(--card-bg, #fff); border: 1px solid var(--border); padding: 8px 10px; border-radius: 6px; margin-top: 4px;">
+                    ${item.tempo_exposicao || 'Não informada'}
+                </div>
+            </div>
+
+            <div style="margin-bottom: 10px;">
+                <b style="color: var(--text-primary); font-size: 12.5px;">⚖️ Fundamentação Legal e Jurisprudencial:</b>
+                <div style="background: var(--card-bg, #fff); border: 1px solid var(--border); padding: 8px 10px; border-radius: 6px; margin-top: 4px; color: var(--text-primary);">
+                    ${item.fundamentacao_legal || 'Art. 193 da CLT e NR-16.'}
+                </div>
+            </div>
+
+            <div>
+                <b style="color: var(--text-primary); font-size: 12.5px;">👨‍💼 Parecer Conclusivo da Engenharia de Segurança:</b>
+                <div style="background: var(--bg); border: 1px solid var(--border); padding: 10px; border-radius: 6px; margin-top: 4px; font-weight: 600;">
+                    ${item.parecer_conclusivo || 'Conclusão registrada pelo responsável técnico.'}
+                </div>
+            </div>
+        `;
+    }
+
+    if (modal) modal.style.display = 'flex';
+}
+
+function fecharModalFundamentacaoPericulosidade() {
+    const modal = document.getElementById('modalPericulosidadeFundamentacao');
+    if (modal) modal.style.display = 'none';
+}
+
+function emitirLaudoOficialPericulosidade() {
+    const laudoAtivo = allPericulosidadeLaudos[0] || {
+        codigo: 'LP-2026/2027',
+        empresa: 'CONSORCIO OPERADOR RAMAL DO AGRESTE',
+        cnpj: '55.623.017/0001-97',
+        data_inicio: '2026-07-20',
+        data_fim: '2027-07-20',
+        responsavel_tecnico: 'Eng. João Everton de Souza Limeira',
+        registro_profissional: 'CREA: 0522078320-BA'
+    };
+
+    let totalGeral = 0;
+    let totalPeric = 0;
+    let totalNaoPeric = 0;
+    let impactoMensal = 0;
+
+    allPericulosidadeAnalises.forEach(item => {
+        const n = parseInt(item.num_trabalhadores, 10) || 0;
+        totalGeral += n;
+        if (item.caracterizacao === true || item.caracterizacao === 'true') {
+            totalPeric += n;
+            const sal = parseFloat(item.salario_base_medio) || 0;
+            impactoMensal += (sal * 0.30) * n;
+        } else {
+            totalNaoPeric += n;
+        }
+    });
+
+    const dataIni = laudoAtivo.data_inicio ? laudoAtivo.data_inicio.split('-').reverse().join('/') : '20/07/2026';
+    const dataFim = laudoAtivo.data_fim ? laudoAtivo.data_fim.split('-').reverse().join('/') : '20/07/2027';
+
+    // Montagem das linhas de análise pericial
+    let linhasTabelaHtml = '';
+    allPericulosidadeAnalises.forEach((row, idx) => {
+        const isPeric = (row.caracterizacao === true || row.caracterizacao === 'true');
+        linhasTabelaHtml += `
+            <tr style="border-bottom: 1px solid #ddd; ${isPeric ? 'background-color: #fef2f2;' : (idx % 2 === 0 ? 'background-color: #fcfcfc;' : '')}">
+                <td style="padding: 7px 8px; font-weight: bold; text-align: center;">${row.grupo_numero ? 'G' + String(row.grupo_numero).padStart(2, '0') : idx + 1}</td>
+                <td style="padding: 7px 8px;">
+                    <b>${row.cargo_funcao}</b><br>
+                    <span style="font-size: 10px; color: #555;">Setor: ${row.setor} | Posto: ${row.posto_trabalho}</span><br>
+                    <span style="font-size: 10px; color: #666;">CBO: ${row.cbo || '-'} | GHE: ${row.ghe || '-'}</span>
+                </td>
+                <td style="padding: 7px 8px; text-align: center; font-weight: bold;">${row.num_trabalhadores}</td>
+                <td style="padding: 7px 8px; font-size: 10.5px;">${row.anexo_nr16}</td>
+                <td style="padding: 7px 8px; font-size: 10px;">
+                    <b>${row.agente_periculoso}</b><br>
+                    <span style="color: #444;">Área: ${row.delimitacao_area_risco}</span>
+                </td>
+                <td style="padding: 7px 8px; font-size: 10px; text-align: center;">${row.tempo_exposicao}</td>
+                <td style="padding: 7px 8px; text-align: center;">
+                    ${isPeric
+                        ? '<span style="background: #dc2626; color: #fff; padding: 3px 6px; border-radius: 4px; font-weight: bold; font-size: 10px;">PERICULOSO (+30%)</span>'
+                        : '<span style="background: #16a34a; color: #fff; padding: 3px 6px; border-radius: 4px; font-weight: bold; font-size: 10px;">NÃO PERICULOSO</span>'
+                    }
+                </td>
+                <td style="padding: 7px 8px; font-size: 10px; color: #333;">
+                    ${row.fundamentacao_legal}
+                </td>
+            </tr>
+        `;
+    });
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Laudo Técnico de Periculosidade - ${laudoAtivo.codigo}</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; margin: 0; padding: 25px; color: #222; background: #fff; font-size: 11pt; line-height: 1.5; }
+        .header-table { width: 100%; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 20px; }
+        .title { font-size: 18pt; font-weight: bold; color: #0f172a; text-transform: uppercase; margin: 0; }
+        .subtitle { font-size: 11pt; color: #475569; margin-top: 4px; }
+        .box-info { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; margin-bottom: 18px; }
+        .box-info table { width: 100%; font-size: 10pt; }
+        .box-info td { padding: 4px 6px; }
+        h2 { font-size: 13pt; color: #0f172a; border-bottom: 1.5px solid #0f172a; padding-bottom: 4px; margin-top: 24px; margin-bottom: 10px; text-transform: uppercase; }
+        h3 { font-size: 11pt; color: #1e293b; margin-top: 14px; margin-bottom: 6px; }
+        p { margin: 6px 0; text-align: justify; }
+        table.tabela-dados { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9.5pt; }
+        table.tabela-dados th { background: #0f172a; color: #fff; padding: 7px 6px; text-align: left; font-size: 9.5pt; }
+        table.tabela-dados td { border: 1px solid #cbd5e1; }
+        .kpi-row { display: flex; gap: 12px; margin: 15px 0; }
+        .kpi-box { flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; text-align: center; background: #f8fafc; }
+        .kpi-box .val { font-size: 16pt; font-weight: bold; margin-bottom: 2px; }
+        .kpi-box .rot { font-size: 8.5pt; text-transform: uppercase; color: #64748b; font-weight: 600; }
+        .assinatura-container { display: flex; justify-content: space-around; margin-top: 50px; page-break-inside: avoid; text-align: center; }
+        .assinatura-box { width: 40%; border-top: 1px solid #000; padding-top: 8px; font-size: 10pt; }
+        @media print {
+            body { padding: 10px; }
+            .no-print { display: none !important; }
+            tr { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="position: fixed; top: 15px; right: 15px; z-index: 99999; background: #fff; padding: 8px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 1px solid #ccc;">
+        <button onclick="window.print()" style="background: #0284c7; color: #fff; border: none; padding: 8px 16px; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 12px;">🖨️ Imprimir Laudo / Salvar PDF</button>
+    </div>
+
+    <!-- Cabeçalho Oficial -->
+    <table class="header-table">
+        <tr>
+            <td style="width: 70px; vertical-align: middle;">
+                <div style="font-size: 32pt; font-weight: bold; color: #0284c7; line-height: 1;">COP</div>
+            </td>
+            <td style="vertical-align: middle; padding-left: 12px;">
+                <div class="title">Laudo Técnico Pericial de Periculosidade (LP)</div>
+                <div class="subtitle">Norma Regulamentadora nº 16 (NR-16) • Artigos 193 e 195 da Consolidação das Leis do Trabalho (CLT)</div>
+            </td>
+            <td style="text-align: right; vertical-align: middle;">
+                <div style="font-weight: bold; font-size: 11pt; color: #0f172a;">${laudoAtivo.codigo}</div>
+                <div style="font-size: 9.5pt; color: #64748b;">Vigência: ${dataIni} a ${dataFim}</div>
+            </td>
+        </tr>
+    </table>
+
+    <!-- Quadro 1: Identificação Cadastral da Empresa -->
+    <div class="box-info">
+        <table>
+            <tr>
+                <td style="width: 50%;"><b>Razão Social:</b> ${laudoAtivo.empresa}</td>
+                <td><b>CNPJ:</b> ${laudoAtivo.cnpj}</td>
+            </tr>
+            <tr>
+                <td><b>Atividade Principal:</b> Obras de Infraestrutura Hídrica / Canais e Estações de Bombeamento</td>
+                <td><b>CNAE:</b> 7112-0/00 • <b>Grau de Risco:</b> 1</td>
+            </tr>
+            <tr>
+                <td><b>Local de Trabalho / Canteiro:</b> Lote do Ramal do Agreste • Arcoverde - PE</td>
+                <td><b>Efetivo Total Mapeado:</b> ${totalGeral} trabalhadores</td>
+            </tr>
+        </table>
+    </div>
+
+    <h2>1. Responsabilidade Técnica e Habilitação Legal</h2>
+    <p>
+        O presente Laudo Técnico Pericial de Periculosidade foi elaborado pelo Engenheiro de Segurança do Trabalho
+        <b>${laudoAtivo.responsavel_tecnico}</b>, registrado no Conselho Regional de Engenharia e Agronomia sob o número
+        <b>${laudoAtivo.registro_profissional}</b>, em estrito cumprimento ao disposto no <b>Artigo 195 da Consolidação das Leis do Trabalho (CLT)</b>
+        e no item 16.3 da Norma Regulamentadora nº 16 do Ministério do Trabalho e Emprego (MTE).
+    </p>
+
+    <h2>2. Objetivo Pericial e Escopo de Avaliação</h2>
+    <p>
+        Este trabalho pericial tem como objetivo precípuo a identificação, o reconhecimento e a análise das atividades e operações desenvolvidas
+        no canteiro de obras e instalações operacionais do Consórcio Operador Ramal do Agreste, com vistas à <b>caracterização ou descaracterização
+        do adicional de periculosidade de 30% (trinta por cento)</b> incidente sobre o salário-base dos colaboradores, conforme preconizado no
+        artigo 193 da CLT e nos Anexos aplicáveis da NR-16.
+    </p>
+
+    <h2>3. Metodologia e Critérios Técnicos Rigorosos da NR-16</h2>
+    <p>
+        Diferentemente de laudos genéricos e automatizados, a presente perícia seguiu a taxatividade legal da NR-16, avaliando
+        rigorosamente o contato físico e a permanência dos trabalhadores nas áreas de risco definidas pelos seguintes Anexos:
+    </p>
+    <ul>
+        <li><b>Anexo 1 (Explosivos):</b> Descaracterizado no canteiro. Não há estocagem ou detonações ativas na fase atual.</li>
+        <li><b>Anexo 2 (Inflamáveis):</b> Caracterizado para a operação e condução do Caminhão Comboio (transporte e abastecimento com tanques de óleo diesel com volume superior a 200 litros em bacia/área de risco de raio de 7,5 metros). Descaracterizado para pequenos volumes manuais (< 5L) de roçadeiras conforme Item 4 do Anexo 2.</li>
+        <li><b>Anexo 3 (Segurança Pessoal/Patrimonial):</b> Descaracterizado para os Vigias de portaria desarmados. Conforme a Portaria MTE nº 1.885/2013 e o Incidente de Recursos Repetitivos (Tema 16) do Tribunal Superior do Trabalho (TST), o adicional é privativo dos profissionais enquadrados formalmente na Lei Federal nº 7.102/83 (Vigilantes formados).</li>
+        <li><b>Anexo 4 (Energia Elétrica / SEP):</b> Caracterizado para os Técnicos de Manutenção Elétrica e Operadores de Subestação de Alta Tensão que realizam intervenções, manobras ou inspeções em zonas controladas e de risco de circuitos de força das Estações de Bombeamento e Subestações (Portaria MTE nº 1.078/2014 e Súmula 364 do TST).</li>
+        <li><b>Anexo 5 (Motocicleta):</b> Descaracterizado. A empresa não utiliza deslocamento em motocicleta como atividade-fim laboral.</li>
+    </ul>
+
+    <h2>4. Resumo Executivo e Impacto Financeiro em Folha de Pagamento</h2>
+    <div class="kpi-row">
+        <div class="kpi-box">
+            <div class="val" style="color: #0f172a;">${totalGeral}</div>
+            <div class="rot">Total de Trabalhadores</div>
+        </div>
+        <div class="kpi-box">
+            <div class="val" style="color: #dc2626;">${totalPeric}</div>
+            <div class="rot">Com Periculosidade (30%)</div>
+        </div>
+        <div class="kpi-box">
+            <div class="val" style="color: #16a34a;">${totalNaoPeric}</div>
+            <div class="rot">Descaracterizados (0%)</div>
+        </div>
+        <div class="kpi-box">
+            <div class="val" style="color: #7c3aed;">${impactoMensal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            <div class="rot">Impacto Estimado / Mês</div>
+        </div>
+    </div>
+
+    <h2>5. Matriz Pericial Consolidada por Função e Posto de Trabalho</h2>
+    <table class="tabela-dados">
+        <thead>
+            <tr>
+                <th style="width: 35px; text-align: center;">Gr.</th>
+                <th>Função / Setor / Posto</th>
+                <th style="width: 35px; text-align: center;">Ef.</th>
+                <th>Anexo NR-16</th>
+                <th>Agente Periculoso / Delimitação</th>
+                <th style="width: 70px; text-align: center;">Exposição</th>
+                <th style="width: 95px; text-align: center;">Conclusão</th>
+                <th>Fundamentação Técnica</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${linhasTabelaHtml}
+        </tbody>
+    </table>
+
+    <h2>6. Recomendações Técnicas e Preventivas da Engenharia</h2>
+    <ol style="padding-left: 20px; font-size: 10pt;">
+        <li><b>Bloqueio e Etiquetagem (LOTO - NR-10):</b> Manter o rigoroso procedimento de desenergização e impedimento mecânico antes de qualquer intervenção da equipe mecânica nos conjuntos motobombas, garantindo a descaracterização do risco elétrico para esses profissionais.</li>
+        <li><b>Prontuário das Instalações Elétricas (PIE):</b> Manter atualizados os esquemas unifilares das subestações e laudos de aterramento e SPDA de todas as Estações de Bombeamento.</li>
+        <li><b>Caminhão Comboio:</b> Fiscalizar a certificação INMETRO do tanque de combustível, aterramento prévio durante descargas e porte obrigatório do curso MOPP pelo motorista operador.</li>
+        <li><b>Gestão da Folha de Pagamento:</b> Efetuar o pagamento do adicional de periculosidade de 30% estritamente sobre o salário-base aos 16 profissionais caracterizados, sem inclusão de gratificações conforme art. 193, §1º da CLT.</li>
+    </ol>
+
+    <h2>7. Termo de Encerramento e Validação Pericial</h2>
+    <p>
+        O presente Laudo Técnico de Periculosidade é composto por dados fidedignos e inspeções presenciais realizadas nas frentes
+        de trabalho do Consórcio Operador Ramal do Agreste. As conclusões periciais ora firmadas refletem fielmente as condições laborais
+        encontradas, possuindo validade até <b>${dataFim}</b> ou enquanto perdurarem as atuais condições de operação.
+    </p>
+
+    <div class="assinatura-container">
+        <div class="assinatura-box">
+            <b>${laudoAtivo.responsavel_tecnico}</b><br>
+            Engenheiro de Segurança do Trabalho<br>
+            ${laudoAtivo.registro_profissional}
+        </div>
+        <div class="assinatura-box">
+            <b>${laudoAtivo.empresa}</b><br>
+            Representante Legal do Consórcio<br>
+            CNPJ: ${laudoAtivo.cnpj}
+        </div>
+    </div>
+</body>
+</html>`;
+
+    abrirDocumentoHtmlParaImpressao(html, `Laudo_Periculosidade_${laudoAtivo.codigo}`);
+}
+
+function exportarMatrizPericulosidade() {
+    if (!allPericulosidadeAnalises || allPericulosidadeAnalises.length === 0) {
+        alert('Não há dados de periculosidade para exportar.');
+        return;
+    }
+
+    const headers = [
+        'Grupo', 'Setor', 'Posto de Trabalho', 'Funcao', 'CBO', 'GHE',
+        'Numero de Trabalhadores', 'Anexo NR-16', 'Agente Periculoso',
+        'Delimitacao Area de Risco', 'Exposicao', 'Caracterizacao Periculosidade',
+        'Percentual Adicional (%)', 'Salario Base Medio (R$)',
+        'Impacto Adicional Mensal (R$)', 'Fundamentacao Legal', 'Parecer Conclusivo'
+    ];
+
+    const rows = allPericulosidadeAnalises.map(item => {
+        const isPeric = (item.caracterizacao === true || item.caracterizacao === 'true');
+        const n = parseInt(item.num_trabalhadores, 10) || 0;
+        const sal = parseFloat(item.salario_base_medio) || 0;
+        const impacto = isPeric ? (sal * 0.30) * n : 0;
+
+        return [
+            item.grupo_numero ? 'Grupo ' + item.grupo_numero : '',
+            `"${(item.setor || '').replace(/"/g, '""')}"`,
+            `"${(item.posto_trabalho || '').replace(/"/g, '""')}"`,
+            `"${(item.cargo_funcao || '').replace(/"/g, '""')}"`,
+            `"${(item.cbo || '').replace(/"/g, '""')}"`,
+            `"${(item.ghe || '').replace(/"/g, '""')}"`,
+            n,
+            `"${(item.anexo_nr16 || '').replace(/"/g, '""')}"`,
+            `"${(item.agente_periculoso || '').replace(/"/g, '""')}"`,
+            `"${(item.delimitacao_area_risco || '').replace(/"/g, '""')}"`,
+            `"${(item.tempo_exposicao || '').replace(/"/g, '""')}"`,
+            isPeric ? 'PERICULOSO' : 'NAO PERICULOSO',
+            isPeric ? '30.00' : '0.00',
+            sal.toFixed(2),
+            impacto.toFixed(2),
+            `"${(item.fundamentacao_legal || '').replace(/"/g, '""')}"`,
+            `"${(item.parecer_conclusivo || '').replace(/"/g, '""')}"`
+        ].join(';');
+    });
+
+    const csvContent = '\uFEFF' + headers.join(';') + '\n' + rows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Matriz_Periculosidade_NR16_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 
 

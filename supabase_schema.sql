@@ -1481,6 +1481,58 @@ CREATE POLICY "Acesso total ao plano de acao de ergonomia" ON public.ergonomia_p
 GRANT ALL ON public.ergonomia_plano_acao TO anon, authenticated;
 
 -- ============================================================
+-- MÓDULO DE PERICULOSIDADE (NR-16) - LAUDO PERICIAL (LP)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.periculosidade_laudos (
+    id TEXT PRIMARY KEY,
+    codigo TEXT NOT NULL,
+    empresa TEXT NOT NULL,
+    cnpj TEXT NOT NULL,
+    data_inicio DATE NOT NULL,
+    data_fim DATE NOT NULL,
+    responsavel_tecnico TEXT NOT NULL,
+    registro_profissional TEXT NOT NULL,
+    status TEXT DEFAULT 'ativo',
+    observacoes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.periculosidade_laudos ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total aos laudos de periculosidade" ON public.periculosidade_laudos;
+CREATE POLICY "Acesso total aos laudos de periculosidade" ON public.periculosidade_laudos
+    FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+GRANT ALL ON public.periculosidade_laudos TO anon, authenticated;
+
+CREATE TABLE IF NOT EXISTS public.periculosidade_analises (
+    id TEXT PRIMARY KEY,
+    laudo_id TEXT REFERENCES public.periculosidade_laudos(id) ON DELETE CASCADE,
+    grupo_numero INTEGER,
+    setor TEXT NOT NULL,
+    posto_trabalho TEXT NOT NULL,
+    cargo_funcao TEXT NOT NULL,
+    cbo TEXT,
+    ghe TEXT,
+    num_trabalhadores INTEGER DEFAULT 1,
+    anexo_nr16 TEXT NOT NULL,
+    atividade_descrita TEXT NOT NULL,
+    agente_periculoso TEXT NOT NULL,
+    delimitacao_area_risco TEXT NOT NULL,
+    tempo_exposicao TEXT NOT NULL,
+    caracterizacao BOOLEAN NOT NULL DEFAULT FALSE,
+    percentual_adicional NUMERIC DEFAULT 0,
+    salario_base_medio NUMERIC DEFAULT 0,
+    fundamentacao_legal TEXT NOT NULL,
+    parecer_conclusivo TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.periculosidade_analises ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total as analises de periculosidade" ON public.periculosidade_analises;
+CREATE POLICY "Acesso total as analises de periculosidade" ON public.periculosidade_analises
+    FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+GRANT ALL ON public.periculosidade_analises TO anon, authenticated;
+
+-- ============================================================
 -- RISCOS RESIDUAIS CONHECIDOS (documentados, não corrigidos nesta versão)
 -- ============================================================
 -- 1. cadastros, checklists, relatos, checklist_items e nao_conformidades continuam

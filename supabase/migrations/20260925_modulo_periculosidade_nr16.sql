@@ -214,19 +214,34 @@ INSERT INTO public.periculosidade_analises (
     'DESCARACTERIZADA A PERICULOSIDADE. Volume diminuto desconsiderado pela legislação de inflamáveis.'
 ),
 
--- GRUPO 10: OPERAÇÃO DE SISTEMAS HÍDRICOS (6 colaboradores - 🛡️ NÃO PERICULOSO)
+-- GRUPO 10: OPERAÇÃO DE SISTEMAS HÍDRICOS (6 colaboradores - ⚡ PERICULOSO 30%)
 (
     'PERIC_G10', 'LP_2026_2027', 10,
-    'Operação Hídrica (Grupo 10)', 'Sala de Controle Operacional (CCO)',
+    'Operação Hídrica (Grupo 10)', 'Galpão Operacional da Estação de Bombeamento (EB)',
     'Operador de Estação de Bombeamento / Encarregado de Operações', '8621-40', 'GHE 10 - Operação de Sistemas Hídricos', 6,
-    'Nenhum / Não Aplicável',
-    'Monitoramento visual das variáveis operacionais de vazão, pressão e nível d''água em monitores de computadores de baixa tensão eletrônica em sala climatizada.',
-    'Sistemas Eletrônicos em Extrabaixa Tensão (24Vcc / 127V)',
-    'Interior da sala de comando de vidros temperados isolada dos equipamentos elétricos do galpão.',
-    'Inexistente',
-    FALSE, 0.00, 3600.00,
-    'Item 2, alínea "a" do Anexo 4 da NR-16: Instalações operadas em extrabaixa tensão ou com isolamento total não geram direito ao adicional.',
-    'DESCARACTERIZADA A PERICULOSIDADE. Trabalho em ambiente administrativo isolado dos condutores vivos.'
+    'Anexo 4 - Energia Elétrica',
+    'Coordenação e operação dos sistemas hídricos com permanência diária no interior da Estação de Bombeamento em área adjacente e com circulação próxima aos painéis de comando e subestações.',
+    'Energia Elétrica / Proximidade com Painéis de Força e Subestações em Estação de Bombeamento',
+    'Área interna da Estação de Bombeamento (EB) e adjacências imediatas aos cubículos e painéis elétricos de acionamento.',
+    'Habitual e Intermitente',
+    TRUE, 30.00, 3600.00,
+    'Anexo 4 da NR-16 (Portaria MTE nº 1.078/2014), Item 1, alínea "c", c/c Súmula 364 do TST e Política Corporativa do Consórcio. Os operadores de sistemas hídricos e encarregados permanecem nas Estações de Bombeamento em proximidade aos painéis elétricos de média e alta potência. Visando à proteção e segurança jurídica, a diretoria do Consórcio deliberou expressamente pelo pagamento do adicional a todos os integrantes deste grupo.',
+    'CARACTERIZADA A PERICULOSIDADE (Adicional de 30% sobre o salário-base), com base na permanência no galpão operacional da Estação de Bombeamento próximo aos sistemas de controle elétrico e determinação da empresa.'
+),
+
+-- GRUPO 25: OPERAÇÃO DE SUBESTAÇÃO (6 colaboradores - ⚡ PERICULOSO 30%)
+(
+    'PERIC_G25', 'LP_2026_2027', 25,
+    'Operação de Subestações (Grupo 25)', 'Pátio de Subestações e Salas Elétricas das EBs',
+    'Operador de Subestação', '8621-50', 'GHE 25 - Operação de Subestações', 6,
+    'Anexo 4 - Energia Elétrica',
+    'Manobras operacionais de chaves seccionadoras, disjuntores de média e alta tensão, acompanhamento de telemetria e inspeções visuais em transformadores e barramentos energizados das subestações das Estações de Bombeamento.',
+    'Energia Elétrica em Alta Tensão / SEP',
+    'Pátio da Subestação e salas de painéis de distribuição (Zonas de Risco e Controladas da NR-10 e Anexo 4 da NR-16).',
+    'Habitual e Permanente',
+    TRUE, 30.00, 3800.00,
+    'Anexo 4 da NR-16 (Portaria MTE nº 1.078/2014) e Decreto nº 93.412/86. Atividades de operação e manobra em instalações elétricas do Sistema Elétrico de Potência (SEP).',
+    'CARACTERIZADA A PERICULOSIDADE (Adicional de 30% sobre o salário-base).'
 ),
 
 -- GRUPO 11, 12: MÁQUINAS PESADAS E MOTORISTAS (13 colaboradores - 🛡️ NÃO PERICULOSO)

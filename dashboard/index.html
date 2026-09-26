@@ -90,6 +90,9 @@
                         <button class="db-nav-item" id="navEpi" onclick="showDbPage('epi')">
                             <span class="db-nav-icon">🦺</span> EPI
                         </button>
+                        <button class="db-nav-item" id="navPericulosidade" onclick="showDbPage('periculosidade')">
+                            <span class="db-nav-icon">⚡</span> Periculosidade (NR-16)
+                        </button>
                         <button class="db-nav-item" id="navExtintores" onclick="showDbPage('extintores')">
                             <span class="db-nav-icon">🧯</span> Extintores
                         </button>
@@ -122,9 +125,6 @@
                         </button>
                         <button class="db-nav-item" id="navErgonomia" onclick="showDbPage('ergonomia')">
                             <span class="db-nav-icon">🧘</span> Ergonomia (NR-17)
-                        </button>
-                        <button class="db-nav-item" id="navPericulosidade" onclick="showDbPage('periculosidade')">
-                            <span class="db-nav-icon">⚡</span> Periculosidade (NR-16)
                         </button>
                     </div>
                 </div>
@@ -4061,58 +4061,141 @@
                     </div>
                 </div>
 
-                <!-- KPIs de Periculosidade -->
-                <div class="db-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 20px;">
-                    <div class="db-kpi-card db-kpi-primary">
-                        <div class="db-kpi-value" id="kpiPericTotalTrabalhadores">129</div>
-                        <div class="db-kpi-label">👥 Total Mapeado na Obra</div>
+                <!-- Subabas de Navegação: Matriz Pericial vs Relação Nominal de Colaboradores -->
+                <div class="db-subnav" style="display: flex; gap: 8px; border-bottom: 2px solid var(--border); margin-bottom: 18px; padding-bottom: 2px;">
+                    <button class="db-subnav-btn active" id="pericSubtabBtn-matriz" onclick="showPericulosidadeSubtab('matriz')" style="padding: 9px 18px; font-weight: 600; font-size: 13px; border: none; background: transparent; cursor: pointer; border-radius: 6px 6px 0 0; display: inline-flex; align-items: center; gap: 6px;">
+                        <span>⚡</span> Matriz Pericial por Função (NR-16)
+                    </button>
+                    <button class="db-subnav-btn" id="pericSubtabBtn-colaboradores" onclick="showPericulosidadeSubtab('colaboradores')" style="padding: 9px 18px; font-weight: 600; font-size: 13px; border: none; background: transparent; cursor: pointer; border-radius: 6px 6px 0 0; display: inline-flex; align-items: center; gap: 6px;">
+                        <span>👥</span> Colaboradores Elegíveis (Folha / RH) <span id="badgeQtdPericColabs" style="background: #dc2626; color: #fff; font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: 700; margin-left: 4px;">22</span>
+                    </button>
+                </div>
+
+                <!-- SUBABA 1: Matriz Pericial por Função -->
+                <div id="pericSubtabContent-matriz">
+                    <!-- KPIs de Periculosidade -->
+                    <div class="db-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 20px;">
+                        <div class="db-kpi-card db-kpi-primary">
+                            <div class="db-kpi-value" id="kpiPericTotalTrabalhadores">129</div>
+                            <div class="db-kpi-label">👥 Total Mapeado na Obra</div>
+                        </div>
+                        <div class="db-kpi-card" style="border-left: 4px solid #dc2626;">
+                            <div class="db-kpi-value" id="kpiPericCaracterizados" style="color: #dc2626;">22</div>
+                            <div class="db-kpi-label">⚡ Com Periculosidade (30%)</div>
+                        </div>
+                        <div class="db-kpi-card" style="border-left: 4px solid #16a34a;">
+                            <div class="db-kpi-value" id="kpiPericDescaracterizados" style="color: #16a34a;">107</div>
+                            <div class="db-kpi-label">🛡️ Descaracterizados (0%)</div>
+                        </div>
+                        <div class="db-kpi-card" style="border-left: 4px solid #0284c7;">
+                            <div class="db-kpi-value" id="kpiPericAnexosAtivos" style="color: #0284c7;">Anexos 2 e 4</div>
+                            <div class="db-kpi-label">📜 Anexos NR-16 Enquadrados</div>
+                        </div>
+                        <div class="db-kpi-card" style="border-left: 4px solid #7c3aed;">
+                            <div class="db-kpi-value" id="kpiPericImpactoMensal" style="color: #7c3aed; font-size: 20px;">R$ 25.890,00</div>
+                            <div class="db-kpi-label">💰 Impacto Estimado / Mês</div>
+                        </div>
                     </div>
-                    <div class="db-kpi-card" style="border-left: 4px solid #dc2626;">
-                        <div class="db-kpi-value" id="kpiPericCaracterizados" style="color: #dc2626;">16</div>
-                        <div class="db-kpi-label">⚡ Com Periculosidade (30%)</div>
-                    </div>
-                    <div class="db-kpi-card" style="border-left: 4px solid #16a34a;">
-                        <div class="db-kpi-value" id="kpiPericDescaracterizados" style="color: #16a34a;">113</div>
-                        <div class="db-kpi-label">🛡️ Descaracterizados (0%)</div>
-                    </div>
-                    <div class="db-kpi-card" style="border-left: 4px solid #0284c7;">
-                        <div class="db-kpi-value" id="kpiPericAnexosAtivos" style="color: #0284c7;">Anexos 2 e 4</div>
-                        <div class="db-kpi-label">📜 Anexos NR-16 Enquadrados</div>
-                    </div>
-                    <div class="db-kpi-card" style="border-left: 4px solid #7c3aed;">
-                        <div class="db-kpi-value" id="kpiPericImpactoMensal" style="color: #7c3aed; font-size: 20px;">R$ 19.410,00</div>
-                        <div class="db-kpi-label">💰 Impacto Estimado / Mês</div>
+
+                    <!-- Card de Filtros e Busca da Matriz -->
+                    <div class="db-chart-card" style="margin-bottom: 16px;">
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px;">
+                            <div style="flex: 1; min-width: 260px;">
+                                <input type="text" id="pericSearchInput" placeholder="🔍 Buscar por cargo, setor, agente, CBO ou anexo..."
+                                       oninput="filtrarPericulosidadeLista()"
+                                       style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+                            </div>
+                            <select id="pericFiltroConclusao" onchange="filtrarPericulosidadeLista()"
+                                    style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+                                <option value="">Todos os Enquadramentos</option>
+                                <option value="periculoso">⚡ Apenas Periculosos (30%)</option>
+                                <option value="nao_periculoso">🛡️ Apenas Não Periculosos</option>
+                            </select>
+                            <select id="pericFiltroAnexo" onchange="filtrarPericulosidadeLista()"
+                                    style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+                                <option value="">Todos os Anexos da NR-16</option>
+                                <option value="Anexo 4 - Energia Elétrica">Anexo 4 - Energia Elétrica</option>
+                                <option value="Anexo 2 - Inflamáveis">Anexo 2 - Inflamáveis</option>
+                                <option value="Anexo 3 - Segurança Patrimonial">Anexo 3 - Segurança Patrimonial</option>
+                                <option value="Nenhum / Não Aplicável">Nenhum / Não Aplicável</option>
+                            </select>
+                            <button class="db-clear-btn" onclick="limparFiltrosPericulosidade()">Limpar</button>
+                        </div>
+
+                        <!-- Tabela de Inventário de Periculosidade -->
+                        <div style="overflow-x: auto;" id="periculosidadeTabelaContainer">
+                            <div style="padding: 24px; text-align: center; color: var(--text-light);">Carregando laudo de periculosidade...</div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Card de Filtros e Busca -->
-                <div class="db-chart-card" style="margin-bottom: 16px;">
-                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px;">
-                        <div style="flex: 1; min-width: 260px;">
-                            <input type="text" id="pericSearchInput" placeholder="🔍 Buscar por cargo, setor, agente, CBO ou anexo..."
-                                   oninput="filtrarPericulosidadeLista()"
-                                   style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+                <!-- SUBABA 2: Relação Nominal de Colaboradores com Periculosidade -->
+                <div id="pericSubtabContent-colaboradores" style="display: none;">
+                    <!-- Card de Informações e Filtros de Colaboradores -->
+                    <div class="db-chart-card" style="margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;">
+                            <div>
+                                <div style="font-weight: 700; font-size: 14px; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                                    <span>📋</span> Relação Nominal de Beneficiários do Adicional de Periculosidade (30%)
+                                </div>
+                                <div style="font-size: 12px; color: var(--text-light); margin-top: 3px;">
+                                    Cruzamento automático com o efetivo ativo do canteiro. Base oficial para lançamento e conferência de folha de pagamento do RH.
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <button class="db-clear-btn" style="font-size: 12px; padding: 7px 12px;" onclick="imprimirRelacaoNominalPericulosidadeRH()">🖨️ Imprimir Relação para RH</button>
+                                <button class="db-clear-btn" style="font-size: 12px; padding: 7px 12px;" onclick="exportarRelacaoNominalPericulosidadeCSV()">📥 Exportar Lista (CSV)</button>
+                            </div>
                         </div>
-                        <select id="pericFiltroConclusao" onchange="filtrarPericulosidadeLista()"
-                                style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
-                            <option value="">Todos os Enquadramentos</option>
-                            <option value="periculoso">⚡ Apenas Periculosos (30%)</option>
-                            <option value="nao_periculoso">🛡️ Apenas Não Periculosos</option>
-                        </select>
-                        <select id="pericFiltroAnexo" onchange="filtrarPericulosidadeLista()"
-                                style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
-                            <option value="">Todos os Anexos da NR-16</option>
-                            <option value="Anexo 4 - Energia Elétrica">Anexo 4 - Energia Elétrica</option>
-                            <option value="Anexo 2 - Inflamáveis">Anexo 2 - Inflamáveis</option>
-                            <option value="Anexo 3 - Segurança Patrimonial">Anexo 3 - Segurança Patrimonial</option>
-                            <option value="Nenhum / Não Aplicável">Nenhum / Não Aplicável</option>
-                        </select>
-                        <button class="db-clear-btn" onclick="limparFiltrosPericulosidade()">Limpar</button>
-                    </div>
 
-                    <!-- Tabela de Inventário de Periculosidade -->
-                    <div style="overflow-x: auto;" id="periculosidadeTabelaContainer">
-                        <div style="padding: 24px; text-align: center; color: var(--text-light);">Carregando laudo de periculosidade...</div>
+                        <!-- Mini KPIs de Folha / RH -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px;">
+                            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+                                <div style="font-size: 11px; text-transform: uppercase; color: var(--text-light); font-weight: 700;">Colaboradores Periculosos</div>
+                                <div style="font-size: 20px; font-weight: 800; color: #dc2626; margin-top: 2px;" id="kpiColabPericTotal">22 colaboradores</div>
+                            </div>
+                            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+                                <div style="font-size: 11px; text-transform: uppercase; color: var(--text-light); font-weight: 700;">Setores Abrangidos</div>
+                                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-top: 5px;" id="kpiColabPericSetores">Operação, Manut. Elétrica, Transporte</div>
+                            </div>
+                            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+                                <div style="font-size: 11px; text-transform: uppercase; color: var(--text-light); font-weight: 700;">Folha Salarial Base Estimada</div>
+                                <div style="font-size: 18px; font-weight: 800; color: var(--text-primary); margin-top: 2px;" id="kpiColabPericFolhaBase">R$ 86.300,00</div>
+                            </div>
+                            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+                                <div style="font-size: 11px; text-transform: uppercase; color: var(--text-light); font-weight: 700;">Adicional 30% Mensal Estimado</div>
+                                <div style="font-size: 20px; font-weight: 800; color: #7c3aed; margin-top: 2px;" id="kpiColabPericFolhaAdicional">R$ 25.890,00</div>
+                            </div>
+                        </div>
+
+                        <!-- Filtros da Relação Nominal -->
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px;">
+                            <div style="flex: 1; min-width: 240px;">
+                                <input type="text" id="pericColabSearchInput" placeholder="🔍 Buscar por nome do colaborador, matrícula ou função..."
+                                       oninput="filtrarColaboradoresPericulosidade()"
+                                       style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+                            </div>
+                            <select id="pericColabFiltroSetor" onchange="filtrarColaboradoresPericulosidade()"
+                                    style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+                                <option value="">Todos os Setores</option>
+                                <option value="OPERAÇÃO">Operação (Sistemas Hídricos e Subestações)</option>
+                                <option value="MANUTENÇÃO ELÉTRICA">Manutenção Elétrica / SEP</option>
+                                <option value="ANALISTA">Engenharia / Analistas Elétricos</option>
+                                <option value="TRANSPORTE">Transporte / Comboio</option>
+                            </select>
+                            <select id="pericColabFiltroStatus" onchange="filtrarColaboradoresPericulosidade()"
+                                    style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+                                <option value="periculoso" selected>⚡ Apenas Elegíveis (30% Periculosidade)</option>
+                                <option value="todos">👥 Todos os Colaboradores Ativos</option>
+                                <option value="nao_periculoso">🛡️ Apenas Descaracterizados (0%)</option>
+                            </select>
+                            <button class="db-clear-btn" onclick="limparFiltrosColaboradoresPericulosidade()">Limpar</button>
+                        </div>
+
+                        <!-- Tabela Nominal de Colaboradores -->
+                        <div style="overflow-x: auto;" id="periculosidadeColaboradoresTabelaContainer">
+                            <div style="padding: 24px; text-align: center; color: var(--text-light);">Carregando relação de colaboradores...</div>
+                        </div>
                     </div>
                 </div>
 

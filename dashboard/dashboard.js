@@ -19206,8 +19206,8 @@ async function salvarPerfilPainel() {
 // ================================================================
 const NAV_GROUP_POR_PAGINA = {
     checklists: 'seguranca', treinamentos: 'seguranca', ddsma: 'seguranca', apr: 'seguranca', matrizrisco: 'seguranca',
-    epi: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca', brigada: 'seguranca',
-    saude: 'saude', psicossocial: 'saude',
+    epi: 'seguranca', periculosidade: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca', brigada: 'seguranca',
+    saude: 'saude', psicossocial: 'saude', ergonomia: 'saude',
     ambiental: 'ambiente',
     efetivo: 'pessoas',
     compras: 'gestao', documentos: 'gestao', acervodrive: 'gestao', importexport: 'gestao',
@@ -30949,13 +30949,22 @@ let analisePericEditandoId = null;
 
 async function loadPericulosidadeData() {
     try {
-        const [laudosRes, analisesRes] = await Promise.all([
+        const promessas = [
             supabaseFetch('periculosidade_laudos', '?select=*&order=created_at.desc'),
             supabaseFetch('periculosidade_analises', '?select=*&order=grupo_numero.asc')
-        ]);
+        ];
 
-        allPericulosidadeLaudos = Array.isArray(laudosRes) ? laudosRes : [];
-        allPericulosidadeAnalises = Array.isArray(analisesRes) ? analisesRes : [];
+        if (allEfetivo.length === 0) {
+            promessas.push(supabaseFetch('colaboradores_efetivo', '?select=*'));
+        }
+
+        const resultados = await Promise.all(promessas);
+        allPericulosidadeLaudos = Array.isArray(resultados[0]) ? resultados[0] : [];
+        allPericulosidadeAnalises = Array.isArray(resultados[1]) ? resultados[1] : [];
+        if (resultados[2] && Array.isArray(resultados[2])) {
+            allEfetivo = resultados[2];
+            efetivoLoaded = true;
+        }
 
         // Atualiza cabeçalho do laudo ativo
         const laudoAtivo = allPericulosidadeLaudos[0];
@@ -30979,9 +30988,47 @@ async function loadPericulosidadeData() {
     }
 }
 
+function showPericulosidadeSubtab(tab) {
+    const btnMatriz = document.getElementById('pericSubtabBtn-matriz');
+    const btnColabs = document.getElementById('pericSubtabBtn-colaboradores');
+    const contentMatriz = document.getElementById('pericSubtabContent-matriz');
+    const contentColabs = document.getElementById('pericSubtabContent-colaboradores');
+
+    if (tab === 'matriz') {
+        if (btnMatriz) {
+            btnMatriz.classList.add('active');
+            btnMatriz.style.borderBottom = '3px solid var(--primary)';
+            btnMatriz.style.color = 'var(--primary)';
+        }
+        if (btnColabs) {
+            btnColabs.classList.remove('active');
+            btnColabs.style.borderBottom = 'none';
+            btnColabs.style.color = 'var(--text-light)';
+        }
+        if (contentMatriz) contentMatriz.style.display = 'block';
+        if (contentColabs) contentColabs.style.display = 'none';
+    } else {
+        if (btnColabs) {
+            btnColabs.classList.add('active');
+            btnColabs.style.borderBottom = '3px solid var(--primary)';
+            btnColabs.style.color = 'var(--primary)';
+        }
+        if (btnMatriz) {
+            btnMatriz.classList.remove('active');
+            btnMatriz.style.borderBottom = 'none';
+            btnMatriz.style.color = 'var(--text-light)';
+        }
+        if (contentMatriz) contentMatriz.style.display = 'none';
+        if (contentColabs) contentColabs.style.display = 'block';
+
+        renderPericulosidadeColaboradores();
+    }
+}
+
 function renderPericulosidadePanel() {
     renderPericulosidadeKpis();
     filtrarPericulosidadeLista();
+    renderPericulosidadeColaboradores();
 }
 
 function renderPericulosidadeKpis() {
@@ -31148,6 +31195,427 @@ function limparFiltrosPericulosidade() {
     if (elC) elC.value = '';
     if (elA) elA.value = '';
     filtrarPericulosidadeLista();
+}
+
+// ================================================================
+// GESTÃO NOMINAL DE COLABORADORES COM PERICULOSIDADE (FOLHA / RH)
+// ================================================================
+function obterClassificacaoPericulosidadeColaborador(c) {
+    const f = (c.funcao || '').toUpperCase();
+    const s = (c.setor || '').toUpperCase();
+    const g = String(c.ghe || '').padStart(2, '0');
+
+    let isPeric = false;
+    let anexo = 'Nenhum / Não Aplicável';
+    let motivo = 'Atividades em áreas isentas de inflamáveis em volume excessivo ou alta tensão.';
+    let localTrabalho = 'Frentes de Obra / Canteiro';
+    let salBase = 2000;
+
+    // 1. GRUPO 10: Operação Hídrica (Conforme decisão corporativa e permanência na EB próxima a painéis elétricos)
+    if (g === '10' || (s === 'OPERAÇÃO' && (f.includes('HIDR') || f.includes('ENC. DE OPERAÇÃO')))) {
+        isPeric = true;
+        anexo = 'Anexo 4 - Energia Elétrica';
+        motivo = 'Permanência no interior da Estação de Bombeamento em área adjacente e circulação próxima aos painéis de força e controle elétrico (Decisão Corporativa do Consórcio).';
+        localTrabalho = 'Estação de Bombeamento (EB) / Galpão de Bombas';
+        salBase = f.includes('ENC') ? 5000 : 3600;
+    }
+    // 2. GRUPO 25: Operadores de Subestação
+    else if (g === '25' || f.includes('SUBESTAÇÃO') || f.includes('SUBESTACAO')) {
+        isPeric = true;
+        anexo = 'Anexo 4 - Energia Elétrica';
+        motivo = 'Operação, manobra e inspeções em subestações elétricas de alta tensão das Estações de Bombeamento (SEP).';
+        localTrabalho = 'Subestação de Alta Tensão / EBs';
+        salBase = 3800;
+    }
+    // 3. GRUPO 05 / 22: Manutenção Elétrica
+    else if (g === '05' || s === 'MANUTENÇÃO ELÉTRICA' || (s === 'PCM' && f.includes('ELÉTRIC'))) {
+        isPeric = true;
+        anexo = 'Anexo 4 - Energia Elétrica';
+        motivo = 'Intervenções diretas, manutenção preventiva/corretiva e testes em painéis de força energizados e motobombas.';
+        localTrabalho = 'Salas de Painéis Elétricos / Subestações';
+        salBase = f.includes('TÉCNICO') || f.includes('TECNICO') ? 4200 : (f.includes('ASSISTENTE') ? 2500 : 2100);
+    }
+    // 4. GRUPO 04: Analistas de Sistemas Elétricos
+    else if (f.includes('ANALISTA DE SISTEMAS ELÉTRICOS') || (s.includes('ANALISTA') && f.includes('ELÉTRIC'))) {
+        isPeric = true;
+        anexo = 'Anexo 4 - Energia Elétrica';
+        motivo = 'Comissionamento e testes de conformidade elétrica em média/alta tensão no campo.';
+        localTrabalho = 'Subestações e Painéis Elétricos de Campo';
+        salBase = 5200;
+    }
+    // 5. GRUPO 15: Motorista de Caminhão Comboio (Inflamáveis)
+    else if (f.includes('COMBOIO') || (s === 'TRANSPORTE' && f.includes('MOTORISTA') && (c.nome || '').includes('COMBOIO'))) {
+        isPeric = true;
+        anexo = 'Anexo 2 - Inflamáveis';
+        motivo = 'Condução e operação de caminhão tanque abastecedor com óleo diesel > 200L com penetração em raio de 7,5m.';
+        localTrabalho = 'Frentes de Serviço / Caminhão Comboio';
+        salBase = 3500;
+    }
+
+    const adicional = isPeric ? (salBase * 0.30) : 0;
+
+    return {
+        isPeric,
+        anexo,
+        motivo,
+        localTrabalho,
+        salBase,
+        adicional
+    };
+}
+
+function filtrarColaboradoresPericulosidade() {
+    renderPericulosidadeColaboradores();
+}
+
+function limparFiltrosColaboradoresPericulosidade() {
+    const elS = document.getElementById('pericColabSearchInput');
+    const elSetor = document.getElementById('pericColabFiltroSetor');
+    const elStatus = document.getElementById('pericColabFiltroStatus');
+    if (elS) elS.value = '';
+    if (elSetor) elSetor.value = '';
+    if (elStatus) elStatus.value = 'periculoso';
+    renderPericulosidadeColaboradores();
+}
+
+function renderPericulosidadeColaboradores() {
+    const container = document.getElementById('periculosidadeColaboradoresTabelaContainer');
+    if (!container) return;
+
+    const search = (document.getElementById('pericColabSearchInput')?.value || '').trim().toLowerCase();
+    const filtroSetor = document.getElementById('pericColabFiltroSetor')?.value || '';
+    const filtroStatus = document.getElementById('pericColabFiltroStatus')?.value || 'periculoso';
+
+    // Pega colaboradores ativos
+    const ativos = allEfetivo.filter(c => colaboradorEstaAtivo(c));
+
+    // Mapeia dados periciais para cada um
+    const listaMapeada = ativos.map(c => {
+        const pericInfo = obterClassificacaoPericulosidadeColaborador(c);
+        return {
+            ...c,
+            ...pericInfo
+        };
+    });
+
+    // Filtra para contagem global de elegíveis
+    const totalElegiveis = listaMapeada.filter(c => c.isPeric);
+    const badgeEl = document.getElementById('badgeQtdPericColabs');
+    if (badgeEl) badgeEl.textContent = totalElegiveis.length;
+
+    // Atualiza mini KPIs de folha
+    let folhaBasePeric = 0;
+    let folhaAdicPeric = 0;
+    const setoresPericSet = new Set();
+
+    totalElegiveis.forEach(c => {
+        folhaBasePeric += c.salBase;
+        folhaAdicPeric += c.adicional;
+        if (c.setor) setoresPericSet.add(c.setor);
+    });
+
+    const elKpiTotal = document.getElementById('kpiColabPericTotal');
+    const elKpiSetores = document.getElementById('kpiColabPericSetores');
+    const elKpiFolhaBase = document.getElementById('kpiColabPericFolhaBase');
+    const elKpiFolhaAdic = document.getElementById('kpiColabPericFolhaAdicional');
+
+    if (elKpiTotal) elKpiTotal.textContent = `${totalElegiveis.length} colaboradores`;
+    if (elKpiSetores) elKpiSetores.textContent = Array.from(setoresPericSet).slice(0, 3).join(', ');
+    if (elKpiFolhaBase) elKpiFolhaBase.textContent = folhaBasePeric.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (elKpiFolhaAdic) elKpiFolhaAdic.textContent = folhaAdicPeric.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    // Aplica filtros de exibição da tabela
+    let filtrados = listaMapeada.filter(c => {
+        if (filtroStatus === 'periculoso' && !c.isPeric) return false;
+        if (filtroStatus === 'nao_periculoso' && c.isPeric) return false;
+
+        if (filtroSetor) {
+            const s = (c.setor || '').toUpperCase();
+            if (!s.includes(filtroSetor)) return false;
+        }
+
+        if (search) {
+            const haystack = [c.id, c.nome, c.funcao, c.setor, c.ghe, c.anexo].map(x => (x || '').toLowerCase()).join(' ');
+            if (!haystack.includes(search)) return false;
+        }
+        return true;
+    });
+
+    // Ordenar: Periculosos primeiro, depois por setor e nome
+    filtrados.sort((a, b) => {
+        if (a.isPeric !== b.isPeric) return b.isPeric ? -1 : 1;
+        const compSetor = (a.setor || '').localeCompare(b.setor || '');
+        if (compSetor !== 0) return compSetor;
+        return (a.nome || '').localeCompare(b.nome || '');
+    });
+
+    if (filtrados.length === 0) {
+        container.innerHTML = `
+            <div style="padding: 30px; text-align: center; color: var(--text-light);">
+                Nenhum colaborador encontrado com os filtros selecionados.
+            </div>`;
+        return;
+    }
+
+    let html = `
+        <table class="db-table" style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
+            <thead>
+                <tr style="background: var(--bg); border-bottom: 2px solid var(--border); text-align: left;">
+                    <th style="padding: 9px 12px; width: 65px; text-align: center;">Matrícula</th>
+                    <th style="padding: 9px 12px; min-width: 220px;">Colaborador</th>
+                    <th style="padding: 9px 12px; min-width: 180px;">Função / Cargo</th>
+                    <th style="padding: 9px 12px; min-width: 160px;">Setor / Lotação</th>
+                    <th style="padding: 9px 12px; width: 70px; text-align: center;">GHE</th>
+                    <th style="padding: 9px 12px; min-width: 170px;">Anexo NR-16</th>
+                    <th style="padding: 9px 12px; min-width: 200px;">Justificativa Operacional</th>
+                    <th style="padding: 9px 12px; text-align: right; width: 110px;">Salário Base</th>
+                    <th style="padding: 9px 12px; text-align: right; width: 110px;">Adicional (30%)</th>
+                    <th style="padding: 9px 12px; text-align: center; width: 140px;">Status Folha</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    filtrados.forEach(c => {
+        const badgeStatus = c.isPeric
+            ? `<span style="background: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #f87171;">
+                 ⚡ 30% DEVIDO
+               </span>`
+            : `<span style="background: #dcfce7; color: #16a34a; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #86efac;">
+                 🛡️ INDEVIDO (0%)
+               </span>`;
+
+        html += `
+            <tr style="border-bottom: 1px solid var(--border); ${c.isPeric ? 'background: rgba(239, 68, 68, 0.03);' : ''}">
+                <td style="padding: 10px 12px; text-align: center; font-weight: 700; color: var(--text-light);">
+                    ${c.id || '-'}
+                </td>
+                <td style="padding: 10px 12px;">
+                    <div style="font-weight: 700; color: var(--text-primary);">${c.nome || '-'}</div>
+                    <div style="font-size: 11px; color: var(--text-light); margin-top: 1px;">Admissão: ${c.dt_admissao ? formatSimpleDate(c.dt_admissao) : 'Ativo'}</div>
+                </td>
+                <td style="padding: 10px 12px;">
+                    <div style="font-weight: 600; color: var(--text-primary);">${c.funcao || '-'}</div>
+                </td>
+                <td style="padding: 10px 12px;">
+                    <div style="color: var(--text-primary);">${c.setor || '-'}</div>
+                    <div style="font-size: 11px; color: var(--text-light); margin-top: 1px;">📍 ${c.localTrabalho}</div>
+                </td>
+                <td style="padding: 10px 12px; text-align: center; font-weight: 600;">
+                    ${c.ghe || '-'}
+                </td>
+                <td style="padding: 10px 12px;">
+                    <span style="font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; ${c.isPeric ? 'background: rgba(220, 38, 38, 0.1); color: #dc2626;' : 'background: var(--bg); color: var(--text-light);'}">
+                        ${c.anexo}
+                    </span>
+                </td>
+                <td style="padding: 10px 12px; font-size: 11px; color: var(--text-primary); max-width: 260px;" title="${c.motivo}">
+                    ${c.motivo}
+                </td>
+                <td style="padding: 10px 12px; text-align: right; font-weight: 600; color: var(--text-primary);">
+                    ${c.salBase.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </td>
+                <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: ${c.isPeric ? '#dc2626' : 'var(--text-light)'};">
+                    ${c.adicional > 0 ? c.adicional.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ 0,00'}
+                </td>
+                <td style="padding: 10px 12px; text-align: center;">
+                    ${badgeStatus}
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+}
+
+function exportarRelacaoNominalPericulosidadeCSV() {
+    const ativos = allEfetivo.filter(c => colaboradorEstaAtivo(c));
+    const lista = ativos.map(c => ({
+        ...c,
+        ...obterClassificacaoPericulosidadeColaborador(c)
+    })).filter(c => c.isPeric);
+
+    if (lista.length === 0) {
+        alert('Nenhum colaborador elegível à periculosidade encontrado para exportação.');
+        return;
+    }
+
+    const headers = [
+        'Matricula', 'Nome Completo', 'Funcao', 'Setor', 'GHE', 'Local de Trabalho',
+        'Anexo NR-16', 'Salario Base (R$)', 'Adicional 30% (R$)', 'Status Periculosidade',
+        'Fundamentacao / Justificativa Operacional'
+    ];
+
+    const rows = lista.map(c => [
+        c.id || '',
+        `"${(c.nome || '').replace(/"/g, '""')}"`,
+        `"${(c.funcao || '').replace(/"/g, '""')}"`,
+        `"${(c.setor || '').replace(/"/g, '""')}"`,
+        c.ghe || '',
+        `"${(c.localTrabalho || '').replace(/"/g, '""')}"`,
+        `"${(c.anexo || '').replace(/"/g, '""')}"`,
+        c.salBase.toFixed(2),
+        c.adicional.toFixed(2),
+        'ELEGIVEL (30%)',
+        `"${(c.motivo || '').replace(/"/g, '""')}"`
+    ].join(';'));
+
+    const csvContent = '\uFEFF' + headers.join(';') + '\n' + rows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Relacao_Nominal_Periculosidade_RH_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function imprimirRelacaoNominalPericulosidadeRH() {
+    const laudoAtivo = allPericulosidadeLaudos[0] || {
+        codigo: 'LP-2026/2027',
+        empresa: 'CONSORCIO OPERADOR RAMAL DO AGRESTE',
+        cnpj: '55.623.017/0001-97',
+        data_inicio: '2026-07-20',
+        data_fim: '2027-07-20',
+        responsavel_tecnico: 'Eng. João Everton de Souza Limeira',
+        registro_profissional: 'CREA: 0522078320-BA'
+    };
+
+    const ativos = allEfetivo.filter(c => colaboradorEstaAtivo(c));
+    const lista = ativos.map(c => ({
+        ...c,
+        ...obterClassificacaoPericulosidadeColaborador(c)
+    })).filter(c => c.isPeric);
+
+    // Ordena por Setor e Nome
+    lista.sort((a, b) => {
+        const comp = (a.setor || '').localeCompare(b.setor || '');
+        if (comp !== 0) return comp;
+        return (a.nome || '').localeCompare(b.nome || '');
+    });
+
+    let totalSalBase = 0;
+    let totalAdicional = 0;
+    let linhasHtml = '';
+
+    lista.forEach((c, idx) => {
+        totalSalBase += c.salBase;
+        totalAdicional += c.adicional;
+
+        linhasHtml += `
+            <tr style="border-bottom: 1px solid #ddd; ${idx % 2 === 0 ? 'background-color: #fdfdfd;' : 'background-color: #fff;'}">
+                <td style="padding: 6px 8px; text-align: center; font-weight: bold;">${c.id || '-'}</td>
+                <td style="padding: 6px 8px;"><b>${c.nome}</b></td>
+                <td style="padding: 6px 8px;">${c.funcao}</td>
+                <td style="padding: 6px 8px;">${c.setor}</td>
+                <td style="padding: 6px 8px; text-align: center;">${c.ghe || '-'}</td>
+                <td style="padding: 6px 8px; font-size: 10px;">${c.anexo}</td>
+                <td style="padding: 6px 8px; text-align: right;">${c.salBase.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td style="padding: 6px 8px; text-align: right; font-weight: bold; color: #dc2626;">${c.adicional.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td style="padding: 6px 8px; font-size: 9.5px; color: #444;">${c.motivo}</td>
+            </tr>
+        `;
+    });
+
+    const dataEmissao = new Date().toLocaleDateString('pt-BR');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Relação Nominal de Periculosidade - Folha RH - ${laudoAtivo.codigo}</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 22px; color: #222; background: #fff; font-size: 10.5pt; line-height: 1.4; }
+        .header-table { width: 100%; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 15px; }
+        .title { font-size: 15pt; font-weight: bold; color: #0f172a; text-transform: uppercase; margin: 0; }
+        .subtitle { font-size: 10.5pt; color: #475569; margin-top: 3px; }
+        .box-info { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-bottom: 16px; font-size: 9.5pt; }
+        table.tabela-dados { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9pt; }
+        table.tabela-dados th { background: #0f172a; color: #fff; padding: 6px 6px; text-align: left; font-size: 9pt; }
+        table.tabela-dados td { border: 1px solid #cbd5e1; }
+        .total-row { background: #fee2e2; font-weight: bold; }
+        .total-row td { padding: 8px 6px; border-top: 2px solid #dc2626; font-size: 9.5pt; }
+        .assinatura-container { display: flex; justify-content: space-around; margin-top: 45px; page-break-inside: avoid; text-align: center; }
+        .assinatura-box { width: 42%; border-top: 1px solid #000; padding-top: 6px; font-size: 9.5pt; }
+        @media print {
+            body { padding: 10px; }
+            .no-print { display: none !important; }
+            tr { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="position: fixed; top: 15px; right: 15px; z-index: 99999; background: #fff; padding: 8px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 1px solid #ccc;">
+        <button onclick="window.print()" style="background: #0284c7; color: #fff; border: none; padding: 8px 16px; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 12px;">🖨️ Imprimir Relação / Salvar PDF</button>
+    </div>
+
+    <!-- Cabeçalho Oficial com Logo Base64 Padronizado -->
+    <table class="header-table">
+        <tr>
+            <td style="width: 160px; vertical-align: middle;">
+                <img src="${LOGO_COP_BASE64}" alt="Consórcio Operador Ramal do Agreste" style="max-height: 55px; max-width: 160px; object-fit: contain;">
+            </td>
+            <td style="vertical-align: middle; padding-left: 12px;">
+                <div class="title">Relação Nominal de Beneficiários de Periculosidade (30%)</div>
+                <div class="subtitle">Emissão para Lançamento e Conferência de Folha de Pagamento • NR-16 / Art. 193 da CLT</div>
+            </td>
+            <td style="text-align: right; vertical-align: middle;">
+                <div style="font-weight: bold; font-size: 10.5pt; color: #0f172a;">${laudoAtivo.codigo}</div>
+                <div style="font-size: 9pt; color: #64748b;">Emissão: ${dataEmissao}</div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="box-info">
+        <b>Empresa:</b> ${laudoAtivo.empresa} • <b>CNPJ:</b> ${laudoAtivo.cnpj}<br>
+        <b>Laudo Pericial Base:</b> ${laudoAtivo.codigo} (Vigência 20/07/2026 a 20/07/2027) • <b>Resp. Técnico:</b> ${laudoAtivo.responsavel_tecnico} (${laudoAtivo.registro_profissional})<br>
+        <b>Observação Técnica:</b> Inclui o Grupo 10 (Operação de Sistemas Hídricos) por permanência na Estação de Bombeamento em proximidade com painéis de força e determinação corporativa da empresa.
+    </div>
+
+    <table class="tabela-dados">
+        <thead>
+            <tr>
+                <th style="width: 35px; text-align: center;">Mat.</th>
+                <th>Colaborador</th>
+                <th>Função / Cargo</th>
+                <th>Setor de Lotação</th>
+                <th style="width: 35px; text-align: center;">GHE</th>
+                <th>Anexo NR-16</th>
+                <th style="width: 85px; text-align: right;">Salário Base</th>
+                <th style="width: 85px; text-align: right;">Adic. 30%</th>
+                <th>Justificativa do Enquadramento</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${linhasHtml}
+            <tr class="total-row">
+                <td colspan="6" style="text-align: right; padding-right: 10px;">TOTAIS ESTIMADOS (${lista.length} COLABORADORES):</td>
+                <td style="text-align: right;">${totalSalBase.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td style="text-align: right; color: #dc2626;">${totalAdicional.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td>Adicional de 30% incidente sobre salário-base</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="assinatura-container">
+        <div class="assinatura-box">
+            <b>${laudoAtivo.responsavel_tecnico}</b><br>
+            Engenheiro de Segurança do Trabalho<br>
+            ${laudoAtivo.registro_profissional}
+        </div>
+        <div class="assinatura-box">
+            <b>Departamento de Pessoal / Recursos Humanos</b><br>
+            Consórcio Operador Ramal do Agreste<br>
+            Conferência e Lançamento em Folha
+        </div>
+    </div>
+</body>
+</html>`;
+
+    abrirDocumentoHtmlParaImpressao(html, `Relacao_Nominal_Periculosidade_${laudoAtivo.codigo}`);
 }
 
 function abrirModalNovaAnalisePericulosidade() {
@@ -31530,13 +31998,13 @@ function emitirLaudoOficialPericulosidade() {
         <button onclick="window.print()" style="background: #0284c7; color: #fff; border: none; padding: 8px 16px; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 12px;">🖨️ Imprimir Laudo / Salvar PDF</button>
     </div>
 
-    <!-- Cabeçalho Oficial -->
+    <!-- Cabeçalho Oficial com Logo Base64 Padronizado -->
     <table class="header-table">
         <tr>
-            <td style="width: 70px; vertical-align: middle;">
-                <div style="font-size: 32pt; font-weight: bold; color: #0284c7; line-height: 1;">COP</div>
+            <td style="width: 160px; vertical-align: middle;">
+                <img src="${LOGO_COP_BASE64}" alt="Consórcio Operador Ramal do Agreste" style="max-height: 55px; max-width: 160px; object-fit: contain;">
             </td>
-            <td style="vertical-align: middle; padding-left: 12px;">
+            <td style="vertical-align: middle; padding-left: 14px;">
                 <div class="title">Laudo Técnico Pericial de Periculosidade (LP)</div>
                 <div class="subtitle">Norma Regulamentadora nº 16 (NR-16) • Artigos 193 e 195 da Consolidação das Leis do Trabalho (CLT)</div>
             </td>
@@ -31590,7 +32058,7 @@ function emitirLaudoOficialPericulosidade() {
         <li><b>Anexo 1 (Explosivos):</b> Descaracterizado no canteiro. Não há estocagem ou detonações ativas na fase atual.</li>
         <li><b>Anexo 2 (Inflamáveis):</b> Caracterizado para a operação e condução do Caminhão Comboio (transporte e abastecimento com tanques de óleo diesel com volume superior a 200 litros em bacia/área de risco de raio de 7,5 metros). Descaracterizado para pequenos volumes manuais (< 5L) de roçadeiras conforme Item 4 do Anexo 2.</li>
         <li><b>Anexo 3 (Segurança Pessoal/Patrimonial):</b> Descaracterizado para os Vigias de portaria desarmados. Conforme a Portaria MTE nº 1.885/2013 e o Incidente de Recursos Repetitivos (Tema 16) do Tribunal Superior do Trabalho (TST), o adicional é privativo dos profissionais enquadrados formalmente na Lei Federal nº 7.102/83 (Vigilantes formados).</li>
-        <li><b>Anexo 4 (Energia Elétrica / SEP):</b> Caracterizado para os Técnicos de Manutenção Elétrica e Operadores de Subestação de Alta Tensão que realizam intervenções, manobras ou inspeções em zonas controladas e de risco de circuitos de força das Estações de Bombeamento e Subestações (Portaria MTE nº 1.078/2014 e Súmula 364 do TST).</li>
+        <li><b>Anexo 4 (Energia Elétrica / SEP):</b> Caracterizado para os Técnicos de Manutenção Elétrica, Analistas Elétricos e Operadores de Subestação de Alta Tensão nas Estações de Bombeamento. <b>Adicionalmente, inclui-se os integrantes do Grupo 10 (Operação de Sistemas Hídricos)</b>, cujos encarregados e operadores permanecem no interior das Estações de Bombeamento em proximidade com os painéis de força e controle elétrico, respaldados por determinação corporativa da empresa visando à segurança jurídica e prevenção de passivos trabalhistas.</li>
         <li><b>Anexo 5 (Motocicleta):</b> Descaracterizado. A empresa não utiliza deslocamento em motocicleta como atividade-fim laboral.</li>
     </ul>
 
@@ -31638,7 +32106,7 @@ function emitirLaudoOficialPericulosidade() {
         <li><b>Bloqueio e Etiquetagem (LOTO - NR-10):</b> Manter o rigoroso procedimento de desenergização e impedimento mecânico antes de qualquer intervenção da equipe mecânica nos conjuntos motobombas, garantindo a descaracterização do risco elétrico para esses profissionais.</li>
         <li><b>Prontuário das Instalações Elétricas (PIE):</b> Manter atualizados os esquemas unifilares das subestações e laudos de aterramento e SPDA de todas as Estações de Bombeamento.</li>
         <li><b>Caminhão Comboio:</b> Fiscalizar a certificação INMETRO do tanque de combustível, aterramento prévio durante descargas e porte obrigatório do curso MOPP pelo motorista operador.</li>
-        <li><b>Gestão da Folha de Pagamento:</b> Efetuar o pagamento do adicional de periculosidade de 30% estritamente sobre o salário-base aos 16 profissionais caracterizados, sem inclusão de gratificações conforme art. 193, §1º da CLT.</li>
+        <li><b>Gestão da Folha de Pagamento:</b> Efetuar o pagamento do adicional de periculosidade de 30% estritamente sobre o salário-base aos profissionais caracterizados nos Grupos de Operação Hídrica (G10/G25), Manutenção Elétrica e Abastecimento, sem inclusão de gratificações conforme art. 193, §1º da CLT.</li>
     </ol>
 
     <h2>7. Termo de Encerramento e Validação Pericial</h2>

@@ -274,6 +274,34 @@
 
             <!-- Página: Checklists -->
             <section class="db-page active" id="page-checklists">
+
+                <!-- Banner: Sistemática de Identificação - Cor do Mês -->
+                <div id="bannerCorDoMesChecklist" style="margin-bottom: 16px; padding: 14px 18px; background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%); border: 1px solid var(--border); border-left: 6px solid #10b981; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.03);">
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <div id="corDoMesBadgeIcone" style="width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.15); flex-shrink: 0; background: #10b981; color: #fff;">
+                            🏷️
+                        </div>
+                        <div>
+                            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light);">
+                                SISTEMÁTICA DE IDENTIFICAÇÃO CHECK LIST • RAMAL DO AGRESTE
+                            </div>
+                            <div style="font-size: 15px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; margin-top: 2px; flex-wrap: wrap;">
+                                <span>Cor do Mês (<span id="corDoMesNomeMes">SETEMBRO</span>):</span>
+                                <span id="corDoMesBadge" style="padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; background: #10b981; color: #ffffff; border: 1px solid #059669; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                    <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:currentColor;"></span>
+                                    <span id="corDoMesTexto">VERDE</span>
+                                </span>
+                                <span id="corDoMesProximo" style="font-size: 12px; font-weight: 500; color: var(--text-light); margin-left: 4px;"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <button type="button" onclick="abrirModalCalendarioCoresChecklist()" class="db-filter-btn" style="background: white; border: 1px solid var(--border); font-size: 12.5px; font-weight: 600; padding: 7px 12px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                            📅 Ver Calendário Anual de Cores
+                        </button>
+                    </div>
+                </div>
+
                 <div class="db-filters" style="margin-bottom: 16px;">
                     <div class="db-filter-buttons">
                         <button id="checklistsSubtabBtn-visao" class="db-filter-btn active" onclick="showChecklistsSubtab('visao')">📊 Visão Geral</button>
@@ -6860,7 +6888,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=124"></script>
+    <script src="dashboard.js?v=125"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();
@@ -7037,6 +7065,34 @@ function filterMatrizEpi(q) {
                 <button class="db-clear-btn" style="padding:10px;" onclick="fecharModalNovoColab()">Cancelar</button>
             </div>
             <div id="novoColabStatus" style="font-size:12.5px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Calendário Anual de Cores da Sistemática de Identificação -->
+<div id="modalCalendarioCoresChecklist" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:10050; align-items:center; justify-content:center; padding:16px;" onclick="if(event.target === this) fecharModalCalendarioCoresChecklist();">
+    <div style="background:white; border-radius:14px; width:100%; max-width:680px; max-height:90vh; overflow-y:auto; box-shadow:0 20px 25px -5px rgba(0,0,0,0.2); border:1px solid #e2e8f0; animation:fadeIn 0.2s ease;">
+        <div style="padding:18px 24px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color:white; border-radius:14px 14px 0 0;">
+            <div>
+                <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.08em; opacity:0.8; font-weight:600;">Consórcio Operador do PISF • Ramal do Agreste</div>
+                <div style="font-size:16px; font-weight:700; margin-top:2px;">Sistemática de Identificação Check List — Cor do Mês</div>
+                <div style="font-size:11px; opacity:0.75;">Obra: Ramal do Agreste</div>
+            </div>
+            <button type="button" onclick="fecharModalCalendarioCoresChecklist()" style="background:rgba(255,255,255,0.15); border:none; color:white; font-size:18px; width:32px; height:32px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
+        </div>
+        
+        <div style="padding:20px 24px;">
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; font-size:12.5px; color:#475569; line-height:1.5; margin-bottom:18px;">
+                ℹ️ <strong>Regra Operacional:</strong> Todo equipamento, máquina móvel, veículo ou ferramenta inspecionado e liberado pela Engenharia de Segurança / Inspetor de Campo deve receber a fita plástica, lacre ou etiqueta de identificação visual correspondente à cor vigente no mês do checklist.
+            </div>
+            
+            <div id="gridCalendarioCoresChecklist" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:10px;">
+                <!-- Renderizado dinamicamente via renderModalCalendarioCores() -->
+            </div>
+            
+            <div style="margin-top:20px; padding-top:16px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end;">
+                <button type="button" class="db-apply-btn" onclick="fecharModalCalendarioCoresChecklist()" style="padding:8px 20px; font-size:13px;">Fechar</button>
+            </div>
         </div>
     </div>
 </div>

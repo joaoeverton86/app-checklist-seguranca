@@ -736,6 +736,114 @@ function formatSimpleDate(dateStr) {
     return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
 }
 
+// ============================================
+// SISTEMÁTICA DE IDENTIFICAÇÃO CHECK LIST - COR DO MÊS
+// Consórcio Operador do PISF Ramal do Agreste - Obra: Ramal do Agreste
+// Ciclo de 4 cores trimestral: VERDE, BRANCO, AZUL, AMARELO
+// ============================================
+
+const TABELA_CORES_MES = [
+    { mes: 1, nome: 'Janeiro', cor: 'VERDE', bg: '#10b981', fg: '#ffffff', border: '#059669' },
+    { mes: 2, nome: 'Fevereiro', cor: 'BRANCO', bg: '#ffffff', fg: '#1e293b', border: '#94a3b8' },
+    { mes: 3, nome: 'Março', cor: 'AZUL', bg: '#0284c7', fg: '#ffffff', border: '#0369a1' },
+    { mes: 4, nome: 'Abril', cor: 'AMARELO', bg: '#facc15', fg: '#713f12', border: '#ca8a04' },
+    { mes: 5, nome: 'Maio', cor: 'VERDE', bg: '#10b981', fg: '#ffffff', border: '#059669' },
+    { mes: 6, nome: 'Junho', cor: 'BRANCO', bg: '#ffffff', fg: '#1e293b', border: '#94a3b8' },
+    { mes: 7, nome: 'Julho', cor: 'AZUL', bg: '#0284c7', fg: '#ffffff', border: '#0369a1' },
+    { mes: 8, nome: 'Agosto', cor: 'AMARELO', bg: '#facc15', fg: '#713f12', border: '#ca8a04' },
+    { mes: 9, nome: 'Setembro', cor: 'VERDE', bg: '#10b981', fg: '#ffffff', border: '#059669' },
+    { mes: 10, nome: 'Outubro', cor: 'BRANCO', bg: '#ffffff', fg: '#1e293b', border: '#94a3b8' },
+    { mes: 11, nome: 'Novembro', cor: 'AZUL', bg: '#0284c7', fg: '#ffffff', border: '#0369a1' },
+    { mes: 12, nome: 'Dezembro', cor: 'AMARELO', bg: '#facc15', fg: '#713f12', border: '#ca8a04' }
+];
+
+function getCorDoMes(dataOuMes) {
+    let mesNum = null;
+    if (dataOuMes instanceof Date && !isNaN(dataOuMes.getTime())) {
+        mesNum = dataOuMes.getMonth() + 1;
+    } else if (typeof dataOuMes === 'number') {
+        mesNum = dataOuMes;
+    } else if (typeof dataOuMes === 'string' && dataOuMes.trim()) {
+        const str = dataOuMes.trim();
+        const partes = str.split('T')[0].split('-');
+        if (partes.length >= 2 && !isNaN(parseInt(partes[1], 10))) {
+            mesNum = parseInt(partes[1], 10);
+        } else {
+            const d = new Date(str);
+            if (!isNaN(d.getTime())) mesNum = d.getMonth() + 1;
+        }
+    }
+    if (!mesNum || mesNum < 1 || mesNum > 12) {
+        mesNum = (new Date()).getMonth() + 1;
+    }
+    return TABELA_CORES_MES[mesNum - 1] || TABELA_CORES_MES[0];
+}
+
+function renderBannerCorDoMes() {
+    const hoje = new Date();
+    const infoAtual = getCorDoMes(hoje);
+    const proxMesNum = (infoAtual.mes % 12) + 1;
+    const infoProx = TABELA_CORES_MES[proxMesNum - 1];
+
+    const nomeMesEl = document.getElementById('corDoMesNomeMes');
+    const badgeEl = document.getElementById('corDoMesBadge');
+    const textoEl = document.getElementById('corDoMesTexto');
+    const iconeEl = document.getElementById('corDoMesBadgeIcone');
+    const bannerEl = document.getElementById('bannerCorDoMesChecklist');
+    const proxEl = document.getElementById('corDoMesProximo');
+
+    if (nomeMesEl) nomeMesEl.textContent = infoAtual.nome.toUpperCase();
+    if (textoEl) textoEl.textContent = infoAtual.cor;
+    if (badgeEl) {
+        badgeEl.style.background = infoAtual.bg;
+        badgeEl.style.color = infoAtual.fg;
+        badgeEl.style.borderColor = infoAtual.border;
+    }
+    if (iconeEl) {
+        iconeEl.style.background = infoAtual.bg;
+        iconeEl.style.color = infoAtual.fg;
+        iconeEl.style.border = `2px solid ${infoAtual.border}`;
+    }
+    if (bannerEl) {
+        bannerEl.style.borderLeft = `6px solid ${infoAtual.bg === '#ffffff' ? '#94a3b8' : infoAtual.bg}`;
+    }
+    if (proxEl) {
+        const corProxCss = infoProx.fg === '#ffffff' ? infoProx.bg : '#b45309';
+        proxEl.innerHTML = `• Próximo mês (${infoProx.nome}): <strong style="color:${corProxCss};">${infoProx.cor}</strong>`;
+    }
+}
+
+function abrirModalCalendarioCoresChecklist() {
+    const modal = document.getElementById('modalCalendarioCoresChecklist');
+    const grid = document.getElementById('gridCalendarioCoresChecklist');
+    if (!modal || !grid) return;
+
+    const mesAtual = (new Date()).getMonth() + 1;
+    grid.innerHTML = TABELA_CORES_MES.map(m => {
+        const isAtual = m.mes === mesAtual;
+        return `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-radius:10px; border:${isAtual ? '2px solid var(--primary, #0284c7)' : '1px solid #e2e8f0'}; background:${isAtual ? 'rgba(2,132,199,0.06)' : '#ffffff'}; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-weight:700; font-size:13.5px; color:#1e293b;">${m.nome.toUpperCase()}</span>
+                ${isAtual ? '<span style="font-size:10px; font-weight:800; background:#0284c7; color:white; padding:2px 8px; border-radius:12px; letter-spacing:0.5px;">MÊS ATUAL</span>' : ''}
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:12px; color:#64748b; font-weight:600;">•</span>
+                <span style="display:inline-flex; align-items:center; justify-content:center; min-width:86px; padding:4px 12px; border-radius:16px; font-size:12.5px; font-weight:800; letter-spacing:0.5px; background:${m.bg}; color:${m.fg}; border:1px solid ${m.border}; box-shadow:0 1px 2px rgba(0,0,0,0.08);">
+                    ${m.cor}
+                </span>
+            </div>
+        </div>`;
+    }).join('');
+
+    modal.style.display = 'flex';
+}
+
+function fecharModalCalendarioCoresChecklist() {
+    const modal = document.getElementById('modalCalendarioCoresChecklist');
+    if (modal) modal.style.display = 'none';
+}
+
 // colaboradores_efetivo.status é digitado à mão e fica desatualizado quando alguém
 // preenche a dt_demissao sem lembrar de trocar o status pra "DEMITIDO" (achado real:
 // EVERALDO TAVARES DA SILVA, matrícula 79, dt_demissao=2026-07-29 mas status ainda
@@ -1079,6 +1187,7 @@ function renderAll() {
     checklistsPeriodo = filterChecklistArray(checklistsPeriodo);
 
     renderTituloPeriodo();
+    renderBannerCorDoMes();
     const kpiData = renderKPIs(filteredEquips, checklistsPeriodo);
     const chartData = renderCharts(checklistsPeriodo, filterChecklistArray);
 
@@ -1511,6 +1620,7 @@ function gerarPdfChecklist() {
 }
 
 function showChecklistsSubtab(tab) {
+    renderBannerCorDoMes();
     ['visao', 'cadastros', 'historico', 'itens', 'relatorio'].forEach(t => {
         const content = document.getElementById('checklistsSubtab-' + t);
         const btn = document.getElementById('checklistsSubtabBtn-' + t);
@@ -1976,8 +2086,11 @@ function renderHistoricoChecklists() {
                   '</div>';
         }
 
+        const corInfo = getCorDoMes(c.date);
+        const corTagHtml = `<span title="Cor da inspeção do checklist: ${corInfo.cor}" style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:12px; font-size:10.5px; font-weight:800; letter-spacing:0.5px; background:${corInfo.bg}; color:${corInfo.fg}; border:1px solid ${corInfo.border}; margin-left:6px; vertical-align:middle; box-shadow:0 1px 2px rgba(0,0,0,0.06);">🏷️ ${corInfo.cor}</span>`;
+
         return `<div class="db-list-item ${cls}" style="cursor:pointer;" onclick="toggleHistoricoItem('${escapeHTML(c.id)}')">
-            <div class="db-list-item-title">${escapeHTML(c.equipment?.name || c.nome || 'Equipamento')} — ${escapeHTML(c.patrimonio || '—')}</div>
+            <div class="db-list-item-title">${escapeHTML(c.equipment?.name || c.nome || 'Equipamento')} — ${escapeHTML(c.patrimonio || '—')} ${corTagHtml}</div>
             <div class="db-list-item-sub">${formatSimpleDate(c.date)} — ${escapeHTML(c.empresa || 'Sem empresa')} — ${statusLabel} — ${stats.conformes}✅ ${stats.naoConformes}❌ ${stats.na}➖</div>
             ${detalheHtml}
         </div>`;
@@ -19541,6 +19654,7 @@ function showDbPage(pageId) {
     // busca nada de novo no Supabase, só usa os dados já carregados em memória) e
     // corrige isso sozinho.
     if (pageId === 'checklists') {
+        renderBannerCorDoMes();
         if (document.getElementById('checklistsSubtabBtn-visao')?.classList.contains('active')) renderAll();
     }
     if (pageId === 'extintores') {

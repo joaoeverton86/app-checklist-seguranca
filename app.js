@@ -814,12 +814,14 @@ function showPage(pageId) {
 
     if (pageId === 'pageChecklistForm') {
         setTimeout(() => initSignaturePad(), 50);
+        atualizarCoresDoMesApp(document.getElementById('checklistDate')?.value);
     }
     
     currentPage = pageId;
     
     // Carregar dados da página
     if (pageId === 'pageHome') {
+        atualizarCoresDoMesApp();
         loadRecentChecklists();
         renderDeadlineAlerts();
         loadTopRisks();
@@ -834,6 +836,7 @@ function showPage(pageId) {
             switchGestaoTab(gestaoTab);
         }
     } else if (pageId === 'pageNewChecklist') {
+        atualizarCoresDoMesApp();
         if (isSupabaseConfigured() && navigator.onLine) {
             sincronizarComSupabase().then(() => renderEquipmentGrids());
         }
@@ -2489,6 +2492,7 @@ function startChecklist(category, equipmentId) {
     clearSignature();
     clearSignatureResponsavel();
     renderChecklistItems(equipment, currentCadastro);
+    atualizarCoresDoMesApp(document.getElementById('checklistDate')?.value);
     showPage('pageChecklistForm');
 }
 
@@ -3393,7 +3397,11 @@ async function saveChecklist() {
     // Atualizar último checklist no cadastro
     updateCadastroLastChecklist(formData.patrimonio);
     
-    showToast('✅ Checklist salvo com sucesso!');
+    const corFinalCheck = getCorDoMes(dateVal);
+    const avisoFita = (statusFinal === 'liberado' || statusFinal === 'liberado_restricao')
+        ? ' • Identificação: fita ' + corFinalCheck.cor
+        : '';
+    showToast('✅ Checklist salvo com sucesso!' + avisoFita);
     
     // Voltar para home e recarregar histórico
     setTimeout(() => {
@@ -4839,10 +4847,12 @@ function renderHistoryFiltered() {
             const pendingBadge = !c.supabase_synced
                 ? `<span style="font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #fff3cd; color: #9a7d0a; font-weight: 600; margin-left: 6px;" title="Ainda não sincronizado com o servidor">⏳ Pendente</span>`
                 : '';
+            const corMesItem = getCorDoMes(c.date);
+            const corTagItem = `<span title="Cor da inspeção: ${corMesItem.cor}" style="display:inline-flex; align-items:center; gap:3px; font-size:10px; font-weight:800; padding:1px 6px; border-radius:10px; background:${corMesItem.bg}; color:${corMesItem.fg}; border:1px solid ${corMesItem.border}; margin-left:6px; vertical-align:middle;">🏷️ ${corMesItem.cor}</span>`;
             return `
                 <div class="history-item" onclick="viewChecklist('${c.id}')" style="margin-bottom: 8px;">
                     <div class="history-info">
-                        <div class="history-title">${escapeHTML(c.patrimonio || 'Sem patrimônio')}${pendingBadge}</div>
+                        <div class="history-title">${escapeHTML(c.patrimonio || 'Sem patrimônio')}${corTagItem}${pendingBadge}</div>
                         <div class="history-date">${escapeHTML(c.nome || '')}</div>
                         <div class="history-date">${date} • ${escapeHTML(c.empresa || '')}</div>
                     </div>
@@ -4975,11 +4985,14 @@ async function viewChecklist(id) {
         icon = obterIconeFallback(checklist.equipment?.id);
     }
 
+    const corDetMes = getCorDoMes(checklist.date);
+    const corDetTag = `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:700; background:${corDetMes.bg}; color:${corDetMes.fg}; border:1px solid ${corDetMes.border}; margin-left:6px; vertical-align:middle;">🏷️ Cor do Mês: ${corDetMes.cor}</span>`;
+
     container.innerHTML = `
         <div class="card">
             <div class="card-title"><span class="icon">${icon}</span> ${escapeHTML(checklist.nome)}</div>
             <div style="font-size: 13px; color: var(--text-light);">
-                <div>📅 ${date}</div>
+                <div>📅 ${date} • ${corDetTag}</div>
                 <div>📋 Patrimônio: ${escapeHTML(checklist.patrimonio)}</div>
                 <div>🏢 ${escapeHTML(checklist.empresa || '—')}</div>
 
@@ -5928,6 +5941,150 @@ async function showStatusDetails(status) {
     
     html += `<button class="save-btn" style="background: var(--primary); margin-top: 16px;" onclick="closeModal()">Fechar</button>`;
     
+    showModal(html);
+}
+
+// ============================================
+// SISTEMÁTICA DE IDENTIFICAÇÃO CHECK LIST - COR DO MÊS
+// Consórcio Operador do PISF Ramal do Agreste - Obra: Ramal do Agreste
+// Ciclo de 4 cores trimestral: VERDE, BRANCO, AZUL, AMARELO
+// ============================================
+
+const TABELA_CORES_MES = [
+    { mes: 1, nome: 'Janeiro', cor: 'VERDE', bg: '#10b981', fg: '#ffffff', border: '#059669' },
+    { mes: 2, nome: 'Fevereiro', cor: 'BRANCO', bg: '#ffffff', fg: '#1e293b', border: '#94a3b8' },
+    { mes: 3, nome: 'Março', cor: 'AZUL', bg: '#0284c7', fg: '#ffffff', border: '#0369a1' },
+    { mes: 4, nome: 'Abril', cor: 'AMARELO', bg: '#facc15', fg: '#713f12', border: '#ca8a04' },
+    { mes: 5, nome: 'Maio', cor: 'VERDE', bg: '#10b981', fg: '#ffffff', border: '#059669' },
+    { mes: 6, nome: 'Junho', cor: 'BRANCO', bg: '#ffffff', fg: '#1e293b', border: '#94a3b8' },
+    { mes: 7, nome: 'Julho', cor: 'AZUL', bg: '#0284c7', fg: '#ffffff', border: '#0369a1' },
+    { mes: 8, nome: 'Agosto', cor: 'AMARELO', bg: '#facc15', fg: '#713f12', border: '#ca8a04' },
+    { mes: 9, nome: 'Setembro', cor: 'VERDE', bg: '#10b981', fg: '#ffffff', border: '#059669' },
+    { mes: 10, nome: 'Outubro', cor: 'BRANCO', bg: '#ffffff', fg: '#1e293b', border: '#94a3b8' },
+    { mes: 11, nome: 'Novembro', cor: 'AZUL', bg: '#0284c7', fg: '#ffffff', border: '#0369a1' },
+    { mes: 12, nome: 'Dezembro', cor: 'AMARELO', bg: '#facc15', fg: '#713f12', border: '#ca8a04' }
+];
+
+function getCorDoMes(dataOuMes) {
+    let mesNum = null;
+    if (dataOuMes instanceof Date && !isNaN(dataOuMes.getTime())) {
+        mesNum = dataOuMes.getMonth() + 1;
+    } else if (typeof dataOuMes === 'number') {
+        mesNum = dataOuMes;
+    } else if (typeof dataOuMes === 'string' && dataOuMes.trim()) {
+        const str = dataOuMes.trim();
+        const partes = str.split('T')[0].split('-');
+        if (partes.length >= 2 && !isNaN(parseInt(partes[1], 10))) {
+            mesNum = parseInt(partes[1], 10);
+        } else {
+            const d = new Date(str);
+            if (!isNaN(d.getTime())) mesNum = d.getMonth() + 1;
+        }
+    }
+    if (!mesNum || mesNum < 1 || mesNum > 12) {
+        mesNum = (new Date()).getMonth() + 1;
+    }
+    return TABELA_CORES_MES[mesNum - 1] || TABELA_CORES_MES[0];
+}
+
+function atualizarCoresDoMesApp(dataReferencia) {
+    const info = getCorDoMes(dataReferencia || new Date());
+
+    // 1. Home
+    const homeNome = document.getElementById('homeCorMesNome');
+    const homeBadge = document.getElementById('homeCorBadge');
+    const homeIcone = document.getElementById('homeCorIcone');
+    const homeBanner = document.getElementById('homeCorDoMesBanner');
+    if (homeNome) homeNome.textContent = info.nome.toUpperCase();
+    if (homeBadge) {
+        homeBadge.textContent = info.cor;
+        homeBadge.style.background = info.bg;
+        homeBadge.style.color = info.fg;
+        homeBadge.style.borderColor = info.border;
+    }
+    if (homeIcone) {
+        homeIcone.style.background = info.bg;
+        homeIcone.style.color = info.fg;
+        homeIcone.style.border = '2px solid ' + info.border;
+    }
+    if (homeBanner) {
+        homeBanner.style.borderLeft = '5px solid ' + (info.bg === '#ffffff' ? '#94a3b8' : info.bg);
+    }
+
+    // 2. Novo Checklist
+    const newNome = document.getElementById('newChecklistMesNome');
+    const newBadge = document.getElementById('newChecklistCorBadge');
+    const newIcone = document.getElementById('newChecklistCorIcone');
+    const newBanner = document.getElementById('newChecklistCorDoMesBanner');
+    if (newNome) newNome.textContent = info.nome.toUpperCase();
+    if (newBadge) {
+        newBadge.textContent = info.cor;
+        newBadge.style.background = info.bg;
+        newBadge.style.color = info.fg;
+        newBadge.style.borderColor = info.border;
+    }
+    if (newIcone) {
+        newIcone.style.background = info.bg;
+        newIcone.style.color = info.fg;
+        newIcone.style.border = '2px solid ' + info.border;
+    }
+    if (newBanner) {
+        newBanner.style.borderLeft = '5px solid ' + (info.bg === '#ffffff' ? '#94a3b8' : info.bg);
+    }
+
+    // 3. Formulário de Checklist
+    const formNome = document.getElementById('formCorDoMesNomeMes');
+    const formBadge = document.getElementById('formCorDoMesBadge');
+    const formBanner = document.getElementById('formCorDoMesBanner');
+    if (formNome) formNome.textContent = info.nome.toUpperCase();
+    if (formBadge) {
+        formBadge.textContent = info.cor;
+        formBadge.style.background = info.bg;
+        formBadge.style.color = info.fg;
+        formBadge.style.borderColor = info.border;
+    }
+    if (formBanner) {
+        formBanner.style.borderLeft = '5px solid ' + (info.bg === '#ffffff' ? '#94a3b8' : info.bg);
+    }
+}
+
+function abrirModalCalendarioCores() {
+    const mesAtual = (new Date()).getMonth() + 1;
+    const cardsHtml = TABELA_CORES_MES.map(function(m) {
+        const isAtual = m.mes === mesAtual;
+        return '<div style="display:flex; align-items:center; justify-content:space-between; padding:9px 12px; border-radius:8px; border:' + (isAtual ? '2px solid var(--primary, #1e3c72)' : '1px solid var(--border)') + '; background:' + (isAtual ? 'rgba(30,60,114,0.06)' : '#ffffff') + '; margin-bottom:6px;">' +
+            '<div style="display:flex; align-items:center; gap:8px;">' +
+                '<span style="font-weight:700; font-size:12.5px; color:var(--text);">' + m.nome.toUpperCase() + '</span>' +
+                (isAtual ? '<span style="font-size:9.5px; font-weight:800; background:var(--primary, #1e3c72); color:white; padding:2px 6px; border-radius:8px;">MÊS ATUAL</span>' : '') +
+            '</div>' +
+            '<div style="display:flex; align-items:center; gap:6px;">' +
+                '<span style="font-size:11px; color:var(--text-light);">•</span>' +
+                '<span style="display:inline-flex; align-items:center; justify-content:center; min-width:80px; padding:3px 10px; border-radius:12px; font-size:11.5px; font-weight:800; background:' + m.bg + '; color:' + m.fg + '; border:1px solid ' + m.border + '; box-shadow:0 1px 2px rgba(0,0,0,0.06);">' +
+                    m.cor +
+                '</span>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+
+    const html = '<div style="padding: 16px;">' +
+        '<div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 12px;">' +
+            '<div>' +
+                '<div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); font-weight: 700;">Consórcio Operador do PISF • Ramal do Agreste</div>' +
+                '<div style="font-size: 15px; font-weight: 800; color: var(--text); margin-top: 2px;">Sistemática de Identificação Check List</div>' +
+                '<div style="font-size: 11px; color: var(--text-light);">Cor do Mês — Obra: Ramal do Agreste</div>' +
+            '</div>' +
+            '<button type="button" onclick="closeModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-light); line-height: 1;">✕</button>' +
+        '</div>' +
+        '<div style="font-size: 11.5px; color: var(--text-light); background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; margin-bottom: 12px; line-height: 1.45;">' +
+            '🏷️ <strong>Regra de Identificação:</strong> Todo equipamento, veículo ou ferramenta liberado em checklist deve receber a fita plástica/lacre correspondente à cor vigente no mês da inspeção.' +
+        '</div>' +
+        '<div style="max-height: 52vh; overflow-y: auto; padding-right: 2px;">' +
+            cardsHtml +
+        '</div>' +
+        '<div style="margin-top: 14px; text-align: center;">' +
+            '<button type="button" class="save-btn" onclick="closeModal()" style="margin: 0; padding: 10px 24px; font-size: 13px;">Entendido</button>' +
+        '</div>' +
+    '</div>';
     showModal(html);
 }
 

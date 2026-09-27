@@ -723,6 +723,11 @@ CREATE TABLE IF NOT EXISTS public.colaboradores_efetivo (
     camisa TEXT,
     bota TEXT,
     sexo TEXT,
+    os_status TEXT DEFAULT 'pendente',    -- 'entregue' | 'pendente'
+    os_data_entrega DATE,
+    os_versao TEXT DEFAULT 'Rev. 00',
+    os_anexo_url TEXT,
+    os_obs TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -731,6 +736,29 @@ ALTER TABLE public.colaboradores_efetivo DISABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.colaboradores_efetivo TO anon;
 GRANT ALL ON public.colaboradores_efetivo TO authenticated;
 GRANT ALL ON public.colaboradores_efetivo TO service_role;
+
+CREATE TABLE IF NOT EXISTS public.ordens_servico_entregas (
+    id TEXT PRIMARY KEY,
+    matricula TEXT NOT NULL,
+    nome_colaborador TEXT NOT NULL,
+    funcao TEXT,
+    setor TEXT,
+    ghe TEXT,
+    data_emissao DATE NOT NULL,
+    data_assinatura DATE,
+    status TEXT DEFAULT 'pendente',       -- 'entregue' | 'pendente'
+    tipo_emissao TEXT DEFAULT 'admissional', -- 'admissional' | 'troca_funcao' | 'periodica' | 'atualizacao_pgr'
+    versao_os TEXT DEFAULT 'Rev. 00',
+    anexo_url TEXT,
+    observacoes TEXT,
+    entregue_por TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_os_entregas_matricula ON public.ordens_servico_entregas(matricula);
+CREATE INDEX IF NOT EXISTS idx_os_entregas_status ON public.ordens_servico_entregas(status);
+ALTER TABLE public.ordens_servico_entregas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Acesso total ordens_servico_entregas" ON public.ordens_servico_entregas FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.ordens_servico_entregas TO anon, authenticated;
 
 CREATE TABLE IF NOT EXISTS public.acidentes (
     id TEXT PRIMARY KEY,

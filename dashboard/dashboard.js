@@ -8930,13 +8930,14 @@ async function loadEfetivoData() {
 // Abas da página Efetivo (Visão Geral / Colaboradores) - mesmo raciocínio de
 // self-heal do showTreinSubtab: sempre re-renderiza a Visão Geral ao entrar nela.
 function showEfetivoSubtab(tab) {
-    ['visao', 'colaboradores', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].forEach(t => {
+    ['visao', 'colaboradores', 'os', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].forEach(t => {
         const content = document.getElementById('efetivoSubtab-' + t);
         const btn = document.getElementById('efetivoSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
         if (btn) btn.classList.toggle('active', t === tab);
     });
     if (tab === 'visao') renderEfetivoPanel();
+    if (tab === 'os') renderControleOrdensServico();
     if (tab === 'setores') { fecharGerenciarSetor(); renderSetoresLista(); }
     if (tab === 'ghe') { fecharGerenciarGhe(); renderGheLista(); }
     if (tab === 'recomendacoes') renderRecomendacoesGheLista();
@@ -11153,6 +11154,8 @@ function mostrarDetalheColaborador(matricula) {
                 ${statusBadge}
                 <button class="db-clear-btn" onclick="abrirFormEfetivo('${escapeHTML(matricula)}')">✏️ Editar</button>
                 <button class="db-clear-btn" onclick="abrirTrocaFuncao('${escapeHTML(matricula)}')">🔄 Troca de Função</button>
+                <button class="db-clear-btn" onclick="imprimirOsIndividualEfetivo('${escapeHTML(matricula)}')">🖨️ OS</button>
+                <button class="db-clear-btn" onclick="abrirModalAssinaturaOs('${escapeHTML(matricula)}')">✍️ Assinatura OS</button>
             </div>
         </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 14px; font-size: 12.5px;">
@@ -11168,6 +11171,7 @@ function mostrarDetalheColaborador(matricula) {
             <div><strong>CPF:</strong> ${escapeHTML(e.cpf || '—')}</div>
             <div><strong>Uniforme:</strong> Calça ${escapeHTML(e.calca || '—')} / Camisa ${escapeHTML(e.camisa || '—')} / Bota ${escapeHTML(e.bota || '—')}</div>
             <div><strong>Sexo:</strong> ${escapeHTML(e.sexo || '—')}</div>
+            <div><strong>Ordem de Serviço:</strong> ${e.os_status === 'entregue' ? `<span style="color:#059669; font-weight:700;">✅ Assinada (${e.os_data_entrega ? formatSimpleDate(e.os_data_entrega) : '—'} - ${escapeHTML(e.os_versao || 'Rev. 00')})</span>` : '<span style="color:#d97706; font-weight:700;">⚠️ Pendente</span>'}</div>
         </div>
         ${treinHtml}
         ${renderHistoricoTrocaFuncaoColab(matricula)}
@@ -11269,6 +11273,7 @@ async function salvarColaboradorEfetivo() {
         return;
     }
 
+    const colabExistente = allEfetivo.find(e => e.id === matricula);
     const row = {
         id: matricula,
         status: document.getElementById('efForm_status').value,
@@ -11287,7 +11292,12 @@ async function salvarColaboradorEfetivo() {
         sexo: document.getElementById('efForm_sexo').value,
         calca: document.getElementById('efForm_calca').value.trim(),
         camisa: document.getElementById('efForm_camisa').value.trim(),
-        bota: document.getElementById('efForm_bota').value.trim()
+        bota: document.getElementById('efForm_bota').value.trim(),
+        os_status: colabExistente?.os_status || 'pendente',
+        os_data_entrega: colabExistente?.os_data_entrega || null,
+        os_versao: colabExistente?.os_versao || 'Rev. 00',
+        os_obs: colabExistente?.os_obs || null,
+        os_anexo_url: colabExistente?.os_anexo_url || null
     };
 
     statusEl.textContent = 'Salvando...';
@@ -11623,6 +11633,529 @@ function headcountAsOf(dateEnd) {
 // Preenche mês/ano (padrão: mês anterior ao atual) e os 3 campos de turmas/módulos
 // (padrão: último valor salvo em relatorio_mensal_config) só na primeira vez que a
 // aba é aberta - não sobrescreve o que o usuário já tiver digitado na tela.
+// ================================================================
+// MÓDULO: CONTROLE E RASTREABILIDADE DE ORDENS DE SERVIÇO (NR-01)
+// Gestão nominal do efetivo ativo: identifica quem já assinou a OS
+// e quem está pendente de entrega, prevenindo passivos trabalhistas.
+// ================================================================
+
+let filtroOsStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'assinadas'
+let allOrdensServicoEntregas = [];
+
+function filtrarStatusControleOs(status) {
+    filtroOsStatusAtual = status;
+    ['todos', 'pendentes', 'assinadas'].forEach(s => {
+        const btn = document.getElementById('btnFiltroOs-' + s);
+        if (btn) btn.classList.toggle('active', s === status);
+    });
+    renderTabelaControleOs();
+}
+
+function limparFiltrosControleOs() {
+    filtroOsStatusAtual = 'todos';
+    ['todos', 'pendentes', 'assinadas'].forEach(s => {
+        const btn = document.getElementById('btnFiltroOs-' + s);
+        if (btn) btn.classList.toggle('active', s === 'todos');
+    });
+    const setorSel = document.getElementById('filtroOsSetorGhe');
+    if (setorSel) setorSel.value = '';
+    const buscaInput = document.getElementById('filtroOsBusca');
+    if (buscaInput) buscaInput.value = '';
+    renderTabelaControleOs();
+}
+
+function popularSelectSetorGheOs() {
+    const sel = document.getElementById('filtroOsSetorGhe');
+    if (!sel) return;
+    const valAtual = sel.value;
+    const setoresGhe = new Set();
+    
+    (allEfetivo || []).filter(e => colaboradorEstaAtivo(e)).forEach(e => {
+        const item = e.setor ? (e.ghe ? `${e.setor} | ${e.ghe}` : e.setor) : (e.ghe || '');
+        if (item) setoresGhe.add(item.trim());
+    });
+
+    const lista = Array.from(setoresGhe).sort();
+    let opts = '<option value="">🏢 Todos os Setores / GHE</option>';
+    lista.forEach(item => {
+        const selected = item === valAtual ? ' selected' : '';
+        opts += `<option value="${escapeHTML(item)}"${selected}>${escapeHTML(item)}</option>`;
+    });
+    sel.innerHTML = opts;
+}
+
+async function renderControleOrdensServico() {
+    if (!allEfetivo || allEfetivo.length === 0) {
+        await loadEfetivoData();
+    }
+    
+    const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
+    const totalAtivos = ativos.length;
+    const totalAssinadas = ativos.filter(e => e.os_status === 'entregue').length;
+    const totalPendentes = totalAtivos - totalAssinadas;
+    const pctCobertura = totalAtivos > 0 ? Math.round((totalAssinadas / totalAtivos) * 100) : 0;
+
+    // Atualiza KPIs do Dashboard de OS
+    const kpiTotal = document.getElementById('kpiOsTotalAtivos');
+    if (kpiTotal) kpiTotal.textContent = totalAtivos;
+
+    const kpiAssinadas = document.getElementById('kpiOsAssinadas');
+    if (kpiAssinadas) kpiAssinadas.textContent = totalAssinadas;
+
+    const kpiAssinadasPct = document.getElementById('kpiOsAssinadasPct');
+    if (kpiAssinadasPct) kpiAssinadasPct.textContent = `${pctCobertura}% do quadro ativo`;
+
+    const kpiPendentes = document.getElementById('kpiOsPendentes');
+    if (kpiPendentes) kpiPendentes.textContent = totalPendentes;
+
+    const kpiPendentesPct = document.getElementById('kpiOsPendentesPct');
+    if (kpiPendentesPct) {
+        kpiPendentesPct.textContent = totalPendentes > 0 
+            ? `${totalPendentes} aguardando coleta física` 
+            : '✅ 100% regular (sem pendências)';
+    }
+
+    const kpiCobertura = document.getElementById('kpiOsCobertura');
+    if (kpiCobertura) kpiCobertura.textContent = `${pctCobertura}%`;
+
+    const kpiBar = document.getElementById('kpiOsProgressBar');
+    if (kpiBar) kpiBar.style.width = `${pctCobertura}%`;
+
+    // Atualiza contadores dos botões de filtro
+    const cTodos = document.getElementById('countOsTodos');
+    if (cTodos) cTodos.textContent = totalAtivos;
+
+    const cPend = document.getElementById('countOsPendentes');
+    if (cPend) cPend.textContent = totalPendentes;
+
+    const cAssin = document.getElementById('countOsAssinadas');
+    if (cAssin) cAssin.textContent = totalAssinadas;
+
+    popularSelectSetorGheOs();
+    renderTabelaControleOs();
+}
+
+function renderTabelaControleOs() {
+    const tbody = document.getElementById('tabelaRastreabilidadeOsBody');
+    const msgVazia = document.getElementById('tabelaOsVaziaMsg');
+    if (!tbody) return;
+
+    let lista = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
+
+    // Filtro por Status
+    if (filtroOsStatusAtual === 'pendentes') {
+        lista = lista.filter(e => e.os_status !== 'entregue');
+    } else if (filtroOsStatusAtual === 'assinadas') {
+        lista = lista.filter(e => e.os_status === 'entregue');
+    }
+
+    // Filtro por Setor / GHE
+    const filtroSetorGheVal = (document.getElementById('filtroOsSetorGhe')?.value || '').trim();
+    if (filtroSetorGheVal) {
+        lista = lista.filter(e => {
+            const item = e.setor ? (e.ghe ? `${e.setor} | ${e.ghe}` : e.setor) : (e.ghe || '');
+            return item.trim() === filtroSetorGheVal;
+        });
+    }
+
+    // Filtro de Busca Textual
+    const buscaVal = (document.getElementById('filtroOsBusca')?.value || '').trim().toLowerCase();
+    if (buscaVal) {
+        lista = lista.filter(e => {
+            return (e.nome && e.nome.toLowerCase().includes(buscaVal)) ||
+                   (e.id && String(e.id).toLowerCase().includes(buscaVal)) ||
+                   (e.funcao && e.funcao.toLowerCase().includes(buscaVal)) ||
+                   (e.cpf && e.cpf.toLowerCase().includes(buscaVal)) ||
+                   (e.setor && e.setor.toLowerCase().includes(buscaVal)) ||
+                   (e.ghe && e.ghe.toLowerCase().includes(buscaVal));
+        });
+    }
+
+    // Ordenação: primeiro os pendentes (foco de ação imediata), depois por nome
+    lista.sort((a, b) => {
+        const aEntregue = a.os_status === 'entregue' ? 1 : 0;
+        const bEntregue = b.os_status === 'entregue' ? 1 : 0;
+        if (aEntregue !== bEntregue) return aEntregue - bEntregue; // 0 (pendente) antes de 1 (entregue)
+        return (a.nome || '').localeCompare(b.nome || '');
+    });
+
+    if (lista.length === 0) {
+        tbody.innerHTML = '';
+        if (msgVazia) msgVazia.style.display = 'block';
+        return;
+    }
+    if (msgVazia) msgVazia.style.display = 'none';
+
+    let html = '';
+    lista.forEach(e => {
+        const ehEntregue = e.os_status === 'entregue';
+        const badgeStatus = ehEntregue
+            ? `<span style="display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; background:#d1fae5; color:#065f46; font-size:11px; font-weight:700; border:1px solid #a7f3d0;" title="Ordem de Serviço assinada e arquivada">✅ ASSINADA</span>`
+            : `<span style="display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; background:#fef3c7; color:#92400e; font-size:11px; font-weight:700; border:1px solid #fde68a;" title="Pendente de coleta de assinatura">⚠️ PENDENTE</span>`;
+
+        const dataEntregaFormatada = e.os_data_entrega 
+            ? formatSimpleDate(e.os_data_entrega) 
+            : `<span style="color:var(--text-light); font-size:11.5px;">—</span>`;
+
+        const versaoTxt = e.os_versao || 'Rev. 00';
+        const setorGheTxt = e.setor 
+            ? (e.ghe ? `${escapeHTML(e.setor)} <span style="font-size:11px; color:var(--text-light); font-weight:600;">[${escapeHTML(e.ghe)}]</span>` : escapeHTML(e.setor))
+            : (e.ghe ? escapeHTML(e.ghe) : '<span style="color:var(--text-light);">—</span>');
+
+        html += `
+            <tr style="border-bottom: 1px solid var(--border); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(37,99,235,0.03)'" onmouseout="this.style.background=''">
+                <td style="padding: 10px 14px; font-weight: 700; color: var(--primary);">${escapeHTML(e.id)}</td>
+                <td style="padding: 10px 14px;">
+                    <div style="font-weight: 700; color: var(--text); cursor:pointer;" onclick="mostrarDetalheColaborador('${escapeHTML(e.id)}')" title="Clique para ver ficha completa">${escapeHTML(e.nome || '')}</div>
+                    ${e.cpf ? `<div style="font-size: 11px; color: var(--text-light);">CPF: ${escapeHTML(e.cpf)}</div>` : ''}
+                </td>
+                <td style="padding: 10px 14px; font-weight: 500;">${escapeHTML(e.funcao || '—')}</td>
+                <td style="padding: 10px 14px;">${setorGheTxt}</td>
+                <td style="padding: 10px 14px; color: var(--text-light);">${e.dt_admissao ? formatSimpleDate(e.dt_admissao) : '—'}</td>
+                <td style="padding: 10px 14px; text-align: center;">${badgeStatus}</td>
+                <td style="padding: 10px 14px;">${dataEntregaFormatada}</td>
+                <td style="padding: 10px 14px; font-size: 11.5px; color: var(--text-light); font-weight: 600;">${escapeHTML(versaoTxt)}</td>
+                <td style="padding: 10px 14px; text-align: center;">
+                    <div style="display: inline-flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap;">
+                        <button class="db-clear-btn" style="padding: 4px 8px; font-size: 11.5px;" onclick="imprimirOsIndividualEfetivo('${escapeHTML(e.id)}')" title="Imprimir Ordem de Serviço timbrada oficial">
+                            🖨️ Imprimir
+                        </button>
+                        <button class="db-clear-btn" style="padding: 4px 8px; font-size: 11.5px; border-color: var(--primary); color: var(--primary);" onclick="abrirModalAssinaturaOs('${escapeHTML(e.id)}')" title="Registrar ou alterar dados da entrega e assinatura">
+                            ✍️ Registrar
+                        </button>
+                        <button class="db-clear-btn" style="padding: 4px 8px; font-size: 11.5px; ${ehEntregue ? 'color:#b45309; border-color:#fde68a;' : 'color:#047857; border-color:#a7f3d0; background:#ecfdf5;'}" onclick="alternarStatusRapidoOs('${escapeHTML(e.id)}')" title="${ehEntregue ? 'Reverter para Pendente' : 'Marcar como Assinada Hoje'}">
+                            ${ehEntregue ? '↩️ Desfazer' : '⚡ Baixa'}
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+}
+
+// Emissão individual de Ordem de Serviço com base no efetivo cadastrado
+async function imprimirOsIndividualEfetivo(matricula) {
+    const colab = (allEfetivo || []).find(e => e.id === matricula);
+    if (!colab) {
+        alert('Colaborador não encontrado.');
+        return;
+    }
+    await garantirDocumentosControleCarregados();
+
+    const dataRef = colab.os_data_entrega || colab.dt_admissao || new Date().toISOString().split('T')[0];
+    const campos = (typeof CRONOGRAMA_DEFAULTS_SESSAO !== 'undefined') ? CRONOGRAMA_DEFAULTS_SESSAO : {
+        responsavel_tecnico_nome: 'João Everton de Souza Limeira',
+        responsavel_tecnico_qualificacao: 'Engenheiro de Segurança do Trabalho',
+        responsavel_tecnico_registro: 'CREA 12345/D-PE'
+    };
+
+    const folhaHtml = construirFolhaOrdemServico(
+        matricula,
+        { nome: colab.nome, funcao: colab.funcao },
+        campos,
+        dataRef
+    );
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Ordem de Serviço (NR-01) - ${escapeHTML(colab.nome)}</title>
+<style>${typeof DOC_INDIVIDUAL_CSS !== 'undefined' ? DOC_INDIVIDUAL_CSS : ''}</style></head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    ${folhaHtml}
+</body></html>`;
+
+    abrirDocumentoBlob(html);
+    if (typeof registrarEmissaoDocumento === 'function') {
+        registrarEmissaoDocumento('ordem_servico', colab.nome);
+    }
+}
+
+// Impressão em lote de todas as Ordens de Serviço dos colaboradores pendentes
+async function imprimirOsEmLotePendentes() {
+    await loadEfetivoData();
+    await garantirDocumentosControleCarregados();
+
+    let pendentes = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e) && e.os_status !== 'entregue');
+
+    // Se houver filtro de setor/GHE ativo na tela, respeita para permitir imprimir por frente de serviço
+    const filtroSetorGheVal = (document.getElementById('filtroOsSetorGhe')?.value || '').trim();
+    if (filtroSetorGheVal) {
+        pendentes = pendentes.filter(e => {
+            const item = e.setor ? (e.ghe ? `${e.setor} | ${e.ghe}` : e.setor) : (e.ghe || '');
+            return item.trim() === filtroSetorGheVal;
+        });
+    }
+
+    if (pendentes.length === 0) {
+        alert('🎉 Não há colaboradores pendentes de assinatura de Ordem de Serviço para o filtro selecionado!');
+        return;
+    }
+
+    const conf = confirm(`Deseja gerar a impressão em lote de ${pendentes.length} Ordens de Serviço (NR-01) para os colaboradores pendentes?`);
+    if (!conf) return;
+
+    const campos = (typeof CRONOGRAMA_DEFAULTS_SESSAO !== 'undefined') ? CRONOGRAMA_DEFAULTS_SESSAO : {
+        responsavel_tecnico_nome: 'João Everton de Souza Limeira',
+        responsavel_tecnico_qualificacao: 'Engenheiro de Segurança do Trabalho',
+        responsavel_tecnico_registro: 'CREA 12345/D-PE'
+    };
+
+    const hoje = new Date().toISOString().split('T')[0];
+
+    // Ordenar alfabeticamente para facilitar a entrega em campo
+    pendentes.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+
+    const folhas = pendentes.map(colab => {
+        const dataRef = colab.os_data_entrega || colab.dt_admissao || hoje;
+        return construirFolhaOrdemServico(
+            colab.id,
+            { nome: colab.nome, funcao: colab.funcao },
+            campos,
+            dataRef
+        );
+    }).join('');
+
+    const cssLote = `
+        @page { size: portrait; margin: 10mm; }
+        @media print {
+            body { margin: 0; background: #fff !important; }
+            .no-print { display: none !important; }
+            .folha { page-break-after: always !important; box-shadow: none !important; margin: 0 auto !important; }
+        }
+        .no-print { text-align: center; padding: 16px; background: #f8fafc; border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; z-index: 999; }
+        .no-print button { background: #2563eb; color: #fff; border: none; padding: 10px 22px; font-size: 14px; font-weight: 700; border-radius: 8px; cursor: pointer; }
+    `;
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Ordens de Serviço em Lote (NR-01) - ${pendentes.length} Colaboradores Pendentes</title>
+<style>${typeof DOC_INDIVIDUAL_CSS !== 'undefined' ? DOC_INDIVIDUAL_CSS : ''}${cssLote}</style></head>
+<body>
+    <div class="no-print">
+        <button onclick="window.print()">🖨️ Imprimir Todas as ${pendentes.length} Ordens de Serviço</button>
+        <span style="font-size: 13px; color: #64748b; margin-left: 12px;">Cada Ordem de Serviço será impressa em sua própria folha timbrada oficial.</span>
+    </div>
+    ${folhas}
+</body></html>`;
+
+    abrirDocumentoBlob(html);
+}
+
+// Modal de Registro e Edição da Entrega de OS
+function abrirModalAssinaturaOs(matricula) {
+    const colab = (allEfetivo || []).find(e => e.id === matricula);
+    if (!colab) return;
+
+    document.getElementById('modalOs_matricula').value = colab.id;
+    document.getElementById('modalOs_lblNome').textContent = colab.nome || '—';
+    document.getElementById('modalOs_lblMatricula').textContent = colab.id;
+    document.getElementById('modalOs_lblFuncao').textContent = colab.funcao || '—';
+    document.getElementById('modalOs_lblAdmissao').textContent = colab.dt_admissao ? formatSimpleDate(colab.dt_admissao) : '—';
+    document.getElementById('modalOs_lblGhe').textContent = `${colab.setor || 'Geral'} / ${colab.ghe || 'GHE Padrão'}`;
+
+    const ehEntregue = colab.os_status === 'entregue';
+    document.getElementById('modalOs_status').value = ehEntregue ? 'entregue' : 'pendente';
+
+    const hoje = new Date().toISOString().split('T')[0];
+    document.getElementById('modalOs_dataEntrega').value = colab.os_data_entrega || colab.dt_admissao || hoje;
+    document.getElementById('modalOs_versao').value = colab.os_versao || 'Rev. 00';
+    document.getElementById('modalOs_entreguePor').value = '';
+    document.getElementById('modalOs_obs').value = colab.os_obs || '';
+
+    const modal = document.getElementById('modalRegistrarAssinaturaOs');
+    if (modal) modal.style.display = 'flex';
+}
+
+function fecharModalAssinaturaOs() {
+    const modal = document.getElementById('modalRegistrarAssinaturaOs');
+    if (modal) modal.style.display = 'none';
+}
+
+function imprimirOsDoModal() {
+    const matricula = document.getElementById('modalOs_matricula').value;
+    if (matricula) {
+        imprimirOsIndividualEfetivo(matricula);
+    }
+}
+
+async function salvarRegistroAssinaturaOs() {
+    if (typeof bloquearEdicaoSeNaoAutorizado === 'function' && bloquearEdicaoSeNaoAutorizado('efetivo')) return;
+
+    const matricula = document.getElementById('modalOs_matricula').value;
+    const colab = (allEfetivo || []).find(e => e.id === matricula);
+    if (!colab) return;
+
+    const status = document.getElementById('modalOs_status').value;
+    const dataEntrega = document.getElementById('modalOs_dataEntrega').value || null;
+    const versao = document.getElementById('modalOs_versao').value.trim() || 'Rev. 00';
+    const entreguePor = document.getElementById('modalOs_entreguePor').value.trim();
+    const obs = document.getElementById('modalOs_obs').value.trim();
+
+    const btnSalvar = document.getElementById('btnSalvarAssinaturaOs');
+    if (btnSalvar) {
+        btnSalvar.disabled = true;
+        btnSalvar.textContent = 'Salvando...';
+    }
+
+    try {
+        const updatePayload = {
+            id: matricula,
+            os_status: status,
+            os_data_entrega: status === 'entregue' ? dataEntrega : null,
+            os_versao: versao,
+            os_obs: obs || null
+        };
+
+        await supabaseUpsert('colaboradores_efetivo', [updatePayload]);
+
+        // Registrar no histórico de entregas se for marcado como entregue
+        if (status === 'entregue') {
+            const histPayload = {
+                matricula: colab.id,
+                nome_colaborador: colab.nome,
+                funcao: colab.funcao,
+                setor: colab.setor,
+                ghe: colab.ghe,
+                data_emissao: new Date().toISOString().split('T')[0],
+                data_assinatura: dataEntrega,
+                status: 'entregue',
+                versao_os: versao,
+                entregue_por: entreguePor || (typeof CRONOGRAMA_DEFAULTS_SESSAO !== 'undefined' ? CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_nome : 'Engenharia de Segurança'),
+                observacoes: obs || null
+            };
+            try {
+                await supabaseUpsert('ordens_servico_entregas', [histPayload]);
+            } catch (errHist) {
+                console.warn('Aviso ao registrar histórico de OS:', errHist.message);
+            }
+        }
+
+        // Atualizar objeto em memória
+        const idx = allEfetivo.findIndex(e => e.id === matricula);
+        if (idx >= 0) {
+            allEfetivo[idx] = { ...allEfetivo[idx], ...updatePayload };
+        }
+
+        fecharModalAssinaturaOs();
+        await renderControleOrdensServico();
+        if (document.getElementById('efetivoColabDetail')?.style.display === 'block') {
+            mostrarDetalheColaborador(matricula);
+        }
+    } catch (err) {
+        console.error('Erro ao salvar registro de assinatura de OS:', err);
+        alert('❌ Falha ao salvar: ' + err.message);
+    } finally {
+        if (btnSalvar) {
+            btnSalvar.disabled = false;
+            btnSalvar.textContent = '💾 Salvar Registro';
+        }
+    }
+}
+
+// Alternância rápida (1 clique) de status de OS para dar baixa ágil em campo
+async function alternarStatusRapidoOs(matricula) {
+    if (typeof bloquearEdicaoSeNaoAutorizado === 'function' && bloquearEdicaoSeNaoAutorizado('efetivo')) return;
+
+    const colab = (allEfetivo || []).find(e => e.id === matricula);
+    if (!colab) return;
+
+    const ehEntregue = colab.os_status === 'entregue';
+    const novoStatus = ehEntregue ? 'pendente' : 'entregue';
+    const hoje = new Date().toISOString().split('T')[0];
+    const novaData = ehEntregue ? null : (colab.dt_admissao || hoje);
+
+    if (ehEntregue) {
+        const conf = confirm(`Deseja realmente reverter a Ordem de Serviço de "${colab.nome}" para PENDENTE?`);
+        if (!conf) return;
+    }
+
+    try {
+        const updatePayload = {
+            id: matricula,
+            os_status: novoStatus,
+            os_data_entrega: novaData,
+            os_versao: colab.os_versao || 'Rev. 00'
+        };
+
+        await supabaseUpsert('colaboradores_efetivo', [updatePayload]);
+
+        if (novoStatus === 'entregue') {
+            const histPayload = {
+                matricula: colab.id,
+                nome_colaborador: colab.nome,
+                funcao: colab.funcao,
+                setor: colab.setor,
+                ghe: colab.ghe,
+                data_emissao: hoje,
+                data_assinatura: novaData,
+                status: 'entregue',
+                versao_os: colab.os_versao || 'Rev. 00',
+                entregue_por: (typeof CRONOGRAMA_DEFAULTS_SESSAO !== 'undefined' ? CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_nome : 'Engenharia de Segurança'),
+                observacoes: 'Baixa rápida registrada pelo painel de controle de OS.'
+            };
+            try {
+                await supabaseUpsert('ordens_servico_entregas', [histPayload]);
+            } catch (eH) {}
+        }
+
+        const idx = allEfetivo.findIndex(e => e.id === matricula);
+        if (idx >= 0) {
+            allEfetivo[idx] = { ...allEfetivo[idx], ...updatePayload };
+        }
+
+        renderControleOrdensServico();
+        if (document.getElementById('efetivoColabDetail')?.style.display === 'block') {
+            mostrarDetalheColaborador(matricula);
+        }
+    } catch (err) {
+        console.error('Erro ao alternar status da OS:', err);
+        alert('❌ Falha ao atualizar: ' + err.message);
+    }
+}
+
+// Exportação em Excel (.xlsx) da Rastreabilidade de Ordens de Serviço
+function gerarExcelRastreabilidadeOs() {
+    if (typeof XLSX === 'undefined') {
+        alert('Biblioteca SheetJS (XLSX) não encontrada.');
+        return;
+    }
+
+    const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
+    if (ativos.length === 0) {
+        alert('Nenhum colaborador ativo encontrado.');
+        return;
+    }
+
+    const dados = ativos.map(e => {
+        const ehEntregue = e.os_status === 'entregue';
+        return {
+            'Matrícula': e.id,
+            'Nome do Colaborador': e.nome || '',
+            'CPF': e.cpf || '',
+            'Função / Cargo': e.funcao || '',
+            'Setor': e.setor || '',
+            'GHE': e.ghe || '',
+            'Data de Admissão': e.dt_admissao ? formatSimpleDate(e.dt_admissao) : '',
+            'Status Ordem de Serviço': ehEntregue ? 'ASSINADA / ENTREGUE' : 'PENDENTE DE ASSINATURA',
+            'Data da Entrega / Assinatura': e.os_data_entrega ? formatSimpleDate(e.os_data_entrega) : '',
+            'Versão da OS': e.os_versao || 'Rev. 00',
+            'Observações': e.os_obs || ''
+        };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(dados);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Rastreabilidade OS (NR-01)');
+
+    const hoje = new Date().toISOString().split('T')[0];
+    const nomeArquivo = `Rastreabilidade_Ordens_de_Servico_NR01_COP_Ramal_${hoje}.xlsx`;
+    XLSX.writeFile(wb, nomeArquivo);
+}
+
+
 function popularRelatorioMensalDefaults() {
     const hoje = new Date();
     const mesAnterior = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
@@ -21483,6 +22016,7 @@ const BACKUP_TABELAS_CONFIG = [
     { tabela: 'ghe_catalogo', modulo: 'Efetivo', label: 'Grupos Homogêneos (GHE)' },
     { tabela: 'municipios_ada', modulo: 'Efetivo', label: 'Municípios ADA' },
     { tabela: 'historico_troca_funcao', modulo: 'Efetivo', label: 'Troca de Função' },
+    { tabela: 'ordens_servico_entregas', modulo: 'Efetivo', label: 'Rastreabilidade de OS (NR-01)' },
     { tabela: 'treinamentos_catalogo', modulo: 'Treinamentos', label: 'Catálogo de Treinamentos' },
     { tabela: 'treinamentos_status', modulo: 'Treinamentos', label: 'Matriz Geral de Treinamentos' },
     { tabela: 'treinamentos_cronograma', modulo: 'Treinamentos', label: 'Cronograma de Treinamentos' },

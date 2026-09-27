@@ -2143,6 +2143,7 @@
                     <div class="db-filter-buttons">
                         <button id="efetivoSubtabBtn-visao" class="db-filter-btn active" onclick="showEfetivoSubtab('visao')">📊 Visão Geral</button>
                         <button id="efetivoSubtabBtn-colaboradores" class="db-filter-btn" onclick="showEfetivoSubtab('colaboradores')">👥 Colaboradores</button>
+                        <button id="efetivoSubtabBtn-os" class="db-filter-btn" onclick="showEfetivoSubtab('os')">📄 Ordens de Serviço (NR-01)</button>
                         <button id="efetivoSubtabBtn-setores" class="db-filter-btn" onclick="showEfetivoSubtab('setores')">🏢 Setores</button>
                         <button id="efetivoSubtabBtn-ghe" class="db-filter-btn" onclick="showEfetivoSubtab('ghe')">🧪 GHE</button>
                         <button id="efetivoSubtabBtn-recomendacoes" class="db-filter-btn" onclick="showEfetivoSubtab('recomendacoes')">📋 Recomendações</button>
@@ -2486,6 +2487,179 @@
                     </div>
                 </div>
                 </div>
+
+                                <!-- Sub-aba: Ordens de Serviço (NR-01) -->
+                <div id="efetivoSubtab-os" style="display:none;">
+                    <!-- Banner Informativo / Legal -->
+                    <div class="db-chart-card" style="margin-bottom: 16px; background: linear-gradient(135deg, rgba(37,99,235,0.06), rgba(16,185,129,0.06)); border-left: 4px solid var(--primary, #2563eb);">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+                            <div>
+                                <h3 style="margin: 0 0 6px 0; font-size: 16px; font-weight: 700; color: var(--text, #1e293b); display: flex; align-items: center; gap: 8px;">
+                                    <span>📄</span> Gestão & Rastreabilidade de Ordens de Serviço (NR-01)
+                                </h3>
+                                <p style="font-size: 12.5px; color: var(--text-light, #64748b); margin: 0; line-height: 1.5; max-width: 860px;">
+                                    <strong>Conformidade Obrigatória (NR-01 item 1.4.1, alínea "c" e "e"):</strong> O empregador deve dar ciência formal aos empregados sobre os riscos do ambiente, medidas preventivas e uso de EPI/EPC. Este módulo rastreia o efetivo ativo, identifica pendências e elimina passivos trabalhistas em auditorias.
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button class="db-apply-btn" onclick="imprimirOsEmLotePendentes()" style="background: #2563eb; color: #fff; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(37,99,235,0.25);" title="Gera um único documento com a Ordem de Serviço de todos os colaboradores pendentes para impressão imediata e coleta de assinaturas">
+                                    🖨️ Imprimir OS dos Pendentes (Em Lote)
+                                </button>
+                                <button class="db-clear-btn" onclick="gerarExcelRastreabilidadeOs()" style="border-color: #10b981; color: #047857; background: #ecfdf5; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;" title="Exporta planilha completa de rastreabilidade para auditorias ou arquivo corporativo">
+                                    📊 Exportar Planilha Excel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cards de Indicadores (KPIs) -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px;">
+                        <div class="db-card" style="padding: 14px 18px; border-left: 4px solid #64748b;">
+                            <div style="font-size: 11.5px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px;">Efetivo Ativo na Obra</div>
+                            <div id="kpiOsTotalAtivos" style="font-size: 26px; font-weight: 800; color: var(--text); margin-top: 4px;">0</div>
+                            <div style="font-size: 11px; color: var(--text-light); margin-top: 4px;">Colaboradores com contrato ativo</div>
+                        </div>
+                        <div class="db-card" style="padding: 14px 18px; border-left: 4px solid #10b981;">
+                            <div style="font-size: 11.5px; font-weight: 700; color: #059669; text-transform: uppercase; letter-spacing: 0.5px;">✅ OS Entregues & Assinadas</div>
+                            <div id="kpiOsAssinadas" style="font-size: 26px; font-weight: 800; color: #059669; margin-top: 4px;">0</div>
+                            <div id="kpiOsAssinadasPct" style="font-size: 11px; color: #059669; margin-top: 4px; font-weight: 600;">0% do quadro ativo</div>
+                        </div>
+                        <div class="db-card" style="padding: 14px 18px; border-left: 4px solid #f59e0b;">
+                            <div style="font-size: 11.5px; font-weight: 700; color: #d97706; text-transform: uppercase; letter-spacing: 0.5px;">⚠️ Pendentes de Assinatura</div>
+                            <div id="kpiOsPendentes" style="font-size: 26px; font-weight: 800; color: #d97706; margin-top: 4px;">0</div>
+                            <div id="kpiOsPendentesPct" style="font-size: 11px; color: #d97706; margin-top: 4px; font-weight: 600;">Aguardando coleta física</div>
+                        </div>
+                        <div class="db-card" style="padding: 14px 18px; border-left: 4px solid #2563eb;">
+                            <div style="font-size: 11.5px; font-weight: 700; color: #2563eb; text-transform: uppercase; letter-spacing: 0.5px;">🎯 Conformidade Legal (NR-01)</div>
+                            <div id="kpiOsCobertura" style="font-size: 26px; font-weight: 800; color: #2563eb; margin-top: 4px;">0%</div>
+                            <div style="width: 100%; background: #e2e8f0; height: 6px; border-radius: 999px; margin-top: 8px; overflow: hidden;">
+                                <div id="kpiOsProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #10b981, #059669); transition: width 0.4s ease;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Filtros e Barra de Controle -->
+                    <div class="db-chart-card" style="margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                            <!-- Botões de Status -->
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <button id="btnFiltroOs-todos" class="db-filter-btn active" onclick="filtrarStatusControleOs('todos')">
+                                    Todos (<span id="countOsTodos">0</span>)
+                                </button>
+                                <button id="btnFiltroOs-pendentes" class="db-filter-btn" onclick="filtrarStatusControleOs('pendentes')" style="color: #b45309; font-weight: 600;">
+                                    ⚠️ Pendentes (<span id="countOsPendentes">0</span>)
+                                </button>
+                                <button id="btnFiltroOs-assinadas" class="db-filter-btn" onclick="filtrarStatusControleOs('assinadas')" style="color: #047857; font-weight: 600;">
+                                    ✅ Assinadas (<span id="countOsAssinadas">0</span>)
+                                </button>
+                            </div>
+
+                            <!-- Filtros Secundários -->
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <select id="filtroOsSetorGhe" onchange="renderTabelaControleOs()" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text);">
+                                    <option value="">🏢 Todos os Setores / GHE</option>
+                                </select>
+                                <input type="text" id="filtroOsBusca" placeholder="🔍 Buscar colaborador, matrícula, função..." oninput="renderTabelaControleOs()" style="width: 260px; max-width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text);">
+                                <button class="db-clear-btn" onclick="limparFiltrosControleOs()" title="Limpar filtros">✕</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabela de Rastreabilidade Nominal -->
+                    <div class="db-chart-card" style="padding: 0; overflow: hidden; margin-bottom: 16px;">
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 12.5px; text-align: left;">
+                                <thead>
+                                    <tr style="background: var(--bg, #f8fafc); border-bottom: 2px solid var(--border, #e2e8f0); color: var(--text-light, #64748b);">
+                                        <th style="padding: 12px 14px; font-weight: 700; width: 85px;">Matrícula</th>
+                                        <th style="padding: 12px 14px; font-weight: 700;">Colaborador</th>
+                                        <th style="padding: 12px 14px; font-weight: 700;">Função / Cargo</th>
+                                        <th style="padding: 12px 14px; font-weight: 700;">Setor / GHE</th>
+                                        <th style="padding: 12px 14px; font-weight: 700; width: 105px;">Admissão</th>
+                                        <th style="padding: 12px 14px; font-weight: 700; width: 150px; text-align: center;">Status OS</th>
+                                        <th style="padding: 12px 14px; font-weight: 700; width: 110px;">Entrega / Assin.</th>
+                                        <th style="padding: 12px 14px; font-weight: 700; width: 80px;">Versão</th>
+                                        <th style="padding: 12px 14px; font-weight: 700; width: 220px; text-align: center;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaRastreabilidadeOsBody">
+                                    <!-- Preenchido dinamicamente via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="tabelaOsVaziaMsg" style="display: none; padding: 36px 20px; text-align: center; color: var(--text-light);">
+                            <div style="font-size: 28px; margin-bottom: 8px;">🔍</div>
+                            <div style="font-weight: 600; font-size: 14px;">Nenhum colaborador encontrado com os filtros selecionados.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de Registro de Assinatura de OS -->
+                <div id="modalRegistrarAssinaturaOs" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; padding: 16px; overflow-y: auto;">
+                    <div style="background: var(--card, #fff); border-radius: 14px; max-width: 580px; width: 100%; max-height: 92vh; overflow-y: auto; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 1px solid var(--border);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+                            <div style="font-size: 16px; font-weight: 700; color: var(--primary);" id="modalAssinaturaOsTitulo">✍️ Registrar Assinatura da Ordem de Serviço (NR-01)</div>
+                            <button onclick="fecharModalAssinaturaOs()" style="background: transparent; border: none; font-size: 20px; cursor: pointer; color: var(--text-light); font-weight: 700;">✕</button>
+                        </div>
+
+                        <input type="hidden" id="modalOs_matricula">
+
+                        <!-- Dados do Colaborador (somente leitura) -->
+                        <div style="background: var(--bg, #f8fafc); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                                <div><strong style="color: var(--text-light);">Colaborador:</strong> <span id="modalOs_lblNome" style="font-weight: 700;"></span></div>
+                                <div><strong style="color: var(--text-light);">Matrícula:</strong> <span id="modalOs_lblMatricula" style="font-weight: 600;"></span></div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                                <div><strong style="color: var(--text-light);">Função:</strong> <span id="modalOs_lblFuncao"></span></div>
+                                <div><strong style="color: var(--text-light);">Admissão:</strong> <span id="modalOs_lblAdmissao"></span></div>
+                            </div>
+                            <div><strong style="color: var(--text-light);">Setor / GHE:</strong> <span id="modalOs_lblGhe"></span></div>
+                        </div>
+
+                        <!-- Campos editáveis -->
+                        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px; font-size: 12.5px;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div>
+                                    <label style="font-weight: 600; display: block; margin-bottom: 4px;">Status da OS *</label>
+                                    <select id="modalOs_status" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;">
+                                        <option value="entregue">✅ Entregue e Assinada</option>
+                                        <option value="pendente">⚠️ Pendente de Assinatura</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-weight: 600; display: block; margin-bottom: 4px;">Data da Assinatura / Entrega *</label>
+                                    <input type="date" id="modalOs_dataEntrega" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;">
+                                </div>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div>
+                                    <label style="font-weight: 600; display: block; margin-bottom: 4px;">Versão da OS</label>
+                                    <input type="text" id="modalOs_versao" value="Rev. 00" placeholder="Ex: Rev. 00, 2026.1" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;">
+                                </div>
+                                <div>
+                                    <label style="font-weight: 600; display: block; margin-bottom: 4px;">Entregue / Coletado Por</label>
+                                    <input type="text" id="modalOs_entreguePor" placeholder="Ex: João Everton / TST" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style="font-weight: 600; display: block; margin-bottom: 4px;">Observações / Local de Arquivamento Físico</label>
+                                <textarea id="modalOs_obs" rows="2" placeholder="Ex: Assinada na integração de admissão. Via original arquivada no prontuário físico do colaborador." style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; resize: vertical;"></textarea>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 14px;">
+                            <button class="db-clear-btn" onclick="imprimirOsDoModal()" style="font-size: 12.5px;">🖨️ Imprimir Folha de OS</button>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="db-clear-btn" onclick="fecharModalAssinaturaOs()">Cancelar</button>
+                                <button class="db-apply-btn" id="btnSalvarAssinaturaOs" onclick="salvarRegistroAssinaturaOs()">💾 Salvar Registro</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
 
                 <div id="efetivoSubtab-relatorio" style="display:none;">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
@@ -7312,7 +7486,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=127"></script>
+    <script src="dashboard.js?v=128"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();

@@ -33927,9 +33927,49 @@ function imprimirPlanoAcaoPgrTimbrado() {
                 .resumo-box { display: flex; gap: 15px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-top: 14px; font-size: 11px; }
                 .assinaturas { margin-top: 40px; display: flex; justify-content: space-around; text-align: center; }
                 .linha-assinatura { width: 280px; border-top: 1px solid #000; padding-top: 5px; font-weight: bold; font-size: 10.5px; }
+                @media print {
+                    .no-print { display: none !important; }
+                    body { margin: 0; padding: 0; }
+                }
+                .barra-topo-impressao {
+                    background: #1e3a8a;
+                    color: white;
+                    padding: 10px 16px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    border-radius: 8px;
+                    margin-bottom: 15px;
+                    font-size: 13px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                }
+                .btn-imprimir-topo {
+                    background: #10b981;
+                    color: white;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 6px;
+                    font-weight: bold;
+                    font-size: 13px;
+                    cursor: pointer;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                }
             </style>
         </head>
         <body>
+            <div class="barra-topo-impressao no-print">
+                <div style="font-weight: bold; display: flex; align-items: center; gap: 8px;">
+                    <span>🛡️ Sistema SMS COP</span>
+                    <span style="opacity: 0.7;">|</span>
+                    <span>Documento Oficial Pronto para Impressão ou Salvar em PDF</span>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-imprimir-topo" onclick="window.print()">🖨️ Salvar como PDF / Imprimir Agora</button>
+                    <button onclick="window.close()" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.4); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 12px;">Fechar</button>
+                </div>
+            </div>
             <div class="timbrado-header">
                 <div>
                     <div class="timbrado-logo-box">CONSÓRCIO OPERADOR DO PISF — RAMAL DO AGRESTE (COP RAMAL)</div>
@@ -33987,12 +34027,5 @@ function imprimirPlanoAcaoPgrTimbrado() {
         </html>
     `;
 
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-        printWindow.document.open();
-        printWindow.document.write(htmlImpressao);
-        printWindow.document.close();
-    } else {
-        alert('O navegador bloqueou a abertura da janela de impressão. Permita pop-ups para imprimir.');
-    }
+    abrirDocumentoHtmlParaImpressao(htmlImpressao, 'Plano de Ação 5W2H PGR - Ramal do Agreste');
 }

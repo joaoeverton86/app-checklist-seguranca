@@ -18769,7 +18769,8 @@ const DB_PAGE_TITLES = {
     config: 'Configurações',
     usuariospainel: 'Usuários do Painel',
     ergonomia: 'Ergonomia (NR-17)',
-    periculosidade: 'Periculosidade (NR-16) - Laudo Pericial (LP)'
+    periculosidade: 'Periculosidade (NR-16) - Laudo Pericial (LP)',
+    planoacao: 'Plano de Ação Integrado (5W2H) — NR-01 / GRO'
 };
 
 // ============================================
@@ -19552,7 +19553,7 @@ async function salvarPerfilPainel() {
 // MENU LATERAL EM GRUPOS (accordion por pilar de SSMA)
 // ================================================================
 const NAV_GROUP_POR_PAGINA = {
-    checklists: 'seguranca', treinamentos: 'seguranca', ddsma: 'seguranca', apr: 'seguranca', matrizrisco: 'seguranca',
+    checklists: 'seguranca', treinamentos: 'seguranca', ddsma: 'seguranca', apr: 'seguranca', matrizrisco: 'seguranca', planoacao: 'seguranca',
     epi: 'seguranca', periculosidade: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca', brigada: 'seguranca',
     saude: 'saude', psicossocial: 'saude', ergonomia: 'saude',
     ambiental: 'ambiente',
@@ -19639,7 +19640,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia', periculosidade: 'navPericulosidade' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', planoacao: 'navPlanoAcao', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia', periculosidade: 'navPericulosidade' };
     document.getElementById(navMap[pageId])?.classList.add('active');
     abrirGrupoNavPagina(pageId);
     destacarGrupoAtivo(pageId);
@@ -19747,6 +19748,10 @@ function showDbPage(pageId) {
     if (pageId === 'periculosidade') {
         if (!periculosidadeLoaded) { periculosidadeLoaded = true; loadPericulosidadeData(); }
         else renderPericulosidadePanel();
+    }
+    if (pageId === 'planoacao') {
+        if (!planoAcaoPgrLoaded) { planoAcaoPgrLoaded = true; loadPlanoAcaoPgrData(); }
+        else renderPlanoAcaoPgrVisaoAtual();
     }
     // Sempre reinicia na tela de escolha de categoria (Treinamentos/DDSMA) ao entrar
     // nesta página - é uma navegação ao vivo no Drive, sem estado pra preservar/cachear
@@ -21500,6 +21505,7 @@ const BACKUP_TABELAS_CONFIG = [
     { tabela: 'residuos_refeicoes', modulo: 'Meio Ambiente', label: 'Controle de Resíduos' },
     { tabela: 'ergonomia_aep', modulo: 'Ergonomia', label: 'Avaliações Ergonômicas (NR-17)' },
     { tabela: 'periculosidade_analises', modulo: 'Periculosidade', label: 'Laudos de Periculosidade (NR-16)' },
+    { tabela: 'pgr_plano_acao', modulo: 'Segurança', label: 'Plano de Ação (5W2H) - NR-01' },
     { tabela: 'cipa_reunioes', modulo: 'CIPA', label: 'Reuniões da CIPA' },
     { tabela: 'brigada_membros', modulo: 'Brigada', label: 'Brigadistas de Incêndio' },
     { tabela: 'anexos_sms', modulo: 'Documentos', label: 'Documentos e Anexos' },
@@ -32913,3 +32919,1080 @@ function exportarMatrizPericulosidade() {
 
 
 
+
+
+// ==============================================================================
+// MÓDULO: CENTRAL INTEGRADA DE AÇÕES 5W2H DO PGR (NR-01 / GRO)
+// Consórcio Operador do PISF — Ramal do Agreste (COP Ramal)
+// Unifica não conformidades de checklists, extintores, relatos de problemas,
+// ergonomia (NR-17), CIPA (NR-05), acidentes e inspeções em uma matriz 5W2H corporativa.
+// ==============================================================================
+
+let allPlanoAcaoPgr = [];
+let planoAcaoPgrLoaded = false;
+let planoAcaoSubtabAtual = 'tabela'; // 'tabela' | 'kanban' | 'scanner'
+let scannerDesviosCache = [];
+
+function formatarDataLocal(d) {
+    if (!d) return '—';
+    if (typeof d === 'string') return formatSimpleDate(d);
+    try {
+        return d.toLocaleDateString('pt-BR');
+    } catch (e) {
+        return String(d);
+    }
+}
+
+/**
+ * Carrega todas as ações do PGR do Supabase
+ */
+async function loadPlanoAcaoPgrData() {
+    setStatus('Carregando ações 5W2H do PGR...');
+    try {
+        const rows = await supabaseFetch('pgr_plano_acao', '?select=*&order=created_at.desc');
+        allPlanoAcaoPgr = Array.isArray(rows) ? rows : [];
+        atualizarKpisPlanoAcaoPgr();
+        renderPlanoAcaoPgrVisaoAtual();
+        setStatus('Plano de Ação do PGR atualizado às ' + new Date().toLocaleTimeString('pt-BR'));
+    } catch (e) {
+        console.error('Erro ao carregar ações do PGR:', e);
+        setStatus('⚠️ Falha ao carregar ações do PGR: ' + e.message);
+    }
+}
+
+/**
+ * Alterna entre as sub-abas do módulo de Plano de Ação
+ */
+function showPlanoAcaoSubtab(subtab) {
+    planoAcaoSubtabAtual = subtab;
+
+    // Atualiza botões
+    const btnTabela = document.getElementById('planoAcaoSubtabBtn-tabela');
+    const btnKanban = document.getElementById('planoAcaoSubtabBtn-kanban');
+    const btnScanner = document.getElementById('planoAcaoSubtabBtn-scanner');
+
+    if (btnTabela) btnTabela.classList.toggle('active', subtab === 'tabela');
+    if (btnKanban) btnKanban.classList.toggle('active', subtab === 'kanban');
+    if (btnScanner) btnScanner.classList.toggle('active', subtab === 'scanner');
+
+    // Atualiza visibilidade dos containers
+    const tabTabela = document.getElementById('planoAcaoSubtab-tabela');
+    const tabKanban = document.getElementById('planoAcaoSubtab-kanban');
+    const tabScanner = document.getElementById('planoAcaoSubtab-scanner');
+
+    if (tabTabela) tabTabela.style.display = subtab === 'tabela' ? 'block' : 'none';
+    if (tabKanban) tabKanban.style.display = subtab === 'kanban' ? 'block' : 'none';
+    if (tabScanner) tabScanner.style.display = subtab === 'scanner' ? 'block' : 'none';
+
+    renderPlanoAcaoPgrVisaoAtual();
+}
+
+/**
+ * Renderiza a visão ativa no momento
+ */
+function renderPlanoAcaoPgrVisaoAtual() {
+    atualizarKpisPlanoAcaoPgr();
+    if (planoAcaoSubtabAtual === 'tabela') {
+        renderTabelaPlanoAcaoPgr();
+    } else if (planoAcaoSubtabAtual === 'kanban') {
+        renderKanbanPlanoAcaoPgr();
+    } else if (planoAcaoSubtabAtual === 'scanner') {
+        renderScannerPlanoAcaoPgr();
+    }
+}
+
+/**
+ * Calcula e atualiza todos os cartões de KPI do módulo
+ */
+function atualizarKpisPlanoAcaoPgr() {
+    const hojeStr = toISODateLocal(new Date());
+
+    const total = allPlanoAcaoPgr.length;
+    let abertas = 0;
+    let andamento = 0;
+    let vencidas = 0;
+    let concluidas = 0;
+    let custoTotal = 0;
+    let eficazes = 0;
+
+    allPlanoAcaoPgr.forEach(a => {
+        const status = (a.status || 'aberta').toLowerCase();
+        const prazo = a.when_prazo || '';
+        const custo = parseFloat(a.how_much_custo) || 0;
+        custoTotal += custo;
+
+        if (status === 'concluida') {
+            concluidas++;
+            if (a.afericao_eficacia === 'eficaz' || a.afericao_eficacia === 'parcial') {
+                eficazes++;
+            }
+        } else if (status !== 'cancelada') {
+            if (prazo && prazo < hojeStr) {
+                vencidas++;
+            }
+            if (status === 'aberta') abertas++;
+            else if (status === 'em_andamento' || status === 'validacao') andamento++;
+        }
+    });
+
+    const taxaEficacia = concluidas > 0 ? Math.round((eficazes / concluidas) * 100) : (total > 0 ? 0 : 100);
+
+    const elTotal = document.getElementById('kpiPgrTotal');
+    const elAbertas = document.getElementById('kpiPgrAbertas');
+    const elAndamento = document.getElementById('kpiPgrAndamento');
+    const elVencidas = document.getElementById('kpiPgrVencidas');
+    const elConcluidas = document.getElementById('kpiPgrConcluidas');
+    const elEficacia = document.getElementById('kpiPgrEficacia');
+    const elCustoTotal = document.getElementById('kpiPgrCustoTotal');
+
+    if (elTotal) elTotal.textContent = total;
+    if (elAbertas) elAbertas.textContent = abertas;
+    if (elAndamento) elAndamento.textContent = andamento;
+    if (elVencidas) {
+        elVencidas.textContent = vencidas;
+        const cardVenc = document.getElementById('kpiCardPgrVencidas');
+        if (cardVenc) {
+            if (vencidas > 0) {
+                cardVenc.style.background = '#fef2f2';
+                cardVenc.style.borderColor = '#ef4444';
+            } else {
+                cardVenc.style.background = '#ffffff';
+                cardVenc.style.borderColor = 'var(--border)';
+            }
+        }
+    }
+    if (elConcluidas) elConcluidas.textContent = concluidas;
+    if (elEficacia) elEficacia.textContent = taxaEficacia + '%';
+    if (elCustoTotal) {
+        elCustoTotal.textContent = custoTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+}
+
+/**
+ * Filtra a lista de ações com base nos campos de busca
+ */
+function obterAcoesPgrFiltradas() {
+    const texto = (document.getElementById('filtroPgrTexto')?.value || '').toLowerCase().trim();
+    const statusFiltro = document.getElementById('filtroPgrStatus')?.value || '';
+    const origemFiltro = document.getElementById('filtroPgrOrigem')?.value || '';
+    const prioFiltro = document.getElementById('filtroPgrPrioridade')?.value || '';
+    const hojeStr = toISODateLocal(new Date());
+
+    return allPlanoAcaoPgr.filter(a => {
+        // Filtro por texto
+        if (texto) {
+            const haystack = [
+                a.what_acao, a.why_motivo, a.where_local, a.who_responsavel, 
+                a.how_metodo, a.origem_rotulo, a.id
+            ].filter(Boolean).join(' ').toLowerCase();
+            if (!haystack.includes(texto)) return false;
+        }
+
+        // Filtro por status
+        if (statusFiltro) {
+            const st = (a.status || 'aberta').toLowerCase();
+            if (statusFiltro === 'vencidas') {
+                if (st === 'concluida' || st === 'cancelada') return false;
+                if (!a.when_prazo || a.when_prazo >= hojeStr) return false;
+            } else if (st !== statusFiltro) {
+                return false;
+            }
+        }
+
+        // Filtro por origem
+        if (origemFiltro && (a.origem_tipo || 'manual').toLowerCase() !== origemFiltro.toLowerCase()) {
+            return false;
+        }
+
+        // Filtro por prioridade
+        if (prioFiltro && (a.grau_prioridade || 'media').toLowerCase() !== prioFiltro.toLowerCase()) {
+            return false;
+        }
+
+        return true;
+    });
+}
+
+function filtrarPlanoAcaoPgr() {
+    renderPlanoAcaoPgrVisaoAtual();
+}
+
+function limparFiltrosPlanoAcaoPgr() {
+    const t = document.getElementById('filtroPgrTexto');
+    const s = document.getElementById('filtroPgrStatus');
+    const o = document.getElementById('filtroPgrOrigem');
+    const p = document.getElementById('filtroPgrPrioridade');
+    if (t) t.value = '';
+    if (s) s.value = '';
+    if (o) o.value = '';
+    if (p) p.value = '';
+    renderPlanoAcaoPgrVisaoAtual();
+}
+
+/**
+ * Renderiza a Matriz 5W2H em formato de tabela
+ */
+function renderTabelaPlanoAcaoPgr() {
+    const tbody = document.getElementById('tabelaPlanoAcaoPgrCorpo');
+    if (!tbody) return;
+
+    const lista = obterAcoesPgrFiltradas();
+    if (lista.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 35px 20px; color: var(--text-light);"><div style="font-size: 26px; margin-bottom: 6px;">🎯</div><div style="font-weight: 700; font-size: 14px;">Nenhuma ação encontrada</div><div style="font-size: 12px; margin-top: 4px;">Clique em "+ Nova Ação (5W2H)" ou no "Rastreador de Desvios" para registrar.</div></td></tr>';
+        return;
+    }
+
+    const hojeStr = toISODateLocal(new Date());
+
+    tbody.innerHTML = lista.map((a, idx) => {
+        const idSafe = escapeHTML(a.id);
+        const codExibicao = 'PA-' + String(idx + 1).padStart(3, '0');
+        const prio = (a.grau_prioridade || 'media').toLowerCase();
+        const status = (a.status || 'aberta').toLowerCase();
+        const prazo = a.when_prazo || '';
+        const custo = parseFloat(a.how_much_custo) || 0;
+
+        // Badge de prioridade
+        const prioLabels = { critica: 'Crítica', alta: 'Alta', media: 'Média', baixa: 'Baixa' };
+        const prioLabel = prioLabels[prio] || 'Média';
+        const badgePrio = `<span class="badge-pgr-prio prio-${prio}">${prioLabel}</span>`;
+
+        // Badge de origem
+        const origemConfig = {
+            checklist: { icone: '📋', label: 'Checklist' },
+            extintor: { icone: '🧯', label: 'Extintor' },
+            relato: { icone: '⚠️', label: 'Relato Campo' },
+            ergonomia: { icone: '🧘', label: 'Ergonomia NR-17' },
+            cipa: { icone: '🤝', label: 'CIPA NR-05' },
+            acidente: { icone: '🚑', label: 'Acidente' },
+            auditoria: { icone: '🔍', label: 'Auditoria' },
+            manual: { icone: '✍️', label: 'PGR Geral' }
+        };
+        const orig = origemConfig[(a.origem_tipo || 'manual').toLowerCase()] || origemConfig.manual;
+        const badgeOrigem = `
+            <div style="display:flex; flex-direction:column; gap:2px;">
+                <span class="badge-pgr-origem">${orig.icone} ${orig.label}</span>
+                ${a.origem_rotulo ? `<span style="font-size:10.5px; color:var(--text-light); max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHTML(a.origem_rotulo)}">${escapeHTML(a.origem_rotulo)}</span>` : ''}
+            </div>
+        `;
+
+        // Cálculo de status de tempo do prazo
+        let badgePrazo = '';
+        if (status === 'concluida') {
+            const dataFim = a.data_conclusao ? formatarDataLocal(a.data_conclusao) : 'Concluída';
+            badgePrazo = `<span class="badge-pgr-dias-ok" style="background:#dcfce7; color:#15803d; border-color:#86efac;">✅ ${dataFim}</span>`;
+        } else if (status === 'cancelada') {
+            badgePrazo = `<span class="badge-pgr-dias-ok" style="background:#f1f5f9; color:#64748b;">Cancelada</span>`;
+        } else if (prazo) {
+            const dPrazo = new Date(prazo + 'T12:00:00');
+            const dHoje = new Date(hojeStr + 'T12:00:00');
+            const diffDias = Math.round((dPrazo - dHoje) / (1000 * 60 * 60 * 24));
+
+            if (diffDias < 0) {
+                badgePrazo = `<span class="badge-pgr-dias-vencido" title="Prazo expirado">🚨 Vencida há ${Math.abs(diffDias)}d</span>`;
+            } else if (diffDias === 0) {
+                badgePrazo = `<span class="badge-pgr-dias-vencido" style="background:#f59e0b;" title="Vence hoje">⏳ Vence hoje</span>`;
+            } else {
+                badgePrazo = `<span class="badge-pgr-dias-ok">⏳ Restam ${diffDias}d</span>`;
+            }
+        }
+
+        // Status badge
+        const statusConfig = {
+            aberta: { label: '📌 Aberta', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+            em_andamento: { label: '⏳ Em Andamento', bg: '#fef3c7', color: '#b45309', border: '#fde68a' },
+            validacao: { label: '🔍 Validação SESMT', bg: '#e0f2fe', color: '#0369a1', border: '#bae6fd' },
+            concluida: { label: '✅ Concluída', bg: '#dcfce7', color: '#15803d', border: '#86efac' },
+            cancelada: { label: '❌ Cancelada', bg: '#f8fafc', color: '#94a3b8', border: '#e2e8f0' }
+        };
+        const stConf = statusConfig[status] || statusConfig.aberta;
+        const badgeStatus = `<span style="display:inline-block; padding:3px 8px; border-radius:12px; font-size:11px; font-weight:700; background:${stConf.bg}; color:${stConf.color}; border:1px solid ${stConf.border};">${stConf.label}</span>`;
+
+        // Eficácia NR-01
+        let badgeEficacia = '';
+        if (a.afericao_eficacia === 'eficaz') {
+            badgeEficacia = `<span style="font-size:10px; color:#15803d; font-weight:700; display:block; margin-top:2px;">✨ Eficaz</span>`;
+        } else if (a.afericao_eficacia === 'parcial') {
+            badgeEficacia = `<span style="font-size:10px; color:#b45309; font-weight:700; display:block; margin-top:2px;">⚠️ Parcial</span>`;
+        } else if (a.afericao_eficacia === 'ineficaz') {
+            badgeEficacia = `<span style="font-size:10px; color:#b91c1c; font-weight:700; display:block; margin-top:2px;">❌ Ineficaz</span>`;
+        }
+
+        return `
+            <tr style="border-bottom: 1px solid var(--border); transition: background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                <td style="padding: 10px 8px; vertical-align: top;">
+                    <div style="font-weight: 700; font-size: 11.5px; color: var(--text-light); margin-bottom: 3px;">${codExibicao}</div>
+                    ${badgePrio}
+                </td>
+                <td style="padding: 10px 8px; vertical-align: top;">${badgeOrigem}</td>
+                <td style="padding: 10px 8px; vertical-align: top;">
+                    <div style="font-weight: 700; color: var(--text); line-height: 1.35;">${escapeHTML(a.what_acao || '')}</div>
+                    ${a.evidencia_conclusao ? `<div style="font-size: 11px; color: #0284c7; margin-top: 4px;">📎 ${escapeHTML(a.evidencia_conclusao)}</div>` : ''}
+                </td>
+                <td style="padding: 10px 8px; vertical-align: top; color: #475569; font-size: 11.5px; line-height: 1.35;">
+                    ${escapeHTML(a.why_motivo || '-')}
+                </td>
+                <td style="padding: 10px 8px; vertical-align: top; font-weight: 600;">
+                    ${escapeHTML(a.where_local || '-')}
+                </td>
+                <td style="padding: 10px 8px; vertical-align: top; font-weight: 600; color: #1e293b;">
+                    ${escapeHTML(a.who_responsavel || '-')}
+                </td>
+                <td style="padding: 10px 8px; vertical-align: top;">
+                    <div style="font-weight: 700; font-size: 11.5px; margin-bottom: 3px;">${prazo ? formatarDataLocal(prazo) : '-'}</div>
+                    ${badgePrazo}
+                </td>
+                <td style="padding: 10px 8px; vertical-align: top; color: var(--text-light); font-size: 11.5px; line-height: 1.35;">
+                    ${escapeHTML(a.how_metodo || '-')}
+                </td>
+                <td style="padding: 10px 8px; vertical-align: top; font-weight: 700; color: #475569;">
+                    ${custo > 0 ? custo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
+                </td>
+                <td style="padding: 10px 8px; vertical-align: top;">
+                    ${badgeStatus}
+                    ${badgeEficacia}
+                </td>
+                <td style="padding: 10px 8px; vertical-align: top; text-align: center;">
+                    <div style="display: flex; gap: 4px; justify-content: center;">
+                        <button class="db-clear-btn" style="padding: 4px 6px; font-size: 11px;" title="Editar Ação" onclick="abrirModalEditarAcaoPgr('${idSafe}')">✏️</button>
+                        <button class="db-clear-btn" style="padding: 4px 6px; font-size: 11px; color: #0284c7;" title="Avaliar Eficácia NR-01" onclick="abrirModalEficaciaPgr('${idSafe}')">🔍</button>
+                        <button class="db-clear-btn" style="padding: 4px 6px; font-size: 11px; color: var(--danger);" title="Excluir Ação" onclick="excluirAcaoPgr('${idSafe}')">🗑️</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+/**
+ * Renderiza o Quadro Kanban Interativo
+ */
+function renderKanbanPlanoAcaoPgr() {
+    const lista = obterAcoesPgrFiltradas();
+    const hojeStr = toISODateLocal(new Date());
+
+    const containers = {
+        aberta: document.getElementById('kanbanContainer-aberta'),
+        em_andamento: document.getElementById('kanbanContainer-em_andamento'),
+        validacao: document.getElementById('kanbanContainer-validacao'),
+        concluida: document.getElementById('kanbanContainer-concluida')
+    };
+
+    const counters = {
+        aberta: document.getElementById('kanbanCount-aberta'),
+        em_andamento: document.getElementById('kanbanCount-em_andamento'),
+        validacao: document.getElementById('kanbanCount-validacao'),
+        concluida: document.getElementById('kanbanCount-concluida')
+    };
+
+    // Limpa containers
+    Object.keys(containers).forEach(k => {
+        if (containers[k]) containers[k].innerHTML = '';
+        if (counters[k]) counters[k].textContent = '0';
+    });
+
+    const counts = { aberta: 0, em_andamento: 0, validacao: 0, concluida: 0 };
+
+    lista.forEach(a => {
+        let col = (a.status || 'aberta').toLowerCase();
+        if (col === 'cancelada') return; // não exibe canceladas no kanban ativo
+        if (!containers[col]) col = 'aberta';
+
+        counts[col]++;
+
+        const idSafe = escapeHTML(a.id);
+        const prio = (a.grau_prioridade || 'media').toLowerCase();
+        const prazo = a.when_prazo || '';
+
+        // Alerta de prazo
+        let tagPrazo = '';
+        if (col === 'concluida') {
+            tagPrazo = `<span class="badge-pgr-dias-ok" style="background:#dcfce7; color:#15803d;">✅ Concluída</span>`;
+        } else if (prazo) {
+            const dPrazo = new Date(prazo + 'T12:00:00');
+            const dHoje = new Date(hojeStr + 'T12:00:00');
+            const diffDias = Math.round((dPrazo - dHoje) / (1000 * 60 * 60 * 24));
+            if (diffDias < 0) {
+                tagPrazo = `<span class="badge-pgr-dias-vencido">🚨 Venceu há ${Math.abs(diffDias)}d</span>`;
+            } else if (diffDias === 0) {
+                tagPrazo = `<span class="badge-pgr-dias-vencido" style="background:#f59e0b;">⏳ Vence hoje</span>`;
+            } else {
+                tagPrazo = `<span class="badge-pgr-dias-ok">⏳ ${diffDias}d restantes</span>`;
+            }
+        }
+
+        // Botões de avanço rápido no fluxo
+        let btnTransicao = '';
+        if (col === 'aberta') {
+            btnTransicao = `<button class="db-apply-btn" style="padding: 3px 8px; font-size: 11px; background: #d97706;" onclick="event.stopPropagation(); avancarStatusPgrRapido('${idSafe}', 'em_andamento')">Iniciar ➔</button>`;
+        } else if (col === 'em_andamento') {
+            btnTransicao = `<button class="db-apply-btn" style="padding: 3px 8px; font-size: 11px; background: #0284c7;" onclick="event.stopPropagation(); avancarStatusPgrRapido('${idSafe}', 'validacao')">Enviar Validação ➔</button>`;
+        } else if (col === 'validacao') {
+            btnTransicao = `<button class="db-apply-btn" style="padding: 3px 8px; font-size: 11px; background: var(--success);" onclick="event.stopPropagation(); abrirModalEficaciaPgr('${idSafe}')">Validar Eficácia ➔</button>`;
+        }
+
+        const cardHtml = `
+            <div class="kanban-card prio-${prio}" onclick="abrirModalEditarAcaoPgr('${idSafe}')">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px;">
+                    <span class="badge-pgr-origem" style="font-size: 10px; padding: 2px 6px;">${escapeHTML(a.origem_tipo || 'PGR')}</span>
+                    <span class="badge-pgr-prio prio-${prio}">${prio.toUpperCase()}</span>
+                </div>
+
+                <div class="kanban-card-title">${escapeHTML(a.what_acao || '')}</div>
+
+                <div class="kanban-card-meta">
+                    <span>📍 ${escapeHTML(a.where_local || 'Canteiro')}</span>
+                    <span>•</span>
+                    <span>👤 ${escapeHTML(a.who_responsavel || '-')}</span>
+                </div>
+
+                <div class="kanban-card-actions">
+                    <div>${tagPrazo}</div>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        ${btnTransicao}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (containers[col]) containers[col].insertAdjacentHTML('beforeend', cardHtml);
+    });
+
+    Object.keys(counts).forEach(k => {
+        if (counters[k]) counters[k].textContent = counts[k];
+        if (counts[k] === 0 && containers[k]) {
+            containers[k].innerHTML = '<div style="text-align: center; color: var(--text-light); font-size: 12px; padding: 30px 10px;">Sem ações nesta coluna</div>';
+        }
+    });
+}
+
+/**
+ * Rastreador Inteligente de Desvios (Scanner da Obra)
+ * Analisa checklists com NC, extintores vencidos, relatos abertos e acidentes
+ */
+async function executarScannerDesviosObra() {
+    setStatus('Varrendo desvios e não conformidades do canteiro...');
+    const hojeStr = toISODateLocal(new Date());
+
+    try {
+        if (!allChecklists || allChecklists.length === 0) {
+            allChecklists = await supabaseFetch('checklists', '?select=*') || [];
+        }
+        if (!allExtintores || allExtintores.length === 0) {
+            allExtintores = await supabaseFetch('extintores', '?select=*') || [];
+        }
+        if (!allRelatos || allRelatos.length === 0) {
+            allRelatos = await supabaseFetch('relatos', '?select=*') || [];
+        }
+
+        const desvios = [];
+        const origensJaTratadas = new Set(allPlanoAcaoPgr.map(a => a.origem_id).filter(Boolean));
+
+        let countChk = 0;
+        let countExt = 0;
+        let countRel = 0;
+        let countAcid = 0;
+
+        // 1. Checklists de Veículos e Máquinas com Interdição ou Não Conformidades
+        allChecklists.forEach(chk => {
+            const status = (chk.status_checklist || '').toLowerCase();
+            const ncs = chk.nao_conformes || chk.count_nao_conforme || 0;
+            const isInterditado = status === 'interditado';
+            const isRestricao = status === 'liberado_restricao';
+
+            if (isInterditado || isRestricao || ncs > 0) {
+                countChk++;
+                if (!origensJaTratadas.has(chk.id)) {
+                    desvios.push({
+                        origem_tipo: 'checklist',
+                        origem_id: chk.id,
+                        origem_rotulo: `${chk.nome || 'Equipamento'} (Placa/Patrimônio: ${chk.patrimonio || 'S/N'})`,
+                        prioridade: isInterditado ? 'critica' : (isRestricao ? 'alta' : 'media'),
+                        titulo: `Não Conformidade no Checklist - ${chk.nome || 'Equipamento'}`,
+                        descricao: chk.observacoes || `Identificadas ${ncs} não conformidade(s) na inspeção pré-operacional diária.`,
+                        local: chk.empresa ? `Frente ${chk.empresa}` : 'Canteiro de Obras / Frente Operacional',
+                        responsavelSugerido: chk.responsavel || chk.sst || 'Encarregado de Manutenção Mecânica',
+                        data: chk.date || chk.data_hora || hojeStr
+                    });
+                }
+            }
+        });
+
+        // 2. Extintores com Recarga ou Teste Vencidos
+        allExtintores.forEach(ext => {
+            const recarga = ext.proxima_recarga || '';
+            const teste = ext.proximo_teste_hidrostatico || '';
+            const recargaVencida = recarga && recarga < hojeStr;
+            const testeVencido = teste && teste < hojeStr;
+
+            if (recargaVencida || testeVencido) {
+                countExt++;
+                if (!origensJaTratadas.has(ext.id)) {
+                    const motivo = recargaVencida && testeVencido 
+                        ? 'Validade de Recarga e Teste Hidrostático (5 anos) expirados'
+                        : (recargaVencida ? 'Validade da Recarga Anual expirada' : 'Teste Hidrostático Quinquenal expirado');
+
+                    desvios.push({
+                        origem_tipo: 'extintor',
+                        origem_id: ext.id,
+                        origem_rotulo: `Extintor ${ext.id} (${ext.tipo || 'PQS'} ${ext.capacidade || ''})`,
+                        prioridade: 'alta',
+                        titulo: `Regularização de Extintor de Incêndio - Tag ${ext.id}`,
+                        descricao: `${motivo}. Extintor alocado no setor ${ext.setor || 'Canteiro'}. Requer substituição ou envio imediato para empresa credenciada do Inmetro.`,
+                        local: `${ext.setor || 'Canteiro'} - ${ext.localizacao || 'Ponto de fixação'}`,
+                        responsavelSugerido: 'Técnico de Segurança / Brigada de Incêndio',
+                        data: recarga || teste || hojeStr
+                    });
+                }
+            }
+        });
+
+        // 3. Relatos de Problemas de Campo em Aberto
+        allRelatos.forEach(rel => {
+            const st = (rel.status || 'aberto').toLowerCase();
+            if (st !== 'resolvido') {
+                countRel++;
+                if (!origensJaTratadas.has(rel.id)) {
+                    desvios.push({
+                        origem_tipo: 'relato',
+                        origem_id: rel.id,
+                        origem_rotulo: `Relato #${rel.id} (${rel.tipo || 'Ocorrência'})`,
+                        prioridade: 'media',
+                        titulo: `Tratativa de Relato de Campo: ${rel.tipo || 'Problema Reportado'}`,
+                        descricao: rel.description || 'Problema apontado por colaborador em campo aguardando providência do SESMT.',
+                        local: rel.identificacao || 'Canteiro de Obras / Frentes',
+                        responsavelSugerido: rel.reporter || 'SESMT / Supervisão de Campo',
+                        data: rel.date || hojeStr
+                    });
+                }
+            }
+        });
+
+        // Atualiza contadores do topo do scanner
+        const elChk = document.getElementById('countScannerChecklists');
+        const elExt = document.getElementById('countScannerExtintores');
+        const elRel = document.getElementById('countScannerRelatos');
+        const elAcid = document.getElementById('countScannerAcidentes');
+
+        if (elChk) elChk.textContent = countChk;
+        if (elExt) elExt.textContent = countExt;
+        if (elRel) elRel.textContent = countRel;
+        if (elAcid) elAcid.textContent = countAcid;
+
+        scannerDesviosCache = desvios;
+        renderScannerPlanoAcaoPgr();
+        setStatus('Varredura concluída: ' + desvios.length + ' desvios pendentes de ação 5W2H.');
+    } catch (e) {
+        console.error('Erro no scanner de desvios:', e);
+        setStatus('⚠️ Erro ao varrer desvios: ' + e.message);
+    }
+}
+
+/**
+ * Renderiza a lista de desvios encontrados pelo Scanner
+ */
+function renderScannerPlanoAcaoPgr() {
+    const container = document.getElementById('listaScannerDesviosContainer');
+    if (!container) return;
+
+    if (scannerDesviosCache.length === 0) {
+        container.innerHTML = '<div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 25px; text-align: center;"><div style="font-size: 28px; margin-bottom: 6px;">🎉</div><div style="font-weight: 700; color: #166534; font-size: 14px;">Nenhum desvio crítico pendente de plano de ação!</div><div style="font-size: 12px; color: #15803d; margin-top: 4px;">Todos os checklists, extintores e relatos identificados já possuem ações 5W2H vinculadas.</div></div>';
+        return;
+    }
+
+    container.innerHTML = scannerDesviosCache.map((d) => {
+        const dJson = encodeURIComponent(JSON.stringify(d));
+        const prioColors = {
+            critica: { border: '#ef4444', bg: '#fef2f2', text: '#b91c1c' },
+            alta: { border: '#f97316', bg: '#fff7ed', text: '#c2410c' },
+            media: { border: '#f59e0b', bg: '#fffbeb', text: '#b45309' },
+            baixa: { border: '#10b981', bg: '#f0fdf4', text: '#15803d' }
+        };
+        const pConf = prioColors[d.prioridade] || prioColors.media;
+
+        return `
+            <div style="background: #ffffff; border: 1px solid var(--border); border-left: 6px solid ${pConf.border}; border-radius: 10px; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+                <div style="flex: 1; min-width: 260px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
+                        <span class="badge-pgr-origem">${escapeHTML(d.origem_tipo.toUpperCase())}</span>
+                        <span class="badge-pgr-prio prio-${d.prioridade}">${d.prioridade.toUpperCase()}</span>
+                        <span style="font-size: 11px; color: var(--text-light);">Detectado em: ${formatarDataLocal(d.data)}</span>
+                    </div>
+                    <div style="font-weight: 700; font-size: 13.5px; color: var(--text); margin-bottom: 2px;">
+                        ${escapeHTML(d.titulo)}
+                    </div>
+                    <div style="font-size: 12px; color: #475569; margin-bottom: 4px; line-height: 1.35;">
+                        ${escapeHTML(d.descricao)}
+                    </div>
+                    <div style="font-size: 11.5px; color: var(--text-light); display: flex; gap: 10px; flex-wrap: wrap;">
+                        <span>📍 <strong>Local:</strong> ${escapeHTML(d.local)}</span>
+                        <span>👤 <strong>Sugerido:</strong> ${escapeHTML(d.responsavelSugerido)}</span>
+                    </div>
+                </div>
+                <div>
+                    <button class="db-apply-btn" style="padding: 8px 14px; font-size: 12px; background: var(--primary);" onclick="criarAcaoPgrDeDesvio('${dJson}')">
+                        🎯 Criar Ação 5W2H
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+/**
+ * Pré-carrega o formulário 5W2H a partir de um desvio detectado no Scanner
+ */
+function criarAcaoPgrDeDesvio(dJsonEncoded) {
+    try {
+        const d = JSON.parse(decodeURIComponent(dJsonEncoded));
+        abrirModalNovaAcaoPgr({
+            origem_tipo: d.origem_tipo,
+            origem_id: d.origem_id,
+            origem_rotulo: d.origem_rotulo,
+            grau_prioridade: d.prioridade,
+            what_acao: d.titulo,
+            why_motivo: d.descricao,
+            where_local: d.local,
+            who_responsavel: d.responsavelSugerido
+        });
+    } catch (e) {
+        console.error('Erro ao converter desvio:', e);
+    }
+}
+
+/**
+ * Abre o modal de cadastro de nova ação 5W2H
+ */
+function abrirModalNovaAcaoPgr(prefill = {}) {
+    const modal = document.getElementById('modalPlanoAcaoPgr');
+    if (!modal) return;
+
+    document.getElementById('modalPlanoAcaoPgrTitulo').textContent = '🎯 Nova Ação 5W2H do PGR (NR-01)';
+    document.getElementById('pgrForm_id').value = '';
+    document.getElementById('pgrForm_origemId').value = prefill.origem_id || '';
+    document.getElementById('pgrForm_origemTipo').value = prefill.origem_tipo || 'manual';
+    document.getElementById('pgrForm_origemRotulo').value = prefill.origem_rotulo || '';
+    document.getElementById('pgrForm_prioridade').value = prefill.grau_prioridade || 'media';
+    document.getElementById('pgrForm_what').value = prefill.what_acao || '';
+    document.getElementById('pgrForm_why').value = prefill.why_motivo || '';
+    document.getElementById('pgrForm_where').value = prefill.where_local || '';
+    document.getElementById('pgrForm_who').value = prefill.who_responsavel || '';
+    
+    // Prazo padrão: 7 dias a partir de hoje
+    const prazoPadrao = new Date();
+    prazoPadrao.setDate(prazoPadrao.getDate() + 7);
+    document.getElementById('pgrForm_when').value = prefill.when_prazo || toISODateLocal(prazoPadrao);
+    
+    document.getElementById('pgrForm_how').value = prefill.how_metodo || '';
+    document.getElementById('pgrForm_howMuch').value = prefill.how_much_custo || '';
+    document.getElementById('pgrForm_status').value = prefill.status || 'aberta';
+    document.getElementById('pgrForm_dataConclusao').value = prefill.data_conclusao || '';
+    document.getElementById('pgrForm_evidencia').value = prefill.evidencia_conclusao || '';
+
+    modal.style.display = 'flex';
+}
+
+/**
+ * Abre o modal para editar uma ação existente
+ */
+function abrirModalEditarAcaoPgr(id) {
+    const item = allPlanoAcaoPgr.find(a => a.id === id);
+    if (!item) return;
+
+    const modal = document.getElementById('modalPlanoAcaoPgr');
+    if (!modal) return;
+
+    document.getElementById('modalPlanoAcaoPgrTitulo').textContent = '✏️ Editar Ação 5W2H (' + (item.what_acao?.slice(0, 30) || 'PGR') + '...)';
+    document.getElementById('pgrForm_id').value = item.id;
+    document.getElementById('pgrForm_origemId').value = item.origem_id || '';
+    document.getElementById('pgrForm_origemTipo').value = item.origem_tipo || 'manual';
+    document.getElementById('pgrForm_origemRotulo').value = item.origem_rotulo || '';
+    document.getElementById('pgrForm_prioridade').value = item.grau_prioridade || 'media';
+    document.getElementById('pgrForm_what').value = item.what_acao || '';
+    document.getElementById('pgrForm_why').value = item.why_motivo || '';
+    document.getElementById('pgrForm_where').value = item.where_local || '';
+    document.getElementById('pgrForm_who').value = item.who_responsavel || '';
+    document.getElementById('pgrForm_when').value = item.when_prazo || '';
+    document.getElementById('pgrForm_how').value = item.how_metodo || '';
+    document.getElementById('pgrForm_howMuch').value = item.how_much_custo || '';
+    document.getElementById('pgrForm_status').value = item.status || 'aberta';
+    document.getElementById('pgrForm_dataConclusao').value = item.data_conclusao || '';
+    document.getElementById('pgrForm_evidencia').value = item.evidencia_conclusao || '';
+
+    modal.style.display = 'flex';
+}
+
+function fecharModalPlanoAcaoPgr() {
+    const modal = document.getElementById('modalPlanoAcaoPgr');
+    if (modal) modal.style.display = 'none';
+}
+
+function onPgrStatusChange(novoStatus) {
+    const dtInput = document.getElementById('pgrForm_dataConclusao');
+    if (!dtInput) return;
+    if (novoStatus === 'concluida' && !dtInput.value) {
+        dtInput.value = toISODateLocal(new Date());
+    } else if (novoStatus !== 'concluida') {
+        dtInput.value = '';
+    }
+}
+
+/**
+ * Salva a ação 5W2H no Supabase (criação ou edição)
+ */
+async function salvarAcaoPgrFormulario() {
+    if (bloquearEdicaoSeNaoAutorizado('planoacao')) return;
+
+    const idExistente = document.getElementById('pgrForm_id').value;
+    const what = document.getElementById('pgrForm_what').value.trim();
+    const where = document.getElementById('pgrForm_where').value.trim();
+    const who = document.getElementById('pgrForm_who').value.trim();
+    const when = document.getElementById('pgrForm_when').value;
+
+    if (!what || !where || !who || !when) {
+        alert('Por favor, preencha os campos obrigatórios do 5W2H: O que será feito, Onde, Quem executará e Prazo.');
+        return;
+    }
+
+    const session = sessaoDashboardAtual();
+    const custoVal = parseFloat(document.getElementById('pgrForm_howMuch').value);
+    const statusVal = document.getElementById('pgrForm_status').value;
+    const dataConclusaoVal = document.getElementById('pgrForm_dataConclusao').value || (statusVal === 'concluida' ? toISODateLocal(new Date()) : null);
+
+    const payload = {
+        origem_tipo: document.getElementById('pgrForm_origemTipo').value,
+        origem_id: document.getElementById('pgrForm_origemId').value || null,
+        origem_rotulo: document.getElementById('pgrForm_origemRotulo').value.trim(),
+        grau_prioridade: document.getElementById('pgrForm_prioridade').value,
+        what_acao: what,
+        why_motivo: document.getElementById('pgrForm_why').value.trim(),
+        where_local: where,
+        who_responsavel: who,
+        when_prazo: when,
+        how_metodo: document.getElementById('pgrForm_how').value.trim(),
+        how_much_custo: isNaN(custoVal) ? 0 : custoVal,
+        status: statusVal,
+        data_conclusao: dataConclusaoVal,
+        evidencia_conclusao: document.getElementById('pgrForm_evidencia').value.trim(),
+        updated_at: new Date().toISOString()
+    };
+
+    try {
+        if (idExistente) {
+            await supabaseUpsert('pgr_plano_acao', [{ id: idExistente, ...payload }]);
+            const idx = allPlanoAcaoPgr.findIndex(a => a.id === idExistente);
+            if (idx >= 0) allPlanoAcaoPgr[idx] = { ...allPlanoAcaoPgr[idx], ...payload };
+            registrarAuditLogDashboard('update', 'pgr_plano_acao', idExistente, `Ação 5W2H atualizada: "${what.slice(0, 40)}"`);
+        } else {
+            const novoId = 'PA_PGR_' + Date.now();
+            const novoItem = {
+                id: novoId,
+                ...payload,
+                afericao_eficacia: 'pendente',
+                criado_por_matricula: session?.matricula || null,
+                criado_por_nome: session?.nome || null,
+                created_at: new Date().toISOString()
+            };
+            await supabaseUpsert('pgr_plano_acao', [novoItem]);
+            allPlanoAcaoPgr.unshift(novoItem);
+            registrarAuditLogDashboard('create', 'pgr_plano_acao', novoId, `Nova ação 5W2H criada: "${what.slice(0, 40)}"`);
+        }
+
+        fecharModalPlanoAcaoPgr();
+        atualizarKpisPlanoAcaoPgr();
+        renderPlanoAcaoPgrVisaoAtual();
+        alert('✅ Ação do PGR salva com sucesso!');
+    } catch (e) {
+        console.error('Erro ao salvar ação 5W2H:', e);
+        alert('❌ Falha ao salvar ação: ' + e.message);
+    }
+}
+
+/**
+ * Exclui uma ação 5W2H do Supabase
+ */
+async function excluirAcaoPgr(id) {
+    if (bloquearEdicaoSeNaoAutorizado('planoacao')) return;
+
+    const item = allPlanoAcaoPgr.find(a => a.id === id);
+    if (!item) return;
+
+    if (!confirm(`Deseja realmente excluir a ação 5W2H:\n"${item.what_acao}"?`)) return;
+
+    try {
+        await supabaseDelete('pgr_plano_acao', id);
+        allPlanoAcaoPgr = allPlanoAcaoPgr.filter(a => a.id !== id);
+        registrarAuditLogDashboard('delete', 'pgr_plano_acao', id, `Ação excluída: "${item.what_acao?.slice(0, 40)}"`);
+        atualizarKpisPlanoAcaoPgr();
+        renderPlanoAcaoPgrVisaoAtual();
+        alert('Ação excluída com sucesso.');
+    } catch (e) {
+        console.error('Erro ao excluir ação:', e);
+        alert('❌ Falha ao excluir ação: ' + e.message);
+    }
+}
+
+/**
+ * Avança rapidamente o status de uma ação (Kanban ou Tabela)
+ */
+async function avancarStatusPgrRapido(id, novoStatus) {
+    if (bloquearEdicaoSeNaoAutorizado('planoacao')) return;
+
+    const item = allPlanoAcaoPgr.find(a => a.id === id);
+    if (!item) return;
+
+    const dataConclusao = novoStatus === 'concluida' ? toISODateLocal(new Date()) : null;
+
+    try {
+        await supabaseUpsert('pgr_plano_acao', [{
+            id: id,
+            status: novoStatus,
+            data_conclusao: dataConclusao,
+            updated_at: new Date().toISOString()
+        }]);
+
+        item.status = novoStatus;
+        item.data_conclusao = dataConclusao;
+
+        atualizarKpisPlanoAcaoPgr();
+        renderPlanoAcaoPgrVisaoAtual();
+    } catch (e) {
+        console.error('Erro ao avançar status:', e);
+        alert('❌ Falha ao atualizar status: ' + e.message);
+    }
+}
+
+/**
+ * Abre o modal de avaliação de eficácia da NR-01
+ */
+function abrirModalEficaciaPgr(id) {
+    const item = allPlanoAcaoPgr.find(a => a.id === id);
+    if (!item) return;
+
+    const modal = document.getElementById('modalPlanoAcaoEficacia');
+    if (!modal) return;
+
+    document.getElementById('pgrEficacia_id').value = id;
+    document.getElementById('pgrEficacia_resultado').value = item.afericao_eficacia || 'eficaz';
+    document.getElementById('pgrEficacia_parecer').value = item.obs_eficacia || '';
+
+    modal.style.display = 'flex';
+}
+
+function fecharModalPlanoAcaoEficacia() {
+    const modal = document.getElementById('modalPlanoAcaoEficacia');
+    if (modal) modal.style.display = 'none';
+}
+
+/**
+ * Registra o parecer de eficácia conforme NR-01 item 1.5.5.2
+ */
+async function salvarAvaliacaoEficaciaPgr() {
+    if (bloquearEdicaoSeNaoAutorizado('planoacao')) return;
+
+    const id = document.getElementById('pgrEficacia_id').value;
+    const item = allPlanoAcaoPgr.find(a => a.id === id);
+    if (!item) return;
+
+    const resultado = document.getElementById('pgrEficacia_resultado').value;
+    const parecer = document.getElementById('pgrEficacia_parecer').value.trim();
+
+    try {
+        await supabaseUpsert('pgr_plano_acao', [{
+            id: id,
+            afericao_eficacia: resultado,
+            obs_eficacia: parecer,
+            status: resultado === 'eficaz' ? 'concluida' : item.status,
+            data_conclusao: (resultado === 'eficaz' && !item.data_conclusao) ? toISODateLocal(new Date()) : item.data_conclusao,
+            updated_at: new Date().toISOString()
+        }]);
+
+        item.afericao_eficacia = resultado;
+        item.obs_eficacia = parecer;
+        if (resultado === 'eficaz') item.status = 'concluida';
+
+        fecharModalPlanoAcaoEficacia();
+        atualizarKpisPlanoAcaoPgr();
+        renderPlanoAcaoPgrVisaoAtual();
+        alert('✅ Parecer de eficácia registrado com sucesso!');
+    } catch (e) {
+        console.error('Erro ao salvar eficácia:', e);
+        alert('❌ Falha ao salvar parecer de eficácia: ' + e.message);
+    }
+}
+
+/**
+ * Exporta a Matriz 5W2H do PGR para Excel (.xlsx)
+ */
+function gerarExcelPlanoAcaoPgr() {
+    if (typeof XLSX === 'undefined') {
+        alert('Biblioteca SheetJS (XLSX) não carregada.');
+        return;
+    }
+
+    const lista = obterAcoesPgrFiltradas();
+    if (lista.length === 0) {
+        alert('Nenhuma ação para exportar.');
+        return;
+    }
+
+    const rows = lista.map((a, idx) => ({
+        'Código': 'PA-' + String(idx + 1).padStart(3, '0'),
+        'Origem': a.origem_tipo || 'Manual',
+        'Referência da Origem': a.origem_rotulo || '',
+        'Prioridade': (a.grau_prioridade || 'media').toUpperCase(),
+        'O Que Será Feito (What)': a.what_acao || '',
+        'Por Que Será Feito (Why)': a.why_motivo || '',
+        'Onde Será Feito (Where)': a.where_local || '',
+        'Quem Executará (Who)': a.who_responsavel || '',
+        'Quando / Prazo Limite (When)': a.when_prazo ? formatarDataLocal(a.when_prazo) : '',
+        'Como Será Feito (How)': a.how_metodo || '',
+        'Custo Estimado R$ (How Much)': parseFloat(a.how_much_custo) || 0,
+        'Status Atual': (a.status || 'aberta').toUpperCase(),
+        'Data Efetiva de Conclusão': a.data_conclusao ? formatarDataLocal(a.data_conclusao) : '',
+        'Evidência de Comprovação': a.evidencia_conclusao || '',
+        'Aferição de Eficácia (NR-01)': (a.afericao_eficacia || 'Pendente').toUpperCase(),
+        'Parecer Técnico do SESMT': a.obs_eficacia || '',
+        'Criado Em': a.created_at ? formatarDataLocal(a.created_at.slice(0, 10)) : ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Plano de Ação 5W2H PGR');
+
+    const fileName = `Plano_de_Acao_5W2H_PGR_Ramal_do_Agreste_${toISODateLocal(new Date())}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+}
+
+/**
+ * Emissão de Relatório Oficial Timbrado da Matriz 5W2H do PGR
+ */
+function imprimirPlanoAcaoPgrTimbrado() {
+    const lista = obterAcoesPgrFiltradas();
+    if (lista.length === 0) {
+        alert('Nenhuma ação selecionada para impressão.');
+        return;
+    }
+
+    const dataHoje = new Date().toLocaleDateString('pt-BR');
+    const hojeStr = toISODateLocal(new Date());
+
+    let totalCusto = 0;
+    let totalConcluidas = 0;
+    let totalVencidas = 0;
+
+    lista.forEach(a => {
+        totalCusto += parseFloat(a.how_much_custo) || 0;
+        if (a.status === 'concluida') totalConcluidas++;
+        else if (a.status !== 'cancelada' && a.when_prazo && a.when_prazo < hojeStr) totalVencidas++;
+    });
+
+    const linhasHtml = lista.map((a, idx) => {
+        const cod = 'PA-' + String(idx + 1).padStart(3, '0');
+        const prio = (a.grau_prioridade || 'media').toUpperCase();
+        const custo = parseFloat(a.how_much_custo) || 0;
+        const prazo = a.when_prazo ? formatarDataLocal(a.when_prazo) : '-';
+
+        return `
+            <tr style="border-bottom: 1px solid #cbd5e1; font-size: 10px;">
+                <td style="padding: 6px; font-weight: bold; text-align: center;">${cod}</td>
+                <td style="padding: 6px; text-align: center;">${prio}</td>
+                <td style="padding: 6px;"><strong>${escapeHTML(a.what_acao || '')}</strong></td>
+                <td style="padding: 6px; color: #334155;">${escapeHTML(a.why_motivo || '-')}</td>
+                <td style="padding: 6px;">${escapeHTML(a.where_local || '-')}</td>
+                <td style="padding: 6px; font-weight: bold;">${escapeHTML(a.who_responsavel || '-')}</td>
+                <td style="padding: 6px; text-align: center;">${prazo}</td>
+                <td style="padding: 6px; color: #475569;">${escapeHTML(a.how_metodo || '-')}</td>
+                <td style="padding: 6px; text-align: right;">${custo > 0 ? custo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}</td>
+                <td style="padding: 6px; text-align: center; font-weight: bold;">${(a.status || 'aberta').toUpperCase()}</td>
+                <td style="padding: 6px; text-align: center;">${(a.afericao_eficacia || 'Pendente').toUpperCase()}</td>
+            </tr>
+        `;
+    }).join('');
+
+    const htmlImpressao = `
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+            <meta charset="UTF-8">
+            <title>Plano de Ação 5W2H - PGR (NR-01) - COP Ramal do Agreste</title>
+            <style>
+                @page { size: A4 landscape; margin: 10mm; }
+                body { font-family: Arial, sans-serif; font-size: 11px; color: #0f172a; margin: 0; padding: 0; }
+                .timbrado-header { border-bottom: 2px solid #1e3a8a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+                .timbrado-logo-box { font-size: 16px; font-weight: 800; color: #1e3a8a; }
+                .timbrado-sub { font-size: 10px; color: #475569; margin-top: 2px; }
+                .tabela-pgr { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                .tabela-pgr th { background: #1e3a8a; color: #ffffff; padding: 6px; font-size: 10px; text-align: left; }
+                .resumo-box { display: flex; gap: 15px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-top: 14px; font-size: 11px; }
+                .assinaturas { margin-top: 40px; display: flex; justify-content: space-around; text-align: center; }
+                .linha-assinatura { width: 280px; border-top: 1px solid #000; padding-top: 5px; font-weight: bold; font-size: 10.5px; }
+            </style>
+        </head>
+        <body>
+            <div class="timbrado-header">
+                <div>
+                    <div class="timbrado-logo-box">CONSÓRCIO OPERADOR DO PISF — RAMAL DO AGRESTE (COP RAMAL)</div>
+                    <div class="timbrado-sub">PROGRAMA DE GERENCIAMENTO DE RISCOS (PGR) • NR-01 (GRO) — PLANO DE AÇÃO 5W2H</div>
+                </div>
+                <div style="text-align: right; font-size: 10px; color: #475569;">
+                    Data de Emissão: ${dataHoje}<br>
+                    Local: Arcoverde / Sertânia - PE
+                </div>
+            </div>
+
+            <div class="resumo-box">
+                <div><strong>Total de Ações:</strong> ${lista.length}</div>
+                <div><strong>Concluídas:</strong> ${totalConcluidas}</div>
+                <div><strong>Vencidas:</strong> <span style="color:#dc2626;">${totalVencidas}</span></div>
+                <div><strong>Investimento Total:</strong> ${totalCusto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+
+            <table class="tabela-pgr">
+                <thead>
+                    <tr>
+                        <th style="width: 50px; text-align: center;">Cód</th>
+                        <th style="width: 55px; text-align: center;">Prio</th>
+                        <th style="width: 180px;">O Que (What)</th>
+                        <th style="width: 140px;">Por Que (Why)</th>
+                        <th style="width: 100px;">Onde (Where)</th>
+                        <th style="width: 100px;">Quem (Who)</th>
+                        <th style="width: 70px; text-align: center;">Quando</th>
+                        <th style="width: 130px;">Como (How)</th>
+                        <th style="width: 75px; text-align: right;">Custo</th>
+                        <th style="width: 80px; text-align: center;">Status</th>
+                        <th style="width: 80px; text-align: center;">Eficácia</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${linhasHtml}
+                </tbody>
+            </table>
+
+            <div class="assinaturas">
+                <div class="linha-assinatura">
+                    João Everton de Souza Limeira<br>
+                    <span style="font-weight: normal; font-size: 9.5px;">Engenheiro de Segurança do Trabalho<br>Responsável Técnico SST</span>
+                </div>
+                <div class="linha-assinatura">
+                    Gerência de Operações e Contrato<br>
+                    <span style="font-weight: normal; font-size: 9.5px;">Consórcio Operador do PISF Ramal do Agreste<br>Ciência e Aprovação de Recursos</span>
+                </div>
+            </div>
+
+            <script>
+                window.onload = function() { window.print(); }
+            </script>
+        </body>
+        </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+        printWindow.document.open();
+        printWindow.document.write(htmlImpressao);
+        printWindow.document.close();
+    } else {
+        alert('O navegador bloqueou a abertura da janela de impressão. Permita pop-ups para imprimir.');
+    }
+}

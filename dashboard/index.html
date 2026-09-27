@@ -148,6 +148,9 @@
                         <button class="db-nav-item" id="navMatrizRisco" onclick="showDbPage('matrizrisco')">
                             <span class="db-nav-icon">📐</span> Matriz de Risco
                         </button>
+                        <button class="db-nav-item" id="navPlanoAcao" onclick="showDbPage('planoacao')">
+                            <span class="db-nav-icon">🎯</span> Plano de Ação (5W2H)
+                        </button>
                         <button class="db-nav-item" id="navEpi" onclick="showDbPage('epi')">
                             <span class="db-nav-icon">🦺</span> EPI
                         </button>
@@ -2858,6 +2861,368 @@
                         </table>
                     </div>
                     <div style="font-size:12px; color:var(--text-light); margin-top:10px; font-style:italic;">O PGR não define uma correspondência formal entre o Nível de Risco (matriz acima) e esta Classificação de Prioridade — as duas tabelas aparecem lado a lado no documento, cada uma com seu próprio uso, sem uma fórmula de conversão entre elas.</div>
+                </div>
+            </section>
+
+            <!-- Página: Plano de Ação Integrado (5W2H) — NR-01 / GRO -->
+            <section class="db-page" id="page-planoacao">
+                <div class="db-filters" style="margin-bottom: 16px;">
+                    <div class="db-filter-buttons">
+                        <button id="planoAcaoSubtabBtn-tabela" class="db-filter-btn active" onclick="showPlanoAcaoSubtab('tabela')">📊 Matriz 5W2H (Tabela)</button>
+                        <button id="planoAcaoSubtabBtn-kanban" class="db-filter-btn" onclick="showPlanoAcaoSubtab('kanban')">📋 Quadro Kanban</button>
+                        <button id="planoAcaoSubtabBtn-scanner" class="db-filter-btn" onclick="showPlanoAcaoSubtab('scanner')">🔍 Rastrear Desvios da Obra</button>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="db-apply-btn" style="background: var(--primary); font-size: 12.5px; padding: 7px 12px;" onclick="abrirModalNovaAcaoPgr()">➕ Nova Ação (5W2H)</button>
+                        <button class="db-clear-btn" style="font-size: 12.5px; padding: 7px 12px; color: #0284c7; border-color: #38bdf8;" onclick="gerarExcelPlanoAcaoPgr()">📥 Exportar Excel</button>
+                        <button class="db-clear-btn" style="font-size: 12.5px; padding: 7px 12px;" onclick="imprimirPlanoAcaoPgrTimbrado()">🖨️ Imprimir Plano Oficial (PGR)</button>
+                    </div>
+                </div>
+
+                <!-- KPIs da Central de Ações do PGR -->
+                <div class="db-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 20px;">
+                    <div class="db-kpi-card db-kpi-primary">
+                        <div class="db-kpi-value" id="kpiPgrTotal">0</div>
+                        <div class="db-kpi-label">Total de Ações</div>
+                    </div>
+                    <div class="db-kpi-card" style="border-left: 4px solid #64748b;">
+                        <div class="db-kpi-value" id="kpiPgrAbertas" style="color: #475569;">0</div>
+                        <div class="db-kpi-label">A Fazer (Abertas)</div>
+                    </div>
+                    <div class="db-kpi-card" style="border-left: 4px solid var(--warning);">
+                        <div class="db-kpi-value" id="kpiPgrAndamento" style="color: #d97706;">0</div>
+                        <div class="db-kpi-label">Em Andamento</div>
+                    </div>
+                    <div class="db-kpi-card db-kpi-danger" id="kpiCardPgrVencidas">
+                        <div class="db-kpi-value" id="kpiPgrVencidas" style="color: var(--danger);">0</div>
+                        <div class="db-kpi-label">Ações Vencidas (🚨)</div>
+                    </div>
+                    <div class="db-kpi-card" style="border-left: 4px solid var(--success);">
+                        <div class="db-kpi-value" id="kpiPgrConcluidas" style="color: var(--success);">0</div>
+                        <div class="db-kpi-label">Concluídas</div>
+                    </div>
+                    <div class="db-kpi-card" style="border-left: 4px solid #0284c7;">
+                        <div class="db-kpi-value" id="kpiPgrEficacia" style="color: #0284c7;">0%</div>
+                        <div class="db-kpi-label">Eficácia das Ações</div>
+                    </div>
+                    <div class="db-kpi-card" style="border-left: 4px solid #8b5cf6;">
+                        <div class="db-kpi-value" id="kpiPgrCustoTotal" style="color: #7c3aed; font-size: 18px;">R$ 0</div>
+                        <div class="db-kpi-label">Investimento Estimado</div>
+                    </div>
+                </div>
+
+                <!-- Sub-aba 1: Matriz 5W2H (Tabela) -->
+                <div id="planoAcaoSubtab-tabela">
+                    <div class="db-chart-card" style="margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 10px; flex-wrap: wrap;">
+                            <div>
+                                <div class="db-chart-title" style="margin-bottom: 2px;">🎯 Matriz 5W2H de Prevenção e Correção de Riscos (NR-01)</div>
+                                <div style="font-size: 11.5px; color: var(--text-light);">Acompanhamento centralizado de medidas corretivas e preventivas de todas as frentes do Ramal do Agreste</div>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <input type="text" id="filtroPgrTexto" placeholder="🔍 Buscar por ação, local, responsável..." style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; min-width: 240px;" oninput="filtrarPlanoAcaoPgr()">
+                                
+                                <select id="filtroPgrStatus" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;" onchange="filtrarPlanoAcaoPgr()">
+                                    <option value="">Status: Todos</option>
+                                    <option value="aberta">📌 Abertas</option>
+                                    <option value="em_andamento">⏳ Em Andamento</option>
+                                    <option value="validacao">🔍 Em Validação</option>
+                                    <option value="concluida">✅ Concluídas</option>
+                                    <option value="vencidas">🚨 Vencidas</option>
+                                    <option value="cancelada">❌ Canceladas</option>
+                                </select>
+
+                                <select id="filtroPgrOrigem" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;" onchange="filtrarPlanoAcaoPgr()">
+                                    <option value="">Origem: Todas</option>
+                                    <option value="checklist">📋 Checklists de Máquinas/Veículos</option>
+                                    <option value="extintor">🧯 Inspeções de Extintores</option>
+                                    <option value="relato">⚠️ Relatos de Problemas</option>
+                                    <option value="ergonomia">🧘 Ergonomia (NR-17)</option>
+                                    <option value="cipa">🤝 Reuniões da CIPA (NR-05)</option>
+                                    <option value="acidente">🚑 Acidentes / Quase-Acidentes</option>
+                                    <option value="auditoria">🔍 Auditorias & Inspeções</option>
+                                    <option value="manual">✍️ Cadastro Direto (PGR)</option>
+                                </select>
+
+                                <select id="filtroPgrPrioridade" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;" onchange="filtrarPlanoAcaoPgr()">
+                                    <option value="">Prioridade: Todas</option>
+                                    <option value="critica">🔴 Crítica</option>
+                                    <option value="alta">🟠 Alta</option>
+                                    <option value="media">🟡 Média</option>
+                                    <option value="baixa">🟢 Baixa</option>
+                                </select>
+
+                                <button class="db-clear-btn" style="padding: 7px 10px; font-size: 12px;" onclick="limparFiltrosPlanoAcaoPgr()">Limpar</button>
+                            </div>
+                        </div>
+
+                        <!-- Tabela 5W2H -->
+                        <div style="overflow-x: auto;">
+                            <table class="db-table" style="font-size: 12px; width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="background: #f8fafc; text-align: left; border-bottom: 2px solid var(--border);">
+                                        <th style="padding: 10px 8px; width: 85px;">Cód / Prio</th>
+                                        <th style="padding: 10px 8px; width: 110px;">Origem</th>
+                                        <th style="padding: 10px 8px; min-width: 180px;">O Que (What)</th>
+                                        <th style="padding: 10px 8px; min-width: 140px;">Por Que (Why)</th>
+                                        <th style="padding: 10px 8px; min-width: 110px;">Onde (Where)</th>
+                                        <th style="padding: 10px 8px; min-width: 110px;">Quem (Who)</th>
+                                        <th style="padding: 10px 8px; width: 115px;">Quando (When)</th>
+                                        <th style="padding: 10px 8px; min-width: 130px;">Como (How)</th>
+                                        <th style="padding: 10px 8px; width: 85px;">Custo (R$)</th>
+                                        <th style="padding: 10px 8px; width: 110px;">Status</th>
+                                        <th style="padding: 10px 8px; width: 95px; text-align: center;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaPlanoAcaoPgrCorpo">
+                                    <tr>
+                                        <td colspan="11" style="text-align: center; padding: 25px; color: var(--text-light);">Carregando ações do PGR...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sub-aba 2: Quadro Kanban Interativo -->
+                <div id="planoAcaoSubtab-kanban" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                        <div style="font-size: 13px; font-weight: 700; color: var(--text);">
+                            📋 Fluxo Visual de Tratamento de Desvios (Kanban)
+                        </div>
+                        <div style="font-size: 12px; color: var(--text-light);">
+                            Clique no cartão para editar ou use os botões para avançar o estágio da ação
+                        </div>
+                    </div>
+                    <div class="kanban-board" id="kanbanPlanoAcaoBoard">
+                        <!-- Coluna 1: A Fazer -->
+                        <div class="kanban-col">
+                            <div class="kanban-col-header" style="border-bottom-color: #64748b;">
+                                <span>📌 A Fazer (Abertas)</span>
+                                <span class="kanban-badge-count" id="kanbanCount-aberta">0</span>
+                            </div>
+                            <div class="kanban-cards-container" id="kanbanContainer-aberta"></div>
+                        </div>
+
+                        <!-- Coluna 2: Em Andamento -->
+                        <div class="kanban-col">
+                            <div class="kanban-col-header" style="border-bottom-color: var(--warning);">
+                                <span style="color: #b45309;">⏳ Em Andamento</span>
+                                <span class="kanban-badge-count" id="kanbanCount-em_andamento" style="background: #fef3c7; color: #b45309;">0</span>
+                            </div>
+                            <div class="kanban-cards-container" id="kanbanContainer-em_andamento"></div>
+                        </div>
+
+                        <!-- Coluna 3: Validação de Eficácia -->
+                        <div class="kanban-col">
+                            <div class="kanban-col-header" style="border-bottom-color: #0284c7;">
+                                <span style="color: #0369a1;">🔍 Validação SESMT (NR-01)</span>
+                                <span class="kanban-badge-count" id="kanbanCount-validacao" style="background: #e0f2fe; color: #0369a1;">0</span>
+                            </div>
+                            <div class="kanban-cards-container" id="kanbanContainer-validacao"></div>
+                        </div>
+
+                        <!-- Coluna 4: Concluídas -->
+                        <div class="kanban-col">
+                            <div class="kanban-col-header" style="border-bottom-color: var(--success);">
+                                <span style="color: #15803d;">✅ Concluídas / Baixadas</span>
+                                <span class="kanban-badge-count" id="kanbanCount-concluida" style="background: #dcfce7; color: #15803d;">0</span>
+                            </div>
+                            <div class="kanban-cards-container" id="kanbanContainer-concluida"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sub-aba 3: Rastreador Inteligente de Desvios (Scanner da Obra) -->
+                <div id="planoAcaoSubtab-scanner" style="display: none;">
+                    <div class="db-chart-card" style="margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 10px; flex-wrap: wrap;">
+                            <div>
+                                <div class="db-chart-title" style="margin-bottom: 3px;">🔍 Rastreador Automático de Desvios e Não Conformidades do Canteiro</div>
+                                <div style="font-size: 12px; color: var(--text-light);">
+                                    O sistema varre checklists, extintores vencidos, relatos de problemas e acidentes para que você gere a Ação 5W2H oficial com 1 clique.
+                                </div>
+                            </div>
+                            <button class="db-apply-btn" style="padding: 7px 14px; font-size: 12.5px;" onclick="executarScannerDesviosObra()">🔄 Atualizar Varredura</button>
+                        </div>
+
+                        <div id="scannerDesviosResumo" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px;">
+                                <div style="font-size: 11px; font-weight: 700; color: #991b1b; text-transform: uppercase;">Checklists com Não Conformidade / Interdição</div>
+                                <div style="font-size: 20px; font-weight: 800; color: #b91c1c; margin-top: 4px;" id="countScannerChecklists">0</div>
+                            </div>
+                            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px;">
+                                <div style="font-size: 11px; font-weight: 700; color: #92400e; text-transform: uppercase;">Extintores com Recarga/Teste Vencidos</div>
+                                <div style="font-size: 20px; font-weight: 800; color: #b45309; margin-top: 4px;" id="countScannerExtintores">0</div>
+                            </div>
+                            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px;">
+                                <div style="font-size: 11px; font-weight: 700; color: #1e40af; text-transform: uppercase;">Relatos de Problemas em Aberto</div>
+                                <div style="font-size: 20px; font-weight: 800; color: #1d4ed8; margin-top: 4px;" id="countScannerRelatos">0</div>
+                            </div>
+                            <div style="background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 12px;">
+                                <div style="font-size: 11px; font-weight: 700; color: #6b21a8; text-transform: uppercase;">Acidentes com Ações Pendentes</div>
+                                <div style="font-size: 20px; font-weight: 800; color: #7e22ce; margin-top: 4px;" id="countScannerAcidentes">0</div>
+                            </div>
+                        </div>
+
+                        <div id="listaScannerDesviosContainer" style="display: flex; flex-direction: column; gap: 10px;">
+                            <div style="text-align: center; padding: 25px; color: var(--text-light); font-size: 12.5px;">Clique em "Atualizar Varredura" para buscar as pendências do canteiro.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal: Cadastro / Edição de Ação 5W2H -->
+                <div id="modalPlanoAcaoPgr" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; padding: 16px; overflow-y: auto;">
+                    <div style="background: var(--card, #fff); border-radius: 14px; max-width: 720px; width: 100%; max-height: 92vh; overflow-y: auto; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 1px solid var(--border);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+                            <div style="font-size: 16px; font-weight: 700; color: var(--primary);" id="modalPlanoAcaoPgrTitulo">🎯 Nova Ação 5W2H do PGR (NR-01)</div>
+                            <button onclick="fecharModalPlanoAcaoPgr()" style="background: transparent; border: none; font-size: 20px; cursor: pointer; color: var(--text-light); font-weight: 700;">✕</button>
+                        </div>
+
+                        <input type="hidden" id="pgrForm_id">
+                        <input type="hidden" id="pgrForm_origemId">
+
+                        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+                            <!-- Origem e Prioridade -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div>
+                                    <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Origem do Desvio *</label>
+                                    <select id="pgrForm_origemTipo" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;">
+                                        <option value="manual">✍️ Cadastro Direto no PGR</option>
+                                        <option value="checklist">📋 Checklist de Equipamentos / Máquinas</option>
+                                        <option value="extintor">🧯 Inspeção de Extintores (NR-23)</option>
+                                        <option value="relato">⚠️ Relato de Problema em Campo</option>
+                                        <option value="ergonomia">🧘 Ergonomia (NR-17 / AEP)</option>
+                                        <option value="cipa">🤝 Reunião da CIPA (NR-05)</option>
+                                        <option value="acidente">🚑 Investigação de Acidente (NBR 14280)</option>
+                                        <option value="auditoria">🔍 Auditoria Interna / Fiscalização</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Grau de Prioridade *</label>
+                                    <select id="pgrForm_prioridade" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;">
+                                        <option value="baixa">🟢 Baixa (Melhoria contínua)</option>
+                                        <option value="media" selected>🟡 Média (Prazo padrão)</option>
+                                        <option value="alta">🟠 Alta (Risco relevante)</option>
+                                        <option value="critica">🔴 Crítica (Risco grave e iminente / Parada)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Rótulo de Origem -->
+                            <div>
+                                <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Identificação da Origem (Equipamento, Extintor, Desvio)</label>
+                                <input type="text" id="pgrForm_origemRotulo" placeholder="Ex: Retroescavadeira CAT 416E - Placa 3021 / Extintor PQS 06kg Setor Oficinas" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;">
+                            </div>
+
+                            <!-- WHAT: O que será feito -->
+                            <div>
+                                <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">🎯 O QUE será feito? (Ação Proposta) *</label>
+                                <input type="text" id="pgrForm_what" placeholder="Ex: Substituir mangueira hidráulica de pressurização e repor óleo no tanque de comando" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;">
+                            </div>
+
+                            <!-- WHY: Por que será feito -->
+                            <div>
+                                <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">💡 POR QUE será feito? (Justificativa / Risco associado)</label>
+                                <textarea id="pgrForm_why" rows="2" placeholder="Ex: Evitar rompimento sob carga, risco de projeção de fluido sob alta pressão e parada não programada da máquina." style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit; resize: vertical;"></textarea>
+                            </div>
+
+                            <!-- WHERE e WHO -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div>
+                                    <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">📍 ONDE será feito? (Local / Frente de Obra) *</label>
+                                    <input type="text" id="pgrForm_where" placeholder="Ex: Frente Canal 02 / Canteiro Central Sertânia" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">👤 QUEM executará? (Responsável) *</label>
+                                    <input type="text" id="pgrForm_who" placeholder="Ex: Encarregado da Manutenção Mecânica / TST" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;">
+                                </div>
+                            </div>
+
+                            <!-- WHEN e HOW MUCH -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div>
+                                    <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">📅 QUANDO? (Prazo Limite) *</label>
+                                    <input type="date" id="pgrForm_when" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">💰 QUANTO CUSTA? (Custo Estimado R$)</label>
+                                    <input type="number" id="pgrForm_howMuch" step="0.01" min="0" placeholder="0,00" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;">
+                                </div>
+                            </div>
+
+                            <!-- HOW: Como será feito -->
+                            <div>
+                                <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">🛠️ COMO será feito? (Procedimento / Método)</label>
+                                <textarea id="pgrForm_how" rows="2" placeholder="Ex: Abrir ordem de serviço mecânica, solicitar peça de reposição ao almoxarifado e realizar teste operacional com o operador." style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit; resize: vertical;"></textarea>
+                            </div>
+
+                            <!-- STATUS e EVIDÊNCIA -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div>
+                                    <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Status da Ação *</label>
+                                    <select id="pgrForm_status" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;" onchange="onPgrStatusChange(this.value)">
+                                        <option value="aberta">📌 Aberta</option>
+                                        <option value="em_andamento">⏳ Em Andamento</option>
+                                        <option value="validacao">🔍 Em Validação de Eficácia</option>
+                                        <option value="concluida">✅ Concluída</option>
+                                        <option value="cancelada">❌ Cancelada</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Data de Conclusão Efetiva</label>
+                                    <input type="date" id="pgrForm_dataConclusao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Evidência de Conclusão / Comprovação</label>
+                                <input type="text" id="pgrForm_evidencia" placeholder="Ex: OS nº 1045 assinada / Foto arquivada no Drive / Registro de teste em anexo" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;">
+                            </div>
+                        </div>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px;">
+                            <button class="db-clear-btn" onclick="fecharModalPlanoAcaoPgr()">Cancelar</button>
+                            <button class="db-apply-btn" style="background: var(--primary);" onclick="salvarAcaoPgrFormulario()">💾 Salvar Ação 5W2H</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal: Avaliação de Eficácia da NR-01 -->
+                <div id="modalPlanoAcaoEficacia" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; justify-content: center; align-items: center; padding: 16px;">
+                    <div style="background: var(--card, #fff); border-radius: 14px; max-width: 520px; width: 100%; padding: 22px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 1px solid var(--border);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+                            <div style="font-size: 15.5px; font-weight: 700; color: var(--primary);">🔍 Avaliação de Eficácia da Medida (NR-01)</div>
+                            <button onclick="fecharModalPlanoAcaoEficacia()" style="background: transparent; border: none; font-size: 18px; cursor: pointer; color: var(--text-light); font-weight: 700;">✕</button>
+                        </div>
+
+                        <input type="hidden" id="pgrEficacia_id">
+                        <div style="font-size: 12.5px; color: var(--text-light); margin-bottom: 14px; line-height: 1.4;">
+                            Conforme o item 1.5.5.2 da NR-01, as organizações devem acompanhar e aferir a eficácia das medidas de prevenção implementadas no canteiro.
+                        </div>
+
+                        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+                            <div>
+                                <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Resultado da Aferição *</label>
+                                <select id="pgrEficacia_resultado" style="width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;">
+                                    <option value="eficaz">✅ Eficaz (O risco foi eliminado ou satisfatoriamente controlado)</option>
+                                    <option value="parcial">⚠️ Parcialmente Eficaz (Risco reduzido, mas requer acompanhamento adicional)</option>
+                                    <option value="ineficaz">❌ Ineficaz (Medida não surtiu o efeito desejado / Reabrir ação)</option>
+                                    <option value="pendente">⏳ Pendente de Aferição</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">Parecer Técnico do SESMT / Engenharia de Segurança</label>
+                                <textarea id="pgrEficacia_parecer" rows="3" placeholder="Descreva os resultados observados em campo após a conclusão da medida preventiva..." style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit; resize: vertical;"></textarea>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px;">
+                            <button class="db-clear-btn" onclick="fecharModalPlanoAcaoEficacia()">Cancelar</button>
+                            <button class="db-apply-btn" style="background: var(--success);" onclick="salvarAvaliacaoEficaciaPgr()">💾 Registrar Parecer de Eficácia</button>
+                        </div>
+                    </div>
                 </div>
             </section>
 

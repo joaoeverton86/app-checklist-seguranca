@@ -1533,6 +1533,43 @@ CREATE POLICY "Acesso total as analises de periculosidade" ON public.periculosid
 GRANT ALL ON public.periculosidade_analises TO anon, authenticated;
 
 -- ============================================================
+-- CENTRAL INTEGRADA DE AÇÕES 5W2H DO PGR (NR-01)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.pgr_plano_acao (
+    id TEXT PRIMARY KEY,
+    origem_tipo TEXT NOT NULL DEFAULT 'manual', -- 'checklist' | 'extintor' | 'relato' | 'ergonomia' | 'cipa' | 'acidente' | 'auditoria' | 'manual'
+    origem_id TEXT,
+    origem_rotulo TEXT,
+    what_acao TEXT NOT NULL,
+    why_motivo TEXT,
+    where_local TEXT,
+    who_responsavel TEXT NOT NULL,
+    when_prazo DATE NOT NULL,
+    how_metodo TEXT,
+    how_much_custo NUMERIC(12,2) DEFAULT 0,
+    grau_prioridade TEXT DEFAULT 'media',   -- 'baixa' | 'media' | 'alta' | 'critica'
+    status TEXT DEFAULT 'aberta',           -- 'aberta' | 'em_andamento' | 'validacao' | 'concluida' | 'cancelada'
+    data_conclusao DATE,
+    evidencia_conclusao TEXT,
+    afericao_eficacia TEXT DEFAULT 'pendente', -- 'pendente' | 'eficaz' | 'parcial' | 'ineficaz'
+    obs_eficacia TEXT,
+    criado_por_matricula TEXT,
+    criado_por_nome TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pgr_plano_acao_status ON public.pgr_plano_acao(status);
+CREATE INDEX IF NOT EXISTS idx_pgr_plano_acao_prazo ON public.pgr_plano_acao(when_prazo);
+CREATE INDEX IF NOT EXISTS idx_pgr_plano_acao_origem ON public.pgr_plano_acao(origem_tipo);
+
+ALTER TABLE public.pgr_plano_acao ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso total pgr_plano_acao" ON public.pgr_plano_acao;
+CREATE POLICY "Acesso total pgr_plano_acao" ON public.pgr_plano_acao
+    FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.pgr_plano_acao TO anon, authenticated;
+
+-- ============================================================
 -- RISCOS RESIDUAIS CONHECIDOS (documentados, não corrigidos nesta versão)
 -- ============================================================
 -- 1. cadastros, checklists, relatos, checklist_items e nao_conformidades continuam

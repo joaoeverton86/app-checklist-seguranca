@@ -18765,7 +18765,7 @@ const DB_PAGE_TITLES = {
     brigada: 'Brigada de Incêndio',
     documentos: 'Controle de Documentos',
     acervodrive: 'Acervo (Drive)',
-    importexport: 'Importar/Exportar Planilhas',
+    importexport: 'Central de Backup & Importação de Dados',
     config: 'Configurações',
     usuariospainel: 'Usuários do Painel',
     ergonomia: 'Ergonomia (NR-17)',
@@ -21460,6 +21460,358 @@ async function importarManutencaoCSV() {
         statusEl.textContent = '❌ Erro na importação: ' + err.message;
     }
 }
+
+// ============================================
+// CENTRAL DE BACKUP GERAL & RECUPERAÇÃO DE DADOS (DRP)
+// Consórcio Operador do PISF Ramal do Agreste - Obra: Ramal do Agreste
+// Exporta e restaura todas as bases operacionais e administrativas
+// ============================================
+
+const BACKUP_TABELAS_CONFIG = [
+    { tabela: 'checklists', modulo: 'Checklists', label: 'Checklists de Inspeção' },
+    { tabela: 'cadastros', modulo: 'Checklists', label: 'Equipamentos e Veículos' },
+    { tabela: 'checklist_item_settings', modulo: 'Checklists', label: 'Configurações de Itens de Checklist' },
+    { tabela: 'extintores', modulo: 'Extintores', label: 'Inventário de Extintores' },
+    { tabela: 'inspecoes_extintores', modulo: 'Extintores', label: 'Inspeções de Extintores' },
+    { tabela: 'relatos', modulo: 'Relatos', label: 'Relatos de Problemas' },
+    { tabela: 'colaboradores_efetivo', modulo: 'Efetivo', label: 'Colaboradores (Efetivo)' },
+    { tabela: 'ghe_catalogo', modulo: 'Efetivo', label: 'Grupos Homogêneos (GHE)' },
+    { tabela: 'municipios_ada', modulo: 'Efetivo', label: 'Municípios ADA' },
+    { tabela: 'historico_troca_funcao', modulo: 'Efetivo', label: 'Troca de Função' },
+    { tabela: 'treinamentos_catalogo', modulo: 'Treinamentos', label: 'Catálogo de Treinamentos' },
+    { tabela: 'treinamentos_status', modulo: 'Treinamentos', label: 'Matriz Geral de Treinamentos' },
+    { tabela: 'treinamentos_cronograma', modulo: 'Treinamentos', label: 'Cronograma de Treinamentos' },
+    { tabela: 'treinamentos_convocados', modulo: 'Treinamentos', label: 'Convocados para Treinamentos' },
+    { tabela: 'dds_realizados', modulo: 'DDSMA', label: 'DDS Realizados' },
+    { tabela: 'dds_temas_cronograma', modulo: 'DDSMA', label: 'Temas de DDS' },
+    { tabela: 'dds_frentes_config', modulo: 'DDSMA', label: 'Frentes de DDS' },
+    { tabela: 'dds_historico_agregado', modulo: 'DDSMA', label: 'Histórico Agregado de DDS' },
+    { tabela: 'dds_fechamento_semanal', modulo: 'DDSMA', label: 'Fechamento Semanal de DDS' },
+    { tabela: 'dds_frentes_alias', modulo: 'DDSMA', label: 'Apelidos de Frentes de DDS' },
+    { tabela: 'acidentes', modulo: 'Acidentes', label: 'Registros de Acidentes (CAT)' },
+    { tabela: 'hht_dias_trabalhados', modulo: 'Acidentes', label: 'Cálculo de HHT' },
+    { tabela: 'aso_exames', modulo: 'Saúde Ocupacional', label: 'Exames e ASO' },
+    { tabela: 'atestados_ocupacionais', modulo: 'Saúde Ocupacional', label: 'Atestados Médicos' },
+    { tabela: 'pressao_arterial', modulo: 'Saúde Ocupacional', label: 'Aferições de Pressão' },
+    { tabela: 'epi_catalogo', modulo: 'EPI', label: 'Catálogo de EPIs' },
+    { tabela: 'epi_estoque', modulo: 'EPI', label: 'Estoque de EPIs' },
+    { tabela: 'epi_entradas', modulo: 'EPI', label: 'Entradas de EPIs' },
+    { tabela: 'manutencao_veicular', modulo: 'Manutenção', label: 'Manutenção Veicular' },
+    { tabela: 'residuos_refeicoes', modulo: 'Meio Ambiente', label: 'Controle de Resíduos' },
+    { tabela: 'ergonomia_aep', modulo: 'Ergonomia', label: 'Avaliações Ergonômicas (NR-17)' },
+    { tabela: 'periculosidade_analises', modulo: 'Periculosidade', label: 'Laudos de Periculosidade (NR-16)' },
+    { tabela: 'cipa_reunioes', modulo: 'CIPA', label: 'Reuniões da CIPA' },
+    { tabela: 'brigada_membros', modulo: 'Brigada', label: 'Brigadistas de Incêndio' },
+    { tabela: 'anexos_sms', modulo: 'Documentos', label: 'Documentos e Anexos' },
+    { tabela: 'colaboradores_checklist', modulo: 'Segurança', label: 'Usuários do App de Campo' },
+    { tabela: 'painel_usuarios', modulo: 'Segurança', label: 'Usuários do Painel' },
+    { tabela: 'painel_perfis', modulo: 'Segurança', label: 'Perfis de Acesso' },
+    { tabela: 'configuracoes_sistema', modulo: 'Sistema', label: 'Configurações do Sistema' }
+];
+
+async function gerarBackupCompletoSistema(formato = 'json') {
+    const wrap = document.getElementById('backupProgressWrap');
+    const bar = document.getElementById('backupProgressBar');
+    const label = document.getElementById('backupProgressLabel');
+    const percent = document.getElementById('backupProgressPercent');
+    const detail = document.getElementById('backupProgressDetail');
+    const statusMsg = document.getElementById('backupStatusMensagem');
+    const btnJson = document.getElementById('btnGerarBackupJson');
+    const btnXlsx = document.getElementById('btnGerarBackupXlsx');
+
+    if (btnJson) btnJson.disabled = true;
+    if (btnXlsx) btnXlsx.disabled = true;
+    if (wrap) wrap.style.display = 'block';
+    if (statusMsg) statusMsg.textContent = '';
+
+    const backupData = {};
+    const totalTabelas = BACKUP_TABELAS_CONFIG.length;
+    let totalRegistros = 0;
+    let tabelasComDados = 0;
+
+    try {
+        for (let i = 0; i < totalTabelas; i++) {
+            const cfg = BACKUP_TABELAS_CONFIG[i];
+            const pct = Math.round(((i + 1) / totalTabelas) * 100);
+            if (bar) bar.style.width = pct + '%';
+            if (percent) percent.textContent = pct + '%';
+            if (label) label.textContent = 'Lendo base: ' + cfg.label + ' (' + cfg.tabela + ')...';
+            if (detail) detail.textContent = 'Tabela ' + (i + 1) + ' de ' + totalTabelas + ' (' + pct + '% concluído)';
+
+            try {
+                const rows = await supabaseFetch(cfg.tabela, '?select=*');
+                backupData[cfg.tabela] = rows || [];
+                const qtd = rows ? rows.length : 0;
+                totalRegistros += qtd;
+                if (qtd > 0) tabelasComDados++;
+            } catch (err) {
+                console.warn('Tabela ' + cfg.tabela + ' não pôde ser lida:', err.message);
+                backupData[cfg.tabela] = [];
+            }
+        }
+
+        const hoje = new Date();
+        const dataFormatada = hoje.toISOString().split('T')[0];
+        const horaFormatada = String(hoje.getHours()).padStart(2, '0') + String(hoje.getMinutes()).padStart(2, '0');
+        const nomeBase = 'backup_cop_ramal_' + dataFormatada + '_' + horaFormatada;
+
+        if (formato === 'json') {
+            const payload = {
+                versao_backup: '1.0',
+                gerado_em: hoje.toISOString(),
+                projeto: 'Consórcio Operador do PISF Ramal do Agreste - Gestão Integrada SST',
+                obra: 'Ramal do Agreste',
+                gerado_por: {
+                    usuario: (typeof usuarioLogadoPainel !== 'undefined' && usuarioLogadoPainel) ? usuarioLogadoPainel.nome : 'Administrador',
+                    matricula: (typeof usuarioLogadoPainel !== 'undefined' && usuarioLogadoPainel) ? usuarioLogadoPainel.matricula : '—',
+                    email: (typeof usuarioLogadoPainel !== 'undefined' && usuarioLogadoPainel) ? usuarioLogadoPainel.email : '—'
+                },
+                estatisticas: {
+                    total_tabelas_consultadas: totalTabelas,
+                    total_tabelas_com_dados: tabelasComDados,
+                    total_registros_exportados: totalRegistros
+                },
+                tabelas: backupData
+            };
+
+            const jsonStr = JSON.stringify(payload, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = nomeBase + '.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            if (statusMsg) {
+                statusMsg.style.color = '#15803d';
+                statusMsg.textContent = '✅ Backup JSON gerado e baixado com sucesso! ' + totalRegistros.toLocaleString('pt-BR') + ' registros salvos em ' + tabelasComDados + ' tabelas.';
+            }
+        } else if (formato === 'xlsx') {
+            if (typeof XLSX === 'undefined') {
+                throw new Error('Biblioteca XLSX não carregada no navegador.');
+            }
+
+            const wb = XLSX.utils.book_new();
+            for (const [tabela, rows] of Object.entries(backupData)) {
+                if (!rows || rows.length === 0) continue;
+
+                // Sanitizar objetos aninhados (ex: JSON items) para texto simples legível no Excel
+                const sanitizedRows = rows.map(r => {
+                    const rowClean = {};
+                    for (const [k, v] of Object.entries(r)) {
+                        if (v !== null && typeof v === 'object') {
+                            rowClean[k] = JSON.stringify(v);
+                        } else {
+                            rowClean[k] = v;
+                        }
+                    }
+                    return rowClean;
+                });
+
+                const ws = XLSX.utils.json_to_sheet(sanitizedRows);
+                // Sheet names no Excel têm limite máximo de 31 caracteres
+                const sheetName = tabela.slice(0, 31);
+                XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            }
+
+            XLSX.writeFile(wb, nomeBase + '.xlsx');
+
+            if (statusMsg) {
+                statusMsg.style.color = '#15803d';
+                statusMsg.textContent = '✅ Planilha Excel consolidada gerada com sucesso! ' + totalRegistros.toLocaleString('pt-BR') + ' registros em ' + tabelasComDados + ' abas.';
+            }
+        }
+    } catch (err) {
+        console.error('Erro ao gerar backup:', err);
+        if (statusMsg) {
+            statusMsg.style.color = '#dc2626';
+            statusMsg.textContent = '❌ Erro ao gerar backup: ' + err.message;
+        }
+    } finally {
+        if (btnJson) btnJson.disabled = false;
+        if (btnXlsx) btnXlsx.disabled = false;
+        setTimeout(() => {
+            if (wrap) wrap.style.display = 'none';
+        }, 3500);
+    }
+}
+
+// --------------------------------------------
+// RESTAURAÇÃO DE BACKUP
+// --------------------------------------------
+let backupParaRestaurarCarregado = null;
+
+function aoSelecionarArquivoBackup(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+            if (!data.tabelas && !data.checklists) {
+                alert('O arquivo selecionado não parece ser um backup válido deste sistema (campo "tabelas" ausente).');
+                return;
+            }
+            const tabelasMap = data.tabelas || data;
+            backupParaRestaurarCarregado = {
+                metadata: data,
+                tabelas: tabelasMap
+            };
+            abrirModalRestaurarBackup(backupParaRestaurarCarregado);
+        } catch (err) {
+            alert('Erro ao ler o arquivo JSON de backup: ' + err.message);
+        } finally {
+            event.target.value = '';
+        }
+    };
+    reader.readAsText(file);
+}
+
+function abrirModalRestaurarBackup(payload) {
+    const modal = document.getElementById('modalRestaurarBackup');
+    const infoCard = document.getElementById('restoreFileInfoCard');
+    const listEl = document.getElementById('restoreTablesList');
+    const statusEl = document.getElementById('restoreStatusMsg');
+    const progWrap = document.getElementById('restoreProgressWrap');
+    if (!modal || !infoCard || !listEl) return;
+
+    if (statusEl) statusEl.textContent = '';
+    if (progWrap) progWrap.style.display = 'none';
+
+    const meta = payload.metadata || {};
+    const geradoEm = meta.gerado_em ? new Date(meta.gerado_em).toLocaleString('pt-BR') : 'Data não informada';
+    const autor = meta.gerado_por ? (meta.gerado_por.nome || meta.gerado_por.usuario || 'Usuário do sistema') : '—';
+    const totalReg = meta.estatisticas?.total_registros_exportados || Object.values(payload.tabelas).reduce((acc, cur) => acc + (Array.isArray(cur) ? cur.length : 0), 0);
+
+    infoCard.innerHTML = '<div style="font-weight:700; color:#0f172a; margin-bottom:4px; font-size:13.5px;">📄 Resumo do Arquivo de Backup</div>' +
+        '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:6px;">' +
+            '<div>📅 <strong>Gerado em:</strong> ' + escapeHTML(geradoEm) + '</div>' +
+            '<div>👤 <strong>Autor:</strong> ' + escapeHTML(autor) + '</div>' +
+            '<div>📊 <strong>Total de Registros:</strong> ' + totalReg.toLocaleString('pt-BR') + '</div>' +
+            '<div>🏢 <strong>Projeto:</strong> ' + escapeHTML(meta.projeto || 'Ramal do Agreste') + '</div>' +
+        '</div>';
+
+    const entries = Object.entries(payload.tabelas).filter(([k, v]) => Array.isArray(v) && v.length > 0);
+    if (entries.length === 0) {
+        listEl.innerHTML = '<div style="padding:10px; color:#64748b; font-size:12px;">Nenhuma tabela com dados encontrada neste backup.</div>';
+    } else {
+        listEl.innerHTML = entries.map(([tabela, rows]) => {
+            const cfg = BACKUP_TABELAS_CONFIG.find(c => c.tabela === tabela);
+            const nomeExibicao = cfg ? (cfg.label + ' (' + tabela + ')') : tabela;
+            return '<label style="display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:6px; background:#f8fafc; border:1px solid #e2e8f0; font-size:12px; cursor:pointer;">' +
+                '<input type="checkbox" class="chk-restore-tabela" value="' + escapeHTML(tabela) + '" checked style="cursor:pointer;">' +
+                '<span style="font-weight:600; color:#1e293b; flex:1;">' + escapeHTML(nomeExibicao) + '</span>' +
+                '<span style="font-size:11px; font-weight:700; background:#e2e8f0; color:#475569; padding:1px 6px; border-radius:10px;">' + rows.length + '</span>' +
+            '</label>';
+        }).join('');
+    }
+
+    modal.style.display = 'flex';
+}
+
+function fecharModalRestaurarBackup() {
+    const modal = document.getElementById('modalRestaurarBackup');
+    if (modal) modal.style.display = 'none';
+    backupParaRestaurarCarregado = null;
+}
+
+function toggleSelectAllTabelasRestore(selectAll) {
+    document.querySelectorAll('.chk-restore-tabela').forEach(chk => {
+        chk.checked = !!selectAll;
+    });
+}
+
+async function executarRestauracaoBackup() {
+    if (!backupParaRestaurarCarregado || !backupParaRestaurarCarregado.tabelas) {
+        alert('Nenhum backup carregado para restaurar.');
+        return;
+    }
+
+    const selecionadas = Array.from(document.querySelectorAll('.chk-restore-tabela:checked')).map(el => el.value);
+    if (selecionadas.length === 0) {
+        alert('Selecione pelo menos uma tabela para restaurar.');
+        return;
+    }
+
+    const confirmacao = prompt(
+        '⚠️ CONFIRMAÇÃO DE SEGURANÇA:\n\n' +
+        'Você selecionou ' + selecionadas.length + ' tabela(s) para restauração no Supabase.\n' +
+        'Os dados serão mesclados com a base ativa.\n\n' +
+        'Para confirmar e iniciar, digite "RESTAURAR" abaixo:'
+    );
+
+    if (confirmacao !== 'RESTAURAR') {
+        alert('Restauração cancelada. O texto digitado não confere com "RESTAURAR".');
+        return;
+    }
+
+    const btnConfirmar = document.getElementById('btnConfirmarRestauracao');
+    const progWrap = document.getElementById('restoreProgressWrap');
+    const progBar = document.getElementById('restoreProgressBar');
+    const progLabel = document.getElementById('restoreProgressLabel');
+    const progPercent = document.getElementById('restoreProgressPercent');
+    const statusMsg = document.getElementById('restoreStatusMsg');
+
+    if (btnConfirmar) btnConfirmar.disabled = true;
+    if (progWrap) progWrap.style.display = 'block';
+
+    let totalLinhasRestauradas = 0;
+    let tabelasProcessadas = 0;
+
+    try {
+        for (let i = 0; i < selecionadas.length; i++) {
+            const tabela = selecionadas[i];
+            const rows = backupParaRestaurarCarregado.tabelas[tabela] || [];
+            const pct = Math.round(((i + 1) / selecionadas.length) * 100);
+
+            if (progBar) progBar.style.width = pct + '%';
+            if (progPercent) progPercent.textContent = pct + '%';
+            if (progLabel) progLabel.textContent = 'Restaurando ' + tabela + ' (' + rows.length + ' registros)...';
+
+            if (rows.length > 0) {
+                // Enviar em lotes de 100 registros para evitar limite de payload
+                const BATCH_SIZE = 100;
+                for (let b = 0; b < rows.length; b += BATCH_SIZE) {
+                    const batch = rows.slice(b, b + BATCH_SIZE);
+                    try {
+                        await supabaseUpsert(tabela, batch);
+                    } catch (upsertErr) {
+                        console.warn('Upsert padrão falhou para ' + tabela + ', tentando insert:', upsertErr.message);
+                        await supabaseInsert(tabela, batch);
+                    }
+                }
+                totalLinhasRestauradas += rows.length;
+            }
+            tabelasProcessadas++;
+        }
+
+        if (statusMsg) {
+            statusMsg.style.color = '#15803d';
+            statusMsg.textContent = '✅ Restauração finalizada com sucesso! ' + totalLinhasRestauradas.toLocaleString('pt-BR') + ' registros gravados em ' + tabelasProcessadas + ' tabelas.';
+        }
+
+        alert('✅ Restauração concluída com sucesso!\n\nForam gravados ' + totalLinhasRestauradas + ' registros em ' + tabelasProcessadas + ' tabelas.\nO sistema irá recarregar as visões.');
+
+        fecharModalRestaurarBackup();
+        if (typeof renderAll === 'function') renderAll();
+        if (typeof loadTreinamentosData === 'function') loadTreinamentosData();
+        if (typeof loadEfetivoData === 'function') loadEfetivoData();
+    } catch (err) {
+        console.error('Erro na restauração:', err);
+        if (statusMsg) {
+            statusMsg.style.color = '#dc2626';
+            statusMsg.textContent = '❌ Erro durante a restauração: ' + err.message;
+        }
+        alert('❌ Erro durante a restauração: ' + err.message);
+    } finally {
+        if (btnConfirmar) btnConfirmar.disabled = false;
+    }
+}
+
 
 // ============================================
 // COMPRAS (Requisição Interna de Compras) - cadastro, histórico, baixa e prazo de

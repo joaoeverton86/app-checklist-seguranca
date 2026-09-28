@@ -4594,6 +4594,7 @@ async function excluirItemCronograma(id) {
         await supabaseDelete('treinamentos_cronograma', id);
         allTreinamentosCronograma = allTreinamentosCronograma.filter(x => x.id !== id);
         renderCronogramaLista();
+        if (typeof renderPlanoAnualTreinamento === 'function') renderPlanoAnualTreinamento();
     } catch (err) {
         console.error('Erro ao excluir item do cronograma:', err);
         alert('❌ Falha ao excluir: ' + err.message);
@@ -35670,6 +35671,7 @@ function imprimirPlanoAcaoPgrTimbrado() {
 // =====================================================================
 // MÓDULO OFICIAL: PLANO ANUAL DE TREINAMENTO (PAT - NR-01 / NR-18)
 // & MOTOR INTELIGENTE DE SUGESTÃO DE TEMAS (REGRA DOS 90 DIAS)
+// & CRONOGRAMA OPERACIONAL DE TERÇAS E QUINTAS-FEIRAS
 // =====================================================================
 
 const CAMPANHAS_SAZONAIS_SST = {
@@ -35759,10 +35761,45 @@ const CAMPANHAS_SAZONAIS_SST = {
     }
 };
 
-let patAnoAtual = new Date().getFullYear();
+let patAnoAtual = 2026;
 let patCategoriaFiltroAtual = 'todos'; // 'todos' | 'normativos' | 'campanhas' | 'operacionais'
 let modalSugestaoFiltroAtual = 'recomendados'; // 'recomendados' | 'ineditos' | 'liberados' | 'bloqueados'
 let modalSugestaoMesAlvoIndex = new Date().getMonth();
+
+// 0. Utilitário: Obter todas as Terças e Quintas-feiras de um Mês
+function obterTerceirasEQuintasDoMes(ano, mesIdx) {
+    const datas = [];
+    const diasNoMes = new Date(ano, mesIdx + 1, 0).getDate();
+    for (let d = 1; d <= diasNoMes; d++) {
+        const dataObj = new Date(ano, mesIdx, d);
+        const diaSemana = dataObj.getDay(); // 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sab
+        if (diaSemana === 2 || diaSemana === 4) { // Terça-feira (2) ou Quinta-feira (4)
+            const diaStr = String(d).padStart(2, '0');
+            const mesStr = String(mesIdx + 1).padStart(2, '0');
+            datas.push({
+                iso: `${ano}-${mesStr}-${diaStr}`,
+                dia: d,
+                diaSemana: diaSemana,
+                diaSemanaNome: diaSemana === 2 ? 'Terça-feira' : 'Quinta-feira',
+                diaSemanaCurto: diaSemana === 2 ? 'Ter' : 'Qui'
+            });
+        }
+    }
+    return datas;
+}
+
+function obterInfoDiaSemana(dataIso) {
+    if (!dataIso) return { curto: '', nome: '', ehTerOuQui: false };
+    const d = parseLocalDate(dataIso);
+    const diaSemana = d.getDay();
+    const nomes = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const nomesCompletos = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+    return {
+        curto: nomes[diaSemana] || '',
+        nome: nomesCompletos[diaSemana] || '',
+        ehTerOuQui: (diaSemana === 2 || diaSemana === 4)
+    };
+}
 
 // 1. Motor de Histórico Consolidado de Temas (DDS + Treinamentos)
 function obterHistoricoTemasConsolidado() {
@@ -35915,7 +35952,7 @@ function renderPlanoAnualTreinamento() {
     renderGradePatAnual();
 }
 
-// 4. Renderização da Grade Anual dos 12 Meses
+// 4. Renderização da Grade Anual dos 12 Meses com Informação de Terças e Quintas
 function renderGradePatAnual() {
     const container = document.getElementById('patGradeMensalContainer');
     if (!container) return;
@@ -35935,6 +35972,10 @@ function renderGradePatAnual() {
     for (let mesIdx = 0; mesIdx < 12; mesIdx++) {
         const infoSazonal = CAMPANHAS_SAZONAIS_SST[mesIdx];
         const ehMesAtual = (mesIdx === mesAtualIndex);
+
+        // Identificar todas as Terças e Quintas-feiras deste mês
+        const terQuintas = obterTerceirasEQuintasDoMes(patAnoAtual, mesIdx);
+        const totalTerQuintas = terQuintas.length;
 
         let itensMes = itensAno.filter(c => {
             const m = parseLocalDate(c.data_prevista).getMonth();
@@ -35964,6 +36005,11 @@ function renderGradePatAnual() {
 
         itensMes.sort((a, b) => (a.data_prevista || '').localeCompare(b.data_prevista || ''));
 
+        // Quantas terças e quintas já têm treinamento agendado
+        const datasOcupadas = new Set(itensMes.map(c => c.data_prevista));
+        const terQuintasPreenchidas = terQuintas.filter(tq => datasOcupadas.has(tq.iso)).length;
+        const vagasLivres = terQuintas.filter(tq => !datasOcupadas.has(tq.iso));
+
         let cardStyle = `background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,0.05);`;
         if (ehMesAtual) {
             cardStyle += ` border: 2px solid var(--primary); box-shadow: 0 4px 12px rgba(37,99,235,0.15);`;
@@ -35973,16 +36019,23 @@ function renderGradePatAnual() {
             <div style="${cardStyle}">
                 <div>
                     <!-- Cabeçalho do Mês -->
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:8px;">
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            <span style="font-size:14px; font-weight:800; color:var(--text); text-transform:uppercase;">
-                                ${infoSazonal.nomeMes}
-                            </span>
-                            ${ehMesAtual ? `<span style="background:var(--primary); color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px;">MÊS ATUAL</span>` : ''}
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:8px; gap:8px;">
+                        <div>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <span style="font-size:14px; font-weight:800; color:var(--text); text-transform:uppercase;">
+                                    ${infoSazonal.nomeMes}
+                                </span>
+                                ${ehMesAtual ? `<span style="background:var(--primary); color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px;">MÊS ATUAL</span>` : ''}
+                            </div>
+                            <div style="font-size:10.5px; color:var(--text-light); margin-top:2px;">
+                                <span>🗓️ <strong>${totalTerQuintas}</strong> Ter/Qui no mês</span>
+                            </div>
                         </div>
-                        <span style="font-size:11px; font-weight:700; color:${itensMes.length > 0 ? '#059669' : 'var(--text-light)'}; background:${itensMes.length > 0 ? '#d1fae5' : 'var(--bg)'}; padding:2px 8px; border-radius:999px;">
-                            ${itensMes.length} ação(ões)
-                        </span>
+                        <div style="text-align:right;">
+                            <span style="font-size:11px; font-weight:700; color:${itensMes.length > 0 ? '#059669' : 'var(--text-light)'}; background:${itensMes.length > 0 ? '#d1fae5' : 'var(--bg)'}; padding:2px 8px; border-radius:999px; display:inline-block;">
+                                ${itensMes.length} ação(ões)
+                            </span>
+                        </div>
                     </div>
 
                     <!-- Banner de Campanha Sazonal do Mês -->
@@ -36000,9 +36053,12 @@ function renderGradePatAnual() {
                         ${itensMes.length === 0 ? `
                             <div style="padding:16px 8px; text-align:center; color:var(--text-light); font-size:11.5px; border:1px dashed var(--border); border-radius:8px;">
                                 Nenhuma ação agendada neste mês.
-                                <div style="margin-top:4px;">
+                                <div style="margin-top:6px; display:flex; justify-content:center; gap:6px; flex-wrap:wrap;">
                                     <button class="db-clear-btn" onclick="abrirModalSugestaoTemas(${mesIdx})" style="font-size:10.5px; padding:3px 8px; color:var(--primary); font-weight:600;">
                                         🪄 Sugerir Temas
+                                    </button>
+                                    <button class="db-clear-btn" onclick="gerarCronogramaMesTerceirasEQuintas(${mesIdx})" style="font-size:10.5px; padding:3px 8px; color:#047857; background:#ecfdf5; border-color:#10b981; font-weight:700;">
+                                        ⚡ Preencher Ter/Qui (${totalTerQuintas})
                                     </button>
                                 </div>
                             </div>
@@ -36012,6 +36068,7 @@ function renderGradePatAnual() {
                             const ch = (cat && cat.carga_horaria) ? cat.carga_horaria + 'h' : '2h';
                             const ehConcluido = (c.status === 'lancado' || c.status === 'concluido');
                             const dataFormatada = c.data_prevista ? formatSimpleDate(c.data_prevista) : '';
+                            const infoDia = obterInfoDiaSemana(c.data_prevista);
 
                             return `
                                 <div style="background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:11.5px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
@@ -36019,8 +36076,12 @@ function renderGradePatAnual() {
                                         <div style="font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHTML(nome)}">
                                             [${escapeHTML(c.treinamento_cod)}] ${escapeHTML(nome)}
                                         </div>
-                                        <div style="font-size:10px; color:var(--text-light); display:flex; gap:6px; margin-top:2px;">
-                                            <span>📅 ${dataFormatada}</span>
+                                        <div style="font-size:10px; color:var(--text-light); display:flex; gap:6px; margin-top:2px; align-items:center; flex-wrap:wrap;">
+                                            <span>📅 <strong>${dataFormatada}</strong> ${infoDia.curto ? `(${infoDia.curto})` : ''}</span>
+                                            ${infoDia.ehTerOuQui 
+                                                ? '<span style="color:#059669; font-weight:700; background:#d1fae5; padding:1px 4px; border-radius:3px;" title="Cronograma Regular de Terça/Quinta">⚡ Ter/Qui</span>' 
+                                                : '<span style="color:#b45309; background:#fef3c7; padding:1px 4px; border-radius:3px;" title="Treinamento fora do cronograma regular de terças e quintas">📌 Extra</span>'
+                                            }
                                             <span>⏱️ ${ch}</span>
                                             ${c.responsavel ? `<span>👤 ${escapeHTML(c.responsavel)}</span>` : ''}
                                         </div>
@@ -36037,14 +36098,23 @@ function renderGradePatAnual() {
                     </div>
                 </div>
 
-                <!-- Botão de Ação Rápida no Pé do Mês -->
-                <div style="margin-top:10px; pt-top:8px; border-top:1px dashed var(--border); display:flex; justify-content:space-between; align-items:center;">
-                    <button class="db-clear-btn" onclick="abrirModalSugestaoTemas(${mesIdx})" style="font-size:11px; padding:4px 8px; color:var(--primary); font-weight:600; display:inline-flex; align-items:center; gap:4px;">
+                <!-- Botões de Ação no Pé do Mês -->
+                <div style="margin-top:10px; padding-top:8px; border-top:1px dashed var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                    <button class="db-clear-btn" onclick="abrirModalSugestaoTemas(${mesIdx})" style="font-size:11px; padding:4px 8px; color:var(--primary); font-weight:600; display:inline-flex; align-items:center; gap:4px;" title="Ver temas recomendados e inéditos com carência de 90 dias">
                         <span>🪄</span> Sugestões (90d)
                     </button>
-                    <button class="db-clear-btn" onclick="abrirFormCronogramaComMes(${mesIdx})" style="font-size:11px; padding:4px 8px; font-weight:600;">
-                        ➕ Adicionar
-                    </button>
+                    <div style="display:flex; gap:4px; align-items:center;">
+                        ${vagasLivres.length > 0 ? `
+                            <button class="db-clear-btn" onclick="gerarCronogramaMesTerceirasEQuintas(${mesIdx})" style="font-size:10.5px; padding:4px 8px; color:#047857; background:#ecfdf5; border-color:#10b981; font-weight:700; display:inline-flex; align-items:center; gap:3px;" title="Preencher automaticamente as ${vagasLivres.length} Terças e Quintas livres do mês">
+                                ⚡ Preencher Ter/Qui (${vagasLivres.length})
+                            </button>
+                        ` : `
+                            <span style="font-size:10px; color:#059669; font-weight:700; background:#d1fae5; padding:3px 6px; border-radius:4px;" title="Todas as Terças e Quintas do mês estão programadas">✓ Ter/Qui 100%</span>
+                        `}
+                        <button class="db-clear-btn" onclick="abrirFormCronogramaComMes(${mesIdx})" style="font-size:11px; padding:4px 8px; font-weight:600;" title="Adicionar treinamento manualmente">
+                            ➕ Adicionar
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -36053,10 +36123,132 @@ function renderGradePatAnual() {
     container.innerHTML = html;
 }
 
+// 5. Geração Automática das Terças e Quintas de um Mês Específico
+async function gerarCronogramaMesTerceirasEQuintas(mesIdx) {
+    const ano = patAnoAtual;
+    const infoSazonal = CAMPANHAS_SAZONAIS_SST[mesIdx];
+    const nomeMes = infoSazonal.nomeMes;
+
+    const terQuintas = obterTerceirasEQuintasDoMes(ano, mesIdx);
+    const datasOcupadas = new Set(
+        (allTreinamentosCronograma || [])
+            .filter(c => {
+                if (!c.data_prevista) return false;
+                const d = parseLocalDate(c.data_prevista);
+                return d.getFullYear() === ano && d.getMonth() === mesIdx;
+            })
+            .map(c => c.data_prevista)
+    );
+
+    const vagasLivres = terQuintas.filter(tq => !datasOcupadas.has(tq.iso));
+    if (vagasLivres.length === 0) {
+        alert(`Todas as ${terQuintas.length} Terças e Quintas-feiras de ${nomeMes}/${ano} já possuem treinamentos programados!`);
+        return;
+    }
+
+    const conf = confirm(
+        `📅 PLANEJAMENTO AUTOMÁTICO: ${nomeMes.toUpperCase()}/${ano}\n\n` +
+        `• Total de Terças e Quintas no mês: ${terQuintas.length} datas\n` +
+        `• Já programados no mês: ${terQuintas.length - vagasLivres.length} treinamentos\n` +
+        `• Datas livres a preencher: ${vagasLivres.length} datas\n\n` +
+        `Datas livres: ${vagasLivres.map(v => formatSimpleDate(v.iso) + ' (' + v.diaSemanaCurto + ')').join(', ')}\n\n` +
+        `Deseja que o sistema preencha automaticamente essas ${vagasLivres.length} datas com temas do catálogo, respeitando a campanha sazonal, NRs prioritárias e a carência de 90 dias (sem nenhuma repetição)?`
+    );
+    if (!conf) return;
+
+    // Obter todos os códigos já utilizados neste mês
+    const codigosJaNoMes = new Set(
+        (allTreinamentosCronograma || [])
+            .filter(c => {
+                if (!c.data_prevista) return false;
+                const d = parseLocalDate(c.data_prevista);
+                return d.getFullYear() === ano && d.getMonth() === mesIdx;
+            })
+            .map(c => c.treinamento_cod)
+    );
+
+    // Avaliar carência de todos os cursos do catálogo
+    const catalogo = allTreinamentosCatalogo || [];
+    const codigosSazonais = new Set(infoSazonal.temasSugeridos || []);
+
+    const candidatos = catalogo
+        .filter(c => !codigosJaNoMes.has(c.id))
+        .map(c => {
+            const dataRefIso = vagasLivres[0].iso;
+            const carencia = calcularCarenciaTema(c.nome, dataRefIso);
+            const ehSazonal = codigosSazonais.has(c.id);
+            return {
+                ...c,
+                carencia,
+                ehSazonal
+            };
+        })
+        .filter(c => c.carencia.status === 'inedito' || (c.carencia.status === 'liberado' && c.carencia.dias >= 90));
+
+    // Ordenar: primeiro sazonais, depois inéditos, depois os com maior carência (>120d, >90d)
+    candidatos.sort((a, b) => {
+        if (a.ehSazonal !== b.ehSazonal) return b.ehSazonal ? 1 : -1;
+        const aInedito = a.carencia.status === 'inedito' ? 1 : 0;
+        const bInedito = b.carencia.status === 'inedito' ? 1 : 0;
+        if (aInedito !== bInedito) return bInedito - aInedito;
+        return (b.carencia.dias || 0) - (a.carencia.dias || 0);
+    });
+
+    if (candidatos.length < vagasLivres.length) {
+        alert(`Atenção: existem ${vagasLivres.length} datas livres, mas apenas ${candidatos.length} temas disponíveis respeitando a regra dos 90 dias sem repetição.`);
+    }
+
+    const novosItens = [];
+    const selecionados = candidatos.slice(0, vagasLivres.length);
+
+    selecionados.forEach((curso, idx) => {
+        const vaga = vagasLivres[idx];
+        novosItens.push({
+            id: 'crono_pat_tq_' + ano + '_' + vaga.iso.replace(/-/g, '') + '_' + curso.id + '_' + Math.random().toString(36).slice(2, 6),
+            data_prevista: vaga.iso,
+            treinamento_cod: curso.id,
+            horario: '08:00',
+            local: 'Canteiro Central / EBs / Frentes de Obra',
+            responsavel: 'Engenharia de Segurança (SESMT)',
+            status: 'planejado',
+            observacoes: `PAT ${ano} — Cronograma Regular (${vaga.diaSemanaNome}) — ${infoSazonal.campanha}`
+        });
+        codigosJaNoMes.add(curso.id);
+    });
+
+    if (novosItens.length === 0) {
+        alert('Nenhum novo tema disponível para preenchimento com as regras de carência atuais.');
+        return;
+    }
+
+    try {
+        await supabaseUpsert('treinamentos_cronograma', novosItens);
+        novosItens.forEach(item => allTreinamentosCronograma.push(item));
+
+        alert(`🎉 Sucesso! ${novosItens.length} treinamentos foram programados nas Terças e Quintas-feiras de ${nomeMes}/${ano}!`);
+        renderPlanoAnualTreinamento();
+    } catch (err) {
+        console.error('Erro ao gerar cronograma do mês:', err);
+        alert('❌ Falha ao salvar no cronograma: ' + err.message);
+    }
+}
+
+// 6. Formulário Manual de Cronograma com Sugestão de Próxima Terça ou Quinta
 function abrirFormCronogramaComMes(mesIdx) {
     const ano = patAnoAtual;
-    const mesStr = String(mesIdx + 1).padStart(2, '0');
-    const dataSugerida = `${ano}-${mesStr}-15`;
+    const terQuintas = obterTerceirasEQuintasDoMes(ano, mesIdx);
+    const datasOcupadas = new Set(
+        (allTreinamentosCronograma || [])
+            .filter(c => {
+                if (!c.data_prevista) return false;
+                const d = parseLocalDate(c.data_prevista);
+                return d.getFullYear() === ano && d.getMonth() === mesIdx;
+            })
+            .map(c => c.data_prevista)
+    );
+
+    const proximaLivre = terQuintas.find(tq => !datasOcupadas.has(tq.iso));
+    const dataSugerida = proximaLivre ? proximaLivre.iso : `${ano}-${String(mesIdx + 1).padStart(2, '0')}-15`;
     
     showTreinSubtab('cronograma');
     abrirFormCronograma();
@@ -36064,7 +36256,7 @@ function abrirFormCronogramaComMes(mesIdx) {
     if (dataInput) dataInput.value = dataSugerida;
 }
 
-// 5. Modal de Sugestões Inteligentes de Temas (Regra dos 90 Dias)
+// 7. Modal de Sugestões Inteligentes de Temas (Regra dos 90 Dias & Alocação em Terça/Quinta)
 function abrirModalSugestaoTemas(mesIndex0) {
     const modal = document.getElementById('modalSugestaoTemasPat');
     if (!modal) return;
@@ -36103,17 +36295,43 @@ function renderSugestoesTemasModal() {
 
     const mesIdx = modalSugestaoMesAlvoIndex;
     const ano = patAnoAtual;
-    const dataRefIso = `${ano}-${String(mesIdx + 1).padStart(2, '0')}-15`;
     const infoSazonal = CAMPANHAS_SAZONAIS_SST[mesIdx];
 
+    // Terças e Quintas do mês
+    const terQuintas = obterTerceirasEQuintasDoMes(ano, mesIdx);
+    const datasOcupadas = new Set(
+        (allTreinamentosCronograma || [])
+            .filter(c => {
+                if (!c.data_prevista) return false;
+                const d = parseLocalDate(c.data_prevista);
+                return d.getFullYear() === ano && d.getMonth() === mesIdx;
+            })
+            .map(c => c.data_prevista)
+    );
+    const vagasLivres = terQuintas.filter(tq => !datasOcupadas.has(tq.iso));
+    const proximaDataSugerida = vagasLivres.length > 0 ? vagasLivres[0] : null;
+
+    const dataRefIso = proximaDataSugerida ? proximaDataSugerida.iso : `${ano}-${String(mesIdx + 1).padStart(2, '0')}-15`;
+
+    // Mapear temas já cadastrados neste mês para BLOQUEIO ABSOLUTO DE DUPLICIDADE
+    const temasJaNoMes = new Map();
+    (allTreinamentosCronograma || []).forEach(c => {
+        if (!c.data_prevista) return false;
+        const d = parseLocalDate(c.data_prevista);
+        if (d.getFullYear() === ano && d.getMonth() === mesIdx) {
+            temasJaNoMes.set(c.treinamento_cod, c.data_prevista);
+        }
+    });
+
     const catalogo = allTreinamentosCatalogo || [];
-    const catalogoPorId = new Map(catalogo.map(c => [c.id, c]));
 
     // Avaliar carência de todos os temas do catálogo
     const todosAvaliados = catalogo.map(c => {
+        const jaNoMesData = temasJaNoMes.get(c.id);
         const carencia = calcularCarenciaTema(c.nome, dataRefIso);
         return {
             ...c,
+            jaNoMesData,
             carencia
         };
     });
@@ -36121,16 +36339,15 @@ function renderSugestoesTemasModal() {
     let listaFiltrada = [];
 
     if (modalSugestaoFiltroAtual === 'recomendados') {
-        // Prioriza: temas sazonais do mês + temas com mais de 120 dias ou inéditos
         const codigosSazonais = new Set(infoSazonal.temasSugeridos);
         listaFiltrada = todosAvaliados.filter(item => {
             if (codigosSazonais.has(item.id)) return true;
-            // Inclui inéditos ou liberados há mais de 120 dias
             return item.carencia.status === 'inedito' || (item.carencia.status === 'liberado' && item.carencia.dias >= 120);
         });
 
-        // Ordenação inteligente: primeiro os da campanha do mês, depois inéditos, depois por maior tempo sem aplicar
         listaFiltrada.sort((a, b) => {
+            // Se já está no mês, joga para o fim
+            if (!!a.jaNoMesData !== !!b.jaNoMesData) return a.jaNoMesData ? 1 : -1;
             const aSazonal = codigosSazonais.has(a.id) ? 1 : 0;
             const bSazonal = codigosSazonais.has(b.id) ? 1 : 0;
             if (aSazonal !== bSazonal) return bSazonal - aSazonal;
@@ -36142,10 +36359,10 @@ function renderSugestoesTemasModal() {
     } else if (modalSugestaoFiltroAtual === 'ineditos') {
         listaFiltrada = todosAvaliados.filter(item => item.carencia.status === 'inedito');
     } else if (modalSugestaoFiltroAtual === 'liberados') {
-        listaFiltrada = todosAvaliados.filter(item => item.carencia.status === 'liberado');
+        listaFiltrada = todosAvaliados.filter(item => item.carencia.status === 'liberado' && !item.jaNoMesData);
         listaFiltrada.sort((a, b) => (b.carencia.dias || 0) - (a.carencia.dias || 0));
     } else if (modalSugestaoFiltroAtual === 'bloqueados') {
-        listaFiltrada = todosAvaliados.filter(item => item.carencia.status === 'bloqueado');
+        listaFiltrada = todosAvaliados.filter(item => item.carencia.status === 'bloqueado' || !!item.jaNoMesData);
         listaFiltrada.sort((a, b) => (a.carencia.dias || 0) - (b.carencia.dias || 0));
     }
 
@@ -36159,19 +36376,28 @@ function renderSugestoesTemasModal() {
     }
 
     let html = `
-        <div style="font-size:12px; color:var(--text-light); margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
-            <span>Mostrando <strong>${listaFiltrada.length} tema(s)</strong> para <strong>${infoSazonal.nomeMes}/${ano}</strong>:</span>
-            <span style="font-size:11px;">Carência mínima: <strong>90 dias</strong></span>
+        <div style="font-size:12px; color:var(--text-light); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <div>
+                Mostrando <strong>${listaFiltrada.length} tema(s)</strong> para <strong>${infoSazonal.nomeMes}/${ano}</strong>
+                ${proximaDataSugerida 
+                    ? ` • Próxima vaga regular: <strong style="color:#059669;">${formatSimpleDate(proximaDataSugerida.iso)} (${proximaDataSugerida.diaSemanaNome})</strong>`
+                    : ' • <span style="color:#b45309; font-weight:700;">Todas as Terças e Quintas do mês já preenchidas</span>'
+                }
+            </div>
+            <span style="font-size:11px; background:#f1f5f9; padding:2px 8px; border-radius:4px;">Carência mínima: <strong>90 dias</strong></span>
         </div>
         <div style="max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
     `;
 
-    listaFiltrada.slice(0, 50).forEach(item => {
+    listaFiltrada.slice(0, 60).forEach(item => {
         const car = item.carencia;
         let badgeStatus = '';
         let podeInserir = true;
 
-        if (car.status === 'inedito') {
+        if (item.jaNoMesData) {
+            podeInserir = false;
+            badgeStatus = `<span style="background:#fee2e2; color:#991b1b; font-weight:700; font-size:10.5px; padding:3px 8px; border-radius:999px; border:1px solid #fecaca;">⛔ JÁ AGENDADO NESTE MÊS (${formatSimpleDate(item.jaNoMesData)})</span>`;
+        } else if (car.status === 'inedito') {
             badgeStatus = `<span style="background:#e0e7ff; color:#3730a3; font-weight:700; font-size:10.5px; padding:3px 8px; border-radius:999px; border:1px solid #c7d2fe;">🏆 INÉDITO NA OBRA</span>`;
         } else if (car.status === 'liberado') {
             const meses = Math.floor(car.dias / 30);
@@ -36202,8 +36428,8 @@ function renderSugestoesTemasModal() {
                     </div>
                 </div>
                 <div style="flex-shrink:0;">
-                    <button class="db-apply-btn" onclick="inserirTemaSugeridoNoPat('${escapeHTML(item.id)}', ${mesIdx})" ${!podeInserir ? 'disabled style="opacity:0.6; cursor:not-allowed;"' : ''} style="font-size:11px; padding:6px 12px; font-weight:700; background:#2563eb; color:#fff; white-space:nowrap;">
-                        ➕ Agendar no Mês
+                    <button class="db-apply-btn" onclick="inserirTemaSugeridoNoPat('${escapeHTML(item.id)}', ${mesIdx})" ${!podeInserir ? 'disabled style="opacity:0.5; cursor:not-allowed; background:#94a3b8;"' : 'style="background:#2563eb; color:#fff;"'} style="font-size:11px; padding:6px 12px; font-weight:700; white-space:nowrap;">
+                        ${item.jaNoMesData ? '✓ Já no Mês' : '➕ Agendar no Mês'}
                     </button>
                 </div>
             </div>
@@ -36214,15 +36440,65 @@ function renderSugestoesTemasModal() {
     container.innerHTML = html;
 }
 
+// 8. Inserção Segura de Tema no PAT (Bloqueia Duplicidade e Aloca na Próxima Terça/Quinta)
 async function inserirTemaSugeridoNoPat(codigoTreinamento, mesIdx) {
     const ano = patAnoAtual;
-    const mesStr = String(mesIdx + 1).padStart(2, '0');
-    const dataPrevista = `${ano}-${mesStr}-15`;
-
     const cat = (allTreinamentosCatalogo || []).find(c => c.id === codigoTreinamento);
     if (!cat) {
         alert('Treinamento não encontrado.');
         return;
+    }
+
+    // 1. REGRA DE OURO: Bloquear duplicidade absoluta no mesmo mês
+    const jaNoMes = (allTreinamentosCronograma || []).find(c => {
+        if (!c.data_prevista) return false;
+        const d = parseLocalDate(c.data_prevista);
+        return d.getFullYear() === ano && d.getMonth() === mesIdx && c.treinamento_cod === codigoTreinamento;
+    });
+
+    if (jaNoMes) {
+        alert(`⚠️ DUPLICIDADE BLOQUEADA!\n\nO treinamento "[${cat.id}] ${cat.nome}" já está agendado neste mês para o dia ${formatSimpleDate(jaNoMes.data_prevista)}.\n\nPara garantir variedade e evitar sobrecarga pedagógica, o mesmo tema não pode ser lançado duas vezes no mesmo mês.`);
+        return;
+    }
+
+    // 2. Determinar a data: alocar na primeira Terça ou Quinta-feira livre do mês
+    const terQuintas = obterTerceirasEQuintasDoMes(ano, mesIdx);
+    const datasOcupadas = new Set(
+        (allTreinamentosCronograma || [])
+            .filter(c => {
+                if (!c.data_prevista) return false;
+                const d = parseLocalDate(c.data_prevista);
+                return d.getFullYear() === ano && d.getMonth() === mesIdx;
+            })
+            .map(c => c.data_prevista)
+    );
+
+    const proximaLivre = terQuintas.find(tq => !datasOcupadas.has(tq.iso));
+    let dataPrevista = '';
+    let diaLabel = '';
+
+    if (proximaLivre) {
+        dataPrevista = proximaLivre.iso;
+        diaLabel = `${formatSimpleDate(proximaLivre.iso)} (${proximaLivre.diaSemanaNome})`;
+    } else {
+        // Se todas as terças e quintas regulares já estiverem ocupadas
+        const diaUltimo = terQuintas.length > 0 ? terQuintas[terQuintas.length - 1].dia + 1 : 15;
+        const diaStr = String(Math.min(diaUltimo, new Date(ano, mesIdx + 1, 0).getDate())).padStart(2, '0');
+        const mesStr = String(mesIdx + 1).padStart(2, '0');
+        dataPrevista = `${ano}-${mesStr}-${diaStr}`;
+        diaLabel = `${formatSimpleDate(dataPrevista)} (Treinamento Extraordinário)`;
+    }
+
+    // 3. Verificar carência de 90 dias
+    const carencia = calcularCarenciaTema(cat.nome, dataPrevista);
+    if (carencia.status === 'bloqueado' && !carencia.agendadoFuturo) {
+        const conf = confirm(
+            `⚠️ ATENÇÃO: Carência de 90 Dias Ativa!\n\n` +
+            `O tema "${cat.nome}" foi ministrado há ${carencia.dias} dias em ${formatSimpleDate(carencia.ultimaData)}.\n\n` +
+            `A regra de SST da obra recomenda carência mínima de 90 dias (3 meses) para evitar temas repetitivos.\n\n` +
+            `Deseja forçar o agendamento para ${diaLabel} mesmo assim?`
+        );
+        if (!conf) return;
     }
 
     const row = {
@@ -36233,7 +36509,7 @@ async function inserirTemaSugeridoNoPat(codigoTreinamento, mesIdx) {
         local: 'Canteiro Central / EBs / Frentes de Obra',
         responsavel: 'Engenharia de Segurança (SESMT)',
         status: 'planejado',
-        observacoes: `Programação Oficial do PAT ${ano} — Mês de ${CAMPANHAS_SAZONAIS_SST[mesIdx].nomeMes}.`
+        observacoes: `PAT ${ano} — Mês de ${CAMPANHAS_SAZONAIS_SST[mesIdx].nomeMes} (${diaLabel}).`
     };
 
     try {
@@ -36241,9 +36517,9 @@ async function inserirTemaSugeridoNoPat(codigoTreinamento, mesIdx) {
         allTreinamentosCronograma.push(row);
 
         if (typeof showToast === 'function') {
-            showToast(`✅ Treinamento "${cat.nome}" agendado no PAT para ${CAMPANHAS_SAZONAIS_SST[mesIdx].nomeMes}/${ano}!`, 'success');
+            showToast(`✅ Treinamento "${cat.nome}" agendado no PAT para ${diaLabel}!`, 'success');
         } else {
-            alert(`✅ Treinamento "${cat.nome}" agendado com sucesso no PAT de ${CAMPANHAS_SAZONAIS_SST[mesIdx].nomeMes}/${ano}!`);
+            alert(`✅ Treinamento "${cat.nome}" agendado com sucesso para ${diaLabel}!`);
         }
 
         renderPlanoAnualTreinamento();
@@ -36254,44 +36530,105 @@ async function inserirTemaSugeridoNoPat(codigoTreinamento, mesIdx) {
     }
 }
 
-// 6. Gerador Automático de PAT Anual (Preenchimento Inteligente de 12 Meses)
+// 9. Gerador Automático de PAT Anual (Preenchimento em Terças e Quintas sem Repetição)
 async function confirmarGerarSugestaoPat() {
     const ano = patAnoAtual;
-    const conf = confirm(`Deseja gerar a programação anual completa do PAT para o ano de ${ano}?\n\nO sistema distribuirá automaticamente treinamentos normativos e campanhas sazonais para os 12 meses (Janeiro a Dezembro), respeitando a carência de 90 dias e a realidade da obra.`);
+    const conf = confirm(
+        `📅 GERADOR ANUAL DO PAT — EXERCÍCIO ${ano}\n\n` +
+        `O sistema distribuirá automaticamente treinamentos normativos e de campanhas sazonais para os 12 meses (Janeiro a Dezembro), respeitando:\n\n` +
+        `• Alocação nas Terças e Quintas-feiras do cronograma regular de SST;\n` +
+        `• Carência mínima de 90 dias (sem temas repetidos no mesmo mês ou trimestre);\n` +
+        `• Prioridade para campanhas oficiais de cada mês e NRs de alto impacto.\n\n` +
+        `Deseja gerar a programação anual agora?`
+    );
     if (!conf) return;
 
     const novosItens = [];
+    const codigosUsadosRecentemente = new Set();
 
     for (let mesIdx = 0; mesIdx < 12; mesIdx++) {
         const info = CAMPANHAS_SAZONAIS_SST[mesIdx];
-        const mesStr = String(mesIdx + 1).padStart(2, '0');
+        const terQuintas = obterTerceirasEQuintasDoMes(ano, mesIdx);
+        if (terQuintas.length === 0) continue;
 
-        // Selecionar 1 a 2 treinamentos estratégicos para cada mês
-        const temasMes = info.temasSugeridos.slice(0, 2);
+        // Identificar datas já ocupadas no mês
+        const datasOcupadas = new Set(
+            (allTreinamentosCronograma || [])
+                .filter(c => {
+                    if (!c.data_prevista) return false;
+                    const d = parseLocalDate(c.data_prevista);
+                    return d.getFullYear() === ano && d.getMonth() === mesIdx;
+                })
+                .map(c => c.data_prevista)
+        );
 
-        temasMes.forEach((cod, idxDia) => {
-            const diaStr = idxDia === 0 ? '10' : '22';
+        // Selecionar 2 datas de Terças/Quintas para alocação no mês
+        const datasLivres = terQuintas.filter(tq => !datasOcupadas.has(tq.iso));
+        if (datasLivres.length === 0) continue;
+
+        const datasAlvo = [
+            datasLivres[0],
+            datasLivres[Math.min(2, datasLivres.length - 1)]
+        ];
+
+        // Selecionar 2 treinamentos estratégicos para cada mês
+        const temasCandidatos = info.temasSugeridos || [];
+        const temasEscolhidos = [];
+
+        for (const cod of temasCandidatos) {
+            if (temasEscolhidos.length >= datasAlvo.length) break;
+            if (codigosUsadosRecentemente.has(cod)) continue;
+            const cat = (allTreinamentosCatalogo || []).find(c => c.id === cod);
+            if (!cat) continue;
+
+            const carencia = calcularCarenciaTema(cat.nome, datasAlvo[temasEscolhidos.length].iso);
+            if (carencia.status === 'inedito' || (carencia.status === 'liberado' && carencia.dias >= 90)) {
+                temasEscolhidos.push(cod);
+                codigosUsadosRecentemente.add(cod);
+            }
+        }
+
+        // Se a campanha sugerida não tiver 2 liberados, pega do catálogo geral inédito
+        if (temasEscolhidos.length < datasAlvo.length) {
+            for (const cat of (allTreinamentosCatalogo || [])) {
+                if (temasEscolhidos.length >= datasAlvo.length) break;
+                if (temasEscolhidos.includes(cat.id) || codigosUsadosRecentemente.has(cat.id)) continue;
+                const carencia = calcularCarenciaTema(cat.nome, datasAlvo[temasEscolhidos.length].iso);
+                if (carencia.status === 'inedito') {
+                    temasEscolhidos.push(cat.id);
+                    codigosUsadosRecentemente.add(cat.id);
+                }
+            }
+        }
+
+        temasEscolhidos.forEach((cod, idx) => {
+            const dataVaga = datasAlvo[idx] || datasLivres[0];
             const cat = (allTreinamentosCatalogo || []).find(c => c.id === cod);
             if (cat) {
                 novosItens.push({
-                    id: 'crono_pat_auto_' + ano + '_' + mesStr + '_' + cod + '_' + Math.random().toString(36).slice(2, 6),
-                    data_prevista: `${ano}-${mesStr}-${diaStr}`,
+                    id: 'crono_pat_auto_' + ano + '_' + String(mesIdx + 1).padStart(2, '0') + '_' + cod + '_' + Math.random().toString(36).slice(2, 6),
+                    data_prevista: dataVaga.iso,
                     treinamento_cod: cod,
                     horario: '08:00',
                     local: 'Canteiro Central / EBs / Frentes de Obra',
                     responsavel: 'Engenharia de Segurança (SESMT)',
                     status: 'planejado',
-                    observacoes: `PAT ${ano} Oficial — ${info.campanha}`
+                    observacoes: `PAT ${ano} Oficial — Cronograma Regular (${dataVaga.diaSemanaNome}) — ${info.campanha}`
                 });
             }
         });
+    }
+
+    if (novosItens.length === 0) {
+        alert('Todas as datas estratégicas já estão preenchidas para este ano.');
+        return;
     }
 
     try {
         await supabaseUpsert('treinamentos_cronograma', novosItens);
         novosItens.forEach(item => allTreinamentosCronograma.push(item));
 
-        alert(`🎉 PAT ${ano} gerado com sucesso! ${novosItens.length} ações foram distribuídas ao longo dos 12 meses.`);
+        alert(`🎉 PAT ${ano} gerado com sucesso! ${novosItens.length} ações normativas e sazonais foram distribuídas nas Terças e Quintas-feiras ao longo dos 12 meses.`);
         renderPlanoAnualTreinamento();
     } catch (err) {
         console.error('Erro ao gerar PAT anual:', err);
@@ -36299,7 +36636,7 @@ async function confirmarGerarSugestaoPat() {
     }
 }
 
-// 7. Emissão do Documento Oficial do PAT em PDF Timbrado
+// 10. Emissão do Documento Oficial do PAT em PDF Timbrado (Com Dia da Semana)
 function emitirPatOficialDocumento() {
     const ano = patAnoAtual;
     const catalogoPorId = new Map((allTreinamentosCatalogo || []).map(c => [c.id, c]));
@@ -36310,10 +36647,11 @@ function emitirPatOficialDocumento() {
     }).sort((a, b) => (a.data_prevista || '').localeCompare(b.data_prevista || ''));
 
     if (itensAno.length === 0) {
-        alert(`O PAT de ${ano} ainda não possui itens agendados. Utilize o botão "⚡ Gerar PAT Anual Sugerido" ou agende temas antes de emitir.`);
+        alert(`Nenhuma ação encontrada no PAT para o ano de ${ano}. Agende treinamentos antes de emitir o documento oficial.`);
         return;
     }
 
+    const totalAcoes = itensAno.length;
     let totalHoras = 0;
     itensAno.forEach(c => {
         const cat = catalogoPorId.get(c.treinamento_cod);
@@ -36325,7 +36663,8 @@ function emitirPatOficialDocumento() {
         const nome = cat ? cat.nome : c.treinamento_cod;
         const ch = (cat && cat.carga_horaria) ? cat.carga_horaria + 'h' : '2h';
         const modalidade = (cat && cat.carga_horaria >= 8) ? 'Teórico / Prático' : 'Diálogo / Teórico';
-        const dataFmt = c.data_prevista ? formatSimpleDate(c.data_prevista) : '—';
+        const infoDia = obterInfoDiaSemana(c.data_prevista);
+        const dataFmt = c.data_prevista ? `${formatSimpleDate(c.data_prevista)} (${infoDia.curto})` : '—';
         const statusFmt = (c.status === 'lancado' || c.status === 'concluido') ? 'Realizado' : 'Planejado';
 
         return `
@@ -36378,39 +36717,46 @@ function emitirPatOficialDocumento() {
             <img src="${LOGO_COP_BASE64}" alt="Consórcio Operador Ramal do Agreste">
             <div class="cabecalho-texto">
                 <h1>PLANO ANUAL DE TREINAMENTO — PAT ${ano}</h1>
-                <p>Programa de Gerenciamento de Riscos (NR-01) & Indústria da Construção (NR-18)</p>
+                <p>Programa de Capacitação Contínua em SST • NR-01 item 1.5.7 e NR-18 item 18.14</p>
             </div>
         </div>
 
         <div class="quadro-resumo">
-            <div class="quadro-item"><b>Empresa:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
-            <div class="quadro-item"><b>CNPJ:</b> ${escapeHTML(EMPRESA_INFO.cnpj)}</div>
-            <div class="quadro-item"><b>Contrato:</b> Obra Ramal do Agreste (PISF)</div>
-            <div class="quadro-item"><b>Exercício:</b> Ano ${ano} (${itensAno.length} ações / ${totalHoras}h totais)</div>
+            <div class="quadro-item">
+                <span style="color:#64748b;">Obra / Contrato:</span>
+                <b>PISF — Ramal do Agreste</b>
+            </div>
+            <div class="quadro-item">
+                <span style="color:#64748b;">Exercício Anual:</span>
+                <b>Ano Base ${ano}</b>
+            </div>
+            <div class="quadro-item">
+                <span style="color:#64748b;">Ações Programadas:</span>
+                <b>${totalAcoes} Ações de Capacitação</b>
+            </div>
+            <div class="quadro-item">
+                <span style="color:#64748b;">Carga Horária Total Prevista:</span>
+                <b>${totalHoras} Horas (HHT)</b>
+            </div>
         </div>
 
-        <h2>1. Objetivo e Justificativa Regulamentar</h2>
+        <h2>1. Objetivo e Diretrizes Normativas</h2>
         <p class="justificativa">
-            O presente Plano Anual de Treinamento (PAT) estabelece a programação oficial de capacitação, formação técnica e reciclagens periódicas em Segurança e Saúde no Trabalho para todos os colaboradores do Consórcio Operador do Ramal do Agreste, em estrito cumprimento ao <strong>item 1.5.7 da Norma Regulamentadora nº 01 (PGR)</strong>, ao <strong>item 18.14 da Norma Regulamentadora nº 18</strong> e às NRs específicas pertinentes às frentes de serviço (NR-10, NR-12, NR-23, NR-33 e NR-35). O plano visa à antecipação, reconhecimento e controle dos riscos ocupacionais, garantindo que nenhum tema perca a eficácia pedagógica por repetições desordenadas e assegurando a conformidade legal do contrato.
+            O presente <strong>Plano Anual de Treinamento (PAT)</strong> estabelece o planejamento técnico e pedagógico das capacitações, reciclagens normativas e ações preventivas a serem ministradas aos colaboradores do <strong>Consórcio Operador do Ramal do Agreste</strong> ao longo do exercício de ${ano}. O plano foi estruturado em estrita conformidade com o <em>item 1.5.7 da NR-01 (Capacitação e Treinamento em Segurança e Saúde no Trabalho)</em>, <em>item 18.14 da NR-18 (Capacitação na Indústria da Construção)</em>, bem como os requisitos das NRs 06, 10, 11, 12, 17, 23, 33 e 35. As sessões regulares de treinamento e conscientização são realizadas prioritariamente às <strong>Terças e Quintas-feiras</strong>, integradas às campanhas mensais de conscientização e procedimentos operacionais das Estações de Bombeamento (EBs).
         </p>
 
-        <h2>2. Metodologia de Execução</h2>
-        <p class="justificativa">
-            As ações são distribuídas ao longo de 12 meses civis (Janeiro a Dezembro), combinando: (a) Treinamentos Normativos de Formação e Reciclagem; (b) Treinamentos Operacionais de Bloqueio/LOTO e Manutenção nas Estações de Bombeamento e Adutoras; e (c) Campanhas Sazonais Oficiais do Calendário Nacional de Saúde e Segurança (Janeiro Branco, Abril Verde, Maio Amarelo, Setembro Amarelo, Outubro Rosa, Novembro Azul e Dezembro Laranja/Vermelho). A comprovação de participação dar-se-á mediante listas oficiais de frequência (FOR.001) e Provas de Eficácia arquivadas no prontuário do colaborador.
-        </p>
-
-        <h2>3. Matriz do Cronograma Anual Consolidado (Exercício ${ano})</h2>
+        <h2>2. Cronograma Executivo de Treinamentos (${ano})</h2>
         <table>
             <thead>
                 <tr>
-                    <th style="width:75px; text-align:center;">Data Prev.</th>
-                    <th style="width:45px; text-align:center;">Cód.</th>
-                    <th>Título do Treinamento / Campanha de SST</th>
-                    <th style="width:40px; text-align:center;">C.H.</th>
-                    <th style="width:110px;">Modalidade</th>
-                    <th style="width:170px;">Local / Posto</th>
-                    <th style="width:120px;">Instrutor / Resp.</th>
-                    <th style="width:65px; text-align:center;">Status</th>
+                    <th style="width: 105px; text-align:center;">Data Prevista</th>
+                    <th style="width: 45px; text-align:center;">Cód.</th>
+                    <th>Título do Curso / Tema de SST</th>
+                    <th style="width: 55px; text-align:center;">C.H.</th>
+                    <th style="width: 105px;">Modalidade</th>
+                    <th style="width: 130px;">Local / Frentes</th>
+                    <th style="width: 100px;">Responsável</th>
+                    <th style="width: 65px; text-align:center;">Status</th>
                 </tr>
             </thead>
             <tbody>
@@ -36418,26 +36764,31 @@ function emitirPatOficialDocumento() {
             </tbody>
         </table>
 
+        <h2>3. Responsabilidade Técnica e Aprovação</h2>
+        <p class="justificativa">
+            Este plano é de aplicação obrigatória em todas as frentes de serviço, canteiros de apoio e Estações de Bombeamento (EB-01, EB-02, EB-03 e EB-04) do Consórcio Ramal do Agreste, devendo sua execução ser monitorada mensalmente pelo SESMT.
+        </p>
+
         <div class="assinaturas">
             <div class="assinatura-box">
                 <strong>João Everton de Souza Limeira</strong><br>
                 Engenheiro de Segurança do Trabalho<br>
-                CREA: 0522078320-BA • Responsável Técnico SESMT
+                CREA: 0522078320-BA • Responsável Técnico SST
             </div>
             <div class="assinatura-box">
-                <strong>Consórcio Operador do Ramal do Agreste</strong><br>
-                Diretoria de Contrato / Gerência Operacional<br>
-                Aprovação da Gestão de Contrato
+                <strong>Gerência de Operações e Contrato</strong><br>
+                Consórcio Operador do Ramal do Agreste<br>
+                Ciência e Aprovação de Recursos
             </div>
         </div>
     </div>
 </body>
 </html>`;
 
-    abrirDocumentoBlob(html);
+    abrirDocumentoHtmlParaImpressao(html, `PAT_${ano}_Consorcio_Ramal_do_Agreste`);
 }
 
-// 8. Exportação do PAT em Excel (.xlsx)
+// 11. Exportação do PAT para Planilha Excel (Com Dia da Semana)
 function exportarPatExcel() {
     const ano = patAnoAtual;
     const catalogoPorId = new Map((allTreinamentosCatalogo || []).map(c => [c.id, c]));
@@ -36448,48 +36799,31 @@ function exportarPatExcel() {
     }).sort((a, b) => (a.data_prevista || '').localeCompare(b.data_prevista || ''));
 
     if (itensAno.length === 0) {
-        alert('Nenhum item agendado no PAT para exportar.');
+        alert(`Nenhuma ação encontrada no PAT para o ano de ${ano}.`);
         return;
     }
 
-    const rows = [
-        ['PLANO ANUAL DE TREINAMENTO (PAT) - EXERCÍCIO ' + ano],
-        ['EMPRESA: ' + EMPRESA_INFO.razaoSocial, 'CNPJ: ' + EMPRESA_INFO.cnpj, 'OBRA: RAMAL DO AGRESTE (PISF)'],
-        ['RESPONSÁVEL TÉCNICO: Eng. João Everton de Souza Limeira (CREA 0522078320-BA)'],
-        [],
-        ['Data Prevista', 'Mês', 'Código', 'Treinamento / Campanha', 'Carga Horária (h)', 'Modalidade', 'Local de Realização', 'Responsável', 'Status']
-    ];
-
-    itensAno.forEach(c => {
+    const rows = itensAno.map(c => {
         const cat = catalogoPorId.get(c.treinamento_cod);
-        const nome = cat ? cat.nome : c.treinamento_cod;
-        const ch = (cat && cat.carga_horaria) ? parseFloat(cat.carga_horaria) : 2;
-        const d = parseLocalDate(c.data_prevista);
-        const mesNome = NOMES_MESES[d.getMonth()] || '';
-        const modalidade = ch >= 8 ? 'Teórico / Prático' : 'Diálogo / Teórico';
-
-        rows.push([
-            formatSimpleDate(c.data_prevista),
-            mesNome,
-            c.treinamento_cod,
-            nome,
-            ch,
-            modalidade,
-            c.local || 'Canteiro Central / EBs',
-            c.responsavel || 'SESMT',
-            c.status === 'lancado' ? 'Realizado' : 'Planejado'
-        ]);
+        const infoDia = obterInfoDiaSemana(c.data_prevista);
+        return {
+            'Ano': ano,
+            'Mês': CAMPANHAS_SAZONAIS_SST[parseLocalDate(c.data_prevista).getMonth()].nomeMes,
+            'Data Prevista': formatSimpleDate(c.data_prevista),
+            'Dia da Semana': infoDia.nome,
+            'Tipo de Cronograma': infoDia.ehTerOuQui ? 'Regular (Terça/Quinta)' : 'Extraordinário',
+            'Código': c.treinamento_cod,
+            'Título do Treinamento': cat ? cat.nome : c.treinamento_cod,
+            'Carga Horária (h)': (cat && cat.carga_horaria) ? parseFloat(cat.carga_horaria) : 2,
+            'Local': c.local || 'Canteiro / Frentes de Obra',
+            'Responsável': c.responsavel || 'SESMT',
+            'Status': (c.status === 'lancado' || c.status === 'concluido') ? 'Realizado' : 'Planejado',
+            'Observações': c.observacoes || ''
+        };
     });
 
-    const csvContent = rows.map(r => r.map(campo => `"${String(campo ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `PAT_${ano}_Plano_Anual_Treinamento_COP_RAMAL.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `PAT ${ano}`);
+    XLSX.writeFile(wb, `PAT_${ano}_Consorcio_Ramal_do_Agreste.xlsx`);
 }
-

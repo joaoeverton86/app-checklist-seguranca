@@ -3240,7 +3240,7 @@ async function loadTreinamentosData() {
 // showDbPage - se o gráfico foi criado com o canvas escondido em outra aba, sem isso
 // ficaria em branco pra sempre).
 function showTreinSubtab(tab) {
-    ['visao', 'lancar', 'cronograma', 'equipes', 'registro', 'kits', 'historico', 'catalogo', 'relatorio'].forEach(t => {
+    ['visao', 'lancar', 'cronograma', 'equipes', 'registro', 'kits', 'historico', 'catalogo', 'relatorio', 'pat'].forEach(t => {
         const content = document.getElementById('treinSubtab-' + t);
         const btn = document.getElementById('treinSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -3251,6 +3251,7 @@ function showTreinSubtab(tab) {
     if (tab === 'cronograma') renderCronogramaLista();
     if (tab === 'equipes') { popularEquipesResponsavelDatalist(); renderEquipeAtual(); }
     if (tab === 'relatorio') popularRelatorioMensalDefaults();
+    if (tab === 'pat') renderPlanoAnualTreinamento();
     // A sub-aba "dds" saiu daqui - agora é a página própria "DDSMA" (ver
     // showDdsmaSubtab, showDbPage e o menu lateral).
     // Não força registroDetalheCard a esconder aqui - a busca/lista que carrega uma
@@ -35665,3 +35666,830 @@ function imprimirPlanoAcaoPgrTimbrado() {
 
     abrirDocumentoHtmlParaImpressao(htmlImpressao, 'Plano de Ação 5W2H PGR - Ramal do Agreste');
 }
+
+// =====================================================================
+// MÓDULO OFICIAL: PLANO ANUAL DE TREINAMENTO (PAT - NR-01 / NR-18)
+// & MOTOR INTELIGENTE DE SUGESTÃO DE TEMAS (REGRA DOS 90 DIAS)
+// =====================================================================
+
+const CAMPANHAS_SAZONAIS_SST = {
+    0: {
+        cor: '#3b82f6',
+        nomeMes: 'Janeiro',
+        campanha: 'Janeiro Branco — Saúde Mental & Bem-Estar (NR-01)',
+        temasSugeridos: ['149', '1', '190', '166'], // Códigos do catálogo
+        focoSst: 'Integração admissional de início de ano, saúde mental, metas de segurança e direitos/deveres.'
+    },
+    1: {
+        cor: '#9333ea',
+        nomeMes: 'Fevereiro',
+        campanha: 'Fevereiro Roxo & Laranja — Doenças Crônicas & Prevenção',
+        temasSugeridos: ['25', '41', '158', '168'],
+        focoSst: 'Carnaval seguro, combate ao alcoolismo e drogas, direção defensiva no canteiro e embarque seguro.'
+    },
+    2: {
+        cor: '#ec4899',
+        nomeMes: 'Março',
+        campanha: 'Mês da Mulher & Combate ao Assédio (NR-05 CIPA)',
+        temasSugeridos: ['146', '165', '28', '129'],
+        focoSst: 'Prevenção e combate ao assédio sexual e moral no canteiro (Lei 14.457/22 - NR-05) e ergonomia.'
+    },
+    3: {
+        cor: '#10b981',
+        nomeMes: 'Abril',
+        campanha: 'Abril Verde — Prevenção de Acidentes e Saúde no Trabalho',
+        temasSugeridos: ['47', '125', '55', '184'],
+        focoSst: 'Mês mundial da segurança do trabalho, reforço de APRs, percepção de risco e direito de recusa.'
+    },
+    4: {
+        cor: '#f59e0b',
+        nomeMes: 'Maio',
+        campanha: 'Maio Amarelo — Trânsito Seguro & Direção Defensiva na Obra',
+        temasSugeridos: ['69', '41', '49', '178'],
+        focoSst: 'Tráfego pesado na obra, distância segura de máquinas pesadas e checklist diário de veículos.'
+    },
+    5: {
+        cor: '#059669',
+        nomeMes: 'Junho',
+        campanha: 'Junho Verde — Meio Ambiente, Resíduos & Prevenção de Incêndios',
+        temasSugeridos: ['181', '143', '30', '15', '71'],
+        focoSst: 'Gestão de resíduos, coleta seletiva, produtos químicos e prevenção/combate a incêndios (NR-23).'
+    },
+    6: {
+        cor: '#eab308',
+        nomeMes: 'Julho',
+        campanha: 'Julho Amarelo — Hepatites Virais & Dia Nacional da Prevenção (27/07)',
+        temasSugeridos: ['120', '191', '16', '29'],
+        focoSst: 'Hepatites virais, comemoração da prevenção de acidentes e reciclagem de trabalho em altura (NR-35).'
+    },
+    7: {
+        cor: '#d97706',
+        nomeMes: 'Agosto',
+        campanha: 'Agosto Dourado & Proteção de Membros e Eletricidade nas EBs',
+        temasSugeridos: ['119', '63', '10', '122'],
+        focoSst: 'Campanha de proteção das mãos/dedos, prensamento e segurança em instalações elétricas nas EBs (NR-10).'
+    },
+    8: {
+        cor: '#ca8a04',
+        nomeMes: 'Setembro',
+        campanha: 'Setembro Amarelo — Saúde Mental & Prevenção de Acidentes Ofídicos',
+        temasSugeridos: ['44', '188', '195', '142'],
+        focoSst: 'Prevenção ao suicídio, cuidados com serpentes e abelhas na caatinga/canal e uso de perneiras.'
+    },
+    9: {
+        cor: '#db2777',
+        nomeMes: 'Outubro',
+        campanha: 'Outubro Rosa — Saúde da Mulher & Higienização de EPIs',
+        temasSugeridos: ['51', '155', '26', '133'],
+        focoSst: 'Conscientização do câncer de mama, higienização dos postos de trabalho e proteção solar.'
+    },
+    10: {
+        cor: '#2563eb',
+        nomeMes: 'Novembro',
+        campanha: 'Novembro Azul — Saúde do Homem & Máquinas Industriais (NR-12)',
+        temasSugeridos: ['161', '123', '46', '164'],
+        focoSst: 'Prevenção ao câncer de próstata, segurança em máquinas de oficina/bombas (NR-12) e ergonomia.'
+    },
+    11: {
+        cor: '#dc2626',
+        nomeMes: 'Dezembro',
+        campanha: 'Dezembro Vermelho & Laranja — Prevenção a ISTs & Câncer de Pele',
+        temasSugeridos: ['62', '133', '156', '64'],
+        focoSst: 'Dezembro Vermelho (HIV/ISTs), Dezembro Laranja (radiação solar/UV), código de conduta e retrospectiva.'
+    }
+};
+
+let patAnoAtual = new Date().getFullYear();
+let patCategoriaFiltroAtual = 'todos'; // 'todos' | 'normativos' | 'campanhas' | 'operacionais'
+let modalSugestaoFiltroAtual = 'recomendados'; // 'recomendados' | 'ineditos' | 'liberados' | 'bloqueados'
+let modalSugestaoMesAlvoIndex = new Date().getMonth();
+
+// 1. Motor de Histórico Consolidado de Temas (DDS + Treinamentos)
+function obterHistoricoTemasConsolidado() {
+    const mapa = new Map(); // nomeNormalizado -> { ultimoIso: string, total: number, frentes: Set, nomeOriginal: string }
+
+    function normalizar(s) {
+        return typeof normalizarTextoCargoBasico === 'function' 
+            ? normalizarTextoCargoBasico(s) 
+            : String(s || '').toLowerCase().trim();
+    }
+
+    // A. Registros de DDS Realizados
+    (allDdsRealizados || []).forEach(r => {
+        if (!r.tema) return;
+        const norm = normalizar(r.tema);
+        const dataIso = r.data_dds || r.data || '';
+        const frente = r.frente_responsavel || r.frente || '';
+        if (!mapa.has(norm)) {
+            mapa.set(norm, { ultimoIso: dataIso, total: 1, frentes: new Set(frente ? [frente] : []), nomeOriginal: r.tema });
+        } else {
+            const item = mapa.get(norm);
+            item.total++;
+            if (dataIso > item.ultimoIso) item.ultimoIso = dataIso;
+            if (frente) item.frentes.add(frente);
+        }
+    });
+
+    // B. Calendário de DDS
+    (allDdsTemasCronograma || []).forEach(r => {
+        if (!r.tema) return;
+        const norm = normalizar(r.tema);
+        const dataIso = r.data || '';
+        if (!mapa.has(norm)) {
+            mapa.set(norm, { ultimoIso: dataIso, total: 1, frentes: new Set(), nomeOriginal: r.tema });
+        } else {
+            const item = mapa.get(norm);
+            if (dataIso > item.ultimoIso) item.ultimoIso = dataIso;
+        }
+    });
+
+    // C. Treinamentos Realizados
+    (allTreinamentosRealizados || []).forEach(r => {
+        const nome = r.treinamento_nome || r.treinamento_cod;
+        if (!nome) return;
+        const norm = normalizar(nome);
+        const dataIso = r.data_treinamento || '';
+        if (!mapa.has(norm)) {
+            mapa.set(norm, { ultimoIso: dataIso, total: 1, frentes: new Set(), nomeOriginal: nome });
+        } else {
+            const item = mapa.get(norm);
+            item.total++;
+            if (dataIso > item.ultimoIso) item.ultimoIso = dataIso;
+        }
+    });
+
+    return mapa;
+}
+
+// 2. Cálculo da Carência de 90 Dias de um Tema
+function calcularCarenciaTema(nomeTema, dataReferenciaIso) {
+    const historico = obterHistoricoTemasConsolidado();
+    const norm = typeof normalizarTextoCargoBasico === 'function' 
+        ? normalizarTextoCargoBasico(nomeTema) 
+        : String(nomeTema || '').toLowerCase().trim();
+    const registro = historico.get(norm);
+
+    if (!registro || !registro.ultimoIso) {
+        return {
+            status: 'inedito',
+            dias: null,
+            ultimaData: null,
+            totalAplicacoes: 0,
+            frentes: []
+        };
+    }
+
+    const ref = dataReferenciaIso ? new Date(dataReferenciaIso + 'T12:00:00') : new Date();
+    const ult = new Date(registro.ultimoIso + 'T12:00:00');
+    const diffMs = ref.getTime() - ult.getTime();
+    const dias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    // Se dias < 0, está programado para data futura próxima
+    // Se dias < 90, está bloqueado pela regra dos 3 meses
+    const bloqueado = (dias < 90);
+
+    return {
+        status: bloqueado ? 'bloqueado' : 'liberado',
+        dias: dias,
+        agendadoFuturo: (dias < 0),
+        ultimaData: registro.ultimoIso,
+        totalAplicacoes: registro.total,
+        frentes: Array.from(registro.frentes || [])
+    };
+}
+
+// 3. Renderização Principal do Módulo PAT
+function onPatAnoChange() {
+    const sel = document.getElementById('patFiltroAno');
+    if (sel) patAnoAtual = parseInt(sel.value, 10);
+    renderPlanoAnualTreinamento();
+}
+
+function filtrarCategoriaPat(cat) {
+    patCategoriaFiltroAtual = cat;
+    ['todos', 'normativos', 'campanhas', 'operacionais'].forEach(c => {
+        const btn = document.getElementById('btnPatFiltro-' + c);
+        if (btn) btn.classList.toggle('active', c === cat);
+    });
+    renderGradePatAnual();
+}
+
+function renderPlanoAnualTreinamento() {
+    const selAno = document.getElementById('patFiltroAno');
+    if (selAno && !selAno.value) selAno.value = patAnoAtual;
+
+    const itensAno = (allTreinamentosCronograma || []).filter(c => {
+        if (!c.data_prevista) return false;
+        const anoItem = parseLocalDate(c.data_prevista).getFullYear();
+        return anoItem === patAnoAtual;
+    });
+
+    const catalogoPorId = new Map((allTreinamentosCatalogo || []).map(c => [c.id, c]));
+
+    // Calcular KPIs
+    const totalAcoes = itensAno.length;
+    let totalHoras = 0;
+    let concluidas = 0;
+
+    itensAno.forEach(c => {
+        const cat = catalogoPorId.get(c.treinamento_cod);
+        const ch = (cat && cat.carga_horaria) ? parseFloat(cat.carga_horaria) : 2;
+        totalHoras += ch;
+        if (c.status === 'lancado' || c.status === 'concluido') concluidas++;
+    });
+
+    const pctAderencia = totalAcoes > 0 ? Math.round((concluidas / totalAcoes) * 100) : 0;
+
+    const elAcoes = document.getElementById('kpiPatTotalAcoes');
+    if (elAcoes) elAcoes.textContent = totalAcoes;
+
+    const elHoras = document.getElementById('kpiPatTotalHoras');
+    if (elHoras) elHoras.textContent = totalHoras + 'h';
+
+    const elAderencia = document.getElementById('kpiPatAderencia');
+    if (elAderencia) elAderencia.textContent = pctAderencia + '%';
+
+    const elBar = document.getElementById('kpiPatProgressBar');
+    if (elBar) elBar.style.width = pctAderencia + '%';
+
+    renderGradePatAnual();
+}
+
+// 4. Renderização da Grade Anual dos 12 Meses
+function renderGradePatAnual() {
+    const container = document.getElementById('patGradeMensalContainer');
+    if (!container) return;
+
+    const itensAno = (allTreinamentosCronograma || []).filter(c => {
+        if (!c.data_prevista) return false;
+        const anoItem = parseLocalDate(c.data_prevista).getFullYear();
+        return anoItem === patAnoAtual;
+    });
+
+    const catalogoPorId = new Map((allTreinamentosCatalogo || []).map(c => [c.id, c]));
+    const hoje = new Date();
+    const mesAtualIndex = hoje.getFullYear() === patAnoAtual ? hoje.getMonth() : -1;
+
+    let html = '';
+
+    for (let mesIdx = 0; mesIdx < 12; mesIdx++) {
+        const infoSazonal = CAMPANHAS_SAZONAIS_SST[mesIdx];
+        const ehMesAtual = (mesIdx === mesAtualIndex);
+
+        let itensMes = itensAno.filter(c => {
+            const m = parseLocalDate(c.data_prevista).getMonth();
+            return m === mesIdx;
+        });
+
+        // Filtrar por categoria se aplicável
+        if (patCategoriaFiltroAtual === 'normativos') {
+            itensMes = itensMes.filter(c => {
+                const cat = catalogoPorId.get(c.treinamento_cod);
+                const nome = (cat?.nome || c.treinamento_cod || '').toUpperCase();
+                return nome.includes('NR') || nome.includes('NORMA') || (cat && cat.meses_validade);
+            });
+        } else if (patCategoriaFiltroAtual === 'campanhas') {
+            itensMes = itensMes.filter(c => {
+                const cat = catalogoPorId.get(c.treinamento_cod);
+                const nome = (cat?.nome || c.treinamento_cod || '').toUpperCase();
+                return nome.includes('DIA ') || nome.includes('CAMPANHA') || nome.includes('ROSA') || nome.includes('AZUL') || nome.includes('AMARELO') || nome.includes('VERDE') || nome.includes('VERMELHO');
+            });
+        } else if (patCategoriaFiltroAtual === 'operacionais') {
+            itensMes = itensMes.filter(c => {
+                const cat = catalogoPorId.get(c.treinamento_cod);
+                const nome = (cat?.nome || c.treinamento_cod || '').toUpperCase();
+                return nome.includes('BOMBA') || nome.includes('VENTOSA') || nome.includes('MÁQUINA') || nome.includes('MAQUINA') || nome.includes('LOTO') || nome.includes('ELÉTRIC') || nome.includes('ELETRIC');
+            });
+        }
+
+        itensMes.sort((a, b) => (a.data_prevista || '').localeCompare(b.data_prevista || ''));
+
+        let cardStyle = `background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,0.05);`;
+        if (ehMesAtual) {
+            cardStyle += ` border: 2px solid var(--primary); box-shadow: 0 4px 12px rgba(37,99,235,0.15);`;
+        }
+
+        html += `
+            <div style="${cardStyle}">
+                <div>
+                    <!-- Cabeçalho do Mês -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:8px;">
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <span style="font-size:14px; font-weight:800; color:var(--text); text-transform:uppercase;">
+                                ${infoSazonal.nomeMes}
+                            </span>
+                            ${ehMesAtual ? `<span style="background:var(--primary); color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px;">MÊS ATUAL</span>` : ''}
+                        </div>
+                        <span style="font-size:11px; font-weight:700; color:${itensMes.length > 0 ? '#059669' : 'var(--text-light)'}; background:${itensMes.length > 0 ? '#d1fae5' : 'var(--bg)'}; padding:2px 8px; border-radius:999px;">
+                            ${itensMes.length} ação(ões)
+                        </span>
+                    </div>
+
+                    <!-- Banner de Campanha Sazonal do Mês -->
+                    <div style="background: linear-gradient(135deg, ${infoSazonal.cor}15, ${infoSazonal.cor}08); border-left: 3px solid ${infoSazonal.cor}; padding: 6px 10px; border-radius: 4px; margin-bottom: 10px;">
+                        <div style="font-size: 11px; font-weight: 700; color: ${infoSazonal.cor}; display:flex; align-items:center; gap:4px;">
+                            <span>🎗️</span> ${escapeHTML(infoSazonal.campanha)}
+                        </div>
+                        <div style="font-size: 10px; color: var(--text-light); margin-top: 2px; line-height: 1.2;">
+                            ${escapeHTML(infoSazonal.focoSst)}
+                        </div>
+                    </div>
+
+                    <!-- Lista de Ações do Mês -->
+                    <div style="display:flex; flex-direction:column; gap:6px; min-height: 90px;">
+                        ${itensMes.length === 0 ? `
+                            <div style="padding:16px 8px; text-align:center; color:var(--text-light); font-size:11.5px; border:1px dashed var(--border); border-radius:8px;">
+                                Nenhuma ação agendada neste mês.
+                                <div style="margin-top:4px;">
+                                    <button class="db-clear-btn" onclick="abrirModalSugestaoTemas(${mesIdx})" style="font-size:10.5px; padding:3px 8px; color:var(--primary); font-weight:600;">
+                                        🪄 Sugerir Temas
+                                    </button>
+                                </div>
+                            </div>
+                        ` : itensMes.map(c => {
+                            const cat = catalogoPorId.get(c.treinamento_cod);
+                            const nome = cat ? cat.nome : c.treinamento_cod;
+                            const ch = (cat && cat.carga_horaria) ? cat.carga_horaria + 'h' : '2h';
+                            const ehConcluido = (c.status === 'lancado' || c.status === 'concluido');
+                            const dataFormatada = c.data_prevista ? formatSimpleDate(c.data_prevista) : '';
+
+                            return `
+                                <div style="background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:11.5px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                                    <div style="overflow:hidden; text-overflow:ellipsis;">
+                                        <div style="font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHTML(nome)}">
+                                            [${escapeHTML(c.treinamento_cod)}] ${escapeHTML(nome)}
+                                        </div>
+                                        <div style="font-size:10px; color:var(--text-light); display:flex; gap:6px; margin-top:2px;">
+                                            <span>📅 ${dataFormatada}</span>
+                                            <span>⏱️ ${ch}</span>
+                                            ${c.responsavel ? `<span>👤 ${escapeHTML(c.responsavel)}</span>` : ''}
+                                        </div>
+                                    </div>
+                                    <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+                                        <span title="${ehConcluido ? 'Treinamento Realizado' : 'Ação Planejada'}" style="font-size:13px;">
+                                            ${ehConcluido ? '✅' : '🕓'}
+                                        </span>
+                                        <button class="db-clear-btn" onclick="excluirItemCronograma('${escapeHTML(c.id)}')" style="padding:2px 4px; font-size:10px; color:var(--danger);" title="Remover do PAT">✕</button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+
+                <!-- Botão de Ação Rápida no Pé do Mês -->
+                <div style="margin-top:10px; pt-top:8px; border-top:1px dashed var(--border); display:flex; justify-content:space-between; align-items:center;">
+                    <button class="db-clear-btn" onclick="abrirModalSugestaoTemas(${mesIdx})" style="font-size:11px; padding:4px 8px; color:var(--primary); font-weight:600; display:inline-flex; align-items:center; gap:4px;">
+                        <span>🪄</span> Sugestões (90d)
+                    </button>
+                    <button class="db-clear-btn" onclick="abrirFormCronogramaComMes(${mesIdx})" style="font-size:11px; padding:4px 8px; font-weight:600;">
+                        ➕ Adicionar
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+function abrirFormCronogramaComMes(mesIdx) {
+    const ano = patAnoAtual;
+    const mesStr = String(mesIdx + 1).padStart(2, '0');
+    const dataSugerida = `${ano}-${mesStr}-15`;
+    
+    showTreinSubtab('cronograma');
+    abrirFormCronograma();
+    const dataInput = document.getElementById('cronoForm_data');
+    if (dataInput) dataInput.value = dataSugerida;
+}
+
+// 5. Modal de Sugestões Inteligentes de Temas (Regra dos 90 Dias)
+function abrirModalSugestaoTemas(mesIndex0) {
+    const modal = document.getElementById('modalSugestaoTemasPat');
+    if (!modal) return;
+    if (typeof mesIndex0 === 'number') {
+        modalSugestaoMesAlvoIndex = mesIndex0;
+    } else {
+        modalSugestaoMesAlvoIndex = new Date().getMonth();
+    }
+    const selMes = document.getElementById('modalSugestaoMesAlvo');
+    if (selMes) selMes.value = String(modalSugestaoMesAlvoIndex);
+
+    modal.style.display = 'flex';
+    renderSugestoesTemasModal();
+}
+
+function fecharModalSugestaoTemas() {
+    const modal = document.getElementById('modalSugestaoTemasPat');
+    if (modal) modal.style.display = 'none';
+}
+
+function filtrarAbaSugestaoTemas(aba) {
+    modalSugestaoFiltroAtual = aba;
+    ['recomendados', 'ineditos', 'liberados', 'bloqueados'].forEach(a => {
+        const btn = document.getElementById('btnSugFiltro-' + a);
+        if (btn) btn.classList.toggle('active', a === aba);
+    });
+    renderSugestoesTemasModal();
+}
+
+function renderSugestoesTemasModal() {
+    const container = document.getElementById('conteudoSugestoesTemasModal');
+    if (!container) return;
+
+    const selMes = document.getElementById('modalSugestaoMesAlvo');
+    if (selMes) modalSugestaoMesAlvoIndex = parseInt(selMes.value, 10);
+
+    const mesIdx = modalSugestaoMesAlvoIndex;
+    const ano = patAnoAtual;
+    const dataRefIso = `${ano}-${String(mesIdx + 1).padStart(2, '0')}-15`;
+    const infoSazonal = CAMPANHAS_SAZONAIS_SST[mesIdx];
+
+    const catalogo = allTreinamentosCatalogo || [];
+    const catalogoPorId = new Map(catalogo.map(c => [c.id, c]));
+
+    // Avaliar carência de todos os temas do catálogo
+    const todosAvaliados = catalogo.map(c => {
+        const carencia = calcularCarenciaTema(c.nome, dataRefIso);
+        return {
+            ...c,
+            carencia
+        };
+    });
+
+    let listaFiltrada = [];
+
+    if (modalSugestaoFiltroAtual === 'recomendados') {
+        // Prioriza: temas sazonais do mês + temas com mais de 120 dias ou inéditos
+        const codigosSazonais = new Set(infoSazonal.temasSugeridos);
+        listaFiltrada = todosAvaliados.filter(item => {
+            if (codigosSazonais.has(item.id)) return true;
+            // Inclui inéditos ou liberados há mais de 120 dias
+            return item.carencia.status === 'inedito' || (item.carencia.status === 'liberado' && item.carencia.dias >= 120);
+        });
+
+        // Ordenação inteligente: primeiro os da campanha do mês, depois inéditos, depois por maior tempo sem aplicar
+        listaFiltrada.sort((a, b) => {
+            const aSazonal = codigosSazonais.has(a.id) ? 1 : 0;
+            const bSazonal = codigosSazonais.has(b.id) ? 1 : 0;
+            if (aSazonal !== bSazonal) return bSazonal - aSazonal;
+            const aInedito = a.carencia.status === 'inedito' ? 1 : 0;
+            const bInedito = b.carencia.status === 'inedito' ? 1 : 0;
+            if (aInedito !== bInedito) return bInedito - aInedito;
+            return (b.carencia.dias || 0) - (a.carencia.dias || 0);
+        });
+    } else if (modalSugestaoFiltroAtual === 'ineditos') {
+        listaFiltrada = todosAvaliados.filter(item => item.carencia.status === 'inedito');
+    } else if (modalSugestaoFiltroAtual === 'liberados') {
+        listaFiltrada = todosAvaliados.filter(item => item.carencia.status === 'liberado');
+        listaFiltrada.sort((a, b) => (b.carencia.dias || 0) - (a.carencia.dias || 0));
+    } else if (modalSugestaoFiltroAtual === 'bloqueados') {
+        listaFiltrada = todosAvaliados.filter(item => item.carencia.status === 'bloqueado');
+        listaFiltrada.sort((a, b) => (a.carencia.dias || 0) - (b.carencia.dias || 0));
+    }
+
+    if (listaFiltrada.length === 0) {
+        container.innerHTML = `
+            <div style="padding:30px; text-align:center; color:var(--text-light); font-size:13px;">
+                Nenhum tema encontrado para este filtro no mês selecionado.
+            </div>
+        `;
+        return;
+    }
+
+    let html = `
+        <div style="font-size:12px; color:var(--text-light); margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+            <span>Mostrando <strong>${listaFiltrada.length} tema(s)</strong> para <strong>${infoSazonal.nomeMes}/${ano}</strong>:</span>
+            <span style="font-size:11px;">Carência mínima: <strong>90 dias</strong></span>
+        </div>
+        <div style="max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
+    `;
+
+    listaFiltrada.slice(0, 50).forEach(item => {
+        const car = item.carencia;
+        let badgeStatus = '';
+        let podeInserir = true;
+
+        if (car.status === 'inedito') {
+            badgeStatus = `<span style="background:#e0e7ff; color:#3730a3; font-weight:700; font-size:10.5px; padding:3px 8px; border-radius:999px; border:1px solid #c7d2fe;">🏆 INÉDITO NA OBRA</span>`;
+        } else if (car.status === 'liberado') {
+            const meses = Math.floor(car.dias / 30);
+            badgeStatus = `<span style="background:#d1fae5; color:#065f46; font-weight:700; font-size:10.5px; padding:3px 8px; border-radius:999px; border:1px solid #a7f3d0;" title="Última aplicação em ${formatSimpleDate(car.ultimaData)}">✅ LIBERADO (há ${meses} meses / ${car.dias} dias)</span>`;
+        } else if (car.agendadoFuturo) {
+            podeInserir = false;
+            badgeStatus = `<span style="background:#fef3c7; color:#92400e; font-weight:700; font-size:10.5px; padding:3px 8px; border-radius:999px; border:1px solid #fde68a;" title="Já programado no cronograma para ${formatSimpleDate(car.ultimaData)}">⏳ JÁ AGENDADO (${formatSimpleDate(car.ultimaData)})</span>`;
+        } else {
+            podeInserir = false;
+            badgeStatus = `<span style="background:#fee2e2; color:#991b1b; font-weight:700; font-size:10.5px; padding:3px 8px; border-radius:999px; border:1px solid #fecaca;" title="Aplicado recentemente em ${formatSimpleDate(car.ultimaData)}">⚠️ RECENTE (há ${car.dias} dias - carência 90d ativa)</span>`;
+        }
+
+        const ehCampanhaMes = (CAMPANHAS_SAZONAIS_SST[mesIdx].temasSugeridos.includes(item.id));
+
+        html += `
+            <div style="background:var(--card); border:1px solid var(--border); border-radius:8px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; gap:12px; ${ehCampanhaMes ? 'border-left:4px solid #db2777; background:rgba(219,39,119,0.02);' : ''}">
+                <div style="overflow:hidden;">
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+                        <span style="font-weight:700; color:var(--text); font-size:12.5px;">[${escapeHTML(item.id)}] ${escapeHTML(item.nome)}</span>
+                        ${ehCampanhaMes ? `<span style="background:#fce7f3; color:#be185d; font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px;">🌟 CAMPANHA DO MÊS</span>` : ''}
+                        ${badgeStatus}
+                    </div>
+                    <div style="font-size:11px; color:var(--text-light); line-height:1.3;">
+                        <span>⏱️ Carga Horária: <strong>${item.carga_horaria || 2}h</strong></span>
+                        ${item.meses_validade ? `<span> • Validade: <strong>${item.meses_validade} meses</strong></span>` : ''}
+                        ${car.ultimaData ? `<span> • Última vez ministrado: <strong>${formatSimpleDate(car.ultimaData)}</strong></span>` : ''}
+                        ${item.objetivo ? `<div style="margin-top:2px; font-style:italic;">🎯 ${escapeHTML(item.objetivo.slice(0, 140))}${item.objetivo.length > 140 ? '...' : ''}</div>` : ''}
+                    </div>
+                </div>
+                <div style="flex-shrink:0;">
+                    <button class="db-apply-btn" onclick="inserirTemaSugeridoNoPat('${escapeHTML(item.id)}', ${mesIdx})" ${!podeInserir ? 'disabled style="opacity:0.6; cursor:not-allowed;"' : ''} style="font-size:11px; padding:6px 12px; font-weight:700; background:#2563eb; color:#fff; white-space:nowrap;">
+                        ➕ Agendar no Mês
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+
+    html += `</div>`;
+    container.innerHTML = html;
+}
+
+async function inserirTemaSugeridoNoPat(codigoTreinamento, mesIdx) {
+    const ano = patAnoAtual;
+    const mesStr = String(mesIdx + 1).padStart(2, '0');
+    const dataPrevista = `${ano}-${mesStr}-15`;
+
+    const cat = (allTreinamentosCatalogo || []).find(c => c.id === codigoTreinamento);
+    if (!cat) {
+        alert('Treinamento não encontrado.');
+        return;
+    }
+
+    const row = {
+        id: 'crono_pat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        data_prevista: dataPrevista,
+        treinamento_cod: codigoTreinamento,
+        horario: '08:00',
+        local: 'Canteiro Central / EBs / Frentes de Obra',
+        responsavel: 'Engenharia de Segurança (SESMT)',
+        status: 'planejado',
+        observacoes: `Programação Oficial do PAT ${ano} — Mês de ${CAMPANHAS_SAZONAIS_SST[mesIdx].nomeMes}.`
+    };
+
+    try {
+        await supabaseUpsert('treinamentos_cronograma', [row]);
+        allTreinamentosCronograma.push(row);
+
+        if (typeof showToast === 'function') {
+            showToast(`✅ Treinamento "${cat.nome}" agendado no PAT para ${CAMPANHAS_SAZONAIS_SST[mesIdx].nomeMes}/${ano}!`, 'success');
+        } else {
+            alert(`✅ Treinamento "${cat.nome}" agendado com sucesso no PAT de ${CAMPANHAS_SAZONAIS_SST[mesIdx].nomeMes}/${ano}!`);
+        }
+
+        renderPlanoAnualTreinamento();
+        renderSugestoesTemasModal();
+    } catch (err) {
+        console.error('Erro ao agendar tema no PAT:', err);
+        alert('❌ Falha ao agendar: ' + err.message);
+    }
+}
+
+// 6. Gerador Automático de PAT Anual (Preenchimento Inteligente de 12 Meses)
+async function confirmarGerarSugestaoPat() {
+    const ano = patAnoAtual;
+    const conf = confirm(`Deseja gerar a programação anual completa do PAT para o ano de ${ano}?\n\nO sistema distribuirá automaticamente treinamentos normativos e campanhas sazonais para os 12 meses (Janeiro a Dezembro), respeitando a carência de 90 dias e a realidade da obra.`);
+    if (!conf) return;
+
+    const novosItens = [];
+
+    for (let mesIdx = 0; mesIdx < 12; mesIdx++) {
+        const info = CAMPANHAS_SAZONAIS_SST[mesIdx];
+        const mesStr = String(mesIdx + 1).padStart(2, '0');
+
+        // Selecionar 1 a 2 treinamentos estratégicos para cada mês
+        const temasMes = info.temasSugeridos.slice(0, 2);
+
+        temasMes.forEach((cod, idxDia) => {
+            const diaStr = idxDia === 0 ? '10' : '22';
+            const cat = (allTreinamentosCatalogo || []).find(c => c.id === cod);
+            if (cat) {
+                novosItens.push({
+                    id: 'crono_pat_auto_' + ano + '_' + mesStr + '_' + cod + '_' + Math.random().toString(36).slice(2, 6),
+                    data_prevista: `${ano}-${mesStr}-${diaStr}`,
+                    treinamento_cod: cod,
+                    horario: '08:00',
+                    local: 'Canteiro Central / EBs / Frentes de Obra',
+                    responsavel: 'Engenharia de Segurança (SESMT)',
+                    status: 'planejado',
+                    observacoes: `PAT ${ano} Oficial — ${info.campanha}`
+                });
+            }
+        });
+    }
+
+    try {
+        await supabaseUpsert('treinamentos_cronograma', novosItens);
+        novosItens.forEach(item => allTreinamentosCronograma.push(item));
+
+        alert(`🎉 PAT ${ano} gerado com sucesso! ${novosItens.length} ações foram distribuídas ao longo dos 12 meses.`);
+        renderPlanoAnualTreinamento();
+    } catch (err) {
+        console.error('Erro ao gerar PAT anual:', err);
+        alert('❌ Falha ao salvar PAT: ' + err.message);
+    }
+}
+
+// 7. Emissão do Documento Oficial do PAT em PDF Timbrado
+function emitirPatOficialDocumento() {
+    const ano = patAnoAtual;
+    const catalogoPorId = new Map((allTreinamentosCatalogo || []).map(c => [c.id, c]));
+
+    const itensAno = (allTreinamentosCronograma || []).filter(c => {
+        if (!c.data_prevista) return false;
+        return parseLocalDate(c.data_prevista).getFullYear() === ano;
+    }).sort((a, b) => (a.data_prevista || '').localeCompare(b.data_prevista || ''));
+
+    if (itensAno.length === 0) {
+        alert(`O PAT de ${ano} ainda não possui itens agendados. Utilize o botão "⚡ Gerar PAT Anual Sugerido" ou agende temas antes de emitir.`);
+        return;
+    }
+
+    let totalHoras = 0;
+    itensAno.forEach(c => {
+        const cat = catalogoPorId.get(c.treinamento_cod);
+        totalHoras += (cat && cat.carga_horaria) ? parseFloat(cat.carga_horaria) : 2;
+    });
+
+    const linhasTabela = itensAno.map(c => {
+        const cat = catalogoPorId.get(c.treinamento_cod);
+        const nome = cat ? cat.nome : c.treinamento_cod;
+        const ch = (cat && cat.carga_horaria) ? cat.carga_horaria + 'h' : '2h';
+        const modalidade = (cat && cat.carga_horaria >= 8) ? 'Teórico / Prático' : 'Diálogo / Teórico';
+        const dataFmt = c.data_prevista ? formatSimpleDate(c.data_prevista) : '—';
+        const statusFmt = (c.status === 'lancado' || c.status === 'concluido') ? 'Realizado' : 'Planejado';
+
+        return `
+            <tr>
+                <td style="text-align:center; font-weight:700;">${dataFmt}</td>
+                <td style="text-align:center; font-weight:700;">${escapeHTML(c.treinamento_cod)}</td>
+                <td style="font-weight:600;">${escapeHTML(nome)}</td>
+                <td style="text-align:center;">${ch}</td>
+                <td>${escapeHTML(modalidade)}</td>
+                <td>${escapeHTML(c.local || 'Canteiro / Frentes de Obra')}</td>
+                <td>${escapeHTML(c.responsavel || 'SESMT')}</td>
+                <td style="text-align:center;">${statusFmt}</td>
+            </tr>
+        `;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Plano Anual de Treinamento (PAT ${ano}) - COP Ramal do Agreste</title>
+    <style>
+        body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1e293b; margin: 0; padding: 20px; background: #fff; }
+        .folha { max-width: 1050px; margin: 0 auto; }
+        .cabecalho { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #1e3a8a; padding-bottom: 10px; margin-bottom: 14px; }
+        .cabecalho img { max-height: 52px; object-fit: contain; }
+        .cabecalho-texto { text-align: right; }
+        .cabecalho-texto h1 { font-size: 16px; margin: 0; color: #1e3a8a; font-weight: 800; }
+        .cabecalho-texto p { font-size: 11px; margin: 3px 0 0; color: #64748b; font-weight: 600; }
+        .quadro-resumo { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; margin-bottom: 16px; font-size: 11px; }
+        .quadro-item b { display: block; color: #1e3a8a; font-size: 12px; }
+        h2 { font-size: 12.5px; color: #1e3a8a; border-left: 4px solid #2563eb; padding-left: 8px; margin: 14px 0 6px; text-transform: uppercase; }
+        p.justificativa { font-size: 11px; text-align: justify; line-height: 1.45; color: #334155; margin: 0 0 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 10.5px; }
+        th, td { border: 1px solid #cbd5e1; padding: 5px 6px; }
+        th { background: #f1f5f9; color: #1e293b; font-weight: 700; text-align: left; }
+        .assinaturas { margin-top: 36px; display: flex; justify-content: space-around; text-align: center; page-break-inside: avoid; }
+        .assinatura-box { width: 340px; border-top: 1px solid #000; padding-top: 6px; font-size: 11px; }
+        .no-print { text-align: center; margin-bottom: 16px; position: sticky; top: 0; background: #fff; padding: 10px; border-bottom: 1px solid #e2e8f0; z-index: 1000; }
+        .no-print button { padding: 9px 22px; font-size: 13px; font-weight: 700; cursor: pointer; border-radius: 6px; border: none; background: #2563eb; color: #fff; }
+        @media print { .no-print { display: none; } body { padding: 0; } }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button>
+    </div>
+    <div class="folha">
+        <div class="cabecalho">
+            <img src="${LOGO_COP_BASE64}" alt="Consórcio Operador Ramal do Agreste">
+            <div class="cabecalho-texto">
+                <h1>PLANO ANUAL DE TREINAMENTO — PAT ${ano}</h1>
+                <p>Programa de Gerenciamento de Riscos (NR-01) & Indústria da Construção (NR-18)</p>
+            </div>
+        </div>
+
+        <div class="quadro-resumo">
+            <div class="quadro-item"><b>Empresa:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
+            <div class="quadro-item"><b>CNPJ:</b> ${escapeHTML(EMPRESA_INFO.cnpj)}</div>
+            <div class="quadro-item"><b>Contrato:</b> Obra Ramal do Agreste (PISF)</div>
+            <div class="quadro-item"><b>Exercício:</b> Ano ${ano} (${itensAno.length} ações / ${totalHoras}h totais)</div>
+        </div>
+
+        <h2>1. Objetivo e Justificativa Regulamentar</h2>
+        <p class="justificativa">
+            O presente Plano Anual de Treinamento (PAT) estabelece a programação oficial de capacitação, formação técnica e reciclagens periódicas em Segurança e Saúde no Trabalho para todos os colaboradores do Consórcio Operador do Ramal do Agreste, em estrito cumprimento ao <strong>item 1.5.7 da Norma Regulamentadora nº 01 (PGR)</strong>, ao <strong>item 18.14 da Norma Regulamentadora nº 18</strong> e às NRs específicas pertinentes às frentes de serviço (NR-10, NR-12, NR-23, NR-33 e NR-35). O plano visa à antecipação, reconhecimento e controle dos riscos ocupacionais, garantindo que nenhum tema perca a eficácia pedagógica por repetições desordenadas e assegurando a conformidade legal do contrato.
+        </p>
+
+        <h2>2. Metodologia de Execução</h2>
+        <p class="justificativa">
+            As ações são distribuídas ao longo de 12 meses civis (Janeiro a Dezembro), combinando: (a) Treinamentos Normativos de Formação e Reciclagem; (b) Treinamentos Operacionais de Bloqueio/LOTO e Manutenção nas Estações de Bombeamento e Adutoras; e (c) Campanhas Sazonais Oficiais do Calendário Nacional de Saúde e Segurança (Janeiro Branco, Abril Verde, Maio Amarelo, Setembro Amarelo, Outubro Rosa, Novembro Azul e Dezembro Laranja/Vermelho). A comprovação de participação dar-se-á mediante listas oficiais de frequência (FOR.001) e Provas de Eficácia arquivadas no prontuário do colaborador.
+        </p>
+
+        <h2>3. Matriz do Cronograma Anual Consolidado (Exercício ${ano})</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:75px; text-align:center;">Data Prev.</th>
+                    <th style="width:45px; text-align:center;">Cód.</th>
+                    <th>Título do Treinamento / Campanha de SST</th>
+                    <th style="width:40px; text-align:center;">C.H.</th>
+                    <th style="width:110px;">Modalidade</th>
+                    <th style="width:170px;">Local / Posto</th>
+                    <th style="width:120px;">Instrutor / Resp.</th>
+                    <th style="width:65px; text-align:center;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${linhasTabela}
+            </tbody>
+        </table>
+
+        <div class="assinaturas">
+            <div class="assinatura-box">
+                <strong>João Everton de Souza Limeira</strong><br>
+                Engenheiro de Segurança do Trabalho<br>
+                CREA: 0522078320-BA • Responsável Técnico SESMT
+            </div>
+            <div class="assinatura-box">
+                <strong>Consórcio Operador do Ramal do Agreste</strong><br>
+                Diretoria de Contrato / Gerência Operacional<br>
+                Aprovação da Gestão de Contrato
+            </div>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    abrirDocumentoBlob(html);
+}
+
+// 8. Exportação do PAT em Excel (.xlsx)
+function exportarPatExcel() {
+    const ano = patAnoAtual;
+    const catalogoPorId = new Map((allTreinamentosCatalogo || []).map(c => [c.id, c]));
+
+    const itensAno = (allTreinamentosCronograma || []).filter(c => {
+        if (!c.data_prevista) return false;
+        return parseLocalDate(c.data_prevista).getFullYear() === ano;
+    }).sort((a, b) => (a.data_prevista || '').localeCompare(b.data_prevista || ''));
+
+    if (itensAno.length === 0) {
+        alert('Nenhum item agendado no PAT para exportar.');
+        return;
+    }
+
+    const rows = [
+        ['PLANO ANUAL DE TREINAMENTO (PAT) - EXERCÍCIO ' + ano],
+        ['EMPRESA: ' + EMPRESA_INFO.razaoSocial, 'CNPJ: ' + EMPRESA_INFO.cnpj, 'OBRA: RAMAL DO AGRESTE (PISF)'],
+        ['RESPONSÁVEL TÉCNICO: Eng. João Everton de Souza Limeira (CREA 0522078320-BA)'],
+        [],
+        ['Data Prevista', 'Mês', 'Código', 'Treinamento / Campanha', 'Carga Horária (h)', 'Modalidade', 'Local de Realização', 'Responsável', 'Status']
+    ];
+
+    itensAno.forEach(c => {
+        const cat = catalogoPorId.get(c.treinamento_cod);
+        const nome = cat ? cat.nome : c.treinamento_cod;
+        const ch = (cat && cat.carga_horaria) ? parseFloat(cat.carga_horaria) : 2;
+        const d = parseLocalDate(c.data_prevista);
+        const mesNome = NOMES_MESES[d.getMonth()] || '';
+        const modalidade = ch >= 8 ? 'Teórico / Prático' : 'Diálogo / Teórico';
+
+        rows.push([
+            formatSimpleDate(c.data_prevista),
+            mesNome,
+            c.treinamento_cod,
+            nome,
+            ch,
+            modalidade,
+            c.local || 'Canteiro Central / EBs',
+            c.responsavel || 'SESMT',
+            c.status === 'lancado' ? 'Realizado' : 'Planejado'
+        ]);
+    });
+
+    const csvContent = rows.map(r => r.map(campo => `"${String(campo ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `PAT_${ano}_Plano_Anual_Treinamento_COP_RAMAL.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+

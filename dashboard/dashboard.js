@@ -19939,7 +19939,7 @@ const DB_PAGE_TITLES = {
     config: 'Configurações',
     usuariospainel: 'Usuários do Painel',
     ergonomia: 'Ergonomia (NR-17)',
-    periculosidade: 'Periculosidade (NR-16) - Laudo Pericial (LP)',
+    periculosidade: 'Periculosidade (NR-16) - Laudo Técnico (LTP)',
     planoacao: 'Plano de Ação Integrado (5W2H) — NR-01 / GRO'
 };
 
@@ -33286,7 +33286,7 @@ function abrirDocumentoHtmlParaImpressao(html, titulo) {
 }
 
 // ================================================================
-// MÓDULO DE PERICULOSIDADE (NR-16) - LAUDO PERICIAL (LP)
+// MÓDULO DE PERICULOSIDADE (NR-16) - LAUDO TÉCNICO (LTP)
 // Consórcio Operador Ramal do Agreste - Gestão Técnica Oficial
 // ================================================================
 let allPericulosidadeLaudos = [];
@@ -33319,7 +33319,7 @@ async function loadPericulosidadeData() {
             const elCod = document.getElementById('pericLaudoCodigo');
             const elVig = document.getElementById('pericLaudoVigencia');
             const elResp = document.getElementById('pericLaudoResp');
-            if (elCod) elCod.textContent = laudoAtivo.codigo || 'LP-2026/2027';
+            if (elCod) elCod.textContent = laudoAtivo.codigo || 'LTP-2026/2027';
             if (elVig) {
                 const dtIni = laudoAtivo.data_inicio ? laudoAtivo.data_inicio.split('-').reverse().join('/') : '20/07/2026';
                 const dtFim = laudoAtivo.data_fim ? laudoAtivo.data_fim.split('-').reverse().join('/') : '20/07/2027';
@@ -33467,7 +33467,7 @@ function filtrarPericulosidadeLista() {
                     <th style="padding: 9px 12px; min-width: 170px;">Anexo NR-16</th>
                     <th style="padding: 9px 12px; min-width: 190px;">Agente Periculoso & Delimitação</th>
                     <th style="padding: 9px 12px; width: 140px;">Exposição</th>
-                    <th style="padding: 9px 12px; text-align: center; width: 150px;">Conclusão Pericial</th>
+                    <th style="padding: 9px 12px; text-align: center; width: 150px;">Conclusão Técnica (NR-16)</th>
                     <th style="padding: 9px 12px; text-align: center; width: 110px;">Ações</th>
                 </tr>
             </thead>
@@ -33605,6 +33605,14 @@ function obterClassificacaoPericulosidadeColaborador(c) {
         motivo = 'Roço, poda e remoção de vegetação regenerada na Faixa de Servidão da Linha de Transmissão de Alta Tensão (LT 69 kV) e áreas periféricas da Subestação (Risco crítico de choque elétrico por aproximação ou indução magnética no SEP).';
         localTrabalho = 'Faixa de Servidão LT 69 kV / Subestação';
         salBase = f.includes('ENC') ? 3800 : 1900;
+    }
+    // 7. GRUPO 06: Manutenção Mecânica (EBs e Adutoras - Bombas, Motores de Alta Potência e Ventosas)
+    else if (g === '06' || s.includes('MECÂNICA') || s.includes('MECANICA')) {
+        isPeric = true;
+        anexo = 'Anexo 4 - Energia Elétrica';
+        motivo = 'Intervenções em conjuntos motobomba, acoplamentos com motores elétricos de alta potência e estruturas hidráulicas nas EBs e ventosas, em área de risco operacional do SEP (NR-16, Anexo 4).';
+        localTrabalho = 'Estações de Bombeamento (EBs) / Adutoras / Ventosas';
+        salBase = f.includes('ENC') ? 5000 : (f.includes('TÉC') || f.includes('TEC') ? 3700 : 2500);
     }
 
     const adicional = isPeric ? (salBase * 0.30) : 0;
@@ -33926,7 +33934,7 @@ function imprimirRelacaoNominalPericulosidadeRH() {
 
     <div class="box-info">
         <b>Empresa:</b> ${laudoAtivo.empresa} • <b>CNPJ:</b> ${laudoAtivo.cnpj}<br>
-        <b>Laudo Pericial Base:</b> ${laudoAtivo.codigo} (Vigência 20/07/2026 a 20/07/2027) • <b>Resp. Técnico:</b> ${laudoAtivo.responsavel_tecnico} (${laudoAtivo.registro_profissional})<br>
+        <b>Laudo Técnico Base:</b> ${laudoAtivo.codigo || "LTP-2026/2027"} (Vigência 20/07/2026 a 20/07/2027) • <b>Resp. Técnico:</b> ${laudoAtivo.responsavel_tecnico} (${laudoAtivo.registro_profissional})<br>
         <b>Observação Técnica:</b> Inclui o Grupo 10 (Operação de Sistemas Hídricos) e o Grupo 26 (Conservação e Limpeza de Subestação e Faixa de Servidão de Linha de Transmissão LT 69 kV) por atuação em Zonas de Risco e Controlada de Sistemas Elétricos de Potência (SEP) energizados, conforme Anexo 4 da NR-16.
     </div>
 
@@ -33977,7 +33985,7 @@ function abrirModalNovaAnalisePericulosidade() {
     analisePericEditandoId = null;
     const modal = document.getElementById('modalPericulosidadeAnalise');
     const titulo = document.getElementById('modalPericTitulo');
-    if (titulo) titulo.textContent = '⚡ Nova Análise Pericial de Função (NR-16)';
+    if (titulo) titulo.textContent = '⚡ Nova Avaliação Técnica de Função (NR-16)';
 
     document.getElementById('pericForm_id').value = '';
     document.getElementById('pericForm_setor').value = '';
@@ -34150,7 +34158,7 @@ async function salvarAnalisePericulosidade() {
 
         fecharModalAnalisePericulosidade();
         renderPericulosidadePanel();
-        mostrarFeedbackToast('Análise pericial salva com sucesso!', 'sucesso');
+        mostrarFeedbackToast('Avaliação técnica salva com sucesso!', 'sucesso');
     } catch (err) {
         console.error('Erro ao salvar análise de periculosidade:', err);
         alert('Erro ao salvar no banco de dados. Verifique a conexão.');
@@ -34162,7 +34170,7 @@ async function excluirAnalisePericulosidade(id) {
     const item = allPericulosidadeAnalises.find(x => x.id === id);
     if (!item) return;
 
-    if (!confirm(`Deseja realmente excluir a análise pericial da função "${item.cargo_funcao}" (${item.setor})?`)) {
+    if (!confirm(`Deseja realmente excluir a avaliação técnica da função "${item.cargo_funcao}" (${item.setor})?`)) {
         return;
     }
 
@@ -34170,10 +34178,10 @@ async function excluirAnalisePericulosidade(id) {
         await supabaseDelete('periculosidade_analises', `id=eq.${id}`);
         allPericulosidadeAnalises = allPericulosidadeAnalises.filter(x => x.id !== id);
         renderPericulosidadePanel();
-        mostrarFeedbackToast('Análise pericial excluída.', 'info');
+        mostrarFeedbackToast('Avaliação técnica excluída.', 'info');
     } catch (err) {
         console.error('Erro ao excluir análise:', err);
-        alert('Erro ao excluir análise pericial.');
+        alert('Erro ao excluir avaliação técnica.');
     }
 }
 
@@ -34185,7 +34193,7 @@ function verFundamentacaoPericulosidade(id) {
     const titulo = document.getElementById('modalFundTitulo');
     const conteudo = document.getElementById('modalFundConteudo');
 
-    if (titulo) titulo.innerHTML = `<span>⚡</span> Parecer Técnico Pericial: <b>${item.cargo_funcao}</b>`;
+    if (titulo) titulo.innerHTML = `<span>⚡</span> Parecer Técnico de Caracterização: <b>${item.cargo_funcao}</b>`;
 
     const isPeric = (item.caracterizacao === true || item.caracterizacao === 'true');
     const statusBox = isPeric
@@ -34362,7 +34370,7 @@ function emitirLaudoOficialPericulosidade() {
                 <img src="${LOGO_COP_BASE64}" alt="Consórcio Operador Ramal do Agreste" style="max-height: 55px; max-width: 160px; object-fit: contain;">
             </td>
             <td style="vertical-align: middle; padding-left: 14px;">
-                <div class="title">Laudo Técnico Pericial de Periculosidade (LP)</div>
+                <div class="title">Laudo Técnico de Periculosidade (LTP - NR-16)</div>
                 <div class="subtitle">Norma Regulamentadora nº 16 (NR-16) • Artigos 193 e 195 da Consolidação das Leis do Trabalho (CLT)</div>
             </td>
             <td style="text-align: right; vertical-align: middle;">
@@ -34392,15 +34400,15 @@ function emitirLaudoOficialPericulosidade() {
 
     <h2>1. Responsabilidade Técnica e Habilitação Legal</h2>
     <p>
-        O presente Laudo Técnico Pericial de Periculosidade foi elaborado pelo Engenheiro de Segurança do Trabalho
+        O presente Laudo Técnico de Periculosidade foi elaborado pelo Engenheiro de Segurança do Trabalho
         <b>${laudoAtivo.responsavel_tecnico}</b>, registrado no Conselho Regional de Engenharia e Agronomia sob o número
         <b>${laudoAtivo.registro_profissional}</b>, em estrito cumprimento ao disposto no <b>Artigo 195 da Consolidação das Leis do Trabalho (CLT)</b>
         e no item 16.3 da Norma Regulamentadora nº 16 do Ministério do Trabalho e Emprego (MTE).
     </p>
 
-    <h2>2. Objetivo Pericial e Escopo de Avaliação</h2>
+    <h2>2. Objetivo e Escopo da Avaliação Técnica</h2>
     <p>
-        Este trabalho pericial tem como objetivo precípuo a identificação, o reconhecimento e a análise das atividades e operações desenvolvidas
+        Este laudo técnico tem como objetivo precípuo a identificação, o reconhecimento e a análise das atividades e operações desenvolvidas
         no canteiro de obras e instalações operacionais do Consórcio Operador Ramal do Agreste, com vistas à <b>caracterização ou descaracterização
         do adicional de periculosidade de 30% (trinta por cento)</b> incidente sobre o salário-base dos colaboradores, conforme preconizado no
         artigo 193 da CLT e nos Anexos aplicáveis da NR-16.
@@ -34439,7 +34447,7 @@ function emitirLaudoOficialPericulosidade() {
         </div>
     </div>
 
-    <h2>5. Matriz Pericial Consolidada por Função e Posto de Trabalho</h2>
+    <h2>5. Matriz de Caracterização Consolidada por Função e Posto de Trabalho</h2>
     <table class="tabela-dados">
         <thead>
             <tr>
@@ -34467,7 +34475,7 @@ function emitirLaudoOficialPericulosidade() {
         <li><b>Gestão da Folha de Pagamento:</b> Efetuar o pagamento do adicional de periculosidade de 30% estritamente sobre o salário-base aos profissionais caracterizados nos Grupos de Operação Hídrica (G10/G25), Manutenção Elétrica, Conservação de Faixa de Servidão (G26) e Abastecimento, sem inclusão de gratificações conforme art. 193, §1º da CLT.</li>
     </ol>
 
-    <h2>7. Termo de Encerramento e Validação Pericial</h2>
+    <h2>7. Termo de Encerramento e Responsabilidade Técnica</h2>
     <p>
         O presente Laudo Técnico de Periculosidade é composto por dados fidedignos e inspeções presenciais realizadas nas frentes
         de trabalho do Consórcio Operador Ramal do Agreste. As conclusões periciais ora firmadas refletem fielmente as condições laborais

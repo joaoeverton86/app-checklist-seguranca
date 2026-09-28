@@ -8220,62 +8220,100 @@ async function gerarGabaritoProva() {
 // Normaliza texto de cargo/função pra comparação tolerante: remove acentos, pontuação
 // (inclui "." de abreviações como "AUX.") e hífen/underline, colapsa espaços. Usada tanto
 // pra achar o cargo do catálogo na Ordem de Serviço quanto pra avisar quando não achar.
-function normalizarTextoCargo(s) {
+function normalizarTextoCargoBasico(s) {
     return String(s || '')
-        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
         .replace(/[.\-_/,;:()]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 }
 
-// Acha o cargo do catálogo do GHE que corresponde à função cadastrada do colaborador.
-// 1) Igualdade exata após normalizar (mesmo comportamento de antes, só que tolerante a
-// acento/pontuação/hífen). 2) Se não achar, tenta "contém" nos dois sentidos - cobre
-// abreviação ("AUX." vs "Auxiliar") e sufixo de turno ("VIGIA - DIURNO" vs "Vigia"). Se
-// mais de um cargo do grupo bater no "contém", NÃO escolhe nenhum - devolve ambiguo:true
-// pra quem chama tratar como "sem correspondência" em vez de arriscar mostrar o
-// EPI/atividade de um cargo errado num documento de segurança (ver textoAvisoCargoOs).
-function resolverCargoInfoDoColaborador(ghe, funcaoColaborador) {
-    if (!ghe || !Array.isArray(ghe.cargos) || ghe.cargos.length === 0) return { cargoInfo: null, ambiguo: false };
-    const funcaoNorm = normalizarTextoCargo(funcaoColaborador);
-    if (!funcaoNorm) return { cargoInfo: null, ambiguo: false };
+const MAPA_ABREVIACOES_CARGO_SST = {
+    'aux': 'auxiliar',
+    'enc': 'encarregado',
+    'tec': 'tecnico',
+    'op': 'operador',
+    'mot': 'motorista',
+    'adm': 'administrativo',
+    'eng': 'engenheiro',
+    'seg': 'seguranca',
+    'trab': 'trabalho',
+    'eletromec': 'eletromecanico',
+    'mecan': 'mecanica',
+    'eletr': 'eletrica',
+    'manut': 'manutencao'
+};
 
-    const exato = ghe.cargos.find(c => normalizarTextoCargo(c.funcao) === funcaoNorm);
-    if (exato) return { cargoInfo: exato, ambiguo: false };
+const STOP_WORDS_CARGO_SST = new Set(['de', 'da', 'do', 'dos', 'das', 'em', 'e', 'para', 'com']);
 
-    const candidatos = ghe.cargos.filter(c => {
-        const cargoNorm = normalizarTextoCargo(c.funcao);
-        return cargoNorm && (funcaoNorm.includes(cargoNorm) || cargoNorm.includes(funcaoNorm));
+function normalizarTextoCargo(s) {
+    if (!s) return '';
+    let t = normalizarTextoCargoBasico(s);
+    let palavras = t.split(' ').map(p => MAPA_ABREVIACOES_CARGO_SST[p] || p);
+    palavras = palavras.filter(p => !STOP_WORDS_CARGO_SST.has(p)).map(p => {
+        if (p.length > 4 && p.endsWith('s') && !p.endsWith('ss')) {
+            return p.slice(0, -1);
+        }
+        return p;
     });
-    if (candidatos.length === 1) return { cargoInfo: candidatos[0], ambiguo: false };
-    if (candidatos.length > 1) return { cargoInfo: null, ambiguo: true };
-    return { cargoInfo: null, ambiguo: false };
+    return palavras.join(' ');
 }
 
-// Mesma resolução acima, mas já resolve o GHE do colaborador junto - usada tanto pela
-// Ordem de Serviço quanto pelo indicador ⚠️ no botão "🖨️ OS" da lista, pra avisar ANTES
-// de gerar o documento em branco silenciosamente.
+// Acha o cargo do catálogo do GHE que corresponde à função cadastrada do colaborador.
+// 1) Igualdade exata após normalizar. 2) Igualdade após expansão de abreviações e stop-words.
+// 3) Contêm e interseção de palavras-chave.
+function resolverCargoInfoDoColaborador(ghe, funcaoColaborador) {
+    if (!ghe || !Array.isArray(ghe.cargos) || ghe.cargos.length === 0) {
+        return { cargoInfo: null, ambiguo: false, motivo: 'ghe_sem_cargos' };
+    }
+    const fBasica = normalizarTextoCargoBasico(funcaoColaborador);
+    if (!fBasica) return { cargoInfo: null, ambiguo: false, motivo: 'funcao_vazia' };
+
+    // 1. Igualdade exata básica
+    const exatoBasico = ghe.cargos.find(c => normalizarTextoCargoBasico(c.funcao) === fBasica);
+    if (exatoBasico) return { cargoInfo: exatoBasico, ambiguo: false, metodo: 'exato_basico' };
+
+    // 2. Igualdade exata avançada (expansão de abreviações e sem conectivos)
+    const fAvancada = normalizarTextoCargo(funcaoColaborador);
+    const exatoAvancado = ghe.cargos.find(c => normalizarTextoCargo(c.funcao) === fAvancada);
+    if (exatoAvancado) return { cargoInfo: exatoAvancado, ambiguo: false, metodo: 'exato_avancado' };
+
+    // 3. Candidatos por contêm ou interseção de palavras principais
+    const palavrasF = fAvancada.split(' ').filter(Boolean);
+    const candidatos = ghe.cargos.filter(c => {
+        const cBasico = normalizarTextoCargoBasico(c.funcao);
+        const cAvancado = normalizarTextoCargo(c.funcao);
+        if (!cAvancado) return false;
+        if (fAvancada.includes(cAvancado) || cAvancado.includes(fAvancada)) return true;
+        if (fBasica.includes(cBasico) || cBasico.includes(fBasica)) return true;
+
+        const cPalavras = new Set(cAvancado.split(' '));
+        return palavrasF.length > 0 && palavrasF.every(p => cPalavras.has(p));
+    });
+
+    if (candidatos.length === 1) return { cargoInfo: candidatos[0], ambiguo: false, metodo: 'candidato_unico' };
+    if (candidatos.length > 1) return { cargoInfo: null, ambiguo: true, candidatos, motivo: 'ambiguo' };
+    return { cargoInfo: null, ambiguo: false, motivo: 'nao_encontrado' };
+}
+
 function avaliarCorrespondenciaCargoOs(matricula, funcaoFallback) {
-    const colab = allEfetivo.find(e => e.id === matricula);
-    const ghe = colab?.ghe ? allGheCatalogo.find(g => g.id === normalizarGhe(colab.ghe)) : null;
+    const colab = (allEfetivo || []).find(e => e.id === matricula);
+    const ghe = colab?.ghe ? (allGheCatalogo || []).find(g => normalizarGhe(g.id) === normalizarGhe(colab.ghe)) : null;
     const funcao = colab?.funcao || funcaoFallback || '';
-    const { cargoInfo, ambiguo } = resolverCargoInfoDoColaborador(ghe, funcao);
-    return { colab, ghe, funcao, cargoInfo, ambiguo, semCorrespondencia: !ghe || !cargoInfo };
+    const { cargoInfo, ambiguo, motivo, candidatos } = resolverCargoInfoDoColaborador(ghe, funcao);
+    return { colab, ghe, funcao, cargoInfo, ambiguo, motivo, candidatos, semCorrespondencia: !ghe || !cargoInfo };
 }
 
-// Texto de aviso impresso no topo da própria Ordem de Serviço quando não foi possível
-// resolver o cargo do catálogo pra função cadastrada - fica visível no documento em vez
-// de só sair em branco, pra o usuário perceber e corrigir o cadastro antes de entregar
-// pro colaborador.
-function textoAvisoCargoOs({ ghe, funcao, ambiguo }) {
+function textoAvisoCargoOs({ ghe, funcao, ambiguo, candidatos }) {
     if (!ghe) {
-        return `⚠️ Não foi possível identificar o GHE deste colaborador (campo "GHE" vazio ou não encontrado no catálogo) - Setor, Cargo e as demais seções desta Ordem de Serviço não puderam ser preenchidas automaticamente.`;
+        return `⚠️ Não foi possível identificar o GHE deste colaborador (campo "GHE" vazio ou não cadastrado).`;
     }
     if (ambiguo) {
-        return `⚠️ A função cadastrada ("${funcao}") corresponde a mais de um cargo do catálogo do GHE ${ghe.id} - por segurança, nenhum foi escolhido automaticamente. Revise em Gerenciar GHE > GRUPO ${ghe.id} e ajuste a função no cadastro do colaborador (ou os cargos do catálogo) pra eliminar a ambiguidade.`;
+        const nomesCandidatos = Array.isArray(candidatos) ? candidatos.map(c => typeof c === 'string' ? c : c.funcao).join(', ') : '';
+        return `⚠️ A função cadastrada ("${funcao}") coincide com mais de um cargo do GHE ${ghe.id} (${nomesCandidatos}). Use o "Diagnóstico de Cargos" para selecionar o cargo exato.`;
     }
-    return `⚠️ Não foi encontrada correspondência entre a função cadastrada ("${funcao}") e os cargos do catálogo do GHE ${ghe.id}. Revise em Gerenciar GHE > GRUPO ${ghe.id} e associe o cargo correto.`;
+    return `⚠️ Não foi encontrada correspondência entre a função cadastrada ("${funcao}") e os cargos do GHE ${ghe.id}. Use o "Diagnóstico de Cargos" para associar ou corrigir.`;
 }
 
 // Ordem de Serviço de Segurança e Saúde no Trabalho (NR-01, item 1.4.1.1 "e") -
@@ -11644,7 +11682,7 @@ let allOrdensServicoEntregas = [];
 
 function filtrarStatusControleOs(status) {
     filtroOsStatusAtual = status;
-    ['todos', 'pendentes', 'assinadas'].forEach(s => {
+    ['todos', 'pendentes', 'assinadas', 'inconsistentes'].forEach(s => {
         const btn = document.getElementById('btnFiltroOs-' + s);
         if (btn) btn.classList.toggle('active', s === status);
     });
@@ -11653,7 +11691,7 @@ function filtrarStatusControleOs(status) {
 
 function limparFiltrosControleOs() {
     filtroOsStatusAtual = 'todos';
-    ['todos', 'pendentes', 'assinadas'].forEach(s => {
+    ['todos', 'pendentes', 'assinadas', 'inconsistentes'].forEach(s => {
         const btn = document.getElementById('btnFiltroOs-' + s);
         if (btn) btn.classList.toggle('active', s === 'todos');
     });
@@ -11731,6 +11769,12 @@ async function renderControleOrdensServico() {
     const cAssin = document.getElementById('countOsAssinadas');
     if (cAssin) cAssin.textContent = totalAssinadas;
 
+    const totalInconsistencias = ativos.filter(e => avaliarCorrespondenciaCargoOs(e.id, e.funcao).semCorrespondencia).length;
+    const badgeIncons = document.getElementById('badgeInconsistenciasOs');
+    if (badgeIncons) badgeIncons.textContent = totalInconsistencias;
+    const cIncons = document.getElementById('countOsInconsistentes');
+    if (cIncons) cIncons.textContent = totalInconsistencias;
+
     popularSelectSetorGheOs();
     renderTabelaControleOs();
 }
@@ -11747,6 +11791,8 @@ function renderTabelaControleOs() {
         lista = lista.filter(e => e.os_status !== 'entregue');
     } else if (filtroOsStatusAtual === 'assinadas') {
         lista = lista.filter(e => e.os_status === 'entregue');
+    } else if (filtroOsStatusAtual === 'inconsistentes') {
+        lista = lista.filter(e => avaliarCorrespondenciaCargoOs(e.id, e.funcao).semCorrespondencia);
     }
 
     // Filtro por Setor / GHE
@@ -11818,7 +11864,16 @@ function renderTabelaControleOs() {
                     <div style="font-weight: 700; color: var(--text); cursor:pointer;" onclick="mostrarDetalheColaborador('${escapeHTML(e.id)}')" title="Clique para ver ficha completa">${escapeHTML(e.nome || '')}</div>
                     ${e.cpf ? `<div style="font-size: 11px; color: var(--text-light);">CPF: ${escapeHTML(e.cpf)}</div>` : ''}
                 </td>
-                <td style="padding: 10px 14px; font-weight: 500;">${escapeHTML(e.funcao || '—')}</td>
+                <td style="padding: 10px 14px; font-weight: 500;">
+                    <div>${escapeHTML(e.funcao || '—')}</div>
+                    ${(() => {
+                        const aval = avaliarCorrespondenciaCargoOs(e.id, e.funcao);
+                        if (aval.semCorrespondencia) {
+                            return `<div style="margin-top:3px;"><span style="color:#b45309; background:#fef3c7; border:1px solid #fde68a; border-radius:4px; padding:2px 6px; font-size:10px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:3px;" onclick="abrirModalAuditoriaCorrespondenciaOs('${escapeHTML(e.id)}')" title="${escapeHTML(textoAvisoCargoOs({ ghe: aval.ghe, funcao: aval.funcao, ambiguo: aval.ambiguo, candidatos: aval.candidatos }))}">⚠️ Sem Correspondência</span></div>`;
+                        }
+                        return '';
+                    })()}
+                </td>
                 <td style="padding: 10px 14px;">${setorGheTxt}</td>
                 <td style="padding: 10px 14px; color: var(--text-light);">${e.dt_admissao ? formatSimpleDate(e.dt_admissao) : '—'}</td>
                 <td style="padding: 10px 14px; text-align: center;">${badgeStatus}</td>
@@ -12105,6 +12160,509 @@ async function salvarRegistroAssinaturaOs() {
         }
     }
 }
+
+// Analisador especialista de inconsistências de OS
+function diagnosticarInconsistenciasOs() {
+    const inconsistencias = [];
+    const todosCargosCatalogados = [];
+    (allGheCatalogo || []).forEach(g => {
+        if (Array.isArray(g.cargos)) {
+            g.cargos.forEach(c => todosCargosCatalogados.push({ gheId: g.id, gheNome: g.nome, cargo: c.funcao, cargoObj: c }));
+        }
+    });
+
+    const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
+
+    ativos.forEach(colab => {
+        const aval = avaliarCorrespondenciaCargoOs(colab.id, colab.funcao);
+        if (aval.semCorrespondencia) {
+            let sugestao = null;
+            const fNorm = normalizarTextoCargo(colab.funcao);
+
+            if (fNorm.includes('topografia') || fNorm.includes('leiturista')) {
+                const g21 = (allGheCatalogo || []).find(g => normalizarGhe(g.id) === '21');
+                if (g21) {
+                    const c = g21.cargos.find(x => normalizarTextoCargo(x.funcao).includes(fNorm) || fNorm.includes(normalizarTextoCargo(x.funcao)));
+                    sugestao = {
+                        tipo: 'mudar_ghe',
+                        altaConfianca: true,
+                        gheId: '21',
+                        gheNome: g21.nome,
+                        cargoNome: c ? c.funcao : colab.funcao,
+                        explicacao: 'Função de campo pertencente ao GHE 21 (TOPOGRAFIA).'
+                    };
+                }
+            } else if (fNorm.includes('operador') && fNorm.includes('maquina')) {
+                const g11 = (allGheCatalogo || []).find(g => normalizarGhe(g.id) === '11');
+                if (g11) {
+                    sugestao = {
+                        tipo: 'mudar_ghe',
+                        altaConfianca: true,
+                        gheId: '11',
+                        gheNome: g11.nome,
+                        cargoNome: 'Operador de Máquinas',
+                        explicacao: 'Operação de máquinas pesadas pertencente ao GHE 11 (OPERADOR DE MÁQUINAS).'
+                    };
+                }
+            } else if (fNorm.includes('carreta')) {
+                const g12 = (allGheCatalogo || []).find(g => normalizarGhe(g.id) === '12');
+                if (g12) {
+                    sugestao = {
+                        tipo: 'mudar_ghe',
+                        altaConfianca: true,
+                        gheId: '12',
+                        gheNome: g12.nome,
+                        cargoNome: 'Carreteiro (motorista de caminhão-carreta)',
+                        explicacao: 'Condução de caminhão-carreta pertencente ao GHE 12 (MOTORISTA PESADO).'
+                    };
+                }
+            } else if (fNorm.includes('combio') || fNorm.includes('comboio')) {
+                const g15 = (allGheCatalogo || []).find(g => normalizarGhe(g.id) === '15');
+                if (g15) {
+                    sugestao = {
+                        tipo: 'mudar_ghe',
+                        altaConfianca: true,
+                        gheId: '15',
+                        gheNome: g15.nome,
+                        cargoNome: 'Motorista de caminhão',
+                        explicacao: 'Motorista de caminhão comboio pertencente ao GHE 15 (COMBOIO).'
+                    };
+                }
+            } else if (aval.ambiguo && aval.candidatos && aval.candidatos.length > 0) {
+                sugestao = {
+                    tipo: 'escolher_ambiguo',
+                    altaConfianca: false,
+                    candidatos: aval.candidatos.map(c => typeof c === 'string' ? c : c.funcao),
+                    explicacao: 'A função genérica coincide com múltiplos cargos no grupo.'
+                };
+            } else if (fNorm.includes('servente') && aval.ghe && normalizarGhe(aval.ghe.id) === '05') {
+                sugestao = {
+                    tipo: 'mudar_ghe',
+                    altaConfianca: true,
+                    gheId: '07',
+                    gheNome: 'GRUPO 07 - MANUTENÇÃO CIVIL',
+                    cargoNome: 'Servente',
+                    explicacao: 'O GHE 05 é exclusivo de elétrica. O cargo Servente está no GHE 07 (Civil).'
+                };
+            } else {
+                const match = todosCargosCatalogados.find(tc => normalizarTextoCargo(tc.cargo) === fNorm || normalizarTextoCargo(tc.cargo).includes(fNorm));
+                if (match) {
+                    sugestao = {
+                        tipo: 'mudar_ghe',
+                        altaConfianca: true,
+                        gheId: match.gheId,
+                        gheNome: match.gheNome,
+                        cargoNome: match.cargo,
+                        explicacao: `Cargo idêntico localizado no GHE ${match.gheId}.`
+                    };
+                }
+            }
+
+            inconsistencias.push({
+                colaborador: colab,
+                gheAtual: aval.ghe,
+                motivo: aval.motivo,
+                ambiguo: aval.ambiguo,
+                candidatos: aval.candidatos || [],
+                sugestao
+            });
+        }
+    });
+
+    return inconsistencias;
+}
+
+// Abre o Modal de Auditoria e Correção de Correspondências
+function abrirModalAuditoriaCorrespondenciaOs(matriculaFoco) {
+    const modal = document.getElementById('modalAuditoriaCorrespondenciaOs');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    renderTabelaAuditoriaOs(matriculaFoco);
+}
+
+function fecharModalAuditoriaCorrespondenciaOs() {
+    const modal = document.getElementById('modalAuditoriaCorrespondenciaOs');
+    if (modal) modal.style.display = 'none';
+}
+
+function renderTabelaAuditoriaOs(matriculaFoco) {
+    const container = document.getElementById('conteudoAuditoriaCorrespondenciaOs');
+    if (!container) return;
+
+    const inconsistencias = diagnosticarInconsistenciasOs();
+    const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
+    const totalCompativel = ativos.length - inconsistencias.length;
+    const pctCompativel = ativos.length > 0 ? ((totalCompativel / ativos.length) * 100).toFixed(1) : 0;
+
+    const altaConfiancaCount = inconsistencias.filter(i => i.sugestao && i.sugestao.altaConfianca).length;
+
+    let html = `
+        <div style="background: linear-gradient(135deg, rgba(37,99,235,0.05), rgba(245,158,11,0.08)); border: 1px solid rgba(245,158,11,0.25); border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <div style="font-weight: 700; font-size: 14px; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                    <span>📊</span> Status de Correspondência: <strong>${totalCompativel} de ${ativos.length} compatíveis (${pctCompativel}%)</strong>
+                </div>
+                <div style="font-size: 12px; color: var(--text-light); margin-top: 4px;">
+                    ${inconsistencias.length > 0 
+                        ? `Restam <strong>${inconsistencias.length} inconsistências</strong> que impedem a emissão automática completa da OS.` 
+                        : '🎉 Parabéns! 100% dos colaboradores ativos possuem correspondência com os cargos do catálogo.'}
+                </div>
+            </div>
+            ${altaConfiancaCount > 0 ? `
+            <button class="db-apply-btn" onclick="aplicarTodasSugestoesAltaConfiancaOs()" style="background:#059669; color:#fff; font-weight:700; font-size:12px; padding:8px 14px; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(5,150,105,0.25);">
+                ⚡ Aplicar Todas as Sugestões Automáticas (${altaConfiancaCount})
+            </button>` : ''}
+        </div>
+    `;
+
+    if (inconsistencias.length === 0) {
+        html += `
+            <div style="padding: 40px 20px; text-align: center; color: var(--text-light); background: var(--bg); border-radius: 10px; border: 1px dashed var(--border);">
+                <div style="font-size: 36px; margin-bottom: 10px;">✅</div>
+                <div style="font-size: 15px; font-weight: 700; color: #059669;">Nenhuma inconsistência pendente!</div>
+                <div style="font-size: 12px; margin-top: 6px;">Todas as funções cadastradas correspondem perfeitamente aos cargos e riscos dos GHEs. As Ordens de Serviço serão emitidas com 100% dos dados.</div>
+            </div>
+        `;
+        container.innerHTML = html;
+        return;
+    }
+
+    html += `
+        <div style="overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--card);">
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                <thead>
+                    <tr style="background: var(--bg); border-bottom: 2px solid var(--border); color: var(--text-light);">
+                        <th style="padding: 10px 12px; font-weight: 700; width: 180px;">Colaborador</th>
+                        <th style="padding: 10px 12px; font-weight: 700; width: 140px;">Função Cadastrada</th>
+                        <th style="padding: 10px 12px; font-weight: 700; width: 130px;">GHE Atual</th>
+                        <th style="padding: 10px 12px; font-weight: 700;">Diagnóstico & Sugestão SST</th>
+                        <th style="padding: 10px 12px; font-weight: 700; width: 230px; text-align: center;">Ação de Correção</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    inconsistencias.forEach(item => {
+        const c = item.colaborador;
+        const ghe = item.gheAtual;
+        const sug = item.sugestao;
+        const ehFoco = matriculaFoco && String(c.id) === String(matriculaFoco);
+
+        let acaoHtml = '';
+
+        if (sug && sug.tipo === 'mudar_ghe') {
+            acaoHtml = `
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <button class="db-apply-btn" onclick="aplicarSugestaoGheIndividual('${escapeHTML(c.id)}', '${escapeHTML(sug.gheId)}', '${escapeHTML(sug.cargoNome)}')" style="background:#2563eb; color:#fff; font-size:11px; font-weight:700; padding:6px 10px; border-radius:6px; width:100%; text-align:center;">
+                        ⚡ Mudar p/ GHE ${escapeHTML(sug.gheId)}
+                    </button>
+                    <button class="db-clear-btn" onclick="abrirAjusteManualLinha('${escapeHTML(c.id)}')" style="font-size:10px; padding:3px 6px; color:var(--text-light);">
+                        ✏️ Escolher outro GHE...
+                    </button>
+                </div>
+            `;
+        } else if (sug && sug.tipo === 'escolher_ambiguo') {
+            acaoHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <div style="font-size:10px; font-weight:700; color:var(--text-light);">Selecione o cargo correto:</div>
+                    ${sug.candidatos.map(cand => `
+                        <button class="db-clear-btn" onclick="aplicarSugestaoAmbiguaIndividual('${escapeHTML(c.id)}', '${escapeHTML(cand)}')" style="font-size:10.5px; padding:4px 8px; text-align:left; border-color:#93c5fd; color:#1d4ed8; background:#eff6ff; font-weight:600;">
+                            🎯 ${escapeHTML(cand)}
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+        } else {
+            acaoHtml = `
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                    <button class="db-clear-btn" onclick="abrirAjusteManualLinha('${escapeHTML(c.id)}')" style="font-size:11px; padding:5px 8px; border-color:var(--primary); color:var(--primary); font-weight:600;">
+                        ✏️ Associar Manualmente
+                    </button>
+                    ${ghe ? `
+                    <button class="db-clear-btn" onclick="adicionarCargoAoGheCatalogo('${escapeHTML(ghe.id)}', '${escapeHTML(c.funcao)}')" style="font-size:10px; padding:3px 6px; border-color:#a7f3d0; color:#047857; background:#ecfdf5;">
+                        ➕ Adicionar ao GHE ${escapeHTML(ghe.id)}
+                    </button>` : ''}
+                </div>
+            `;
+        }
+
+        // Dropdown inline de ajuste manual (inicialmente oculto)
+        const gheOptions = (allGheCatalogo || []).map(g => {
+            const sel = (ghe && g.id === ghe.id) ? ' selected' : '';
+            return `<option value="${escapeHTML(g.id)}"${sel}>GHE ${escapeHTML(g.id)} - ${escapeHTML(g.nome)}</option>`;
+        }).join('');
+
+        const manualInlineHtml = `
+            <div id="painelManual_${escapeHTML(c.id)}" style="display:none; margin-top:8px; padding:8px; background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:11px;">
+                <label style="font-weight:700; display:block; margin-bottom:2px;">Novo GHE:</label>
+                <select id="selManualGhe_${escapeHTML(c.id)}" onchange="atualizarCargosManualGhe('${escapeHTML(c.id)}')" style="width:100%; padding:4px 6px; font-size:11px; border:1px solid var(--border); border-radius:4px; margin-bottom:6px;">
+                    ${gheOptions}
+                </select>
+                <label style="font-weight:700; display:block; margin-bottom:2px;">Função / Cargo do Grupo:</label>
+                <select id="selManualCargo_${escapeHTML(c.id)}" style="width:100%; padding:4px 6px; font-size:11px; border:1px solid var(--border); border-radius:4px; margin-bottom:6px;">
+                    <!-- Preenchido via JS -->
+                </select>
+                <div style="display:flex; justify-content:flex-end; gap:4px;">
+                    <button class="db-clear-btn" onclick="fecharAjusteManualLinha('${escapeHTML(c.id)}')" style="padding:2px 6px; font-size:10px;">Cancelar</button>
+                    <button class="db-apply-btn" onclick="salvarAjusteManualCorrespondencia('${escapeHTML(c.id)}')" style="padding:2px 8px; font-size:10px; background:#2563eb; color:#fff;">💾 Salvar</button>
+                </div>
+            </div>
+        `;
+
+        html += `
+            <tr id="linhaAuditoria_${escapeHTML(c.id)}" style="border-bottom: 1px solid var(--border); ${ehFoco ? 'background:#fefce8;' : ''}">
+                <td style="padding: 10px 12px;">
+                    <div style="font-weight: 700; color: var(--text);">${escapeHTML(c.nome)}</div>
+                    <div style="font-size: 11px; color: var(--text-light);">Matrícula: <strong>${escapeHTML(c.id)}</strong></div>
+                </td>
+                <td style="padding: 10px 12px;">
+                    <span style="display:inline-block; padding:2px 6px; border-radius:4px; background:#f1f5f9; font-weight:700; color:#334155; border:1px solid #cbd5e1;">
+                        ${escapeHTML(c.funcao || '—')}
+                    </span>
+                </td>
+                <td style="padding: 10px 12px;">
+                    <span style="font-weight:600; color:${ghe ? 'var(--text)' : 'var(--danger)'};">
+                        ${ghe ? `GHE ${escapeHTML(ghe.id)}` : '❌ Sem GHE'}
+                    </span>
+                    ${ghe ? `<div style="font-size:10.5px; color:var(--text-light); line-height:1.2;">${escapeHTML(ghe.nome)}</div>` : ''}
+                </td>
+                <td style="padding: 10px 12px;">
+                    ${sug ? `
+                        <div style="display:flex; align-items:flex-start; gap:6px;">
+                            <span style="font-size:14px;">💡</span>
+                            <div>
+                                <div style="font-weight:700; color:#1e293b;">${escapeHTML(sug.explicacao)}</div>
+                                ${sug.cargoNome ? `<div style="font-size:11px; color:#2563eb; font-weight:600; margin-top:2px;">Cargo sugerido: "${escapeHTML(sug.cargoNome)}" (GHE ${escapeHTML(sug.gheId)})</div>` : ''}
+                            </div>
+                        </div>
+                    ` : `
+                        <div style="color:var(--text-light); font-size:11.5px;">Função não encontrada no GHE atual nem em outros grupos. É necessário vincular a um GHE correspondente ou adicionar o cargo.</div>
+                    `}
+                </td>
+                <td style="padding: 10px 12px; text-align: center;">
+                    ${acaoHtml}
+                    ${manualInlineHtml}
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    container.innerHTML = html;
+
+    if (matriculaFoco) {
+        setTimeout(() => {
+            const linha = document.getElementById('linhaAuditoria_' + matriculaFoco);
+            if (linha) {
+                linha.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }, 100);
+    }
+}
+
+function abrirAjusteManualLinha(matricula) {
+    const painel = document.getElementById('painelManual_' + matricula);
+    if (!painel) return;
+    painel.style.display = 'block';
+    atualizarCargosManualGhe(matricula);
+}
+
+function fecharAjusteManualLinha(matricula) {
+    const painel = document.getElementById('painelManual_' + matricula);
+    if (painel) painel.style.display = 'none';
+}
+
+function atualizarCargosManualGhe(matricula) {
+    const selGhe = document.getElementById('selManualGhe_' + matricula);
+    const selCargo = document.getElementById('selManualCargo_' + matricula);
+    if (!selGhe || !selCargo) return;
+
+    const gheId = selGhe.value;
+    const ghe = (allGheCatalogo || []).find(g => normalizarGhe(g.id) === normalizarGhe(gheId));
+    if (!ghe || !Array.isArray(ghe.cargos) || ghe.cargos.length === 0) {
+        selCargo.innerHTML = '<option value="">(Sem cargos cadastrados neste GHE)</option>';
+        return;
+    }
+
+    selCargo.innerHTML = ghe.cargos.map(c => `<option value="${escapeHTML(c.funcao)}">${escapeHTML(c.funcao)}</option>`).join('');
+}
+
+// Aplica alteração individual no Supabase e memória
+async function aplicarSugestaoGheIndividual(matricula, novoGhe, novoCargo) {
+    const colab = (allEfetivo || []).find(e => e.id === matricula);
+    if (!colab) return;
+
+    try {
+        const updateData = {
+            id: matricula,
+            ghe: novoGhe
+        };
+        if (novoCargo) {
+            updateData.funcao = novoCargo;
+        }
+
+        await supabaseUpsert('colaboradores_efetivo', [updateData]);
+
+        // Atualiza memória
+        const idx = allEfetivo.findIndex(e => e.id === matricula);
+        if (idx >= 0) {
+            allEfetivo[idx] = { ...allEfetivo[idx], ...updateData };
+        }
+
+        if (typeof showToast === 'function') {
+            showToast(`✅ Colaborador ${colab.nome} atualizado para o GHE ${novoGhe}!`, 'success');
+        } else {
+            alert(`✅ Colaborador ${colab.nome} atualizado para o GHE ${novoGhe}!`);
+        }
+
+        renderTabelaAuditoriaOs();
+        await renderControleOrdensServico();
+    } catch (err) {
+        console.error('Erro ao atualizar GHE do colaborador:', err);
+        alert('❌ Erro ao atualizar: ' + err.message);
+    }
+}
+
+async function aplicarSugestaoAmbiguaIndividual(matricula, cargoEscolhido) {
+    const colab = (allEfetivo || []).find(e => e.id === matricula);
+    if (!colab) return;
+
+    try {
+        const updateData = {
+            id: matricula,
+            funcao: cargoEscolhido
+        };
+
+        await supabaseUpsert('colaboradores_efetivo', [updateData]);
+
+        const idx = allEfetivo.findIndex(e => e.id === matricula);
+        if (idx >= 0) {
+            allEfetivo[idx] = { ...allEfetivo[idx], ...updateData };
+        }
+
+        if (typeof showToast === 'function') {
+            showToast(`✅ Função ajustada para "${cargoEscolhido}" com sucesso!`, 'success');
+        } else {
+            alert(`✅ Função ajustada para "${cargoEscolhido}" com sucesso!`);
+        }
+
+        renderTabelaAuditoriaOs();
+        await renderControleOrdensServico();
+    } catch (err) {
+        console.error('Erro ao ajustar função ambígua:', err);
+        alert('❌ Erro ao atualizar: ' + err.message);
+    }
+}
+
+async function salvarAjusteManualCorrespondencia(matricula) {
+    const selGhe = document.getElementById('selManualGhe_' + matricula);
+    const selCargo = document.getElementById('selManualCargo_' + matricula);
+    if (!selGhe || !selCargo) return;
+
+    const novoGhe = selGhe.value;
+    const novoCargo = selCargo.value;
+    if (!novoGhe) {
+        alert('Selecione um GHE.');
+        return;
+    }
+
+    await aplicarSugestaoGheIndividual(matricula, novoGhe, novoCargo);
+}
+
+// Aplica em lote todas as sugestões de alta confiança
+async function aplicarTodasSugestoesAltaConfiancaOs() {
+    const inconsistencias = diagnosticarInconsistenciasOs();
+    const altaConfianca = inconsistencias.filter(i => i.sugestao && i.sugestao.altaConfianca);
+
+    if (altaConfianca.length === 0) {
+        alert('Não há sugestões automáticas de alta confiança pendentes.');
+        return;
+    }
+
+    const conf = confirm(`Deseja aplicar a correção automática de GHE para ${altaConfianca.length} colaboradores?\n\nIsso atualizará os cadastros no banco de dados e resolverá as pendências de correspondência.`);
+    if (!conf) return;
+
+    const updates = altaConfianca.map(item => ({
+        id: item.colaborador.id,
+        ghe: item.sugestao.gheId,
+        ...(item.sugestao.cargoNome ? { funcao: item.sugestao.cargoNome } : {})
+    }));
+
+    try {
+        await supabaseUpsert('colaboradores_efetivo', updates);
+
+        updates.forEach(u => {
+            const idx = allEfetivo.findIndex(e => e.id === u.id);
+            if (idx >= 0) {
+                allEfetivo[idx] = { ...allEfetivo[idx], ...u };
+            }
+        });
+
+        alert(`✅ ${updates.length} colaboradores atualizados com sucesso!`);
+        renderTabelaAuditoriaOs();
+        await renderControleOrdensServico();
+    } catch (err) {
+        console.error('Erro ao aplicar correções em lote:', err);
+        alert('❌ Erro ao salvar: ' + err.message);
+    }
+}
+
+// Adiciona um cargo novo ao catálogo do GHE existente caso a equipe realmente tenha essa função
+async function adicionarCargoAoGheCatalogo(gheId, funcaoNome) {
+    const ghe = (allGheCatalogo || []).find(g => normalizarGhe(g.id) === normalizarGhe(gheId));
+    if (!ghe) {
+        alert('GHE não encontrado.');
+        return;
+    }
+
+    const conf = confirm(`Deseja adicionar o cargo "${funcaoNome}" ao catálogo do GHE ${ghe.id} (${ghe.nome})?\n\nOs riscos gerais do grupo serão herdados automaticamente.`);
+    if (!conf) return;
+
+    const novoCargoObj = {
+        cargo: funcaoNome,
+        funcao: funcaoNome,
+        cbo: '',
+        quantidade: 1,
+        descricao_atividade: `Atividades operacionais e de apoio pertinentes à função de ${funcaoNome} no setor de ${ghe.nome}.`,
+        agentes: {
+            fisico: 'Radiações não ionizantes (solar); Ruído habitual',
+            quimico: 'Particulados',
+            biologico: 'Não evidenciado',
+            ergonomico: 'Postura de trabalho habitual, levantamento eventual de cargas',
+            acidentes: 'Queda em mesmo nível, intempéries'
+        },
+        epis_necessarios: ['Capacete de Segurança', 'Calçado de Segurança', 'Óculos de Proteção', 'Luva de Proteção Mecânica'],
+        epcs_necessarios: ['Sinalização de Segurança'],
+        recomendacoes: 'Cumprir as normas regulamentadoras e usar EPIs adequados.',
+        procedimentos_acidentes: 'Comunicar imediatamente a liderança imediata e acionar o SESMT.'
+    };
+
+    const cargosAtuais = Array.isArray(ghe.cargos) ? [...ghe.cargos] : [];
+    cargosAtuais.push(novoCargoObj);
+
+    try {
+        await supabaseUpsert('ghe_catalogo', [{
+            id: ghe.id,
+            cargos: cargosAtuais,
+            updated_at: new Date().toISOString()
+        }]);
+
+        ghe.cargos = cargosAtuais;
+
+        alert(`✅ Cargo "${funcaoNome}" adicionado com sucesso ao GHE ${ghe.id}!`);
+        renderTabelaAuditoriaOs();
+        await renderControleOrdensServico();
+    } catch (err) {
+        console.error('Erro ao adicionar cargo ao GHE:', err);
+        alert('❌ Erro ao salvar no catálogo do GHE: ' + err.message);
+    }
+}
+
 
 // Alternância rápida (1 clique) de status de OS para dar baixa ágil em campo
 async function alternarStatusRapidoOs(matricula) {

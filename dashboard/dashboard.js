@@ -23097,6 +23097,438 @@ async function showAprSubtab(tab) {
     if (tab === 'modelos') { await carregarAprModelos(); renderAprModelosLista(); }
 }
 
+// ================================================================
+// MÓDULO APR — MOTOR DE INTELIGÊNCIA, AUTOMAÇÃO DE P/S E INTEGRAÇÕES
+// Automatiza a determinação de Probabilidade (P), Severidade (S),
+// Risco Puro e Risco Residual, e integra com a equipe executante e treinamentos.
+// ================================================================
+
+// 1. Motor de Inferência Técnica de SST para APR (Matriz 5x5 COP Ramal)
+function inferirPsApr(passo, perigo, evento, danos) {
+    const texto = `${passo || ''} ${perigo || ''} ${evento || ''} ${danos || ''}`.toLowerCase();
+
+    let sPuro = 3; // Moderado por padrão (lesão com afastamento temporário)
+    let pPuro = 3; // Possível por padrão
+
+    // Alta criticidade / Fatalidade / Invalidez permanente (S = 5)
+    if (/morte|óbito|fatalidade|eletrocuss|alta tensão|sep|asfixia|soterramento|desabamento|explosão/.test(texto)) {
+        sPuro = 5;
+        pPuro = 3;
+    }
+    // Severidade 4: Trabalho em Altura, Espaço Confinado, Cargas Suspensas, Prensamento grave, Atropelamento por máquina pesada
+    else if (/queda de altura|queda em altura|espaço confinado|içamento|guindaste|munck|tombamento|atropelamento|máquina pesada|prensamento|amputação|fratura|esmagamento|fogo|incêndio|linha de vida|andaime|rompimento de cabo/.test(texto)) {
+        sPuro = 4;
+        pPuro = 3;
+    }
+    // Severidade 3: Cortes, projeção de partículas, queimaduras, picada de peçonhentos, produtos químicos
+    else if (/corte|perfuração|projeção|fagulha|corpo estranho|solda|picada|peçonhent|químico|inalação|intoxicação|queimadura/.test(texto)) {
+        sPuro = 3;
+        pPuro = 3;
+    }
+    // Severidade 2: Ruído, poeira, vibração, calor solar, esforço físico, ergonomia, tropeço/escorregão de mesmo nível
+    else if (/ruído|barulho|poeira|particulado|vibração|calor|solar|postura|lombar|fadiga|ergonom|peso excessivo|tropeço|escorregão|mesmo nível/.test(texto)) {
+        sPuro = 2;
+        pPuro = 4; // Frequente na rotina
+    }
+
+    // Cálculo do Risco Residual baseado na Hierarquia de Medidas de Proteção (NR-01)
+    // Com adoção de EPCs, procedimentos de bloqueio, linha de vida, sinalização e EPIs:
+    let pResidual = 1;
+    let sResidual = sPuro;
+
+    if (sPuro === 5) {
+        sResidual = 3; // Atenuado com barreiras de engenharia e plano de emergência
+        pResidual = 1; // Raro com sistemas redundantes
+    } else if (sPuro >= 3) {
+        sResidual = Math.max(1, sPuro - 1);
+        pResidual = 1;
+    } else {
+        sResidual = 1;
+        pResidual = 1;
+    }
+
+    return { pPuro, sPuro, pResidual, sResidual };
+}
+
+// Calibra um risco individual
+function autoCalibrarRiscoIndividual(i) {
+    if (!aprRiscosForm[i]) return;
+    const r = aprRiscosForm[i];
+    const inf = inferirPsApr(r.passo_tarefa, r.perigo_fonte, r.evento_risco, r.danos_provaveis);
+    r.p_puro = inf.pPuro;
+    r.s_puro = inf.sPuro;
+    r.p_residual = inf.pResidual;
+    r.s_residual = inf.sResidual;
+    renderRiscosAprForm();
+}
+
+// Calibra todos os riscos da APR de uma vez só
+function autoCalibrarTodosRiscosApr() {
+    if (!aprRiscosForm || aprRiscosForm.length === 0) return;
+    let count = 0;
+    aprRiscosForm.forEach(r => {
+        if ((r.passo_tarefa || '').trim() || (r.perigo_fonte || '').trim() || (r.evento_risco || '').trim()) {
+            const inf = inferirPsApr(r.passo_tarefa, r.perigo_fonte, r.evento_risco, r.danos_provaveis);
+            r.p_puro = inf.pPuro;
+            r.s_puro = inf.sPuro;
+            r.p_residual = inf.pResidual;
+            r.s_residual = inf.sResidual;
+            count++;
+        }
+    });
+    renderRiscosAprForm();
+    if (typeof showToast === 'function') {
+        showToast(`🪄 ${count} risco(s) calibrados automaticamente!`);
+    } else {
+        const st = document.getElementById('aprFormStatus');
+        if (st) {
+            st.textContent = `✅ ${count} risco(s) calibrados com P/S Puro e Residual automáticos.`;
+            st.style.color = 'var(--success)';
+        }
+    }
+}
+
+// Ao alterar P ou S Puro manualmente, ajusta automaticamente o Residual caso não tenha sido alterado
+function onMudarPuroApr(i, campo, valor) {
+    if (!aprRiscosForm[i]) return;
+    aprRiscosForm[i][campo] = valor;
+    
+    const pPuro = parseInt(aprRiscosForm[i].p_puro, 10);
+    const sPuro = parseInt(aprRiscosForm[i].s_puro, 10);
+
+    // Se ambos P e S Puro estiverem preenchidos, sugere automaticamente o Residual reduzido
+    if (pPuro && sPuro) {
+        if (!aprRiscosForm[i].p_residual || aprRiscosForm[i].p_residual >= pPuro) {
+            aprRiscosForm[i].p_residual = Math.max(1, Math.min(2, pPuro - 2));
+        }
+        if (!aprRiscosForm[i].s_residual || aprRiscosForm[i].s_residual >= sPuro) {
+            aprRiscosForm[i].s_residual = sPuro === 5 ? 3 : Math.max(1, sPuro - 1);
+        }
+    }
+    renderRiscosAprForm();
+}
+
+// 2. Biblioteca de Riscos Padrão da Obra Pesada (Ramal do Agreste)
+const BIBLIOTECA_RISCOS_OBRA = [
+    {
+        categoria: "🚧 Escavação de Vala e Movimentação de Terra",
+        riscos: [
+            {
+                passo_tarefa: "Escavação mecânica de vala com escavadeira",
+                perigo_fonte: "Tráfego de máquina pesada e desmoronamento de talude",
+                evento_risco: "Tombamento de escavadeira ou desabamento das paredes da vala",
+                danos_provaveis: "Soterramento, fraturas múltiplas, traumatismo, asfixia",
+                p_puro: 3, s_puro: 4,
+                medidas_prevencao: "Respeitar ângulo de talude natural ou implantar escoramento/blindagem metálica de vala; isolar raio de giro da máquina (mín. 1,5m da borda); proibir presença de trabalhadores no fundo da vala durante a operação da concha.",
+                p_residual: 1, s_residual: 2, responsavel: "Encarregado / Operador"
+            },
+            {
+                passo_tarefa: "Acesso e permanência de colaboradores no interior da vala",
+                perigo_fonte: "Vala profunda sem escada de emergência e material na borda",
+                evento_risco: "Queda de material da borda sobre o trabalhador ou dificuldade de evacuação",
+                danos_provaveis: "Traumatismo craniano, cortes, contusões",
+                p_puro: 4, s_puro: 3,
+                medidas_prevencao: "Manter bota-fora de material a no mínimo 1,0 metro da borda da vala; instalar escadas de acesso a cada 15 metros; uso obrigatório de capacete com jugular e botina com biqueira.",
+                p_residual: 1, s_residual: 2, responsavel: "Encarregado"
+            }
+        ]
+    },
+    {
+        categoria: "🏗️ Içamento e Cargas Críticas (Guindaste / Caminhão Munck)",
+        riscos: [
+            {
+                passo_tarefa: "Patolamento e posicionamento do caminhão guindauto (Munck)",
+                perigo_fonte: "Terreno irregular, solo instável ou patolamento incompleto",
+                evento_risco: "Afundamento de patola e tombamento do veículo com carga",
+                danos_provaveis: "Esmagamento de trabalhadores, danos patrimoniais graves, fatalidade",
+                p_puro: 3, s_puro: 5,
+                medidas_prevencao: "Patolamento 100% aberto com utilização de pranchões de madeira de apoio nivelados; inspeção prévia da compactação do solo; proibição de patolar próximo a bordas de taludes sem ART.",
+                p_residual: 1, s_residual: 3, responsavel: "Operador de Munck / Rigger"
+            },
+            {
+                passo_tarefa: "Amarração, içamento e movimentação de tubos de grande diâmetro",
+                perigo_fonte: "Cintas desgastadas, cabo de aço desfiado ou sobrecarga",
+                evento_risco: "Rompimento do dispositivo de içamento e queda da carga suspensa",
+                danos_provaveis: "Esmagamento, amputação, lesões incapacitantes, óbito",
+                p_puro: 3, s_puro: 5,
+                medidas_prevencao: "Inspeção diária de cintas e laços com tag de cor do mês; uso obrigatório de corda-guia para direcionamento da carga (proibido tocar com as mãos); isolamento e sinalização total do raio de içamento.",
+                p_residual: 1, s_residual: 2, responsavel: "Rigger / Sinaleiro"
+            }
+        ]
+    },
+    {
+        categoria: "🪜 Trabalho em Altura (Andaime, Plataforma e Escada)",
+        riscos: [
+            {
+                passo_tarefa: "Montagem, subida e execução de serviços em andaimes ou estruturas elevadas (> 2,0m)",
+                perigo_fonte: "Falta de ponto de ancoragem, piso incompleto ou ausência de guarda-corpo",
+                evento_risco: "Queda de colaborador em altura ou queda de ferramentas sobre terceiros",
+                danos_provaveis: "Politraumantismo, lesão na coluna vertebral, fraturas graves, óbito",
+                p_puro: 4, s_puro: 5,
+                medidas_prevencao: "Uso mandatório de cinto tipo paraquedista com talabarte duplo em Y ancorado 100% do tempo em linha de vida ou estrutura aprovada; piso do andaime 100% forrado com rodapé de 20cm e guarda-corpo duplo (1,20m e 0,70m); amarração de todas as ferramentas manuais.",
+                p_residual: 1, s_residual: 2, responsavel: "Supervisor NR-35"
+            }
+        ]
+    },
+    {
+        categoria: "⚡ Eletricidade e Instalações Provisórias de Canteiro (NR-10)",
+        riscos: [
+            {
+                passo_tarefa: "Ligação e manobra em quadros elétricos de distribuição (QGBT)",
+                perigo_fonte: "Partes vivas desprotegidas, cabos danificados e ausência de aterramento",
+                evento_risco: "Choque elétrico, arco voltaico, queimaduras térmicas",
+                danos_provaveis: "Fibrilação ventricular, queimaduras de 2º e 3º grau, morte por eletrocussão",
+                p_puro: 3, s_puro: 5,
+                medidas_prevencao: "Atividade exclusiva para eletricistas qualificados e autorizados com NR-10 e SEP; desenergização prévia com bloqueio LOTO e teste de ausência de tensão; uso de vestimenta antichama 100% algodão ou ATPV, luva isolante e óculos contra arco elétrico.",
+                p_residual: 1, s_residual: 2, responsavel: "Eletricista / Encarregado Elétrica"
+            }
+        ]
+    },
+    {
+        categoria: "🔥 Trabalho a Quente (Solda, Oxicorte e Esmerilhamento)",
+        riscos: [
+            {
+                passo_tarefa: "Corte e soldagem de tubulações e estruturas metálicas",
+                perigo_fonte: "Projeção de fagulhas incandescentes, gases comprimidos e radiação UV",
+                evento_risco: "Incêndio em vegetação/materiais combustíveis ou queimadura ocular/dérmica",
+                danos_provaveis: "Queimaduras, incêndio florestal/canteiro, ceratite ocular, asfixia",
+                p_puro: 4, s_puro: 4,
+                medidas_prevencao: "Limpeza e umedecimento do solo num raio de 10 metros; instalação de biombos incombustíveis de proteção; extintor de incêndio ABC/PQS pressurizado ao lado da frente de serviço; uso de máscara de solda com lente adequada, avental, mangote e perneira de raspa.",
+                p_residual: 1, s_residual: 2, responsavel: "Soldador / Vigia de Fogo"
+            }
+        ]
+    },
+    {
+        categoria: "🕳️ Espaço Confinado (Adutora, Caixa de Válvula, Poço) (NR-33)",
+        riscos: [
+            {
+                passo_tarefa: "Entrada e permanência no interior de adutora ou caixa de transição",
+                perigo_fonte: "Atmosfera deficiente de O₂ (< 19,5%) ou enriquecida com gases tóxicos (H₂S, CO, LEL)",
+                evento_risco: "Asfixia súbita, perda de consciência, intoxicação aguda",
+                danos_provaveis: "Parada cardiorrespiratória, dano neurológico irreversível, óbito",
+                p_puro: 3, s_puro: 5,
+                medidas_prevencao: "Emissão obrigatória de PET (Permissão de Entrada e Trabalho); teste atmosférico prévio contínuo com detector multigás calibrado; ventilação forçada contínua (insuflador/exaustor); vigia dedicado e permanente na entrada com tripé e guincho de resgate.",
+                p_residual: 1, s_residual: 3, responsavel: "Supervisor de Entrada / Vigia NR-33"
+            }
+        ]
+    }
+];
+
+// Inserir pacote de riscos da biblioteca
+function inserirPacoteRiscosDaBiblioteca(idxCat) {
+    const cat = BIBLIOTECA_RISCOS_OBRA[idxCat];
+    if (!cat) return;
+    
+    // Se o primeiro risco estiver vazio, remove ele antes de adicionar
+    if (aprRiscosForm.length === 1 && !aprRiscosForm[0].perigo_fonte && !aprRiscosForm[0].passo_tarefa) {
+        aprRiscosForm = [];
+    }
+
+    cat.riscos.forEach(r => {
+        aprRiscosForm.push({ ...r });
+    });
+
+    renderRiscosAprForm();
+    fecharModalBibliotecaRiscos();
+    if (typeof showToast === 'function') {
+        showToast(`✅ ${cat.riscos.length} risco(s) adicionados da categoria "${cat.categoria}"!`);
+    }
+}
+
+// 3. Duplicação de APR com 1 Clique
+function duplicarAprComoNova(id) {
+    const a = allAprRegistros.find(x => x.id === id);
+    if (!a) return;
+
+    showAprSubtab('nova');
+    abrirFormNovaApr();
+
+    // Novo número sequencial
+    document.getElementById('aprForm_numero').value = proximoNumeroApr();
+    const hojeStr = new Date().toISOString().slice(0, 10);
+    document.getElementById('aprForm_dataEmissao').value = hojeStr;
+    document.getElementById('aprForm_validadeDias').value = a.validade_dias || 15;
+    onAprDataOuValidadeChange();
+
+    document.getElementById('aprForm_empresa').value = a.empresa_contratada || 'CONSÓRCIO OPERADOR DO PISF RAMAL DO AGRESTE';
+    document.getElementById('aprForm_setor').value = a.setor_unidade || '';
+    document.getElementById('aprForm_local').value = a.local_especifico || '';
+    document.getElementById('aprForm_ptNumero').value = a.pt_numero || '';
+    document.getElementById('aprForm_responsavel').value = a.responsavel || '';
+    document.getElementById('aprForm_titulo').value = a.titulo || '';
+    document.getElementById('aprForm_descricaoAtividade').value = a.descricao_atividade || '';
+
+    // Atividades críticas
+    const ativCriticas = Array.isArray(a.atividades_criticas) ? a.atividades_criticas : [];
+    document.querySelectorAll('.aprAtivCriticaCheckbox').forEach(cb => { cb.checked = ativCriticas.includes(cb.value); });
+    const outros = ativCriticas.find(x => x.startsWith('Outros:'));
+    document.getElementById('aprForm_outrosCheck').checked = !!outros;
+    document.getElementById('aprForm_outrosTexto').value = outros ? outros.replace(/^Outros:\s*/, '') : '';
+
+    // EPIs Básicos e Específicos
+    const episBasicos = Array.isArray(a.epis_basicos) ? a.epis_basicos : [];
+    document.querySelectorAll('.aprEpiBasicoCheckbox').forEach(cb => { cb.checked = episBasicos.includes(cb.value); });
+    document.getElementById('aprForm_luvaTipo').value = a.epi_luva_tipo || '';
+
+    const episEspecificos = Array.isArray(a.epis_especificos) ? a.epis_especificos : [];
+    document.querySelectorAll('.aprEpiEspecificoCheckbox').forEach(cb => { cb.checked = episEspecificos.includes(cb.value); });
+    document.getElementById('aprForm_extintorTipo').value = a.epi_extintor_tipo || '';
+
+    // Plano de Emergência
+    document.getElementById('aprForm_rotaFuga').value = a.rota_fuga_desobstruida || 'sim';
+    document.getElementById('aprForm_pontoEncontro').value = a.ponto_encontro || '';
+    document.getElementById('aprForm_kitSocorros').checked = a.kit_primeiros_socorros !== false;
+    document.getElementById('aprForm_socorrista').value = a.socorrista_brigadista || '';
+    document.getElementById('aprForm_contatoAmbulatorio').value = a.contato_ambulatorio || '';
+    document.getElementById('aprForm_contatoBombeiros').value = a.contato_bombeiros || '';
+
+    // Responsáveis
+    document.getElementById('aprForm_elaborador').value = a.elaborador_sesmt || 'JOÃO EVERTON DE SOUZA LIMEIRA';
+    document.getElementById('aprForm_supervisor').value = a.supervisor_tarefa || '';
+    document.getElementById('aprForm_responsavelArea').value = a.responsavel_area || '';
+
+    // Riscos copiados com P e S
+    aprRiscosForm = Array.isArray(a.riscos) ? JSON.parse(JSON.stringify(a.riscos)) : [rowRiscoVazio()];
+    renderRiscosAprForm();
+
+    // Renderizar painel de equipe
+    renderEquipeAprPreview();
+
+    document.getElementById('aprFormTitle').textContent = `➕ Nova APR (Duplicada a partir da APR ${escapeHTML(a.id)})`;
+    document.getElementById('aprFormTitle').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    renderEquipeAprPreview();
+}
+
+// 4. Painel de Visualização de Equipe & Checagem de Treinamentos Obrigatórios
+function renderEquipeAprPreview() {
+    const container = document.getElementById('aprFormEquipeContainer');
+    if (!container) return;
+
+    const responsavel = (document.getElementById('aprForm_responsavel')?.value || '').trim();
+    if (!responsavel) {
+        container.style.display = 'none';
+        return;
+    }
+
+    const equipe = typeof equipeDaFrente === 'function' ? equipeDaFrente(responsavel) : [];
+    if (equipe.length === 0) {
+        container.style.display = 'block';
+        container.innerHTML = `
+            <div style="font-size:12px; color:var(--text-light); display:flex; align-items:center; gap:6px;">
+                <span>ℹ️</span> Nenhum colaborador ativo encontrado vinculado ao responsável "${escapeHTML(responsavel)}".
+            </div>`;
+        return;
+    }
+
+    // Verificar atividades críticas marcadas para checar treinamentos obrigatórios
+    const ativCriticas = Array.from(document.querySelectorAll('.aprAtivCriticaCheckbox:checked')).map(cb => cb.value);
+    const requerNR35 = ativCriticas.some(a => a.includes('NR-35'));
+    const requerNR33 = ativCriticas.some(a => a.includes('NR-33'));
+    const requerNR10 = ativCriticas.some(a => a.includes('NR-10'));
+
+    let alertasTreinamento = [];
+
+    const linhasHtml = equipe.map((c, i) => {
+        let tagsAptidao = '';
+
+        if (requerNR35) {
+            const t35 = (allTreinamentosStatus || []).find(t => t.matricula === c.id && (t.codigo === 'NR-35' || (t.nome_curso || '').includes('NR-35')));
+            const valido = t35 && (!t35.data_proxima_reciclagem || parseLocalDate(t35.data_proxima_reciclagem) >= new Date());
+            if (valido) {
+                tagsAptidao += `<span style="font-size:10.5px; padding:2px 6px; border-radius:4px; background:#d1fae5; color:#065f46; font-weight:700;">✅ NR-35</span> `;
+            } else {
+                tagsAptidao += `<span style="font-size:10.5px; padding:2px 6px; border-radius:4px; background:#fee2e2; color:#b91c1c; font-weight:700;">⚠️ Sem NR-35</span> `;
+                alertasTreinamento.push(`<b>${c.nome}</b> está sem treinamento válido de <b>NR-35 (Altura)</b>.`);
+            }
+        }
+
+        if (requerNR33) {
+            const t33 = (allTreinamentosStatus || []).find(t => t.matricula === c.id && (t.codigo === 'NR-33' || (t.nome_curso || '').includes('NR-33')));
+            const valido = t33 && (!t33.data_proxima_reciclagem || parseLocalDate(t33.data_proxima_reciclagem) >= new Date());
+            if (valido) {
+                tagsAptidao += `<span style="font-size:10.5px; padding:2px 6px; border-radius:4px; background:#d1fae5; color:#065f46; font-weight:700;">✅ NR-33</span> `;
+            } else {
+                tagsAptidao += `<span style="font-size:10.5px; padding:2px 6px; border-radius:4px; background:#fee2e2; color:#b91c1c; font-weight:700;">⚠️ Sem NR-33</span> `;
+                alertasTreinamento.push(`<b>${c.nome}</b> está sem treinamento válido de <b>NR-33 (Espaço Confinado)</b>.`);
+            }
+        }
+
+        if (requerNR10) {
+            const t10 = (allTreinamentosStatus || []).find(t => t.matricula === c.id && (t.codigo === 'NR-10' || (t.nome_curso || '').includes('NR-10')));
+            const valido = t10 && (!t10.data_proxima_reciclagem || parseLocalDate(t10.data_proxima_reciclagem) >= new Date());
+            if (valido) {
+                tagsAptidao += `<span style="font-size:10.5px; padding:2px 6px; border-radius:4px; background:#d1fae5; color:#065f46; font-weight:700;">✅ NR-10</span> `;
+            } else {
+                tagsAptidao += `<span style="font-size:10.5px; padding:2px 6px; border-radius:4px; background:#fee2e2; color:#b91c1c; font-weight:700;">⚠️ Sem NR-10</span> `;
+                alertasTreinamento.push(`<b>${c.nome}</b> está sem treinamento válido de <b>NR-10 (Eletricidade)</b>.`);
+            }
+        }
+
+        return `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; background:var(--card, #fff); border:1px solid var(--border); border-radius:6px; font-size:12px;">
+                <div>
+                    <strong>${i + 1}. ${escapeHTML(c.nome)}</strong> 
+                    <span style="color:var(--text-light); font-size:11px;">(Matr. ${escapeHTML(c.id)} — ${escapeHTML(c.funcao || '—')})</span>
+                </div>
+                <div>${tagsAptidao}</div>
+            </div>`;
+    }).join('');
+
+    let bannerAlerta = '';
+    if (alertasTreinamento.length > 0) {
+        bannerAlerta = `
+            <div style="background:#fff3cd; border:1px solid #ffeeba; border-radius:8px; padding:8px 12px; margin-bottom:10px; font-size:12px; color:#856404;">
+                <div style="font-weight:700; display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                    <span>⚠️</span> Alerta de Conformidade de Treinamento na Equipe:
+                </div>
+                <div style="line-height:1.5;">${alertasTreinamento.slice(0, 4).join('<br>')}${alertasTreinamento.length > 4 ? `<br><i>...e mais ${alertasTreinamento.length - 4} colaboradores com pendência.</i>` : ''}</div>
+            </div>`;
+    }
+
+    container.style.display = 'block';
+    container.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="font-weight:700; font-size:12.5px; color:var(--text); display:flex; align-items:center; gap:6px;">
+                <span>👥</span> Equipe Executante Escalada (${equipe.length} colaboradores na Frente de ${escapeHTML(responsavel)})
+            </div>
+            <span style="font-size:11px; color:var(--text-light);">Estes nomes serão impressos na folha 3 de assinaturas</span>
+        </div>
+        ${bannerAlerta}
+        <div style="display:flex; flex-direction:column; gap:4px; max-height:180px; overflow-y:auto;">
+            ${linhasHtml}
+        </div>`;
+}
+
+// 5. Modal de Biblioteca Rápida de Riscos da Obra
+function abrirModalBibliotecaRiscos() {
+    let modal = document.getElementById('modalBibliotecaRiscosApr');
+    if (!modal) return;
+    
+    const container = document.getElementById('modalBibliotecaRiscosConteudo');
+    if (container) {
+        container.innerHTML = BIBLIOTECA_RISCOS_OBRA.map((cat, idx) => `
+            <div style="border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:10px; background:var(--bg);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <b style="font-size:13px; color:var(--primary);">${escapeHTML(cat.categoria)}</b>
+                    <button type="button" class="db-apply-btn" onclick="inserirPacoteRiscosDaBiblioteca(${idx})" style="font-size:11.5px; padding:4px 10px;">
+                        + Inserir (${cat.riscos.length} riscos)
+                    </button>
+                </div>
+                <div style="font-size:11.5px; color:var(--text-light); line-height:1.5;">
+                    ${cat.riscos.map(r => `<div>• <b>${escapeHTML(r.passo_tarefa)}</b>: ${escapeHTML(r.evento_risco)} (Risco Puro: ${r.p_puro}x${r.s_puro} → Residual: ${r.p_residual}x${r.s_residual})</div>`).join('')}
+                </div>
+            </div>
+        `).join('');
+    }
+    modal.style.display = 'flex';
+}
+
+function fecharModalBibliotecaRiscos() {
+    const modal = document.getElementById('modalBibliotecaRiscosApr');
+    if (modal) modal.style.display = 'none';
+}
+
+
 function renderAprPanel() {
     const statusList = allAprRegistros.map(a => ({ apr: a, ...statusApr(a) }));
     const ativas = statusList.filter(s => s.status === 'ativa' || s.status === 'vencendo');
@@ -23237,6 +23669,7 @@ function abrirFormNovaApr() {
     aprRiscosForm = [rowRiscoVazio()];
     renderRiscosAprForm();
     onAprDataOuValidadeChange();
+    renderEquipeAprPreview();
 }
 
 function editarApr(id) {
@@ -23324,56 +23757,69 @@ function moverRiscoAprForm(i, direcao) {
 function renderRiscosAprForm() {
     const container = document.getElementById('aprFormRiscosLista');
     if (!container) return;
-    const campoEstilo = 'padding:6px; border:1px solid var(--border); border-radius:6px; font-size:11.5px; width:100%; box-sizing:border-box;';
-    const selectPS = (val, onchange, ancoras) => {
+    const campoEstilo = 'padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:11.5px; width:100%; box-sizing:border-box;';
+    const selectPS = (val, onchange, ancoras, labelTxt) => {
         let opts = '<option value="">-</option>';
         for (let n = 1; n <= 5; n++) opts += `<option value="${n}" title="${escapeHTML(ancoras[n])}" ${String(val) === String(n) ? 'selected' : ''}>${n}</option>`;
-        return `<select onchange="${onchange}" style="${campoEstilo}">${opts}</select>`;
+        return `<div style="display:flex; align-items:center; gap:3px;"><span style="font-size:10.5px; font-weight:700; color:var(--text-light);">${labelTxt}:</span><select onchange="${onchange}" style="${campoEstilo}">${opts}</select></div>`;
     };
     container.innerHTML = aprRiscosForm.map((r, i) => {
         const puro = nivelRiscoApr(r.p_puro, r.s_puro);
         const residual = nivelRiscoApr(r.p_residual, r.s_residual);
-        // Aviso automático: se o Residual (depois da medida de prevenção) ficou igual ou
-        // pior que o Puro (antes dela), a medida descrita não reduziu o risco na prática -
-        // isso normalmente é esquecimento de reavaliar o P/S, não um erro de cálculo (o
-        // sistema nunca copia os valores do Puro pro Residual sozinho). Só avisa - não
-        // bloqueia o preenchimento, porque em algum caso raro pode ser mesmo intencional.
         const residualRuim = puro.valor !== null && residual.valor !== null && residual.valor >= puro.valor;
         return `
-        <div style="border:1px solid ${residualRuim ? 'var(--danger)' : 'var(--border)'}; border-radius:10px; padding:10px; margin-bottom:10px; background:var(--bg);">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                <b style="font-size:12px;">Risco ${i + 1}</b>
+        <div style="border:1px solid ${residualRuim ? 'var(--danger)' : 'var(--border)'}; border-radius:10px; padding:12px; margin-bottom:12px; background:var(--bg); box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px dashed var(--border); padding-bottom:6px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <b style="font-size:12.5px; color:var(--primary);">Risco ${i + 1}</b>
+                    <button type="button" class="db-clear-btn" onclick="autoCalibrarRiscoIndividual(${i})" style="font-size:11px; padding:2px 8px; color:#2563eb; border-color:#93c5fd; background:#eff6ff;" title="Preenche automaticamente P e S Puro e Residual">🪄 Sugerir P/S</button>
+                </div>
                 <div style="display:flex; gap:2px; align-items:center;">
                     <button onclick="moverRiscoAprForm(${i}, -1)" title="Mover para cima" ${i === 0 ? 'disabled' : ''} style="border:none; background:none; color:${i === 0 ? 'var(--text-light)' : 'var(--text)'}; cursor:${i === 0 ? 'default' : 'pointer'}; font-size:15px; padding:2px 4px;">▲</button>
                     <button onclick="moverRiscoAprForm(${i}, 1)" title="Mover para baixo" ${i === aprRiscosForm.length - 1 ? 'disabled' : ''} style="border:none; background:none; color:${i === aprRiscosForm.length - 1 ? 'var(--text-light)' : 'var(--text)'}; cursor:${i === aprRiscosForm.length - 1 ? 'default' : 'pointer'}; font-size:15px; padding:2px 4px;">▼</button>
                     <button onclick="removerRiscoAprForm(${i})" title="Remover" style="border:none; background:none; color:var(--danger); cursor:pointer; font-size:15px; padding:2px 4px;">🗑️</button>
                 </div>
             </div>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:6px; margin-bottom:6px;">
-                <input type="text" placeholder="Passo da Tarefa" value="${escapeHTML(r.passo_tarefa)}" oninput="aprRiscosForm[${i}].passo_tarefa=this.value" style="${campoEstilo}">
-                <input type="text" placeholder="Perigo / Fonte" value="${escapeHTML(r.perigo_fonte)}" oninput="aprRiscosForm[${i}].perigo_fonte=this.value" style="${campoEstilo}">
-                <input type="text" placeholder="Evento / Risco" value="${escapeHTML(r.evento_risco)}" oninput="aprRiscosForm[${i}].evento_risco=this.value" style="${campoEstilo}">
-                <input type="text" placeholder="Danos Prováveis" value="${escapeHTML(r.danos_provaveis)}" oninput="aprRiscosForm[${i}].danos_provaveis=this.value" style="${campoEstilo}">
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:6px; margin-bottom:8px;">
+                <div><label style="font-size:10px; font-weight:700; color:var(--text-light); display:block; margin-bottom:2px;">Passo da Tarefa</label>
+                    <input type="text" placeholder="Ex: Escavação da vala" value="${escapeHTML(r.passo_tarefa)}" oninput="aprRiscosForm[${i}].passo_tarefa=this.value" style="${campoEstilo}"></div>
+                <div><label style="font-size:10px; font-weight:700; color:var(--text-light); display:block; margin-bottom:2px;">Perigo / Fonte</label>
+                    <input type="text" placeholder="Ex: Solo instável / Escavadeira" value="${escapeHTML(r.perigo_fonte)}" oninput="aprRiscosForm[${i}].perigo_fonte=this.value" style="${campoEstilo}"></div>
+                <div><label style="font-size:10px; font-weight:700; color:var(--text-light); display:block; margin-bottom:2px;">Evento / Risco</label>
+                    <input type="text" placeholder="Ex: Desabamento de talude" value="${escapeHTML(r.evento_risco)}" oninput="aprRiscosForm[${i}].evento_risco=this.value" style="${campoEstilo}"></div>
+                <div><label style="font-size:10px; font-weight:700; color:var(--text-light); display:block; margin-bottom:2px;">Danos Prováveis</label>
+                    <input type="text" placeholder="Ex: Soterramento, fraturas" value="${escapeHTML(r.danos_provaveis)}" oninput="aprRiscosForm[${i}].danos_provaveis=this.value" style="${campoEstilo}"></div>
             </div>
-            <div style="display:grid; grid-template-columns: 55px 55px 1fr; gap:6px; align-items:center; margin-bottom:6px;">
-                ${selectPS(r.p_puro, `aprRiscosForm[${i}].p_puro=this.value; renderRiscosAprForm();`, APR_ANCORAS_P)}
-                ${selectPS(r.s_puro, `aprRiscosForm[${i}].s_puro=this.value; renderRiscosAprForm();`, APR_ANCORAS_S)}
-                <div title="Risco sem nenhum cuidado especial — só a exposição natural da tarefa." style="padding:6px 10px; border-radius:6px; background:${puro.bg}; color:${puro.cor}; font-weight:700; font-size:11.5px; text-align:center;">
-                    Risco Puro: ${puro.valor ?? '—'}${puro.valor !== null ? ' - ' + puro.label : ''}
+
+            <!-- Matriz Risco Puro -->
+            <div style="display:grid; grid-template-columns: 85px 85px 1fr; gap:8px; align-items:center; margin-bottom:8px; background:rgba(0,0,0,0.02); padding:6px 8px; border-radius:6px;">
+                ${selectPS(r.p_puro, `onMudarPuroApr(${i}, 'p_puro', this.value)`, APR_ANCORAS_P, 'P')}
+                ${selectPS(r.s_puro, `onMudarPuroApr(${i}, 's_puro', this.value)`, APR_ANCORAS_S, 'S')}
+                <div title="Risco sem nenhum cuidado especial — só a exposição natural da tarefa." style="padding:6px 10px; border-radius:6px; background:${puro.bg}; color:${puro.cor}; font-weight:700; font-size:11.5px; text-align:center; border:1px solid rgba(0,0,0,0.08);">
+                    Risco Puro: ${puro.valor ?? '—'}${puro.valor !== null ? ' (' + puro.label + ')' : ''}
                 </div>
             </div>
-            <input type="text" placeholder="Medidas de Prevenção (Hierarquia NR-01: eliminação, EPC, administrativas, EPI)" value="${escapeHTML(r.medidas_prevencao)}" oninput="aprRiscosForm[${i}].medidas_prevencao=this.value" style="${campoEstilo} margin-bottom:6px;">
-            <div style="display:grid; grid-template-columns: 55px 55px 1fr 140px; gap:6px; align-items:center;">
-                ${selectPS(r.p_residual, `aprRiscosForm[${i}].p_residual=this.value; renderRiscosAprForm();`, APR_ANCORAS_P)}
-                ${selectPS(r.s_residual, `aprRiscosForm[${i}].s_residual=this.value; renderRiscosAprForm();`, APR_ANCORAS_S)}
-                <div title="Risco depois de aplicar de verdade a medida de prevenção acima — normalmente deve ser menor que o Risco Puro." style="padding:6px 10px; border-radius:6px; background:${residual.bg}; color:${residual.cor}; font-weight:700; font-size:11.5px; text-align:center;">
-                    Risco Residual: ${residual.valor ?? '—'}${residual.valor !== null ? ' - ' + residual.label : ''}
+
+            <!-- Medidas de Prevenção -->
+            <div style="margin-bottom:8px;">
+                <label style="font-size:10px; font-weight:700; color:var(--text-light); display:block; margin-bottom:2px;">Medidas de Prevenção (Hierarquia NR-01: Eliminação, EPC, Procedimentos, EPI)</label>
+                <input type="text" placeholder="Descreva as medidas de proteção aplicadas nesta etapa..." value="${escapeHTML(r.medidas_prevencao)}" oninput="aprRiscosForm[${i}].medidas_prevencao=this.value" style="${campoEstilo}">
+            </div>
+
+            <!-- Matriz Risco Residual -->
+            <div style="display:grid; grid-template-columns: 85px 85px 1fr 140px; gap:8px; align-items:center; background:rgba(0,0,0,0.02); padding:6px 8px; border-radius:6px;">
+                ${selectPS(r.p_residual, `aprRiscosForm[${i}].p_residual=this.value; renderRiscosAprForm();`, APR_ANCORAS_P, 'P')}
+                ${selectPS(r.s_residual, `aprRiscosForm[${i}].s_residual=this.value; renderRiscosAprForm();`, APR_ANCORAS_S, 'S')}
+                <div title="Risco depois de aplicar de verdade as medidas de prevenção acima." style="padding:6px 10px; border-radius:6px; background:${residual.bg}; color:${residual.cor}; font-weight:700; font-size:11.5px; text-align:center; border:1px solid rgba(0,0,0,0.08);">
+                    Risco Residual: ${residual.valor ?? '—'}${residual.valor !== null ? ' (' + residual.label + ')' : ''}
                 </div>
                 <input type="text" placeholder="Responsável" value="${escapeHTML(r.responsavel)}" oninput="aprRiscosForm[${i}].responsavel=this.value" style="${campoEstilo}">
             </div>
+
             ${residualRuim ? `
-            <div style="grid-column: 1 / -1; margin-top:6px; padding:6px 8px; border-radius:6px; background:#fdf2f2; color:var(--danger); font-size:11px; font-weight:600;">
-                ⚠️ O Risco Residual não ficou menor que o Risco Puro. Revise a "Medida de Prevenção" descrita acima e ajuste o P/S do Residual pra refletir o risco depois dela ser aplicada de verdade (ou confirme que é intencional ao salvar).
+            <div style="margin-top:8px; padding:6px 10px; border-radius:6px; background:#fdf2f2; color:var(--danger); font-size:11px; font-weight:600; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                <span>⚠️ O Risco Residual não reduziu em relação ao Puro.</span>
+                <button type="button" class="db-clear-btn" onclick="autoCalibrarRiscoIndividual(${i})" style="font-size:10.5px; padding:2px 6px; color:#2563eb; border-color:#93c5fd; background:#fff;">Ajustar Automaticamente</button>
             </div>` : ''}
         </div>`;
     }).join('');
@@ -23567,6 +24013,7 @@ function renderAprHistoricoLista() {
             ${badge}
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 <button class="db-clear-btn" onclick="abrirAnexoModal('apr_registros', '${escapeHTML(a.id)}', 'APR ${escapeHTML(a.id)} — Folha Assinada')">📎 Anexos (Assinaturas)${labelContagemAnexos('apr_registros', a.id)}</button>
+                <button class="db-clear-btn" onclick="duplicarAprComoNova('${escapeHTML(a.id)}')" title="Duplicar esta APR como base para uma nova">📋 Duplicar</button>
                 <button class="db-clear-btn" onclick="imprimirApr('${escapeHTML(a.id)}')">🖨️</button>
                 <button class="db-clear-btn" onclick="editarApr('${escapeHTML(a.id)}')">✏️</button>
                 <button class="db-clear-btn" style="color:var(--danger); border-color:var(--danger);" onclick="excluirApr('${escapeHTML(a.id)}')">🗑️</button>
@@ -23654,7 +24101,17 @@ function usarModeloComoBase(id) {
     document.getElementById('aprForm_extintorTipo').value = m.epi_extintor_tipo || '';
 
     aprRiscosForm = Array.isArray(m.riscos) && m.riscos.length > 0 ? m.riscos.map(r => ({ ...r })) : [rowRiscoVazio()];
+    aprRiscosForm.forEach(r => {
+        if (!r.p_puro || !r.s_puro) {
+            const inf = inferirPsApr(r.passo_tarefa, r.perigo_fonte, r.evento_risco, r.danos_provaveis);
+            r.p_puro = r.p_puro || inf.pPuro;
+            r.s_puro = r.s_puro || inf.sPuro;
+            r.p_residual = r.p_residual || inf.pResidual;
+            r.s_residual = r.s_residual || inf.sResidual;
+        }
+    });
     renderRiscosAprForm();
+    renderEquipeAprPreview();
 
     document.getElementById('aprFormTitle').textContent = `➕ Nova APR (baseada no modelo: ${m.titulo})`;
     document.getElementById('aprFormTitle').scrollIntoView({ behavior: 'smooth', block: 'nearest' });

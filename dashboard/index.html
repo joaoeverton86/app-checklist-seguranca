@@ -5632,7 +5632,7 @@
                         <div><label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Local Específico</label>
                             <input type="text" id="aprForm_local" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
                         <div><label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Frente/Encarregado (equipe)</label>
-                            <input type="text" id="aprForm_responsavel" list="equipesResponsavelList" placeholder="Carrega a equipe pra ciência/assinatura" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                            <input type="text" id="aprForm_responsavel" list="equipesResponsavelList" oninput="renderEquipeAprPreview()" onchange="renderEquipeAprPreview()" placeholder="Carrega a equipe pra ciência/assinatura" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
                     </div>
                     <div style="margin-top:10px;">
                         <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600; font-size:12.5px;">Título da APR *</label>
@@ -5642,6 +5642,9 @@
                         <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600; font-size:12.5px;">Descrição Detalhada da Atividade</label>
                         <input type="text" id="aprForm_descricaoAtividade" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:12.5px;">
                     </div>
+
+                    <!-- Painel de Equipe Executante & Conformidade de Treinamentos -->
+                    <div id="aprFormEquipeContainer" style="display:none; margin-top:12px; padding:12px 14px; background:var(--bg); border:1px solid var(--border); border-radius:10px;"></div>
 
                     <div style="margin-top:16px; padding-top:12px; border-top:1px dashed var(--border);">
                         <label style="font-weight:700; font-size:12.5px;">Atividades Críticas Vinculadas</label>
@@ -5662,9 +5665,19 @@
                     </div>
 
                     <div style="margin-top:16px; padding-top:12px; border-top:1px dashed var(--border);">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <label style="font-weight:700; font-size:12.5px;">Avaliação e Controle de Riscos (Matriz 5×5)</label>
-                            <button class="db-clear-btn" onclick="adicionarRiscoAprForm()">➕ Adicionar Risco</button>
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                            <label style="font-weight:700; font-size:12.5px;">Avaliação e Controle de Riscos (Matriz 5×5 - P × S)</label>
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                <button type="button" class="db-apply-btn" onclick="autoCalibrarTodosRiscosApr()" style="background:#2563eb; color:#fff; font-size:12px; font-weight:600; padding:6px 12px; display:inline-flex; align-items:center; gap:6px;" title="Calcula e preenche P/S Puro e Residual de todos os riscos automaticamente">
+                                    🪄 Auto-Calibrar P/S
+                                </button>
+                                <button type="button" class="db-clear-btn" onclick="abrirModalBibliotecaRiscos()" style="font-size:12px; font-weight:600; padding:6px 12px; color:#047857; border-color:#a7f3d0; background:#ecfdf5;" title="Importar pacotes de riscos pré-configurados da obra">
+                                    📚 Biblioteca de Riscos
+                                </button>
+                                <button type="button" class="db-clear-btn" onclick="adicionarRiscoAprForm()" style="font-size:12px; font-weight:600; padding:6px 12px;">
+                                    ➕ Adicionar Risco
+                                </button>
+                            </div>
                         </div>
                         <p style="font-size:11px; color:var(--text-light); margin:4px 0 6px;">Risco = P × S, classificado automaticamente. Passe o mouse sobre os números dos selects pra ver a descrição de cada nível.</p>
                         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:8px; margin-bottom:10px; font-size:10.5px;">
@@ -7501,7 +7514,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=129"></script>
+    <script src="dashboard.js?v=130"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();
@@ -7768,5 +7781,27 @@ function filterMatrizEpi(q) {
         </div>
     </div>
 </div>
+
+<!-- Modal: Biblioteca de Riscos Padrão da Obra (APR) -->
+<div id="modalBibliotecaRiscosApr" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:10050; align-items:center; justify-content:center; padding:16px; overflow-y:auto;" onclick="if (event.target === this) fecharModalBibliotecaRiscos();">
+    <div style="background:var(--card, #fff); border-radius:14px; max-width:750px; width:100%; max-height:90vh; overflow-y:auto; padding:22px; box-shadow:0 10px 30px rgba(0,0,0,0.3); border:1px solid var(--border);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+            <div style="font-size:16px; font-weight:700; color:var(--primary); display:flex; align-items:center; gap:8px;">
+                <span>📚</span> Biblioteca de Riscos Padrão — Obra Ramal do Agreste
+            </div>
+            <button type="button" onclick="fecharModalBibliotecaRiscos()" style="background:transparent; border:none; font-size:20px; cursor:pointer; color:var(--text-light); font-weight:700;">✕</button>
+        </div>
+        <p style="font-size:12px; color:var(--text-light); margin-top:0; margin-bottom:12px;">
+            Selecione os pacotes de riscos correspondentes às atividades da frente de trabalho para inseri-los automaticamente na APR com perigos, eventos, danos, medidas e pontuação P/S calibrados.
+        </p>
+        <div id="modalBibliotecaRiscosConteudo" style="display:flex; flex-direction:column; gap:8px;">
+            <!-- Populado dinamicamente via JS -->
+        </div>
+        <div style="display:flex; justify-content:flex-end; margin-top:14px; border-top:1px solid var(--border); padding-top:10px;">
+            <button type="button" class="db-clear-btn" onclick="fecharModalBibliotecaRiscos()">Fechar</button>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>

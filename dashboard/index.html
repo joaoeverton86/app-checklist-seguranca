@@ -2648,6 +2648,21 @@
                                 <label style="font-weight: 600; display: block; margin-bottom: 4px;">Observações / Local de Arquivamento Físico</label>
                                 <textarea id="modalOs_obs" rows="2" placeholder="Ex: Assinada na integração de admissão. Via original arquivada no prontuário físico do colaborador." style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; resize: vertical;"></textarea>
                             </div>
+
+                            <!-- Seção de Anexos no Google Drive -->
+                            <div style="background: rgba(37,99,235,0.04); border: 1px dashed #93c5fd; border-radius: 10px; padding: 12px 14px; margin-top: 12px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                                    <span style="font-weight: 700; font-size: 12.5px; color: #1e40af; display: flex; align-items: center; gap: 6px;">
+                                        <span>📎</span> Comprovante Assinado (Google Drive)
+                                    </span>
+                                    <button type="button" class="db-clear-btn" onclick="abrirAnexosOsColaborador(document.getElementById('modalOs_matricula').value)" style="padding: 4px 10px; font-size: 12px; color: #1d4ed8; border-color: #93c5fd; background: #eff6ff; font-weight: 600;">
+                                        + Enviar Foto / PDF no Drive
+                                    </button>
+                                </div>
+                                <div id="modalOs_anexosList" style="font-size: 12px; color: var(--text-light);">
+                                    Nenhum comprovante anexado ainda.
+                                </div>
+                            </div>
                         </div>
 
                         <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 14px;">
@@ -7486,7 +7501,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=128"></script>
+    <script src="dashboard.js?v=129"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();
@@ -7505,7 +7520,7 @@ function filterMatrizEpi(q) {
 <!-- Modal de Anexos (DDSMA/Treinamentos) - PDFs escaneados e fotos guardados no
      Google Drive (integração Parte 2, set/2026). Mesmo padrão do modal de
      Relatório para Líderes (overlay fixo + card). -->
-<div id="anexoModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:1000; align-items:center; justify-content:center; padding:20px;" onclick="if (event.target === this) fecharAnexoModal();">
+<div id="anexoModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.55); z-index:10050; align-items:center; justify-content:center; padding:20px;" onclick="if (event.target === this) fecharAnexoModal();">
     <div style="background:var(--card); border-radius:12px; max-width:480px; width:100%; max-height:90vh; overflow-y:auto; padding:20px; box-shadow: var(--shadow);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:10px;">
             <div class="db-chart-title" style="margin-bottom:0;">📎 Anexos — <span id="anexoModalTitulo"></span></div>

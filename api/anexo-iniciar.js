@@ -25,7 +25,10 @@ const SUBPASTA_POR_TABELA = {
     residuos_manifestos: 'Meio_Ambiente',
     residuos_refeicoes: 'Meio_Ambiente',
     manutencao_veicular: 'Meio_Ambiente',
-    relatorios_mensais: 'Relatorios_Mensais'
+    relatorios_mensais: 'Relatorios_Mensais',
+    ordens_servico: 'Ordens_de_Servico',
+    ordens_servico_entregas: 'Ordens_de_Servico',
+    colaboradores_efetivo_os: 'Ordens_de_Servico'
 };
 
 function sanitizarNome(texto) {

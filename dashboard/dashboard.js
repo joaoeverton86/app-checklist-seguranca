@@ -11793,9 +11793,18 @@ function renderTabelaControleOs() {
             ? `<span style="display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; background:#d1fae5; color:#065f46; font-size:11px; font-weight:700; border:1px solid #a7f3d0;" title="Ordem de Serviço assinada e arquivada">✅ ASSINADA</span>`
             : `<span style="display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; background:#fef3c7; color:#92400e; font-size:11px; font-weight:700; border:1px solid #fde68a;" title="Pendente de coleta de assinatura">⚠️ PENDENTE</span>`;
 
-        const dataEntregaFormatada = e.os_data_entrega 
+        const anexosOs = typeof anexosDoRegistro === 'function' ? anexosDoRegistro('ordens_servico', e.id) : [];
+        const temAnexo = anexosOs.length > 0;
+
+        let dataEntregaFormatada = e.os_data_entrega 
             ? formatSimpleDate(e.os_data_entrega) 
             : `<span style="color:var(--text-light); font-size:11.5px;">—</span>`;
+
+        if (temAnexo) {
+            dataEntregaFormatada += `<div style="margin-top:3px;"><a href="${escapeHTML(anexosOs[0].drive_view_link)}" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:3px; font-size:11px; color:#0284c7; text-decoration:none; font-weight:700; background:#f0f9ff; padding:2px 6px; border-radius:4px; border:1px solid #bae6fd;" title="Abrir ${escapeHTML(anexosOs[0].nome_arquivo)} no Google Drive">📎 ${anexosOs.length === 1 ? 'Ver no Drive' : anexosOs.length + ' anexos'}</a></div>`;
+        } else if (e.os_anexo_url) {
+            dataEntregaFormatada += `<div style="margin-top:3px;"><a href="${escapeHTML(e.os_anexo_url)}" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:3px; font-size:11px; color:#0284c7; text-decoration:none; font-weight:700; background:#f0f9ff; padding:2px 6px; border-radius:4px; border:1px solid #bae6fd;" title="Abrir comprovante no Google Drive">📎 Ver no Drive</a></div>`;
+        }
 
         const versaoTxt = e.os_versao || 'Rev. 00';
         const setorGheTxt = e.setor 
@@ -11819,6 +11828,9 @@ function renderTabelaControleOs() {
                     <div style="display: inline-flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap;">
                         <button class="db-clear-btn" style="padding: 4px 8px; font-size: 11.5px;" onclick="imprimirOsIndividualEfetivo('${escapeHTML(e.id)}')" title="Imprimir Ordem de Serviço timbrada oficial">
                             🖨️ Imprimir
+                        </button>
+                        <button class="db-clear-btn" style="padding: 4px 8px; font-size: 11.5px; ${temAnexo ? 'color:#0284c7; border-color:#7dd3fc; background:#f0f9ff; font-weight:700;' : ''}" onclick="abrirAnexosOsColaborador('${escapeHTML(e.id)}')" title="Anexar foto ou PDF da Ordem de Serviço assinada no Google Drive">
+                            📎 ${temAnexo ? anexosOs.length : 'Anexo'}
                         </button>
                         <button class="db-clear-btn" style="padding: 4px 8px; font-size: 11.5px; border-color: var(--primary); color: var(--primary);" onclick="abrirModalAssinaturaOs('${escapeHTML(e.id)}')" title="Registrar ou alterar dados da entrega e assinatura">
                             ✍️ Registrar
@@ -11967,11 +11979,50 @@ function abrirModalAssinaturaOs(matricula) {
 
     const modal = document.getElementById('modalRegistrarAssinaturaOs');
     if (modal) modal.style.display = 'flex';
+    atualizarAnexosModalOs(colab.id);
 }
 
 function fecharModalAssinaturaOs() {
     const modal = document.getElementById('modalRegistrarAssinaturaOs');
     if (modal) modal.style.display = 'none';
+}
+
+function abrirAnexosOsColaborador(matricula) {
+    if (!matricula) return;
+    const colab = (allEfetivo || []).find(e => e.id === matricula);
+    const nome = colab ? colab.nome : ('Matrícula ' + matricula);
+    abrirAnexoModal('ordens_servico', matricula, 'Ordem de Serviço (NR-01) — ' + nome);
+}
+
+function atualizarAnexosModalOs(mat) {
+    const matricula = mat || document.getElementById('modalOs_matricula')?.value;
+    const listEl = document.getElementById('modalOs_anexosList');
+    if (!matricula || !listEl) return;
+
+    garantirAnexosSmsCarregados(() => {
+        const anexos = typeof anexosDoRegistro === 'function' ? anexosDoRegistro('ordens_servico', matricula) : [];
+        if (anexos.length === 0) {
+            listEl.innerHTML = '<span style="color:var(--text-light); font-style:italic;">Nenhum comprovante anexado ainda. Clique em "+ Enviar Foto / PDF" para anexar ao Google Drive.</span>';
+            return;
+        }
+
+        let html = '<div style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">';
+        anexos.forEach(a => {
+            html += `
+                <div style="display:flex; align-items:center; justify-content:space-between; background:var(--card, #fff); border:1px solid var(--border); border-radius:6px; padding:6px 10px;">
+                    <a href="${escapeHTML(a.drive_view_link)}" target="_blank" rel="noopener" style="font-weight:600; color:#1d4ed8; text-decoration:none; display:flex; align-items:center; gap:6px; font-size:12px;" title="Abrir arquivo no Google Drive">
+                        <span>📄</span> ${escapeHTML(a.nome_arquivo)}
+                    </a>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                        <a href="${escapeHTML(a.drive_view_link)}" target="_blank" rel="noopener" class="db-clear-btn" style="padding:2px 8px; font-size:11px; text-decoration:none; color:#1d4ed8; border-color:#bfdbfe; background:#eff6ff;">Abrir no Drive</a>
+                        <button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:11px; color:var(--danger); border-color:var(--danger);" onclick="excluirAnexo('${escapeHTML(a.id)}')" title="Excluir do Drive">🗑️</button>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        listEl.innerHTML = html;
+    });
 }
 
 function imprimirOsDoModal() {
@@ -15548,6 +15599,28 @@ async function enviarAnexoSelecionado() {
         };
         await supabaseUpsert('anexos_sms', [novoAnexo]);
         allAnexosSms.push(novoAnexo);
+
+        if (anexoModalTabela === 'ordens_servico') {
+            try {
+                const hojeStr = new Date().toISOString().split('T')[0];
+                await supabaseUpsert('colaboradores_efetivo', [{
+                    id: anexoModalChave,
+                    os_anexo_url: arquivo.webViewLink,
+                    os_status: 'entregue',
+                    os_data_entrega: hojeStr
+                }]);
+                const idxColab = allEfetivo.findIndex(e => e.id === anexoModalChave);
+                if (idxColab >= 0) {
+                    allEfetivo[idxColab].os_anexo_url = arquivo.webViewLink;
+                    allEfetivo[idxColab].os_status = 'entregue';
+                    if (!allEfetivo[idxColab].os_data_entrega) {
+                        allEfetivo[idxColab].os_data_entrega = hojeStr;
+                    }
+                }
+            } catch (eUp) {
+                console.warn('Aviso ao sincronizar anexo de OS no efetivo:', eUp.message);
+            }
+        }
         input.value = '';
         statusEl.textContent = '✅ Anexo enviado com sucesso.';
         statusEl.style.color = 'var(--success)';
@@ -15597,6 +15670,12 @@ function atualizarBotoesAnexosAposMudanca() {
     // Módulo Brigada de Incêndio
     if (typeof renderBrigadaMembrosLista === 'function') {
         try { renderBrigadaMembrosLista(); } catch (_) {}
+    }
+    if (typeof renderTabelaControleOs === 'function') {
+        try { renderTabelaControleOs(); } catch (_) {}
+    }
+    if (typeof atualizarAnexosModalOs === 'function') {
+        try { atualizarAnexosModalOs(); } catch (_) {}
     }
     if (typeof renderBrigadaControleTreinados === 'function') {
         try { renderBrigadaControleTreinados(); } catch (_) {}

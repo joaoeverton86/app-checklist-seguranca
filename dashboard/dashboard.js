@@ -8697,11 +8697,37 @@ function renderQuestoesCatalogoForm() {
         </div>`).join('');
 }
 
+function obterProximoCodigoCatalogo() {
+    if (!allTreinamentosCatalogo || allTreinamentosCatalogo.length === 0) return '1';
+    let max = 0;
+    allTreinamentosCatalogo.forEach(c => {
+        const idStr = String(c.id || '').trim();
+        const num = parseInt(idStr, 10);
+        if (!isNaN(num) && num > max) {
+            max = num;
+        }
+    });
+    return String(max + 1);
+}
+
+function catFormPreencherProximoCodigo() {
+    const codigoInput = document.getElementById('catForm_codigo');
+    if (!codigoInput || codigoInput.readOnly) return;
+    const prox = obterProximoCodigoCatalogo();
+    codigoInput.value = prox;
+    const hint = document.getElementById('catForm_codigoHint');
+    if (hint) {
+        hint.style.display = 'inline';
+        hint.innerHTML = `⚡ Código sequencial: <strong>${prox}</strong> (último: ${prox > 1 ? prox - 1 : 1})`;
+    }
+}
+
 function abrirFormCatalogoTreinamento(codigo) {
     const form = document.getElementById('catalogoFormCard');
     const title = document.getElementById('catalogoFormTitle');
     const codigoInput = document.getElementById('catForm_codigo');
     const btnExcluir = document.getElementById('catForm_btnExcluir');
+    const hint = document.getElementById('catForm_codigoHint');
     document.getElementById('catalogoFormStatus').textContent = '';
     document.getElementById('catForm_mesclarPanel').style.display = 'none';
 
@@ -8712,6 +8738,7 @@ function abrirFormCatalogoTreinamento(codigo) {
         codigoInput.value = c.id || '';
         codigoInput.readOnly = true;
         codigoInput.style.background = 'var(--bg)';
+        if (hint) hint.style.display = 'none';
         document.getElementById('catForm_nome').value = c.nome || '';
         document.getElementById('catForm_cargaHoraria').value = c.carga_horaria != null ? c.carga_horaria : '';
         document.getElementById('catForm_mesesValidade').value = c.meses_validade != null ? c.meses_validade : '';
@@ -8729,9 +8756,14 @@ function abrirFormCatalogoTreinamento(codigo) {
         btnExcluir.style.display = 'inline-block';
     } else {
         title.textContent = '🎓 Novo Treinamento';
-        codigoInput.value = '';
+        const prox = obterProximoCodigoCatalogo();
+        codigoInput.value = prox;
         codigoInput.readOnly = false;
         codigoInput.style.background = '';
+        if (hint) {
+            hint.style.display = 'inline';
+            hint.innerHTML = `⚡ Código sequencial gerado: <strong>${prox}</strong> (último: ${prox > 1 ? prox - 1 : 1})`;
+        }
         document.getElementById('catForm_nome').value = '';
         document.getElementById('catForm_cargaHoraria').value = '';
         document.getElementById('catForm_mesesValidade').value = '';
@@ -8878,7 +8910,11 @@ async function salvarCatalogoTreinamento() {
     if (bloquearEdicaoSeNaoAutorizado('treinamentos')) return;
     const statusEl = document.getElementById('catalogoFormStatus');
     const codigoInput = document.getElementById('catForm_codigo');
-    const codigo = codigoInput.value.trim();
+    let codigo = codigoInput.value.trim();
+    if (!codigo) {
+        codigo = obterProximoCodigoCatalogo();
+        codigoInput.value = codigo;
+    }
     const nome = document.getElementById('catForm_nome').value.trim();
     const cargaStr = document.getElementById('catForm_cargaHoraria').value;
     const mesesStr = document.getElementById('catForm_mesesValidade').value;

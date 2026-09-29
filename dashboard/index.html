@@ -1396,8 +1396,11 @@
                     <div class="db-chart-title" id="catalogoFormTitle">🎓 Novo Treinamento</div>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px;">
                         <div>
-                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Código *</label>
-                            <input type="text" id="catForm_codigo" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
+                                <label style="margin:0; color: var(--text-light); font-weight: 600;">Código *</label>
+                                <span id="catForm_codigoHint" style="font-size:11px; color:var(--primary); font-weight:600; cursor:pointer;" onclick="catFormPreencherProximoCodigo()" title="Clique para calcular e preencher o próximo código sequencial">⚡ Próximo Código</span>
+                            </div>
+                            <input type="text" id="catForm_codigo" onfocus="if(!this.value.trim()) catFormPreencherProximoCodigo();" placeholder="Ex: 196 (automático)" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
                         </div>
                         <div style="grid-column: span 2;">
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Nome do Treinamento *</label>
@@ -7686,7 +7689,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=134"></script>
+    <script src="dashboard.js?v=135"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();

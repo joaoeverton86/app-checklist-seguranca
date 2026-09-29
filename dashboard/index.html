@@ -1187,6 +1187,15 @@
                         </div>
                     </div>
 
+                    <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin-top: 12px; margin-bottom: 14px; font-size: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                            <span style="font-weight: 600; color: var(--text);">📄 Conteúdo do Tema para o FOR.001.R00:</span>
+                            <button type="button" class="db-clear-btn" onclick="abrirFormCatalogoTreinamento(registroCodigoAtual)" style="font-size: 11px; padding: 2px 8px; height: auto;">✏️ Editar Tema no Catálogo</button>
+                        </div>
+                        <div id="registroTemaObjetivoPreview" style="color: var(--text-light); font-style: italic; margin-bottom: 4px;"></div>
+                        <div id="registroTemaConteudoPreview" style="color: var(--text-light); white-space: pre-line; font-size: 11.5px; line-height: 1.4;"></div>
+                    </div>
+
                     <div class="db-chart-title" style="font-size: 13px; margin-bottom: 6px;">📋 Lista de Presença (Documento Coletivo)</div>
                     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <button id="btnSalvarDetalhesSessao" class="db-clear-btn" onclick="salvarDetalhesSessao()">💾 Salvar detalhes da sessão</button>
@@ -1420,7 +1429,12 @@
                             <input type="text" id="catForm_metodoAvaliacao" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
                         </div>
                     </div>
-                    <p style="font-size: 11.5px; color: var(--text-light); margin: 12px 0 4px;">Os campos abaixo alimentam o "🖨️ Registro de Treinamento" (FOR.001.R00) - só precisam ser preenchidos uma vez por tema, valem pra toda sessão desse treinamento.</p>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin: 14px 0 6px; flex-wrap: wrap; gap: 8px;">
+                        <span style="font-size: 11.5px; color: var(--text-light); max-width: 480px;">Alimentam o <strong>Registro de Treinamento (FOR.001.R00)</strong> — salvos por tema para todas as listas de presença.</span>
+                        <button type="button" class="btn btn-sm" id="btnGerarIaObjetivoConteudo" onclick="catFormGerarIaObjetivoEConteudo()" style="font-size: 11.5px; padding: 6px 14px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(79,70,229,0.35);" title="Gera automaticamente Objetivo e Conteúdo Programático técnico estruturado com base no título e normas de SST">
+                            ✨ Gerar com IA (Objetivo & Conteúdo)
+                        </button>
+                    </div>
                     <div style="display: grid; grid-template-columns: 1fr; gap: 10px; font-size: 12.5px; margin-top: 8px;">
                         <div>
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Objetivo</label>
@@ -7807,7 +7821,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=136"></script>
+    <script src="dashboard.js?v=137"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();

@@ -7032,6 +7032,11 @@ function carregarSessaoRegistro() {
     document.getElementById('registroForm_respTecnicoQualificacao').value = base.responsavel_tecnico_qualificacao || 'ENG. SEG. TRABALHO';
     document.getElementById('registroForm_respTecnicoRegistro').value = base.responsavel_tecnico_registro || 'CREA: 0522078320';
 
+    const prevObjEl = document.getElementById('registroTemaObjetivoPreview');
+    const prevContEl = document.getElementById('registroTemaConteudoPreview');
+    if (prevObjEl) prevObjEl.textContent = cat?.objetivo ? '🎯 Objetivo: ' + cat.objetivo : '⚠️ Sem Objetivo cadastrado no catálogo (clique em Editar Tema acima)';
+    if (prevContEl) prevContEl.textContent = cat?.conteudo_programatico ? '📚 Conteúdo Programático:\n' + cat.conteudo_programatico : '⚠️ Sem Conteúdo Programático cadastrado';
+
     document.getElementById('registroDetalheStatus').textContent = '';
     renderRegistroDocsIndividuaisList();
     card.style.display = 'block';
@@ -7083,6 +7088,11 @@ function carregarSessaoNovaRegistro() {
     document.getElementById('registroForm_respTecnicoNome').value = 'JOÃO EVERTON DE SOUZA LIMEIRA';
     document.getElementById('registroForm_respTecnicoQualificacao').value = 'ENG. SEG. TRABALHO';
     document.getElementById('registroForm_respTecnicoRegistro').value = 'CREA: 0522078320';
+
+    const prevObjEl = document.getElementById('registroTemaObjetivoPreview');
+    const prevContEl = document.getElementById('registroTemaConteudoPreview');
+    if (prevObjEl) prevObjEl.textContent = cat?.objetivo ? '🎯 Objetivo: ' + cat.objetivo : '⚠️ Sem Objetivo cadastrado no catálogo (clique em Editar Tema acima)';
+    if (prevContEl) prevContEl.textContent = cat?.conteudo_programatico ? '📚 Conteúdo Programático:\n' + cat.conteudo_programatico : '⚠️ Sem Conteúdo Programático cadastrado';
 
     document.getElementById('registroDetalheStatus').textContent = '';
     renderRegistroDocsIndividuaisList();
@@ -8624,9 +8634,12 @@ function renderCatalogoResumo() {
     if (!el) return;
     const total = allTreinamentosCatalogo.length;
     const comValidade = allTreinamentosCatalogo.filter(c => c.meses_validade).length;
+    const comConteudo = allTreinamentosCatalogo.filter(c => c.objetivo && c.conteudo_programatico).length;
+    const semConteudo = total - comConteudo;
     const cargaTotal = allTreinamentosCatalogo.reduce((sum, c) => sum + (parseFloat(c.carga_horaria) || 0), 0);
-    el.textContent = total === 0 ? '' :
-        `${total} treinamento(s) cadastrado(s) — ${comValidade} com validade (reciclagem), ${total - comValidade} sem validade — ${cargaTotal.toLocaleString('pt-BR')}h de carga horária somada`;
+    el.innerHTML = total === 0 ? '' :
+        `${total} treinamento(s) cadastrado(s) — ${comValidade} com validade (NR/reciclagem), ${total - comValidade} sem validade — ${cargaTotal.toLocaleString('pt-BR')}h de carga horária somada ` +
+        `• <strong style="color:${semConteudo === 0 ? '#10b981' : '#f59e0b'};">📋 ${comConteudo}/${total} prontos para FOR.001.R00</strong>`;
 }
 
 // 'todos' | 'com' | 'sem' - separa os ~20 treinamentos "de verdade" (NR/reciclagem, com
@@ -8663,7 +8676,15 @@ function filterCatalogoTreinamentos(query) {
     }
     container.innerHTML = matches.map(c => `
         <div class="db-list-item" style="cursor:pointer;" onclick="abrirFormCatalogoTreinamento('${escapeHTML(c.id)}')">
-            <div class="db-list-item-title">${c.meses_validade ? '🔄 ' : ''}${escapeHTML(c.nome || '')}</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <div class="db-list-item-title">${c.meses_validade ? '🔄 ' : ''}${escapeHTML(c.nome || '')}</div>
+                <div style="flex-shrink:0;">
+                    ${(c.objetivo && c.conteudo_programatico) 
+                        ? '<span style="font-size:10px; background:rgba(16,185,129,0.12); color:#059669; padding:2px 7px; border-radius:10px; font-weight:600;">📋 FOR.001 OK</span>'
+                        : '<span style="font-size:10px; background:rgba(239,68,68,0.12); color:#dc2626; padding:2px 7px; border-radius:10px; font-weight:600;">⚠️ Sem Conteúdo</span>'
+                    }
+                </div>
+            </div>
             <div class="db-list-item-sub">Código ${escapeHTML(c.id)} — ${c.carga_horaria || 0}h — ${c.meses_validade ? c.meses_validade + ' meses de validade' : 'Sem validade (avulso)'}</div>
         </div>`).join('');
 }
@@ -8739,6 +8760,306 @@ function catFormPreencherProximoCodigo() {
     if (hint) {
         hint.style.display = 'inline';
         hint.innerHTML = `⚡ Código sequencial: <strong>${prox}</strong> (último: ${prox > 1 ? prox - 1 : 1})`;
+    }
+}
+
+
+/**
+ * Motor Inteligente de Geração de Objetivo e Conteúdo Programático de SST
+ * Especialmente desenvolvido para o Consórcio Operador do Ramal do Agreste (PISF)
+ * Em estrita conformidade com as Normas Regulamentadoras (MTE), PCMSO, PGR/GRO (SGG) e ESG.
+ */
+function gerarDadosSstPorTema(nomeOriginal, codigo) {
+    const n = (nomeOriginal || '').trim().toUpperCase();
+
+    // 1. NR 06 - Equipamento de Proteção Individual (EPI)
+    if (n.includes('NR 06') || n.includes('NR.06') || n.includes('EQUIPAMENTO DE PROTEÇÃO INDIVIDUAL') || n.includes('INSPEÇÃO DE EPI') || n.includes('USO E CONSERVAÇÃO DOS EPI') || n.includes('USO OBRIGATÓRIO E HIGIENIZAÇÃO DE EPI')) {
+        return {
+            objetivo: 'Capacitar os colaboradores quanto à obrigatoriedade, seleção, guarda, conservação e higienização correta dos Equipamentos de Proteção Individual (EPI), em estrita conformidade com a NR-06.',
+            conteudo_programatico: '1. Disposições gerais e requisitos legais da NR-06 para empregados e empregador;\n2. Responsabilidades do trabalhador na guarda, uso adequado e conservação do EPI;\n3. Critérios para substituição de EPIs danificados ou com Certificado de Aprovação (CA) vencido;\n4. Higienização periódica e acondicionamento correto dos equipamentos;\n5. Importância do uso contínuo de EPIs específicos para cada risco na frente de serviço.'
+        };
+    }
+
+    // 2. NR 10 - Eletricidade / Fuga / Choque
+    if (n.includes('NR 10') || n.includes('NR.10') || n.includes('ELETRICIDADE') || n.includes('CHOQUE ELÉTRICO') || n.includes('FUGA DE CORRENTE') || n.includes('HABILITADO E AUTORIZADO')) {
+        return {
+            objetivo: 'Instruir os colaboradores sobre os perigos da eletricidade nos canteiros e frentes de canal do Ramal do Agreste, prevenindo acidentes por choque elétrico, arcos voltaicos e curto-circuitos, em conformidade com a NR-10.',
+            conteudo_programatico: '1. Conceitos básicos de eletricidade e riscos associados (choque elétrico, queimaduras e arcos);\n2. Medidas de proteção coletiva: desenergização, bloqueio, etiquetagem (LOTO) e aterramento;\n3. Diferença legal e operacional entre trabalhador qualificado, habilitado e autorizado;\n4. Condições e cuidados com quadros elétricos, cabos, extensões e ferramentas portáteis em campo;\n5. Procedimentos de emergência, desvencilhamento seguro e primeiros socorros em caso de choque.'
+        };
+    }
+
+    // 3. NR 11 - Movimentação de Cargas / Munck / Transporte
+    if (n.includes('NR 11') || n.includes('NR.11') || n.includes('MUNCK') || n.includes('MOVIMENTAÇÃO, ARMAZENAGEM E MANUSEIO')) {
+        return {
+            objetivo: 'Orientar o efetivo sobre as práticas seguras na operação de equipamentos de içamento, transporte e movimentação de cargas (caminhão munck e pontes rolantes), prevenindo tombamentos e quedas de materiais, conforme a NR-11.',
+            conteudo_programatico: '1. Diretrizes da NR-11 para operação de equipamentos de transporte e movimentação de materiais;\n2. Inspeção prévia diária (checklist) de cabos de aço, cintas, manilhas e olhais de içamento;\n3. Isolamento, sinalização do raio de giro e proibição de circulação sob cargas suspensas;\n4. Comunicação padronizada entre operador e sinaleiro/amarrador de cargas;\n5. Cuidados no patolamento em solos irregulares e condições meteorológicas adversas.'
+        };
+    }
+
+    // 4. NR 12 - Máquinas e Equipamentos / Motosserra
+    if (n.includes('NR 12') || n.includes('NR.12') || n.includes('MÁQUINAS E EQUIPAMENTOS') || n.includes('MOTOSSERRA') || n.includes('IT.OPE - MOTOSSERRA') || n.includes('ROTATIVAS')) {
+        if (n.includes('MOTOSSERRA')) {
+            return {
+                objetivo: 'Qualificar e autorizar os operadores para a utilização segura e eficiente da motosserra na supressão vegetal do Ramal do Agreste, prevenindo acidentes graves por corte e rebote, conforme a NR-12 (Anexo V).',
+                conteudo_programatico: '1. Requisitos legais e dispositivos de segurança obrigatórios na motosserra (NR-12 Anexo V);\n2. Técnicas de corte seguro: desgalhamento, traçamento, corte direcional e prevenção do efeito rebote;\n3. Uso obrigatório de EPIs específicos: calça anticorte, protetor facial, auditivo e luvas;\n4. Manutenção preventiva diária: afiação da corrente, lubrificação, freio e trava do acelerador;\n5. Isolamento de área de corte, comunicação com a equipe e procedimentos de emergência.'
+            };
+        }
+        return {
+            objetivo: 'Capacitar os colaboradores na identificação de perigos e operação segura de máquinas e equipamentos, compreendendo os sistemas de proteção e paradas de emergência, conforme a NR-12.',
+            conteudo_programatico: '1. Princípios fundamentais da NR-12 e zonas de perigo em partes móveis e rotativas;\n2. Tipos de proteções mecânicas: fixas, móveis e dispositivos de intertravamento de segurança;\n3. Procedimentos de partida, parada emergencial e inspeção visual diária antes da operação;\n4. Bloqueio de energia perigosa durante manutenções, limpeza e desobstruções;\n5. Proibição de remoção ou burla de dispositivos de segurança e reporte imediato de avarias.'
+        };
+    }
+
+    // 5. NR 17 - Ergonomia / Levantamento de Peso / DORT
+    if (n.includes('NR 17') || n.includes('NR.17') || n.includes('ERGONOMIA') || n.includes('LEVANTAMENTO DE PESO') || n.includes('DORT') || n.includes('TRANSPORTE MANUAL DE CARGA')) {
+        return {
+            objetivo: 'Instruir os colaboradores sobre a aplicação prática da ergonomia no trabalho e prevenção de lesões na coluna e distúrbios osteomusculares (LER/DORT), de acordo com a NR-17.',
+            conteudo_programatico: '1. Fundamentos da NR-17 e conceitos de ergonomia física aplicada ao canteiro e frentes de obra;\n2. Biomecânica da coluna vertebral: postura correta e elevação com uso da musculatura das pernas;\n3. Limites de carga para transporte manual e emprego de técnicas de trabalho em equipe/dupla;\n4. Reconhecimento precoce dos sintomas de DORT e importância de pausas para recuperação muscular;\n5. Organização do posto de trabalho e eliminação de esforços desnecessários.'
+        };
+    }
+
+    // 6. NR 20 - Líquidos Combustíveis e Inflamáveis
+    if (n.includes('NR 20') || n.includes('NR.20') || n.includes('INFLAMÁVEIS') || n.includes('COMBUSTIVEL')) {
+        return {
+            objetivo: 'Instruir sobre os riscos no manuseio, transporte e armazenamento de combustíveis e líquidos inflamáveis nas frentes de canal e canteiros, prevenindo incêndios e explosões, conforme a NR-20.',
+            conteudo_programatico: '1. Características físico-químicas dos líquidos inflamáveis e ponto de fulgor (NR-20);\n2. Procedimentos seguros no abastecimento de veículos, máquinas e geradores no campo;\n3. Aterramento elétrico, dissipação de eletricidade estática e controle de fontes de ignição;\n4. Armazenamento correto em bacias de contenção e uso obrigatório de kits de mitigação;\n5. Procedimentos de resposta rápida a vazamentos e princípios de combate a fogo classe B.'
+        };
+    }
+
+    // 7. NR 21 - Trabalho a Céu Aberto / Calor / Hidratação / Protetor Solar / Dias Chuvosos
+    if (n.includes('NR 21') || n.includes('NR.21') || n.includes('CÉU ABERTO') || n.includes('HIDRATAÇÃO') || n.includes('PROTETOR SOLAR') || n.includes('CHUVOSOS')) {
+        if (n.includes('CHUVOSOS')) {
+            return {
+                objetivo: 'Orientar as equipes operacionais sobre os cuidados adicionais e medidas de segurança específicas para a execução de serviços em dias chuvosos ou sob solo encharcado no Ramal do Agreste.',
+                conteudo_programatico: '1. Riscos agravados pelas chuvas: escorregamento de taludes, atolamento de veículos e piso escorregadio;\n2. Cuidados com redes e equipamentos elétricos expostos à umidade e risco de choque;\n3. Redução de velocidade nas vias de acesso e atenção especial à visibilidade reduzida;\n4. Suspensão imediata de trabalhos a céu aberto durante tempestades com descargas atmosféricas (raios);\n5. Inspeção do estado de drenagem, estabilidade de valas e condições de circulação.'
+            };
+        }
+        return {
+            objetivo: 'Orientar os trabalhadores sobre as medidas preventivas para o trabalho a céu aberto sob radiação solar e clima semiárido, prevenindo desidratação, insolação e câncer de pele, em conformidade com a NR-21.',
+            conteudo_programatico: '1. Requisitos da NR-21 para atividades a céu aberto e condições climáticas do semiárido (Ramal do Agreste);\n2. Importância da hidratação contínua e disponibilidade de água potável fresca nas frentes de serviço;\n3. Proteção contra radiação UV: aplicação regular do protetor solar, uso de touca árabe e óculos escuros;\n4. Sinais e sintomas de exaustão térmica, câimbras de calor e insolação;\n5. Uso de abrigos para pausas e medidas imediatas de primeiros socorros em caso de mal-estar térmico.'
+        };
+    }
+
+    // 8. NR 23 / Prevenção de Incêndio / Extintores / Simulação / PAE
+    if (n.includes('NR 23') || n.includes('NR.23') || n.includes('INCÊNDIO') || n.includes('EXTINTOR') || n.includes('BRIGADA DE EMEGÊNCIA') || n.includes('SIMULAÇÃO') || n.includes('PAE') || n.includes('PLANO DE ATENDIMENTO E EMERGÊNCIA') || n.includes('PLANO DE ATENDIMENTO A EMERGÊNCIA')) {
+        return {
+            objetivo: 'Capacitar o efetivo sobre as medidas preventivas contra princípios de incêndio, identificação correta das classes de fogo, operação prática dos extintores portáteis e rotas de fuga do PAE, conforme a NR-23.',
+            conteudo_programatico: '1. Teoria do fogo: triângulo/tetraedro do fogo e métodos de extinção (abafamento, resfriamento e isolamento);\n2. Classes de incêndio (A, B, C e D) e seleção do agente extintor correto (Água, Pó Químico e CO2);\n3. Procedimento de inspeção periódica de extintores (manômetro, lacre, bico e data de recarga);\n4. Técnica correta de manuseio e descarga do extintor direcionada à base das chamas;\n5. Rotas de fuga, evacuação ordenada para o Ponto de Encontro e acionamento do PAE (Plano de Atendimento a Emergência).'
+        };
+    }
+
+    // 9. NR 35 - Trabalho em Altura / Segurança em Altura / Queda
+    if (n.includes('NR 35') || n.includes('NR.35') || n.includes('ALTURA') || n.includes('QUEDA DO MESMO NÍVEL')) {
+        if (n.includes('QUEDA DO MESMO NÍVEL')) {
+            return {
+                objetivo: 'Conscientizar os trabalhadores sobre os riscos de tropeços, escorregões e quedas em mesmo nível no canteiro e frentes do canal, fortalecendo a ordem e limpeza nas passagens operacionais.',
+                conteudo_programatico: '1. Caracterização das quedas de mesmo nível e principais fatores causadores na construção civil;\n2. Organização e limpeza (Housekeeping): piso desobstruído de fios, ferros, pedras e sobras de material;\n3. Cuidados ao caminhar em solos irregulares, úmidos ou com declive nas margens do canal;\n4. Uso do calçado de segurança apropriado com solado antiderrapante em bom estado;\n5. Reporte imediato de irregularidades de piso e cultura de atenção ao caminhar.'
+            };
+        }
+        return {
+            objetivo: 'Capacitar os colaboradores que executam atividades em altura acima de 2,00 metros, instruindo sobre ancoragem, uso do cinto tipo paraquedista e medidas de prevenção contra quedas, conforme a NR-35.',
+            conteudo_programatico: '1. Conceitos, campo de aplicação e requisitos normativos da NR-35;\n2. Análise de Risco (APR) e emissão obrigatória da Permissão de Trabalho (PT) para altura;\n3. Sistemas de Proteção Coletiva (SPCQ) e Sistemas de Proteção Individual Contra Quedas (SPIQ);\n4. Inspeção prévia do cinto de segurança tipo paraquedista, talabartes com absorvedor e trava-quedas;\n5. Pontos de ancoragem certificados, condutas em situações de emergência e resgate em altura.'
+        };
+    }
+
+    // 10. Checklist / Inspeções Diárias de Equipamentos e Ferramentas
+    if (n.includes('CHECKLIST') || n.includes('INSPEÇÃO DE FERRAMENTAS') || n.includes('ORGANIZAÇÃO DAS FERRAMENTAS')) {
+        return {
+            objetivo: 'Capacitar operadores e colaboradores na realização do checklist diário pré-uso de veículos, máquinas e ferramentas, garantindo a pronta detecção de falhas mecânicas e a interdição preventiva de itens defeituosos.',
+            conteudo_programatico: '1. Importância operacional e jurídica da inspeção diária (checklist pré-uso) antes do início das atividades;\n2. Verificação de itens críticos de segurança: freios, pneus, luzes, vazamentos, dispositivos de proteção e buzina;\n3. Preenchimento fidedigno da lista de checagem e identificação clara de não conformidades impeditivas;\n4. Fluxo de bloqueio, etiquetagem e comunicação imediata à manutenção mecânica e ao SESMT;\n5. Guarda organizada das ferramentas de trabalho em local limpo e apropriado após a conclusão das tarefas.'
+        };
+    }
+
+    // 11. Proteção Respiratória / PPR / Máscara PFF2
+    if (n.includes('PPR') || n.includes('RESPIRATÓRIA') || n.includes('PFF2') || n.includes('MÁSCARA') || n.includes('DESCARTE DE MÁSCARAS')) {
+        return {
+            objetivo: 'Instruir os colaboradores sobre a proteção das vias aéreas contra poeiras minerais, fumos e aerodispersoides gerados nas obras do canal, conforme o Programa de Proteção Respiratória (PPR).',
+            conteudo_programatico: '1. Riscos respiratórios nas obras civis: poeiras minerais (sílica), fumos metálicos e névoas;\n2. Tipos de respiradores: peças semifaciais filtrantes (PFF2/PFF3) e filtros químicos;\n3. Ajuste facial, teste de pressão positiva/negativa e importância da vedação no rosto (vedação sem barba);\n4. Cuidados de higienização, guarda em local seco e critérios de descarte da máscara após saturação;\n5. Cumprimento das diretrizes do PPR e prevenção de pneumoconioses e silicose.'
+        };
+    }
+
+    // 12. Proteção Auditiva / PCA / Audição
+    if (n.includes('PCA') || n.includes('AUDITIV') || n.includes('AUDIÇÃO')) {
+        return {
+            objetivo: 'Orientar sobre a importância da preservação da saúde auditiva e uso correto dos protetores auriculares contra ruídos de maquinários pesados, conforme o Programa de Conservação Auditiva (PCA).',
+            conteudo_programatico: '1. Efeitos da exposição contínua a níveis elevados de ruído e conceito de PAIR (Perda Auditiva);\n2. Tipos de protetores auditivos: plugue de inserção (silicone/espuma) e tipo concha;\n3. Técnica correta de colocação para atingir o Nível de Redução de Ruído (NRR/NRRsf);\n4. Higienização periódica com água e sabão neutro e acondicionamento na caixinha de guarda;\n5. Realização dos exames audiométricos periódicos previstos no PCMSO (NR-07).'
+        };
+    }
+
+    // 13. Proteção das Mãos e Dedos / Ferramentas Manuais / Corte e Perfuração
+    if (n.includes('MÃOS') || n.includes('PRENSAMENTO') || n.includes('FERRAMENTAS MANUAIS') || n.includes('CORTE E PERFURAÇÃO') || n.includes('MODIFICADAS')) {
+        return {
+            objetivo: 'Sensibilizar o efetivo operacional sobre os riscos de prensamento, corte e esmagamento nas mãos e dedos, reforçando o uso seguro de ferramentas e luvas adequadas.',
+            conteudo_programatico: '1. Importância das mãos no trabalho e anatomia vulnerável a acidentes mecânicos;\n2. Identificação das zonas de prensamento (pinch points) em máquinas, formas e içamentos;\n3. Proibição absoluta do uso de ferramentas manuais improvisadas, trincadas ou com rebarbas;\n4. Escolha da luva de segurança apropriada para cada atividade (vaqueta, mista, corte ou nitrílica);\n5. Posicionamento seguro das mãos antes de iniciar o aperto, movimentação ou batimento.'
+        };
+    }
+
+    // 14. Proteção dos Pés / Calçados / Perneira de Segurança
+    if (n.includes('PERNEIRA') || n.includes('PROTEÇÃO DOS PÉS') || n.includes('CALÇADO DE SEGURANÇA')) {
+        return {
+            objetivo: 'Reforçar o uso obrigatório e correto da perneira de segurança e do calçado com biqueira, protegendo membros inferiores contra picadas de animais peçonhentos e impactos mecânicos.',
+            conteudo_programatico: '1. Riscos de acidentes típicos da Caatinga e frentes de canal: animais peçonhentos, galhos e pedras;\n2. Características técnicas e áreas de proteção cobertas pela perneira de segurança;\n3. Ajuste correto sobre o calçado de trabalho sem folgas que permitam a entrada de detritos;\n4. Inspeção diária do estado de conservação do fecho, costuras e lâmina de proteção da perneira;\n5. Importância da botina com biqueira e solado adequado para solo irregular.'
+        };
+    }
+
+    // 15. Cabeça e Olhos / Capacete / Óculos / Jugular / Adornos
+    if (n.includes('CAPACETE') || n.includes('JUGULAR') || n.includes('ÓCULOS') || n.includes('SAÚDE OCULAR') || n.includes('ADORNOS')) {
+        if (n.includes('ADORNOS')) {
+            return {
+                objetivo: 'Instruir sobre a proibição do uso de anéis, alianças, pulseiras, cordões e relógios nas frentes de obra, prevenindo acidentes graves por engate e arrancamento mecânico.',
+                conteudo_programatico: '1. Mecanismos de acidentes envolvendo adornos: enroscamento em ferragens e partes móveis de máquinas;\n2. Efeito alavanca e risco de amputação traumática ou desluvamento dos dedos;\n3. Riscos de condução elétrica aumentada ao portar objetos metálicos próximos a circuitos;\n4. Regras do Consórcio e responsabilidade individual na retirada de adornos antes do turno;\n5. Fiscalização mútua e cultura preventiva entre os colegas de trabalho.'
+            };
+        }
+        return {
+            objetivo: 'Instruir sobre a proteção da cabeça e dos olhos nas frentes de obra, assegurando o uso contínuo de capacete com jugular ajustada e óculos de proteção adequados.',
+            conteudo_programatico: '1. Riscos de projeção de partículas volantes, poeira e impactos de objetos na cabeça e olhos;\n2. Ajuste correto da carneira do capacete e posicionamento da fita jugular sob o queixo;\n3. Conservação dos óculos de segurança: limpeza com pano macio e substituição de lentes riscadas;\n4. Uso do modelo correto de óculos: fumê/escuro para trabalho ao sol e incolor para ambientes cobertos;\n5. Condutas imediatas de primeiros socorros em caso de corpo estranho nos olhos (lavagem contínua).'
+        };
+    }
+
+    // 16. Animais Peçonhentos / Ofídicos / Abelhas
+    if (n.includes('ANIMAIS PEÇONHENTOS') || n.includes('OFÍDICOS') || n.includes('ABELHAS') || n.includes('PICADA')) {
+        return {
+            objetivo: 'Orientar o efetivo sobre prevenção de acidentes com serpentes, escorpiões, aranhas e abelhas nas obras do Ramal do Agreste, e fluxos de atendimento de emergência médica.',
+            conteudo_programatico: '1. Identificação dos animais peçonhentos comuns no bioma Caatinga (cobras, escorpiões e abelhas);\n2. Medidas preventivas no campo: inspeção prévia de ferramentas, tubos, pedras e uso obrigatório de perneiras;\n3. Como agir ao avistar animais peçonhentos: não tocar, manter distância e acionar a equipe de Meio Ambiente;\n4. Primeiros socorros em caso de picada: repouso, hidratação e proibição de torniquetes ou sucção;\n5. Fluxo de comunicação imediata ao SESMT e remoção rápida ao polo de saúde com soro antiofídico.'
+        };
+    }
+
+    // 17. Meio Ambiente / Produtos Químicos / FISPQ / Coleta Seletiva / Copo Descartável / Gelo / Água
+    if (n.includes('PRODUTO QUÍMICO') || n.includes('FISPQ') || n.includes('KIT DE MITIGAÇÃO') || n.includes('MEIO AMBIENTE') || n.includes('COLETA SELETIVA') || n.includes('ÁGUA') || n.includes('SUSTENTABILIDADE') || n.includes('DESCARTE') || n.includes('GELO') || n.includes('VEICULAÇÃO HIDRICA')) {
+        if (n.includes('GELO') || n.includes('VEICULAÇÃO HIDRICA')) {
+            return {
+                objetivo: 'Orientar os colaboradores sobre as boas práticas higiênico-sanitárias no manuseio, transporte e armazenamento de água potável e gelo, prevenindo contaminações e doenças gastrointestinais.',
+                conteudo_programatico: '1. Conceito de doenças de veiculação hídrica e principais riscos de contaminação bacteriana;\n2. Higienização rigorosa dos garrafões térmicos individuais e das caixas de gelo coletivas;\n3. Proibição do contato manual direto com o gelo: uso obrigatório de conchas limpas e exclusivas;\n4. Armazenamento do gelo em recipientes vedados, suspensos do chão e ao abrigo do sol;\n5. Cuidados no abastecimento exclusivo com água tratada e potável fornecida pelo Consórcio.'
+            };
+        }
+        return {
+            objetivo: 'Capacitar os colaboradores na gestão de produtos químicos, segregação correta de resíduos e proteção dos recursos ambientais do Ramal do Agreste, alinhado aos compromissos ESG.',
+            conteudo_programatico: '1. Interpretação da FISPQ (Ficha de Informação de Segurança para Produtos Químicos) e rotulagem GHS;\n2. Procedimentos para contenção de vazamentos com uso rápido do kit de mitigação (mantas e cordões absorventes);\n3. Segregação e destinação de resíduos nas lixeiras coloridas da coleta seletiva (plástico, metal, papel e orgânico);\n4. Uso racional da água potável e redução do desperdício de copos plásticos descartáveis;\n5. Preservação da fauna e flora local e atendimento aos condicionantes ambientais do projeto.'
+        };
+    }
+
+    // 18. APR / PTS / Percepção de Risco / Análise de Segurança / Regra dos 2 Minutos / Condições Inseguras
+    if (n.includes('APR') || n.includes('PTE') || n.includes('PERCEPÇÃO DE RISCO') || n.includes('ANÁLISE DE SEGURANÇA') || n.includes('REGRA DOS 02 MINUTOS') || n.includes('PLANEJAR ANTES') || n.includes('CONDIÇÕES INSEGURAS') || n.includes('PRESSA') || n.includes('EXCESSO DE CONFIANÇA') || n.includes('FATORES QUE CONDUZEM')) {
+        return {
+            objetivo: 'Capacitar os colaboradores no reconhecimento prévio de perigos, preenchimento participativo da APR e aplicação da Regra dos 2 Minutos antes do início de qualquer tarefa no trecho.',
+            conteudo_programatico: '1. Diferença entre perigo (fonte de dano) e risco (probabilidade x severidade) na construção pesada;\n2. Aplicação prática da Regra dos 02 Minutos: parar, observar ao redor, avaliar riscos e agir com segurança;\n3. Elaboração, leitura e assinatura da APR (Análise Preliminar de Risco) em equipe na frente de serviço;\n4. Identificação e eliminação de condições inseguras e armadilhas cognitivas causadas pela pressa ou excesso de confiança;\n5. Direito de recusa e paralisação da atividade ao identificar desvios críticos sem proteção.'
+        };
+    }
+
+    // 19. Trânsito / Direção Defensiva / Ônibus / Veículos Particulares / Maio Amarelo
+    if (n.includes('DIREÇÃO DEFENSIVA') || n.includes('TRANSITO') || n.includes('ÔNIBUS') || n.includes('VEÍCULOS PARTICULARES') || n.includes('VELOCIDADE') || n.includes('MAIO AMARELO')) {
+        return {
+            objetivo: 'Instruir motoristas e passageiros sobre as regras de trânsito seguro nas vias de acesso e canteiros da obra, respeitando os limites de velocidade e prevenindo colisões e atropelamentos.',
+            conteudo_programatico: '1. Princípios da Direção Defensiva aplicados a frentes de obra: atenção concentrada e distância de segurança;\n2. Limites de velocidade internos da obra (30 km/h) e cuidados nas curvas com poeira ou lama;\n3. Proibição do uso de celular ao volante e exigência do cinto de segurança para todos os ocupantes;\n4. Normas para embarque e desembarque seguro dos ônibus e proibição de veículos particulares nos acessos;\n5. Cuidados no cruzamento de pistas e preferência para máquinas pesadas em manobra.'
+        };
+    }
+
+    // 20. Primeiros Socorros / Manobra de Heimlich / Fluxo de Ocorrência de Acidentes
+    if (n.includes('PRIMEIROS SOCORROS') || n.includes('HEIMLICH') || n.includes('FLUXO DE COMUNICAÇÃO DE OCORRÊNCIA') || n.includes('COMUNICAÇÃO DE ACIDENTE')) {
+        return {
+            objetivo: 'Capacitar o efetivo em noções elementares de primeiros socorros e desobstrução de vias aéreas (Heimlich), fixando o fluxo de acionamento rápido e correto do SESMT em emergências.',
+            conteudo_programatico: '1. Princípios gerais de primeiros socorros: manter a calma, sinalizar o local e não agravar as lesões;\n2. Avaliação primária da vítima e verificação de sinais vitais (consciência e respiração);\n3. Aplicação prática da Manobra de Heimlich em casos de engasgo e asfixia por corpo estranho;\n4. Cuidados essenciais: controle de hemorragias com compressão direta e proibição de movimentar vítimas de queda;\n5. Fluxo de acionamento imediato da ambulância do Consórcio, rádio de emergência e informe ao SESMT.'
+        };
+    }
+
+    // 21. Campanhas de Saúde / PCMSO (Janeiro Branco, Doação de Sangue, Hipertensão, Diabetes, Câncer, Tabaco, Alcoolismo, DST)
+    if (n.includes('JANEIRO BRANCO') || n.includes('SAÚDE MENTAL') || n.includes('ESTRESSE') || n.includes('HIPERTENSÃO') || n.includes('DIABETES') || n.includes('TABACO') || n.includes('ÁLCOOL') || n.includes('DROGAS') || n.includes('SEXUALMENTE TRANSMISSÍVEIS') || n.includes('AIDS') || n.includes('HEPATITES') || n.includes('TUBERCULOSE') || n.includes('CÂNCER') || n.includes('RIM') || n.includes('CEFALEIA') || n.includes('MENINGITE') || n.includes('ATESTADO') || n.includes('JUNHO VERMELHO') || n.includes('DOAÇÃO DE SANGUE')) {
+        if (n.includes('JUNHO VERMELHO') || n.includes('DOAÇÃO DE SANGUE')) {
+            return {
+                objetivo: 'Conscientizar os colaboradores sobre a nobreza e importância social da doação voluntária de sangue, esclarecendo critérios de triagem, benefícios e salvamento de vidas.',
+                conteudo_programatico: '1. A campanha Junho Vermelho e o papel solidário do trabalhador na manutenção dos estoques de sangue;\n2. Quem pode doar: requisitos básicos de idade, peso, repouso prévio e intervalo entre doações;\n3. Mitos e verdades sobre o processo de doação de sangue e segurança do procedimento;\n4. Legislação trabalhista: dispensa justificada de 1 dia de trabalho a cada 12 meses para doação voluntária (CLT);\n5. Fortalecimento da cidadania e compromisso humanitário entre os colaboradores do Consórcio.'
+            };
+        }
+        if (n.includes('ATESTADO')) {
+            return {
+                objetivo: 'Esclarecer aos colaboradores as regras, prazos e procedimentos internos para a entrega e validação de atestados médicos no Consórcio, garantindo o acompanhamento pela Medicina do Trabalho.',
+                conteudo_programatico: '1. Requisitos legais do atestado médico: identificação do médico (CRM), período de afastamento e dados do paciente;\n2. Prazos regimentais para entrega do documento ao departamento de Recursos Humanos e ao ambulatório do SESMT;\n3. Importância do comparecimento ao médico do trabalho para validação e avaliação clínica de retorno ao trabalho;\n4. Distinção entre afastamentos previdenciários (acidentários ou doença comum) e acompanhamento pelo PCMSO;\n5. Direitos e deveres do colaborador no zelo pela sua recuperação física e transparência com a empresa.'
+            };
+        }
+        return {
+            objetivo: 'Promover a saúde integral, o bem-estar biopsicossocial e a prevenção de doenças ocupacionais e crônicas entre os trabalhadores, conforme as diretrizes do PCMSO (NR-07).',
+            conteudo_programatico: '1. Relevância da campanha de saúde no contexto ocupacional e familiar do trabalhador;\n2. Principais causas, sintomas de alerta e fatores de risco associados à doença/condição;\n3. Hábitos de vida saudáveis: alimentação balanceada, prática de atividade física e qualidade do sono;\n4. Acompanhamento médico periódico no ambulatório do Consórcio e exames clínicos de rotina;\n5. Quebra de tabus, busca de apoio profissional no SESMT e solidariedade no ambiente de trabalho.'
+        };
+    }
+
+    // 22. Riscos Específicos: Bueiros, Taludes, Roço, Áreas Restritas, Isolamento, Sinalização
+    if (n.includes('BUEIROS') || n.includes('TALUDES') || n.includes('ROÇO') || n.includes('ÁREAS RESTRISTAS') || n.includes('ISOLAMENTO DE ÁREA') || n.includes('SINALIZAÇÃO') || n.includes('DISTÂNCIA SEGURA')) {
+        return {
+            objetivo: 'Capacitar as equipes operacionais para a execução segura de serviços em áreas de risco específico (taludes, bueiros e faixas de domínio), respeitando a sinalização e o isolamento físico.',
+            conteudo_programatico: '1. Avaliação prévia do terreno e estabilidade do solo antes de intervir em taludes e valas;\n2. Procedimentos seguros para limpeza de bueiros e prevenção de soterramentos ou quedas de pedras;\n3. Riscos na atividade de roço manual/mecanizado e distância de segurança entre trabalhadores (mínimo 10m);\n4. Padrões de isolamento de área com telas, cones e fitas zebradas para serviços críticos;\n5. Respeito irrestrito às placas de advertência e restrição de acesso a pessoas não autorizadas.'
+        };
+    }
+
+    // 23. Comportamento / Liderança / Comunicação / Cultura Justa / Diversidade / Mulher / Armas
+    if (n.includes('LIDER') || n.includes('COMUNICAÇÃO') || n.includes('TRABALHO EM EQUIPE') || n.includes('COMPORTAMENTO SEGURO') || n.includes('GUARDIÃO') || n.includes('DIVERSIDADE') || n.includes('MULHER') || n.includes('DISCRIMINAÇÃO') || n.includes('CÓDIGO DE CONDUTA') || n.includes('BRINCADEIRAS') || n.includes('ARMA') || n.includes('TRATAMENTO CORDIAL') || n.includes('RESPEITO AOS COLEGAS') || n.includes('RESPEITO A COMUNIDADE') || n.includes('MOTIVACAO')) {
+        if (n.includes('ARMA')) {
+            return {
+                objetivo: 'Reiterar a política de tolerância zero quanto ao porte de armas de qualquer natureza (branca ou de fogo) nos canteiros, alojamentos e veículos do Consórcio, garantindo um ambiente pacífico e seguro.',
+                conteudo_programatico: '1. Política interna de segurança e proibição absoluta do porte de facas, canivetes, facões ou armas de fogo no canteiro;\n2. Diferenciação legal entre ferramentas de trabalho disponibilizadas pela empresa e armas de uso pessoal proibidas;\n3. Consequências jurídicas e administrativas decorrentes da violação desta diretriz (demissão por justa causa);\n4. Preservação da integridade física e convivência harmônica entre todos os trabalhadores e frentes de serviço;\n5. Canais confidenciais de comunicação e denúncia gerencial do Consórcio.'
+            };
+        }
+        return {
+            objetivo: 'Desenvolver a cultura de segurança participativa, liderança humanizada, respeito mútuo e comunicação assertiva entre todos os colaboradores do Ramal do Agreste.',
+            conteudo_programatico: '1. Princípios do comportamento seguro e papel da liderança na construção de um clima organizacional positivo;\n2. Comunicação clara e sincronizada para evitar mal-entendidos durante as frentes de trabalho;\n3. Respeito à diversidade, combate a qualquer tipo de assédio, preconceito ou brincadeiras inadequadas;\n4. Conceito do "Guardião da Vida": o compromisso de orientar o companheiro exposto a perigo;\n5. Fortalecimento da integridade ética e cumprimento integral do Código de Conduta do Consórcio.'
+        };
+    }
+
+    // 24. Higiene Pessoal / Higienização de Materiais
+    if (n.includes('HIGIENE') || n.includes('HIGIENIZAÇÃO')) {
+        return {
+            objetivo: 'Orientar os colaboradores sobre os padrões de higiene pessoal e limpeza de ferramentas e áreas de convivência no canteiro, prevenindo doenças e promovendo o bem-estar coletivo.',
+            conteudo_programatico: '1. Importância da higiene pessoal na prevenção de infecções bacterianas, fúngicas e parasitárias;\n2. Lavagem correta e frequente das mãos antes das refeições e após o uso de sanitários;\n3. Manutenção e asseio dos refeitórios, alojamentos e sanitários químicos distribuídos no trecho;\n4. Limpeza periódica dos uniformes de trabalho e higienização correta dos EPIs;\n5. Cuidados no acondicionamento de alimentos e proibição de consumo de itens perecíveis sem refrigeração.'
+        };
+    }
+
+    // 25. Fallback Inteligente SST
+    const temaLimpo = nomeOriginal.replace(/NR[\.\s]*\d+\s*[-–]?\s*/gi, '').trim();
+    return {
+        objetivo: `Capacitar os colaboradores sobre os princípios e diretrizes de ${temaLimpo}, assegurando a prevenção de acidentes, o cumprimento das normas de segurança do Consórcio e o fortalecimento do comportamento preventivo no Ramal do Agreste.`,
+        conteudo_programatico: `1. Conceito, fundamentos e importância de ${temaLimpo} na rotina da construção civil pesada;\n2. Identificação de perigos, riscos e condições inseguras associadas à atividade;\n3. Medidas preventivas recomendadas, boas práticas operacionais e uso adequado dos EPIs necessários;\n4. Cumprimento dos procedimentos operacionais padrão, diretrizes da APR e normas internas do Consórcio;\n5. Ações imediatas em situações anormais, comunicação ao SESMT e incentivo à cultura de cuidado ativo.`
+    };
+}
+
+/**
+ * Acionamento do assistente inteligente no formulário do Catálogo
+ */
+function catFormGerarIaObjetivoEConteudo() {
+    const nomeInput = document.getElementById('catForm_nome');
+    const codigoInput = document.getElementById('catForm_codigo');
+    const nome = (nomeInput?.value || '').trim();
+    if (!nome) {
+        alert('⚠️ Digite primeiro o Nome do Treinamento para que a inteligência possa gerar o objetivo e conteúdo adequados.');
+        nomeInput?.focus();
+        return;
+    }
+    const codigo = codigoInput?.value || '';
+    const res = gerarDadosSstPorTema(nome, codigo);
+    
+    const objEl = document.getElementById('catForm_objetivo');
+    const contEl = document.getElementById('catForm_conteudoProgramatico');
+    const chEl = document.getElementById('catForm_cargaHoraria');
+    
+    if (objEl) objEl.value = res.objetivo;
+    if (contEl) contEl.value = res.conteudo_programatico;
+    if (chEl && !chEl.value) chEl.value = '2';
+
+    // Destaque visual suave nos campos preenchidos
+    [objEl, contEl].forEach(el => {
+        if (!el) return;
+        el.style.transition = 'all 0.3s ease';
+        el.style.borderColor = '#6366f1';
+        el.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.2)';
+        setTimeout(() => {
+            el.style.borderColor = '';
+            el.style.boxShadow = '';
+        }, 1800);
+    });
+
+    const statusEl = document.getElementById('catalogoFormStatus');
+    if (statusEl) {
+        statusEl.innerHTML = '✨ <strong>Objetivo e Conteúdo Programático gerados com sucesso</strong> com base nas NRs e diretrizes de SST!';
+        statusEl.style.color = 'var(--primary)';
+        setTimeout(() => { if (statusEl.textContent.includes('gerados com sucesso')) statusEl.textContent = ''; }, 4000);
     }
 }
 

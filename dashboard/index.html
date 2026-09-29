@@ -1144,7 +1144,7 @@
                     </div>
                     <div id="registroLotePreview" class="db-list" style="max-height: 260px; margin-bottom: 10px;"></div>
 
-                    <button class="db-apply-btn" style="margin-top: 10px;" onclick="gerarListasCronogramaMes()">🖨️ Imprimir Selecionados</button>
+                    <button class="db-apply-btn" style="margin-top: 10px;" id="btnImprimirLoteCronograma" onclick="gerarListasCronogramaMes()">🖨️ Imprimir Selecionados</button>
                 </div>
 
                 <div class="db-chart-card" id="registroDetalheCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
@@ -7821,7 +7821,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=137"></script>
+    <script src="dashboard.js?v=138"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();

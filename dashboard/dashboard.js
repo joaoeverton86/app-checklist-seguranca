@@ -7412,21 +7412,39 @@ function atualizarResumoFrentesLote() {
         : `Frentes: ${sel} selecionada(s)`;
 }
 
+function atualizarResumoLoteCronograma() {
+    const resumoEl = document.getElementById('registroLoteResumo');
+    const btnEl = document.getElementById('btnImprimirLoteCronograma');
+    const itens = itensLoteCronogramaFiltrados();
+    const selecionados = registroLoteSelecionados || new Set(itens.map(c => c.id));
+    const qtdTemasSel = itens.filter(c => selecionados.has(c.id)).length;
+    const qtdFrentesSel = registroLoteFrentesSelecionadas ? registroLoteFrentesSelecionadas.size : 0;
+    const totalListas = qtdTemasSel * qtdFrentesSel;
+
+    if (resumoEl) {
+        resumoEl.innerHTML = `${itens.length} tema(s) no filtro — <strong>${qtdTemasSel} selecionado(s)</strong> × <strong>${qtdFrentesSel} frente(s)</strong> = <span style="color:var(--primary); font-weight:700;">${totalListas} lista(s) a gerar</span>`;
+    }
+    if (btnEl) {
+        btnEl.textContent = totalListas > 0
+            ? `🖨️ Imprimir Selecionados (${qtdTemasSel} temas × ${qtdFrentesSel} frentes = ${totalListas} listas)`
+            : '🖨️ Imprimir Selecionados';
+    }
+}
+
 function onRegistroLoteFrenteCheckboxChange() {
     const wrap = document.getElementById('registroLoteFrenteCheckboxList');
     registroLoteFrentesSelecionadas = new Set(
         Array.from(wrap.querySelectorAll('input[type=checkbox]:checked')).map(el => el.value)
     );
     atualizarResumoFrentesLote();
-    registroLoteSelecionados = null;
-    renderRegistroLotePreview();
+    atualizarResumoLoteCronograma();
 }
 
 function marcarTodasFrentesLote(marcar) {
     registroLoteFrentesSelecionadas = marcar ? new Set(todasFrentesAtivas()) : new Set();
     renderRegistroLoteFrentesCheckboxes();
-    registroLoteSelecionados = null;
-    renderRegistroLotePreview();
+    atualizarResumoFrentesLote();
+    atualizarResumoLoteCronograma();
 }
 
 function onRegistroLoteFiltroChange() {
@@ -7452,6 +7470,8 @@ function limparFiltroRegistroLote() {
 
 // Itens do cronograma dentro do filtro atual (ano/mês/tema/frentes) - reaproveitado tanto
 // pra prévia quanto pra geração de verdade, pra nunca divergir.
+// Itens do cronograma dentro do filtro atual (ano/mês/tema) - as frentes selecionadas
+// definem para quais equipes as listas de presença serão geradas (combinando cada tema com cada frente).
 function itensLoteCronogramaFiltrados() {
     let itens = allTreinamentosCronograma.filter(c => c.status !== 'lancado');
     if (registroLoteFiltroAno) {
@@ -7462,14 +7482,6 @@ function itensLoteCronogramaFiltrados() {
     }
     if (registroLoteFiltroTema) {
         itens = itens.filter(c => c.treinamento_cod === registroLoteFiltroTema);
-    }
-    if (registroLoteFrentesSelecionadas.size < todasFrentesAtivas().length) {
-        // Item sem frente marcada é um tema "geral" - vale pra qualquer frente (mesmo
-        // critério que gerarListasCronogramaMes() já usa pra cruzar com TODAS as frentes
-        // quando nenhum filtro está ativo). Comparação exata sozinha excluía praticamente
-        // todo o cronograma real (9 de 12 itens sem responsavel marcado), deixando a prévia
-        // sempre vazia pra qualquer frente escolhida.
-        itens = itens.filter(c => !c.responsavel || registroLoteFrentesSelecionadas.has(c.responsavel));
     }
     itens.sort((a, b) => (a.data_prevista || '').localeCompare(b.data_prevista || ''));
     return itens;
@@ -7514,16 +7526,16 @@ function renderRegistroLotePreview() {
         return;
     }
 
-    if (resumoEl) resumoEl.textContent = `${itens.length} item(ns) no filtro — ${itens.filter(c => registroLoteSelecionados.has(c.id)).length} selecionado(s)`;
+    atualizarResumoLoteCronograma();
 
     container.innerHTML = itens.map(c => {
         const cat = catalogoPorId.get(c.treinamento_cod);
         const marcado = registroLoteSelecionados.has(c.id);
         return `<div class="db-list-item" style="display:flex; align-items:center; gap:8px;">
-            <input type="checkbox" ${marcado ? 'checked' : ''} onchange="toggleRegistroLoteSelecionado('${escapeHTML(c.id)}', this.checked)" style="width:16px; height:16px; flex-shrink:0;">
+            <input type="checkbox" ${marcado ? 'checked' : ''} onchange="toggleRegistroLoteSelecionado('${escapeHTML(c.id)}', this.checked)" style="width:16px; height:16px; flex-shrink:0; cursor:pointer;">
             <div>
                 <div class="db-list-item-title">${formatSimpleDate(c.data_prevista)} — ${escapeHTML(cat ? cat.nome : c.treinamento_cod)}</div>
-                <div class="db-list-item-sub">${escapeHTML(c.responsavel || 'Sem frente definida')}</div>
+                <div class="db-list-item-sub">${c.responsavel ? 'Setor: ' + escapeHTML(c.responsavel) : 'SESMT'}</div>
             </div>
         </div>`;
     }).join('');
@@ -7533,11 +7545,7 @@ function toggleRegistroLoteSelecionado(id, checked) {
     if (!registroLoteSelecionados) registroLoteSelecionados = new Set();
     if (checked) registroLoteSelecionados.add(id);
     else registroLoteSelecionados.delete(id);
-    const resumoEl = document.getElementById('registroLoteResumo');
-    if (resumoEl) {
-        const itens = itensLoteCronogramaFiltrados();
-        resumoEl.textContent = `${itens.length} item(ns) no filtro — ${itens.filter(c => registroLoteSelecionados.has(c.id)).length} selecionado(s)`;
-    }
+    atualizarResumoLoteCronograma();
 }
 
 function marcarTodosLoteCronograma(marcar) {

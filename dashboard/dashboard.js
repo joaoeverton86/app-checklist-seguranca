@@ -4475,7 +4475,8 @@ function renderCronogramaLista() {
             ${statusBadge}
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 ${!lancado ? `<button class="db-apply-btn" onclick="lancarPresencaDoCronograma('${escapeHTML(c.id)}')" title="Leva pra Lançar Treinamento já preenchido - marca este item como lançado ao salvar">✅ Lançar Presença</button>` : ''}
-                ${!lancado ? `<button class="db-clear-btn" onclick="abrirFormCronograma('${escapeHTML(c.id)}')">✏️ Editar</button>` : ''}
+                ${!lancado ? `<button class="db-clear-btn" onclick="abrirFormCronograma('${escapeHTML(c.id)}')">✏️ Editar</button>
+                ${!lancado ? `<button class="db-clear-btn" onclick="abrirModalReprogramarCronograma('${escapeHTML(c.id)}')">🔄 Reprogramar Data</button>` : ''}` : ''}
                 ${!lancado ? `<button class="db-clear-btn" style="color:var(--danger); border-color:var(--danger);" onclick="excluirItemCronograma('${escapeHTML(c.id)}')">🗑️ Excluir</button>` : ''}
             </div>
         </div>`;
@@ -4552,6 +4553,25 @@ async function salvarItemCronograma() {
 
     const editandoId = document.getElementById('cronoForm_id').value;
     const existente = editandoId ? allTreinamentosCronograma.find(c => c.id === editandoId) : null;
+
+    // REGRA DE OURO: Bloquear duplicidade de código no mesmo mês
+    const dNova = parseLocalDate(data);
+    const anoNova = dNova.getFullYear();
+    const mesNova = dNova.getMonth();
+
+    const duplicadoNoMes = (allTreinamentosCronograma || []).find(c => {
+        if (c.id === editandoId) return false;
+        if (!c.data_prevista) return false;
+        const d = parseLocalDate(c.data_prevista);
+        return d.getFullYear() === anoNova && d.getMonth() === mesNova && String(c.treinamento_cod).trim() === String(codigo).trim();
+    });
+
+    if (duplicadoNoMes) {
+        statusEl.textContent = `❌ O treinamento "${cat.nome}" já está agendado neste mês no dia ${formatSimpleDate(duplicadoNoMes.data_prevista)}!`;
+        statusEl.style.color = 'var(--danger)';
+        alert(`⚠️ BLOQUEIO DE DUPLICIDADE!\n\nO treinamento "[${cat.id}] ${cat.nome}" já está agendado neste mesmo mês para o dia ${formatSimpleDate(duplicadoNoMes.data_prevista)}.\n\nPara garantir variedade e evitar sobrecarga pedagógica, não é permitido agendar o mesmo tema mais de uma vez no mesmo mês.`);
+        return;
+    }
     const row = {
         id: editandoId || ('crono_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)),
         data_prevista: data,
@@ -36126,6 +36146,7 @@ function renderGradePatAnual() {
                                         <span title="${ehConcluido ? 'Treinamento Realizado' : 'Ação Planejada'}" style="font-size:13px;">
                                             ${ehConcluido ? '✅' : '🕓'}
                                         </span>
+                                        <button class="db-clear-btn" onclick="abrirModalReprogramarCronograma('${escapeHTML(c.id)}')" style="padding:2px 5px; font-size:10px; color:var(--primary);" title="Reprogramar data ou permutar com outro tema">🔄</button>
                                         <button class="db-clear-btn" onclick="excluirItemCronograma('${escapeHTML(c.id)}')" style="padding:2px 4px; font-size:10px; color:var(--danger);" title="Remover do PAT">✕</button>
                                     </div>
                                 </div>
@@ -36147,7 +36168,7 @@ function renderGradePatAnual() {
                         ` : `
                             <span style="font-size:10px; color:#059669; font-weight:700; background:#d1fae5; padding:3px 6px; border-radius:4px;" title="Todas as Terças e Quintas do mês estão programadas">✓ Ter/Qui 100%</span>
                         `}
-                        <button class="db-clear-btn" onclick="abrirFormCronogramaComMes(${mesIdx})" style="font-size:11px; padding:4px 8px; font-weight:600;" title="Adicionar treinamento manualmente">
+                        <button class="db-clear-btn" onclick="abrirModalAdicionarAcaoPat(${mesIdx})" style="font-size:11px; padding:4px 8px; font-weight:600;" title="Adicionar treinamento com inserção de data neste mês">
                             ➕ Adicionar
                         </button>
                     </div>
@@ -36863,3 +36884,467 @@ function exportarPatExcel() {
     XLSX.utils.book_append_sheet(wb, ws, `PAT ${ano}`);
     XLSX.writeFile(wb, `PAT_${ano}_Consorcio_Ramal_do_Agreste.xlsx`);
 }
+
+
+// =====================================================================
+// FUNÇÕES DE ADIÇÃO COM ESCOLHA DE DATA E REPROGRAMAÇÃO / PERMUTA
+// =====================================================================
+
+// 1. Modal Adicionar Ação no Mês com Escolha Direta de Data
+function abrirModalAdicionarAcaoPat(mesIdx) {
+    const modal = document.getElementById('modalAdicionarAcaoPat');
+    if (!modal) return;
+
+    const ano = patAnoAtual;
+    const infoSazonal = CAMPANHAS_SAZONAIS_SST[mesIdx];
+    document.getElementById('patAdd_mesIdx').value = String(mesIdx);
+    document.getElementById('patAddModalTitulo').textContent = `Agendar Treinamento — ${infoSazonal.nomeMes}/${ano}`;
+    document.getElementById('patAdd_statusMsg').textContent = '';
+
+    // 1. Terças e Quintas do mês
+    const terQuintas = obterTerceirasEQuintasDoMes(ano, mesIdx);
+    const itensMes = (allTreinamentosCronograma || []).filter(c => {
+        if (!c.data_prevista) return false;
+        const d = parseLocalDate(c.data_prevista);
+        return d.getFullYear() === ano && d.getMonth() === mesIdx;
+    });
+
+    const ocupadasMap = new Map();
+    itensMes.forEach(c => ocupadasMap.set(c.data_prevista, c));
+
+    // Próxima vaga livre de Terça/Quinta
+    const proximaLivre = terQuintas.find(tq => !ocupadasMap.has(tq.iso));
+    const dataInicial = proximaLivre ? proximaLivre.iso : `${ano}-${String(mesIdx + 1).padStart(2, '0')}-15`;
+    const inputData = document.getElementById('patAdd_data');
+    inputData.value = dataInicial;
+    inputData.min = `${ano}-${String(mesIdx + 1).padStart(2, '0')}-01`;
+    const diasNoMes = new Date(ano, mesIdx + 1, 0).getDate();
+    inputData.max = `${ano}-${String(mesIdx + 1).padStart(2, '0')}-${String(diasNoMes).padStart(2, '0')}`;
+
+    // Renderizar atalhos de Terças e Quintas
+    const atalhosContainer = document.getElementById('patAdd_atalhosDatas');
+    const catalogoPorId = new Map((allTreinamentosCatalogo || []).map(c => [c.id, c]));
+
+    atalhosContainer.innerHTML = terQuintas.map(tq => {
+        const itemOcupado = ocupadasMap.get(tq.iso);
+        if (!itemOcupado) {
+            return `<button type="button" class="db-clear-btn" onclick="patAddPreencherData('${tq.iso}')" style="font-size:11px; padding:3px 7px; color:#047857; background:#ecfdf5; border-color:#a7f3d0; font-weight:700;">
+                🟢 ${tq.diaSemanaCurto} ${String(tq.dia).padStart(2, '0')} (Livre)
+            </button>`;
+        } else {
+            const cat = catalogoPorId.get(itemOcupado.treinamento_cod);
+            const nomeCurto = cat ? cat.nome.slice(0, 16) + '...' : itemOcupado.treinamento_cod;
+            return `<button type="button" class="db-clear-btn" onclick="patAddPreencherData('${tq.iso}')" style="font-size:11px; padding:3px 7px; color:#b45309; background:#fef3c7; border-color:#fde68a;" title="[${itemOcupado.treinamento_cod}] ${cat ? cat.nome : ''}">
+                🔴 ${tq.diaSemanaCurto} ${String(tq.dia).padStart(2, '0')} [${itemOcupado.treinamento_cod}]
+            </button>`;
+        }
+    }).join('');
+
+    onPatAddDataChange();
+
+    // Popular select de treinamentos (EXCLUINDO TEMAS QUE JÁ ESTÃO NO MÊS)
+    const selectTrein = document.getElementById('patAdd_treinamento');
+    const codigosJaNoMes = new Set(itensMes.map(c => String(c.treinamento_cod).trim()));
+
+    const opcoes = (allTreinamentosCatalogo || [])
+        .filter(c => !codigosJaNoMes.has(String(c.id).trim()))
+        .map(c => {
+            const carencia = calcularCarenciaTema(c.nome, dataInicial);
+            let tag = '🏆 Inédito';
+            if (carencia.status === 'liberado') tag = `✅ Liberado (${carencia.dias}d)`;
+            else if (carencia.status === 'bloqueado') tag = `⚠️ Recente (${carencia.dias}d)`;
+            return {
+                id: c.id,
+                texto: `[${c.id}] ${c.nome} (${c.carga_horaria || 2}h - ${tag})`,
+                carencia
+            };
+        });
+
+    selectTrein.innerHTML = opcoes.map(op => `<option value="${escapeHTML(op.id)}">${escapeHTML(op.texto)}</option>`).join('');
+    onPatAddTreinamentoChange();
+
+    modal.style.display = 'flex';
+}
+
+function fecharModalAdicionarAcaoPat() {
+    const modal = document.getElementById('modalAdicionarAcaoPat');
+    if (modal) modal.style.display = 'none';
+}
+
+function patAddPreencherData(isoData) {
+    const input = document.getElementById('patAdd_data');
+    if (input) {
+        input.value = isoData;
+        onPatAddDataChange();
+    }
+}
+
+function onPatAddDataChange() {
+    const val = document.getElementById('patAdd_data').value;
+    const badge = document.getElementById('patAdd_diaSemanaBadge');
+    if (!val) {
+        if (badge) badge.textContent = '';
+        return;
+    }
+    const info = obterInfoDiaSemana(val);
+    if (badge) {
+        badge.textContent = info.nome;
+        if (info.ehTerOuQui) {
+            badge.style.color = '#047857';
+            badge.style.background = '#ecfdf5';
+            badge.style.borderColor = '#10b981';
+        } else {
+            badge.style.color = '#b45309';
+            badge.style.background = '#fef3c7';
+            badge.style.borderColor = '#fde68a';
+        }
+    }
+}
+
+function onPatAddTreinamentoChange() {
+    const cod = document.getElementById('patAdd_treinamento').value;
+    const cat = (allTreinamentosCatalogo || []).find(c => c.id === cod);
+    const feedback = document.getElementById('patAdd_carenciaFeedback');
+    if (!cat || !feedback) return;
+
+    const data = document.getElementById('patAdd_data').value;
+    const carencia = calcularCarenciaTema(cat.nome, data);
+
+    if (carencia.status === 'inedito') {
+        feedback.innerHTML = '<span style="color:#3730a3; font-weight:700;">🏆 Tema inédito na obra — excelente variedade!</span>';
+    } else if (carencia.status === 'liberado') {
+        feedback.innerHTML = `<span style="color:#059669; font-weight:700;">✅ Liberado para aplicação (última vez em ${formatSimpleDate(carencia.ultimaData)}, há ${carencia.dias} dias).</span>`;
+    } else {
+        feedback.innerHTML = `<span style="color:#dc2626; font-weight:700;">⚠️ Carência ativa: aplicado há ${carencia.dias} dias em ${formatSimpleDate(carencia.ultimaData)} (menos de 90 dias).</span>`;
+    }
+}
+
+async function salvarAcaoPatComData() {
+    const mesIdx = parseInt(document.getElementById('patAdd_mesIdx').value, 10);
+    const ano = patAnoAtual;
+    const data = document.getElementById('patAdd_data').value;
+    const codigo = document.getElementById('patAdd_treinamento').value;
+    const horario = document.getElementById('patAdd_horario').value;
+    const responsavel = document.getElementById('patAdd_responsavel').value.trim();
+    const local = document.getElementById('patAdd_local').value.trim();
+    const statusEl = document.getElementById('patAdd_statusMsg');
+
+    if (!data) {
+        alert('Por favor, informe a data do treinamento.');
+        return;
+    }
+    if (!codigo) {
+        alert('Por favor, selecione um treinamento do catálogo.');
+        return;
+    }
+
+    const cat = (allTreinamentosCatalogo || []).find(c => c.id === codigo);
+    if (!cat) {
+        alert('Treinamento não encontrado no catálogo.');
+        return;
+    }
+
+    // REGRA DE OURO: Bloquear duplicidade de código no mesmo mês
+    const dNova = parseLocalDate(data);
+    const anoNova = dNova.getFullYear();
+    const mesNova = dNova.getMonth();
+
+    const duplicadoNoMes = (allTreinamentosCronograma || []).find(c => {
+        if (!c.data_prevista) return false;
+        const d = parseLocalDate(c.data_prevista);
+        return d.getFullYear() === anoNova && d.getMonth() === mesNova && String(c.treinamento_cod).trim() === String(codigo).trim();
+    });
+
+    if (duplicadoNoMes) {
+        alert(`⚠️ BLOQUEIO DE DUPLICIDADE!\n\nO treinamento "[${cat.id}] ${cat.nome}" já está agendado neste mesmo mês para o dia ${formatSimpleDate(duplicadoNoMes.data_prevista)}.\n\nNão é permitido agendar o mesmo tema duas vezes no mesmo mês.`);
+        return;
+    }
+
+    // Avaliar carência de 90 dias
+    const carencia = calcularCarenciaTema(cat.nome, data);
+    if (carencia.status === 'bloqueado' && !carencia.agendadoFuturo) {
+        const conf = confirm(`⚠️ ATENÇÃO: O tema "${cat.nome}" foi ministrado há ${carencia.dias} dias (menos de 90 dias).\n\nDeseja agendar mesmo assim?`);
+        if (!conf) return;
+    }
+
+    const infoDia = obterInfoDiaSemana(data);
+    const row = {
+        id: 'crono_pat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        data_prevista: data,
+        treinamento_cod: codigo,
+        horario: horario || '08:00',
+        local: local || 'Canteiro Central / EBs / Frentes de Obra',
+        responsavel: responsavel || 'Engenharia de Segurança (SESMT)',
+        status: 'planejado',
+        observacoes: `PAT ${anoNova} — ${infoDia.ehTerOuQui ? 'Cronograma Regular (' + infoDia.nome + ')' : 'Treinamento Extraordinário (${infoDia.nome})'}`
+    };
+
+    statusEl.textContent = 'Salvando agendamento...';
+    statusEl.style.color = 'var(--text-light)';
+
+    try {
+        await supabaseUpsert('treinamentos_cronograma', [row]);
+        allTreinamentosCronograma.push(row);
+
+        statusEl.textContent = '✅ Treinamento agendado com sucesso!';
+        statusEl.style.color = 'var(--success)';
+
+        renderPlanoAnualTreinamento();
+        renderCronogramaLista();
+
+        setTimeout(() => fecharModalAdicionarAcaoPat(), 800);
+    } catch (err) {
+        console.error('Erro ao salvar treinamento no PAT:', err);
+        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+// 2. Modal de Reprogramação de Datas e Permuta de Temas
+let reprogramacaoAcaoAtual = 'mover'; // 'mover' | 'permutar'
+let reprogramacaoOutroItemId = null;
+
+function abrirModalReprogramarCronograma(id) {
+    const modal = document.getElementById('modalReprogramarCronograma');
+    if (!modal) return;
+
+    const item = (allTreinamentosCronograma || []).find(c => c.id === id);
+    if (!item) return;
+
+    const cat = (allTreinamentosCatalogo || []).find(c => c.id === item.treinamento_cod);
+    const nomeTema = cat ? cat.nome : item.treinamento_cod;
+    const infoDia = obterInfoDiaSemana(item.data_prevista);
+
+    document.getElementById('reprog_itemId').value = id;
+    document.getElementById('reprog_temaNome').textContent = `[${item.treinamento_cod}] ${nomeTema}`;
+    document.getElementById('reprog_dataAtualInfo').textContent = `📅 Data Atual: ${formatSimpleDate(item.data_prevista)} (${infoDia.nome})`;
+
+    const inputData = document.getElementById('reprog_novaData');
+    inputData.value = item.data_prevista || '';
+
+    // Renderizar atalhos do mês
+    const dObj = parseLocalDate(item.data_prevista);
+    const ano = dObj.getFullYear();
+    const mesIdx = dObj.getMonth();
+    const terQuintas = obterTerceirasEQuintasDoMes(ano, mesIdx);
+
+    const ocupadasMap = new Map();
+    (allTreinamentosCronograma || []).forEach(c => {
+        if (!c.data_prevista) return;
+        const d = parseLocalDate(c.data_prevista);
+        if (d.getFullYear() === ano && d.getMonth() === mesIdx) {
+            ocupadasMap.set(c.data_prevista, c);
+        }
+    });
+
+    const catalogoPorId = new Map((allTreinamentosCatalogo || []).map(c => [c.id, c]));
+    const atalhosContainer = document.getElementById('reprog_atalhosDatas');
+
+    atalhosContainer.innerHTML = terQuintas.map(tq => {
+        const itemOcupado = ocupadasMap.get(tq.iso);
+        const ehProprio = itemOcupado && itemOcupado.id === id;
+        if (ehProprio) {
+            return `<button type="button" class="db-clear-btn" onclick="reprogPreencherData('${tq.iso}')" style="font-size:11px; padding:3px 7px; color:#2563eb; background:#eff6ff; border-color:#93c5fd; font-weight:800;">
+                📍 ${tq.diaSemanaCurto} ${String(tq.dia).padStart(2, '0')} (Atual)
+            </button>`;
+        } else if (!itemOcupado) {
+            return `<button type="button" class="db-clear-btn" onclick="reprogPreencherData('${tq.iso}')" style="font-size:11px; padding:3px 7px; color:#047857; background:#ecfdf5; border-color:#a7f3d0; font-weight:700;">
+                🟢 ${tq.diaSemanaCurto} ${String(tq.dia).padStart(2, '0')} (Livre)
+            </button>`;
+        } else {
+            const cOcup = catalogoPorId.get(itemOcupado.treinamento_cod);
+            return `<button type="button" class="db-clear-btn" onclick="reprogPreencherData('${tq.iso}')" style="font-size:11px; padding:3px 7px; color:#b45309; background:#fef3c7; border-color:#fde68a;" title="[${itemOcupado.treinamento_cod}] ${cOcup ? cOcup.nome : ''}">
+                🔄 ${tq.diaSemanaCurto} ${String(tq.dia).padStart(2, '0')} [${itemOcupado.treinamento_cod}]
+            </button>`;
+        }
+    }).join('');
+
+    // Preencher select de substituição de tema
+    const selectSub = document.getElementById('reprog_substitutoTemaSelect');
+    const codigosJaNoMes = new Set();
+    ocupadasMap.forEach(c => {
+        if (c.id !== id) codigosJaNoMes.add(String(c.treinamento_cod).trim());
+    });
+
+    const opcoes = (allTreinamentosCatalogo || [])
+        .filter(c => !codigosJaNoMes.has(String(c.id).trim()))
+        .map(c => `<option value="${c.id}">[${c.id}] ${c.nome} (${c.carga_horaria || 2}h)</option>`);
+    selectSub.innerHTML = opcoes.join('');
+
+    document.getElementById('reprog_statusMsg').textContent = '';
+    avaliarDestinoReprogramacao();
+
+    modal.style.display = 'flex';
+}
+
+function fecharModalReprogramarCronograma() {
+    const modal = document.getElementById('modalReprogramarCronograma');
+    if (modal) modal.style.display = 'none';
+}
+
+function reprogPreencherData(isoData) {
+    const input = document.getElementById('reprog_novaData');
+    if (input) {
+        input.value = isoData;
+        avaliarDestinoReprogramacao();
+    }
+}
+
+function avaliarDestinoReprogramacao() {
+    const itemId = document.getElementById('reprog_itemId').value;
+    const item = (allTreinamentosCronograma || []).find(c => c.id === itemId);
+    const novaData = document.getElementById('reprog_novaData').value;
+    const painel = document.getElementById('reprog_painelDestino');
+    const btnAcao = document.getElementById('reprog_btnAcaoPrincipal');
+    const badge = document.getElementById('reprog_diaSemanaBadge');
+
+    if (!item || !novaData) {
+        painel.style.display = 'none';
+        btnAcao.disabled = true;
+        if (badge) badge.textContent = '';
+        return;
+    }
+
+    const infoNova = obterInfoDiaSemana(novaData);
+    if (badge) {
+        badge.textContent = infoNova.nome;
+        badge.style.color = infoNova.ehTerOuQui ? '#047857' : '#b45309';
+        badge.style.background = infoNova.ehTerOuQui ? '#ecfdf5' : '#fef3c7';
+    }
+
+    if (novaData === item.data_prevista) {
+        painel.style.display = 'block';
+        painel.style.background = '#f8fafc';
+        painel.style.border = '1px solid var(--border)';
+        painel.innerHTML = '<span style="font-size:12px; color:var(--text-light);">ℹ️ A data selecionada é a mesma data atual. Selecione outra data para mover/permutar ou troque o tema abaixo.</span>';
+        btnAcao.disabled = true;
+        return;
+    }
+
+    // Verificar se a nova data já está ocupada por outro treinamento
+    const outroItem = (allTreinamentosCronograma || []).find(c => c.id !== itemId && c.data_prevista === novaData);
+
+    if (!outroItem) {
+        // DATA LIVRE
+        reprogramacaoAcaoAtual = 'mover';
+        reprogramacaoOutroItemId = null;
+        painel.style.display = 'block';
+        painel.style.background = '#ecfdf5';
+        painel.style.border = '1px solid #10b981';
+        painel.innerHTML = `
+            <div style="font-size:12px; font-weight:700; color:#065f46;">
+                ✅ Data LIVRE no Cronograma!
+            </div>
+            <div style="font-size:11.5px; color:#047857; margin-top:2px;">
+                O treinamento será transferido de <strong>${formatSimpleDate(item.data_prevista)}</strong> para <strong>${formatSimpleDate(novaData)} (${infoNova.nome})</strong>.
+            </div>
+        `;
+        btnAcao.disabled = false;
+        btnAcao.textContent = `📅 Mover para ${formatSimpleDate(novaData)}`;
+        btnAcao.style.background = '#2563eb';
+    } else {
+        // DATA OCUPADA -> OPÇÃO DE PERMUTA
+        reprogramacaoAcaoAtual = 'permutar';
+        reprogramacaoOutroItemId = outroItem.id;
+        const outroCat = (allTreinamentosCatalogo || []).find(c => c.id === outroItem.treinamento_cod);
+        const outroNome = outroCat ? outroCat.nome : outroItem.treinamento_cod;
+
+        painel.style.display = 'block';
+        painel.style.background = '#fffbeb';
+        painel.style.border = '1px solid #f59e0b';
+        painel.innerHTML = `
+            <div style="font-size:12px; font-weight:800; color:#b45309; display:flex; align-items:center; gap:6px;">
+                <span>⚠️</span> Data Ocupada — Sugestão de Permuta / Inversão de Datas!
+            </div>
+            <div style="font-size:11.5px; color:#92400e; margin-top:4px; line-height:1.4;">
+                A data <strong>${formatSimpleDate(novaData)}</strong> já possui o treinamento: <br>
+                <strong>👉 [${outroItem.treinamento_cod}] ${escapeHTML(outroNome)}</strong>.
+            </div>
+            <div style="background:#fff; border:1px solid #fde68a; border-radius:6px; padding:8px; margin-top:6px; font-size:11px; color:#78350f;">
+                <strong>🔀 Ação ao Confirmar (Troca de Datas):</strong><br>
+                • <strong>[${item.treinamento_cod}]</strong> muda para <strong>${formatSimpleDate(novaData)}</strong><br>
+                • <strong>[${outroItem.treinamento_cod}]</strong> muda para <strong>${formatSimpleDate(item.data_prevista)}</strong>
+            </div>
+        `;
+        btnAcao.disabled = false;
+        btnAcao.textContent = '🔀 Permutar / Trocar Datas dos 2 Temas';
+        btnAcao.style.background = '#d97706';
+    }
+}
+
+async function executarAcaoReprogramacao() {
+    const itemId = document.getElementById('reprog_itemId').value;
+    const novaData = document.getElementById('reprog_novaData').value;
+    const statusEl = document.getElementById('reprog_statusMsg');
+    const item = (allTreinamentosCronograma || []).find(c => c.id === itemId);
+
+    if (!item || !novaData) return;
+
+    statusEl.textContent = 'Processando reprogramação...';
+    statusEl.style.color = 'var(--text-light)';
+
+    try {
+        if (reprogramacaoAcaoAtual === 'mover') {
+            item.data_prevista = novaData;
+            await supabaseUpsert('treinamentos_cronograma', [item]);
+            statusEl.textContent = '✅ Treinamento movido com sucesso!';
+            statusEl.style.color = 'var(--success)';
+        } else if (reprogramacaoAcaoAtual === 'permutar') {
+            const outroItem = (allTreinamentosCronograma || []).find(c => c.id === reprogramacaoOutroItemId);
+            if (!outroItem) throw new Error('Outro item de permuta não encontrado.');
+
+            const dataOriginal = item.data_prevista;
+            item.data_prevista = novaData;
+            outroItem.data_prevista = dataOriginal;
+
+            await supabaseUpsert('treinamentos_cronograma', [item, outroItem]);
+            statusEl.textContent = '✅ Datas permutadas com sucesso!';
+            statusEl.style.color = 'var(--success)';
+        }
+
+        renderPlanoAnualTreinamento();
+        renderCronogramaLista();
+
+        setTimeout(() => fecharModalReprogramarCronograma(), 900);
+    } catch (err) {
+        console.error('Erro ao reprogramar:', err);
+        statusEl.textContent = '❌ Falha ao reprogramar: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function executarSubstituicaoTemaEmData() {
+    const itemId = document.getElementById('reprog_itemId').value;
+    const novoCodigo = document.getElementById('reprog_substitutoTemaSelect').value;
+    const statusEl = document.getElementById('reprog_statusMsg');
+    const item = (allTreinamentosCronograma || []).find(c => c.id === itemId);
+
+    if (!item || !novoCodigo) return;
+
+    const catNovo = (allTreinamentosCatalogo || []).find(c => c.id === novoCodigo);
+    if (!catNovo) return;
+
+    const conf = confirm(`Deseja realmente substituir o treinamento agendado em ${formatSimpleDate(item.data_prevista)} por "[${catNovo.id}] ${catNovo.nome}"?`);
+    if (!conf) return;
+
+    statusEl.textContent = 'Substituindo tema...';
+    statusEl.style.color = 'var(--text-light)';
+
+    try {
+        item.treinamento_cod = novoCodigo;
+        await supabaseUpsert('treinamentos_cronograma', [item]);
+
+        statusEl.textContent = '✅ Tema substituído com sucesso!';
+        statusEl.style.color = 'var(--success)';
+
+        renderPlanoAnualTreinamento();
+        renderCronogramaLista();
+
+        setTimeout(() => fecharModalReprogramarCronograma(), 900);
+    } catch (err) {
+        console.error('Erro ao substituir tema:', err);
+        statusEl.textContent = '❌ Falha ao substituir: ' + err.message;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+

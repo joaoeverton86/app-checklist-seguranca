@@ -8388,11 +8388,11 @@ function construirFolhaOrdemServico(matricula, r, campos, data) {
             <tr><td style="border:1px solid #ccc; padding:4px 6px;"><b>Emissão:</b> ${formatSimpleDate(data)}</td>
                 <td style="border:1px solid #ccc; padding:4px 6px;"><b>Empresa:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</td>
                 <td style="border:1px solid #ccc; padding:4px 6px;"><b>CNPJ:</b> ${escapeHTML(EMPRESA_INFO.cnpj)}</td></tr>
-            <tr><td style="border:1px solid #ccc; padding:4px 6px;" colspan="2"><b>Funcionário:</b> ${escapeHTML(r.nome)}</td>
-                <td style="border:1px solid #ccc; padding:4px 6px;"><b>CPF:</b> ${escapeHTML(colab?.cpf || '')}</td></tr>
-            <tr><td style="border:1px solid #ccc; padding:4px 6px;"><b>Setor:</b> ${escapeHTML(ghe ? `${ghe.id} - ${ghe.nome}` : '')}</td>
-                <td style="border:1px solid #ccc; padding:4px 6px;"><b>Cargo:</b> ${escapeHTML(cargoInfo?.cargo || '')}</td>
-                <td style="border:1px solid #ccc; padding:4px 6px;"><b>Função:</b> ${escapeHTML(r.funcao || '')}</td></tr>
+            <tr><td style="border:1px solid #ccc; padding:4px 6px;" colspan="2"><b>Funcionário:</b> ${escapeHTML(r.nome)} &nbsp; <b>(Matrícula:</b> ${escapeHTML(matricula)})</td>
+                <td style="border:1px solid #ccc; padding:4px 6px;"><b>CPF:</b> ${escapeHTML(colab?.cpf || '—')}</td></tr>
+            <tr><td style="border:1px solid #ccc; padding:4px 6px;"><b>Setor / GHE:</b> ${escapeHTML(ghe ? `${ghe.id} - ${ghe.nome}` : '—')}</td>
+                <td style="border:1px solid #ccc; padding:4px 6px;"><b>Função Contratual:</b> ${escapeHTML(r.funcao || '—')}</td>
+                <td style="border:1px solid #ccc; padding:4px 6px;"><b>Cargo Oficial / CBO:</b> ${escapeHTML(cargoInfo?.cargo || r.funcao || '—')}${cargoInfo?.cbo ? ` &nbsp; <b>(CBO: ${escapeHTML(cargoInfo.cbo)})</b>` : ''}</td></tr>
         </table>
 
         <div class="bloco-titulo">1. Descrição das Atividades:</div>
@@ -12114,6 +12114,10 @@ async function renderControleOrdensServico() {
     if (!allEfetivo || allEfetivo.length === 0) {
         await loadEfetivoData();
     }
+    if (allGheCatalogo.length === 0) {
+        allGheCatalogo = await supabaseFetch('ghe_catalogo', '?select=*');
+    }
+    await garantirDocumentosControleCarregados();
     
     const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
     const totalAtivos = ativos.length;
@@ -12196,9 +12200,14 @@ function renderTabelaControleOs() {
     const buscaVal = (document.getElementById('filtroOsBusca')?.value || '').trim().toLowerCase();
     if (buscaVal) {
         lista = lista.filter(e => {
+            const aval = typeof avaliarCorrespondenciaCargoOs === 'function' ? avaliarCorrespondenciaCargoOs(e.id, e.funcao) : null;
+            const cboStr = (aval?.cargoInfo?.cbo || e.cbo || '').toLowerCase();
+            const cargoStr = (aval?.cargoInfo?.cargo || '').toLowerCase();
             return (e.nome && e.nome.toLowerCase().includes(buscaVal)) ||
                    (e.id && String(e.id).toLowerCase().includes(buscaVal)) ||
                    (e.funcao && e.funcao.toLowerCase().includes(buscaVal)) ||
+                   (cargoStr && cargoStr.includes(buscaVal)) ||
+                   (cboStr && cboStr.includes(buscaVal)) ||
                    (e.cpf && e.cpf.toLowerCase().includes(buscaVal)) ||
                    (e.setor && e.setor.toLowerCase().includes(buscaVal)) ||
                    (e.ghe && e.ghe.toLowerCase().includes(buscaVal));
@@ -12253,11 +12262,16 @@ function renderTabelaControleOs() {
                     ${e.cpf ? `<div style="font-size: 11px; color: var(--text-light);">CPF: ${escapeHTML(e.cpf)}</div>` : ''}
                 </td>
                 <td style="padding: 10px 14px; font-weight: 500;">
-                    <div>${escapeHTML(e.funcao || '—')}</div>
+                    <div style="font-weight: 600; color: var(--text);">${escapeHTML(e.funcao || '—')}</div>
                     ${(() => {
                         const aval = avaliarCorrespondenciaCargoOs(e.id, e.funcao);
                         if (aval.semCorrespondencia) {
                             return `<div style="margin-top:3px;"><span style="color:#b45309; background:#fef3c7; border:1px solid #fde68a; border-radius:4px; padding:2px 6px; font-size:10px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:3px;" onclick="abrirModalAuditoriaCorrespondenciaOs('${escapeHTML(e.id)}')" title="${escapeHTML(textoAvisoCargoOs({ ghe: aval.ghe, funcao: aval.funcao, ambiguo: aval.ambiguo, candidatos: aval.candidatos }))}">⚠️ Sem Correspondência</span></div>`;
+                        }
+                        const cbo = aval.cargoInfo?.cbo || e.cbo;
+                        const cargoNome = aval.cargoInfo?.cargo && aval.cargoInfo.cargo !== e.funcao ? ` (${escapeHTML(aval.cargoInfo.cargo)})` : '';
+                        if (cbo) {
+                            return `<div style="margin-top:3px;"><span style="color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px; padding:2px 6px; font-size:10px; font-weight:700; display:inline-flex; align-items:center; gap:3px;" title="CBO Oficial: ${escapeHTML(cbo)}${cargoNome}">📋 CBO ${escapeHTML(cbo)}</span></div>`;
                         }
                         return '';
                     })()}
@@ -12410,6 +12424,31 @@ function abrirModalAssinaturaOs(matricula) {
     document.getElementById('modalOs_lblFuncao').textContent = colab.funcao || '—';
     document.getElementById('modalOs_lblAdmissao').textContent = colab.dt_admissao ? formatSimpleDate(colab.dt_admissao) : '—';
     document.getElementById('modalOs_lblGhe').textContent = `${colab.setor || 'Geral'} / ${colab.ghe || 'GHE Padrão'}`;
+
+    // Correspondência CBO / GHE no Modal
+    const aval = typeof avaliarCorrespondenciaCargoOs === 'function' ? avaliarCorrespondenciaCargoOs(colab.id, colab.funcao) : null;
+    const cbo = aval?.cargoInfo?.cbo || colab.cbo || '';
+    const elCbo = document.getElementById('modalOs_lblCbo');
+    if (elCbo) {
+        if (cbo) {
+            const cargoDesc = aval?.cargoInfo?.cargo && aval.cargoInfo.cargo !== colab.funcao ? ` (${aval.cargoInfo.cargo})` : '';
+            elCbo.textContent = `${cbo}${cargoDesc}`;
+            elCbo.style.color = '#1d4ed8';
+        } else {
+            elCbo.textContent = 'Não identificado no GHE';
+            elCbo.style.color = '#b45309';
+        }
+    }
+
+    const elAviso = document.getElementById('modalOs_avisoCorrespondencia');
+    if (elAviso) {
+        if (aval?.semCorrespondencia) {
+            elAviso.style.display = 'block';
+            elAviso.innerHTML = `⚠️ <strong>Atenção:</strong> Função "${escapeHTML(colab.funcao || '')}" sem correspondência direta com os cargos do GHE. <a href="javascript:void(0)" onclick="fecharModalAssinaturaOs(); abrirModalAuditoriaCorrespondenciaOs('${escapeHTML(colab.id)}')" style="color:#2563eb; font-weight:700; text-decoration:underline;">Clique aqui para diagnosticar e vincular o cargo</a>.`;
+        } else {
+            elAviso.style.display = 'none';
+        }
+    }
 
     const ehEntregue = colab.os_status === 'entregue';
     document.getElementById('modalOs_status').value = ehEntregue ? 'entregue' : 'pendente';
@@ -13128,16 +13167,26 @@ function gerarExcelRastreabilidadeOs() {
 
     const dados = ativos.map(e => {
         const ehEntregue = e.os_status === 'entregue';
+        const aval = typeof avaliarCorrespondenciaCargoOs === 'function' ? avaliarCorrespondenciaCargoOs(e.id, e.funcao) : { cargoInfo: null };
+        const anexosOs = typeof anexosDoRegistro === 'function' ? anexosDoRegistro('ordens_servico', e.id) : [];
+        const cboStr = aval.cargoInfo?.cbo || e.cbo || 'Não identificado';
+        const linkDrive = anexosOs.length > 0 ? (anexosOs[0].drive_view_link || '') : (e.os_anexo_url || '');
+
         return {
             'Matrícula': e.id,
             'Nome do Colaborador': e.nome || '',
             'CPF': e.cpf || '',
-            'Função / Cargo': e.funcao || '',
+            'Função Contratual': e.funcao || '',
+            'Cargo Reconhecido (GHE)': aval.cargoInfo?.cargo || e.funcao || '',
+            'CBO Oficial': cboStr,
+            'Correspondência GHE': aval.semCorrespondencia ? 'INCONSISTENTE' : 'REGULAR',
             'Setor': e.setor || '',
             'GHE': e.ghe || '',
             'Data de Admissão': e.dt_admissao ? formatSimpleDate(e.dt_admissao) : '',
             'Status Ordem de Serviço': ehEntregue ? 'ASSINADA / ENTREGUE' : 'PENDENTE DE ASSINATURA',
             'Data da Entrega / Assinatura': e.os_data_entrega ? formatSimpleDate(e.os_data_entrega) : '',
+            'Comprovante no Google Drive': anexosOs.length > 0 ? `SIM (${anexosOs.length} anexo(s))` : (e.os_anexo_url ? 'SIM' : 'NÃO'),
+            'Link do Comprovante no Drive': linkDrive,
             'Versão da OS': e.os_versao || 'Rev. 00',
             'Observações': e.os_obs || ''
         };

@@ -709,6 +709,109 @@ body {
 .placar-kpi-card.kpi-ouro::before { background: #10b981; }
 .placar-kpi-card.kpi-alerta::before { background: #ef4444; }
 .placar-kpi-card.kpi-dds::before { background: #0ea5e9; }
+.placar-kpi-card.kpi-evolucao::before { background: #8b5cf6; }
+
+/* Filtro de Setor por Pills */
+.placar-sector-pills {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 6px 2px 10px;
+    margin-top: 6px;
+    margin-bottom: 4px;
+    scrollbar-width: thin;
+}
+.placar-sector-pills::-webkit-scrollbar {
+    height: 4px;
+}
+.placar-sector-pills::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+.sector-pill {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-light);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.sector-pill:hover {
+    border-color: var(--primary);
+    color: var(--text);
+    transform: translateY(-1px);
+}
+.sector-pill.active {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    border-color: #1d4ed8;
+    color: #ffffff;
+    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25);
+    font-weight: 700;
+}
+
+/* Badges de Tendência e Evolução */
+.placar-trend-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    border: 1px solid transparent;
+}
+.placar-trend-badge.trend-up {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #059669;
+}
+.placar-trend-badge.trend-down {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #dc2626;
+}
+.placar-trend-badge.trend-same {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #64748b;
+}
+.placar-trend-badge.trend-new {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    color: #2563eb;
+}
+
+/* Botão de Histórico Individual na Tabela */
+.placar-btn-chart {
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s;
+}
+.placar-btn-chart:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+    border-color: #94a3b8;
+    transform: translateY(-1px);
+}
 
 .placar-kpi-label {
     font-size: 12px;

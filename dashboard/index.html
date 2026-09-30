@@ -6162,6 +6162,9 @@
                             </div>
                         </div>
                         <div class="placar-header-actions">
+                            <button class="placar-btn-config" onclick="abrirModalHistoricoPlacar()" title="Comparativo mensal e gráfico de evolução dos encarregados">
+                                <span>📈</span> Comparativo & Evolução
+                            </button>
                             <button class="placar-btn-whatsapp" onclick="copiarRankingWhatsApp()" title="Copiar resumo formatado para colar nos grupos de gerentes e encarregados">
                                 <span>📋</span> Copiar Ranking p/ WhatsApp
                             </button>
@@ -6224,6 +6227,18 @@
                         </div>
                     </div>
 
+                    <!-- Barra de Filtro Rápido por Setor (Pills / Botões de Disputa por Atividade) -->
+                    <div class="placar-sector-pills" id="placarSectorPills">
+                        <button class="sector-pill active" data-setor="" onclick="selecionarSetorPlacar('')">🌟 Todos os Setores (Geral)</button>
+                        <button class="sector-pill" data-setor="CIVIL" onclick="selecionarSetorPlacar('CIVIL')">🌿 Manutenção Civil (Roço)</button>
+                        <button class="sector-pill" data-setor="ELÉTRICA" onclick="selecionarSetorPlacar('ELÉTRICA')">⚡ Manutenção Elétrica</button>
+                        <button class="sector-pill" data-setor="MECÂNICA" onclick="selecionarSetorPlacar('MECÂNICA')">🔧 Manutenção Mecânica</button>
+                        <button class="sector-pill" data-setor="OPERAÇÃO" onclick="selecionarSetorPlacar('OPERAÇÃO')">🚜 Operação</button>
+                        <button class="sector-pill" data-setor="TRANSPORTE" onclick="selecionarSetorPlacar('TRANSPORTE')">🚛 Transporte</button>
+                        <button class="sector-pill" data-setor="TOPOGRAFIA" onclick="selecionarSetorPlacar('TOPOGRAFIA')">📐 Topografia</button>
+                        <button class="sector-pill" data-setor="CONSERVAÇÃO" onclick="selecionarSetorPlacar('CONSERVAÇÃO')">🧹 Conservação / LT</button>
+                    </div>
+
                     <!-- Cards de KPIs Executivos -->
                     <div class="placar-kpi-grid">
                         <div class="placar-kpi-card kpi-taxa">
@@ -6235,6 +6250,11 @@
                             <div class="placar-kpi-label">Líderes Destaque (100%)</div>
                             <div class="placar-kpi-val" id="placarKpiLideres100" style="color: #10b981;">0</div>
                             <div class="placar-kpi-sub">Cumpriram todas as rotinas exigidas</div>
+                        </div>
+                        <div class="placar-kpi-card kpi-evolucao">
+                            <div class="placar-kpi-label">Maior Evolução no Mês</div>
+                            <div class="placar-kpi-val" id="placarKpiMaiorEvolucao" style="font-size: 18px; line-height: 1.25; color: #7c3aed; margin-top: 3px;">-</div>
+                            <div class="placar-kpi-sub" id="placarKpiMaiorEvolucaoSub">Líder com maior crescimento vs mês anterior</div>
                         </div>
                         <div class="placar-kpi-card kpi-alerta">
                             <div class="placar-kpi-label">Pendências Críticas</div>
@@ -8387,6 +8407,74 @@ function filterMatrizEpi(q) {
             <button type="button" class="db-apply-btn" onclick="salvarModalConfigRotinas()" style="background: #10b981; border-color: #059669;">
                 💾 Salvar Configurações
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Histórico Comparativo & Evolução Mensal dos Encarregados -->
+<div id="modalPlacarHistorico" class="placar-modal-overlay" style="display:none;" onclick="if(event.target === this) fecharModalHistoricoPlacar();">
+    <div class="placar-modal-card" style="max-width: 920px;">
+        <div class="placar-modal-header">
+            <div style="font-size: 16px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                <span>📈</span> Histórico Comparativo & Tendência de Evolução das Lideranças
+            </div>
+            <button type="button" onclick="fecharModalHistoricoPlacar()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-light); font-weight: 700;">✕</button>
+        </div>
+        <div class="placar-modal-body">
+            <!-- Barra de Filtros e Seleção do Histórico -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; background: var(--bg); padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border);">
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <div>
+                        <label style="font-size: 11px; font-weight: 700; color: var(--text-light); display: block; margin-bottom: 3px; text-transform: uppercase;">Visualizar Encarregado</label>
+                        <select id="placarHistFiltroLider" class="placar-select" onchange="atualizarGraficoHistoricoPlacar()" style="min-width: 220px;">
+                            <option value="TODOS">🌟 Média Geral da Obra</option>
+                            <!-- Populado dinamicamente com os encarregados -->
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 11px; font-weight: 700; color: var(--text-light); display: block; margin-bottom: 3px; text-transform: uppercase;">Período Histórico</label>
+                        <select id="placarHistFiltroPeriodo" class="placar-select" onchange="atualizarGraficoHistoricoPlacar()">
+                            <option value="6">Últimos 6 Meses</option>
+                            <option value="3">Últimos 3 Meses</option>
+                            <option value="12">Ano Completo (2026)</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="placarHistResumoDestaque" style="font-size: 12.5px; font-weight: 700; color: #4338ca; background: #e0e7ff; padding: 6px 14px; border-radius: 20px;">
+                    <!-- Badge de evolução do líder -->
+                </div>
+            </div>
+
+            <!-- Gráfico de Tendência (Canvas) -->
+            <div style="position: relative; height: 280px; width: 100%; margin-bottom: 20px; background: var(--card-bg, #fff); padding: 10px; border-radius: 10px; border: 1px solid var(--border);">
+                <canvas id="canvasPlacarHistorico"></canvas>
+            </div>
+
+            <!-- Tabela Comparativa Mensal -->
+            <div style="font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                <span>📋</span> Quadro Comparativo de Entregas Mês a Mês
+            </div>
+            <div style="overflow-x: auto; max-height: 280px; border: 1px solid var(--border); border-radius: 8px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
+                    <thead>
+                        <tr style="background: var(--bg); border-bottom: 2px solid var(--border); color: var(--text-light); font-size: 11px; text-transform: uppercase;">
+                            <th style="padding: 10px; text-align: left;">Mês / Ano</th>
+                            <th style="padding: 10px; text-align: center;">Posição</th>
+                            <th style="padding: 10px; text-align: center;">Tendência</th>
+                            <th style="padding: 10px; text-align: center;">DDSMA</th>
+                            <th style="padding: 10px; text-align: center;">Treinamentos</th>
+                            <th style="padding: 10px; text-align: center;">APR</th>
+                            <th style="padding: 10px; text-align: right;">Aproveitamento</th>
+                        </tr>
+                    </thead>
+                    <tbody id="placarHistTabelaCorpo">
+                        <!-- Preenchido dinamicamente via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="placar-modal-footer">
+            <button type="button" class="db-clear-btn" onclick="fecharModalHistoricoPlacar()">Fechar</button>
         </div>
     </div>
 </div>

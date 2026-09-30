@@ -11,6 +11,56 @@ let placarMetaDiasCustom = null;
 let placarRankingAtual = [];
 let allRotinasConfig = null;
 let placarLiderMsgAtual = null;
+let placarChartHistoricoInstance = null;
+
+// Rótulos amigáveis de setores para exibição e disputas
+function obterRotuloSetor(chave) {
+    const mapa = {
+        'CIVIL': 'Manutenção Civil (Roço)',
+        'ELÉTRICA': 'Manutenção Elétrica',
+        'MECÂNICA': 'Manutenção Mecânica',
+        'OPERAÇÃO': 'Operação',
+        'TRANSPORTE': 'Transporte',
+        'TOPOGRAFIA': 'Topografia',
+        'CONSERVAÇÃO': 'Conservação e Limpeza'
+    };
+    return mapa[chave] || chave || 'Geral';
+}
+
+// Filtro rápido de setor por Pills
+function selecionarSetorPlacar(setor) {
+    placarFiltroSetor = setor || '';
+
+    // Atualiza classes ativas nos botões pills
+    const pills = document.querySelectorAll('#placarSectorPills .sector-pill');
+    pills.forEach(p => {
+        if (p.dataset.setor === (setor || '')) {
+            p.classList.add('active');
+        } else {
+            p.classList.remove('active');
+        }
+    });
+
+    // Sincroniza com o select de setor
+    const sel = document.getElementById('placarFiltroSetor');
+    if (sel) sel.value = setor || '';
+
+    renderPlacarLideres();
+}
+
+// Formatação do badge visual de tendência e evolução de posição
+function formatarBadgeTendencia(lider, mesAntNome) {
+    if (lider.isNovo) {
+        return '<span class="placar-trend-badge trend-new" title="Estreante / Novo no ranking deste mês">★ Novo</span>';
+    }
+    if (lider.varPos > 0) {
+        return `<span class="placar-trend-badge trend-up" title="Subiu ${lider.varPos} posição(ões) em relação a ${mesAntNome} (era ${lider.posAnterior}º)">▲ +${lider.varPos}</span>`;
+    }
+    if (lider.varPos < 0) {
+        return `<span class="placar-trend-badge trend-down" title="Caiu ${Math.abs(lider.varPos)} posição(ões) em relação a ${mesAntNome} (era ${lider.posAnterior}º)">▼ ${lider.varPos}</span>`;
+    }
+    return `<span class="placar-trend-badge trend-same" title="Manteve a ${lider.posAtual}ª posição em relação a ${mesAntNome}">▬ 0</span>`;
+}
 
 // Configuração padrão inteligente de frentes baseada no canteiro da obra
 function obterConfigRotinasPadrao() {
@@ -348,6 +398,36 @@ function renderPlacarLideres() {
     const mes = parseInt(placarFiltroMes, 10) || new Date().getMonth();
 
     const rankingCompleto = calcularPlacarLideres(ano, mes);
+
+    // Mês anterior para cálculo comparativo e tendência de evolução
+    let mesAnt = mes - 1;
+    let anoAnt = ano;
+    if (mesAnt < 0) {
+        mesAnt = 11;
+        anoAnt = ano - 1;
+    }
+    const rankingAnterior = calcularPlacarLideres(anoAnt, mesAnt);
+    const mesAntNome = NOMES_MESES[mesAnt] || 'Mês Ant.';
+
+    // Enriquecer rankingCompleto com dados de evolução vs mês anterior
+    rankingCompleto.forEach((lider, idx) => {
+        lider.posAtual = idx + 1;
+        const idxAnt = rankingAnterior.findIndex(r => r.frenteNome === lider.frenteNome);
+        if (idxAnt >= 0) {
+            lider.posAnterior = idxAnt + 1;
+            lider.varPos = lider.posAnterior - lider.posAtual; // Positivo = subiu posições
+            lider.mediaGeralAnterior = rankingAnterior[idxAnt].mediaGeral;
+            lider.varPct = lider.mediaGeral - lider.mediaGeralAnterior;
+            lider.isNovo = false;
+        } else {
+            lider.posAnterior = null;
+            lider.varPos = null;
+            lider.mediaGeralAnterior = null;
+            lider.varPct = null;
+            lider.isNovo = true;
+        }
+    });
+
     placarRankingAtual = rankingCompleto;
 
     // Estatísticas Globais dos KPIs
@@ -374,10 +454,33 @@ function renderPlacarLideres() {
     const elTotalDds = document.getElementById('placarKpiTotalDds');
     if (elTotalDds) elTotalDds.textContent = totalDdsMes;
 
-    // Renderizar Pódio dos 3 Campeões (Top 3)
-    renderPlacarPodio(rankingCompleto.slice(0, 3));
+    // Destaque do Líder de Maior Evolução no Mês
+    let liderMaiorEvolucao = null;
+    let maxCrescimento = 0;
 
-    // Filtragem local para exibição na tabela (Setor + Busca de texto)
+    rankingCompleto.forEach(r => {
+        if (!r.isNovo && r.varPct !== null && r.varPct > maxCrescimento) {
+            maxCrescimento = r.varPct;
+            liderMaiorEvolucao = r;
+        }
+    });
+
+    const elEvolucao = document.getElementById('placarKpiMaiorEvolucao');
+    const elEvolucaoSub = document.getElementById('placarKpiMaiorEvolucaoSub');
+    if (elEvolucao) {
+        if (liderMaiorEvolucao && maxCrescimento > 0) {
+            elEvolucao.innerHTML = `🚀 ${escapeHTML(liderMaiorEvolucao.apelido)}`;
+            const posBadge = liderMaiorEvolucao.varPos > 0 ? `▲ +${liderMaiorEvolucao.varPos}` : (liderMaiorEvolucao.varPos < 0 ? `▼ ${liderMaiorEvolucao.varPos}` : `▬ 0`);
+            if (elEvolucaoSub) {
+                elEvolucaoSub.innerHTML = `<strong>+${liderMaiorEvolucao.varPct}%</strong> (${posBadge} pos. vs ${mesAntNome})`;
+            }
+        } else {
+            elEvolucao.textContent = 'Manteve Padrão';
+            if (elEvolucaoSub) elEvolucaoSub.textContent = 'Sem variações positivas vs ' + mesAntNome;
+        }
+    }
+
+    // Filtragem local para exibição na tabela e no pódio (Setor + Busca de texto)
     let rankingFiltrado = rankingCompleto;
     if (placarFiltroSetor) {
         const sBusca = placarFiltroSetor.toUpperCase();
@@ -392,12 +495,25 @@ function renderPlacarLideres() {
         );
     }
 
-    renderPlacarTabela(rankingFiltrado, rankingCompleto);
+    // Renderizar Pódio dos 3 Campeões (contexto do setor filtrado ou geral)
+    renderPlacarPodio(rankingFiltrado.slice(0, 3), placarFiltroSetor, mesAntNome);
+
+    renderPlacarTabela(rankingFiltrado, rankingCompleto, mesAntNome, placarFiltroSetor);
 }
 
-function renderPlacarPodio(top3) {
+function renderPlacarPodio(top3, setorFiltro, mesAntNome) {
     const podioContainer = document.getElementById('placarPodioGrid');
+    const podioTitulo = document.querySelector('.placar-podio-title');
     if (!podioContainer) return;
+
+    if (podioTitulo) {
+        if (setorFiltro) {
+            const rotuloSetor = obterRotuloSetor(setorFiltro);
+            podioTitulo.innerHTML = `<span>🎖️</span> Pódio de Excelência — ${escapeHTML(rotuloSetor)}`;
+        } else {
+            podioTitulo.innerHTML = `<span>🎖️</span> Pódio de Excelência em SST — Top 3 Lideranças da Obra`;
+        }
+    }
 
     if (!top3 || top3.length === 0) {
         podioContainer.innerHTML = '<div style="color: var(--text-light); font-size: 13px; padding: 10px;">Nenhum líder apto no período selecionado.</div>';
@@ -416,11 +532,15 @@ function renderPlacarPodio(top3) {
         const ddsTexto = lider.pctDds !== null ? (lider.diasDds + '/' + lider.metaDds + ' dias') : 'Isento';
         const treinTexto = lider.pctTrein !== null ? (lider.pctTrein === 100 ? '✅ Realizado' : '❌ Pendente') : 'Isento';
         const aprTexto = lider.pctApr !== null ? (lider.pctApr === 100 ? '✅ Vigente' : '❌ Pendente') : 'Isenta';
+        const trendBadge = formatarBadgeTendencia(lider, mesAntNome);
 
         return `
             <div class="placar-podio-card ${cls}">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div class="podio-badge-medalha">${med}</div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div class="podio-badge-medalha">${med}</div>
+                        ${trendBadge}
+                    </div>
                     <span style="font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase;">${titPos}</span>
                 </div>
                 <div>
@@ -450,10 +570,13 @@ function renderPlacarPodio(top3) {
     }).join('');
 }
 
-function renderPlacarTabela(rankingFiltrado, rankingCompleto) {
+function renderPlacarTabela(rankingFiltrado, rankingCompleto, mesAntNome, setorFiltro) {
     const tbody = document.getElementById('placarRankingTableBody');
     const totalEl = document.getElementById('placarTotalAvaliados');
-    if (totalEl) totalEl.textContent = `Mostrando ${rankingFiltrado.length} de ${rankingCompleto.length} frentes ativas`;
+    if (totalEl) {
+        const sufixo = setorFiltro ? ` no setor ${obterRotuloSetor(setorFiltro)}` : '';
+        totalEl.textContent = `Mostrando ${rankingFiltrado.length} de ${rankingCompleto.length} frentes ativas${sufixo}`;
+    }
 
     if (!tbody) return;
 
@@ -462,16 +585,31 @@ function renderPlacarTabela(rankingFiltrado, rankingCompleto) {
         return;
     }
 
-    tbody.innerHTML = rankingFiltrado.map(lider => {
-        // Posição no ranking geral global (não só filtrado)
-        const posGlobal = rankingCompleto.findIndex(r => r.frenteNome === lider.frenteNome) + 1;
-        const medalha = posGlobal === 1 ? '🥇' : posGlobal === 2 ? '🥈' : posGlobal === 3 ? '🥉' : `${posGlobal}º`;
+    tbody.innerHTML = rankingFiltrado.map((lider, idx) => {
+        // Posição no contexto (setorial ou geral)
+        const posContexto = idx + 1;
+        const medalha = posContexto === 1 ? '🥇' : posContexto === 2 ? '🥈' : posContexto === 3 ? '🥉' : `${posContexto}º`;
+        const trendBadge = formatarBadgeTendencia(lider, mesAntNome);
+
+        // Se estiver filtrado por setor, mostra também a posição geral da obra
+        let subPosGeral = '';
+        if (setorFiltro) {
+            subPosGeral = `<span style="font-size: 10.5px; color: var(--text-light); font-weight: 600; display: block; margin-top: 2px;">(${lider.posAtual}º Geral)</span>`;
+        }
 
         // Cores da barra de progresso geral
         const fillClass = lider.mediaGeral >= 90 ? 'fill-verde'
             : lider.mediaGeral >= 70 ? 'fill-azul'
             : lider.mediaGeral >= 50 ? 'fill-amarelo'
             : 'fill-vermelho';
+
+        // Variação percentual formatada
+        let varPctBadge = '';
+        if (lider.varPct !== null && lider.varPct !== 0) {
+            const corVar = lider.varPct > 0 ? '#10b981' : '#ef4444';
+            const sinal = lider.varPct > 0 ? '+' : '';
+            varPctBadge = `<span style="font-size: 11px; font-weight: 700; color: ${corVar}; margin-left: 4px;">(${sinal}${lider.varPct}%)</span>`;
+        }
 
         // Badges das entregas
         let chipDds;
@@ -505,7 +643,13 @@ function renderPlacarTabela(rankingFiltrado, rankingCompleto) {
 
         return `
             <tr>
-                <td class="placar-posicao">${medalha}</td>
+                <td class="placar-posicao">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                        <span>${medalha}</span>
+                        ${subPosGeral}
+                        ${trendBadge}
+                    </div>
+                </td>
                 <td>
                     <div class="placar-lider-cell">
                         <span class="placar-lider-title">${escapeHTML(lider.apelido)}</span>
@@ -523,13 +667,21 @@ function renderPlacarTabela(rankingFiltrado, rankingCompleto) {
                         <div class="placar-progress-bg">
                             <div class="placar-progress-fill ${fillClass}" style="width: ${lider.mediaGeral}%;"></div>
                         </div>
-                        <span style="font-weight: 800; font-size: 13.5px; width: 44px; text-align: right;">${lider.mediaGeral}%</span>
+                        <div style="display: flex; align-items: center; min-width: 75px; justify-content: flex-end;">
+                            <span style="font-weight: 800; font-size: 13.5px;">${lider.mediaGeral}%</span>
+                            ${varPctBadge}
+                        </div>
                     </div>
                 </td>
                 <td style="text-align: right;">
-                    <button class="placar-btn-msg" onclick="abrirModalMsgLider('${escapeHTML(lider.frenteNome)}')" title="Enviar mensagem privada para este encarregado">
-                        <span>📲</span> WhatsApp
-                    </button>
+                    <div style="display: flex; gap: 6px; justify-content: flex-end; align-items: center;">
+                        <button class="placar-btn-chart" onclick="abrirModalHistoricoPlacar('${escapeHTML(lider.frenteNome)}')" title="Ver histórico e gráfico de evolução de ${escapeHTML(lider.apelido)}">
+                            <span>📈</span>
+                        </button>
+                        <button class="placar-btn-msg" onclick="abrirModalMsgLider('${escapeHTML(lider.frenteNome)}')" title="Enviar mensagem privada para este encarregado">
+                            <span>📲</span> WhatsApp
+                        </button>
+                    </div>
                 </td>
             </tr>
         `;
@@ -543,7 +695,14 @@ function onPlacarFiltroChange() {
 
     if (anoSel) placarFiltroAno = anoSel.value;
     if (mesSel) placarFiltroMes = mesSel.value;
-    if (setorSel) placarFiltroSetor = setorSel.value;
+    if (setorSel) {
+        placarFiltroSetor = setorSel.value;
+        const pills = document.querySelectorAll('#placarSectorPills .sector-pill');
+        pills.forEach(p => {
+            if (p.dataset.setor === placarFiltroSetor) p.classList.add('active');
+            else p.classList.remove('active');
+        });
+    }
 
     renderPlacarLideres();
 }
@@ -563,7 +722,7 @@ function onPlacarBuscaInput(val) {
 }
 
 // ----------------------------------------------------
-// COMPARTILHAMENTO: WHATSAPP DO GRUPO (RANKING COMPLETO)
+// COMPARTILHAMENTO: WHATSAPP DO GRUPO (RANKING COMPLETO OU SETORIAL)
 // ----------------------------------------------------
 function copiarRankingWhatsApp() {
     if (!placarRankingAtual || placarRankingAtual.length === 0) {
@@ -574,31 +733,50 @@ function copiarRankingWhatsApp() {
     const ano = placarFiltroAno;
     const mesNome = NOMES_MESES[parseInt(placarFiltroMes, 10)] || 'Mês';
 
-    let texto = `🏆 *PLACAR DAS LIDERANÇAS DE SST — RAMAL DO AGRESTE*\n`;
+    // Se estiver filtrado por setor, gera mensagem com o foco do setor
+    let listaEnvio = placarRankingAtual;
+    let tituloSetor = 'GERAL';
+    if (placarFiltroSetor) {
+        const sBusca = placarFiltroSetor.toUpperCase();
+        listaEnvio = placarRankingAtual.filter(r => (r.setor || '').toUpperCase().includes(sBusca));
+        tituloSetor = obterRotuloSetor(placarFiltroSetor).toUpperCase();
+    }
+
+    if (listaEnvio.length === 0) {
+        alert('Nenhum encarregado encontrado no setor selecionado.');
+        return;
+    }
+
+    let texto = `🏆 *PLACAR DAS LIDERANÇAS DE SST — ${tituloSetor}*\n`;
+    texto += `🏢 *Consórcio Operador Ramal do Agreste (COP Ramal)*\n`;
     texto += `📅 *Período de Avaliação:* ${mesNome} / ${ano}\n`;
     texto += `🎯 *Rotinas Obrigatórias:* DDSMA Diário + Treinamento Mensal + APR Vigente\n`;
     texto += `-----------------------------------------\n\n`;
 
-    placarRankingAtual.forEach((lider, idx) => {
+    listaEnvio.forEach((lider, idx) => {
         const medalha = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `*${idx + 1}º*`;
         const ddsTxt = lider.pctDds !== null ? `DDS: ${lider.diasDds}/${lider.metaDds}d (${lider.pctDds}%)` : 'DDS: Isento';
         const treinTxt = lider.pctTrein !== null ? (lider.pctTrein === 100 ? 'Trein: OK' : 'Trein: Pendente') : 'Trein: Isento';
         const aprTxt = lider.pctApr !== null ? (lider.pctApr === 100 ? 'APR: OK' : 'APR: Pendente') : 'APR: Isenta';
 
-        texto += `${medalha} *${lider.apelido}* (${lider.setor})\n`;
+        const posTrend = lider.varPos > 0 ? `▲ +${lider.varPos}` : (lider.varPos < 0 ? `▼ ${lider.varPos}` : `▬ 0`);
+        const subPosGeral = placarFiltroSetor ? ` (${lider.posAtual}º Geral | ${posTrend})` : ` (${posTrend})`;
+
+        texto += `${medalha} *${lider.apelido}*${subPosGeral}\n`;
         texto += `   📊 Aproveitamento: *${lider.mediaGeral}%* | ${ddsTxt} | ${treinTxt} | ${aprTxt}\n\n`;
     });
 
-    const soma = placarRankingAtual.reduce((s, r) => s + r.mediaGeral, 0);
-    const mediaGeral = Math.round(soma / placarRankingAtual.length);
+    const soma = listaEnvio.reduce((s, r) => s + r.mediaGeral, 0);
+    const mediaSetor = Math.round(soma / listaEnvio.length);
 
     texto += `-----------------------------------------\n`;
-    texto += `📈 *Índice Geral de Entregas da Obra:* *${mediaGeral}%*\n`;
-    texto += `👏 Parabéns a todos os encarregados pelo compromisso diário com a vida e segurança das equipes!\n`;
+    texto += `📈 *Índice Médio de Entregas:* *${mediaSetor}%*\n`;
+    texto += `👏 Parabéns a todos os encarregados pelo compromisso com a vida e segurança das equipes!\n`;
     texto += `_Engenharia de Segurança do Trabalho - COP Ramal do Agreste_`;
 
     navigator.clipboard.writeText(texto).then(() => {
-        alert('📋 Ranking formatado copiado com sucesso! Já pode colar no grupo de WhatsApp da Gerência e Encarregados.');
+        const alvo = placarFiltroSetor ? `do setor ${obterRotuloSetor(placarFiltroSetor)}` : 'Geral';
+        alert(`📋 Ranking ${alvo} copiado com sucesso! Já pode colar no grupo de WhatsApp.`);
     }).catch(err => {
         console.error('Falha ao copiar:', err);
         prompt('Copie o texto abaixo para enviar no WhatsApp:', texto);
@@ -952,20 +1130,34 @@ function imprimirPlacarLideres() {
     const periodoFormatado = `${mesNome} / ${ano}`;
     const agoraFormatado = new Date().toLocaleString('pt-BR');
 
-    // Estatísticas Globais
-    const soma = placarRankingAtual.reduce((s, r) => s + r.mediaGeral, 0);
-    const mediaGeral = placarRankingAtual.length > 0 ? Math.round(soma / placarRankingAtual.length) : 0;
-    const total100 = placarRankingAtual.filter(r => r.mediaGeral === 100).length;
-    const totalCriticos = placarRankingAtual.filter(r => r.mediaGeral < 60).length;
-    const totalDds = placarRankingAtual.reduce((s, r) => s + r.diasDds, 0);
+    // Se estiver filtrado por setor, foca a emissão apenas no setor selecionado
+    let listaImpressao = placarRankingAtual;
+    let subtituloSetor = 'GERAL DA OBRA';
+    if (placarFiltroSetor) {
+        const sBusca = placarFiltroSetor.toUpperCase();
+        listaImpressao = placarRankingAtual.filter(r => (r.setor || '').toUpperCase().includes(sBusca));
+        subtituloSetor = obterRotuloSetor(placarFiltroSetor).toUpperCase();
+    }
 
-    // Linhas da Tabela Completa
-    const linhasTabela = placarRankingAtual.map((lider, idx) => {
+    if (listaImpressao.length === 0) {
+        alert('Nenhum encarregado encontrado no setor selecionado para emissão.');
+        return;
+    }
+
+    // Estatísticas Globais
+    const soma = listaImpressao.reduce((s, r) => s + r.mediaGeral, 0);
+    const mediaGeral = listaImpressao.length > 0 ? Math.round(soma / listaImpressao.length) : 0;
+    const total100 = listaImpressao.filter(r => r.mediaGeral === 100).length;
+    const totalCriticos = listaImpressao.filter(r => r.mediaGeral < 60).length;
+    const totalDds = listaImpressao.reduce((s, r) => s + r.diasDds, 0);
+
+    // Linhas da Tabela Completa com indicador de tendência
+    const linhasTabela = listaImpressao.map((lider, idx) => {
         const medalha = idx === 0 ? '🥇 1º' : idx === 1 ? '🥈 2º' : idx === 2 ? '🥉 3º' : `${idx + 1}º`;
         
         let ddsStr = 'Isento';
         if (lider.pctDds !== null) {
-            ddsStr = `${lider.diasDds}/${lider.metaDds} dias (${lider.pctDds}%)`;
+            ddsStr = `${lider.diasDds}/${lider.metaDds}d (${lider.pctDds}%)`;
         }
 
         let treinStr = 'Isento';
@@ -981,9 +1173,23 @@ function imprimirPlacarLideres() {
         const bgLinha = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
         const corScore = lider.mediaGeral >= 90 ? '#15803d' : (lider.mediaGeral >= 70 ? '#1d4ed8' : (lider.mediaGeral >= 50 ? '#b45309' : '#b91c1c'));
 
+        let trendStr = '▬ 0';
+        let trendCor = '#64748b';
+        if (lider.isNovo) {
+            trendStr = '★ Novo';
+            trendCor = '#2563eb';
+        } else if (lider.varPos > 0) {
+            trendStr = `▲ +${lider.varPos}`;
+            trendCor = '#15803d';
+        } else if (lider.varPos < 0) {
+            trendStr = `▼ ${lider.varPos}`;
+            trendCor = '#b91c1c';
+        }
+
         return `
             <tr style="background: ${bgLinha};">
-                <td style="text-align: center; font-weight: 700; padding: 6px 8px; border: 1px solid #cbd5e1;">${medalha}</td>
+                <td style="text-align: center; font-weight: 700; padding: 6px 6px; border: 1px solid #cbd5e1;">${medalha}</td>
+                <td style="text-align: center; font-weight: 700; font-size: 10px; padding: 6px 4px; border: 1px solid #cbd5e1; color: ${trendCor};">${trendStr}</td>
                 <td style="font-weight: 700; padding: 6px 8px; border: 1px solid #cbd5e1;">
                     ${escapeHTML(lider.apelido)}
                 </td>
@@ -1000,7 +1206,7 @@ function imprimirPlacarLideres() {
     }).join('');
 
     // Destaque Top 3
-    const top3 = placarRankingAtual.slice(0, 3);
+    const top3 = listaImpressao.slice(0, 3);
     const podioHtml = top3.map((l, i) => {
         const med = i === 0 ? '🥇 1º LUGAR' : (i === 1 ? '🥈 2º LUGAR' : '🥉 3º LUGAR');
         const bordaCor = i === 0 ? '#f59e0b' : (i === 1 ? '#94a3b8' : '#ea580c');
@@ -1011,7 +1217,7 @@ function imprimirPlacarLideres() {
                 <div style="font-weight: 700; font-size: 13px; color: #0f172a;">${escapeHTML(l.apelido)}</div>
                 <div style="font-size: 10.5px; color: #64748b; margin-bottom: 6px;">${escapeHTML(l.setor)} • ${l.totalEquipe} colaboradores</div>
                 <div style="display: flex; justify-content: space-between; font-size: 11px; border-top: 1px dashed #cbd5e1; padding-top: 6px;">
-                    <span>Aproveitamento Geral:</span>
+                    <span>Aproveitamento:</span>
                     <strong style="font-size: 13px; color: #1e1b4b;">${l.mediaGeral}%</strong>
                 </div>
             </div>
@@ -1177,7 +1383,7 @@ function imprimirPlacarLideres() {
                         Consórcio Operador do PISF • Ramal do Agreste
                     </div>
                     <div class="titulo-doc">
-                        Boletim Gerencial de SST — Placar das Lideranças
+                        Boletim Gerencial de SST — Placar das Lideranças (${subtituloSetor})
                     </div>
                     <div class="subtitulo-doc">
                         Monitoramento de Entregas Operacionais: DDSMA Diário, Treinamentos da Equipe e APR Vigente
@@ -1194,12 +1400,12 @@ function imprimirPlacarLideres() {
         <!-- Resumo Executivo em KPIs -->
         <div class="kpi-grid">
             <div class="kpi-card">
-                <div class="kpi-label">Índice Médio da Obra</div>
+                <div class="kpi-label">Índice Médio (${subtituloSetor})</div>
                 <div class="kpi-val" style="color: #4f46e5;">${mediaGeral}%</div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-label">Frentes Avaliadas</div>
-                <div class="kpi-val">${placarRankingAtual.length}</div>
+                <div class="kpi-val">${listaImpressao.length}</div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-label">Líderes Destaque (100%)</div>
@@ -1212,17 +1418,18 @@ function imprimirPlacarLideres() {
         </div>
 
         <!-- Pódio das 3 Lideranças Destaque -->
-        <div class="secao-titulo">1. Destaque de Excelência — Lideranças no Pódio</div>
+        <div class="secao-titulo">1. Destaque de Excelência — Lideranças no Pódio (${subtituloSetor})</div>
         <div style="display: flex; gap: 10px; margin-bottom: 14px;">
             ${podioHtml}
         </div>
 
         <!-- Tabela Completa de Classificação -->
-        <div class="secao-titulo">2. Classificação Geral de Cumprimento das Rotinas</div>
+        <div class="secao-titulo">2. Classificação de Cumprimento das Rotinas de SST</div>
         <table class="tabela-dados">
             <thead>
                 <tr>
                     <th style="width: 44px; text-align: center;">Pos.</th>
+                    <th style="width: 55px; text-align: center;">Evol.</th>
                     <th style="text-align: left;">Encarregado / Frente</th>
                     <th style="text-align: left;">Setor / Atividade</th>
                     <th style="width: 45px; text-align: center;">Efetivo</th>
@@ -1272,4 +1479,323 @@ function imprimirPlacarLideres() {
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 60000);
     }
+}
+
+// ==========================================================================
+// MÓDULO: HISTÓRICO COMPARATIVO & EVOLUÇÃO DAS LIDERANÇAS (CHART.JS)
+// ==========================================================================
+
+function abrirModalHistoricoPlacar(liderFrente) {
+    const modal = document.getElementById('modalPlacarHistorico');
+    if (!modal) return;
+
+    // Popula o select de líderes com base no ranking atual da obra
+    const selLider = document.getElementById('placarHistFiltroLider');
+    if (selLider) {
+        let opts = '<option value="TODOS">🌟 Média Geral da Obra</option>';
+        if (placarRankingAtual && placarRankingAtual.length > 0) {
+            const ordenados = [...placarRankingAtual].sort((a, b) => a.apelido.localeCompare(b.apelido));
+            ordenados.forEach(l => {
+                opts += `<option value="${escapeHTML(l.frenteNome)}">${escapeHTML(l.apelido)} (${escapeHTML(l.setor)})</option>`;
+            });
+        }
+        selLider.innerHTML = opts;
+
+        if (liderFrente && selLider.querySelector(`option[value="${liderFrente}"]`)) {
+            selLider.value = liderFrente;
+        } else {
+            selLider.value = 'TODOS';
+        }
+    }
+
+    modal.style.display = 'flex';
+    atualizarGraficoHistoricoPlacar();
+}
+
+function fecharModalHistoricoPlacar() {
+    const modal = document.getElementById('modalPlacarHistorico');
+    if (modal) modal.style.display = 'none';
+}
+
+function obterMesesHistoricoPeriodo(anoRef, mesRef, qtdMeses) {
+    const meses = [];
+    for (let i = qtdMeses - 1; i >= 0; i--) {
+        let m = mesRef - i;
+        let a = anoRef;
+        while (m < 0) {
+            m += 12;
+            a -= 1;
+        }
+        meses.push({
+            ano: a,
+            mes: m,
+            rotuloCurto: (NOMES_MESES[m] || 'Mês').substring(0, 3) + '/' + String(a).slice(-2),
+            rotuloCompleto: (NOMES_MESES[m] || 'Mês') + ' de ' + a
+        });
+    }
+    return meses;
+}
+
+function atualizarGraficoHistoricoPlacar() {
+    const anoRef = parseInt(placarFiltroAno, 10) || new Date().getFullYear();
+    const mesRef = parseInt(placarFiltroMes, 10) || new Date().getMonth();
+    const selPeriodo = document.getElementById('placarHistFiltroPeriodo');
+    const qtdMeses = selPeriodo ? (parseInt(selPeriodo.value, 10) || 6) : 6;
+    const selLider = document.getElementById('placarHistFiltroLider');
+    const liderFrente = selLider ? selLider.value : 'TODOS';
+
+    const meses = obterMesesHistoricoPeriodo(anoRef, mesRef, qtdMeses);
+
+    // Arrays para o Chart.js e para a tabela comparativa
+    const labels = meses.map(m => m.rotuloCurto);
+    const dadosMediaObra = [];
+    const dadosLider = [];
+    const historicoDetalhado = [];
+
+    let nomeLiderExibicao = 'Média Geral da Obra';
+
+    meses.forEach(m => {
+        const rankingMes = calcularPlacarLideres(m.ano, m.mes);
+        
+        // Média da obra no mês
+        const soma = rankingMes.reduce((s, r) => s + r.mediaGeral, 0);
+        const avgObra = rankingMes.length > 0 ? Math.round(soma / rankingMes.length) : null;
+        dadosMediaObra.push(avgObra);
+
+        if (liderFrente === 'TODOS') {
+            const totalDds = rankingMes.reduce((s, r) => s + r.diasDds, 0);
+            const total100 = rankingMes.filter(r => r.mediaGeral === 100).length;
+            historicoDetalhado.push({
+                rotulo: m.rotuloCompleto,
+                posicaoStr: 'Geral da Obra',
+                tendenciaStr: '▬',
+                ddsStr: `${totalDds} DDS no total`,
+                treinStr: `${rankingMes.length} frentes ativas`,
+                aprStr: `${total100} líderes 100%`,
+                mediaGeral: avgObra !== null ? avgObra : 0
+            });
+        } else {
+            const idxLider = rankingMes.findIndex(r => r.frenteNome === liderFrente);
+            if (idxLider >= 0) {
+                const item = rankingMes[idxLider];
+                nomeLiderExibicao = item.apelido;
+                dadosLider.push(item.mediaGeral);
+
+                const pos = idxLider + 1;
+                const posStr = pos === 1 ? '🥇 1º' : pos === 2 ? '🥈 2º' : pos === 3 ? '🥉 3º' : `${pos}º de ${rankingMes.length}`;
+                
+                const ddsStr = item.pctDds !== null ? `${item.diasDds}/${item.metaDds}d (${item.pctDds}%)` : 'Isento';
+                const treinStr = item.pctTrein !== null ? (item.pctTrein === 100 ? `✅ OK (${item.totalTreinamentos})` : '❌ Pendente') : 'Isento';
+                const aprStr = item.pctApr !== null ? (item.pctApr === 100 ? `✅ Vigente (${item.totalAprsVigentes})` : '❌ Sem APR') : 'Isenta';
+
+                historicoDetalhado.push({
+                    rotulo: m.rotuloCompleto,
+                    posicao: pos,
+                    posicaoStr: posStr,
+                    mediaGeral: item.mediaGeral,
+                    ddsStr,
+                    treinStr,
+                    aprStr,
+                    item
+                });
+            } else {
+                dadosLider.push(null);
+                historicoDetalhado.push({
+                    rotulo: m.rotuloCompleto,
+                    posicaoStr: 'Sem Registro',
+                    tendenciaStr: '-',
+                    ddsStr: '-',
+                    treinStr: '-',
+                    aprStr: '-',
+                    mediaGeral: 0
+                });
+            }
+        }
+    });
+
+    // Calcular tendência mês a mês para a tabela quando for líder específico
+    if (liderFrente !== 'TODOS') {
+        for (let i = 0; i < historicoDetalhado.length; i++) {
+            if (i === 0 || !historicoDetalhado[i].posicao || !historicoDetalhado[i - 1].posicao) {
+                historicoDetalhado[i].tendenciaStr = '★';
+            } else {
+                const diffPos = historicoDetalhado[i - 1].posicao - historicoDetalhado[i].posicao;
+                if (diffPos > 0) historicoDetalhado[i].tendenciaStr = `▲ +${diffPos}`;
+                else if (diffPos < 0) historicoDetalhado[i].tendenciaStr = `▼ ${diffPos}`;
+                else historicoDetalhado[i].tendenciaStr = `▬ 0`;
+            }
+        }
+    }
+
+    // Atualiza o Resumo de Destaque no Topo
+    const elResumo = document.getElementById('placarHistResumoDestaque');
+    if (elResumo) {
+        if (liderFrente === 'TODOS') {
+            const valUltimo = dadosMediaObra[dadosMediaObra.length - 1];
+            const valPrimeiro = dadosMediaObra.find(v => v !== null) || valUltimo;
+            const dif = valUltimo !== null && valPrimeiro !== null ? (valUltimo - valPrimeiro) : 0;
+            const cor = dif > 0 ? '#10b981' : dif < 0 ? '#ef4444' : '#4f46e5';
+            const sinal = dif > 0 ? '+' : '';
+            elResumo.innerHTML = `Média Geral da Obra: <strong>${valUltimo}%</strong> <span style="color:${cor}; margin-left: 6px;">(${sinal}${dif}% no período)</span>`;
+        } else {
+            const valsValidos = dadosLider.filter(v => v !== null);
+            if (valsValidos.length >= 2) {
+                const ini = valsValidos[0];
+                const fim = valsValidos[valsValidos.length - 1];
+                const dif = fim - ini;
+                const cor = dif > 0 ? '#10b981' : dif < 0 ? '#ef4444' : '#4f46e5';
+                const sinal = dif > 0 ? '+' : '';
+                elResumo.innerHTML = `Evolução de <strong>${escapeHTML(nomeLiderExibicao)}</strong>: <strong style="color:${cor}; font-size:14px;">${sinal}${dif}%</strong> (de ${ini}% para ${fim}%)`;
+            } else if (valsValidos.length === 1) {
+                elResumo.innerHTML = `Aproveitamento Atual: <strong>${valsValidos[0]}%</strong>`;
+            } else {
+                elResumo.innerHTML = `Sem dados suficientes no período`;
+            }
+        }
+    }
+
+    // Atualiza a Tabela do Histórico (Mais recente primeiro)
+    const tbody = document.getElementById('placarHistTabelaCorpo');
+    if (tbody) {
+        const historicoReverso = [...historicoDetalhado].reverse();
+        tbody.innerHTML = historicoReverso.map(h => {
+            const fillCor = h.mediaGeral >= 90 ? '#10b981' : h.mediaGeral >= 70 ? '#3b82f6' : h.mediaGeral >= 50 ? '#f59e0b' : '#ef4444';
+            
+            let tendBadge = `<span style="font-weight:700; color:var(--text-light);">${h.tendenciaStr || '▬'}</span>`;
+            if (h.tendenciaStr && h.tendenciaStr.includes('▲')) {
+                tendBadge = `<span style="font-weight:700; color:#10b981; background:rgba(16,185,129,0.12); padding:2px 8px; border-radius:12px;">${h.tendenciaStr}</span>`;
+            } else if (h.tendenciaStr && h.tendenciaStr.includes('▼')) {
+                tendBadge = `<span style="font-weight:700; color:#ef4444; background:rgba(239,68,68,0.12); padding:2px 8px; border-radius:12px;">${h.tendenciaStr}</span>`;
+            }
+
+            return `
+                <tr style="border-bottom: 1px solid var(--border);">
+                    <td style="padding: 10px; font-weight: 700; color: var(--text);">${escapeHTML(h.rotulo)}</td>
+                    <td style="padding: 10px; text-align: center; font-weight: 700;">${h.posicaoStr}</td>
+                    <td style="padding: 10px; text-align: center;">${tendBadge}</td>
+                    <td style="padding: 10px; text-align: center; font-size: 11.5px;">${h.ddsStr}</td>
+                    <td style="padding: 10px; text-align: center; font-size: 11.5px;">${h.treinStr}</td>
+                    <td style="padding: 10px; text-align: center; font-size: 11.5px;">${h.aprStr}</td>
+                    <td style="padding: 10px; text-align: right;">
+                        <span style="font-weight: 800; font-size: 13px; color: ${fillCor};">${h.mediaGeral}%</span>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // Renderizar ou atualizar gráfico Chart.js
+    const canvas = document.getElementById('canvasPlacarHistorico');
+    if (!canvas) return;
+
+    if (placarChartHistoricoInstance) {
+        placarChartHistoricoInstance.destroy();
+        placarChartHistoricoInstance = null;
+    }
+
+    const datasets = [];
+
+    // Dataset da Média da Obra
+    if (liderFrente === 'TODOS') {
+        datasets.push({
+            label: 'Média Geral da Obra (%)',
+            data: dadosMediaObra,
+            borderColor: '#4f46e5',
+            backgroundColor: 'rgba(79, 70, 229, 0.12)',
+            borderWidth: 3,
+            fill: true,
+            tension: 0.35,
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            pointBackgroundColor: '#4f46e5'
+        });
+    } else {
+        datasets.push({
+            label: 'Média Geral da Obra (Referência)',
+            data: dadosMediaObra,
+            borderColor: '#94a3b8',
+            borderDash: [6, 6],
+            borderWidth: 2,
+            fill: false,
+            tension: 0.35,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: '#94a3b8'
+        });
+        datasets.push({
+            label: `${nomeLiderExibicao} (%)`,
+            data: dadosLider,
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.14)',
+            borderWidth: 3,
+            fill: true,
+            tension: 0.3,
+            pointRadius: 7,
+            pointHoverRadius: 10,
+            pointBackgroundColor: '#ffffff',
+            pointBorderColor: '#10b981',
+            pointBorderWidth: 3
+        });
+    }
+
+    const ctx = canvas.getContext('2d');
+    placarChartHistoricoInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: {
+                duration: 600,
+                easing: 'easeOutQuart'
+            },
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        boxWidth: 14,
+                        font: { size: 12, weight: 'bold' },
+                        color: '#475569'
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const val = context.raw;
+                            return `${context.dataset.label}: ${val !== null ? val + '%' : 'Sem dados'}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    min: 0,
+                    max: 100,
+                    ticks: {
+                        stepSize: 20,
+                        callback: val => val + '%',
+                        font: { size: 11, weight: '600' }
+                    },
+                    grid: {
+                        color: 'rgba(203, 213, 225, 0.4)'
+                    }
+                },
+                x: {
+                    ticks: {
+                        font: { size: 11, weight: '600' }
+                    },
+                    grid: {
+                        display: false
+                    }
+                }
+            }
+        }
+    });
 }

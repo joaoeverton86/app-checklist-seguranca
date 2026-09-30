@@ -808,8 +808,338 @@ async function salvarModalConfigRotinas() {
 }
 
 // ----------------------------------------------------
-// IMPRESSÃO / RELATÓRIO DO PLACAR DE LIDERANÇAS
+// IMPRESSÃO / RELATÓRIO OFICIAL DO PLACAR DE LIDERANÇAS
 // ----------------------------------------------------
 function imprimirPlacarLideres() {
-    window.print();
+    if (!placarRankingAtual || placarRankingAtual.length === 0) {
+        alert('Nenhum dado calculado para o período.');
+        return;
+    }
+
+    const ano = placarFiltroAno || String(new Date().getFullYear());
+    const mesIdx = parseInt(placarFiltroMes, 10);
+    const mesNome = NOMES_MESES[mesIdx] || 'Mês';
+    const periodoFormatado = `${mesNome} / ${ano}`;
+    const agoraFormatado = new Date().toLocaleString('pt-BR');
+
+    // Estatísticas Globais
+    const soma = placarRankingAtual.reduce((s, r) => s + r.mediaGeral, 0);
+    const mediaGeral = placarRankingAtual.length > 0 ? Math.round(soma / placarRankingAtual.length) : 0;
+    const total100 = placarRankingAtual.filter(r => r.mediaGeral === 100).length;
+    const totalCriticos = placarRankingAtual.filter(r => r.mediaGeral < 60).length;
+    const totalDds = placarRankingAtual.reduce((s, r) => s + r.diasDds, 0);
+
+    // Linhas da Tabela Completa
+    const linhasTabela = placarRankingAtual.map((lider, idx) => {
+        const medalha = idx === 0 ? '🥇 1º' : idx === 1 ? '🥈 2º' : idx === 2 ? '🥉 3º' : `${idx + 1}º`;
+        
+        let ddsStr = 'Isento';
+        if (lider.pctDds !== null) {
+            ddsStr = `${lider.diasDds}/${lider.metaDds} dias (${lider.pctDds}%)`;
+        }
+
+        let treinStr = 'Isento';
+        if (lider.pctTrein !== null) {
+            treinStr = lider.pctTrein === 100 ? `✅ Realizado (${lider.totalTreinamentos})` : '❌ Pendente';
+        }
+
+        let aprStr = 'Isenta';
+        if (lider.pctApr !== null) {
+            aprStr = lider.pctApr === 100 ? `✅ Vigente (${lider.totalAprsVigentes})` : '❌ Sem APR';
+        }
+
+        const bgLinha = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+        const corScore = lider.mediaGeral >= 90 ? '#15803d' : (lider.mediaGeral >= 70 ? '#1d4ed8' : (lider.mediaGeral >= 50 ? '#b45309' : '#b91c1c'));
+
+        return `
+            <tr style="background: ${bgLinha};">
+                <td style="text-align: center; font-weight: 700; padding: 6px 8px; border: 1px solid #cbd5e1;">${medalha}</td>
+                <td style="font-weight: 700; padding: 6px 8px; border: 1px solid #cbd5e1;">
+                    ${escapeHTML(lider.apelido)}
+                </td>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">${escapeHTML(lider.setor)}</td>
+                <td style="text-align: center; padding: 6px 8px; border: 1px solid #cbd5e1;">${lider.totalEquipe}</td>
+                <td style="text-align: center; padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">${ddsStr}</td>
+                <td style="text-align: center; padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">${treinStr}</td>
+                <td style="text-align: center; padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">${aprStr}</td>
+                <td style="text-align: center; font-weight: 800; padding: 6px 8px; border: 1px solid #cbd5e1; color: ${corScore}; font-size: 12px;">
+                    ${lider.mediaGeral}%
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    // Destaque Top 3
+    const top3 = placarRankingAtual.slice(0, 3);
+    const podioHtml = top3.map((l, i) => {
+        const med = i === 0 ? '🥇 1º LUGAR' : (i === 1 ? '🥈 2º LUGAR' : '🥉 3º LUGAR');
+        const bordaCor = i === 0 ? '#f59e0b' : (i === 1 ? '#94a3b8' : '#ea580c');
+        const bgCor = i === 0 ? '#fffbeb' : (i === 1 ? '#f8fafc' : '#fff7ed');
+        return `
+            <div style="flex: 1; border: 2px solid ${bordaCor}; background: ${bgCor}; border-radius: 8px; padding: 10px 12px; box-sizing: border-box;">
+                <div style="font-weight: 800; font-size: 12px; color: #1e1b4b; margin-bottom: 4px;">${med}</div>
+                <div style="font-weight: 700; font-size: 13px; color: #0f172a;">${escapeHTML(l.apelido)}</div>
+                <div style="font-size: 10.5px; color: #64748b; margin-bottom: 6px;">${escapeHTML(l.setor)} • ${l.totalEquipe} colaboradores</div>
+                <div style="display: flex; justify-content: space-between; font-size: 11px; border-top: 1px dashed #cbd5e1; padding-top: 6px;">
+                    <span>Aproveitamento Geral:</span>
+                    <strong style="font-size: 13px; color: #1e1b4b;">${l.mediaGeral}%</strong>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const logoHtml = (typeof LOGO_COP_BASE64 !== 'undefined' && LOGO_COP_BASE64)
+        ? `<img src="${LOGO_COP_BASE64}" alt="Consórcio Operador Ramal do Agreste" style="max-height: 48px; max-width: 170px; object-fit: contain;">`
+        : `<div style="font-weight: 800; font-size: 16px; color: #1e1b4b;">COP RAMAL DO AGRESTE</div>`;
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Placar_Liderancas_SST_${ano}_${String(mesIdx + 1).padStart(2, '0')}</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 10mm 12mm;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 11px;
+            color: #0f172a;
+            margin: 0;
+            padding: 0;
+            background: #ffffff;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .no-print {
+            text-align: center;
+            padding: 12px;
+            background: #f1f5f9;
+            border-bottom: 1px solid #cbd5e1;
+            margin-bottom: 16px;
+        }
+        .btn-imprimir {
+            background: #4f46e5;
+            color: #ffffff;
+            border: none;
+            padding: 10px 22px;
+            font-size: 13px;
+            font-weight: 700;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+        .btn-imprimir:hover { background: #4338ca; }
+        .folha-relatorio {
+            width: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .cabecalho-tabela {
+            width: 100%;
+            border-collapse: collapse;
+            border-bottom: 2px solid #0f172a;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+        }
+        .titulo-doc {
+            font-size: 15px;
+            font-weight: 800;
+            color: #0f172a;
+            text-transform: uppercase;
+            letter-spacing: -0.3px;
+        }
+        .subtitulo-doc {
+            font-size: 11px;
+            color: #475569;
+            margin-top: 3px;
+        }
+        .kpi-grid {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .kpi-card {
+            flex: 1;
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            border-radius: 6px;
+            padding: 8px 10px;
+            text-align: center;
+        }
+        .kpi-label {
+            font-size: 9.5px;
+            text-transform: uppercase;
+            font-weight: 700;
+            color: #64748b;
+        }
+        .kpi-val {
+            font-size: 18px;
+            font-weight: 800;
+            color: #0f172a;
+            margin-top: 2px;
+        }
+        .secao-titulo {
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+            color: #1e1b4b;
+            border-left: 3px solid #4f46e5;
+            padding-left: 6px;
+            margin: 12px 0 8px 0;
+        }
+        table.tabela-dados {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10.5px;
+            margin-top: 6px;
+        }
+        table.tabela-dados th {
+            background: #e2e8f0;
+            color: #1e293b;
+            font-size: 9.5px;
+            text-transform: uppercase;
+            font-weight: 800;
+            padding: 7px 6px;
+            border: 1px solid #cbd5e1;
+        }
+        table.tabela-dados td {
+            vertical-align: middle;
+        }
+        .rodape-assinaturas {
+            margin-top: 22px;
+            display: flex;
+            justify-content: space-between;
+            gap: 30px;
+            page-break-inside: avoid;
+        }
+        .box-assinatura {
+            flex: 1;
+            text-align: center;
+            border-top: 1px solid #0f172a;
+            padding-top: 6px;
+            font-size: 10.5px;
+            color: #334155;
+            line-height: 1.4;
+        }
+        @media print {
+            .no-print { display: none !important; }
+            body { margin: 0; padding: 0; }
+            .folha-relatorio { max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <button class="btn-imprimir" onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button>
+    </div>
+
+    <div class="folha-relatorio">
+        <table class="cabecalho-tabela">
+            <tr>
+                <td style="width: 180px; vertical-align: middle;">
+                    ${logoHtml}
+                </td>
+                <td style="vertical-align: middle; padding-left: 14px;">
+                    <div style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;">
+                        Consórcio Operador do PISF • Ramal do Agreste
+                    </div>
+                    <div class="titulo-doc">
+                        Boletim Gerencial de SST — Placar das Lideranças
+                    </div>
+                    <div class="subtitulo-doc">
+                        Monitoramento de Entregas Operacionais: DDSMA Diário, Treinamentos da Equipe e APR Vigente
+                    </div>
+                </td>
+                <td style="width: 170px; text-align: right; vertical-align: middle; font-size: 10.5px; color: #475569; line-height: 1.4;">
+                    <strong>Período:</strong> ${periodoFormatado}<br>
+                    <strong>Emissão:</strong> ${agoraFormatado}<br>
+                    <strong>Status:</strong> Oficial SESMT
+                </td>
+            </tr>
+        </table>
+
+        <!-- Resumo Executivo em KPIs -->
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-label">Índice Médio da Obra</div>
+                <div class="kpi-val" style="color: #4f46e5;">${mediaGeral}%</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Frentes Avaliadas</div>
+                <div class="kpi-val">${placarRankingAtual.length}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Líderes Destaque (100%)</div>
+                <div class="kpi-val" style="color: #15803d;">${total100}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Total de DDS Realizados</div>
+                <div class="kpi-val" style="color: #0284c7;">${totalDds}</div>
+            </div>
+        </div>
+
+        <!-- Pódio das 3 Lideranças Destaque -->
+        <div class="secao-titulo">1. Destaque de Excelência — Lideranças no Pódio</div>
+        <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+            ${podioHtml}
+        </div>
+
+        <!-- Tabela Completa de Classificação -->
+        <div class="secao-titulo">2. Classificação Geral de Cumprimento das Rotinas</div>
+        <table class="tabela-dados">
+            <thead>
+                <tr>
+                    <th style="width: 44px; text-align: center;">Pos.</th>
+                    <th style="text-align: left;">Encarregado / Frente</th>
+                    <th style="text-align: left;">Setor / Atividade</th>
+                    <th style="width: 45px; text-align: center;">Efetivo</th>
+                    <th style="width: 125px; text-align: center;">DDSMA (Dias/Meta)</th>
+                    <th style="width: 130px; text-align: center;">Treinamento da Equipe</th>
+                    <th style="width: 105px; text-align: center;">APR Vigente</th>
+                    <th style="width: 65px; text-align: center;">Aprov.</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${linhasTabela}
+            </tbody>
+        </table>
+
+        <!-- Diretrizes e Responsabilidade Técnica -->
+        <div style="margin-top: 14px; padding: 8px 10px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 10px; color: #475569; line-height: 1.45;">
+            <strong>Critérios de Apuração:</strong> O aproveitamento avalia o cumprimento das 3 entregas essenciais no período: (1) Diálogo Diário de Segurança (DDSMA) lançado dentro da meta mensal; (2) Capacitação/Treinamento de equipe realizado; (3) Análise Preliminar de Risco (APR) emitida e em vigor. A equipe da Elétrica é monitorada de forma unificada; equipes civis são acompanhadas individualmente por Encarregado de Campo; áreas de apoio/administrativas são isentas das rotinas de campo.
+        </div>
+
+        <div class="rodape-assinaturas">
+            <div class="box-assinatura">
+                <strong>João Everton de Souza Limeira</strong><br>
+                Engenheiro de Segurança do Trabalho • CREA: 0522078320<br>
+                Responsável Técnico SESMT — Consórcio Ramal do Agreste
+            </div>
+            <div class="box-assinatura">
+                <strong>Gerência de Operações e Contrato</strong><br>
+                Consórcio Operador do PISF • Ramal do Agreste<br>
+                Ciência da Governança Operacional de SST
+            </div>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    if (typeof abrirDocumentoHtmlParaImpressao === 'function') {
+        abrirDocumentoHtmlParaImpressao(html, `Placar_Liderancas_SST_${ano}_${mesNome}`);
+    } else {
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
 }

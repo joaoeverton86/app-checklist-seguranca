@@ -8355,7 +8355,32 @@ function filterMatrizEpi(q) {
                 </table>
             </div>
 
-            <div id="placarConfigStatusMsg" style="font-size: 12px; font-weight: 600;"></div>
+            <div id="placarConfigStatusMsg" style="font-size: 12px; font-weight: 600; margin-top: 6px;"></div>
+
+            <!-- Seção Integrada: Unificação de Encarregados / Frentes (Mesclagem de Histórico) -->
+            <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);">
+                <details id="placarDetailsAliases" style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;">
+                    <summary style="cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 6px; user-select: none;">
+                        <span>🔗</span> Unificação de Líderes / Substituição de Encarregados (Histórico Unificado)
+                    </summary>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin: 8px 0 10px; line-height: 1.45;">
+                        Quando um encarregado sai da empresa ou é substituído por uma frente/setor (ex: <strong>EVERALDO ➔ LINHA DE TRANSMISSÃO</strong> ou <strong>FABRICIO ➔ ELÉTRICA</strong>), unifique os dois nomes aqui. Todo o histórico anterior (DDS, Treinamentos, APRs) é mantido 100% preservado no banco e computado automaticamente na frente atual para cálculo dos percentuais.
+                    </div>
+                    
+                    <div id="placarAliasLista" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; font-size: 12px;">
+                        <!-- Preenchido via JS com as mesclagens do Supabase -->
+                    </div>
+
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; background: var(--card-bg, #fff); padding: 8px 10px; border-radius: 6px; border: 1px dashed var(--border);">
+                        <input type="text" id="placarAliasAntigoInput" placeholder="Nome antigo (ex: EVERALDO)" style="flex: 1; min-width: 140px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px;">
+                        <span style="font-size: 12px; color: var(--text-light); font-weight: 600;">virou</span>
+                        <input type="text" id="placarAliasAtualInput" placeholder="Nome atual (ex: LINHA DE TRANSMISSÃO)" style="flex: 1; min-width: 140px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px;">
+                        <button type="button" class="db-apply-btn" onclick="adicionarUnificacaoPlacar()" style="white-space: nowrap; padding: 6px 12px; font-size: 12px; background: #0284c7; border-color: #0369a1;">
+                            🔗 Unificar Frentes
+                        </button>
+                    </div>
+                </details>
+            </div>
         </div>
         <div class="placar-modal-footer">
             <button type="button" class="db-clear-btn" onclick="fecharModalConfigRotinas()">Cancelar</button>

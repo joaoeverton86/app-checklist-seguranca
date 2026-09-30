@@ -161,11 +161,17 @@ function calcularPlacarLideres(ano, mes) {
         }
     });
 
-    // Todas as frentes que existem no sistema ou configuradas
-    const frentesIdentificadas = new Set([
-        ...Array.from(equipePorLider.keys()),
-        ...Object.keys(configFrentes)
-    ]);
+    // Todas as frentes que existem no sistema ou configuradas (resolvendo aliases de unificação)
+    const frentesIdentificadas = new Set();
+    [...Array.from(equipePorLider.keys()), ...Object.keys(configFrentes)].forEach(f => {
+        let fResolvida = (f || '').trim().toUpperCase();
+        if (!fResolvida) return;
+        fResolvida = typeof resolverFrenteDds === 'function' ? resolverFrenteDds(fResolvida) : fResolvida;
+        const ehAliasAntigo = (allDdsFrentesAlias || []).some(a => a.id === f);
+        if (fResolvida && !ehAliasAntigo) {
+            frentesIdentificadas.add(fResolvida);
+        }
+    });
 
     const ranking = [];
 
@@ -700,12 +706,18 @@ function abrirModalConfigRotinas() {
 
     if (!tbody || !modal) return;
 
-    // Todas as frentes conhecidas no sistema
-    const frentesSet = new Set(Object.keys(configFrentes));
+    // Todas as frentes conhecidas no sistema (filtrando aliases antigos que viraram outra frente)
+    const frentesSet = new Set();
+    Object.keys(configFrentes).forEach(f => {
+        const fRes = typeof resolverFrenteDds === 'function' ? resolverFrenteDds(f) : f;
+        const ehAliasAntigo = (allDdsFrentesAlias || []).some(a => a.id === f);
+        if (fRes && !ehAliasAntigo) frentesSet.add(fRes);
+    });
     (allEfetivo || []).forEach(e => {
         if (colaboradorEstaAtivo(e) && e.responsavel) {
             const f = typeof resolverFrenteDds === 'function' ? resolverFrenteDds(e.responsavel) : e.responsavel;
-            frentesSet.add(f);
+            const ehAliasAntigo = (allDdsFrentesAlias || []).some(a => a.id === (e.responsavel || '').trim().toUpperCase());
+            if (f && !ehAliasAntigo) frentesSet.add(f);
         }
     });
 
@@ -747,6 +759,7 @@ function abrirModalConfigRotinas() {
         `;
     }).join('');
 
+    renderPlacarAliasLista();
     modal.style.display = 'flex';
 }
 
@@ -786,9 +799,17 @@ async function salvarModalConfigRotinas() {
         };
     });
 
+    // Preserva frentes antigas desativadas ou aliases
+    const frentesFinais = { ...(allRotinasConfig.frentes || {}), ...novasFrentes };
+    (allDdsFrentesAlias || []).forEach(a => {
+        if (frentesFinais[a.id]) {
+            frentesFinais[a.id].ativo = false; // aliases nunca ficam ativos como líderes independentes
+        }
+    });
+
     const novaConfig = {
         meta_dias_dds_padrao: placarMetaDiasCustom,
-        frentes: novasFrentes
+        frentes: frentesFinais
     };
 
     try {
@@ -804,6 +825,115 @@ async function salvarModalConfigRotinas() {
             statusMsg.textContent = '❌ Falha ao salvar: ' + e.message;
             statusMsg.style.color = 'var(--danger)';
         }
+    }
+}
+
+// ----------------------------------------------------
+// GERENCIAMENTO DE UNIFICAÇÃO DE ENCARREGADOS / ALIASES
+// ----------------------------------------------------
+function renderPlacarAliasLista() {
+    const container = document.getElementById('placarAliasLista');
+    if (!container) return;
+    if (!allDdsFrentesAlias || allDdsFrentesAlias.length === 0) {
+        container.innerHTML = '<div style="color:var(--text-light); font-style:italic; padding:4px 0;">Nenhuma unificação cadastrada.</div>';
+        return;
+    }
+    container.innerHTML = allDdsFrentesAlias.slice().sort((a, b) => a.id.localeCompare(b.id)).map(a => `
+        <div style="display:flex; align-items:center; justify-content:space-between; background:var(--card-bg, #fff); padding:6px 10px; border-radius:6px; border:1px solid var(--border);">
+            <span style="font-size:12px;">
+                <strong style="color:var(--text);">${escapeHTML(a.id)}</strong>
+                <span style="color:var(--text-light); margin:0 8px;">➔</span>
+                <strong style="color:var(--primary);">${escapeHTML(a.frente_atual)}</strong>
+            </span>
+            <button type="button" onclick="removerUnificacaoPlacar('${escapeHTML(a.id)}')" title="Desfazer unificação" style="background:none; border:none; color:var(--danger); cursor:pointer; font-weight:700; font-size:14px; padding:2px 6px;">✕</button>
+        </div>
+    `).join('');
+}
+
+async function adicionarUnificacaoPlacar() {
+    const inputAntigo = document.getElementById('placarAliasAntigoInput');
+    const inputAtual = document.getElementById('placarAliasAtualInput');
+    if (!inputAntigo || !inputAtual) return;
+
+    const nomeAntigo = (inputAntigo.value || '').trim().toUpperCase();
+    const nomeAtual = (inputAtual.value || '').trim().toUpperCase();
+
+    if (!nomeAntigo || !nomeAtual) {
+        alert('Preencha os nomes do encarregado antigo e da frente atual.');
+        return;
+    }
+    if (nomeAntigo === nomeAtual) {
+        alert('O nome antigo e o nome atual não podem ser iguais.');
+        return;
+    }
+
+    if (!confirm(`Confirma unificar "${nomeAntigo}" com "${nomeAtual}"?\n\nTodo o histórico de DDS, Treinamentos e APRs de "${nomeAntigo}" passará a ser computado em "${nomeAtual}". O histórico original no banco não é alterado nem apagado.`)) {
+        return;
+    }
+
+    try {
+        await supabaseUpsert('dds_frentes_alias', [{ id: nomeAntigo, frente_atual: nomeAtual }]);
+        await supabaseUpsert('dds_frentes_config', [
+            { id: nomeAtual, ativo: true },
+            { id: nomeAntigo, ativo: false }
+        ]);
+        
+        // Atualiza arrays em memória
+        const idxAlias = allDdsFrentesAlias.findIndex(a => a.id === nomeAntigo);
+        if (idxAlias >= 0) allDdsFrentesAlias[idxAlias].frente_atual = nomeAtual;
+        else allDdsFrentesAlias.push({ id: nomeAntigo, frente_atual: nomeAtual });
+
+        // Garante no config de rotinas que o antigo fica inativo e o novo ativo
+        if (!allRotinasConfig) allRotinasConfig = obterConfigRotinasPadrao();
+        if (!allRotinasConfig.frentes) allRotinasConfig.frentes = {};
+        allRotinasConfig.frentes[nomeAntigo] = {
+            ativo: false,
+            apelido: `${nomeAntigo} (Unificado com ${nomeAtual})`,
+            exige_dds: false,
+            exige_treinamento: false,
+            exige_apr: false
+        };
+        if (!allRotinasConfig.frentes[nomeAtual]) {
+            allRotinasConfig.frentes[nomeAtual] = {
+                ativo: true,
+                apelido: nomeAtual,
+                exige_dds: true,
+                exige_treinamento: true,
+                exige_apr: true
+            };
+        }
+        await salvarConfigRotinas(allRotinasConfig);
+
+        inputAntigo.value = '';
+        inputAtual.value = '';
+
+        renderPlacarAliasLista();
+        abrirModalConfigRotinas();
+        renderPlacarLideres();
+
+        if (typeof renderDdsAliasFrentes === 'function') renderDdsAliasFrentes();
+        if (typeof renderDdsGerenciarFrentes === 'function') renderDdsGerenciarFrentes();
+    } catch (e) {
+        alert('Erro ao unificar: ' + e.message);
+    }
+}
+
+async function removerUnificacaoPlacar(nomeAntigo) {
+    if (!confirm(`Desfazer a unificação de "${nomeAntigo}"? Ele voltará a ser tratado como encarregado independente.`)) {
+        return;
+    }
+    try {
+        await supabaseDelete('dds_frentes_alias', nomeAntigo);
+        allDdsFrentesAlias = allDdsFrentesAlias.filter(a => a.id !== nomeAntigo);
+
+        renderPlacarAliasLista();
+        abrirModalConfigRotinas();
+        renderPlacarLideres();
+
+        if (typeof renderDdsAliasFrentes === 'function') renderDdsAliasFrentes();
+        if (typeof renderDdsGerenciarFrentes === 'function') renderDdsGerenciarFrentes();
+    } catch (e) {
+        alert('Erro ao desfazer unificação: ' + e.message);
     }
 }
 

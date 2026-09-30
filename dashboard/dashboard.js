@@ -188,7 +188,8 @@ const MODULOS_PAINEL_DISPONIVEIS = [
     { key: 'importexport', label: 'Importar/Exportar Planilhas' },
     { key: 'relatoriosms', label: 'Relatório Mensal SMS' },
     { key: 'ergonomia', label: 'Ergonomia (NR-17)' },
-    { key: 'periculosidade', label: 'Periculosidade (NR-16)' }
+    { key: 'periculosidade', label: 'Periculosidade (NR-16)' },
+    { key: 'placarlideres', label: '🏆 Placar de Líderes' }
 ];
 
 // Matrículas que podem mexer em "Usuários do Painel" (perfis/convites) - hoje só o
@@ -20327,7 +20328,8 @@ const DB_PAGE_TITLES = {
     usuariospainel: 'Usuários do Painel',
     ergonomia: 'Ergonomia (NR-17)',
     periculosidade: 'Periculosidade (NR-16) - Laudo Técnico (LTP)',
-    planoacao: 'Plano de Ação Integrado (5W2H) — NR-01 / GRO'
+    planoacao: 'Plano de Ação Integrado (5W2H) — NR-01 / GRO',
+    placarlideres: '🏆 Placar das Lideranças & Rotinas de Encarregados'
 };
 
 // ============================================
@@ -21197,7 +21199,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', planoacao: 'navPlanoAcao', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia', periculosidade: 'navPericulosidade' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', planoacao: 'navPlanoAcao', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', placarlideres: 'navPlacarLideres', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia', periculosidade: 'navPericulosidade' };
     document.getElementById(navMap[pageId])?.classList.add('active');
     abrirGrupoNavPagina(pageId);
     destacarGrupoAtivo(pageId);
@@ -21211,6 +21213,9 @@ function showDbPage(pageId) {
     // um redesenho depois disso. Recriar o gráfico do zero a cada visita é barato (não
     // busca nada de novo no Supabase, só usa os dados já carregados em memória) e
     // corrige isso sozinho.
+    if (pageId === 'placarlideres') {
+        if (typeof abrirPaginaPlacarLideres === 'function') abrirPaginaPlacarLideres();
+    }
     if (pageId === 'checklists') {
         renderBannerCorDoMes();
         if (document.getElementById('checklistsSubtabBtn-visao')?.classList.contains('active')) renderAll();

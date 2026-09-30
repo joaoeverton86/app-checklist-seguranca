@@ -145,6 +145,9 @@
                         <button class="db-nav-item" id="navApr" onclick="showDbPage('apr')">
                             <span class="db-nav-icon">⚠️</span> APR
                         </button>
+                        <button class="db-nav-item" id="navPlacarLideres" onclick="showDbPage('placarlideres')">
+                            <span class="db-nav-icon">🏆</span> Placar de Líderes
+                        </button>
                         <button class="db-nav-item" id="navMatrizRisco" onclick="showDbPage('matrizrisco')">
                             <span class="db-nav-icon">📐</span> Matriz de Risco
                         </button>
@@ -2873,7 +2876,18 @@
                             <div style="font-weight: 600; font-size: 14px;">Nenhum colaborador encontrado com os filtros selecionados.</div>
                         </div>
                     </div>
+                
+                <!-- Atalho para o Placar das Lideranças -->
+                <div class="placar-shortcut-banner">
+                    <div class="placar-shortcut-text">
+                        <span style="font-size: 18px;">🏆</span>
+                        <div>
+                            <strong>Placar das Lideranças:</strong> Acompanhe a entrega de DDSMA, Treinamentos e APR por Encarregado em tempo real.
+                        </div>
+                    </div>
+                    <button class="placar-shortcut-link" onclick="showDbPage('placarlideres')">Ver Placar Completo ➔</button>
                 </div>
+</div>
 
                 <!-- Modal de Registro de Assinatura de OS -->
                 <div id="modalRegistrarAssinaturaOs" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; padding: 16px; overflow-y: auto;">
@@ -2954,7 +2968,18 @@
                             </div>
                         </div>
                     </div>
+                
+                <!-- Atalho para o Placar das Lideranças -->
+                <div class="placar-shortcut-banner">
+                    <div class="placar-shortcut-text">
+                        <span style="font-size: 18px;">🏆</span>
+                        <div>
+                            <strong>Placar das Lideranças:</strong> Acompanhe a entrega de DDSMA, Treinamentos e APR por Encarregado em tempo real.
+                        </div>
+                    </div>
+                    <button class="placar-shortcut-link" onclick="showDbPage('placarlideres')">Ver Placar Completo ➔</button>
                 </div>
+</div>
 
 
                 <!-- Modal: Auditoria e Correção de Correspondência de Cargos e GHE (NR-01) -->
@@ -6120,6 +6145,159 @@
                 </div>
             </section>
 
+            <!-- ============================================================ -->
+            <!-- PÁGINA: PLACAR DAS LIDERANÇAS & ROTINAS DE ENCARREGADOS      -->
+            <!-- ============================================================ -->
+            <section class="db-page" id="page-placarlideres">
+                <div class="placar-container">
+                    
+                    <!-- Header Card Executivo -->
+                    <div class="placar-header-card">
+                        <div>
+                            <div class="placar-header-title">
+                                <span>🏆</span> Placar das Lideranças de SST
+                            </div>
+                            <div class="placar-header-subtitle">
+                                Monitoramento do cumprimento das rotinas operacionais (DDSMA, Treinamentos da Equipe e APR Vigente) por Encarregado e Frente de Serviço no Canteiro.
+                            </div>
+                        </div>
+                        <div class="placar-header-actions">
+                            <button class="placar-btn-whatsapp" onclick="copiarRankingWhatsApp()" title="Copiar resumo formatado para colar nos grupos de gerentes e encarregados">
+                                <span>📋</span> Copiar Ranking p/ WhatsApp
+                            </button>
+                            <button class="placar-btn-config" onclick="imprimirPlacarLideres()" title="Imprimir ou gerar PDF do Placar">
+                                <span>🖨️</span> Imprimir Placar
+                            </button>
+                            <button class="placar-btn-config" onclick="abrirModalConfigRotinas()" title="Configurar metas e quais encarregados participam de cada rotina">
+                                <span>⚙️</span> Configurar Metas & Frentes
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Barra de Filtros e Pesquisa -->
+                    <div class="placar-filters-bar">
+                        <div class="placar-filters-group">
+                            <div>
+                                <label style="font-size: 11px; font-weight: 700; color: var(--text-light); display: block; margin-bottom: 3px; text-transform: uppercase;">Ano</label>
+                                <select id="placarFiltroAno" class="placar-select" onchange="onPlacarFiltroChange()">
+                                    <!-- Populado via JS -->
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 11px; font-weight: 700; color: var(--text-light); display: block; margin-bottom: 3px; text-transform: uppercase;">Mês</label>
+                                <select id="placarFiltroMes" class="placar-select" onchange="onPlacarFiltroChange()">
+                                    <option value="0">Janeiro</option>
+                                    <option value="1">Fevereiro</option>
+                                    <option value="2">Março</option>
+                                    <option value="3">Abril</option>
+                                    <option value="4">Maio</option>
+                                    <option value="5">Junho</option>
+                                    <option value="6">Julho</option>
+                                    <option value="7">Agosto</option>
+                                    <option value="8">Setembro</option>
+                                    <option value="9">Outubro</option>
+                                    <option value="10">Novembro</option>
+                                    <option value="11">Dezembro</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 11px; font-weight: 700; color: var(--text-light); display: block; margin-bottom: 3px; text-transform: uppercase;">Filtrar Setor</label>
+                                <select id="placarFiltroSetor" class="placar-select" onchange="onPlacarFiltroChange()">
+                                    <option value="">Todos os Setores</option>
+                                    <option value="CIVIL">Manutenção Civil (Roço)</option>
+                                    <option value="ELÉTRICA">Manutenção Elétrica</option>
+                                    <option value="MECÂNICA">Manutenção Mecânica</option>
+                                    <option value="OPERAÇÃO">Operação</option>
+                                    <option value="TRANSPORTE">Transporte</option>
+                                    <option value="TOPOGRAFIA">Topografia</option>
+                                    <option value="CONSERVAÇÃO">Conservação e Limpeza</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 11px; font-weight: 700; color: var(--text-light); display: block; margin-bottom: 3px; text-transform: uppercase;">Meta de DDS (Dias)</label>
+                                <input type="number" id="placarMetaDiasDds" class="placar-select" style="width: 80px;" min="1" max="31" onchange="onPlacarMetaDiasChange()" title="Meta de dias úteis com DDS no mês">
+                            </div>
+                        </div>
+
+                        <div class="placar-filters-group">
+                            <input type="text" id="placarBuscaLider" class="placar-search-input" placeholder="🔍 Buscar encarregado / frente..." oninput="onPlacarBuscaInput(this.value)">
+                        </div>
+                    </div>
+
+                    <!-- Cards de KPIs Executivos -->
+                    <div class="placar-kpi-grid">
+                        <div class="placar-kpi-card kpi-taxa">
+                            <div class="placar-kpi-label">Índice Médio da Obra</div>
+                            <div class="placar-kpi-val" id="placarKpiMediaGeral">-%</div>
+                            <div class="placar-kpi-sub">Maturidade geral de entregas no mês</div>
+                        </div>
+                        <div class="placar-kpi-card kpi-ouro">
+                            <div class="placar-kpi-label">Líderes Destaque (100%)</div>
+                            <div class="placar-kpi-val" id="placarKpiLideres100" style="color: #10b981;">0</div>
+                            <div class="placar-kpi-sub">Cumpriram todas as rotinas exigidas</div>
+                        </div>
+                        <div class="placar-kpi-card kpi-alerta">
+                            <div class="placar-kpi-label">Pendências Críticas</div>
+                            <div class="placar-kpi-val" id="placarKpiPendencias" style="color: #ef4444;">0</div>
+                            <div class="placar-kpi-sub">Líderes com entregas abaixo de 60%</div>
+                        </div>
+                        <div class="placar-kpi-card kpi-dds">
+                            <div class="placar-kpi-label">DDS Realizados no Mês</div>
+                            <div class="placar-kpi-val" id="placarKpiTotalDds" style="color: #0ea5e9;">0</div>
+                            <div class="placar-kpi-sub">Total de sessões lançadas no período</div>
+                        </div>
+                    </div>
+
+                    <!-- Pódio dos Campeões (1º, 2º e 3º Colocados) -->
+                    <div class="placar-podio-container">
+                        <div class="placar-podio-title">
+                            <span>🎖️</span> Pódio de Excelência em SST — Top 3 Lideranças
+                        </div>
+                        <div class="placar-podio-grid" id="placarPodioGrid">
+                            <!-- Preenchido dinamicamente via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Tabela de Classificação Geral -->
+                    <div class="placar-table-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+                            <div style="font-size: 15px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                                <span>📊</span> Classificação Geral dos Encarregados & Frentes
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-light);" id="placarTotalAvaliados">
+                                <!-- Preenchido dinamicamente -->
+                            </div>
+                        </div>
+
+                        <div style="overflow-x: auto;">
+                            <table class="placar-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 50px; text-align: center;">Pos.</th>
+                                        <th>Encarregado / Frente</th>
+                                        <th>Setor / Atividade</th>
+                                        <th style="text-align: center;">DDSMA (Dias/Meta)</th>
+                                        <th style="text-align: center;">Treinamento da Equipe</th>
+                                        <th style="text-align: center;">APR Vigente</th>
+                                        <th style="width: 180px;">Índice de Entrega</th>
+                                        <th style="text-align: right; width: 140px;">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="placarRankingTableBody">
+                                    <tr>
+                                        <td colspan="8" style="text-align: center; padding: 24px; color: var(--text-light);">
+                                            Carregando dados do placar...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+
             <!-- Página: Gestão Ambiental -->
             <section class="db-page" id="page-ambiental">
                 <div class="db-filters" style="margin-bottom: 16px;">
@@ -7822,6 +8000,7 @@
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
     <script src="dashboard.js?v=138"></script>
+    <script src="placar_lideres.js?v=1"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();
@@ -8106,6 +8285,83 @@ function filterMatrizEpi(q) {
         </div>
         <div style="display:flex; justify-content:flex-end; margin-top:14px; border-top:1px solid var(--border); padding-top:10px;">
             <button type="button" class="db-clear-btn" onclick="fecharModalBibliotecaRiscos()">Fechar</button>
+        </div>
+    </div>
+</div>
+
+
+<!-- Modal: Mensagem Individual de WhatsApp para o Líder -->
+<div id="modalPlacarMsgLider" class="placar-modal-overlay" style="display:none;" onclick="if(event.target === this) fecharModalMsgLider();">
+    <div class="placar-modal-card">
+        <div class="placar-modal-header">
+            <div style="font-size: 16px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                <span>📲</span> Enviar Resumo Individual de SST
+            </div>
+            <button type="button" onclick="fecharModalMsgLider()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-light); font-weight: 700;">✕</button>
+        </div>
+        <div class="placar-modal-body">
+            <div style="font-size: 12.5px; color: var(--text-light);">
+                Mensagem personalizada para dar retorno ao encarregado no WhatsApp privado sobre o desempenho e entregas da equipe dele no mês:
+            </div>
+            <textarea id="placarMsgLiderTexto" class="placar-textarea-preview" readonly></textarea>
+            <div id="placarMsgLiderStatus" style="font-size: 12px; font-weight: 600;"></div>
+        </div>
+        <div class="placar-modal-footer">
+            <button type="button" class="db-clear-btn" onclick="fecharModalMsgLider()">Fechar</button>
+            <button type="button" class="db-apply-btn" onclick="copiarTextoMsgLiderModal()" style="background: #4f46e5; border-color: #4338ca;">
+                📋 Copiar Texto
+            </button>
+            <button type="button" class="placar-btn-whatsapp" onclick="abrirWhatsAppWebLiderModal()">
+                <span>🟢</span> Abrir no WhatsApp
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Configuração de Encarregados & Metas de SST -->
+<div id="modalPlacarConfig" class="placar-modal-overlay" style="display:none;" onclick="if(event.target === this) fecharModalConfigRotinas();">
+    <div class="placar-modal-card" style="max-width: 820px;">
+        <div class="placar-modal-header">
+            <div style="font-size: 16px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                <span>⚙️</span> Configurar Encarregados e Metas de SST
+            </div>
+            <button type="button" onclick="fecharModalConfigRotinas()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-light); font-weight: 700;">✕</button>
+        </div>
+        <div class="placar-modal-body">
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #3b82f6; border-radius: 8px; padding: 12px 14px; font-size: 12px; color: #1e40af; line-height: 1.45;">
+                ℹ️ <strong>Critérios de Negócio:</strong>
+                <ul style="margin: 6px 0 0 16px; padding: 0;">
+                    <li><strong>Setor Elétrica:</strong> Unificado como uma frente só para evitar distorções de troca constante de líder.</li>
+                    <li><strong>Equipes da Civil (Roço):</strong> Avaliadas individualmente por Encarregado (Edson, Eduardo Jacy, Fabiano, etc.).</li>
+                    <li><strong>Líderes Isentos:</strong> Líderes administrativos/apoio (Simone, Thomé, etc.) devem ficar desmarcados para não entrarem na contagem.</li>
+                </ul>
+            </div>
+
+            <div style="overflow-x: auto; max-height: 380px; border: 1px solid var(--border); border-radius: 8px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
+                    <thead>
+                        <tr style="background: var(--bg); border-bottom: 2px solid var(--border); color: var(--text-light); font-size: 11px; text-transform: uppercase;">
+                            <th style="padding: 10px 8px; text-align: center; width: 60px;">Ativo</th>
+                            <th style="padding: 10px 8px; text-align: left;">Encarregado / Frente</th>
+                            <th style="padding: 10px 8px; text-align: left;">Setor / Identificação</th>
+                            <th style="padding: 10px 8px; text-align: center; width: 75px;">DDSMA</th>
+                            <th style="padding: 10px 8px; text-align: center; width: 85px;">Treinamento</th>
+                            <th style="padding: 10px 8px; text-align: center; width: 75px;">APR</th>
+                        </tr>
+                    </thead>
+                    <tbody id="placarConfigTableBody">
+                        <!-- Preenchido dinamicamente via JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="placarConfigStatusMsg" style="font-size: 12px; font-weight: 600;"></div>
+        </div>
+        <div class="placar-modal-footer">
+            <button type="button" class="db-clear-btn" onclick="fecharModalConfigRotinas()">Cancelar</button>
+            <button type="button" class="db-apply-btn" onclick="salvarModalConfigRotinas()" style="background: #10b981; border-color: #059669;">
+                💾 Salvar Configurações
+            </button>
         </div>
     </div>
 </div>

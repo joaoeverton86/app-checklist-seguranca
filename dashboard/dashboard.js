@@ -17078,8 +17078,526 @@ function renderSaudePanel() {
     if (document.getElementById('saudeSubtabBtn-relatorio')?.classList.contains('active')) renderSaudeRelatorioChecklist();
 }
 
+
+// ============================================
+// RECOMENDAÇÃO DE EXAMES — AVALIAÇÃO PSICOSSOCIAL (PGR & PCMSO)
+// Controle de elegibilidade, pendências de inclusão no ano e convocação para o mutirão de 06/10/2026.
+// Grupos obrigatórios conforme PGR/PCMSO: GHE 05, 06, 07, 08, 10, 25 e 26.
+// ============================================
+
+const GHES_OBRIGATORIOS_PSICOSSOCIAL = new Set(['05', '06', '07', '08', '10', '25', '26']);
+const NOMES_GHES_PSICOSSOCIAL = {
+    '05': 'GHE 05 - Manutenção Elétrica',
+    '06': 'GHE 06 - Manutenção Mecânica',
+    '07': 'GHE 07 - Manutenção Civil',
+    '08': 'GHE 08 - Motosserras e Roçadeiras',
+    '10': 'GHE 10 - Operador de SH',
+    '25': 'GHE 25 - Operador de Subestação',
+    '26': 'GHE 26 - Conservação e Limpeza'
+};
+
+let psicoFiltroStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'vencendo' | 'em_dia'
+
+function obterDadosRecomendacaoPsicossocial() {
+    const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
+    const hojeStr = new Date().toISOString().split('T')[0];
+    const lista = [];
+
+    ativos.forEach(c => {
+        const g = normalizarGhe(c.ghe);
+        if (!GHES_OBRIGATORIOS_PSICOSSOCIAL.has(g)) return;
+
+        const asos = (allAsoExames || []).filter(a => a.matricula === c.id)
+            .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
+        const ultimoAso = asos[0] || null;
+
+        let temPsico = false;
+        let dataPsico = null;
+        let vencPsico = null;
+        let tipoAsoPsico = null;
+        let asoIdPsico = null;
+
+        for (const a of asos) {
+            if (Array.isArray(a.exames_detalhe)) {
+                const p = a.exames_detalhe.find(ex => ex.nome && ex.nome.toLowerCase().includes('psico'));
+                if (p) {
+                    temPsico = true;
+                    dataPsico = a.data_exame;
+                    vencPsico = p.data_vencimento || a.data_vencimento;
+                    tipoAsoPsico = a.tipo_aso;
+                    asoIdPsico = a.id;
+                    break;
+                }
+            }
+        }
+
+        let statusKey = 'EM_DIA';
+        let statusLabel = '🟢 EM DIA';
+        let statusBadge = '<span style="background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🟢 EM DIA</span>';
+
+        if (!temPsico) {
+            statusKey = 'PENDENTE';
+            statusLabel = '🔴 PENDENTE (Convocação 06/10)';
+            statusBadge = '<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🔴 PENDENTE (Convocação 06/10)</span>';
+        } else if (vencPsico && (vencPsico.startsWith('2026-10') || vencPsico.startsWith('2026-11'))) {
+            statusKey = 'VENCENDO';
+            const mesNome = vencPsico.startsWith('2026-10') ? 'Outubro' : 'Novembro';
+            statusLabel = `🟡 VENCE EM ${mesNome.toUpperCase()} (Aproveitar 06/10)`;
+            statusBadge = `<span style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🟡 VENCE EM ${mesNome.toUpperCase()} (06/10)</span>`;
+        } else if (vencPsico && vencPsico < hojeStr) {
+            statusKey = 'VENCIDO';
+            statusLabel = '🔴 VENCIDO';
+            statusBadge = '<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🔴 VENCIDO</span>';
+        }
+
+        lista.push({
+            matricula: c.id,
+            nome: c.nome || '',
+            cpf: c.cpf || '',
+            funcao: c.funcao || '',
+            setor: c.setor || '',
+            ghe: g,
+            gheNome: NOMES_GHES_PSICOSSOCIAL[g] || `GHE ${g}`,
+            dt_admissao: c.dt_admissao || '',
+            ultimoAsoData: ultimoAso ? ultimoAso.data_exame : null,
+            ultimoAsoTipo: ultimoAso ? ultimoAso.tipo_aso : null,
+            ultimoAsoVenc: ultimoAso ? ultimoAso.data_vencimento : null,
+            temPsico,
+            dataPsico,
+            vencPsico,
+            tipoAsoPsico,
+            asoIdPsico,
+            statusKey,
+            statusLabel,
+            statusBadge
+        });
+    });
+
+    lista.sort((a, b) => {
+        // Ordena: primeiro os pendentes, depois os vencendo em out/nov, depois por GHE e Nome
+        const prioridade = { 'PENDENTE': 1, 'VENCENDO': 2, 'VENCIDO': 3, 'EM_DIA': 4 };
+        const pA = prioridade[a.statusKey] || 5;
+        const pB = prioridade[b.statusKey] || 5;
+        if (pA !== pB) return pA - pB;
+        if (a.ghe !== b.ghe) return a.ghe.localeCompare(b.ghe);
+        return a.nome.localeCompare(b.nome);
+    });
+
+    return lista;
+}
+
+function filtrarStatusPsicossocial(status, btn) {
+    psicoFiltroStatusAtual = status;
+    document.querySelectorAll('#psicoStatusPills .sector-pill').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderTabelaRecomendacaoPsicossocial();
+}
+
+function renderRecomendacaoPsicossocial() {
+    const dados = obterDadosRecomendacaoPsicossocial();
+    const totalElegiveis = dados.length;
+    const totalPendentes = dados.filter(d => d.statusKey === 'PENDENTE').length;
+    const totalVencendo = dados.filter(d => d.statusKey === 'VENCENDO').length;
+    const totalEmDia = dados.filter(d => d.statusKey === 'EM_DIA').length;
+    const pctConformidade = totalElegiveis > 0 ? Math.round((totalEmDia / totalElegiveis) * 100) : 0;
+
+    // Atualiza KPIs
+    const elTotal = document.getElementById('kpiPsicoTotalElegiveis');
+    if (elTotal) elTotal.textContent = totalElegiveis;
+    const elPendentes = document.getElementById('kpiPsicoPendentes');
+    if (elPendentes) elPendentes.textContent = totalPendentes;
+    const elVencendo = document.getElementById('kpiPsicoVencendo');
+    if (elVencendo) elVencendo.textContent = totalVencendo;
+    const elEmDia = document.getElementById('kpiPsicoEmDia');
+    if (elEmDia) elEmDia.textContent = totalEmDia;
+    const elConf = document.getElementById('kpiPsicoConformidade');
+    if (elConf) elConf.textContent = `${pctConformidade}%`;
+
+    // Atualiza contadores nas pills
+    const pillTodos = document.getElementById('pillCountPsicoTodos');
+    if (pillTodos) pillTodos.textContent = totalElegiveis;
+    const pillPendentes = document.getElementById('pillCountPsicoPendentes');
+    if (pillPendentes) pillPendentes.textContent = totalPendentes;
+    const pillVencendo = document.getElementById('pillCountPsicoVencendo');
+    if (pillVencendo) pillVencendo.textContent = totalVencendo;
+    const pillEmDia = document.getElementById('pillCountPsicoEmDia');
+    if (pillEmDia) pillEmDia.textContent = totalEmDia;
+
+    renderTabelaRecomendacaoPsicossocial();
+}
+
+function renderTabelaRecomendacaoPsicossocial() {
+    const dados = obterDadosRecomendacaoPsicossocial();
+    const tbody = document.getElementById('tabelaPsicossocialCorpo');
+    const msgVazia = document.getElementById('psicoTabelaVazia');
+    if (!tbody) return;
+
+    const filtroStatus = psicoFiltroStatusAtual;
+    const filtroGhe = document.getElementById('psicoFiltroGhe')?.value || '';
+    const busca = (document.getElementById('psicoBuscaInput')?.value || '').trim().toLowerCase();
+
+    let filtrados = dados.filter(d => {
+        if (filtroStatus === 'pendentes' && d.statusKey !== 'PENDENTE') return false;
+        if (filtroStatus === 'vencendo' && d.statusKey !== 'VENCENDO') return false;
+        if (filtroStatus === 'em_dia' && d.statusKey !== 'EM_DIA') return false;
+
+        if (filtroGhe && d.ghe !== filtroGhe) return false;
+
+        if (busca) {
+            const txt = `${d.matricula} ${d.nome} ${d.cpf} ${d.funcao} ${d.setor} ${d.ghe}`.toLowerCase();
+            if (!txt.includes(busca)) return false;
+        }
+        return true;
+    });
+
+    if (filtrados.length === 0) {
+        tbody.innerHTML = '';
+        if (msgVazia) msgVazia.style.display = 'block';
+        return;
+    }
+    if (msgVazia) msgVazia.style.display = 'none';
+
+    tbody.innerHTML = filtrados.map(d => {
+        const dataAdmFmt = d.dt_admissao ? formatSimpleDate(d.dt_admissao) : '—';
+        const ultimoAsoFmt = d.ultimoAsoData 
+            ? `<div>${formatSimpleDate(d.ultimoAsoData)}</div><div style="font-size:10.5px; color:var(--text-light); text-transform:uppercase;">${d.ultimoAsoTipo || 'ASO'}</div>`
+            : '<span style="color:var(--text-light);">Sem registro</span>';
+
+        const dataPsicoFmt = d.dataPsico
+            ? `<div style="font-weight:700; color:#4338ca;">${formatSimpleDate(d.dataPsico)}</div>`
+            : '<span style="color:#b91c1c; font-weight:600; font-size:11.5px;">Não realizada</span>';
+
+        const vencPsicoFmt = d.vencPsico
+            ? `<div>${formatSimpleDate(d.vencPsico)}</div>`
+            : '<span style="color:var(--text-light);">—</span>';
+
+        return `
+            <tr style="border-bottom: 1px solid var(--border); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(124,58,237,0.03)'" onmouseout="this.style.background=''">
+                <td style="padding: 10px 14px; font-weight: 700; color: var(--primary);">${escapeHTML(d.matricula)}</td>
+                <td style="padding: 10px 14px;">
+                    <div style="font-weight: 700; color: var(--text); cursor:pointer;" onclick="mostrarDetalheColaborador('${escapeHTML(d.matricula)}')" title="Ver ficha completa">${escapeHTML(d.nome)}</div>
+                    ${d.cpf ? `<div style="font-size: 11px; color: var(--text-light);">CPF: ${escapeHTML(d.cpf)}</div>` : ''}
+                </td>
+                <td style="padding: 10px 14px;">
+                    <span style="font-weight:600; font-size:11.5px; color:var(--text); background:var(--bg); border:1px solid var(--border); padding:2px 6px; border-radius:4px;">${escapeHTML(d.gheNome)}</span>
+                    <div style="font-size:11px; color:var(--text-light); margin-top:2px;">${escapeHTML(d.setor || '')}</div>
+                </td>
+                <td style="padding: 10px 14px; font-weight: 600; color: var(--text);">${escapeHTML(d.funcao || '—')}</td>
+                <td style="padding: 10px 14px; color: var(--text-light);">${dataAdmFmt}</td>
+                <td style="padding: 10px 14px;">${ultimoAsoFmt}</td>
+                <td style="padding: 10px 14px;">${dataPsicoFmt}</td>
+                <td style="padding: 10px 14px; font-weight:600;">${vencPsicoFmt}</td>
+                <td style="padding: 10px 14px; text-align: center;">${d.statusBadge}</td>
+                <td style="padding: 10px 14px; text-align: center;">
+                    <button class="db-clear-btn" style="padding: 4px 8px; font-size: 11.5px; border-color: #8b5cf6; color: #7c3aed; font-weight:700;" onclick="abrirModalRegistrarPsicoRapido('${escapeHTML(d.matricula)}')" title="Registrar atendimento da psicóloga / Dar baixa na pendência">
+                        ✍️ Registrar
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// ---- Modal de Registro Rápido de Psicossocial ----
+function abrirModalRegistrarPsicoRapido(matricula) {
+    const dados = obterDadosRecomendacaoPsicossocial();
+    const colab = dados.find(d => d.matricula === matricula);
+    if (!colab) {
+        alert('Colaborador não encontrado.');
+        return;
+    }
+
+    document.getElementById('modalPsico_matricula').value = colab.matricula;
+    document.getElementById('modalPsico_nome').textContent = colab.nome;
+    document.getElementById('modalPsico_lblMatricula').textContent = colab.matricula;
+    document.getElementById('modalPsico_lblFuncao').textContent = colab.funcao;
+    document.getElementById('modalPsico_lblGhe').textContent = colab.gheNome;
+    document.getElementById('modalPsico_data').value = '2026-10-06';
+    document.getElementById('modalPsico_resultado').value = 'Apto';
+    document.getElementById('modalPsico_statusMsg').innerHTML = '';
+
+    const modal = document.getElementById('modalRegistrarPsicoRapido');
+    if (modal) modal.style.display = 'flex';
+}
+
+function fecharModalRegistrarPsicoRapido() {
+    const modal = document.getElementById('modalRegistrarPsicoRapido');
+    if (modal) modal.style.display = 'none';
+}
+
+async function salvarRegistroPsicoRapido() {
+    const matricula = document.getElementById('modalPsico_matricula')?.value;
+    const dataExame = document.getElementById('modalPsico_data')?.value;
+    const resultado = document.getElementById('modalPsico_resultado')?.value || 'Apto';
+    const profissional = document.getElementById('modalPsico_profissional')?.value || 'Psicóloga Responsável';
+    const crp = document.getElementById('modalPsico_crp')?.value || '';
+    const obs = document.getElementById('modalPsico_obs')?.value || '';
+    const statusMsg = document.getElementById('modalPsico_statusMsg');
+
+    if (!matricula || !dataExame) {
+        alert('Por favor, informe a data da avaliação psicossocial.');
+        return;
+    }
+
+    if (statusMsg) {
+        statusMsg.innerHTML = '<span style="color:var(--primary); font-weight:700;">Salvando no prontuário...</span>';
+    }
+
+    try {
+        const colab = (allEfetivo || []).find(e => e.id === matricula);
+        const dataVencimento = addMeses(dataExame, 12);
+
+        // Busca o ASO mais recente deste colaborador para atualizar os detalhes ou cria novo
+        const asos = (allAsoExames || []).filter(a => a.matricula === matricula)
+            .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
+        const ultimoAso = asos[0];
+
+        const itemExamePsico = {
+            nome: 'Avaliação Psicossocial',
+            periodicidade: 12,
+            data_vencimento: dataVencimento,
+            resultado: resultado,
+            profissional: crp ? `${profissional} (${crp})` : profissional
+        };
+
+        if (ultimoAso) {
+            let examesDetalhe = Array.isArray(ultimoAso.exames_detalhe) ? [...ultimoAso.exames_detalhe] : [];
+            const idxPsico = examesDetalhe.findIndex(e => e.nome && e.nome.toLowerCase().includes('psico'));
+            if (idxPsico >= 0) {
+                examesDetalhe[idxPsico] = { ...examesDetalhe[idxPsico], ...itemExamePsico };
+            } else {
+                examesDetalhe.push(itemExamePsico);
+            }
+
+            const payload = {
+                id: ultimoAso.id,
+                exames_detalhe: examesDetalhe,
+                obs: obs ? `${ultimoAso.obs ? ultimoAso.obs + ' | ' : ''}Avaliação Psicossocial em ${formatSimpleDate(dataExame)}: ${obs}` : ultimoAso.obs
+            };
+
+            await supabaseUpsert('aso_exames', [payload]);
+            ultimoAso.exames_detalhe = examesDetalhe;
+        } else {
+            // Cria um ASO especializado com a avaliação
+            const novoAso = {
+                id: `ASO_${Date.now()}_${matricula}`,
+                matricula: matricula,
+                nome_colaborador: colab?.nome || '',
+                funcao: colab?.funcao || '',
+                setor: colab?.setor || '',
+                tipo_aso: 'periodico',
+                data_exame: dataExame,
+                data_vencimento: dataVencimento,
+                resultado: resultado.toLowerCase().includes('inapto') ? 'inapto' : 'apto',
+                medico_responsavel: profissional + (crp ? ` (${crp})` : ''),
+                obs: obs || 'Avaliação Psicossocial (PGR/PCMSO)',
+                exames_detalhe: [itemExamePsico]
+            };
+            await supabaseUpsert('aso_exames', [novoAso]);
+            allAsoExames.push(novoAso);
+        }
+
+        if (statusMsg) {
+            statusMsg.innerHTML = '<span style="color:var(--success); font-weight:700;">✅ Avaliação Psicossocial registrada com sucesso!</span>';
+        }
+
+        setTimeout(() => {
+            fecharModalRegistrarPsicoRapido();
+            renderRecomendacaoPsicossocial();
+        }, 900);
+
+    } catch (err) {
+        console.error('Erro ao salvar avaliação psicossocial:', err);
+        if (statusMsg) {
+            statusMsg.innerHTML = `<span style="color:var(--danger); font-weight:700;">❌ Falha ao salvar: ${err.message}</span>`;
+        }
+    }
+}
+
+// ---- Documento Oficial Timbrado: Lista de Convocação e Ficha de Atendimento (06/10) ----
+function imprimirConvocacaoPsicossocial() {
+    const dados = obterDadosRecomendacaoPsicossocial();
+    const pendentes = dados.filter(d => d.statusKey === 'PENDENTE');
+    const vencendo = dados.filter(d => d.statusKey === 'VENCENDO');
+    const prioridadeConvocacao = [...pendentes, ...vencendo];
+
+    const hoje = new Date();
+    const dataAtendimento = '06/10/2026';
+
+    const linhasHtml = prioridadeConvocacao.map((c, i) => {
+        const motivo = c.statusKey === 'PENDENTE' ? 'Inclusão PCMSO 2026 (Pendente)' : `Renovação Periódica (Vence em ${formatSimpleDate(c.vencPsico)})`;
+        return `
+            <tr>
+                <td style="text-align:center; font-weight:700;">${i + 1}</td>
+                <td style="text-align:center; font-weight:700;">${escapeHTML(c.matricula)}</td>
+                <td>
+                    <b>${escapeHTML(c.nome)}</b>
+                    <div style="font-size:9.5px; color:#555;">CPF: ${escapeHTML(c.cpf || '—')}</div>
+                </td>
+                <td>${escapeHTML(c.gheNome)}</td>
+                <td>${escapeHTML(c.funcao)}</td>
+                <td style="font-size:9.5px;">${motivo}</td>
+                <td style="width:140px; border-bottom:1px solid #000;">&nbsp;</td>
+                <td style="width:80px; text-align:center; font-size:10px;">[ &nbsp; ] Apto<br>[ &nbsp; ] Inapto</td>
+                <td style="width:100px; border-bottom:1px solid #000;">&nbsp;</td>
+            </tr>
+        `;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Lista de Convocação e Atendimento — Avaliação Psicossocial (06/10/2026)</title>
+    <style>
+        @page { size: landscape; margin: 12mm; }
+        body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5px; color: #111; margin: 15px; }
+        .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:10px; }
+        .cabecalho img { max-height:48px; }
+        .titulo-doc { text-align:center; flex:1; }
+        .titulo-doc h2 { margin:0; font-size:15px; font-weight:800; }
+        .titulo-doc p { margin:3px 0 0; font-size:11px; color:#444; }
+        table { width:100%; border-collapse:collapse; margin-top:8px; font-size:10px; }
+        th, td { border:1px solid #444; padding:6px 6px; }
+        th { background:#f1f5f9; font-weight:700; text-align:left; font-size:10px; text-transform:uppercase; }
+        .rodape-assinaturas { margin-top:28px; display:flex; justify-content:space-around; text-align:center; }
+        .linha-assinatura { width:280px; border-top:1px solid #000; padding-top:5px; font-size:10.5px; }
+        .no-print { text-align:center; margin-bottom:14px; }
+        .no-print button { padding:9px 20px; font-size:13px; font-weight:700; background:#2563eb; color:#fff; border:none; border-radius:6px; cursor:pointer; }
+        @media print { .no-print { display:none; } body { margin:0; } }
+    </style>
+</head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir Lista Oficial para o Atendimento da Psicóloga</button></div>
+    <div class="cabecalho">
+        <img src="${LOGO_COP_BASE64}" alt="COP">
+        <div class="titulo-doc">
+            <h2>LISTA DE CONVOCAÇÃO & REGISTRO DE ATENDIMENTO — AVALIAÇÃO PSICOSSOCIAL</h2>
+            <p>Conformidade Obrigatória PGR / PCMSO (NR-35 Trabalho em Altura, NR-33 Espaço Confinado, NR-10 SEP)</p>
+            <p><b>Data Prevista para os Atendimentos: ${dataAtendimento}</b> — Consórcio Operador PISF Ramal do Agreste</p>
+        </div>
+        <div style="width:48px;"></div>
+    </div>
+
+    <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:6px 10px; margin-bottom:8px; font-size:10.5px;">
+        <strong>Total de Colaboradores Convocados: ${prioridadeConvocacao.length}</strong> (11 Pendências Críticas de Inclusão + ${vencendo.length} Antecipações Oportunas com Vencimento em Outubro/Novembro)
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width:30px; text-align:center;">Item</th>
+                <th style="width:50px; text-align:center;">Matr.</th>
+                <th>Colaborador / CPF</th>
+                <th>GHE / Frente</th>
+                <th>Função Contratual</th>
+                <th>Motivo Convocação</th>
+                <th>Assinatura do Empregado</th>
+                <th style="text-align:center;">Parecer</th>
+                <th>Rubrica Psicóloga</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${linhasHtml}
+        </tbody>
+    </table>
+
+    <div class="rodape-assinaturas">
+        <div class="linha-assinatura">
+            <b>João Everton de Souza Limeira</b><br>
+            Engenheiro de Segurança do Trabalho<br>
+            CREA 12345/D-PE — Consórcio COP
+        </div>
+        <div class="linha-assinatura">
+            <b>Psicóloga Responsável</b><br>
+            Avaliação Psicossocial Ocupacional<br>
+            CRP: _______________________
+        </div>
+    </div>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (win) {
+        win.document.write(html);
+        win.document.close();
+    }
+}
+
+// ---- Exportação para Planilha Excel (.xlsx) ----
+function exportarExcelPsicossocial() {
+    if (typeof XLSX === 'undefined') {
+        alert('Biblioteca XLSX não carregada.');
+        return;
+    }
+    const dados = obterDadosRecomendacaoPsicossocial();
+    const rows = dados.map(d => ({
+        'Matrícula': d.matricula,
+        'Nome do Colaborador': d.nome,
+        'CPF': d.cpf,
+        'GHE': d.ghe,
+        'Descrição do GHE': d.gheNome,
+        'Setor': d.setor,
+        'Função Contratual': d.funcao,
+        'Data de Admissão': d.dt_admissao ? formatSimpleDate(d.dt_admissao) : '',
+        'Último ASO (Data)': d.ultimoAsoData ? formatSimpleDate(d.ultimoAsoData) : '',
+        'Último ASO (Tipo)': d.ultimoAsoTipo || '',
+        'Avaliação Psicossocial Realizada': d.temPsico ? 'SIM' : 'NÃO',
+        'Data da Avaliação Psicossocial': d.dataPsico ? formatSimpleDate(d.dataPsico) : '',
+        'Data de Vencimento do Psicossocial': d.vencPsico ? formatSimpleDate(d.vencPsico) : '',
+        'Status da Convocação': d.statusLabel
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Psicossocial PCMSO');
+    const hoje = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `Recomendacao_Exames_Psicossociais_COP_${hoje}.xlsx`);
+}
+
+// ---- Mensagem Formatada para WhatsApp dos Encarregados ----
+function copiarConvocacaoPsicoWhatsApp() {
+    const dados = obterDadosRecomendacaoPsicossocial();
+    const prioritarios = dados.filter(d => d.statusKey === 'PENDENTE' || d.statusKey === 'VENCENDO');
+
+    let txt = `📢 *CONVOCAÇÃO SMS — MUTIRÃO DE AVALIAÇÃO PSICOSSOCIAL* 🧠\n`;
+    txt += `📅 *Data do Atendimento:* Terça-feira, 06/10/2026\n`;
+    txt += `📍 *Local:* Ambulatório / Sala Médica da Obra\n`;
+    txt += `🎯 *Objetivo:* Regularização obrigatória do PGR & PCMSO (NR-35, NR-33, NR-10)\n\n`;
+    txt += `Solicitamos aos Encarregados que liberem pontualmente os seguintes colaboradores:\n\n`;
+
+    // Agrupar por GHE
+    const porGhe = {};
+    prioritarios.forEach(c => {
+        if (!porGhe[c.gheNome]) porGhe[c.gheNome] = [];
+        porGhe[c.gheNome].push(c);
+    });
+
+    for (const [gheNome, colabs] of Object.entries(porGhe)) {
+        txt += `🔹 *${gheNome.toUpperCase()}* (${colabs.length} colaboradores):\n`;
+        colabs.forEach((c, idx) => {
+            const tag = c.statusKey === 'PENDENTE' ? '🔴 [Pendente Inclusão]' : '🟡 [Renovação Periódica]';
+            txt += `   ${idx + 1}. ${c.nome} (Matrícula ${c.matricula} - ${c.funcao}) ${tag}\n`;
+        });
+        txt += `\n`;
+    }
+
+    txt += `⚠️ *Importante:* A presença é indispensável para a manutenção dos ASOs e autorizações para atividades de risco da equipe.\n`;
+    txt += `_Engenharia de Segurança do Trabalho — Consórcio COP_`;
+
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(txt).then(() => {
+            alert('✅ Mensagem de convocação copiada para a área de transferência! Cole diretamente no WhatsApp dos encarregados.');
+        }).catch(() => {
+            prompt('Copie o texto da convocação abaixo:', txt);
+        });
+    } else {
+        prompt('Copie o texto da convocação abaixo:', txt);
+    }
+}
+
 function showSaudeSubtab(tab) {
-    ['visao', 'aso', 'atestado', 'pressao', 'previsao', 'relatorio'].forEach(t => {
+    ['visao', 'aso', 'atestado', 'pressao', 'previsao', 'recomendacoes', 'relatorio'].forEach(t => {
         const content = document.getElementById('saudeSubtab-' + t);
         const btn = document.getElementById('saudeSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -17091,6 +17609,7 @@ function showSaudeSubtab(tab) {
     if (tab === 'atestado') { renderAtestadoResumo(); filterAtestadoLista(document.getElementById('atestadoSearchInput')?.value || ''); }
     if (tab === 'pressao') { renderPressaoResumo(); filterPressaoLista(document.getElementById('pressaoSearchInput')?.value || ''); }
     if (tab === 'previsao') renderPrevisaoExames();
+    if (tab === 'recomendacoes') renderRecomendacaoPsicossocial();
     // A aba de Relatório usa os mesmos números já calculados pela Visão Geral
     // (window.saudeReportData) - por isso, ao abrir ela, força um recálculo da Visão Geral
     // (com o período que já estava selecionado) pra garantir que o relatório nunca fique

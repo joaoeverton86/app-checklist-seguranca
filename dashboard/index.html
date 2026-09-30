@@ -4093,6 +4093,7 @@
                         <button id="saudeSubtabBtn-atestado" class="db-filter-btn" onclick="showSaudeSubtab('atestado')">🤒 Registrar Atestado</button>
                         <button id="saudeSubtabBtn-pressao" class="db-filter-btn" onclick="showSaudeSubtab('pressao')">💉 Pressão Arterial</button>
                         <button id="saudeSubtabBtn-previsao" class="db-filter-btn" onclick="showSaudeSubtab('previsao')">📅 Previsão de Exames</button>
+                        <button id="saudeSubtabBtn-recomendacoes" class="db-filter-btn" onclick="showSaudeSubtab('recomendacoes')">🧠 Recomendação de Exames (Psicossocial)</button>
                         <button id="saudeSubtabBtn-relatorio" class="db-filter-btn" onclick="showSaudeSubtab('relatorio')">📄 Relatório</button>
                     </div>
                 </div>
@@ -4455,6 +4456,108 @@
                     </p>
                     <button class="db-apply-btn" onclick="abrirRelatorioLideresModal()">📧 Gerar Relatório para Líderes</button>
                 </div>
+                </div>
+
+                <!-- Subaba: Recomendação de Exames Psicossociais (PGR & PCMSO) -->
+                <div id="saudeSubtab-recomendacoes" style="display:none;">
+                    <div class="db-chart-card" style="margin-bottom: 16px; border-left: 4px solid #8b5cf6;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; flex-wrap: wrap;">
+                            <div>
+                                <div class="db-chart-title" style="margin-bottom: 2px;">🧠 Recomendação de Exames — Avaliação Psicossocial (PGR & PCMSO)</div>
+                                <div style="font-size: 12px; color: var(--text-light);">
+                                    Grupos Obrigatórios: <strong>GHE 05</strong> (Elétrica), <strong>GHE 06</strong> (Mecânica), <strong>GHE 07</strong> (Civil), <strong>GHE 08</strong> (Motosserra), <strong>GHE 10</strong> (Operador SH), <strong>GHE 25</strong> (Subestação) e <strong>GHE 26</strong> (Conservação e Limpeza).
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button class="db-apply-btn" style="background: #2563eb;" onclick="imprimirConvocacaoPsicossocial()">🖨️ Imprimir Convocação / Ficha (06/10)</button>
+                                <button class="db-apply-btn" style="background: #059669;" onclick="exportarExcelPsicossocial()">📊 Exportar Excel</button>
+                                <button class="db-apply-btn" style="background: #128c7e;" onclick="copiarConvocacaoPsicoWhatsApp()">📲 Convocação WhatsApp</button>
+                            </div>
+                        </div>
+                        <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-size: 12px; color: #5b21b6; line-height: 1.5; display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 22px;">📅</span>
+                            <div>
+                                <strong>Mutirão com Psicóloga Agendado para 06/10/2026:</strong> A exigência de Avaliação Psicossocial foi incluída este ano no PCMSO. Use o painel abaixo para convocar os colaboradores prioritários (11 pendências de inclusão e 7 vencendo em Out/Nov) e regularizar 100% da conformidade na obra.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- KPIs Executivos do Psicossocial -->
+                    <div class="db-kpi-grid" style="margin-bottom: 16px;">
+                        <div class="db-kpi-card">
+                            <div class="db-kpi-value" id="kpiPsicoTotalElegiveis">0</div>
+                            <div class="db-kpi-label">Efetivo nos 7 GHEs Obrigatórios</div>
+                        </div>
+                        <div class="db-kpi-card db-kpi-danger">
+                            <div class="db-kpi-value" id="kpiPsicoPendentes">0</div>
+                            <div class="db-kpi-label">🔴 Pendentes (Convocação 06/10)</div>
+                        </div>
+                        <div class="db-kpi-card db-kpi-warning">
+                            <div class="db-kpi-value" id="kpiPsicoVencendo">0</div>
+                            <div class="db-kpi-label">🟡 Vencendo Out/Nov (Aproveitar 06/10)</div>
+                        </div>
+                        <div class="db-kpi-card db-kpi-success">
+                            <div class="db-kpi-value" id="kpiPsicoEmDia">0</div>
+                            <div class="db-kpi-label">🟢 Avaliações Psicossociais em Dia</div>
+                        </div>
+                        <div class="db-kpi-card db-kpi-primary">
+                            <div class="db-kpi-value" id="kpiPsicoConformidade">0%</div>
+                            <div class="db-kpi-label">Índice de Regularização Atual</div>
+                        </div>
+                    </div>
+
+                    <!-- Filtros Rápidos (Pills) e Barra de Pesquisa -->
+                    <div class="db-chart-card" style="margin-bottom: 16px; padding: 12px 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                            <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="psicoStatusPills">
+                                <button type="button" class="sector-pill active" id="pillPsicoTodos" onclick="filtrarStatusPsicossocial('todos', this)">Todos nos 7 GHEs (<span id="pillCountPsicoTodos">0</span>)</button>
+                                <button type="button" class="sector-pill" id="pillPsicoPendentes" style="border-color:#fca5a5; color:#991b1b;" onclick="filtrarStatusPsicossocial('pendentes', this)">🔴 Pendentes 06/10 (<span id="pillCountPsicoPendentes">0</span>)</button>
+                                <button type="button" class="sector-pill" id="pillPsicoVencendo" style="border-color:#fde68a; color:#92400e;" onclick="filtrarStatusPsicossocial('vencendo', this)">🟡 Vencendo Out/Nov (<span id="pillCountPsicoVencendo">0</span>)</button>
+                                <button type="button" class="sector-pill" id="pillPsicoEmDia" style="border-color:#a7f3d0; color:#065f46;" onclick="filtrarStatusPsicossocial('em_dia', this)">🟢 Em Dia (<span id="pillCountPsicoEmDia">0</span>)</button>
+                            </div>
+                            <div style="display: flex; gap: 8px; flex: 1; max-width: 500px; min-width: 260px;">
+                                <select id="psicoFiltroGhe" onchange="renderTabelaRecomendacaoPsicossocial()" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text);">
+                                    <option value="">Todos os 7 GHEs Obrigatórios</option>
+                                    <option value="05">GHE 05 - Manutenção Elétrica</option>
+                                    <option value="06">GHE 06 - Manutenção Mecânica</option>
+                                    <option value="07">GHE 07 - Manutenção Civil</option>
+                                    <option value="08">GHE 08 - Motosserras e Roçadeiras</option>
+                                    <option value="10">GHE 10 - Operador de SH</option>
+                                    <option value="25">GHE 25 - Operador de Subestação</option>
+                                    <option value="26">GHE 26 - Conservação e Limpeza</option>
+                                </select>
+                                <input type="text" id="psicoBuscaInput" placeholder="Buscar colaborador, matrícula..." oninput="renderTabelaRecomendacaoPsicossocial()" style="flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text);">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabela de Colaboradores e Datas -->
+                    <div class="db-chart-card" style="padding: 0; overflow: hidden; margin-bottom: 20px;">
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 12.5px; text-align: left;">
+                                <thead>
+                                    <tr style="background: var(--bg); border-bottom: 2px solid var(--border); color: var(--text-light); font-size: 11.5px; text-transform: uppercase;">
+                                        <th style="padding: 12px 14px;">Matrícula</th>
+                                        <th style="padding: 12px 14px;">Colaborador</th>
+                                        <th style="padding: 12px 14px;">GHE / Frente</th>
+                                        <th style="padding: 12px 14px;">Função Contratual</th>
+                                        <th style="padding: 12px 14px;">Admissão</th>
+                                        <th style="padding: 12px 14px;">Último ASO Geral</th>
+                                        <th style="padding: 12px 14px;">Aval. Psicossocial</th>
+                                        <th style="padding: 12px 14px;">Validade</th>
+                                        <th style="padding: 12px 14px; text-align: center;">Status Convocação</th>
+                                        <th style="padding: 12px 14px; text-align: center;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaPsicossocialCorpo">
+                                    <!-- Preenchido dinamicamente via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="psicoTabelaVazia" style="display: none; padding: 32px; text-align: center; color: var(--text-light); font-size: 13px;">
+                            Nenhum colaborador encontrado para os filtros selecionados.
+                        </div>
+                    </div>
                 </div>
 
                 <div id="saudeSubtab-relatorio" style="display:none;">
@@ -8023,7 +8126,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=139"></script>
+    <script src="dashboard.js?v=140"></script>
     <script src="placar_lideres.js?v=1"></script>
 <script>
 function filterMatrizEpi(q) {
@@ -8483,5 +8586,64 @@ function filterMatrizEpi(q) {
     </div>
 </div>
 
+<!-- Modal: Registrar / Baixa de Avaliação Psicossocial -->
+<div id="modalRegistrarPsicoRapido" class="placar-modal-overlay" style="display:none;" onclick="if(event.target===this) fecharModalRegistrarPsicoRapido()">
+    <div class="placar-modal-card" style="max-width: 520px;" onclick="event.stopPropagation()">
+        <div class="placar-modal-header" style="background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);">
+            <div>
+                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #fff;">🧠 Registrar Avaliação Psicossocial</h3>
+                <p style="margin: 3px 0 0; font-size: 12px; color: #ddd6fe;">Atualização direta no ASO e prontuário ocupacional</p>
+            </div>
+            <button type="button" class="placar-modal-close" onclick="fecharModalRegistrarPsicoRapido()">&times;</button>
+        </div>
+        <div class="placar-modal-body" style="padding: 18px 20px;">
+            <input type="hidden" id="modalPsico_matricula">
+            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                <div style="font-weight: 800; font-size: 14px; color: var(--text);" id="modalPsico_nome">—</div>
+                <div style="font-size: 12px; color: var(--text-light); margin-top: 3px;">
+                    Matrícula: <strong id="modalPsico_lblMatricula" style="color: var(--primary);">—</strong> | 
+                    Função: <strong id="modalPsico_lblFuncao">—</strong> | 
+                    GHE: <strong id="modalPsico_lblGhe">—</strong>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Data da Avaliação *</label>
+                    <input type="date" id="modalPsico_data" value="2026-10-06" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Resultado da Avaliação *</label>
+                    <select id="modalPsico_resultado" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                        <option value="Apto">APTO</option>
+                        <option value="Apto com restrições">Apto com Restrições</option>
+                        <option value="Inapto temporário">Inapto Temporário</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Nome da Psicóloga</label>
+                    <input type="text" id="modalPsico_profissional" placeholder="Ex: Psicóloga Responsável" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">CRP</label>
+                    <input type="text" id="modalPsico_crp" placeholder="Ex: CRP 02/12345" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                </div>
+            </div>
+
+            <div style="margin-bottom: 14px;">
+                <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Parecer / Observações do Atendimento</label>
+                <textarea id="modalPsico_obs" rows="2" placeholder="Avaliação psicossocial realizada conforme diretrizes de NR-35/NR-33/NR-10..." style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; font-family: inherit; resize: vertical; background: var(--card); color: var(--text);"></textarea>
+            </div>
+            <div id="modalPsico_statusMsg" style="font-size: 12px; margin-top: 6px;"></div>
+        </div>
+        <div class="placar-modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 8px;">
+            <button type="button" class="db-clear-btn" onclick="fecharModalRegistrarPsicoRapido()">Cancelar</button>
+            <button type="button" class="db-apply-btn" style="background: #7c3aed;" onclick="salvarRegistroPsicoRapido()">💾 Salvar e Regularizar</button>
+        </div>
+    </div>
+</div>
 </body>
 </html>

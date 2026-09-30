@@ -4462,24 +4462,23 @@
                 <div id="saudeSubtab-recomendacoes" style="display:none;">
                     <div class="db-chart-card" style="margin-bottom: 16px; border-left: 4px solid #8b5cf6;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; flex-wrap: wrap;">
-                            <div>
+                            <div style="max-width: 650px;">
                                 <div class="db-chart-title" style="margin-bottom: 2px;">🧠 Recomendação de Exames — Avaliação Psicossocial (PGR & PCMSO)</div>
-                                <div style="font-size: 12px; color: var(--text-light);">
-                                    Grupos Obrigatórios: <strong>GHE 05</strong> (Elétrica), <strong>GHE 06</strong> (Mecânica), <strong>GHE 07</strong> (Civil), <strong>GHE 08</strong> (Motosserra), <strong>GHE 10</strong> (Operador SH), <strong>GHE 25</strong> (Subestação) e <strong>GHE 26</strong> (Conservação e Limpeza).
+                                <div id="psicoGruposObrigatoriosTexto" style="font-size: 12px; color: var(--text-light); line-height: 1.4;">
+                                    Carregando grupos obrigatórios do PCMSO...
                                 </div>
                             </div>
-                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                <button class="db-apply-btn" style="background: #2563eb;" onclick="imprimirConvocacaoPsicossocial()">🖨️ Imprimir Convocação / Ficha (06/10)</button>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                                <button class="db-apply-btn" style="background: #4f46e5;" onclick="abrirModalGerenciarGhesPsico()" title="Adicionar ou remover GHEs com exigência de Psicossocial">⚙️ Configurar GHEs</button>
+                                <button class="db-apply-btn" style="background: #7c3aed;" onclick="abrirModalReprogramarDataMutirao()" title="Alterar ou reprogramar a data do próximo mutirão">📅 Reprogramar Data</button>
+                                <button class="db-apply-btn" style="background: #2563eb;" id="btnImprimirConvocacaoPsico" onclick="imprimirConvocacaoPsicossocial()">🖨️ Imprimir Convocação / Ficha</button>
                                 <button class="db-apply-btn" style="background: #059669;" onclick="exportarExcelPsicossocial()">📊 Exportar Excel</button>
                                 <button class="db-apply-btn" style="background: #128c7e;" onclick="copiarConvocacaoPsicoWhatsApp()">📲 Convocação WhatsApp</button>
                             </div>
                         </div>
-                        <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-size: 12px; color: #5b21b6; line-height: 1.5; display: flex; align-items: center; gap: 10px;">
-                            <span style="font-size: 22px;">📅</span>
-                            <div>
-                                <strong>Mutirão com Psicóloga Agendado para 06/10/2026:</strong> A exigência de Avaliação Psicossocial foi incluída este ano no PCMSO. Use o painel abaixo para convocar os colaboradores prioritários (11 pendências de inclusão e 7 vencendo em Out/Nov) e regularizar 100% da conformidade na obra.
-                            </div>
-                        </div>
+
+                        <!-- Banner Dinâmico e Reprogramável de Mutirão -->
+                        <div id="psicoBannerMutiraoContainer"></div>
                     </div>
 
                     <!-- KPIs Executivos do Psicossocial -->
@@ -8126,7 +8125,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=140"></script>
+    <script src="dashboard.js?v=141"></script>
     <script src="placar_lideres.js?v=1"></script>
 <script>
 function filterMatrizEpi(q) {
@@ -8642,6 +8641,71 @@ function filterMatrizEpi(q) {
         <div class="placar-modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 8px;">
             <button type="button" class="db-clear-btn" onclick="fecharModalRegistrarPsicoRapido()">Cancelar</button>
             <button type="button" class="db-apply-btn" style="background: #7c3aed;" onclick="salvarRegistroPsicoRapido()">💾 Salvar e Regularizar</button>
+        </div>
+    </div>
+</div>
+<!-- Modal: Reprogramar Data do Mutirão / Atendimento Psicossocial -->
+<div id="modalReprogramarDataMutirao" class="placar-modal-overlay" style="display:none;" onclick="if(event.target===this) fecharModalReprogramarDataMutirao()">
+    <div class="placar-modal-card" style="max-width: 480px;" onclick="event.stopPropagation()">
+        <div class="placar-modal-header" style="background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);">
+            <div>
+                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #fff;">📅 Reprogramar Data do Mutirão</h3>
+                <p style="margin: 3px 0 0; font-size: 12px; color: #ddd6fe;">Agendamento de visita da psicóloga na obra</p>
+            </div>
+            <button type="button" class="placar-modal-close" onclick="fecharModalReprogramarDataMutirao()">&times;</button>
+        </div>
+        <div class="placar-modal-body" style="padding: 18px 20px;">
+            <div style="margin-bottom: 14px;">
+                <label style="display:block; margin-bottom: 5px; font-size: 12.5px; font-weight: 700; color: var(--text);">Data do Atendimento / Mutirão *</label>
+                <input type="date" id="reprogPsico_data" style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                <span style="font-size: 11px; color: var(--text-light); margin-top: 4px; display: block;">Esta data será aplicada no banner, na lista impressa oficial e na mensagem de WhatsApp para os encarregados.</span>
+            </div>
+            <div style="margin-bottom: 14px;">
+                <label style="display:block; margin-bottom: 5px; font-size: 12.5px; font-weight: 700; color: var(--text);">Local do Atendimento</label>
+                <input type="text" id="reprogPsico_local" value="Ambulatório / Sala Médica da Obra" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+            </div>
+            <div style="margin-bottom: 14px;">
+                <label style="display:block; margin-bottom: 5px; font-size: 12.5px; font-weight: 700; color: var(--text);">Observações / Motivo da Programação</label>
+                <textarea id="reprogPsico_obs" rows="2" placeholder="Ex: Regularização anual PCMSO / Visita mensal da psicóloga" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; box-sizing: border-box; font-family: inherit; resize: vertical; background: var(--card); color: var(--text);"></textarea>
+            </div>
+        </div>
+        <div class="placar-modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 8px;">
+            <button type="button" class="db-clear-btn" onclick="fecharModalReprogramarDataMutirao()">Cancelar</button>
+            <button type="button" class="db-apply-btn" style="background: #7c3aed;" onclick="salvarReprogramacaoDataMutirao()">💾 Salvar Data</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Gerenciar GHEs Obrigatórios para Avaliação Psicossocial -->
+<div id="modalGerenciarGhesPsico" class="placar-modal-overlay" style="display:none;" onclick="if(event.target===this) fecharModalGerenciarGhesPsico()">
+    <div class="placar-modal-card" style="max-width: 640px;" onclick="event.stopPropagation()">
+        <div class="placar-modal-header" style="background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);">
+            <div>
+                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #fff;">⚙️ Configurar GHEs Obrigatórios (Psicossocial)</h3>
+                <p style="margin: 3px 0 0; font-size: 12px; color: #c7d2fe;">Selecione os grupos que necessitam realizar Avaliação Psicossocial conforme PGR / PCMSO</p>
+            </div>
+            <button type="button" class="placar-modal-close" onclick="fecharModalGerenciarGhesPsico()">&times;</button>
+        </div>
+        <div class="placar-modal-body" style="padding: 16px 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <span style="font-size: 12px; color: var(--text-light);">Marque os grupos que possuem risco em altura (NR-35), espaço confinado (NR-33) ou SEP (NR-10):</span>
+                <div style="display: flex; gap: 6px;">
+                    <button type="button" class="db-clear-btn" style="font-size: 11px; padding: 3px 8px;" onclick="marcarTodosGhesPsico(true)">Marcar Todos</button>
+                    <button type="button" class="db-clear-btn" style="font-size: 11px; padding: 3px 8px;" onclick="marcarTodosGhesPsico(false)">Desmarcar</button>
+                    <button type="button" class="db-clear-btn" style="font-size: 11px; padding: 3px 8px; border-color: #818cf8; color: #4f46e5;" onclick="restaurarPadraoPcmsoGhesPsico()">Padrão PCMSO (7 GHEs)</button>
+                </div>
+            </div>
+
+            <div id="listaCheckboxesGhesPsico" style="max-height: 380px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--bg); display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <!-- Preenchido dinamicamente via JS -->
+            </div>
+            <div style="font-size: 11.5px; color: var(--text-light); margin-top: 10px;">
+                💡 <em>Dica técnica:</em> Ao marcar um novo grupo, todos os colaboradores ativos dele passarão a ser rastreados automaticamente quanto à necessidade da Avaliação Psicossocial.
+            </div>
+        </div>
+        <div class="placar-modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 8px;">
+            <button type="button" class="db-clear-btn" onclick="fecharModalGerenciarGhesPsico()">Cancelar</button>
+            <button type="button" class="db-apply-btn" style="background: #4f46e5;" onclick="salvarConfiguracaoGhesPsico()">💾 Salvar Grupos</button>
         </div>
     </div>
 </div>

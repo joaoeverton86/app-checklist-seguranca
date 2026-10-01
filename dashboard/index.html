@@ -4093,7 +4093,7 @@
                         <button id="saudeSubtabBtn-atestado" class="db-filter-btn" onclick="showSaudeSubtab('atestado')">🤒 Registrar Atestado</button>
                         <button id="saudeSubtabBtn-pressao" class="db-filter-btn" onclick="showSaudeSubtab('pressao')">💉 Pressão Arterial</button>
                         <button id="saudeSubtabBtn-previsao" class="db-filter-btn" onclick="showSaudeSubtab('previsao')">📅 Previsão de Exames</button>
-                        <button id="saudeSubtabBtn-recomendacoes" class="db-filter-btn" onclick="showSaudeSubtab('recomendacoes')">🧠 Recomendação de Exames (Psicossocial)</button>
+                        <button id="saudeSubtabBtn-recomendacoes" class="db-filter-btn" onclick="showSaudeSubtab('recomendacoes')">🩺 Recomendações e Exames (PCMSO)</button>
                         <button id="saudeSubtabBtn-relatorio" class="db-filter-btn" onclick="showSaudeSubtab('relatorio')">📄 Relatório</button>
                     </div>
                 </div>
@@ -4133,24 +4133,37 @@
                 <div class="db-kpi-grid">
                     <div class="db-kpi-card db-kpi-danger">
                         <div class="db-kpi-value" id="kpiAsoVencidos">0</div>
-                        <div class="db-kpi-label">ASO Vencidos</div>
+                        <div class="db-kpi-label">🔴 ASO Vencidos</div>
+                    </div>
+                    <div class="db-kpi-card" style="border-left: 4px solid #ea580c;">
+                        <div class="db-kpi-value" id="kpiAsoVencendo" style="color: #ea580c;">0</div>
+                        <div class="db-kpi-label">🟠 Vencem em até 30d</div>
                     </div>
                     <div class="db-kpi-card db-kpi-warning">
-                        <div class="db-kpi-value" id="kpiAsoVencendo">0</div>
-                        <div class="db-kpi-label">ASO Vencendo em 30 dias</div>
+                        <div class="db-kpi-value" id="kpiAsoVencendo60" style="color: #d97706;">0</div>
+                        <div class="db-kpi-label">🟡 Vencem em 31 a 60d</div>
                     </div>
                     <div class="db-kpi-card db-kpi-success">
                         <div class="db-kpi-value" id="kpiAsoEmDia">0</div>
-                        <div class="db-kpi-label">ASO Em Dia</div>
+                        <div class="db-kpi-label">🟢 ASO Em Dia (&gt; 60d)</div>
                     </div>
                     <div class="db-kpi-card">
                         <div class="db-kpi-value" id="kpiAsoSemRegistro">0</div>
-                        <div class="db-kpi-label">Sem ASO Registrado</div>
+                        <div class="db-kpi-label">⚪ Sem ASO Registrado</div>
                     </div>
                     <div class="db-kpi-card db-kpi-primary">
                         <div class="db-kpi-value" id="kpiAbsenteismo">0%</div>
-                        <div class="db-kpi-label">Taxa de Absenteísmo Ocupacional</div>
+                        <div class="db-kpi-label">Taxa de Absenteísmo</div>
                     </div>
+                </div>
+
+                <!-- Barra de Ação Rápida: Acompanhamento de Validade de ASOs (30 e 60 dias) -->
+                <div style="margin: 12px 0 16px; display: flex; justify-content: space-between; align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <strong style="font-size: 13px; color: var(--text);">📅 Acompanhamento de Validade dos ASOs Periódicos (Regra de 1 ano — NR-07 / PCMSO)</strong>
+                        <div style="font-size: 11.5px; color: var(--text-light);">Cruze o histórico de exames com a periodicidade legal e planeje convocações com 30 e 60 dias de antecedência.</div>
+                    </div>
+                    <button class="db-apply-btn" style="background: #0284c7; font-weight: 700;" onclick="abrirModalGestaoValidadeAsos()">📋 Gestão de Vencimentos (30/60 dias)</button>
                 </div>
 
                 <div class="db-charts-grid">
@@ -4167,8 +4180,17 @@
                         <div class="db-chart-canvas-wrap"><canvas id="chartAbsenteismoMes"></canvas></div>
                     </div>
                     <div class="db-chart-card db-list-card">
-                        <div class="db-chart-title">Colaboradores com ASO Vencido, Vencendo ou Sem Registro</div>
-                        <div id="listAsoVencendo" class="db-list"></div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                            <div class="db-chart-title" style="margin-bottom: 0;">Colaboradores com Alertas de ASO</div>
+                            <div style="display: flex; gap: 4px; font-size: 11px;" id="pillsFiltroAsoAlertaContainer">
+                                <button type="button" class="sector-pill active" id="pillAsoAlertaTodos" onclick="filtrarListaAsoAlertas('todos', this)">Todos (<span id="countAsoAlertaTodos">0</span>)</button>
+                                <button type="button" class="sector-pill" id="pillAsoAlertaVencidos" style="border-color:#fca5a5; color:#991b1b;" onclick="filtrarListaAsoAlertas('vencido', this)">🔴 Vencidos (<span id="countAsoAlertaVencidos">0</span>)</button>
+                                <button type="button" class="sector-pill" id="pillAsoAlerta30" style="border-color:#fdba74; color:#c2410c;" onclick="filtrarListaAsoAlertas('vencendo30', this)">🟠 30d (<span id="countAsoAlerta30">0</span>)</button>
+                                <button type="button" class="sector-pill" id="pillAsoAlerta60" style="border-color:#fde68a; color:#92400e;" onclick="filtrarListaAsoAlertas('vencendo60', this)">🟡 60d (<span id="countAsoAlerta60">0</span>)</button>
+                                <button type="button" class="sector-pill" id="pillAsoAlertaSemReg" onclick="filtrarListaAsoAlertas('sem_registro', this)">⚪ Sem Reg (<span id="countAsoAlertaSemReg">0</span>)</button>
+                            </div>
+                        </div>
+                        <div id="listAsoVencendo" class="db-list" style="max-height: 400px; overflow-y: auto;"></div>
                     </div>
                 </div>
                 </div>
@@ -4461,23 +4483,42 @@
                 <!-- Subaba: Recomendação de Exames Psicossociais (PGR & PCMSO) -->
                 <div id="saudeSubtab-recomendacoes" style="display:none;">
                     <div class="db-chart-card" style="margin-bottom: 16px; border-left: 4px solid #8b5cf6;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; flex-wrap: wrap;">
-                            <div style="max-width: 650px;">
-                                <div class="db-chart-title" style="margin-bottom: 2px;">🧠 Recomendação de Exames — Avaliação Psicossocial (PGR & PCMSO)</div>
-                                <div id="psicoGruposObrigatoriosTexto" style="font-size: 12px; color: var(--text-light); line-height: 1.4;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
+                            <div>
+                                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                    <div class="db-chart-title" style="margin-bottom: 0;" id="tituloSubabaRecomendacoes">🩺 Recomendações e Exames Complementares (PCMSO)</div>
+                                    <div style="display: flex; align-items: center; gap: 6px; background: var(--bg); border: 1px solid var(--border); padding: 4px 8px; border-radius: 8px;">
+                                        <span style="font-size: 11.5px; font-weight: 700; color: var(--text);">Exame em Foco:</span>
+                                        <select id="selExameComplementarFoco" onchange="aoMudarExameComplementarFoco()" style="padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; font-weight: 700; background: var(--card); color: var(--text); cursor: pointer;">
+                                            <option value="psicossocial" selected>🧠 Avaliação Psicossocial (NR-35 / NR-33 / NR-10)</option>
+                                            <option value="audiometria">👂 Audiometria Ocupacional (NR-07 / NR-09 - Ruído)</option>
+                                            <option value="ecg">🫀 Eletrocardiograma - ECG (NR-35 Altura / NR-10 Elétrica)</option>
+                                            <option value="espirometria">🫁 Espirometria Ocupacional (Poeiras e Fumos)</option>
+                                            <option value="acuidade">👁️ Acuidade Visual (Motoristas e Operadores)</option>
+                                            <option value="rx_coluna">🦴 Raio X da Coluna Lombo Sacra (Ergonomia)</option>
+                                            <option value="rx_torax">🫁 Raio X de Tórax - Padrão OIT (Poeiras Minerais)</option>
+                                            <option value="glicose">🩸 Glicose (Laboratorial)</option>
+                                            <option value="hemograma">🩸 Hemograma Completo (Laboratorial)</option>
+                                            <option value="ige_abelha">🐝 IgE Específica - Abelha (Risco Biológico / Vegetação)</option>
+                                            <option value="matriz_geral">📋 Matriz Geral de Exames do PCMSO (Todos)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div id="psicoGruposObrigatoriosTexto" style="font-size: 12px; color: var(--text-light); line-height: 1.4; margin-top: 4px;">
                                     Carregando grupos obrigatórios do PCMSO...
                                 </div>
                             </div>
                             <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-                                <button class="db-apply-btn" style="background: #4f46e5;" onclick="abrirModalGerenciarGhesPsico()" title="Adicionar ou remover GHEs com exigência de Psicossocial">⚙️ Configurar GHEs</button>
-                                <button class="db-apply-btn" style="background: #7c3aed;" onclick="abrirModalReprogramarDataMutirao()" title="Alterar ou reprogramar a data do próximo mutirão">📅 Reprogramar Data</button>
-                                <button class="db-apply-btn" style="background: #2563eb;" id="btnImprimirConvocacaoPsico" onclick="imprimirConvocacaoPsicossocial()">🖨️ Imprimir Convocação / Ficha</button>
-                                <button class="db-apply-btn" style="background: #059669;" onclick="exportarExcelPsicossocial()">📊 Exportar Excel</button>
-                                <button class="db-apply-btn" style="background: #128c7e;" onclick="copiarConvocacaoPsicoWhatsApp()">📲 Convocação WhatsApp</button>
+                                <button class="db-apply-btn" style="background: #059669; font-weight: 700;" id="btnBaixaLotePsico" onclick="abrirModalBaixaLoteMutirao()" title="Dar baixa em lote em colaboradores atendidos no mutirão ou clínica">✅ Baixa em Lote</button>
+                                <button class="db-apply-btn" style="background: #4f46e5;" id="btnConfigGhesPsico" onclick="abrirModalGerenciarGhesPsico()" title="Adicionar ou remover GHEs com exigência do exame">⚙️ Configurar GHEs</button>
+                                <button class="db-apply-btn" style="background: #7c3aed;" id="btnReprogDataPsico" onclick="abrirModalReprogramarDataMutirao()" title="Alterar ou reprogramar a data do próximo mutirão / visita">📅 Reprogramar Data</button>
+                                <button class="db-apply-btn" style="background: #2563eb;" id="btnImprimirConvocacaoPsico" onclick="imprimirConvocacaoExameAtual()">🖨️ Imprimir Convocação / Ficha</button>
+                                <button class="db-apply-btn" style="background: #0891b2;" onclick="exportarExcelExameAtual()">📊 Exportar Excel</button>
+                                <button class="db-apply-btn" style="background: #128c7e;" id="btnWhatsappPsico" onclick="copiarConvocacaoExameWhatsApp()">📲 Convocação WhatsApp</button>
                             </div>
                         </div>
 
-                        <!-- Banner Dinâmico e Reprogramável de Mutirão -->
+                        <!-- Banner Dinâmico e Reprogramável de Mutirão / Orientações -->
                         <div id="psicoBannerMutiraoContainer"></div>
                     </div>
 
@@ -4542,7 +4583,7 @@
                                         <th style="padding: 12px 14px;">Função Contratual</th>
                                         <th style="padding: 12px 14px;">Admissão</th>
                                         <th style="padding: 12px 14px;">Último ASO Geral</th>
-                                        <th style="padding: 12px 14px;">Aval. Psicossocial</th>
+                                        <th id="thExameFocoNome" style="padding: 12px 14px;">Aval. Psicossocial</th>
                                         <th style="padding: 12px 14px;">Validade</th>
                                         <th style="padding: 12px 14px; text-align: center;">Status Convocação</th>
                                         <th style="padding: 12px 14px; text-align: center;">Ações</th>
@@ -8125,7 +8166,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=141"></script>
+    <script src="dashboard.js?v=142"></script>
     <script src="placar_lideres.js?v=1"></script>
 <script>
 function filterMatrizEpi(q) {
@@ -8709,5 +8750,152 @@ function filterMatrizEpi(q) {
         </div>
     </div>
 </div>
+
+<!-- Modal: Baixa em Lote de Exames (Mutirão Realizado) -->
+<div id="modalBaixaLoteMutiraoPsico" class="placar-modal-overlay" style="display:none;" onclick="if(event.target===this) fecharModalBaixaLoteMutirao()">
+    <div class="placar-modal-card" style="max-width: 680px;" onclick="event.stopPropagation()">
+        <div class="placar-modal-header" style="background: linear-gradient(135deg, #059669 0%, #047857 100%);">
+            <div>
+                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #fff;">✅ Baixa em Lote — Atendimentos Realizados</h3>
+                <p style="margin: 3px 0 0; font-size: 12px; color: #a7f3d0;" id="modalBaixaLoteSubtitulo">Registrar realização e regularizar colaboradores atendidos no mutirão</p>
+            </div>
+            <button type="button" class="placar-modal-close" onclick="fecharModalBaixaLoteMutirao()">&times;</button>
+        </div>
+        <div class="placar-modal-body" style="padding: 16px 20px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Data da Realização *</label>
+                    <input type="date" id="baixaLote_data" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Resultado Padrão *</label>
+                    <select id="baixaLote_resultado" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                        <option value="Apto" selected>APTO</option>
+                        <option value="Apto com restrições">Apto com Restrições</option>
+                        <option value="Inapto temporário">Inapto Temporário</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Profissional / Registro</label>
+                    <input type="text" id="baixaLote_profissional" placeholder="Ex: Psicóloga Responsável" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                </div>
+            </div>
+
+            <div style="margin-bottom: 12px;">
+                <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Observações / Parecer do Atendimento</label>
+                <input type="text" id="baixaLote_obs" placeholder="Ex: Atendimento realizado no mutirão de exames da obra" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                <span style="font-size: 12px; font-weight: 700; color: var(--text);">Selecione os colaboradores que compareceram e foram atendidos:</span>
+                <div style="display: flex; gap: 6px;">
+                    <button type="button" class="db-clear-btn" style="font-size: 11px; padding: 3px 8px;" onclick="marcarTodosBaixaLote(true)">Marcar Todos</button>
+                    <button type="button" class="db-clear-btn" style="font-size: 11px; padding: 3px 8px;" onclick="marcarTodosBaixaLote(false)">Desmarcar</button>
+                    <button type="button" class="db-clear-btn" style="font-size: 11px; padding: 3px 8px; border-color:#10b981; color:#059669;" onclick="marcarSomentePendentesBaixaLote()">Apenas Pendentes</button>
+                </div>
+            </div>
+
+            <div id="listaColaboradoresBaixaLote" style="max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; background: var(--bg); display: flex; flex-direction: column; gap: 6px;">
+                <!-- Preenchido dinamicamente -->
+            </div>
+            <div id="baixaLote_statusMsg" style="font-size: 12px; margin-top: 8px;"></div>
+        </div>
+        <div class="placar-modal-footer" style="padding: 12px 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 12px; color: var(--text-light); font-weight: 600;" id="baixaLote_contadorSel">0 colaboradores selecionados</div>
+            <div style="display: flex; gap: 8px;">
+                <button type="button" class="db-clear-btn" onclick="fecharModalBaixaLoteMutirao()">Cancelar</button>
+                <button type="button" class="db-apply-btn" style="background: #059669; font-weight: 700;" id="btnConfirmarBaixaLote" onclick="salvarBaixaLoteMutirao()">💾 Confirmar Baixa dos Selecionados</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Gestão de Validade de ASOs (30 e 60 dias — Regra de 1 ano NR-07 / PCMSO) -->
+<div id="modalGestaoValidadeAsos" class="placar-modal-overlay" style="display:none;" onclick="if(event.target===this) fecharModalGestaoValidadeAsos()">
+    <div class="placar-modal-card" style="max-width: 960px; width: 95%; max-height: 90vh; display: flex; flex-direction: column;" onclick="event.stopPropagation()">
+        <div class="placar-modal-header" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); flex-shrink: 0;">
+            <div>
+                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #fff;">📅 Acompanhamento de Validade de ASOs (Regra de 1 Ano — NR-07 / PCMSO)</h3>
+                <p style="margin: 3px 0 0; font-size: 12px; color: #bae6fd;">Controle preditivo de exames periódicos a vencer em 30 e 60 dias para agendamento clínico</p>
+            </div>
+            <button type="button" class="placar-modal-close" onclick="fecharModalGestaoValidadeAsos()">&times;</button>
+        </div>
+        <div class="placar-modal-body" style="padding: 16px 20px; flex: 1; overflow-y: auto;">
+            <!-- KPIs Rápidos de Vencimento -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px;">
+                <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 12px; text-align: center;">
+                    <div style="font-size: 20px; font-weight: 800; color: #991b1b;" id="valAsoKpi_vencidos">0</div>
+                    <div style="font-size: 11px; font-weight: 700; color: #991b1b;">🔴 Já Vencidos</div>
+                </div>
+                <div style="background: #fff7ed; border: 1px solid #ffedd5; border-radius: 8px; padding: 8px 12px; text-align: center;">
+                    <div style="font-size: 20px; font-weight: 800; color: #ea580c;" id="valAsoKpi_vencendo30">0</div>
+                    <div style="font-size: 11px; font-weight: 700; color: #ea580c;">🟠 Vencem em até 30d</div>
+                </div>
+                <div style="background: #fefce8; border: 1px solid #fef08a; border-radius: 8px; padding: 8px 12px; text-align: center;">
+                    <div style="font-size: 20px; font-weight: 800; color: #ca8a04;" id="valAsoKpi_vencendo60">0</div>
+                    <div style="font-size: 11px; font-weight: 700; color: #ca8a04;">🟡 Vencem em 31 a 60d</div>
+                </div>
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 8px 12px; text-align: center;">
+                    <div style="font-size: 20px; font-weight: 800; color: #15803d;" id="valAsoKpi_emDia">0</div>
+                    <div style="font-size: 11px; font-weight: 700; color: #15803d;">🟢 Em Dia (&gt;60d)</div>
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; text-align: center;">
+                    <div style="font-size: 20px; font-weight: 800; color: #64748b;" id="valAsoKpi_semRegistro">0</div>
+                    <div style="font-size: 11px; font-weight: 700; color: #475569;">⚪ Sem Registro ASO</div>
+                </div>
+            </div>
+
+            <!-- Filtros Rápidos -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="filtroValAsoPills">
+                    <button type="button" class="sector-pill active" onclick="filtrarTabelaValidadeAsos('todos', this)">Todos (<span id="valAsoCount_todos">0</span>)</button>
+                    <button type="button" class="sector-pill" style="border-color:#fca5a5; color:#991b1b;" onclick="filtrarTabelaValidadeAsos('vencidos', this)">🔴 Vencidos (<span id="valAsoCount_vencidos">0</span>)</button>
+                    <button type="button" class="sector-pill" style="border-color:#fed7aa; color:#ea580c;" onclick="filtrarTabelaValidadeAsos('vencendo30', this)">🟠 30 dias (<span id="valAsoCount_30">0</span>)</button>
+                    <button type="button" class="sector-pill" style="border-color:#fef08a; color:#ca8a04;" onclick="filtrarTabelaValidadeAsos('vencendo60', this)">🟡 60 dias (<span id="valAsoCount_60">0</span>)</button>
+                    <button type="button" class="sector-pill" style="border-color:#bbf7d0; color:#15803d;" onclick="filtrarTabelaValidadeAsos('emDia', this)">🟢 Em Dia (<span id="valAsoCount_emDia">0</span>)</button>
+                    <button type="button" class="sector-pill" onclick="filtrarTabelaValidadeAsos('semRegistro', this)">⚪ Sem Registro (<span id="valAsoCount_semReg">0</span>)</button>
+                </div>
+                <div style="display: flex; gap: 8px; flex: 1; max-width: 360px; min-width: 220px;">
+                    <input type="text" id="valAsoBuscaInput" placeholder="Buscar colaborador, setor, GHE..." oninput="renderTabelaValidadeAsos()" style="width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; background: var(--card); color: var(--text);">
+                </div>
+            </div>
+
+            <!-- Tabela -->
+            <div style="border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; max-height: 400px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                    <thead>
+                        <tr style="background: var(--bg); border-bottom: 2px solid var(--border); color: var(--text-light); font-size: 11px; text-transform: uppercase; position: sticky; top: 0; z-index: 2;">
+                            <th style="padding: 10px 12px;">Matrícula</th>
+                            <th style="padding: 10px 12px;">Colaborador</th>
+                            <th style="padding: 10px 12px;">GHE / Setor</th>
+                            <th style="padding: 10px 12px;">Função</th>
+                            <th style="padding: 10px 12px;">Admissão</th>
+                            <th style="padding: 10px 12px;">Último ASO</th>
+                            <th style="padding: 10px 12px;">Regra PCMSO</th>
+                            <th style="padding: 10px 12px;">Vencimento</th>
+                            <th style="padding: 10px 12px; text-align: center;">Prazo</th>
+                            <th style="padding: 10px 12px; text-align: center;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabelaValidadeAsosCorpo">
+                        <!-- Preenchido via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="placar-modal-footer" style="padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; flex-shrink: 0;">
+            <div style="font-size: 11.5px; color: var(--text-light);">
+                💡 Regra legal: Periodicidade de <strong>12 meses (1 ano)</strong> para cargos operacionais/com risco e <strong>24 meses</strong> para funções puramente administrativas (NR-07).
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button type="button" class="db-clear-btn" onclick="fecharModalGestaoValidadeAsos()">Fechar</button>
+                <button type="button" class="db-apply-btn" style="background: #2563eb;" onclick="imprimirRelacaoValidadeAsos()">🖨️ Imprimir para Clínica</button>
+                <button type="button" class="db-apply-btn" style="background: #059669;" onclick="exportarExcelValidadeAsos()">📊 Exportar Excel</button>
+                <button type="button" class="db-apply-btn" style="background: #128c7e;" onclick="copiarAlertaValidadeAsosWhatsApp()">📲 Alerta WhatsApp</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>

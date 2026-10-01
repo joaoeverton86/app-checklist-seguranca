@@ -16945,80 +16945,104 @@ function renderSaudePanel() {
     popularFiltroAnoSaude();
     const { inicio, fim } = getSaudeDateRange();
 
-    const ativos = allEfetivo.filter(colaboradorEstaAtivo);
-    let vencidos = 0, vencendo = 0, emDia = 0, semRegistro = 0;
+    const ativos = (allEfetivo || []).filter(colaboradorEstaAtivo);
+    let vencidos = 0, vencendo30 = 0, vencendo60 = 0, emDia = 0, semRegistro = 0;
     const alertList = [];
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+
     ativos.forEach(e => {
-        const r = calcularStatusAsoColaborador(e.id);
-        if (r.status === 'vencido') { vencidos++; alertList.push({ e, r }); }
-        else if (r.status === 'vencendo') { vencendo++; alertList.push({ e, r }); }
-        else if (r.status === 'em_dia') emDia++;
-        else { semRegistro++; alertList.push({ e, r }); }
+        // Cálculo com regra NR-07 / PCMSO: 1 ano para operacionais, 2 anos para administrativos
+        const r = calcularValidadeAsoPcmso(e);
+        if (r.status === 'vencido') { 
+            vencidos++; 
+            alertList.push({ e, r }); 
+        } else if (r.status === 'vencendo30') { 
+            vencendo30++; 
+            alertList.push({ e, r }); 
+        } else if (r.status === 'vencendo60') { 
+            vencendo60++; 
+            alertList.push({ e, r }); 
+        } else if (r.status === 'em_dia') { 
+            emDia++; 
+        } else { 
+            semRegistro++; 
+            alertList.push({ e, r }); 
+        }
     });
 
-    document.getElementById('kpiAsoVencidos').textContent = vencidos;
-    document.getElementById('kpiAsoVencendo').textContent = vencendo;
-    document.getElementById('kpiAsoEmDia').textContent = emDia;
-    document.getElementById('kpiAsoSemRegistro').textContent = semRegistro;
+    listaAlertasAsoCache = alertList.sort((a, b) => (a.r.diffDays ?? -99999) - (b.r.diffDays ?? -99999));
+
+    // Atualização dos KPIs na tela
+    const elVencidos = document.getElementById('kpiAsoVencidos');
+    const elVencendo30 = document.getElementById('kpiAsoVencendo');
+    const elVencendo60 = document.getElementById('kpiAsoVencendo60');
+    const elEmDia = document.getElementById('kpiAsoEmDia');
+    const elSemReg = document.getElementById('kpiAsoSemRegistro');
+    const elAbsen = document.getElementById('kpiAbsenteismo');
+
+    if (elVencidos) elVencidos.textContent = vencidos;
+    if (elVencendo30) elVencendo30.textContent = vencendo30;
+    if (elVencendo60) elVencendo60.textContent = vencendo60;
+    if (elEmDia) elEmDia.textContent = emDia;
+    if (elSemReg) elSemReg.textContent = semRegistro;
 
     const absen = calcularAbsenteismoPeriodo(inicio, fim);
-    document.getElementById('kpiAbsenteismo').textContent = absen.disponivel ? absen.taxa.toFixed(2) + '%' : '—';
+    if (elAbsen) elAbsen.textContent = absen.disponivel ? absen.taxa.toFixed(2) + '%' : '—';
 
-    alertList.sort((a, b) => (a.r.diffDays ?? -99999) - (b.r.diffDays ?? -99999));
-    const listaEl = document.getElementById('listAsoVencendo');
-    if (alertList.length === 0) {
-        listaEl.innerHTML = '<div class="db-list-empty">✅ Nenhum ASO vencido ou vencendo nos próximos 30 dias</div>';
-    } else {
-        listaEl.innerHTML = alertList.map(({ e, r }) => {
-            const cls = r.status === 'vencido' ? 'db-item-danger' : r.status === 'vencendo' ? 'db-item-warning' : 'db-item-warning';
-            let msg, tipoLabel;
-            if (r.status === 'sem_registro') {
-                // "Sem registro" cobre dois casos bem diferentes de resolver: nunca cadastrou
-                // nenhum ASO pra essa matrícula, ou cadastrou mas esqueceu de preencher a data
-                // de vencimento daquele exame (o mais recente cadastrado precisa dela pra sair
-                // desse status). Distinguir aqui evita a pessoa "procurar e não encontrar" -
-                // veio de um caso real onde isso aconteceu.
-                msg = r.ultimoExame ? 'Último ASO sem data de vencimento preenchida' : 'Nenhum ASO registrado';
-                tipoLabel = ASO_TIPO_LABELS[r.ultimoExame?.tipo_aso] || r.ultimoExame?.tipo_aso || null;
-            } else {
-                msg = r.status === 'vencido' ? `Vencido há ${Math.abs(r.diffDays)} dia(s)` : (r.diffDays === 0 ? 'Vence hoje' : `Vence em ${r.diffDays} dia(s)`);
-                tipoLabel = ASO_TIPO_LABELS[r.ultimoExame?.tipo_aso] || r.ultimoExame?.tipo_aso || '—';
-            }
-            const subLabel = tipoLabel ? `${escapeHTML(e.setor || '—')} — ${escapeHTML(tipoLabel)} — ${msg}` : `${escapeHTML(e.setor || '—')} — ${msg}`;
-            return `<div class="db-list-item ${cls}" ${r.status === 'sem_registro' ? `style="cursor:pointer;" onclick="showDbPage('saude'); showSaudeSubtab('aso'); document.getElementById('asoSearchInput').value='${escapeHTML(e.id)}'; filterAsoLista('${escapeHTML(e.id)}');"` : ''}>
-                <div class="db-list-item-title">${escapeHTML(e.nome || e.id)}</div>
-                <div class="db-list-item-sub">${subLabel}</div>
-            </div>`;
-        }).join('');
-    }
+    // Contadores das pílulas de filtro rápido de alertas
+    const cTodos = document.getElementById('countAsoAlertaTodos');
+    const cVenc = document.getElementById('countAsoAlertaVencidos');
+    const c30 = document.getElementById('countAsoAlerta30');
+    const c60 = document.getElementById('countAsoAlerta60');
+    const cSemReg = document.getElementById('countAsoAlertaSemReg');
 
+    if (cTodos) cTodos.textContent = alertList.length;
+    if (cVenc) cVenc.textContent = vencidos;
+    if (c30) c30.textContent = vencendo30;
+    if (c60) c60.textContent = vencendo60;
+    if (cSemReg) cSemReg.textContent = semRegistro;
+
+    renderListaAsoAlertasFiltrada();
+
+    // Atualização dos Gráficos
     if (typeof Chart === 'undefined') return;
     if (chartInstances.asoStatus) chartInstances.asoStatus.destroy();
     if (chartInstances.asoTipo) chartInstances.asoTipo.destroy();
     if (chartInstances.absenteismoMes) chartInstances.absenteismoMes.destroy();
 
-    chartInstances.asoStatus = new Chart(document.getElementById('chartAsoStatus'), {
-        type: 'doughnut',
-        data: {
-            labels: ['Vencidos', 'Vencendo (30d)', 'Em Dia', 'Sem Registro'],
-            datasets: [{ data: [vencidos, vencendo, emDia, semRegistro], backgroundColor: ['#ef4444', '#f59e0b', '#10b981', '#94a3b8'], borderWidth: 2, borderColor: '#fff' }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, cutout: '55%' }
-    });
+    const canvasAsoStatus = document.getElementById('chartAsoStatus');
+    if (canvasAsoStatus) {
+        chartInstances.asoStatus = new Chart(canvasAsoStatus, {
+            type: 'doughnut',
+            data: {
+                labels: ['Vencidos', 'Vencendo (30d)', 'Vencendo (60d)', 'Em Dia (>60d)', 'Sem Registro'],
+                datasets: [{ 
+                    data: [vencidos, vencendo30, vencendo60, emDia, semRegistro], 
+                    backgroundColor: ['#ef4444', '#ea580c', '#d97706', '#10b981', '#94a3b8'], 
+                    borderWidth: 2, 
+                    borderColor: '#fff' 
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, cutout: '55%' }
+        });
+    }
 
     const tipoCounts = {};
-    allAsoExames.forEach(a => { const t = ASO_TIPO_LABELS[a.tipo_aso] || a.tipo_aso || 'Não especificado'; tipoCounts[t] = (tipoCounts[t] || 0) + 1; });
+    (allAsoExames || []).forEach(a => { const t = ASO_TIPO_LABELS[a.tipo_aso] || a.tipo_aso || 'Não especificado'; tipoCounts[t] = (tipoCounts[t] || 0) + 1; });
     const tipoSorted = Object.entries(tipoCounts).sort((a, b) => b[1] - a[1]);
     const tipoLabels = tipoSorted.map(t => wrapChartLabel(t[0]));
     ajustarAlturaBarrasHorizontais('chartAsoTipo', tipoLabels);
-    chartInstances.asoTipo = new Chart(document.getElementById('chartAsoTipo'), {
-        type: 'bar',
-        data: { labels: tipoLabels, datasets: [{ label: 'Exames', data: tipoSorted.map(t => t[1]), backgroundColor: '#4f46e5', borderRadius: 6 }] },
-        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
-    });
+    
+    const canvasAsoTipo = document.getElementById('chartAsoTipo');
+    if (canvasAsoTipo) {
+        chartInstances.asoTipo = new Chart(canvasAsoTipo, {
+            type: 'bar',
+            data: { labels: tipoLabels, datasets: [{ label: 'Exames', data: tipoSorted.map(t => t[1]), backgroundColor: '#4f46e5', borderRadius: 6 }] },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
+        });
+    }
 
-    const hoje = new Date();
-    const datasAdmissao = allEfetivo.filter(e => e.dt_admissao).map(e => parseLocalDate(e.dt_admissao));
+    const datasAdmissao = (allEfetivo || []).filter(e => e.dt_admissao).map(e => parseLocalDate(e.dt_admissao));
     const primeiraData = datasAdmissao.length > 0 ? new Date(Math.min(...datasAdmissao.map(d => d.getTime()))) : hoje;
     const mesesAbs = [], taxaPorMes = [];
     let cursorAbs = new Date(primeiraData.getFullYear(), primeiraData.getMonth(), 1);
@@ -17029,20 +17053,23 @@ function renderSaudePanel() {
         taxaPorMes.push(r.disponivel ? Math.round(r.taxa * 100) / 100 : null);
         cursorAbs = new Date(cursorAbs.getFullYear(), cursorAbs.getMonth() + 1, 1);
     }
-    chartInstances.absenteismoMes = new Chart(document.getElementById('chartAbsenteismoMes'), {
-        type: 'line',
-        data: { labels: mesesAbs, datasets: [{ label: 'Absenteísmo Ocupacional (%)', data: taxaPorMes, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)', fill: true, tension: 0.25 }] },
-        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: '%' } } } }
-    });
+    
+    const canvasAbs = document.getElementById('chartAbsenteismoMes');
+    if (canvasAbs) {
+        chartInstances.absenteismoMes = new Chart(canvasAbs, {
+            type: 'line',
+            data: { labels: mesesAbs, datasets: [{ label: 'Absenteísmo Ocupacional (%)', data: taxaPorMes, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)', fill: true, tension: 0.25 }] },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: '%' } } } }
+        });
+    }
 
-    // Snapshot dos números/gráficos que acabaram de ser calculados acima, pra alimentar a
-    // aba "📄 Relatório" sem duplicar nenhuma lógica de cálculo - o relatório sempre lê
-    // exatamente o que está na tela, no período já selecionado (saudeFilter/saudeFiltroAno/Mês).
+    // Snapshot para o Relatório Geral
     window.saudeReportData = {
         periodoLabel: document.getElementById('saudePeriodoTitulo')?.textContent || '',
         kpis: [
             { key: 'asoVencidos', label: 'ASO Vencidos', value: vencidos },
-            { key: 'asoVencendo', label: 'ASO Vencendo em 30 dias', value: vencendo },
+            { key: 'asoVencendo', label: 'ASO Vencendo em 30 dias', value: vencendo30 },
+            { key: 'asoVencendo60', label: 'ASO Vencendo em 31 a 60 dias', value: vencendo60 },
             { key: 'asoEmDia', label: 'ASO Em Dia', value: emDia },
             { key: 'asoSemRegistro', label: 'Sem ASO Registrado', value: semRegistro },
             { key: 'absenteismo', label: 'Taxa de Absenteísmo Ocupacional', value: absen.disponivel ? absen.taxa.toFixed(2) + '%' : '—' }
@@ -17050,8 +17077,8 @@ function renderSaudePanel() {
         graficos: {
             graficoStatusAso: {
                 titulo: 'Status de ASO (Efetivo Ativo)',
-                labels: ['Vencidos', 'Vencendo (30d)', 'Em Dia', 'Sem Registro'],
-                valores: [vencidos, vencendo, emDia, semRegistro]
+                labels: ['Vencidos', 'Vencendo (30d)', 'Vencendo (60d)', 'Em Dia', 'Sem Registro'],
+                valores: [vencidos, vencendo30, vencendo60, emDia, semRegistro]
             },
             graficoExamesTipo: {
                 titulo: 'Exames Realizados por Tipo (Histórico Completo)',
@@ -17065,7 +17092,7 @@ function renderSaudePanel() {
             }
         },
         listaPendencias: alertList.map(({ e, r }) => {
-            const situacao = r.status === 'vencido' ? 'Vencido' : r.status === 'vencendo' ? 'Vencendo' : 'Sem Registro';
+            const situacao = r.status === 'vencido' ? 'Vencido' : r.status === 'vencendo30' ? 'Vencendo em 30d' : r.status === 'vencendo60' ? 'Vencendo em 60d' : 'Sem Registro';
             let detalhe;
             if (r.status === 'sem_registro') {
                 detalhe = r.ultimoExame ? 'Último ASO sem data de vencimento preenchida' : 'Nenhum ASO registrado';
@@ -17078,47 +17105,659 @@ function renderSaudePanel() {
     if (document.getElementById('saudeSubtabBtn-relatorio')?.classList.contains('active')) renderSaudeRelatorioChecklist();
 }
 
+// Filtro e Renderização da Lista de Alertas de ASO na Visão Geral
+let asoAlertFilterAtual = 'todos';
+let listaAlertasAsoCache = [];
+
+function filtrarListaAsoAlertas(status, btn) {
+    asoAlertFilterAtual = status;
+    document.querySelectorAll('#pillsFiltroAsoAlertaContainer .sector-pill').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderListaAsoAlertasFiltrada();
+}
+
+function renderListaAsoAlertasFiltrada() {
+    const listaEl = document.getElementById('listAsoVencendo');
+    if (!listaEl) return;
+
+    let filtrados = listaAlertasAsoCache;
+    if (asoAlertFilterAtual === 'vencido') filtrados = listaAlertasAsoCache.filter(item => item.r.status === 'vencido');
+    else if (asoAlertFilterAtual === 'vencendo30') filtrados = listaAlertasAsoCache.filter(item => item.r.status === 'vencendo30');
+    else if (asoAlertFilterAtual === 'vencendo60') filtrados = listaAlertasAsoCache.filter(item => item.r.status === 'vencendo60');
+    else if (asoAlertFilterAtual === 'sem_registro') filtrados = listaAlertasAsoCache.filter(item => item.r.status === 'sem_registro');
+
+    if (filtrados.length === 0) {
+        listaEl.innerHTML = '<div class="db-list-empty" style="padding:16px; text-align:center; color:var(--text-light); font-size:12px;">✅ Nenhum colaborador neste filtro de alerta</div>';
+        return;
+    }
+
+    listaEl.innerHTML = filtrados.map(({ e, r }) => {
+        let cls = 'db-item-warning';
+        let badge = '';
+        if (r.status === 'vencido') {
+            cls = 'db-item-danger';
+            badge = `<span style="background:#fee2e2; color:#991b1b; padding:2px 6px; border-radius:4px; font-weight:700; font-size:10.5px;">🔴 Vencido há ${Math.abs(r.diffDays)}d</span>`;
+        } else if (r.status === 'vencendo30') {
+            cls = 'db-item-warning';
+            badge = `<span style="background:#ffedd5; color:#c2410c; padding:2px 6px; border-radius:4px; font-weight:700; font-size:10.5px;">🟠 Vence em ${r.diffDays === 0 ? 'HOJE' : r.diffDays + 'd'}</span>`;
+        } else if (r.status === 'vencendo60') {
+            cls = 'db-item-warning';
+            badge = `<span style="background:#fef9c3; color:#854d0e; padding:2px 6px; border-radius:4px; font-weight:700; font-size:10.5px;">🟡 Vence em ${r.diffDays}d</span>`;
+        } else {
+            cls = 'db-item-warning';
+            badge = `<span style="background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:4px; font-weight:700; font-size:10.5px;">⚪ Sem Registro ASO</span>`;
+        }
+
+        let msg = r.status === 'sem_registro'
+            ? (r.ultimoExame ? 'Último ASO sem data de vencimento preenchida' : 'Nenhum ASO cadastrado')
+            : (r.status === 'vencido' ? `Vencido há ${Math.abs(r.diffDays)} dia(s)` : `Vence em ${r.diffDays} dia(s) (${formatSimpleDate(r.dataVencimento)})`);
+
+        const tipoLabel = ASO_TIPO_LABELS[r.ultimoExame?.tipo_aso] || r.ultimoExame?.tipo_aso || 'ASO';
+        const subLabel = `${escapeHTML(e.setor || '—')} • GHE ${normalizarGhe(e.ghe)} • ${escapeHTML(tipoLabel)} • ${msg}`;
+
+        return `<div class="db-list-item ${cls}" style="cursor:pointer;" onclick="mostrarDetalheColaborador('${escapeHTML(e.id)}')">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <div class="db-list-item-title">${escapeHTML(e.nome || e.id)}</div>
+                ${badge}
+            </div>
+            <div class="db-list-item-sub">${subLabel}</div>
+        </div>`;
+    }).join('');
+}
 
 // ============================================
-// RECOMENDAÇÃO DE EXAMES — AVALIAÇÃO PSICOSSOCIAL (PGR & PCMSO)
-// Controle dinâmico e configurável de grupos obrigatórios, agendamento reprogramável
-// de mutirão e conformidade legal com NR-35 (Altura), NR-33 (Espaço Confinado) e NR-10 (SEP).
+// REGRA LEGAL DE VALIDADE DE ASOs (NR-07 / PCMSO)
+// Periodicidade: 12 meses (1 ano) para funções operacionais ou expostas a riscos;
+// 24 meses para funções puramente administrativas (GHE 03, GHE 16, GHE 22, GHE 23, GHE 24).
+// Se o colaborador não tem vencimento digitado, calcula: data_exame + periodicidade
+// Se não tem nenhum ASO registrado, calcula: dt_admissao + periodicidade
 // ============================================
+function calcularValidadeAsoPcmso(colaborador) {
+    const matricula = colaborador.id;
+    const exames = (allAsoExames || []).filter(a => a.matricula === matricula && a.data_exame);
+    const gheNum = normalizarGhe(colaborador.ghe);
+    const isAdministrativo = ['03', '16', '22', '23', '24'].includes(gheNum);
+    const periodicidadeMeses = isAdministrativo ? 24 : 12;
 
-// Data padrão ou configurada do próximo mutirão / visita da psicóloga
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+
+    if (exames.length === 0) {
+        // Se nunca teve ASO registrado, avalia com base na data de admissão
+        if (colaborador.dt_admissao) {
+            const adm = parseLocalDate(colaborador.dt_admissao);
+            const vencEstimado = addMeses(colaborador.dt_admissao, periodicidadeMeses);
+            const vencDate = parseLocalDate(vencEstimado); vencDate.setHours(0, 0, 0, 0);
+            const diffDays = Math.ceil((vencDate.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+            
+            // Se foi admitido há mais de 1 ano sem exame, está vencido; se foi admitido há 10-11 meses, está vencendo
+            if (diffDays < 0) {
+                return { status: 'vencido', ultimoExame: null, diffDays, dataVencimento: vencEstimado, periodicidadeMeses, motivo: 'Admissão sem ASO periódico há >1 ano' };
+            } else if (diffDays <= 30) {
+                return { status: 'vencendo30', ultimoExame: null, diffDays, dataVencimento: vencEstimado, periodicidadeMeses, motivo: '1º Periódico vence em 30d da admissão' };
+            } else if (diffDays <= 60) {
+                return { status: 'vencendo60', ultimoExame: null, diffDays, dataVencimento: vencEstimado, periodicidadeMeses, motivo: '1º Periódico vence em 60d da admissão' };
+            }
+        }
+        return { status: 'sem_registro', ultimoExame: null, diffDays: null, dataVencimento: null, periodicidadeMeses, motivo: 'Sem ASO cadastrado' };
+    }
+
+    const ultimo = exames.reduce((max, a) => parseLocalDate(a.data_exame) > parseLocalDate(max.data_exame) ? a : max, exames[0]);
+    let dataVencimento = ultimo.data_vencimento;
+    
+    // Se a data de vencimento não foi preenchida na mão, aplica a regra de 1 ano (ou 2 anos adm)
+    if (!dataVencimento && ultimo.data_exame) {
+        dataVencimento = addMeses(ultimo.data_exame, periodicidadeMeses);
+    }
+
+    if (!dataVencimento) {
+        return { status: 'sem_registro', ultimoExame: ultimo, diffDays: null, dataVencimento: null, periodicidadeMeses, motivo: 'Último ASO sem data de validade' };
+    }
+
+    const venc = parseLocalDate(dataVencimento); venc.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((venc.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+
+    let status = 'em_dia';
+    if (diffDays < 0) status = 'vencido';
+    else if (diffDays <= 30) status = 'vencendo30';
+    else if (diffDays <= 60) status = 'vencendo60';
+
+    return { status, ultimoExame: ultimo, diffDays, dataVencimento, periodicidadeMeses, motivo: ultimo.tipo_aso ? `ASO ${ultimo.tipo_aso.toUpperCase()}` : 'ASO' };
+}
+
+// ============================================
+// MODAL DE GESTÃO DE VALIDADE DE ASOs (30 e 60 dias)
+// ============================================
+let valAsoFiltroAtual = 'todos'; // 'todos' | 'vencidos' | 'vencendo30' | 'vencendo60' | 'emDia' | 'semRegistro'
+let dadosValidadeAsosCache = [];
+
+function abrirModalGestaoValidadeAsos() {
+    valAsoFiltroAtual = 'todos';
+    document.querySelectorAll('#filtroValAsoPills .sector-pill').forEach(b => b.classList.remove('active'));
+    const btnTodos = document.querySelector('#filtroValAsoPills .sector-pill');
+    if (btnTodos) btnTodos.classList.add('active');
+
+    const inputBusca = document.getElementById('valAsoBuscaInput');
+    if (inputBusca) inputBusca.value = '';
+
+    calcularEAtualizarValidadeAsos();
+    const modal = document.getElementById('modalGestaoValidadeAsos');
+    if (modal) modal.style.display = 'flex';
+}
+
+function fecharModalGestaoValidadeAsos() {
+    const modal = document.getElementById('modalGestaoValidadeAsos');
+    if (modal) modal.style.display = 'none';
+}
+
+function filtrarTabelaValidadeAsos(filtro, btn) {
+    valAsoFiltroAtual = filtro;
+    document.querySelectorAll('#filtroValAsoPills .sector-pill').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderTabelaValidadeAsos();
+}
+
+function calcularEAtualizarValidadeAsos() {
+    const ativos = (allEfetivo || []).filter(colaboradorEstaAtivo);
+    dadosValidadeAsosCache = ativos.map(c => {
+        const r = calcularValidadeAsoPcmso(c);
+        const gNum = normalizarGhe(c.ghe);
+        return {
+            colaborador: c,
+            matricula: c.id,
+            nome: c.nome || '',
+            cpf: c.cpf || '',
+            ghe: gNum,
+            gheNome: obterNomeGheCompleto(gNum),
+            setor: c.setor || '',
+            funcao: c.funcao || '',
+            dt_admissao: c.dt_admissao || '',
+            ultimoAsoData: r.ultimoExame?.data_exame || null,
+            ultimoAsoTipo: r.ultimoExame?.tipo_aso || null,
+            periodicidadeMeses: r.periodicidadeMeses,
+            dataVencimento: r.dataVencimento,
+            diffDays: r.diffDays,
+            statusKey: r.status,
+            motivo: r.motivo
+        };
+    });
+
+    // Ordenação: 1º Vencidos (mais dias de atraso), 2º Vencendo 30d, 3º Vencendo 60d, 4º Sem Registro, 5º Em dia
+    const prioridade = { 'vencido': 1, 'vencendo30': 2, 'vencendo60': 3, 'sem_registro': 4, 'em_dia': 5 };
+    dadosValidadeAsosCache.sort((a, b) => {
+        const pA = prioridade[a.statusKey] || 9;
+        const pB = prioridade[b.statusKey] || 9;
+        if (pA !== pB) return pA - pB;
+        if (a.diffDays !== null && b.diffDays !== null) return a.diffDays - b.diffDays;
+        return a.nome.localeCompare(b.nome);
+    });
+
+    // Contadores KPIs
+    const vencidos = dadosValidadeAsosCache.filter(d => d.statusKey === 'vencido').length;
+    const v30 = dadosValidadeAsosCache.filter(d => d.statusKey === 'vencendo30').length;
+    const v60 = dadosValidadeAsosCache.filter(d => d.statusKey === 'vencendo60').length;
+    const emDia = dadosValidadeAsosCache.filter(d => d.statusKey === 'em_dia').length;
+    const semReg = dadosValidadeAsosCache.filter(d => d.statusKey === 'sem_registro').length;
+
+    const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setTxt('valAsoKpi_vencidos', vencidos);
+    setTxt('valAsoKpi_vencendo30', v30);
+    setTxt('valAsoKpi_vencendo60', v60);
+    setTxt('valAsoKpi_emDia', emDia);
+    setTxt('valAsoKpi_semRegistro', semReg);
+
+    setTxt('valAsoCount_todos', dadosValidadeAsosCache.length);
+    setTxt('valAsoCount_vencidos', vencidos);
+    setTxt('valAsoCount_30', v30);
+    setTxt('valAsoCount_60', v60);
+    setTxt('valAsoCount_emDia', emDia);
+    setTxt('valAsoCount_semReg', semReg);
+
+    renderTabelaValidadeAsos();
+}
+
+function renderTabelaValidadeAsos() {
+    const tbody = document.getElementById('tabelaValidadeAsosCorpo');
+    if (!tbody) return;
+
+    const busca = (document.getElementById('valAsoBuscaInput')?.value || '').toLowerCase().trim();
+
+    let filtrados = dadosValidadeAsosCache.filter(d => {
+        if (valAsoFiltroAtual === 'vencidos' && d.statusKey !== 'vencido') return false;
+        if (valAsoFiltroAtual === 'vencendo30' && d.statusKey !== 'vencendo30') return false;
+        if (valAsoFiltroAtual === 'vencendo60' && d.statusKey !== 'vencendo60') return false;
+        if (valAsoFiltroAtual === 'emDia' && d.statusKey !== 'em_dia') return false;
+        if (valAsoFiltroAtual === 'semRegistro' && d.statusKey !== 'sem_registro') return false;
+
+        if (busca) {
+            const txt = `${d.matricula} ${d.nome} ${d.cpf} ${d.gheNome} ${d.funcao} ${d.setor}`.toLowerCase();
+            if (!txt.includes(busca)) return false;
+        }
+        return true;
+    });
+
+    if (filtrados.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" style="padding: 24px; text-align: center; color: var(--text-light);">Nenhum colaborador encontrado para os filtros selecionados.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtrados.map(d => {
+        let badgeStatus = '';
+        let badgePrazo = '—';
+        if (d.statusKey === 'vencido') {
+            badgeStatus = '<span style="background:#fee2e2; color:#991b1b; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">🔴 VENCIDO</span>';
+            badgePrazo = `<span style="color:#b91c1c; font-weight:700;">Há ${Math.abs(d.diffDays)} dia(s)</span>`;
+        } else if (d.statusKey === 'vencendo30') {
+            badgeStatus = '<span style="background:#ffedd5; color:#c2410c; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">🟠 ATÉ 30 DIAS</span>';
+            badgePrazo = `<span style="color:#ea580c; font-weight:700;">${d.diffDays === 0 ? 'Vence HOJE' : 'Em ' + d.diffDays + ' dia(s)'}</span>`;
+        } else if (d.statusKey === 'vencendo60') {
+            badgeStatus = '<span style="background:#fef9c3; color:#854d0e; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">🟡 31 A 60 DIAS</span>';
+            badgePrazo = `<span style="color:#ca8a04; font-weight:700;">Em ${d.diffDays} dia(s)</span>`;
+        } else if (d.statusKey === 'em_dia') {
+            badgeStatus = '<span style="background:#d1fae5; color:#065f46; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">🟢 EM DIA</span>';
+            badgePrazo = `<span style="color:#16a34a;">Em ${d.diffDays} dia(s)</span>`;
+        } else {
+            badgeStatus = '<span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">⚪ SEM REGISTRO</span>';
+            badgePrazo = '<span style="color:var(--text-light);">Urgente regularizar</span>';
+        }
+
+        const dataAdmFmt = d.dt_admissao ? formatSimpleDate(d.dt_admissao) : '—';
+        const ultimoAsoFmt = d.ultimoAsoData 
+            ? `<div>${formatSimpleDate(d.ultimoAsoData)}</div><div style="font-size:10px; color:var(--text-light); text-transform:uppercase;">${d.ultimoAsoTipo || 'ASO'}</div>`
+            : '<span style="color:var(--text-light);">Nenhum</span>';
+        const vencFmt = d.dataVencimento ? `<b>${formatSimpleDate(d.dataVencimento)}</b>` : '<span style="color:#b91c1c;">Pendente</span>';
+
+        return `
+            <tr style="border-bottom: 1px solid var(--border); font-size: 11.5px; transition: background 0.15s ease;" onmouseover="this.style.background='rgba(2,132,199,0.03)'" onmouseout="this.style.background=''">
+                <td style="padding: 8px 12px; font-weight: 700; color: var(--primary);">${escapeHTML(d.matricula)}</td>
+                <td style="padding: 8px 12px;">
+                    <div style="font-weight: 700; color: var(--text); cursor:pointer;" onclick="mostrarDetalheColaborador('${escapeHTML(d.matricula)}')" title="Ver prontuário">${escapeHTML(d.nome)}</div>
+                    ${d.cpf ? `<div style="font-size: 10.5px; color: var(--text-light);">CPF: ${escapeHTML(d.cpf)}</div>` : ''}
+                </td>
+                <td style="padding: 8px 12px;">
+                    <div style="font-weight:600; color:var(--text);">${escapeHTML(d.gheNome)}</div>
+                    <div style="font-size:10.5px; color:var(--text-light);">${escapeHTML(d.setor)}</div>
+                </td>
+                <td style="padding: 8px 12px; color: var(--text);">${escapeHTML(d.funcao)}</td>
+                <td style="padding: 8px 12px; color: var(--text-light);">${dataAdmFmt}</td>
+                <td style="padding: 8px 12px;">${ultimoAsoFmt}</td>
+                <td style="padding: 8px 12px; font-size:11px;">
+                    <span style="background:var(--bg); border:1px solid var(--border); padding:2px 6px; border-radius:4px;">${d.periodicidadeMeses} meses</span>
+                </td>
+                <td style="padding: 8px 12px;">${vencFmt}</td>
+                <td style="padding: 8px 12px; text-align: center;">${badgePrazo}</td>
+                <td style="padding: 8px 12px; text-align: center;">${badgeStatus}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Impressão da Relação de Validade de ASOs para a Clínica Médica (Blob URL — 100% livre de bloqueador de popups)
+function imprimirRelacaoValidadeAsos() {
+    const prioritarios = dadosValidadeAsosCache.filter(d => d.statusKey === 'vencido' || d.statusKey === 'vencendo30' || d.statusKey === 'vencendo60' || d.statusKey === 'sem_registro');
+    const hojeStr = new Date().toLocaleDateString('pt-BR');
+
+    const linhasHtml = prioritarios.map((c, i) => {
+        let sit = 'Vencido';
+        if (c.statusKey === 'vencendo30') sit = `Vence em ${c.diffDays}d`;
+        else if (c.statusKey === 'vencendo60') sit = `Vence em ${c.diffDays}d`;
+        else if (c.statusKey === 'sem_registro') sit = 'Sem ASO';
+
+        return `
+            <tr>
+                <td style="text-align:center; font-weight:700;">${i + 1}</td>
+                <td style="text-align:center; font-weight:700;">${escapeHTML(c.matricula)}</td>
+                <td>
+                    <b>${escapeHTML(c.nome)}</b>
+                    <div style="font-size:9px; color:#555;">CPF: ${escapeHTML(c.cpf || '—')}</div>
+                </td>
+                <td>${escapeHTML(c.gheNome)}</td>
+                <td>${escapeHTML(c.funcao)}</td>
+                <td style="text-align:center;">${c.ultimoAsoData ? formatSimpleDate(c.ultimoAsoData) : '—'}</td>
+                <td style="text-align:center; font-weight:700;">${c.dataVencimento ? formatSimpleDate(c.dataVencimento) : 'Pendente'}</td>
+                <td style="text-align:center;">${sit}</td>
+                <td style="width:120px; border-bottom:1px solid #000;">&nbsp;</td>
+            </tr>
+        `;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Previsão e Validade de ASOs Periódicos — NR-07 / PCMSO (${hojeStr})</title>
+    <style>
+        @page { size: landscape; margin: 12mm; }
+        body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #111; margin: 15px; }
+        .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:10px; }
+        .cabecalho img { max-height:46px; }
+        .titulo-doc { text-align:center; flex:1; }
+        .titulo-doc h2 { margin:0; font-size:14px; font-weight:800; }
+        .titulo-doc p { margin:2px 0 0; font-size:10.5px; color:#444; }
+        table { width:100%; border-collapse:collapse; margin-top:8px; font-size:9.5px; }
+        th, td { border:1px solid #444; padding:5px 6px; }
+        th { background:#f1f5f9; font-weight:700; text-align:left; text-transform:uppercase; }
+        .rodape-assinaturas { margin-top:24px; display:flex; justify-content:space-around; text-align:center; }
+        .linha-assinatura { width:260px; border-top:1px solid #000; padding-top:4px; font-size:10px; }
+        .no-print { text-align:center; margin-bottom:12px; }
+        .no-print button { padding:8px 18px; font-size:12px; font-weight:700; background:#0284c7; color:#fff; border:none; border-radius:6px; cursor:pointer; }
+        @media print { .no-print { display:none; } body { margin:0; } }
+    </style>
+</head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir Relação Oficial para Agendamento Clínico</button></div>
+    <div class="cabecalho">
+        <img src="${LOGO_COP_BASE64}" alt="COP">
+        <div class="titulo-doc">
+            <h2>RELAÇÃO DE VENCIMENTOS E PREVISÃO DE ASOs PERIÓDICOS (NR-07 / PCMSO)</h2>
+            <p>Controle Preventivo de Agendamentos — Vencidos e a Vencer em 30 e 60 Dias</p>
+            <p><b>Posição em: ${hojeStr}</b> — Consórcio Operador PISF Ramal do Agreste</p>
+        </div>
+        <div style="width:46px;"></div>
+    </div>
+
+    <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:6px 10px; margin-bottom:8px; font-size:10px;">
+        <strong>Total Convocados para Agendamento: ${prioritarios.length}</strong> (Prioridade Máxima: Vencidos e Janela de 30/60 dias da NR-07)
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width:25px; text-align:center;">#</th>
+                <th style="width:50px; text-align:center;">Matr.</th>
+                <th>Colaborador / CPF</th>
+                <th>GHE / Setor</th>
+                <th>Função</th>
+                <th style="text-align:center;">Último ASO</th>
+                <th style="text-align:center;">Vencimento</th>
+                <th style="text-align:center;">Janela</th>
+                <th>Data Agendada / Clínica</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${linhasHtml}
+        </tbody>
+    </table>
+
+    <div class="rodape-assinaturas">
+        <div class="linha-assinatura">
+            <b>João Everton de Souza Limeira</b><br>
+            Engenheiro de Segurança do Trabalho<br>
+            CREA 12345/D-PE — Consórcio COP
+        </div>
+        <div class="linha-assinatura">
+            <b>Médico do Trabalho / Clínica Conveniada</b><br>
+            Responsável pelo PCMSO<br>
+            CRM: _______________________
+        </div>
+    </div>
+
+    <script>
+        window.onload = function() {
+            setTimeout(function() { window.print(); }, 400);
+        };
+    </script>
+</body>
+</html>`;
+
+    abrirDocumentoHtmlParaImpressao(html, `Validade_ASOs_30_60_dias_${hojeStr.replace(/\//g, '-')}`);
+}
+
+function exportarExcelValidadeAsos() {
+    if (typeof XLSX === 'undefined') {
+        alert('Biblioteca XLSX não carregada.');
+        return;
+    }
+    const rows = dadosValidadeAsosCache.map(d => ({
+        'Matrícula': d.matricula,
+        'Nome do Colaborador': d.nome,
+        'CPF': d.cpf,
+        'GHE': d.ghe,
+        'Descrição GHE': d.gheNome,
+        'Setor': d.setor,
+        'Função': d.funcao,
+        'Admissão': d.dt_admissao ? formatSimpleDate(d.dt_admissao) : '',
+        'Último ASO (Data)': d.ultimoAsoData ? formatSimpleDate(d.ultimoAsoData) : '',
+        'Último ASO (Tipo)': d.ultimoAsoTipo || '',
+        'Periodicidade PCMSO (Meses)': d.periodicidadeMeses,
+        'Data de Vencimento': d.dataVencimento ? formatSimpleDate(d.dataVencimento) : '',
+        'Dias para Vencer': d.diffDays !== null ? d.diffDays : '',
+        'Status de Validade': d.statusKey === 'vencido' ? 'VENCIDO' : d.statusKey === 'vencendo30' ? 'VENCE EM ATÉ 30 DIAS' : d.statusKey === 'vencendo60' ? 'VENCE EM 31 A 60 DIAS' : d.statusKey === 'em_dia' ? 'EM DIA' : 'SEM REGISTRO'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Validade ASOs');
+    const hoje = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `Validade_ASOs_Periodicos_NR07_${hoje}.xlsx`);
+}
+
+function copiarAlertaValidadeAsosWhatsApp() {
+    const vencidos = dadosValidadeAsosCache.filter(d => d.statusKey === 'vencido');
+    const v30 = dadosValidadeAsosCache.filter(d => d.statusKey === 'vencendo30');
+    const v60 = dadosValidadeAsosCache.filter(d => d.statusKey === 'vencendo60');
+
+    let txt = `🚨 *ALERTA DE VALIDADE DE ASOs PERIÓDICOS (NR-07 / PCMSO)* 📅\n`;
+    txt += `_Consórcio COP — Ramal do Agreste_\n\n`;
+    txt += `📊 *Panorama Geral de Vencimentos:*\n`;
+    txt += `🔴 *ASOs Já Vencidos:* ${vencidos.length} colaboradores\n`;
+    txt += `🟠 *Vencendo nos próximos 30 dias:* ${v30.length} colaboradores\n`;
+    txt += `🟡 *Vencendo entre 31 e 60 dias:* ${v60.length} colaboradores\n\n`;
+
+    if (vencidos.length > 0) {
+        txt += `⚠️ *URGENTE — JÁ VENCIDOS (${vencidos.length}):*\n`;
+        vencidos.slice(0, 15).forEach((c, idx) => {
+            txt += `   ${idx + 1}. ${c.nome} (Matr. ${c.matricula} - ${c.funcao}) - Vencido há ${Math.abs(c.diffDays)}d\n`;
+        });
+        if (vencidos.length > 15) txt += `   ... e mais ${vencidos.length - 15} colaboradores.\n`;
+        txt += `\n`;
+    }
+
+    if (v30.length > 0) {
+        txt += `🟠 *ATENÇÃO — VENCENDO EM ATÉ 30 DIAS (${v30.length}):*\n`;
+        v30.slice(0, 15).forEach((c, idx) => {
+            txt += `   ${idx + 1}. ${c.nome} (Matr. ${c.matricula} - ${c.funcao}) - Vence em ${c.diffDays}d (${formatSimpleDate(c.dataVencimento)})\n`;
+        });
+        if (v30.length > 15) txt += `   ... e mais ${v30.length - 15} colaboradores.\n`;
+        txt += `\n`;
+    }
+
+    txt += `Solicitamos alinhamento com a Engenharia de Segurança para agendamento dos exames clínicos e complementares na clínica credenciada.\n`;
+    txt += `_Engenharia de Segurança do Trabalho — Consórcio COP_`;
+
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(txt).then(() => {
+            alert('✅ Mensagem de alerta de vencimento de ASOs copiada para o WhatsApp!');
+        }).catch(() => {
+            prompt('Copie o texto abaixo:', txt);
+        });
+    } else {
+        prompt('Copie o texto abaixo:', txt);
+    }
+}
+
+// ============================================
+// RECOMENDAÇÃO DE EXAMES E COMPLEMENTARES PCMSO MULTI-EXAMES
+// ============================================
+let exameComplementarFocoAtual = 'psicossocial';
+
+const CATALOGO_EXAMES_COMPLEMENTARES = {
+    psicossocial: {
+        id: 'psicossocial',
+        nomeExame: 'Avaliação Psicossocial',
+        tituloHeader: '🧠 Recomendação de Exames — Avaliação Psicossocial (PGR & PCMSO)',
+        descricaoBase: 'Exigência mandatória para atividades de risco crítico: Trabalho em Altura (NR-35), Espaço Confinado (NR-33) e Sistema Elétrico de Potência - SEP (NR-10).',
+        ghesPadrao: ['05', '06', '07', '08', '10', '25', '26'],
+        periodicidadeMeses: 12,
+        profissionalPadrao: 'Psicóloga Responsável',
+        tipoProfissional: 'CRP',
+        localPadrao: 'Ambulatório / Sala Médica da Obra'
+    },
+    audiometria: {
+        id: 'audiometria',
+        nomeExame: 'Audiometria Ocupacional',
+        tituloHeader: '👂 Recomendação de Exames — Audiometria Tonal e Vocal (NR-07 Anexo II)',
+        descricaoBase: 'Controle audiológico obrigatório para trabalhadores expostos a níveis de ruído contínuo ou intermitente acima dos limites de tolerância (NR-09 e NR-15).',
+        ghesPadrao: ['01', '04', '05', '06', '07', '08', '10', '11', '12', '13', '17', '18', '19', '21', '25', '26'],
+        periodicidadeMeses: 12,
+        profissionalPadrao: 'Fonoaudióloga Ocupacional',
+        tipoProfissional: 'CRFa',
+        localPadrao: 'Cabine Audiométrica / Ambulatório da Obra'
+    },
+    ecg: {
+        id: 'ecg',
+        nomeExame: 'Eletrocardiograma (ECG)',
+        tituloHeader: '🫀 Recomendação de Exames — Eletrocardiograma (ECG)',
+        descricaoBase: 'Rastreamento de arritmias e cardiopatias prévias obrigatório para atividades em altura (NR-35), eletricidade (NR-10) e manuseio de máquinas.',
+        ghesPadrao: ['05', '06', '07', '08', '10', '15', '19', '25', '26'],
+        periodicidadeMeses: 12,
+        profissionalPadrao: 'Cardiologista / Clínico Responsável',
+        tipoProfissional: 'CRM',
+        localPadrao: 'Ambulatório da Obra / Clínica Credenciada'
+    },
+    espirometria: {
+        id: 'espirometria',
+        nomeExame: 'Espirometria Ocupacional',
+        tituloHeader: '🫁 Recomendação de Exames — Espirometria Ocupacional (Função Pulmonar)',
+        descricaoBase: 'Avaliação da integridade respiratória para operadores e frentes de manutenção com exposição a poeiras minerais, fumos e aerodispersóides.',
+        ghesPadrao: ['05', '06', '07', '08', '10', '11', '12', '15', '17', '18', '19', '21', '25', '26'],
+        periodicidadeMeses: 24,
+        profissionalPadrao: 'Médico Pneumologista / Medicina do Trabalho',
+        tipoProfissional: 'CRM',
+        localPadrao: 'Ambulatório da Obra / Clínica Credenciada'
+    },
+    acuidade: {
+        id: 'acuidade',
+        nomeExame: 'Acuidade Visual',
+        tituloHeader: '👁️ Recomendação de Exames — Teste de Acuidade Visual (Snellen)',
+        descricaoBase: 'Avaliação de campo visual e nitidez obrigatória para motoristas, operadores de máquinas pesadas, empilhadeiras e operadores de sistemas hídricos.',
+        ghesPadrao: ['08', '09', '10', '11', '12', '15', '25'],
+        periodicidadeMeses: 12,
+        profissionalPadrao: 'Médico Oftalmologista / Examinador Credenciado',
+        tipoProfissional: 'CRM',
+        localPadrao: 'Ambulatório da Obra / Clínica Credenciada'
+    },
+    rx_coluna: {
+        id: 'rx_coluna',
+        nomeExame: 'Raio X da Coluna Lombo Sacra',
+        tituloHeader: '🦴 Recomendação de Exames — Raio X Coluna Lombo-Sacra (NR-17 Ergonomia)',
+        descricaoBase: 'Acompanhamento preventivo osteomuscular para atividades que envolvem movimentação manual de peso, esforço postural e manutenção pesada.',
+        ghesPadrao: ['05', '06', '07', '08', '11', '12', '15', '19', '26'],
+        periodicidadeMeses: 24,
+        profissionalPadrao: 'Médico Radiologista',
+        tipoProfissional: 'CRM',
+        localPadrao: 'Clínica de Diagnóstico por Imagem'
+    },
+    rx_torax: {
+        id: 'rx_torax',
+        nomeExame: 'Raio X de Tórax (Padrão OIT)',
+        tituloHeader: '🫁 Recomendação de Exames — Raio X de Tórax Padrão OIT',
+        descricaoBase: 'Rastreamento de pneumoconioses em colaboradores expostos a poeiras minerais e atividades em carpintaria / corte de madeira.',
+        ghesPadrao: ['07', '19', '26'],
+        periodicidadeMeses: 60,
+        profissionalPadrao: 'Médico Radiologista / Leitor OIT',
+        tipoProfissional: 'CRM',
+        localPadrao: 'Clínica de Imagem Credenciada'
+    },
+    glicose: {
+        id: 'glicose',
+        nomeExame: 'Glicemia de Jejum',
+        tituloHeader: '🩸 Recomendação de Exames — Glicemia de Jejum (Laboratorial)',
+        descricaoBase: 'Controle metabólico para prevenção de mal súbito, vertigens e síncopes em trabalhadores executantes de atividades em altura e espaços confinados.',
+        ghesPadrao: ['04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '17', '18', '19', '20', '21', '25', '26'],
+        periodicidadeMeses: 12,
+        profissionalPadrao: 'Laboratório de Análises Clínicas',
+        tipoProfissional: 'CRF / CRBM',
+        localPadrao: 'Posto de Coleta Ambulatorial da Obra'
+    },
+    hemograma: {
+        id: 'hemograma',
+        nomeExame: 'Hemograma Completo',
+        tituloHeader: '🩸 Recomendação de Exames — Hemograma Completo (Laboratorial)',
+        descricaoBase: 'Avaliação hematológica abrangente para rastreamento de anemias e respostas infecciosas nos trabalhadores de frente de obra.',
+        ghesPadrao: ['04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '17', '18', '19', '20', '21', '25', '26'],
+        periodicidadeMeses: 12,
+        profissionalPadrao: 'Laboratório de Análises Clínicas',
+        tipoProfissional: 'CRF / CRBM',
+        localPadrao: 'Posto de Coleta Ambulatorial da Obra'
+    },
+    ige_abelha: {
+        id: 'ige_abelha',
+        nomeExame: 'IgE Específica - Abelha',
+        tituloHeader: '🐝 Recomendação de Exames — IgE Específica - Veneno de Abelha (Risco Biológico)',
+        descricaoBase: 'Identificação de hipersensibilidade e risco de choque anafilático para equipes de supressão vegetal, motosserristas, roçadeiras e conservação de faixa.',
+        ghesPadrao: ['07', '08', '26'],
+        periodicidadeMeses: 24,
+        profissionalPadrao: 'Laboratório de Análises Clínicas',
+        tipoProfissional: 'CRF / CRBM',
+        localPadrao: 'Posto de Coleta Ambulatorial da Obra'
+    },
+    matriz_geral: {
+        id: 'matriz_geral',
+        nomeExame: 'Matriz Geral de Exames do PCMSO',
+        tituloHeader: '📋 Matriz Geral de Exames Complementares do PCMSO (Consolidado)',
+        descricaoBase: 'Visão consolidada de todas as exigências do PCMSO para os 27 Grupos Homogêneos de Exposição (GHEs) da obra.',
+        ghesPadrao: ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27'],
+        periodicidadeMeses: 12,
+        profissionalPadrao: 'Médico Coordenador do PCMSO',
+        tipoProfissional: 'CRM',
+        localPadrao: 'Consórcio COP'
+    }
+};
+
+function aoMudarExameComplementarFoco() {
+    const sel = document.getElementById('selExameComplementarFoco');
+    if (sel) {
+        exameComplementarFocoAtual = sel.value;
+    }
+    renderRecomendacaoPsicossocial();
+}
+
+// Data do próximo mutirão / visita clínica para o exame em foco
 function obterDataMutiraoPsico() {
-    return localStorage.getItem('psico_data_mutirao') || '2026-10-06';
+    const chave = `exame_data_mutirao_${exameComplementarFocoAtual}`;
+    return localStorage.getItem(chave) || localStorage.getItem('psico_data_mutirao') || '2026-10-06';
 }
 
 function salvarDataMutiraoPsico(novaData) {
-    if (novaData) localStorage.setItem('psico_data_mutirao', novaData);
+    if (novaData) {
+        localStorage.setItem(`exame_data_mutirao_${exameComplementarFocoAtual}`, novaData);
+        if (exameComplementarFocoAtual === 'psicossocial') {
+            localStorage.setItem('psico_data_mutirao', novaData);
+        }
+    }
 }
 
-// Grupos obrigatórios dinâmicos (lê do localStorage ou infere do PCMSO / catálogo)
+// GHEs obrigatórios para o exame selecionado
 function obterGhesObrigatoriosPsicossocial() {
+    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+    const chave = `exame_ghes_${exameComplementarFocoAtual}`;
+
     try {
-        const salvo = localStorage.getItem('psico_ghes_obrigatorios');
+        const salvo = localStorage.getItem(chave) || (exameComplementarFocoAtual === 'psicossocial' ? localStorage.getItem('psico_ghes_obrigatorios') : null);
         if (salvo) {
             const arr = JSON.parse(salvo);
             if (Array.isArray(arr) && arr.length > 0) return new Set(arr);
         }
     } catch (e) {
-        console.warn('Erro ao ler psico_ghes_obrigatorios:', e);
+        console.warn('Erro ao ler GHEs configurados:', e);
     }
 
-    // Se não há configuração salva, detecta automaticamente os grupos que contêm "Psicossocial" no catálogo PCMSO
+    // Se não há configuração salva, detecta no catálogo PCMSO
     const detectados = new Set();
+    const termoBusca = (exameCfg.nomeExame || '').toLowerCase();
+
     if (typeof PCMSO_EXAMES_POR_GHE === 'object') {
         Object.entries(PCMSO_EXAMES_POR_GHE).forEach(([gId, info]) => {
             const num = gId.startsWith('G') ? gId.slice(1) : gId;
-            if (Array.isArray(info.exames) && info.exames.some(e => e.nome && e.nome.toLowerCase().includes('psico'))) {
+            if (Array.isArray(info.exames) && info.exames.some(e => e.nome && e.nome.toLowerCase().includes(termoBusca.slice(0, 5)))) {
                 detectados.add(normalizarGhe(num));
             }
         });
     }
 
-    // Garante no mínimo os 7 grupos mandatórios iniciais do PGR/PCMSO
-    ['05', '06', '07', '08', '10', '25', '26'].forEach(g => detectados.add(g));
+    if (detectados.size === 0) {
+        (exameCfg.ghesPadrao || []).forEach(g => detectados.add(g));
+    }
     return detectados;
 }
 
@@ -17146,7 +17785,7 @@ function obterNomeGheCompleto(gheId) {
 
 function obterNomeCurtoSetorGhe(gheId) {
     const nome = obterNomeGheCompleto(gheId);
-    return nome.replace(/^GRUPOs*d+s*-s*/i, '').replace(/^GHEs*d+s*-s*/i, '').trim();
+    return nome.replace(/^GRUPO\s*\d+\s*-\s*/i, '').replace(/^GHE\s*\d+\s*-\s*/i, '').trim();
 }
 
 let psicoFiltroStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'vencendo' | 'em_dia'
@@ -17156,9 +17795,10 @@ function obterDadosRecomendacaoPsicossocial() {
     const hojeStr = new Date().toISOString().split('T')[0];
     const dataMutirao = obterDataMutiraoPsico();
     const ghesObrigatorios = obterGhesObrigatoriosPsicossocial();
+    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+    const termoBusca = exameCfg.nomeExame.toLowerCase().slice(0, 5);
     const lista = [];
 
-    // Considera vencendo em breve quem vence até a data do mutirão ou até 45 dias depois dele
     const dataLimiteVencendo = addMeses(dataMutirao, 2);
 
     ativos.forEach(c => {
@@ -17169,21 +17809,21 @@ function obterDadosRecomendacaoPsicossocial() {
             .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
         const ultimoAso = asos[0] || null;
 
-        let temPsico = false;
-        let dataPsico = null;
-        let vencPsico = null;
-        let tipoAsoPsico = null;
-        let asoIdPsico = null;
+        let temExame = false;
+        let dataExame = null;
+        let vencExame = null;
+        let tipoAsoExame = null;
+        let asoIdExame = null;
 
         for (const a of asos) {
             if (Array.isArray(a.exames_detalhe)) {
-                const p = a.exames_detalhe.find(ex => ex.nome && ex.nome.toLowerCase().includes('psico'));
-                if (p) {
-                    temPsico = true;
-                    dataPsico = a.data_exame;
-                    vencPsico = p.data_vencimento || a.data_vencimento;
-                    tipoAsoPsico = a.tipo_aso;
-                    asoIdPsico = a.id;
+                const item = a.exames_detalhe.find(ex => ex.nome && ex.nome.toLowerCase().includes(termoBusca));
+                if (item) {
+                    temExame = true;
+                    dataExame = a.data_exame;
+                    vencExame = item.data_vencimento || a.data_vencimento;
+                    tipoAsoExame = a.tipo_aso;
+                    asoIdExame = a.id;
                     break;
                 }
             }
@@ -17193,18 +17833,18 @@ function obterDadosRecomendacaoPsicossocial() {
         let statusLabel = '🟢 EM DIA';
         let statusBadge = '<span style="background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🟢 EM DIA</span>';
 
-        if (!temPsico) {
+        if (!temExame) {
             statusKey = 'PENDENTE';
             statusLabel = `🔴 PENDENTE (Convocação ${formatSimpleDate(dataMutirao)})`;
             statusBadge = `<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🔴 PENDENTE (Convocação ${formatSimpleDate(dataMutirao)})</span>`;
-        } else if (vencPsico && vencPsico < hojeStr) {
+        } else if (vencExame && vencExame < hojeStr) {
             statusKey = 'VENCIDO';
             statusLabel = '🔴 VENCIDO';
             statusBadge = '<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🔴 VENCIDO</span>';
-        } else if (vencPsico && vencPsico <= dataLimiteVencendo) {
+        } else if (vencExame && vencExame <= dataLimiteVencendo) {
             statusKey = 'VENCENDO';
             statusLabel = `🟡 VENCENDO EM BREVE (Aproveitar ${formatSimpleDate(dataMutirao)})`;
-            statusBadge = `<span style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🟡 VENCE EM ${formatSimpleDate(vencPsico)}</span>`;
+            statusBadge = `<span style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🟡 VENCE EM ${formatSimpleDate(vencExame)}</span>`;
         }
 
         lista.push({
@@ -17219,11 +17859,11 @@ function obterDadosRecomendacaoPsicossocial() {
             ultimoAsoData: ultimoAso ? ultimoAso.data_exame : null,
             ultimoAsoTipo: ultimoAso ? ultimoAso.tipo_aso : null,
             ultimoAsoVenc: ultimoAso ? ultimoAso.data_vencimento : null,
-            temPsico,
-            dataPsico,
-            vencPsico,
-            tipoAsoPsico,
-            asoIdPsico,
+            temPsico: temExame,
+            dataPsico: dataExame,
+            vencPsico: vencExame,
+            tipoAsoPsico: tipoAsoExame,
+            asoIdPsico: asoIdExame,
             statusKey,
             statusLabel,
             statusBadge
@@ -17255,67 +17895,48 @@ function renderBannerMutiraoPsico() {
 
     const dataMutirao = obterDataMutiraoPsico();
     const dataFmt = formatSimpleDate(dataMutirao);
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    const dMutirao = parseLocalDate(dataMutirao);
-    const diffDias = Math.round((dMutirao - hoje) / (1000 * 60 * 60 * 24));
+    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
 
-    let bannerHtml = '';
+    // Calcular dias restantes
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const dMut = parseLocalDate(dataMutirao); dMut.setHours(0, 0, 0, 0);
+    const diffDias = Math.ceil((dMut.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
 
-    if (diffDias > 0) {
-        // Data futura
-        bannerHtml = `
-            <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-size: 12px; color: #5b21b6; line-height: 1.5; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-size: 24px;">📅</span>
-                    <div>
-                        <strong>Mutirão com Psicóloga Programado para ${dataFmt}</strong> <span style="background:#8b5cf6; color:#fff; padding:2px 8px; border-radius:999px; font-size:10.5px; font-weight:700; margin-left:4px;">Em ${diffDias} dia(s)</span><br>
-                        A exigência de Avaliação Psicossocial foi incluída no PCMSO. Convoque os colaboradores prioritários abaixo e aproveite a presença da profissional na obra.
-                    </div>
-                </div>
-                <button type="button" class="db-clear-btn" style="border-color:#8b5cf6; color:#6d28d9; background:#fff; font-weight:700; font-size:11.5px; padding:4px 10px;" onclick="abrirModalReprogramarDataMutirao()">
-                    ✏️ Reprogramar Data
-                </button>
-            </div>
-        `;
+    let bannerStatusHtml = '';
+    if (diffDias > 1) {
+        bannerStatusHtml = `<span style="background: rgba(255,255,255,0.25); padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 11.5px; border: 1px solid rgba(255,255,255,0.4);">⏳ Faltam ${diffDias} dias</span>`;
+    } else if (diffDias === 1) {
+        bannerStatusHtml = '<span style="background: #ea580c; color: #fff; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 11.5px;">⏰ É AMANHÃ!</span>';
     } else if (diffDias === 0) {
-        // É hoje!
-        bannerHtml = `
-            <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-size: 12px; color: #065f46; line-height: 1.5; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-size: 24px;">🔥</span>
-                    <div>
-                        <strong style="font-size:13px; color:#047857;">É HOJE! Mutirão de Avaliação Psicossocial (${dataFmt})</strong><br>
-                        Os atendimentos com a psicóloga estão agendados para hoje. À medida que os colaboradores forem atendidos, clique em <strong>"✍️ Registrar"</strong> na tabela para dar baixa imediata.
-                    </div>
-                </div>
-                <button type="button" class="db-clear-btn" style="border-color:#059669; color:#047857; background:#fff; font-weight:700; font-size:11.5px; padding:4px 10px;" onclick="abrirModalReprogramarDataMutirao()">
-                    📅 Agendar Próxima Data
-                </button>
-            </div>
-        `;
+        bannerStatusHtml = '<span style="background: #10b981; color: #fff; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 11.5px;">🎯 É HOJE!</span>';
     } else {
-        // Data já passou!
-        const diasAtras = Math.abs(diffDias);
-        bannerHtml = `
-            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-size: 12px; color: #92400e; line-height: 1.5; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-size: 24px;">⚠️</span>
-                    <div>
-                        <strong>A data programada (${dataFmt}) já passou (há ${diasAtras} dia(s)).</strong><br>
-                        Se os exames foram realizados, dê baixa nos colaboradores abaixo. Caso precise agendar um novo mutirão ou visita com a psicóloga, reprogramar a data agora:
-                    </div>
-                </div>
-                <button type="button" class="db-apply-btn" style="background:#d97706; font-size:12px; padding:6px 14px;" onclick="abrirModalReprogramarDataMutirao()">
-                    📅 Agendar Próximo Mutirão
-                </button>
-            </div>
-        `;
+        bannerStatusHtml = `<span style="background: #dc2626; color: #fff; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 11.5px;">⚠️ Data passada há ${Math.abs(diffDias)} dia(s)</span>`;
     }
 
-    container.innerHTML = bannerHtml;
+    const btnReprog = `<button type="button" onclick="abrirModalReprogramarDataMutirao()" style="background: rgba(255,255,255,0.9); color: #6b21a8; border: none; border-radius: 6px; padding: 5px 12px; font-weight: 800; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.15);">📅 Reprogramar Data</button>`;
+    const btnBaixarLote = `<button type="button" onclick="abrirModalBaixaLoteMutirao()" style="background: #10b981; color: #fff; border: none; border-radius: 6px; padding: 5px 12px; font-weight: 800; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.15);">✅ Baixa em Lote</button>`;
 
-    // Atualiza o texto do botão de impressão oficial no topo
+    container.innerHTML = `
+        <div style="background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); color: #fff; border-radius: 8px; padding: 12px 16px; margin-top: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="font-size: 26px;">🗓️</div>
+                <div>
+                    <div style="font-weight: 800; font-size: 13.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span>Atendimento / Mutirão Programado: ${dataFmt} (${exameCfg.nomeExame})</span>
+                        ${bannerStatusHtml}
+                    </div>
+                    <div style="font-size: 11.5px; opacity: 0.92; margin-top: 2px;">
+                        Profissional: <b>${exameCfg.profissionalPadrao}</b> • Local: ${exameCfg.localPadrao} • Regularização de inclusões e renovações
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                ${btnBaixarLote}
+                ${btnReprog}
+            </div>
+        </div>
+    `;
+
     const btnImp = document.getElementById('btnImprimirConvocacaoPsico');
     if (btnImp) btnImp.textContent = `🖨️ Imprimir Convocação (${dataFmt})`;
 }
@@ -17325,77 +17946,75 @@ function renderTextoGruposObrigatoriosPsico() {
     if (!el) return;
 
     const ghes = Array.from(obterGhesObrigatoriosPsicossocial()).sort();
-    const itensTexto = ghes.map(g => `<strong>GHE ${g}</strong> (${obterNomeCurtoSetorGhe(g)})`).join(', ');
+    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
 
-    el.innerHTML = `Grupos Obrigatórios no PCMSO (${ghes.length} GHEs configurados): ${itensTexto}. <a href="javascript:void(0)" onclick="abrirModalGerenciarGhesPsico()" style="color:#6366f1; font-weight:700; text-decoration:underline; margin-left:4px;">Alterar grupos</a>`;
+    const listaHtml = ghes.map(g => {
+        const nomeCurto = obterNomeCurtoSetorGhe(g);
+        return `<b style="color:var(--text);">GHE ${g}</b> (${escapeHTML(nomeCurto)})`;
+    }).join(' • ');
+
+    el.innerHTML = `
+        <div>${exameCfg.descricaoBase}</div>
+        <div style="margin-top: 3px;">
+            <span style="font-weight:700; color:var(--text);">Grupos Monitorados (${ghes.length}):</span> ${listaHtml}
+        </div>
+    `;
+
+    const thNome = document.getElementById('thExameFocoNome');
+    if (thNome) thNome.textContent = exameCfg.nomeExame;
 }
 
 function popularSelectGhesFiltroPsico() {
-    const sel = document.getElementById('psicoFiltroGhe');
+    const sel = document.getElementById('psicoGheSelect');
     if (!sel) return;
 
-    const valorAtual = sel.value;
-    const ghes = Array.from(obterGhesObrigatoriosPsicossocial()).sort();
+    const ghesObrig = Array.from(obterGhesObrigatoriosPsicossocial()).sort();
+    const valAtual = sel.value;
 
-    let options = '<option value="">Todos os GHEs Obrigatórios</option>';
-    ghes.forEach(g => {
-        options += `<option value="${g}">${escapeHTML(obterNomeGheCompleto(g))}</option>`;
-    });
+    sel.innerHTML = '<option value="">Todos os GHEs Monitorados</option>' + ghesObrig.map(g => {
+        const nomeCompleto = obterNomeGheCompleto(g);
+        return `<option value="${g}">${escapeHTML(nomeCompleto)}</option>`;
+    }).join('');
 
-    sel.innerHTML = options;
-    if (ghes.includes(valorAtual)) sel.value = valorAtual;
+    if (ghesObrig.includes(valAtual)) sel.value = valAtual;
 }
 
 function renderRecomendacaoPsicossocial() {
-    renderBannerMutiraoPsico();
-    renderTextoGruposObrigatoriosPsico();
     popularSelectGhesFiltroPsico();
+    renderTextoGruposObrigatoriosPsico();
+    renderBannerMutiraoPsico();
 
     const dados = obterDadosRecomendacaoPsicossocial();
-    const totalElegiveis = dados.length;
-    const totalPendentes = dados.filter(d => d.statusKey === 'PENDENTE').length;
-    const totalVencendo = dados.filter(d => d.statusKey === 'VENCENDO' || d.statusKey === 'VENCIDO').length;
-    const totalEmDia = dados.filter(d => d.statusKey === 'EM_DIA').length;
-    const pctConformidade = totalElegiveis > 0 ? Math.round((totalEmDia / totalElegiveis) * 100) : 0;
+    const total = dados.length;
+    const pendentes = dados.filter(d => d.statusKey === 'PENDENTE').length;
+    const vencendo = dados.filter(d => d.statusKey === 'VENCENDO' || d.statusKey === 'VENCIDO').length;
+    const emDia = dados.filter(d => d.statusKey === 'EM_DIA').length;
+    const conformidade = total > 0 ? ((emDia / total) * 100).toFixed(1) : 100;
 
-    const elTotal = document.getElementById('kpiPsicoTotalElegiveis');
-    if (elTotal) elTotal.textContent = totalElegiveis;
-    const elPendentes = document.getElementById('kpiPsicoPendentes');
-    if (elPendentes) elPendentes.textContent = totalPendentes;
-    const elVencendo = document.getElementById('kpiPsicoVencendo');
-    if (elVencendo) elVencendo.textContent = totalVencendo;
-    const elEmDia = document.getElementById('kpiPsicoEmDia');
-    if (elEmDia) elEmDia.textContent = totalEmDia;
-    const elConf = document.getElementById('kpiPsicoConformidade');
-    if (elConf) elConf.textContent = `${pctConformidade}%`;
+    const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setTxt('kpiPsicoTotalElegiveis', total);
+    setTxt('kpiPsicoPendentes', pendentes);
+    setTxt('kpiPsicoVencendo', vencendo);
+    setTxt('kpiPsicoEmDia', emDia);
+    setTxt('kpiPsicoConformidade', `${conformidade}%`);
 
-    const dataMutirao = obterDataMutiraoPsico();
-    const dataFmtCurta = formatSimpleDate(dataMutirao).slice(0, 5);
-
-    const pillTodos = document.getElementById('pillPsicoTodos');
-    if (pillTodos) pillTodos.innerHTML = `Todos nos ${obterGhesObrigatoriosPsicossocial().size} GHEs (<span id="pillCountPsicoTodos">${totalElegiveis}</span>)`;
-
-    const pillPendentes = document.getElementById('pillPsicoPendentes');
-    if (pillPendentes) pillPendentes.innerHTML = `🔴 Pendentes ${dataFmtCurta} (<span id="pillCountPsicoPendentes">${totalPendentes}</span>)`;
-
-    const pillVencendo = document.getElementById('pillPsicoVencendo');
-    if (pillVencendo) pillVencendo.innerHTML = `🟡 Vencendo em Breve (<span id="pillCountPsicoVencendo">${totalVencendo}</span>)`;
-
-    const pillEmDia = document.getElementById('pillPsicoEmDia');
-    if (pillEmDia) pillEmDia.innerHTML = `🟢 Em Dia (<span id="pillCountPsicoEmDia">${totalEmDia}</span>)`;
+    setTxt('psicoCountTodos', total);
+    setTxt('psicoCountPendentes', pendentes);
+    setTxt('psicoCountVencendo', vencendo);
+    setTxt('psicoCountEmDia', emDia);
 
     renderTabelaRecomendacaoPsicossocial();
 }
 
 function renderTabelaRecomendacaoPsicossocial() {
-    const dados = obterDadosRecomendacaoPsicossocial();
-    const tbody = document.getElementById('tabelaPsicossocialCorpo');
+    const tbody = document.getElementById('tabelaRecomendacaoPsicoCorpo');
     const msgVazia = document.getElementById('psicoTabelaVazia');
     if (!tbody) return;
 
+    const dados = obterDadosRecomendacaoPsicossocial();
     const filtroStatus = psicoFiltroStatusAtual;
-    const filtroGhe = document.getElementById('psicoFiltroGhe')?.value || '';
-    const busca = (document.getElementById('psicoBuscaInput')?.value || '').trim().toLowerCase();
+    const filtroGhe = document.getElementById('psicoGheSelect')?.value || '';
+    const busca = (document.getElementById('psicoBuscaInput')?.value || '').toLowerCase().trim();
 
     let filtrados = dados.filter(d => {
         if (filtroStatus === 'pendentes' && d.statusKey !== 'PENDENTE') return false;
@@ -17450,7 +18069,7 @@ function renderTabelaRecomendacaoPsicossocial() {
                 <td style="padding: 10px 14px; font-weight:600;">${vencPsicoFmt}</td>
                 <td style="padding: 10px 14px; text-align: center;">${d.statusBadge}</td>
                 <td style="padding: 10px 14px; text-align: center;">
-                    <button class="db-clear-btn" style="padding: 4px 8px; font-size: 11.5px; border-color: #8b5cf6; color: #7c3aed; font-weight:700;" onclick="abrirModalRegistrarPsicoRapido('${escapeHTML(d.matricula)}')" title="Registrar atendimento da psicóloga / Dar baixa na pendência">
+                    <button class="db-clear-btn" style="padding: 4px 8px; font-size: 11.5px; border-color: #8b5cf6; color: #7c3aed; font-weight:700;" onclick="abrirModalRegistrarPsicoRapido('${escapeHTML(d.matricula)}')" title="Registrar atendimento individual">
                         ✍️ Registrar
                     </button>
                 </td>
@@ -17475,7 +18094,7 @@ function fecharModalReprogramarDataMutirao() {
 function salvarReprogramacaoDataMutirao() {
     const novaData = document.getElementById('reprogPsico_data')?.value;
     if (!novaData) {
-        alert('Por favor, informe a nova data para o atendimento da psicóloga.');
+        alert('Por favor, informe a nova data para o atendimento.');
         return;
     }
     salvarDataMutiraoPsico(novaData);
@@ -17492,7 +18111,6 @@ function abrirModalGerenciarGhesPsico() {
     const ghesAtivosConfig = obterGhesObrigatoriosPsicossocial();
     const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
 
-    // Mapear todos os 27 GHEs da obra
     const todosGhes = [];
     for (let i = 1; i <= 27; i++) {
         const id = String(i).padStart(2, '0');
@@ -17528,7 +18146,8 @@ function marcarTodosGhesPsico(marcar) {
 }
 
 function restaurarPadraoPcmsoGhesPsico() {
-    const padroes = new Set(['05', '06', '07', '08', '10', '25', '26']);
+    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+    const padroes = new Set(exameCfg.ghesPadrao || ['05', '06', '07', '08', '10', '25', '26']);
     document.querySelectorAll('.chk-ghe-psico').forEach(chk => {
         chk.checked = padroes.has(chk.value);
     });
@@ -17537,33 +18156,41 @@ function restaurarPadraoPcmsoGhesPsico() {
 function salvarConfiguracaoGhesPsico() {
     const selecionados = Array.from(document.querySelectorAll('.chk-ghe-psico:checked')).map(chk => chk.value);
     if (selecionados.length === 0) {
-        alert('Selecione ao menos um GHE para monitoramento da Avaliação Psicossocial.');
+        alert('Selecione ao menos um GHE para monitoramento deste exame.');
         return;
     }
 
-    localStorage.setItem('psico_ghes_obrigatorios', JSON.stringify(selecionados));
+    const chave = `exame_ghes_${exameComplementarFocoAtual}`;
+    localStorage.setItem(chave, JSON.stringify(selecionados));
+    if (exameComplementarFocoAtual === 'psicossocial') {
+        localStorage.setItem('psico_ghes_obrigatorios', JSON.stringify(selecionados));
+    }
+
     fecharModalGerenciarGhesPsico();
     renderRecomendacaoPsicossocial();
-    alert(`✅ Configuração salva com sucesso! ${selecionados.length} grupos configurados para Avaliação Psicossocial.`);
+    alert(`✅ ${selecionados.length} grupos configurados com sucesso para o exame!`);
 }
 
-// ---- Modal de Registro Rápido de Psicossocial ----
+// ---- Modal de Registro Rápido Individual ----
 function abrirModalRegistrarPsicoRapido(matricula) {
-    const dados = obterDadosRecomendacaoPsicossocial();
-    const colab = dados.find(d => d.matricula === matricula);
-    if (!colab) {
-        alert('Colaborador não encontrado.');
-        return;
-    }
+    const colab = (allEfetivo || []).find(e => e.id === matricula);
+    if (!colab) return;
 
-    document.getElementById('modalPsico_matricula').value = colab.matricula;
-    document.getElementById('modalPsico_nome').textContent = colab.nome;
-    document.getElementById('modalPsico_lblMatricula').textContent = colab.matricula;
-    document.getElementById('modalPsico_lblFuncao').textContent = colab.funcao;
-    document.getElementById('modalPsico_lblGhe').textContent = colab.gheNome;
-    document.getElementById('modalPsico_data').value = obterDataMutiraoPsico();
-    document.getElementById('modalPsico_resultado').value = 'Apto';
-    document.getElementById('modalPsico_statusMsg').innerHTML = '';
+    const dataMutirao = obterDataMutiraoPsico();
+    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    setVal('regPsico_matricula', matricula);
+    setVal('regPsico_colaboradorNome', `${colab.nome} (Matrícula ${matricula})`);
+    setVal('regPsico_ghe', obterNomeGheCompleto(colab.ghe));
+    setVal('regPsico_dataExame', dataMutirao);
+    setVal('regPsico_resultado', 'Apto');
+    setVal('regPsico_psicologaNome', exameCfg.profissionalPadrao);
+    setVal('regPsico_crp', '');
+    setVal('regPsico_obs', `Atendimento realizado no mutirão de ${exameCfg.nomeExame}`);
+
+    const statusMsg = document.getElementById('regPsico_statusMsg');
+    if (statusMsg) statusMsg.innerHTML = '';
 
     const modal = document.getElementById('modalRegistrarPsicoRapido');
     if (modal) modal.style.display = 'flex';
@@ -17575,16 +18202,16 @@ function fecharModalRegistrarPsicoRapido() {
 }
 
 async function salvarRegistroPsicoRapido() {
-    const matricula = document.getElementById('modalPsico_matricula')?.value;
-    const dataExame = document.getElementById('modalPsico_data')?.value;
-    const resultado = document.getElementById('modalPsico_resultado')?.value || 'Apto';
-    const profissional = document.getElementById('modalPsico_profissional')?.value || 'Psicóloga Responsável';
-    const crp = document.getElementById('modalPsico_crp')?.value || '';
-    const obs = document.getElementById('modalPsico_obs')?.value || '';
-    const statusMsg = document.getElementById('modalPsico_statusMsg');
+    const matricula = document.getElementById('regPsico_matricula')?.value;
+    const dataExame = document.getElementById('regPsico_dataExame')?.value;
+    const resultado = document.getElementById('regPsico_resultado')?.value || 'Apto';
+    const profissional = document.getElementById('regPsico_psicologaNome')?.value || 'Profissional Responsável';
+    const crp = document.getElementById('regPsico_crp')?.value || '';
+    const obs = document.getElementById('regPsico_obs')?.value || '';
+    const statusMsg = document.getElementById('regPsico_statusMsg');
 
     if (!matricula || !dataExame) {
-        alert('Por favor, informe a data da avaliação psicossocial.');
+        alert('Data do exame é obrigatória.');
         return;
     }
 
@@ -17594,15 +18221,16 @@ async function salvarRegistroPsicoRapido() {
 
     try {
         const colab = (allEfetivo || []).find(e => e.id === matricula);
-        const dataVencimento = addMeses(dataExame, 12);
+        const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+        const dataVencimento = addMeses(dataExame, exameCfg.periodicidadeMeses || 12);
 
         const asos = (allAsoExames || []).filter(a => a.matricula === matricula)
             .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
         const ultimoAso = asos[0];
 
-        const itemExamePsico = {
-            nome: 'Avaliação Psicossocial',
-            periodicidade: 12,
+        const itemExame = {
+            nome: exameCfg.nomeExame,
+            periodicidade: exameCfg.periodicidadeMeses || 12,
             data_vencimento: dataVencimento,
             resultado: resultado,
             profissional: crp ? `${profissional} (${crp})` : profissional
@@ -17610,17 +18238,17 @@ async function salvarRegistroPsicoRapido() {
 
         if (ultimoAso) {
             let examesDetalhe = Array.isArray(ultimoAso.exames_detalhe) ? [...ultimoAso.exames_detalhe] : [];
-            const idxPsico = examesDetalhe.findIndex(e => e.nome && e.nome.toLowerCase().includes('psico'));
-            if (idxPsico >= 0) {
-                examesDetalhe[idxPsico] = { ...examesDetalhe[idxPsico], ...itemExamePsico };
+            const idx = examesDetalhe.findIndex(e => e.nome && e.nome.toLowerCase().includes(exameCfg.nomeExame.toLowerCase().slice(0, 5)));
+            if (idx >= 0) {
+                examesDetalhe[idx] = { ...examesDetalhe[idx], ...itemExame };
             } else {
-                examesDetalhe.push(itemExamePsico);
+                examesDetalhe.push(itemExame);
             }
 
             const payload = {
                 id: ultimoAso.id,
                 exames_detalhe: examesDetalhe,
-                obs: obs ? `${ultimoAso.obs ? ultimoAso.obs + ' | ' : ''}Avaliação Psicossocial em ${formatSimpleDate(dataExame)}: ${obs}` : ultimoAso.obs
+                obs: obs ? `${ultimoAso.obs ? ultimoAso.obs + ' | ' : ''}${exameCfg.nomeExame} em ${formatSimpleDate(dataExame)}: ${obs}` : ultimoAso.obs
             };
 
             await supabaseUpsert('aso_exames', [payload]);
@@ -17637,33 +18265,204 @@ async function salvarRegistroPsicoRapido() {
                 data_vencimento: dataVencimento,
                 resultado: resultado.toLowerCase().includes('inapto') ? 'inapto' : 'apto',
                 medico_responsavel: profissional + (crp ? ` (${crp})` : ''),
-                obs: obs || 'Avaliação Psicossocial (PGR/PCMSO)',
-                exames_detalhe: [itemExamePsico]
+                obs: obs || `${exameCfg.nomeExame} (PGR/PCMSO)`,
+                exames_detalhe: [itemExame]
             };
             await supabaseUpsert('aso_exames', [novoAso]);
             allAsoExames.push(novoAso);
         }
 
         if (statusMsg) {
-            statusMsg.innerHTML = '<span style="color:var(--success); font-weight:700;">✅ Avaliação Psicossocial registrada com sucesso!</span>';
+            statusMsg.innerHTML = `<span style="color:var(--success); font-weight:700;">✅ ${exameCfg.nomeExame} registrada com sucesso!</span>`;
         }
 
         setTimeout(() => {
             fecharModalRegistrarPsicoRapido();
             renderRecomendacaoPsicossocial();
+            renderSaudePanel();
         }, 900);
 
     } catch (err) {
-        console.error('Erro ao salvar avaliação psicossocial:', err);
+        console.error('Erro ao salvar avaliação:', err);
         if (statusMsg) {
             statusMsg.innerHTML = `<span style="color:var(--danger); font-weight:700;">❌ Falha ao salvar: ${err.message}</span>`;
         }
     }
 }
 
-// ---- Documento Oficial Timbrado: Lista de Convocação e Ficha de Atendimento ----
-// Utiliza abrirDocumentoHtmlParaImpressao via Blob para garantir funcionamento imediato em produção e localhost
-function imprimirConvocacaoPsicossocial() {
+// ============================================
+// BAIXA EM LOTE PÓS-MUTIRÃO DE EXAMES
+// ============================================
+function abrirModalBaixaLoteMutirao() {
+    const modal = document.getElementById('modalBaixaLoteMutiraoPsico');
+    if (!modal) return;
+
+    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+    const dataMutirao = obterDataMutiraoPsico();
+
+    const subtitulo = document.getElementById('modalBaixaLoteSubtitulo');
+    if (subtitulo) subtitulo.textContent = `Registrar realização em lote de ${exameCfg.nomeExame} para os colaboradores que compareceram`;
+
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    setVal('baixaLote_data', dataMutirao);
+    setVal('baixaLote_resultado', 'Apto');
+    setVal('baixaLote_profissional', exameCfg.profissionalPadrao);
+    setVal('baixaLote_obs', `Atendimento realizado no mutirão de ${formatSimpleDate(dataMutirao)}`);
+
+    const statusMsg = document.getElementById('baixaLote_statusMsg');
+    if (statusMsg) statusMsg.innerHTML = '';
+
+    // Carregar colaboradores elegíveis
+    const dados = obterDadosRecomendacaoPsicossocial();
+    const container = document.getElementById('listaColaboradoresBaixaLote');
+    if (container) {
+        container.innerHTML = dados.map(c => {
+            const isPendente = c.statusKey === 'PENDENTE' || c.statusKey === 'VENCENDO' || c.statusKey === 'VENCIDO';
+            const checked = isPendente ? 'checked' : '';
+            return `
+                <label style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 10px; border-radius:6px; background:var(--card); border:1px solid var(--border); font-size:12px; cursor:pointer;" onmouseover="this.style.background='rgba(5,150,105,0.05)'" onmouseout="this.style.background='var(--card)'">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" class="chk-baixa-colab" value="${c.matricula}" data-pendente="${isPendente}" ${checked} onchange="atualizarContadorBaixaLote()">
+                        <div>
+                            <strong style="color:var(--text);">${escapeHTML(c.nome)}</strong> (Matr. ${c.matricula})
+                            <div style="font-size:11px; color:var(--text-light);">${escapeHTML(c.gheNome)} • ${escapeHTML(c.funcao)}</div>
+                        </div>
+                    </div>
+                    <div>${c.statusBadge}</div>
+                </label>
+            `;
+        }).join('');
+    }
+
+    atualizarContadorBaixaLote();
+    modal.style.display = 'flex';
+}
+
+function fecharModalBaixaLoteMutirao() {
+    const modal = document.getElementById('modalBaixaLoteMutiraoPsico');
+    if (modal) modal.style.display = 'none';
+}
+
+function marcarTodosBaixaLote(marcar) {
+    document.querySelectorAll('.chk-baixa-colab').forEach(chk => chk.checked = marcar);
+    atualizarContadorBaixaLote();
+}
+
+function marcarSomentePendentesBaixaLote() {
+    document.querySelectorAll('.chk-baixa-colab').forEach(chk => {
+        chk.checked = (chk.getAttribute('data-pendente') === 'true');
+    });
+    atualizarContadorBaixaLote();
+}
+
+function atualizarContadorBaixaLote() {
+    const total = document.querySelectorAll('.chk-baixa-colab:checked').length;
+    const el = document.getElementById('baixaLote_contadorSel');
+    if (el) el.textContent = `${total} colaborador(es) selecionado(s)`;
+}
+
+async function salvarBaixaLoteMutirao() {
+    const selecionados = Array.from(document.querySelectorAll('.chk-baixa-colab:checked')).map(chk => chk.value);
+    if (selecionados.length === 0) {
+        alert('Por favor, selecione ao menos um colaborador que compareceu para dar baixa.');
+        return;
+    }
+
+    const dataExame = document.getElementById('baixaLote_data')?.value;
+    const resultado = document.getElementById('baixaLote_resultado')?.value || 'Apto';
+    const profissional = document.getElementById('baixaLote_profissional')?.value || 'Profissional Responsável';
+    const obs = document.getElementById('baixaLote_obs')?.value || '';
+    const statusMsg = document.getElementById('baixaLote_statusMsg');
+    const btnConfirmar = document.getElementById('btnConfirmarBaixaLote');
+
+    if (!dataExame) {
+        alert('Informe a data de realização do exame.');
+        return;
+    }
+
+    if (btnConfirmar) btnConfirmar.disabled = true;
+    if (statusMsg) statusMsg.innerHTML = `<span style="color:var(--primary); font-weight:700;">Salvando baixa de ${selecionados.length} colaboradores...</span>`;
+
+    try {
+        const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+        const dataVencimento = addMeses(dataExame, exameCfg.periodicidadeMeses || 12);
+
+        const itemExame = {
+            nome: exameCfg.nomeExame,
+            periodicidade: exameCfg.periodicidadeMeses || 12,
+            data_vencimento: dataVencimento,
+            resultado: resultado,
+            profissional: profissional
+        };
+
+        const payloadsUpsert = [];
+
+        for (const matricula of selecionados) {
+            const colab = (allEfetivo || []).find(e => e.id === matricula);
+            const asos = (allAsoExames || []).filter(a => a.matricula === matricula)
+                .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
+            const ultimoAso = asos[0];
+
+            if (ultimoAso) {
+                let examesDetalhe = Array.isArray(ultimoAso.exames_detalhe) ? [...ultimoAso.exames_detalhe] : [];
+                const idx = examesDetalhe.findIndex(e => e.nome && e.nome.toLowerCase().includes(exameCfg.nomeExame.toLowerCase().slice(0, 5)));
+                if (idx >= 0) {
+                    examesDetalhe[idx] = { ...examesDetalhe[idx], ...itemExame };
+                } else {
+                    examesDetalhe.push(itemExame);
+                }
+
+                ultimoAso.exames_detalhe = examesDetalhe;
+                payloadsUpsert.push({
+                    id: ultimoAso.id,
+                    exames_detalhe: examesDetalhe,
+                    obs: obs ? `${ultimoAso.obs ? ultimoAso.obs + ' | ' : ''}${exameCfg.nomeExame} em ${formatSimpleDate(dataExame)}: ${obs}` : ultimoAso.obs
+                });
+            } else {
+                const novoAso = {
+                    id: `ASO_${Date.now()}_${matricula}_${Math.floor(Math.random()*1000)}`,
+                    matricula: matricula,
+                    nome_colaborador: colab?.nome || '',
+                    funcao: colab?.funcao || '',
+                    setor: colab?.setor || '',
+                    tipo_aso: 'periodico',
+                    data_exame: dataExame,
+                    data_vencimento: dataVencimento,
+                    resultado: resultado.toLowerCase().includes('inapto') ? 'inapto' : 'apto',
+                    medico_responsavel: profissional,
+                    obs: obs || `${exameCfg.nomeExame} (PGR/PCMSO)`,
+                    exames_detalhe: [itemExame]
+                };
+                allAsoExames.push(novoAso);
+                payloadsUpsert.push(novoAso);
+            }
+        }
+
+        if (payloadsUpsert.length > 0) {
+            await supabaseUpsert('aso_exames', payloadsUpsert);
+        }
+
+        if (statusMsg) {
+            statusMsg.innerHTML = `<span style="color:var(--success); font-weight:700;">✅ Baixa concluída com sucesso para ${selecionados.length} colaborador(es)!</span>`;
+        }
+
+        setTimeout(() => {
+            if (btnConfirmar) btnConfirmar.disabled = false;
+            fecharModalBaixaLoteMutirao();
+            renderRecomendacaoPsicossocial();
+            renderSaudePanel();
+            alert(`🎉 Pronto! ${selecionados.length} colaboradores tiveram a realização de ${exameCfg.nomeExame} confirmada e estão 100% regulares no PCMSO.`);
+        }, 1000);
+
+    } catch (err) {
+        console.error('Erro na baixa em lote:', err);
+        if (btnConfirmar) btnConfirmar.disabled = false;
+        if (statusMsg) statusMsg.innerHTML = `<span style="color:var(--danger); font-weight:700;">❌ Falha na baixa: ${err.message}</span>`;
+    }
+}
+
+// Impressão da Convocação / Ficha do Exame Atual (Blob URL — 100% à prova de bloqueio HTTPS no Vercel)
+function imprimirConvocacaoExameAtual() {
     const dados = obterDadosRecomendacaoPsicossocial();
     const pendentes = dados.filter(d => d.statusKey === 'PENDENTE');
     const vencendo = dados.filter(d => d.statusKey === 'VENCENDO' || d.statusKey === 'VENCIDO');
@@ -17671,6 +18470,7 @@ function imprimirConvocacaoPsicossocial() {
 
     const dataMutirao = obterDataMutiraoPsico();
     const dataAtendimentoFmt = formatSimpleDate(dataMutirao);
+    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
 
     const linhasHtml = prioridadeConvocacao.map((c, i) => {
         const motivo = c.statusKey === 'PENDENTE' 
@@ -17698,14 +18498,14 @@ function imprimirConvocacaoPsicossocial() {
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Lista de Convocação e Atendimento — Avaliação Psicossocial (${dataAtendimentoFmt})</title>
+    <title>Lista de Convocação e Atendimento — ${exameCfg.nomeExame} (${dataAtendimentoFmt})</title>
     <style>
         @page { size: landscape; margin: 12mm; }
         body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5px; color: #111; margin: 15px; }
         .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:10px; }
         .cabecalho img { max-height:48px; }
         .titulo-doc { text-align:center; flex:1; }
-        .titulo-doc h2 { margin:0; font-size:15px; font-weight:800; }
+        .titulo-doc h2 { margin:0; font-size:14px; font-weight:800; text-transform:uppercase; }
         .titulo-doc p { margin:3px 0 0; font-size:11px; color:#444; }
         table { width:100%; border-collapse:collapse; margin-top:8px; font-size:10px; }
         th, td { border:1px solid #444; padding:6px 6px; }
@@ -17718,12 +18518,12 @@ function imprimirConvocacaoPsicossocial() {
     </style>
 </head>
 <body>
-    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir Lista Oficial para o Atendimento da Psicóloga</button></div>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir Lista Oficial para o Atendimento / Mutirão</button></div>
     <div class="cabecalho">
         <img src="${LOGO_COP_BASE64}" alt="COP">
         <div class="titulo-doc">
-            <h2>LISTA DE CONVOCAÇÃO & REGISTRO DE ATENDIMENTO — AVALIAÇÃO PSICOSSOCIAL</h2>
-            <p>Conformidade Obrigatória PGR / PCMSO (NR-35 Trabalho em Altura, NR-33 Espaço Confinado, NR-10 SEP)</p>
+            <h2>LISTA DE CONVOCAÇÃO & REGISTRO DE ATENDIMENTO — ${exameCfg.nomeExame.toUpperCase()}</h2>
+            <p>${exameCfg.descricaoBase}</p>
             <p><b>Data Prevista para os Atendimentos: ${dataAtendimentoFmt}</b> — Consórcio Operador PISF Ramal do Agreste</p>
         </div>
         <div style="width:48px;"></div>
@@ -17744,7 +18544,7 @@ function imprimirConvocacaoPsicossocial() {
                 <th>Motivo Convocação</th>
                 <th>Assinatura do Empregado</th>
                 <th style="text-align:center;">Parecer</th>
-                <th>Rubrica Psicóloga</th>
+                <th>Rubrica ${exameCfg.tipoProfissional || 'Profissional'}</th>
             </tr>
         </thead>
         <tbody>
@@ -17759,9 +18559,9 @@ function imprimirConvocacaoPsicossocial() {
             CREA 12345/D-PE — Consórcio COP
         </div>
         <div class="linha-assinatura">
-            <b>Psicóloga Responsável</b><br>
-            Avaliação Psicossocial Ocupacional<br>
-            CRP: _______________________
+            <b>${exameCfg.profissionalPadrao}</b><br>
+            ${exameCfg.nomeExame}<br>
+            ${exameCfg.tipoProfissional || 'Registro'}: _______________________
         </div>
     </div>
 
@@ -17773,15 +18573,19 @@ function imprimirConvocacaoPsicossocial() {
 </body>
 </html>`;
 
-    abrirDocumentoHtmlParaImpressao(html, `Convocacao_Psicossocial_${dataAtendimentoFmt.replace(/\//g, '-')}`);
+    abrirDocumentoHtmlParaImpressao(html, `Convocacao_${exameCfg.id}_${dataAtendimentoFmt.replace(/\//g, '-')}`);
 }
 
-// ---- Exportação para Planilha Excel (.xlsx) ----
-function exportarExcelPsicossocial() {
+function imprimirConvocacaoPsicossocial() {
+    imprimirConvocacaoExameAtual();
+}
+
+function exportarExcelExameAtual() {
     if (typeof XLSX === 'undefined') {
         alert('Biblioteca XLSX não carregada.');
         return;
     }
+    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
     const dados = obterDadosRecomendacaoPsicossocial();
     const rows = dados.map(d => ({
         'Matrícula': d.matricula,
@@ -17794,30 +18598,34 @@ function exportarExcelPsicossocial() {
         'Data de Admissão': d.dt_admissao ? formatSimpleDate(d.dt_admissao) : '',
         'Último ASO (Data)': d.ultimoAsoData ? formatSimpleDate(d.ultimoAsoData) : '',
         'Último ASO (Tipo)': d.ultimoAsoTipo || '',
-        'Avaliação Psicossocial Realizada': d.temPsico ? 'SIM' : 'NÃO',
-        'Data da Avaliação Psicossocial': d.dataPsico ? formatSimpleDate(d.dataPsico) : '',
-        'Data de Vencimento do Psicossocial': d.vencPsico ? formatSimpleDate(d.vencPsico) : '',
+        [`${exameCfg.nomeExame} Realizada`]: d.temPsico ? 'SIM' : 'NÃO',
+        [`Data ${exameCfg.nomeExame}`]: d.dataPsico ? formatSimpleDate(d.dataPsico) : '',
+        [`Vencimento ${exameCfg.nomeExame}`]: d.vencPsico ? formatSimpleDate(d.vencPsico) : '',
         'Status da Convocação': d.statusLabel
     }));
 
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Psicossocial PCMSO');
+    XLSX.utils.book_append_sheet(wb, ws, exameCfg.nomeExame.slice(0, 31));
     const hoje = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb, `Recomendacao_Exames_Psicossociais_COP_${hoje}.xlsx`);
+    XLSX.writeFile(wb, `Recomendacao_${exameCfg.id}_COP_${hoje}.xlsx`);
 }
 
-// ---- Mensagem Formatada para WhatsApp dos Encarregados ----
-function copiarConvocacaoPsicoWhatsApp() {
+function exportarExcelPsicossocial() {
+    exportarExcelExameAtual();
+}
+
+function copiarConvocacaoExameWhatsApp() {
     const dados = obterDadosRecomendacaoPsicossocial();
     const prioritarios = dados.filter(d => d.statusKey === 'PENDENTE' || d.statusKey === 'VENCENDO' || d.statusKey === 'VENCIDO');
     const dataMutiraoFmt = formatSimpleDate(obterDataMutiraoPsico());
+    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
 
-    let txt = `📢 *CONVOCAÇÃO SMS — MUTIRÃO DE AVALIAÇÃO PSICOSSOCIAL* 🧠\n`;
+    let txt = `📢 *CONVOCAÇÃO SMS — MUTIRÃO DE ${exameCfg.nomeExame.toUpperCase()}* 🩺\n`;
     txt += `📅 *Data do Atendimento:* ${dataMutiraoFmt}\n`;
-    txt += `📍 *Local:* Ambulatório / Sala Médica da Obra\n`;
-    txt += `🎯 *Objetivo:* Regularização obrigatória do PGR & PCMSO (NR-35, NR-33, NR-10)\n\n`;
-    txt += `Solicitamos aos Encarregados que liberem pontualmente os seguintes colaboradores:\n\n`;
+    txt += `📍 *Local:* ${exameCfg.localPadrao}\n`;
+    txt += `🎯 *Objetivo:* Regularização obrigatória do PGR & PCMSO (${exameCfg.descricaoBase})\n\n`;
+    txt += `Solicitamos aos Encarregados e Líderes que liberem pontualmente os seguintes colaboradores:\n\n`;
 
     const porGhe = {};
     prioritarios.forEach(c => {
@@ -17834,12 +18642,12 @@ function copiarConvocacaoPsicoWhatsApp() {
         txt += `\n`;
     }
 
-    txt += `⚠️ *Importante:* A presença é indispensável para a manutenção dos ASOs e autorizações para atividades de risco da equipe.\n`;
+    txt += `⚠️ *Importante:* A presença é indispensável para a manutenção dos ASOs e conformidade técnica das atividades de risco da equipe.\n`;
     txt += `_Engenharia de Segurança do Trabalho — Consórcio COP_`;
 
     if (navigator.clipboard) {
         navigator.clipboard.writeText(txt).then(() => {
-            alert('✅ Mensagem de convocação copiada para a área de transferência! Cole diretamente no WhatsApp dos encarregados.');
+            alert(`✅ Mensagem de convocação de ${exameCfg.nomeExame} copiada para o WhatsApp! Cole diretamente no grupo dos encarregados.`);
         }).catch(() => {
             prompt('Copie o texto da convocação abaixo:', txt);
         });
@@ -17847,6 +18655,11 @@ function copiarConvocacaoPsicoWhatsApp() {
         prompt('Copie o texto da convocação abaixo:', txt);
     }
 }
+
+function copiarConvocacaoPsicoWhatsApp() {
+    copiarConvocacaoExameWhatsApp();
+}
+
 
 function showSaudeSubtab(tab) {
     ['visao', 'aso', 'atestado', 'pressao', 'previsao', 'recomendacoes', 'relatorio'].forEach(t => {

@@ -17969,7 +17969,7 @@ function renderTextoGruposObrigatoriosPsico() {
 }
 
 function popularSelectGhesFiltroPsico() {
-    const sel = document.getElementById('psicoGheSelect');
+    const sel = document.getElementById('psicoGheSelect') || document.getElementById('psicoFiltroGhe');
     if (!sel) return;
 
     const ghesObrig = Array.from(obterGhesObrigatoriosPsicossocial()).sort();
@@ -18007,17 +18007,22 @@ function renderRecomendacaoPsicossocial() {
     setTxt('psicoCountVencendo', vencendo);
     setTxt('psicoCountEmDia', emDia);
 
+    setTxt('pillCountPsicoTodos', total);
+    setTxt('pillCountPsicoPendentes', pendentes);
+    setTxt('pillCountPsicoVencendo', vencendo);
+    setTxt('pillCountPsicoEmDia', emDia);
+
     renderTabelaRecomendacaoPsicossocial();
 }
 
 function renderTabelaRecomendacaoPsicossocial() {
-    const tbody = document.getElementById('tabelaRecomendacaoPsicoCorpo');
+    const tbody = document.getElementById('tabelaRecomendacaoPsicoCorpo') || document.getElementById('tabelaPsicossocialCorpo');
     const msgVazia = document.getElementById('psicoTabelaVazia');
     if (!tbody) return;
 
     const dados = obterDadosRecomendacaoPsicossocial();
     const filtroStatus = psicoFiltroStatusAtual;
-    const filtroGhe = document.getElementById('psicoGheSelect')?.value || '';
+    const filtroGhe = (document.getElementById('psicoGheSelect') || document.getElementById('psicoFiltroGhe'))?.value || '';
     const busca = (document.getElementById('psicoBuscaInput')?.value || '').toLowerCase().trim();
 
     let filtrados = dados.filter(d => {

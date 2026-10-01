@@ -16040,6 +16040,25 @@ function addMeses(dataStr, meses) {
     return resultado.toISOString().split('T')[0];
 }
 
+function addDias(dataStr, dias) {
+    if (!dataStr) return '';
+    const d = parseLocalDate(dataStr);
+    d.setDate(d.getDate() + dias);
+    const ano = d.getFullYear();
+    const mes = String(d.getMonth() + 1).padStart(2, '0');
+    const dia = String(d.getDate()).padStart(2, '0');
+    return `${ano}-${mes}-${dia}`;
+}
+
+function obterFimDoMes(dataStr) {
+    if (!dataStr) return '';
+    const d = parseLocalDate(dataStr);
+    const ultimoDia = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    const ano = d.getFullYear();
+    const mes = String(d.getMonth() + 1).padStart(2, '0');
+    return `${ano}-${mes}-${String(ultimoDia).padStart(2, '0')}`;
+}
+
 function onAsoColaboradorChange() {
     const { colab } = buscarColaboradorPorInput('asoForm_matricula');
     document.getElementById('asoForm_colabPreview').textContent = colab ? `✓ ${colab.nome} — ${colab.funcao || ''} — ${colab.setor || ''}` : '';

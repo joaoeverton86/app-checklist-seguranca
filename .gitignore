@@ -6,3 +6,5 @@ package-lock.json
 .vercel
 .env*
 scratch/
+Documentos_Consultas/
+*.log

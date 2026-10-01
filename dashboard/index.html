@@ -4512,7 +4512,7 @@
                                 <button class="db-apply-btn" style="background: #059669; font-weight: 700;" id="btnBaixaLotePsico" onclick="abrirModalBaixaLoteMutirao()" title="Dar baixa em lote em colaboradores atendidos no mutirão ou clínica">✅ Baixa em Lote</button>
                                 <button class="db-apply-btn" style="background: #4f46e5;" id="btnConfigGhesPsico" onclick="abrirModalGerenciarGhesPsico()" title="Adicionar ou remover GHEs com exigência do exame">⚙️ Configurar GHEs</button>
                                 <button class="db-apply-btn" style="background: #7c3aed;" id="btnReprogDataPsico" onclick="abrirModalReprogramarDataMutirao()" title="Alterar ou reprogramar a data do próximo mutirão / visita">📅 Reprogramar Data</button>
-                                <button class="db-apply-btn" style="background: #2563eb;" id="btnImprimirConvocacaoPsico" onclick="imprimirConvocacaoExameAtual()">🖨️ Imprimir Convocação / Ficha</button>
+                                <button class="db-apply-btn" style="background: #2563eb;" id="btnImprimirConvocacaoPsico" onclick="imprimirConvocacaoExameAtual()">🖨️ Imprimir Convocação</button>
                                 <button class="db-apply-btn" style="background: #0891b2;" onclick="exportarExcelExameAtual()">📊 Exportar Excel</button>
                                 <button class="db-apply-btn" style="background: #128c7e;" id="btnWhatsappPsico" onclick="copiarConvocacaoExameWhatsApp()">📲 Convocação WhatsApp</button>
                             </div>
@@ -4526,19 +4526,19 @@
                     <div class="db-kpi-grid" style="margin-bottom: 16px;">
                         <div class="db-kpi-card">
                             <div class="db-kpi-value" id="kpiPsicoTotalElegiveis">0</div>
-                            <div class="db-kpi-label">Efetivo nos 7 GHEs Obrigatórios</div>
+                            <div class="db-kpi-label" id="lblKpiPsicoTotal">Efetivo nos GHEs Monitorados</div>
                         </div>
                         <div class="db-kpi-card db-kpi-danger">
                             <div class="db-kpi-value" id="kpiPsicoPendentes">0</div>
-                            <div class="db-kpi-label">🔴 Pendentes (Convocação 06/10)</div>
+                            <div class="db-kpi-label" id="lblKpiPsicoPendentes">🔴 Pendentes (Convocação)</div>
                         </div>
                         <div class="db-kpi-card db-kpi-warning">
                             <div class="db-kpi-value" id="kpiPsicoVencendo">0</div>
-                            <div class="db-kpi-label">🟡 Vencendo Out/Nov (Aproveitar 06/10)</div>
+                            <div class="db-kpi-label" id="lblKpiPsicoVencendo">🟡 Vencendo em Breve</div>
                         </div>
                         <div class="db-kpi-card db-kpi-success">
                             <div class="db-kpi-value" id="kpiPsicoEmDia">0</div>
-                            <div class="db-kpi-label">🟢 Avaliações Psicossociais em Dia</div>
+                            <div class="db-kpi-label" id="lblKpiPsicoEmDia">🟢 Exames em Dia</div>
                         </div>
                         <div class="db-kpi-card db-kpi-primary">
                             <div class="db-kpi-value" id="kpiPsicoConformidade">0%</div>
@@ -4550,21 +4550,14 @@
                     <div class="db-chart-card" style="margin-bottom: 16px; padding: 12px 16px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
                             <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="psicoStatusPills">
-                                <button type="button" class="sector-pill active" id="pillPsicoTodos" onclick="filtrarStatusPsicossocial('todos', this)">Todos nos 7 GHEs (<span id="pillCountPsicoTodos">0</span>)</button>
-                                <button type="button" class="sector-pill" id="pillPsicoPendentes" style="border-color:#fca5a5; color:#991b1b;" onclick="filtrarStatusPsicossocial('pendentes', this)">🔴 Pendentes 06/10 (<span id="pillCountPsicoPendentes">0</span>)</button>
-                                <button type="button" class="sector-pill" id="pillPsicoVencendo" style="border-color:#fde68a; color:#92400e;" onclick="filtrarStatusPsicossocial('vencendo', this)">🟡 Vencendo Out/Nov (<span id="pillCountPsicoVencendo">0</span>)</button>
+                                <button type="button" class="sector-pill active" id="pillPsicoTodos" onclick="filtrarStatusPsicossocial('todos', this)">Todos (<span id="pillCountPsicoTodos">0</span>)</button>
+                                <button type="button" class="sector-pill" id="pillPsicoPendentes" style="border-color:#fca5a5; color:#991b1b;" onclick="filtrarStatusPsicossocial('pendentes', this)">🔴 Pendentes (<span id="pillCountPsicoPendentes">0</span>)</button>
+                                <button type="button" class="sector-pill" id="pillPsicoVencendo" style="border-color:#fde68a; color:#92400e;" onclick="filtrarStatusPsicossocial('vencendo', this)">🟡 Vencendo (<span id="pillCountPsicoVencendo">0</span>)</button>
                                 <button type="button" class="sector-pill" id="pillPsicoEmDia" style="border-color:#a7f3d0; color:#065f46;" onclick="filtrarStatusPsicossocial('em_dia', this)">🟢 Em Dia (<span id="pillCountPsicoEmDia">0</span>)</button>
                             </div>
                             <div style="display: flex; gap: 8px; flex: 1; max-width: 500px; min-width: 260px;">
                                 <select id="psicoFiltroGhe" onchange="renderTabelaRecomendacaoPsicossocial()" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text);">
-                                    <option value="">Todos os 7 GHEs Obrigatórios</option>
-                                    <option value="05">GHE 05 - Manutenção Elétrica</option>
-                                    <option value="06">GHE 06 - Manutenção Mecânica</option>
-                                    <option value="07">GHE 07 - Manutenção Civil</option>
-                                    <option value="08">GHE 08 - Motosserras e Roçadeiras</option>
-                                    <option value="10">GHE 10 - Operador de SH</option>
-                                    <option value="25">GHE 25 - Operador de Subestação</option>
-                                    <option value="26">GHE 26 - Conservação e Limpeza</option>
+                                    <option value="">Todos os GHEs Monitorados</option>
                                 </select>
                                 <input type="text" id="psicoBuscaInput" placeholder="Buscar colaborador, matrícula..." oninput="renderTabelaRecomendacaoPsicossocial()" style="flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text);">
                             </div>
@@ -8166,7 +8159,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=143"></script>
+    <script src="dashboard.js?v=144"></script>
     <script src="placar_lideres.js?v=1"></script>
 <script>
 function filterMatrizEpi(q) {

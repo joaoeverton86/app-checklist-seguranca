@@ -5,6 +5,10 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
+const DASHBOARD_VERSION = 'v145';
+window.DASHBOARD_VERSION = DASHBOARD_VERSION;
+console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
+
 const SUPABASE_URL = 'https://qqtcwxvbjmybyzubocgd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxdGN3eHZiam15Ynl6dWJvY2dkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1ODczNDUsImV4cCI6MjEwMDE2MzM0NX0.T6Nm-lUD2I_mRULsEXCDQBkJe2cEpl6_z7hUNR30yTk';
 
@@ -30811,10 +30815,40 @@ function abrirProgramacaoTreinamentoBrigada() {
 
 
 // ============================================
-// INICIALIZAÇÃO
+// INICIALIZAÇÃO & CONTROLE DE VERSÃO
 // ============================================
 
+function renderizarVersaoDashboard() {
+    ['badgeVersaoDashboardSidebar', 'badgeVersaoDashboardTopbar', 'badgeVersaoDashboardFooter', 'badgeVersaoDashboardLogin', 'badgeVersaoDashboardConfig'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = DASHBOARD_VERSION;
+    });
+}
+
+function irParaRecomendacaoExamesPsico() {
+    showDbPage('saude');
+    showSaudeSubtab('recomendacoes');
+}
+
+function forcarAtualizacaoCacheDashboard() {
+    try {
+        if (window.caches) {
+            caches.keys().then(function(names) {
+                names.forEach(function(name) { caches.delete(name); });
+            });
+        }
+        if (navigator.serviceWorker) {
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+                regs.forEach(function(r) { r.unregister(); });
+            });
+        }
+        localStorage.setItem('dashboard_last_refresh', Date.now());
+    } catch(e) {}
+    window.location.reload(true);
+}
+
 function init() {
+    renderizarVersaoDashboard();
     // Sem sessão ativa (ninguém logado neste navegador, nem pelo painel nem pelo app de
     // celular) - mostra só a tela de login e para por aqui. init() é chamado de novo
     // pelo próprio realizarLoginDashboard() assim que o login for bem-sucedido.

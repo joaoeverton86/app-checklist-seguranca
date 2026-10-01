@@ -8166,7 +8166,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=142"></script>
+    <script src="dashboard.js?v=143"></script>
     <script src="placar_lideres.js?v=1"></script>
 <script>
 function filterMatrizEpi(q) {
@@ -8889,7 +8889,7 @@ function filterMatrizEpi(q) {
             </div>
             <div style="display: flex; gap: 8px;">
                 <button type="button" class="db-clear-btn" onclick="fecharModalGestaoValidadeAsos()">Fechar</button>
-                <button type="button" class="db-apply-btn" style="background: #2563eb;" onclick="imprimirRelacaoValidadeAsos()">🖨️ Imprimir para Clínica</button>
+                <button type="button" class="db-apply-btn" id="btnImprimirValidadeAsos" style="background: #2563eb;" onclick="imprimirRelacaoValidadeAsos()">🖨️ Imprimir para Clínica</button>
                 <button type="button" class="db-apply-btn" style="background: #059669;" onclick="exportarExcelValidadeAsos()">📊 Exportar Excel</button>
                 <button type="button" class="db-apply-btn" style="background: #128c7e;" onclick="copiarAlertaValidadeAsosWhatsApp()">📲 Alerta WhatsApp</button>
             </div>

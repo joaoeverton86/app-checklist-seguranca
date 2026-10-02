@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v150';
+const DASHBOARD_VERSION = 'v151';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -7088,21 +7088,38 @@ function construirFolhaFichaDds(frente, seg, diasSemana, equipe) {
     const linhaRespSms = diasSemana.map(() => `<td style="height:22px; text-align:center;"></td>`).join('');
     const linhaResponsavel = diasSemana.map(() => `<td style="height:28px; font-size:8px; line-height:1; vertical-align:bottom; padding:2px 4px;">Ass:</td>`).join('');
 
-    const linhasColab = equipe.map((c, i) => {
+    const equipeValida = Array.isArray(equipe) ? equipe : [];
+    const TOTAL_LINHAS_MIN = 10;
+    const totalLinhas = Math.max(TOTAL_LINHAS_MIN, equipeValida.length);
+
+    const linhasColab = [];
+    for (let i = 0; i < totalLinhas; i++) {
+        const c = equipeValida[i];
         const emocCels = diasSemana.map(() => `<td class="col-dia-resp">
             <div class="emoc-bolinhas">🟢&nbsp;🟡&nbsp;🔴</div>
             <div class="rubrica-label">Rubrica:</div>
             <div class="linha-rubrica"></div>
         </td>`).join('');
 
-        return `<tr>
-            <td class="col-item">${i + 1}</td>
-            <td class="col-mat">${escapeHTML(c.matricula)}</td>
-            <td class="col-nome">${escapeHTML(c.nome)}</td>
-            <td class="col-funcao">${escapeHTML(c.funcao || '')}</td>
-            ${emocCels}
-        </tr>`;
-    }).join('');
+        if (c) {
+            linhasColab.push(`<tr>
+                <td class="col-item">${i + 1}</td>
+                <td class="col-mat">${escapeHTML(c.matricula || '')}</td>
+                <td class="col-nome">${escapeHTML(c.nome || '')}</td>
+                <td class="col-funcao">${escapeHTML(c.funcao || '')}</td>
+                ${emocCels}
+            </tr>`);
+        } else {
+            // Linha vazia padronizada para totalizar no mínimo 10 linhas e permitir anotações manuais
+            linhasColab.push(`<tr>
+                <td class="col-item">${i + 1}</td>
+                <td class="col-mat">&nbsp;</td>
+                <td class="col-nome">&nbsp;</td>
+                <td class="col-funcao">&nbsp;</td>
+                ${emocCels}
+            </tr>`);
+        }
+    }
 
     return `
     <div class="folha-dds">
@@ -7166,7 +7183,7 @@ function construirFolhaFichaDds(frente, seg, diasSemana, equipe) {
                 </tr>
             </thead>
             <tbody>
-                ${linhasColab || `<tr><td colspan="${4 + diasSemana.length}" style="text-align:center; color:#777; padding:12px;">Nenhum colaborador ativo cadastrado nessa frente.</td></tr>`}
+                ${linhasColab.join('')}
             </tbody>
         </table>
     </div>`;
@@ -7345,19 +7362,19 @@ function montarDocumentoImpressaoFichasDds(folhasHtml, titulo) {
         word-break: break-word;
     }
     .tabela-colaboradores {
-        flex: 1 1 auto;
+        width: 100%;
         margin-top: 3px;
-        height: 100%;
-    }
-    .tabela-colaboradores tbody {
-        height: 100%;
+        flex: 0 0 auto;
+        border-collapse: collapse;
+        table-layout: fixed;
     }
     .tabela-colaboradores tbody tr {
-        height: auto;
+        height: 44px;
     }
     .tabela-colaboradores tbody tr td {
-        height: 38px;
-        padding: 3px 4px;
+        height: 44px;
+        padding: 2px 4px;
+        box-sizing: border-box;
     }
     .col-item { text-align: center; font-weight: 700; font-size: 9px; }
     .col-mat { text-align: center; font-size: 8.5px; font-weight: 600; }
@@ -7405,7 +7422,7 @@ function montarDocumentoImpressaoFichasDds(folhasHtml, titulo) {
     }
     .linha-rubrica {
         border-bottom: 1px solid #000;
-        height: 16px;
+        height: 18px;
         margin-top: 1px;
         width: 100%;
     }
@@ -7425,12 +7442,17 @@ function montarDocumentoImpressaoFichasDds(folhasHtml, titulo) {
             break-after: page;
         }
         .tabela-colaboradores {
-            flex: 1 1 auto;
-            height: 100%;
+            flex: 0 0 auto !important;
+            height: auto !important;
+            width: 100% !important;
+        }
+        .tabela-colaboradores tbody tr {
+            height: 44px !important;
         }
         .tabela-colaboradores tbody tr td {
-            height: auto;
-            padding: 3px 4px;
+            height: 44px !important;
+            padding: 2px 4px !important;
+            box-sizing: border-box !important;
         }
     }
     @media screen {

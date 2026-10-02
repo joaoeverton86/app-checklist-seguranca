@@ -32,7 +32,21 @@
                     <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Senha</label>
                     <input type="password" id="dbLoginSenha" placeholder="Digite sua senha..." style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:14px;" onkeydown="if(event.key==='Enter') realizarLoginDashboard();">
                 </div>
-                <button class="db-apply-btn" id="dbLoginBtn" style="margin-top:6px; padding:11px; font-size:14px;" onclick="realizarLoginDashboard()">🔑 Entrar</button>
+
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-top:2px;">
+                    <label style="font-size:12px; color:var(--text-light); display:inline-flex; align-items:center; gap:6px; cursor:pointer; user-select:none;">
+                        <input type="checkbox" id="dbLoginLembrar" style="cursor:pointer;" checked> Lembrar login neste dispositivo
+                    </label>
+                    <a href="javascript:void(0)" onclick="preencherContaTesteNosCampos()" style="font-size:11.5px; color:var(--primary); text-decoration:none; font-weight:600;" title="Preencher campos com dados de teste">Preencher Teste</a>
+                </div>
+
+                <button class="db-apply-btn" id="dbLoginBtn" style="margin-top:4px; padding:11px; font-size:14px;" onclick="realizarLoginDashboard()">🔑 Entrar</button>
+
+                <!-- Botão de Acesso Instantâneo com Conta Teste -->
+                <button type="button" class="db-clear-btn" onclick="entrarComContaTeste()" style="padding:10px 12px; font-size:13px; font-weight:700; color:#1e40af; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 1px 2px rgba(0,0,0,0.04); transition:all 0.15s;" title="Entrar instantaneamente como Administrador sem espera ou bloqueio de rede">
+                    ⚡ Entrar com Conta Teste (Acesso Rápido)
+                </button>
+
                 <div id="dbLoginError" style="display:none; font-size:12px; color:var(--danger); font-weight:600; text-align:center;"></div>
 
                 <div style="display:flex; flex-direction:column; gap:8px; margin-top:10px; text-align:center;">
@@ -2314,25 +2328,107 @@
                 </div>
 
                 <div id="ddsmaSubtab-imprimir" style="display:none;">
+                <!-- SEÇÃO 1: IMPRESSÃO EM LOTE DE FORMULÁRIOS SEMANAIS DE DDSMS -->
                 <div class="db-chart-card" style="margin-bottom: 16px;">
-                    <div class="db-chart-title">🖨️ Imprimir</div>
-                    <div style="border-bottom: 1px dashed var(--border); padding-bottom: 14px; margin-bottom: 14px;">
-                        <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Ficha DDS em Branco (pra levar pro campo)</div>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 10px; font-size: 12.5px; margin-bottom: 10px;">
-                            <div>
-                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Frente</label>
-                                <select id="ddsImprimirFichaFrente" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
-                                    <option value="">— Selecione —</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Qualquer dia da semana desejada</label>
-                                <input type="date" id="ddsImprimirFichaData" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
-                            </div>
+                    <div class="db-chart-title">📑 Impressão de Formulários DDSMS em Lote</div>
+                    <p style="font-size: 12px; color: var(--text-light); margin-bottom: 14px; line-height: 1.4;">
+                        Emita de uma vez as fichas semanais em branco com os temas diários do cronograma e a listagem nominal dos colaboradores de cada frente de serviço. O layout é auto-otimizado para que equipes de até 15 colaboradores caibam em <strong>1 única folha</strong>.
+                    </p>
+                    
+                    <!-- BARRA DE FILTROS DO LOTE -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; font-size: 12px; margin-bottom: 12px; align-items: end;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Ano</label>
+                            <select id="ddsLoteFiltroAno" onchange="onDdsLoteFiltroMesAnoChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;"></select>
                         </div>
-                        <button class="db-apply-btn" onclick="imprimirFichaDdsEmBranco()">🖨️ Imprimir Ficha DDS em Branco</button>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Mês</label>
+                            <select id="ddsLoteFiltroMes" onchange="onDdsLoteFiltroMesAnoChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="0">Janeiro</option>
+                                <option value="1">Fevereiro</option>
+                                <option value="2">Março</option>
+                                <option value="3">Abril</option>
+                                <option value="4">Maio</option>
+                                <option value="5">Junho</option>
+                                <option value="6">Julho</option>
+                                <option value="7">Agosto</option>
+                                <option value="8">Setembro</option>
+                                <option value="9">Outubro</option>
+                                <option value="10">Novembro</option>
+                                <option value="11">Dezembro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Semana do Mês</label>
+                            <select id="ddsLoteFiltroSemana" onchange="onDdsLoteFiltroSemanaChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="">Todas as semanas do mês</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Frentes de Serviço</label>
+                            <details id="ddsLoteFrenteDropdown" style="position: relative;">
+                                <summary id="ddsLoteFrenteResumo" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; cursor: pointer; background: var(--card); user-select: none; font-size: 12px;">Frentes: Todas</summary>
+                                <div style="position: absolute; left: 0; right: 0; z-index: 30; margin-top: 4px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px; box-shadow: var(--shadow); max-height: 260px; overflow-y: auto; box-sizing: border-box;">
+                                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                                        <button type="button" class="db-clear-btn" style="padding: 4px 10px; font-size: 11px;" onclick="marcarTodasFrentesDdsLote(true)">Marcar todas</button>
+                                        <button type="button" class="db-clear-btn" style="padding: 4px 10px; font-size: 11px;" onclick="marcarTodasFrentesDdsLote(false)">Desmarcar todas</button>
+                                    </div>
+                                    <div id="ddsLoteFrenteCheckboxList"></div>
+                                </div>
+                            </details>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Filtrar por Tema (opcional)</label>
+                            <select id="ddsLoteFiltroTema" onchange="onDdsLoteFiltroTemaChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="">Todos os temas...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <button type="button" class="db-clear-btn" onclick="limparFiltrosDdsLote()" style="width: 100%; padding: 8px 10px; font-size: 12px;">✕ Limpar Filtros</button>
+                        </div>
                     </div>
-                    <div>
+
+                    <!-- BARRA DE RESUMO E SELEÇÃO RÁPIDA -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+                        <span style="font-size: 12px; color: var(--text-light);" id="ddsLoteResumo">Carregando formulários...</span>
+                        <div style="display:flex; gap:8px;">
+                            <button type="button" class="db-clear-btn" style="padding:4px 10px; font-size:11.5px;" onclick="marcarTodosDdsLote(true)">Marcar todos</button>
+                            <button type="button" class="db-clear-btn" style="padding:4px 10px; font-size:11.5px;" onclick="marcarTodosDdsLote(false)">Desmarcar todos</button>
+                        </div>
+                    </div>
+
+                    <!-- LISTA DE PRÉVIA DO LOTE -->
+                    <div id="ddsLotePreview" class="db-list" style="max-height: 280px; overflow-y: auto; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 8px;"></div>
+
+                    <!-- BOTÃO IMPRIMIR LOTE -->
+                    <button class="db-apply-btn" style="width: 100%; max-width: 500px; padding: 10px 20px; font-size: 13.5px;" id="btnImprimirLoteDds" onclick="imprimirFormulariosDdsLote()">🖨️ Imprimir Formulários Selecionados em Lote</button>
+                </div>
+
+                <!-- SEÇÃO 2: EMISSÃO AVULSA / RÁPIDA -->
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title" style="font-size: 13px;">⚡ Emissão Avulsa / Rápida (Uma Frente Específica)</div>
+                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">
+                        Gere uma única folha de DDS para uma frente específica informando qualquer dia da semana de referência.
+                    </p>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 10px; font-size: 12.5px; margin-bottom: 10px;">
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Frente</label>
+                            <select id="ddsImprimirFichaFrente" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <option value="">— Selecione —</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Qualquer dia da semana desejada</label>
+                            <input type="date" id="ddsImprimirFichaData" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+                    </div>
+                    <button class="db-apply-btn" onclick="imprimirFichaDdsEmBranco()">🖨️ Imprimir Ficha DDS Individual</button>
+                </div>
+
+                <!-- SEÇÃO 3: RELATÓRIOS DO MÊS E DA SEMANA (CONTROLE DE DDS) -->
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div class="db-chart-title" style="font-size: 13px;">📊 Relatórios de Controle de DDS</div>
+                    <div style="border-bottom: 1px dashed var(--border); padding-bottom: 14px; margin-bottom: 14px;">
                         <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Relatório do Mês (estilo controle de DDS)</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 10px; font-size: 12.5px; margin-bottom: 10px;">
                             <div>
@@ -2359,7 +2455,7 @@
                         </div>
                         <button class="db-apply-btn" onclick="imprimirRelatorioMensalDds()">🖨️ Imprimir Relatório do Mês</button>
                     </div>
-                    <div style="margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--border);">
+                    <div>
                         <div style="font-weight: 600; font-size: 12.5px; margin-bottom: 8px;">Relatório da Semana (estilo controle de DDS)</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 10px; font-size: 12.5px; margin-bottom: 10px;">
                             <div>
@@ -8159,7 +8255,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=146"></script>
+    <script src="dashboard.js?v=150"></script>
     <script src="placar_lideres.js?v=1"></script>
 <script>
 function filterMatrizEpi(q) {

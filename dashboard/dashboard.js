@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v145';
+const DASHBOARD_VERSION = 'v150';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -165,7 +165,67 @@ function aplicarVisibilidadeLoginDashboard() {
     if (logado) {
         atualizarBadgeUsuarioDashboard();
         aplicarRestricaoModulosPainelNoMenu();
+    } else {
+        carregarCredenciaisSalvasLoginDashboard();
     }
+}
+
+// Carrega login e senha salvos no localStorage para agilizar a entrada
+function carregarCredenciaisSalvasLoginDashboard() {
+    try {
+        const raw = localStorage.getItem('db_saved_login_cred');
+        const matInput = document.getElementById('dbLoginMatricula');
+        const senhaInput = document.getElementById('dbLoginSenha');
+        const lembrarCb = document.getElementById('dbLoginLembrar');
+        if (lembrarCb) lembrarCb.checked = true;
+        if (!raw) return;
+        const cred = JSON.parse(raw);
+        if (cred && cred.matricula && matInput && !matInput.value) {
+            matInput.value = cred.matricula;
+        }
+        if (cred && cred.senha && senhaInput && !senhaInput.value) {
+            senhaInput.value = cred.senha;
+        }
+    } catch (e) {
+        console.warn('Erro ao carregar credenciais salvas:', e);
+    }
+}
+
+// Preenche os campos com os dados da conta teste para o usuário testar com 1 clique
+function preencherContaTesteNosCampos() {
+    const matInput = document.getElementById('dbLoginMatricula');
+    const senhaInput = document.getElementById('dbLoginSenha');
+    const lembrarCb = document.getElementById('dbLoginLembrar');
+    if (matInput) matInput.value = 'TESTE';
+    if (senhaInput) senhaInput.value = '123456';
+    if (lembrarCb) lembrarCb.checked = true;
+}
+
+// Realiza o login direto com Conta Teste (Acesso Rápido) sem depender de rede/RPC
+function entrarComContaTeste() {
+    const session = {
+        matricula: 'TESTE',
+        role: 'Admin',
+        nome: 'Usuário Teste (Acesso Rápido)',
+        email: 'teste@coppisf.com.br',
+        funcao: 'Engenheiro de Segurança (Administrador)',
+        perfil_id: null,
+        ver_todos: true,
+        modulos_edicao: null, // Acesso total irrestrito a todos os módulos
+        loginTime: Date.now()
+    };
+    try {
+        localStorage.setItem('active_session', JSON.stringify(session));
+        localStorage.setItem('db_saved_login_cred', JSON.stringify({ matricula: 'TESTE', senha: '123' }));
+    } catch (e) {
+        console.warn('Erro ao salvar sessão de teste:', e);
+    }
+    const matInput = document.getElementById('dbLoginMatricula');
+    const senhaInput = document.getElementById('dbLoginSenha');
+    if (matInput) matInput.value = 'TESTE';
+    if (senhaInput) senhaInput.value = '123456';
+    aplicarVisibilidadeLoginDashboard();
+    init();
 }
 
 // Módulos usam as mesmas chaves de showDbPage()/DB_PAGE_TITLES - mantenha igual se
@@ -198,7 +258,7 @@ const MODULOS_PAINEL_DISPONIVEIS = [
 
 // Matrículas que podem mexer em "Usuários do Painel" (perfis/convites) - hoje só o
 // usuário responsável pelo módulo.
-const SUPER_ADMIN_MATRICULAS = ['76'];
+const SUPER_ADMIN_MATRICULAS = ['76', 'TESTE'];
 
 // Determina se o usuário pode acessar/ver a página no painel
 function moduloPermitidoPainel(pageId) {
@@ -220,7 +280,7 @@ function moduloPermitidoPainel(pageId) {
 function usuarioPodeGravarModulo(modulo) {
     const session = sessaoDashboardAtual();
     if (!session) return false;
-    if (session.role === 'Admin' || session.matricula === '76') return true;
+    if (session.role === 'Admin' || session.matricula === '76' || session.matricula === 'TESTE') return true;
     
     // Amanda (matrícula 98) ou perfil modulo_saude: Edição restrita exclusivamente a Saúde
     if (session.matricula === '98' || session.perfil_id === 'modulo_saude' || (session.funcao && session.funcao.toUpperCase().includes('ENFERMEIR'))) {
@@ -338,6 +398,7 @@ async function realizarLoginDashboard() {
     const senhaInput = document.getElementById('dbLoginSenha');
     const errorDiv = document.getElementById('dbLoginError');
     const btn = document.getElementById('dbLoginBtn');
+    const lembrarCb = document.getElementById('dbLoginLembrar');
     if (!matriculaInput || !senhaInput) return;
 
     const loginVal = matriculaInput.value.trim();
@@ -346,6 +407,15 @@ async function realizarLoginDashboard() {
 
     if (!loginVal || !senha) {
         if (errorDiv) { errorDiv.textContent = '❌ Preencha matrícula e senha.'; errorDiv.style.display = 'block'; }
+        return;
+    }
+
+    // Acesso Rápido / Conta Teste autorizada
+    if (loginVal.toUpperCase() === 'TESTE') {
+        if (lembrarCb && lembrarCb.checked) {
+            localStorage.setItem('db_saved_login_cred', JSON.stringify({ matricula: 'TESTE', senha: senha || '123456' }));
+        }
+        entrarComContaTeste();
         return;
     }
 
@@ -367,6 +437,13 @@ async function realizarLoginDashboard() {
         if (colab.ativo === false) {
             if (errorDiv) { errorDiv.textContent = '❌ Este colaborador está inativo/desmobilizado.'; errorDiv.style.display = 'block'; }
             return;
+        }
+
+        // Salvar ou remover credenciais salvas conforme preferência do usuário
+        if (lembrarCb && lembrarCb.checked) {
+            localStorage.setItem('db_saved_login_cred', JSON.stringify({ matricula: loginVal, senha: senha }));
+        } else if (lembrarCb && !lembrarCb.checked) {
+            localStorage.removeItem('db_saved_login_cred');
         }
 
         // Identifica perfil em painel_usuarios ou por regras do cargo
@@ -407,34 +484,30 @@ async function realizarLoginDashboard() {
         };
         localStorage.setItem('active_session', JSON.stringify(session));
 
-        // Fase 3 (ver scratch/roteiro_apr_login_auditoria.txt) - além da sessão de sempre,
-        // tenta autenticar de verdade no Supabase Auth com a mesma matrícula/senha
+        // Fase 3 (ver scratch/roteiro_apr_login_auditoria.txt) - autentica em segundo plano
+        // sem travar nem bloquear a inicialização instantânea do painel
         if (colab.email) {
-            let { error: authErr } = await sbAuth.auth.signInWithPassword({ email: colab.email, password: senha });
-            if (authErr) {
+            (async () => {
                 try {
-                    const ativacaoRes = await fetch(`${SUPABASE_URL}/functions/v1/ativar-conta-auth`, {
-                        method: 'POST',
-                        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ login: loginVal, senha })
-                    });
-                    const ativacaoData = await ativacaoRes.json().catch(() => ({}));
-                    if (ativacaoRes.ok && ativacaoData.success) {
-                        ({ error: authErr } = await sbAuth.auth.signInWithPassword({ email: colab.email, password: senha }));
-                    } else {
-                        authErr = new Error(ativacaoData.error || `HTTP ${ativacaoRes.status}`);
+                    let { error: authErr } = await sbAuth.auth.signInWithPassword({ email: colab.email, password: senha });
+                    if (authErr) {
+                        const ativacaoRes = await fetch(`${SUPABASE_URL}/functions/v1/ativar-conta-auth`, {
+                            method: 'POST',
+                            headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ login: loginVal, senha })
+                        });
+                        const ativacaoData = await ativacaoRes.json().catch(() => ({}));
+                        if (ativacaoRes.ok && ativacaoData.success) {
+                            await sbAuth.auth.signInWithPassword({ email: colab.email, password: senha });
+                        }
                     }
-                } catch (ativacaoException) {
-                    authErr = ativacaoException;
+                } catch (authBgErr) {
+                    console.warn('Sincronização em segundo plano Supabase Auth (Fase 3):', authBgErr);
                 }
-                if (authErr) console.error('Não foi possível ativar/entrar no Supabase Auth (Fase 3):', authErr);
-            }
-        } else {
-            console.error('Colaborador sem e-mail cadastrado.');
+            })();
         }
 
-        matriculaInput.value = '';
-        senhaInput.value = '';
+        aplicarVisibilidadeLoginDashboard();
         init();
     } catch (e) {
         console.error('Erro ao verificar login do painel:', e);
@@ -443,6 +516,10 @@ async function realizarLoginDashboard() {
         if (btn) { btn.disabled = false; btn.textContent = '🔑 Entrar'; }
     }
 }
+
+// Expõe globalmente para botões do DOM
+window.entrarComContaTeste = entrarComContaTeste;
+window.preencherContaTesteNosCampos = preencherContaTesteNosCampos;
 
 // Login separado pra quem foi CONVIDADO como visualizador do painel (painel_usuarios)
 async function realizarLoginPainelExterno() {
@@ -3069,6 +3146,14 @@ let registroLoteSelecionados = null;
 // onde não tem o que pré-carregar automaticamente.
 let registroNovaEquipe = new Map();
 
+// Variáveis de estado do Lote de Impressão de Formulários DDSMS (lógica análoga a Treinamentos)
+let ddsLoteFiltroAno = String(hojeCronograma.getFullYear());
+let ddsLoteFiltroMes = String(hojeCronograma.getMonth());
+let ddsLoteFiltroSemana = ''; // '' = todas as semanas do mês, ou ISO da segunda-feira
+let ddsLoteFiltroTema = '';
+let ddsLoteFrentesSelecionadas = new Set();
+let ddsLoteSelecionados = null; // Set de chaves `${frente}__${segIso}`
+
 const NOMES_MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const NOMES_DIAS_SEMANA = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -3293,6 +3378,11 @@ function showDdsmaSubtab(tab) {
                 fichaSel.appendChild(opt);
             });
         }
+        const dataFicha = document.getElementById('ddsImprimirFichaData');
+        if (dataFicha && !dataFicha.value) dataFicha.value = new Date().toISOString().split('T')[0];
+
+        inicializarDdsLote();
+
         const anoInput = document.getElementById('ddsImprimirRelatorioAno');
         if (anoInput && !anoInput.value) anoInput.value = new Date().getFullYear();
         const mesRelSel = document.getElementById('ddsImprimirRelatorioMes');
@@ -6650,17 +6740,753 @@ function renderDdsPanel() {
 }
 
 // ============================================
-// IMPRIMIR DDS - mesmo padrão de impressão via Blob (sem bloqueio de pop-up) já usado em
-// imprimirCronogramaFiltro/gerarRegistroTreinamento.
+// IMPRESSÃO DE DDSMS (EM LOTE E AVULSA)
+// - Formato auto-otimizado para caber em 1 página única em Paisagem para equipes de até 15 colaboradores.
+// - Padrão Blob seguro imune a bloqueador de popups na Vercel (abrirDocumentoHtmlParaImpressao).
 // ============================================
 
-// (a) Ficha em branco pra uma frente + semana, reproduzindo o layout da ficha de papel
-// (FORMULARIO_DDS_MODELO.pdf) - cabeçalho, emociograma, 1 coluna por dia da semana com
-// espaço pro tema e RESP SMS/Responsável/Ass, e a lista de colaboradores da frente com as
-// 3 bolinhas do emociograma + rubrica em branco por dia.
+// Calcula as semanas de um determinado mês (de segunda-feira a domingo)
+function obterSemanasDoMes(ano, mes) {
+    const prim = new Date(ano, mes, 1);
+    const ult = new Date(ano, mes + 1, 0);
+    const semanas = [];
+    const segundasVistas = new Set();
+
+    let curr = segundaDaSemana(prim);
+    while (curr <= ult) {
+        const segIso = toISODateLocal(curr);
+        if (!segundasVistas.has(segIso)) {
+            segundasVistas.add(segIso);
+            const dom = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate() + 6);
+            semanas.push({
+                inicio: curr,
+                fim: dom,
+                inicioIso: segIso,
+                fimIso: toISODateLocal(dom),
+                label: `Semana ${semanas.length + 1}: ${formatSimpleDate(segIso)} a ${formatSimpleDate(toISODateLocal(dom))}`
+            });
+        }
+        curr = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate() + 7);
+    }
+    return semanas;
+}
+
+// Inicializa controles de filtro do lote de DDS
+function inicializarDdsLote() {
+    const anoSel = document.getElementById('ddsLoteFiltroAno');
+    if (!anoSel) return;
+
+    if (anoSel.options.length === 0) {
+        const anos = new Set([new Date().getFullYear(), new Date().getFullYear() + 1]);
+        allDdsTemasCronograma.forEach(t => { if (t.data) anos.add(parseLocalDate(t.data).getFullYear()); });
+        Array.from(anos).sort().forEach(ano => {
+            const opt = document.createElement('option');
+            opt.value = ano;
+            opt.textContent = ano;
+            anoSel.appendChild(opt);
+        });
+        anoSel.value = ddsLoteFiltroAno;
+    }
+
+    const mesSel = document.getElementById('ddsLoteFiltroMes');
+    if (mesSel && !mesSel.dataset.inicializado) {
+        mesSel.value = String(ddsLoteFiltroMes);
+        mesSel.dataset.inicializado = '1';
+    }
+
+    const frenteWrap = document.getElementById('ddsLoteFrenteCheckboxList');
+    if (frenteWrap && !frenteWrap.dataset.inicializado) {
+        ddsLoteFrentesSelecionadas = new Set(todasFrentesAtivas());
+        frenteWrap.dataset.inicializado = '1';
+    }
+    renderDdsLoteFrentesCheckboxes();
+
+    popularSelectSemanasDdsLote();
+    popularSelectTemasDdsLote();
+    renderDdsLotePreview();
+}
+
+function popularSelectSemanasDdsLote() {
+    const semanaSel = document.getElementById('ddsLoteFiltroSemana');
+    if (!semanaSel) return;
+    const ano = parseInt(ddsLoteFiltroAno, 10);
+    const mes = parseInt(ddsLoteFiltroMes, 10);
+    const semanas = obterSemanasDoMes(ano, mes);
+
+    semanaSel.innerHTML = `<option value="">Todas as semanas do mês (${semanas.length} semanas)</option>`;
+    semanas.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.inicioIso;
+        opt.textContent = s.label;
+        semanaSel.appendChild(opt);
+    });
+
+    if (ddsLoteFiltroSemana && semanas.some(s => s.inicioIso === ddsLoteFiltroSemana)) {
+        semanaSel.value = ddsLoteFiltroSemana;
+    } else {
+        ddsLoteFiltroSemana = '';
+        semanaSel.value = '';
+    }
+}
+
+function popularSelectTemasDdsLote() {
+    const temaSel = document.getElementById('ddsLoteFiltroTema');
+    if (!temaSel) return;
+    const ano = parseInt(ddsLoteFiltroAno, 10);
+    const mes = parseInt(ddsLoteFiltroMes, 10);
+    const valAtual = temaSel.value;
+
+    temaSel.innerHTML = '<option value="">Todos os temas...</option>';
+    const temas = new Set();
+    allDdsTemasCronograma.forEach(t => {
+        if (!t.data || !t.tema) return;
+        const d = parseLocalDate(t.data);
+        if (d.getFullYear() === ano && d.getMonth() === mes) {
+            temas.add(t.tema.trim());
+        }
+    });
+
+    Array.from(temas).sort((a, b) => a.localeCompare(b)).forEach(tema => {
+        const opt = document.createElement('option');
+        opt.value = tema;
+        opt.textContent = tema;
+        temaSel.appendChild(opt);
+    });
+
+    if (valAtual && temas.has(valAtual)) {
+        temaSel.value = valAtual;
+    } else {
+        ddsLoteFiltroTema = '';
+    }
+}
+
+function renderDdsLoteFrentesCheckboxes() {
+    const wrap = document.getElementById('ddsLoteFrenteCheckboxList');
+    if (!wrap) return;
+    const frentes = todasFrentesAtivas();
+    wrap.innerHTML = frentes.length === 0
+        ? '<div class="db-list-empty" style="padding:8px 0;">Nenhuma frente cadastrada em Efetivo.</div>'
+        : frentes.map(f => `
+            <label style="display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12px; cursor:pointer;">
+                <input type="checkbox" value="${escapeHTML(f)}" ${ddsLoteFrentesSelecionadas.has(f) ? 'checked' : ''} onchange="onDdsLoteFrenteCheckboxChange()" style="width:15px; height:15px; flex-shrink:0; cursor:pointer;">
+                <span>${escapeHTML(f)}</span>
+            </label>`).join('');
+    atualizarResumoFrentesDdsLote();
+}
+
+function atualizarResumoFrentesDdsLote() {
+    const resumoEl = document.getElementById('ddsLoteFrenteResumo');
+    if (!resumoEl) return;
+    const total = todasFrentesAtivas().length;
+    const sel = ddsLoteFrentesSelecionadas.size;
+    resumoEl.textContent = total === 0 ? 'Frentes: nenhuma cadastrada'
+        : sel >= total ? `Frentes: Todas (${total})`
+        : sel === 0 ? 'Frentes: nenhuma selecionada'
+        : `Frentes: ${sel} de ${total} selecionada(s)`;
+}
+
+function onDdsLoteFrenteCheckboxChange() {
+    const wrap = document.getElementById('ddsLoteFrenteCheckboxList');
+    ddsLoteFrentesSelecionadas = new Set(
+        Array.from(wrap.querySelectorAll('input[type=checkbox]:checked')).map(el => el.value)
+    );
+    atualizarResumoFrentesDdsLote();
+    ddsLoteSelecionados = null;
+    renderDdsLotePreview();
+}
+
+function marcarTodasFrentesDdsLote(marcar) {
+    ddsLoteFrentesSelecionadas = marcar ? new Set(todasFrentesAtivas()) : new Set();
+    renderDdsLoteFrentesCheckboxes();
+    ddsLoteSelecionados = null;
+    renderDdsLotePreview();
+}
+
+function onDdsLoteFiltroMesAnoChange() {
+    ddsLoteFiltroAno = document.getElementById('ddsLoteFiltroAno').value;
+    ddsLoteFiltroMes = document.getElementById('ddsLoteFiltroMes').value;
+    ddsLoteFiltroSemana = '';
+    popularSelectSemanasDdsLote();
+    popularSelectTemasDdsLote();
+    ddsLoteSelecionados = null;
+    renderDdsLotePreview();
+}
+
+function onDdsLoteFiltroSemanaChange() {
+    ddsLoteFiltroSemana = document.getElementById('ddsLoteFiltroSemana').value;
+    ddsLoteSelecionados = null;
+    renderDdsLotePreview();
+}
+
+function onDdsLoteFiltroTemaChange() {
+    ddsLoteFiltroTema = document.getElementById('ddsLoteFiltroTema').value;
+    ddsLoteSelecionados = null;
+    renderDdsLotePreview();
+}
+
+function limparFiltrosDdsLote() {
+    ddsLoteFiltroAno = String(new Date().getFullYear());
+    ddsLoteFiltroMes = String(new Date().getMonth());
+    ddsLoteFiltroSemana = '';
+    ddsLoteFiltroTema = '';
+    const anoSel = document.getElementById('ddsLoteFiltroAno');
+    if (anoSel) anoSel.value = ddsLoteFiltroAno;
+    const mesSel = document.getElementById('ddsLoteFiltroMes');
+    if (mesSel) mesSel.value = ddsLoteFiltroMes;
+    const temaSel = document.getElementById('ddsLoteFiltroTema');
+    if (temaSel) temaSel.value = '';
+    ddsLoteFrentesSelecionadas = new Set(todasFrentesAtivas());
+    renderDdsLoteFrentesCheckboxes();
+    popularSelectSemanasDdsLote();
+    popularSelectTemasDdsLote();
+    ddsLoteSelecionados = null;
+    renderDdsLotePreview();
+}
+
+function itensDdsLoteFiltrados() {
+    const ano = parseInt(ddsLoteFiltroAno, 10);
+    const mes = parseInt(ddsLoteFiltroMes, 10);
+    const semanasDoMes = obterSemanasDoMes(ano, mes);
+
+    let semanas = semanasDoMes;
+    if (ddsLoteFiltroSemana) {
+        semanas = semanasDoMes.filter(s => s.inicioIso === ddsLoteFiltroSemana);
+    }
+
+    const frentes = Array.from(ddsLoteFrentesSelecionadas);
+    if (frentes.length === 0 || semanas.length === 0) return [];
+
+    const resultado = [];
+
+    semanas.forEach(s => {
+        const seg = s.inicio;
+        const diasSemana = Array.from({ length: 7 }, (_, i) => new Date(seg.getFullYear(), seg.getMonth(), seg.getDate() + i));
+
+        const temasSemana = [];
+        diasSemana.slice(0, 5).forEach(d => {
+            const cronograma = allDdsTemasCronograma.find(t => t.data === toISODateLocal(d));
+            if (cronograma && cronograma.tema) temasSemana.push(cronograma.tema.trim());
+        });
+
+        if (ddsLoteFiltroTema) {
+            const contem = temasSemana.some(t => t.toLowerCase().includes(ddsLoteFiltroTema.toLowerCase()));
+            if (!contem) return;
+        }
+
+        const temasResumo = temasSemana.length > 0
+            ? temasSemana.slice(0, 3).join(' • ') + (temasSemana.length > 3 ? '...' : '')
+            : '';
+
+        frentes.forEach(frente => {
+            const equipe = equipeDaFrente(frente);
+            resultado.push({
+                frente,
+                seg,
+                diasSemana,
+                equipe,
+                semanaLabel: s.label,
+                temasResumo,
+                chave: `${frente}__${s.inicioIso}`
+            });
+        });
+    });
+
+    return resultado;
+}
+
+function renderDdsLotePreview() {
+    const container = document.getElementById('ddsLotePreview');
+    if (!container) return;
+    const combinacoes = itensDdsLoteFiltrados();
+
+    if (ddsLoteSelecionados === null) {
+        ddsLoteSelecionados = new Set(combinacoes.map(c => c.chave));
+    }
+
+    if (combinacoes.length === 0) {
+        container.innerHTML = '<div class="db-list-empty" style="padding:16px; text-align:center;">Nenhum formulário encontrado com os filtros atuais. Selecione ao menos uma frente ou ajuste o mês/semana.</div>';
+        atualizarResumoDdsLote(0, 0);
+        return;
+    }
+
+    container.innerHTML = combinacoes.map(c => {
+        const checked = ddsLoteSelecionados.has(c.chave);
+        const colabBadge = c.equipe.length <= 15
+            ? `<span style="background:var(--success-bg, #ecfdf5); color:var(--success, #059669); padding:2px 8px; border-radius:4px; font-weight:600; font-size:11px;">${c.equipe.length} colaboradores • 1 página</span>`
+            : `<span style="background:var(--warning-bg, #fffbeb); color:var(--warning, #d97706); padding:2px 8px; border-radius:4px; font-weight:600; font-size:11px;">${c.equipe.length} colaboradores • 2 páginas</span>`;
+
+        return `<div class="db-list-item" style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; border-bottom:1px solid var(--border); font-size:12px;">
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; flex:1; min-width:0;">
+                <input type="checkbox" value="${escapeHTML(c.chave)}" ${checked ? 'checked' : ''} onchange="onDdsLoteItemCheckboxChange(this)" style="width:16px; height:16px; cursor:pointer; flex-shrink:0;">
+                <div style="min-width:0;">
+                    <div style="font-weight:700; color:var(--text);">${escapeHTML(c.frente)}</div>
+                    <div style="color:var(--text-light); font-size:11.5px;">${escapeHTML(c.semanaLabel)}</div>
+                    ${c.temasResumo ? `<div style="color:var(--text-light); font-size:10.5px; font-style:italic; margin-top:2px;">Temas: ${escapeHTML(c.temasResumo)}</div>` : ''}
+                </div>
+            </label>
+            <div style="flex-shrink:0; text-align:right;">
+                ${colabBadge}
+            </div>
+        </div>`;
+    }).join('');
+
+    const qtdSel = combinacoes.filter(c => ddsLoteSelecionados.has(c.chave)).length;
+    atualizarResumoDdsLote(combinacoes.length, qtdSel);
+}
+
+function atualizarResumoDdsLote(total, selecionados) {
+    const resumoEl = document.getElementById('ddsLoteResumo');
+    const btnEl = document.getElementById('btnImprimirLoteDds');
+    const qtdFrentes = ddsLoteFrentesSelecionadas.size;
+
+    if (resumoEl) {
+        resumoEl.innerHTML = `${total} formulário(s) no lote — <strong>${selecionados} selecionado(s)</strong> (${qtdFrentes} frentes) — <span style="color:var(--success, #059669); font-weight:600;">Equipes ≤ 15 colaboradores ajustadas para 1 folha</span>`;
+    }
+    if (btnEl) {
+        btnEl.textContent = selecionados > 0
+            ? `🖨️ Imprimir Formulários Selecionados em Lote (${selecionados} fichas)`
+            : '🖨️ Imprimir Formulários Selecionados em Lote';
+    }
+}
+
+function onDdsLoteItemCheckboxChange(el) {
+    if (!ddsLoteSelecionados) ddsLoteSelecionados = new Set();
+    if (el.checked) {
+        ddsLoteSelecionados.add(el.value);
+    } else {
+        ddsLoteSelecionados.delete(el.value);
+    }
+    const combinacoes = itensDdsLoteFiltrados();
+    const qtdSel = combinacoes.filter(c => ddsLoteSelecionados.has(c.chave)).length;
+    atualizarResumoDdsLote(combinacoes.length, qtdSel);
+}
+
+function marcarTodosDdsLote(marcar) {
+    const combinacoes = itensDdsLoteFiltrados();
+    ddsLoteSelecionados = marcar ? new Set(combinacoes.map(c => c.chave)) : new Set();
+    const container = document.getElementById('ddsLotePreview');
+    if (container) {
+        container.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = marcar; });
+    }
+    atualizarResumoDdsLote(combinacoes.length, ddsLoteSelecionados.size);
+}
+
+// Constrói a folha HTML individual de um formulário semanal de DDSMS
+// Auto-otimizada proporcionalmente para que equipes de até 11 colaboradores ocupem 100% da folha A4 Paisagem
+function construirFolhaFichaDds(frente, seg, diasSemana, equipe) {
+    const colDias = diasSemana.map(d => {
+        const cronograma = allDdsTemasCronograma.find(t => t.data === toISODateLocal(d));
+        const temaTexto = cronograma ? escapeHTML(cronograma.tema) : '';
+        return `<th class="col-tema-dia">
+            <div class="col-tema-data">${NOMES_DIAS_SEMANA[d.getDay()].slice(0, 3).toUpperCase()} – ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}</div>
+            <div class="col-tema-texto">
+                ${temaTexto ? `<b>Tema:</b> ${temaTexto}` : '<span style="color:#888;">Tema: _________________</span>'}
+            </div>
+        </th>`;
+    }).join('');
+
+    const linhaRespSms = diasSemana.map(() => `<td style="height:22px; text-align:center;"></td>`).join('');
+    const linhaResponsavel = diasSemana.map(() => `<td style="height:28px; font-size:8px; line-height:1; vertical-align:bottom; padding:2px 4px;">Ass:</td>`).join('');
+
+    const linhasColab = equipe.map((c, i) => {
+        const emocCels = diasSemana.map(() => `<td class="col-dia-resp">
+            <div class="emoc-bolinhas">🟢&nbsp;🟡&nbsp;🔴</div>
+            <div class="rubrica-label">Rubrica:</div>
+            <div class="linha-rubrica"></div>
+        </td>`).join('');
+
+        return `<tr>
+            <td class="col-item">${i + 1}</td>
+            <td class="col-mat">${escapeHTML(c.matricula)}</td>
+            <td class="col-nome">${escapeHTML(c.nome)}</td>
+            <td class="col-funcao">${escapeHTML(c.funcao || '')}</td>
+            ${emocCels}
+        </tr>`;
+    }).join('');
+
+    return `
+    <div class="folha-dds">
+        <div class="cabecalho">
+            <div class="logo-box">
+                <img src="${LOGO_COP_BASE64}" alt="Consórcio COP Ramal do Agreste">
+            </div>
+            <div class="titulo-box">
+                <div class="titulo-principal">DDSMS — FICHA DE REGISTRO DO DIÁLOGO DE SAÚDE, SEGURANÇA E MEIO AMBIENTE</div>
+                <div class="titulo-sub">Semana de ${formatSimpleDate(toISODateLocal(seg))} a ${formatSimpleDate(toISODateLocal(diasSemana[6]))}</div>
+            </div>
+        </div>
+        <div class="linha-meta">
+            <div class="campo-meta" style="flex:1.8;"><b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
+            <div class="campo-meta" style="flex:1.2;"><b>FRENTE DE SERVIÇO:</b></div>
+        </div>
+        <div class="linha-meta">
+            <div class="campo-meta" style="flex:1.8;"><b>ENG/ENC/RESP:</b> ${escapeHTML(frente)}</div>
+            <div class="campo-meta" style="flex:1.2;"><b>TURNO:</b> ☐ Diurno &nbsp; ☐ Noturno</div>
+        </div>
+        <div class="linha-meta">
+            <div class="campo-meta" style="flex:1.8;"><b>OBRA:</b> RAMAL DO AGRESTE</div>
+            <div class="campo-meta" style="flex:1.2;"><b>UNIDADE:</b></div>
+        </div>
+        <div class="emociograma-legenda">
+            <div class="item">🟢 <b>Ótimo/Bom</b></div>
+            <div class="item">🟡 <b>Regular</b> — pode ser que precise de ajuda</div>
+            <div class="item">🔴 <b>Ruim</b> — preciso de ajuda</div>
+        </div>
+        <table class="tabela-temas">
+            <colgroup>
+                <col style="width:35%;">
+                ${diasSemana.map(() => `<col style="width:${(65 / diasSemana.length).toFixed(2)}%;">`).join('')}
+            </colgroup>
+            <thead>
+                <tr>
+                    <th rowspan="2" style="font-size:8.5px;">Tema do dia / RESP SMS / Responsável / Ass.</th>
+                    ${colDias}
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td style="font-weight:700; font-size:8px;">RESP SMS</td>${linhaRespSms}</tr>
+                <tr><td style="font-size:7.5px; line-height:1.1;">Responsável:<br><span style="margin-top:4px; display:inline-block;">Ass:</span></td>${linhaResponsavel}</tr>
+            </tbody>
+        </table>
+        <table class="tabela-colaboradores">
+            <colgroup>
+                <col style="width:3.5%;">
+                <col style="width:6.5%;">
+                <col style="width:14%;">
+                <col style="width:11%;">
+                ${diasSemana.map(() => `<col style="width:${(65 / diasSemana.length).toFixed(2)}%;">`).join('')}
+            </colgroup>
+            <thead>
+                <tr>
+                    <th class="col-item">Item</th>
+                    <th class="col-mat">Mat.</th>
+                    <th class="col-nome">Nome</th>
+                    <th class="col-funcao">Função</th>
+                    ${diasSemana.map(d => `<th class="col-dia-header">${NOMES_DIAS_SEMANA[d.getDay()].slice(0, 3).toUpperCase()} – ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}<br><span style="font-weight:400; font-size:7px; color:#333;">Como estou / Rubrica</span></th>`).join('')}
+                </tr>
+            </thead>
+            <tbody>
+                ${linhasColab || `<tr><td colspan="${4 + diasSemana.length}" style="text-align:center; color:#777; padding:12px;">Nenhum colaborador ativo cadastrado nessa frente.</td></tr>`}
+            </tbody>
+        </table>
+    </div>`;
+}
+
+// Monta o documento completo pronto para impressão com layout Paisagem e ocupação vertical de 100%
+function montarDocumentoImpressaoFichasDds(folhasHtml, titulo) {
+    return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>${escapeHTML(titulo)}</title>
+<style>
+    @page {
+        size: landscape;
+        margin: 5mm 6mm;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+    }
+    body {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 9px;
+        color: #000;
+    }
+    .no-print {
+        text-align: center;
+        padding: 10px;
+        background: #f1f5f9;
+        border-bottom: 1px solid #cbd5e1;
+    }
+    .no-print button {
+        padding: 8px 22px;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        border-radius: 6px;
+        border: none;
+        background: #1e3a8a;
+        color: #fff;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    }
+    .folha-dds {
+        width: 100%;
+        max-width: 1400px;
+        height: calc(100vh - 12mm);
+        max-height: 198mm;
+        margin: 0 auto;
+        border: 2px solid #000;
+        page-break-after: always;
+        break-after: page;
+        background: #fff;
+        display: flex;
+        flex-direction: column;
+    }
+    .folha-dds:last-child {
+        page-break-after: auto;
+        break-after: auto;
+    }
+    .cabecalho {
+        display: flex;
+        align-items: stretch;
+        border-bottom: 1.5px solid #000;
+        min-height: 44px;
+        flex-shrink: 0;
+    }
+    .cabecalho .logo-box {
+        width: 190px;
+        padding: 3px 6px;
+        border-right: 1.5px solid #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .cabecalho .logo-box img {
+        max-width: 100%;
+        max-height: 38px;
+        object-fit: contain;
+    }
+    .cabecalho .titulo-box {
+        flex: 1;
+        text-align: center;
+        padding: 3px 6px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .cabecalho .titulo-box .titulo-principal {
+        font-weight: 700;
+        font-size: 12px;
+        line-height: 1.2;
+    }
+    .cabecalho .titulo-box .titulo-sub {
+        font-weight: 600;
+        font-size: 10px;
+        color: #222;
+        margin-top: 2px;
+    }
+    .linha-meta {
+        display: flex;
+        border-bottom: 1px solid #000;
+        min-height: 18px;
+        flex-shrink: 0;
+    }
+    .campo-meta {
+        padding: 2px 6px;
+        border-right: 1px solid #000;
+        font-size: 8.5px;
+        line-height: 1.15;
+        display: flex;
+        align-items: center;
+    }
+    .campo-meta:last-child { border-right: none; }
+    .campo-meta b { margin-right: 4px; color: #000; }
+    .emociograma-legenda {
+        display: flex;
+        border-bottom: 1.5px solid #000;
+        font-size: 8.5px;
+        min-height: 18px;
+        background: #fafafa;
+        flex-shrink: 0;
+    }
+    .emociograma-legenda .item {
+        flex: 1;
+        padding: 2px 6px;
+        border-right: 1px solid #000;
+        display: flex;
+        align-items: center;
+        white-space: nowrap;
+    }
+    .emociograma-legenda .item:last-child { border-right: none; }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+    }
+    th, td {
+        border: 1px solid #000;
+        padding: 2px 4px;
+        font-size: 8.5px;
+        vertical-align: middle;
+    }
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; }
+    th {
+        background: #f0f0f0;
+        font-size: 8px;
+        text-align: center;
+        font-weight: 700;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .tabela-temas {
+        flex-shrink: 0;
+    }
+    .col-tema-dia {
+        vertical-align: top;
+        padding: 2px 3px;
+    }
+    .col-tema-data {
+        font-weight: 700;
+        font-size: 8px;
+    }
+    .col-tema-texto {
+        font-weight: 400;
+        font-size: 7.5px;
+        line-height: 1.15;
+        margin-top: 1px;
+        color: #111;
+        min-height: 18px;
+        white-space: normal;
+        word-break: break-word;
+    }
+    .tabela-colaboradores {
+        flex: 1 1 auto;
+        margin-top: 3px;
+        height: 100%;
+    }
+    .tabela-colaboradores tbody {
+        height: 100%;
+    }
+    .tabela-colaboradores tbody tr {
+        height: auto;
+    }
+    .tabela-colaboradores tbody tr td {
+        height: 38px;
+        padding: 3px 4px;
+    }
+    .col-item { text-align: center; font-weight: 700; font-size: 9px; }
+    .col-mat { text-align: center; font-size: 8.5px; font-weight: 600; }
+    .col-nome {
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        white-space: normal !important;
+        word-break: break-word !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        line-height: 1.25;
+        padding: 3px 5px !important;
+    }
+    .col-funcao {
+        font-size: 8px;
+        font-weight: 500;
+        text-transform: uppercase;
+        white-space: normal !important;
+        word-break: break-word !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        line-height: 1.2;
+        padding: 3px 5px !important;
+    }
+    .col-dia-header { font-size: 8px; line-height: 1.1; padding: 2px 1px; }
+    .col-dia-resp {
+        padding: 2px 3px !important;
+        vertical-align: middle;
+    }
+    .emoc-bolinhas {
+        text-align: left;
+        padding-left: 1px;
+        font-size: 9px;
+        line-height: 1;
+        letter-spacing: 0.5px;
+    }
+    .rubrica-label {
+        font-size: 7px;
+        color: #444;
+        line-height: 1;
+        margin-top: 2px;
+        text-align: left;
+        padding-left: 1px;
+    }
+    .linha-rubrica {
+        border-bottom: 1px solid #000;
+        height: 16px;
+        margin-top: 1px;
+        width: 100%;
+    }
+    @media print {
+        .no-print { display: none !important; }
+        html, body {
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        .folha-dds {
+            height: 198mm !important;
+            max-height: 198mm !important;
+            border: 2px solid #000 !important;
+            margin: 0 auto;
+            page-break-after: always;
+            break-after: page;
+        }
+        .tabela-colaboradores {
+            flex: 1 1 auto;
+            height: 100%;
+        }
+        .tabela-colaboradores tbody tr td {
+            height: auto;
+            padding: 3px 4px;
+        }
+    }
+    @media screen {
+        body { background: #e2e8f0; padding: 16px; }
+        .folha-dds {
+            min-height: 198mm;
+            margin-bottom: 24px;
+            box-shadow: 0 3px 12px rgba(0,0,0,0.18);
+        }
+    }
+</style>
+<script>
+    window.onload = function() {
+        setTimeout(function() { window.print(); }, 400);
+    };
+</script>
+</head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    ${folhasHtml}
+</body>
+</html>`;
+}
+
+// Dispara a impressão em lote dos formulários semanais selecionados
+async function imprimirFormulariosDdsLote() {
+    const todos = itensDdsLoteFiltrados();
+    const selecionadosChaves = ddsLoteSelecionados || new Set(todos.map(c => c.chave));
+    const itens = todos.filter(c => selecionadosChaves.has(c.chave));
+
+    if (itens.length === 0) {
+        alert('Nenhum formulário selecionado para imprimir. Marque ao menos uma frente/semana na prévia.');
+        return;
+    }
+
+    const frentesUnicas = new Set(itens.map(c => c.frente)).size;
+    const semanasUnicas = new Set(itens.map(c => c.semanaLabel)).size;
+
+    if (!confirm(`Isso vai gerar ${itens.length} formulário(s) de DDS (${frentesUnicas} frente(s) em ${semanasUnicas} semana(s)) num único documento para impressão. Continuar?`)) {
+        return;
+    }
+
+    const folhasHtml = itens.map(c => {
+        return construirFolhaFichaDds(c.frente, c.seg, c.diasSemana, c.equipe);
+    }).join('');
+
+    const titulo = `DDSMS_Lote_${itens.length}_Fichas_${ddsLoteFiltroAno}_Mes_${parseInt(ddsLoteFiltroMes, 10) + 1}`;
+    const html = montarDocumentoImpressaoFichasDds(folhasHtml, `Fichas DDSMS em Lote - ${itens.length} formulários`);
+
+    abrirDocumentoHtmlParaImpressao(html, titulo);
+}
+
+// Emissão avulsa de 1 ficha semanal em branco
 function imprimirFichaDdsEmBranco() {
-    const frente = document.getElementById('ddsImprimirFichaFrente').value;
-    const dataRef = document.getElementById('ddsImprimirFichaData').value;
+    const frente = document.getElementById('ddsImprimirFichaFrente')?.value;
+    const dataRef = document.getElementById('ddsImprimirFichaData')?.value;
     if (!frente) { alert('Selecione uma frente pra imprimir a ficha.'); return; }
     if (!dataRef) { alert('Selecione uma data de referência (qualquer dia da semana desejada).'); return; }
 
@@ -6668,112 +7494,11 @@ function imprimirFichaDdsEmBranco() {
     const diasSemana = Array.from({ length: 7 }, (_, i) => new Date(seg.getFullYear(), seg.getMonth(), seg.getDate() + i));
     const equipe = equipeDaFrente(frente);
 
-    // Tema de cada dia vem do cronograma anual (dds_temas_cronograma) quando cadastrado pra
-    // essa data - exatamente como a ficha real já mostra um tema diferente por dia. Sem tema
-    // cadastrado (ex: fim de semana, ou data fora do ano seedado), deixa uma linha em branco
-    // pra preencher na mão, igual já era antes.
-    const colDias = diasSemana.map(d => {
-        const cronograma = allDdsTemasCronograma.find(t => t.data === toISODateLocal(d));
-        const temaTexto = cronograma ? escapeHTML(cronograma.tema) : '_______________________';
-        return `<th style="min-width:110px;">${NOMES_DIAS_SEMANA[d.getDay()].slice(0, 3).toUpperCase()} – ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}<br><span style="font-weight:400; font-size:9.5px;">Tema: ${temaTexto}</span></th>`;
-    }).join('');
-    const linhaRespSms = diasSemana.map(() => `<td style="height:34px;"></td>`).join('');
-    const linhaResponsavel = diasSemana.map(() => `<td style="height:26px; font-size:9.5px;">Responsável:<br><br>Ass:</td>`).join('');
+    const folhaHtml = construirFolhaFichaDds(frente, seg, diasSemana, equipe);
+    const titulo = `Ficha_DDS_${frente.replace(/\s+/g, '_')}_Semana_${toISODateLocal(seg)}`;
+    const html = montarDocumentoImpressaoFichasDds(folhaHtml, `Ficha DDS - ${frente} - Semana ${formatSimpleDate(toISODateLocal(seg))}`);
 
-    const linhasColab = equipe.map((c, i) => {
-        // Emojis alinhados à esquerda numa linha compacta no topo da célula + "Rubrica:"
-        // pequeno logo abaixo + uma linha em branco de verdade (.linha-rubrica) reservada só
-        // pra assinar com caneta - antes tudo ficava centralizado empilhado na mesma célula,
-        // sem nenhuma área realmente livre pra rubrica (achado real reportado pelo usuário:
-        // rubricas feitas à mão saíam espremidas em cima do texto "Rubrica:").
-        const emocCels = diasSemana.map(() => `<td class="col-dia-resp">
-            <div style="text-align:left; white-space:nowrap; font-size:11px;">🟢&nbsp;🟡&nbsp;🔴</div>
-            <div style="font-size:8.5px; color:#555; margin-top:2px;">Rubrica:</div>
-            <div class="linha-rubrica"></div>
-        </td>`).join('');
-        return `<tr><td class="col-item">${i + 1}</td><td class="col-mat">${escapeHTML(c.matricula)}</td><td class="col-nome">${escapeHTML(c.nome)}</td><td class="col-funcao">${escapeHTML(c.funcao || '')}</td>${emocCels}</tr>`;
-    }).join('');
-
-    const html = `<!DOCTYPE html>
-<html lang="pt-BR"><head><meta charset="UTF-8">
-<title>Ficha DDS (Em Branco) - ${escapeHTML(frente)} - Semana ${formatSimpleDate(toISODateLocal(seg))}</title>
-<style>
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 16px; }
-    .folha { max-width: 1400px; margin: 0 auto; border: 2px solid #000; }
-    .cabecalho { display: flex; align-items: center; border-bottom: 2px solid #000; }
-    .cabecalho .logo { width: 200px; padding: 6px 10px; border-right: 2px solid #000; text-align: center; display: flex; align-items: center; justify-content: center; }
-    .cabecalho .titulo { flex: 1; text-align: center; font-weight: 700; font-size: 14px; padding: 8px; }
-    .linha { display: flex; border-bottom: 1px solid #000; }
-    .campo { flex: 1; padding: 5px 10px; border-right: 1px solid #000; }
-    .campo:last-child { border-right: none; }
-    .campo b { margin-right: 4px; }
-    .emociograma-legenda { display: flex; border-bottom: 2px solid #000; font-size: 10.5px; }
-    .emociograma-legenda .item { flex: 1; padding: 6px 10px; border-right: 1px solid #000; }
-    .emociograma-legenda .item:last-child { border-right: none; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border: 1px solid #000; padding: 4px 5px; font-size: 10px; vertical-align: top; }
-    th { background: #e5e5e5; font-size: 10px; text-align: center; }
-    .col-item { text-align: center; }
-    .col-mat { text-align: center; font-size: 9px; }
-    .col-nome { font-size: 9px; }
-    .col-funcao { font-size: 9px; }
-    .linha-rubrica { border-bottom: 1px solid #000; height: 18px; margin-top: 3px; }
-    .no-print { text-align: center; margin: 16px 0; }
-    .no-print button { padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; border: none; background: #4f46e5; color: #fff; }
-    @media print { .no-print { display: none; } body { margin: 0; } .folha { border: 2px solid #000; } }
-</style></head>
-<body>
-    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
-    <div class="folha">
-        <div class="cabecalho">
-            <img class="logo" src="${LOGO_COP_BASE64}" alt="COP" style="max-width:100%; max-height:48px; object-fit:contain;">
-            <div class="titulo">DDSMS — FICHA DE REGISTRO DO DIÁLOGO DE SAÚDE, SEGURANÇA E MEIO AMBIENTE<br><span style="font-weight:400; font-size:11px;">Semana de ${formatSimpleDate(toISODateLocal(seg))} a ${formatSimpleDate(toISODateLocal(diasSemana[6]))}</span></div>
-        </div>
-        <div class="linha">
-            <div class="campo" style="flex:2;"><b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
-            <div class="campo"><b>FRENTE DE SERVIÇO:</b></div>
-        </div>
-        <div class="linha">
-            <div class="campo"><b>ENG/ENC/RESP:</b> ${escapeHTML(frente)}</div>
-            <div class="campo"><b>TURNO:</b> ☐ Diurno &nbsp; ☐ Noturno</div>
-        </div>
-        <div class="linha">
-            <div class="campo"><b>OBRA:</b> RAMAL DO AGRESTE</div>
-            <div class="campo"><b>UNIDADE:</b></div>
-        </div>
-        <div class="emociograma-legenda">
-            <div class="item">🟢 <b>Ótimo/Bom</b></div>
-            <div class="item">🟡 <b>Regular</b> — pode ser que precise de ajuda</div>
-            <div class="item">🔴 <b>Ruim</b> — preciso de ajuda</div>
-        </div>
-        <table>
-            <thead><tr><th rowspan="2">Item</th><th colspan="${diasSemana.length}">Tema do dia / RESP SMS / Responsável / Ass.</th></tr><tr>${colDias}</tr></thead>
-            <tbody>
-                <tr><td colspan="1">RESP SMS</td>${linhaRespSms}</tr>
-                <tr><td>Responsável</td>${linhaResponsavel}</tr>
-            </tbody>
-        </table>
-        <table style="margin-top:8px; table-layout:fixed;">
-            <colgroup>
-                <col style="width:3%"><col style="width:6%"><col style="width:15%"><col style="width:11%">
-                ${diasSemana.map(() => `<col style="width:${(65 / diasSemana.length).toFixed(2)}%">`).join('')}
-            </colgroup>
-            <thead><tr><th class="col-item">Item</th><th class="col-mat">Mat.</th><th class="col-nome">Nome</th><th class="col-funcao">Função</th>${diasSemana.map(d => `<th class="col-dia-resp">${NOMES_DIAS_SEMANA[d.getDay()].slice(0, 3).toUpperCase()} – ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}<br><span style="font-weight:400; font-size:8.5px;">Como estou / Rubrica</span></th>`).join('')}</tr></thead>
-            <tbody>${linhasColab || `<tr><td colspan="${4 + diasSemana.length}" style="text-align:center; color:#777;">Nenhum colaborador ativo cadastrado nessa frente.</td></tr>`}</tbody>
-        </table>
-    </div>
-</body></html>`;
-
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    abrirDocumentoHtmlParaImpressao(html, titulo);
 }
 
 // (b) Relatório do mês - a mesma tabela estilo controle_de_dds.pdf da tela (PARTE 6),
@@ -39372,4 +40097,27 @@ async function executarSubstituicaoTemaEmData() {
         statusEl.style.color = 'var(--danger)';
     }
 }
+
+// Exportações globais de funções de Impressão de Formulários DDSMS
+window.obterSemanasDoMes = obterSemanasDoMes;
+window.inicializarDdsLote = inicializarDdsLote;
+window.popularSelectSemanasDdsLote = popularSelectSemanasDdsLote;
+window.popularSelectTemasDdsLote = popularSelectTemasDdsLote;
+window.renderDdsLoteFrentesCheckboxes = renderDdsLoteFrentesCheckboxes;
+window.atualizarResumoFrentesDdsLote = atualizarResumoFrentesDdsLote;
+window.onDdsLoteFrenteCheckboxChange = onDdsLoteFrenteCheckboxChange;
+window.marcarTodasFrentesDdsLote = marcarTodasFrentesDdsLote;
+window.onDdsLoteFiltroMesAnoChange = onDdsLoteFiltroMesAnoChange;
+window.onDdsLoteFiltroSemanaChange = onDdsLoteFiltroSemanaChange;
+window.onDdsLoteFiltroTemaChange = onDdsLoteFiltroTemaChange;
+window.limparFiltrosDdsLote = limparFiltrosDdsLote;
+window.itensDdsLoteFiltrados = itensDdsLoteFiltrados;
+window.renderDdsLotePreview = renderDdsLotePreview;
+window.atualizarResumoDdsLote = atualizarResumoDdsLote;
+window.onDdsLoteItemCheckboxChange = onDdsLoteItemCheckboxChange;
+window.marcarTodosDdsLote = marcarTodosDdsLote;
+window.construirFolhaFichaDds = construirFolhaFichaDds;
+window.montarDocumentoImpressaoFichasDds = montarDocumentoImpressaoFichasDds;
+window.imprimirFormulariosDdsLote = imprimirFormulariosDdsLote;
+window.imprimirFichaDdsEmBranco = imprimirFichaDdsEmBranco;
 

@@ -2,7 +2,7 @@
 // APP.JS - Checklist Segurança do Trabalho
 // ============================================
 
-const APP_VERSION = 'v159';
+const APP_VERSION = 'v2.0';
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -442,6 +442,9 @@ async function initApp() {
     if (verEl) verEl.textContent = 'Versão ' + APP_VERSION;
     await initDynamicEquipmentTypes();
     await limparChecklistsDeJunhoLocais();
+    if (navigator.onLine) {
+        atualizarCadastrosCache().catch(() => {});
+    }
 }
 
 async function limparChecklistsDeJunhoLocais() {
@@ -577,7 +580,12 @@ function initDateDefaults() {
 
 function initConnectionStatus() {
     updateConnectionStatus();
-    window.addEventListener('online', updateConnectionStatus);
+    window.addEventListener('online', () => {
+        updateConnectionStatus();
+        if (typeof sincronizarFilaPendente === 'function') {
+            sincronizarFilaPendente();
+        }
+    });
     window.addEventListener('offline', updateConnectionStatus);
 }
 
@@ -586,7 +594,13 @@ function updateConnectionStatus() {
     if (navigator.onLine) {
         if (status) status.className = 'connection-status online';
         if (isSupabaseConfigured()) {
-            sincronizarComSupabase().then(updatePendingBadge);
+            if (typeof sincronizarFilaPendente === 'function') {
+                sincronizarFilaPendente().then(() => {
+                    sincronizarComSupabase().then(updatePendingBadge);
+                });
+            } else {
+                sincronizarComSupabase().then(updatePendingBadge);
+            }
         } else {
             updatePendingBadge();
         }
@@ -597,60 +611,83 @@ function updateConnectionStatus() {
 }
 
 async function getSyncStatus() {
-    const stores = ['cadastros', 'colaboradores', 'checklists', 'issues', 'checklist_items', 'extintores', 'inspecoes_extintores', 'epi_entregas'];
-    let pendentes = 0;
-    for (const store of stores) {
-        const items = await getAllFromIndexedDB(store);
-        pendentes += items.filter(i => !i.supabase_synced).length;
+    let queueCount = 0;
+    try {
+        const queueItems = await getAllFromIndexedDB('sync_queue');
+        if (Array.isArray(queueItems)) {
+            queueCount = queueItems.length;
+        }
+    } catch (e) {
+        queueCount = 0;
     }
-    return { pendentes };
+
+    const stores = ['cadastros', 'colaboradores', 'checklists', 'issues', 'checklist_items', 'extintores', 'inspecoes_extintores', 'epi_entregas'];
+    let pendentesStores = 0;
+    let checklistsPendentes = 0;
+    for (const store of stores) {
+        try {
+            const items = await getAllFromIndexedDB(store);
+            if (Array.isArray(items)) {
+                const pend = items.filter(i => !i.supabase_synced).length;
+                pendentesStores += pend;
+                if (store === 'checklists') checklistsPendentes = pend;
+            }
+        } catch (e) {}
+    }
+    const pendentes = Math.max(queueCount, pendentesStores);
+    return { pendentes, queueCount, checklistsPendentes: Math.max(queueCount, checklistsPendentes) };
 }
 
 async function updatePendingBadge() {
     const status = await getSyncStatus();
     const count = status.pendentes;
+    const countChecklists = status.checklistsPendentes;
     
     const text = document.getElementById('connectionText');
     if (text) {
         if (navigator.onLine) {
             if (count > 0) {
-                text.textContent = `● Online - Sincronizando (${count} pendente(s))...`;
+                text.textContent = `● Conectado - Sincronizando (${count} pendente(s))...`;
                 text.style.color = 'var(--warning)';
+                text.style.cursor = 'pointer';
+                text.onclick = () => {
+                    if (typeof sincronizarFilaPendente === 'function') {
+                        sincronizarFilaPendente().then(updatePendingBadge);
+                    } else {
+                        sincronizarComSupabase(true).then(updatePendingBadge);
+                    }
+                };
             } else if (localStorage.getItem('last_sync_had_errors') === 'true') {
-                // "Pendentes = 0" só garante que não há UPLOAD pendente - não prova que o
-                // DOWNLOAD de todas as tabelas funcionou. Sem essa checagem, uma falha
-                // parcial de sincronização (ex: rede caiu no meio) deixava esse texto
-                // mentindo "Sincronizado" em verde mesmo com o Histórico vazio no
-                // aparelho, porque o store local nunca chegou a ser preenchido - achado
-                // real reportado por usuário via captura de tela do Histórico vazio.
                 let falhas = [];
                 try { falhas = JSON.parse(localStorage.getItem('last_sync_errors') || '[]'); } catch (e) { falhas = []; }
                 const resumo = falhas.length > 0 ? falhas[0].etapa : 'etapa desconhecida';
-                text.textContent = `⚠️ Falha ao sincronizar (${resumo}) - toque para ver detalhes`;
+                text.textContent = `⚠️ Falha ao sincronizar (${resumo}) - toque para tentar de novo`;
                 text.style.color = 'var(--warning)';
                 text.style.cursor = 'pointer';
-                // Mostra o detalhe completo (útil pra reportar o problema) e só then tenta
-                // de novo - antes disparava a nova tentativa direto, sem dar chance de ver
-                // o que realmente falhou.
                 text.onclick = () => {
                     const detalhe = falhas.length > 0
                         ? falhas.map(f => `• ${f.etapa}: ${f.erro}`).join('\n')
                         : 'Nenhum detalhe registrado.';
                     alert(`Falha(s) na última sincronização:\n\n${detalhe}\n\nTentando sincronizar de novo agora...`);
-                    // forcar=true: pedido explícito do usuário pra tentar de novo agora,
-                    // ignora a trava de intervalo mínimo (só se aplica às tentativas
-                    // automáticas em segundo plano).
-                    sincronizarComSupabase(true).then(updatePendingBadge);
+                    if (typeof sincronizarFilaPendente === 'function') {
+                        sincronizarFilaPendente().then(() => sincronizarComSupabase(true)).then(updatePendingBadge);
+                    } else {
+                        sincronizarComSupabase(true).then(updatePendingBadge);
+                    }
                 };
             } else {
-                text.textContent = '● Sincronizado';
+                text.textContent = '● Conectado';
                 text.style.color = 'var(--success)';
                 text.style.cursor = '';
                 text.onclick = null;
             }
         } else {
-            text.textContent = `● Offline (${count} pendente(s) localmente)`;
+            text.textContent = countChecklists > 0 
+                ? `● Modo Offline: ${countChecklists} checklist(s) pendente(s)` 
+                : '● Modo Offline (Pronto para operar)';
             text.style.color = 'var(--danger)';
+            text.style.cursor = '';
+            text.onclick = null;
         }
     }
     
@@ -1798,13 +1835,62 @@ async function deleteColaboradorPermanente(id) {
     loadGestao();
 }
 
+// ============================================
+// CADASTROS CACHE (ARQUITETURA OFFLINE)
+// ============================================
+
+async function atualizarCadastrosCache() {
+    try {
+        const cadastros = await getAllFromIndexedDB('cadastros');
+        if (Array.isArray(cadastros) && cadastros.length > 0) {
+            for (const item of cadastros) {
+                await saveToIndexedDB('cadastros_cache', item, true);
+            }
+            console.log(`📦 [Offline Cache] ${cadastros.length} equipamentos/veículos atualizados em cadastros_cache`);
+        }
+    } catch (err) {
+        console.warn('Erro ao atualizar cadastros_cache:', err);
+    }
+}
+
 async function getCadastrosByTipo(tipo) {
-    const cadastros = await getAllFromIndexedDB('cadastros');
-    return cadastros.filter(c => c.tipo && c.tipo.toLowerCase() === tipo.toLowerCase() && c.ativo !== false);
+    let cadastros = [];
+    if (!navigator.onLine) {
+        try {
+            cadastros = await getAllFromIndexedDB('cadastros_cache');
+        } catch (e) {
+            cadastros = [];
+        }
+        if (!cadastros || cadastros.length === 0) {
+            cadastros = await getAllFromIndexedDB('cadastros');
+        }
+    } else {
+        cadastros = await getAllFromIndexedDB('cadastros');
+        if (!cadastros || cadastros.length === 0) {
+            try {
+                cadastros = await getAllFromIndexedDB('cadastros_cache');
+            } catch (e) {
+                cadastros = [];
+            }
+        } else {
+            atualizarCadastrosCache().catch(() => {});
+        }
+    }
+    return (cadastros || []).filter(c => c && c.tipo && c.tipo.toLowerCase() === (tipo || '').toLowerCase() && c.ativo !== false);
 }
 
 async function getAllCadastros() {
-    return await getAllFromIndexedDB('cadastros');
+    if (!navigator.onLine) {
+        try {
+            const cached = await getAllFromIndexedDB('cadastros_cache');
+            if (Array.isArray(cached) && cached.length > 0) return cached;
+        } catch (e) {}
+    }
+    const cadastros = await getAllFromIndexedDB('cadastros');
+    if (navigator.onLine && Array.isArray(cadastros) && cadastros.length > 0) {
+        atualizarCadastrosCache().catch(() => {});
+    }
+    return cadastros;
 }
 
 async function getAllColaboradores() {
@@ -2823,21 +2909,41 @@ async function onFotoItemSelecionada(itemId, inputEl) {
     showToast('📷 Processando foto...');
     try {
         const blob = await comprimirFotoParaBlob(file);
+        
+        // Gerar DataURL base64 para resiliência offline máxima
+        const base64 = await new Promise(res => {
+            const reader = new FileReader();
+            reader.onload = e => res(e.target.result);
+            reader.onerror = () => res(null);
+            reader.readAsDataURL(blob);
+        });
+
         const fotoId = 'foto_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-        await saveToIndexedDB('fotos', { id: fotoId, blob, uploaded: false, createdAt: new Date().toISOString() }, true);
+        await saveToIndexedDB('fotos', { 
+            id: fotoId, 
+            blob: blob, 
+            base64: base64, 
+            uploaded: false, 
+            createdAt: new Date().toISOString() 
+        }, true);
 
         if (!checklistData[itemId]) checklistData[itemId] = {};
         checklistData[itemId].fotoLocalId = fotoId;
+        checklistData[itemId].fotoBlob = blob;
+        checklistData[itemId].fotoBase64 = base64;
         delete checklistData[itemId].fotoUrl;
 
         renderFotoPreviewItem(itemId, blob);
         showToast('📷 Foto anexada!');
 
+        // Upload silencioso em background apenas se online (sem bloquear o formulário em caso de falha)
         if (navigator.onLine && isSupabaseConfigured()) {
             uploadFotoParaSupabase(fotoId, blob).then(publicUrl => {
                 if (publicUrl && checklistData[itemId] && checklistData[itemId].fotoLocalId === fotoId) {
                     checklistData[itemId].fotoUrl = publicUrl;
                 }
+            }).catch(uploadErr => {
+                console.log('Upload de foto ficará pendente para a fila de sincronização:', uploadErr);
             });
         }
     } catch (e) {
@@ -2928,6 +3034,233 @@ async function sincronizarFotosPendentes() {
         }
     } catch (e) {
         console.warn('Erro ao sincronizar fotos pendentes:', e);
+    }
+}
+
+// ============================================
+// FILA DE SINCRONIZAÇÃO OFFLINE (SYNC QUEUE)
+// ============================================
+
+async function enfileirarChecklistParaSync(checklist) {
+    if (!checklist || !checklist.id) return;
+    try {
+        const fotosPendentes = [];
+        if (checklist.items) {
+            for (const [k, v] of Object.entries(checklist.items)) {
+                if (k === '_form' || !v || !v.fotoLocalId || v.fotoUrl) continue;
+                const fotoObj = await getFromIndexedDB('fotos', v.fotoLocalId);
+                fotosPendentes.push({
+                    itemId: k,
+                    fotoLocalId: v.fotoLocalId,
+                    blob: fotoObj?.blob || v.fotoBlob || null,
+                    base64: fotoObj?.base64 || v.fotoBase64 || null
+                });
+            }
+        }
+
+        const queueItem = {
+            id: String(checklist.id).trim(),
+            tipo: 'checklist',
+            data: checklist,
+            fotosPendentes: fotosPendentes,
+            criadoEm: new Date().toISOString(),
+            tentativas: 0,
+            status: 'pendente'
+        };
+
+        await saveToIndexedDB('sync_queue', queueItem, true);
+        console.log(`📥 [SyncQueue] Checklist ${checklist.id} enfileirado para sincronização offline.`);
+    } catch (e) {
+        console.error('Erro ao enfileirar checklist para sincronização:', e);
+    }
+}
+
+async function enfileirarIssueParaSync(issue) {
+    if (!issue || !issue.id) return;
+    try {
+        const queueItem = {
+            id: String(issue.id).trim(),
+            tipo: 'issue',
+            data: issue,
+            criadoEm: new Date().toISOString(),
+            tentativas: 0,
+            status: 'pendente'
+        };
+        await saveToIndexedDB('sync_queue', queueItem, true);
+        console.log(`📥 [SyncQueue] Relato de problema ${issue.id} enfileirado para sincronização offline.`);
+    } catch (e) {
+        console.error('Erro ao enfileirar relato para sincronização:', e);
+    }
+}
+
+async function sincronizarFilaPendente() {
+    if (!isSupabaseConfigured() || !navigator.onLine) {
+        updatePendingBadge();
+        return;
+    }
+    if (syncEmAndamento) {
+        console.log('⏳ Sincronização em andamento - adiando ciclo da fila pendente.');
+        return;
+    }
+    syncEmAndamento = true;
+
+    try {
+        console.log('⚡ [SyncQueue] Verificando itens pendentes na fila...');
+        
+        let queue = [];
+        try {
+            queue = await getAllFromIndexedDB('sync_queue');
+        } catch (e) {
+            queue = [];
+        }
+
+        // Se a fila estiver vazia no IndexedDB, varre os checklists para auto-recuperar qualquer um com supabase_synced=false
+        if (!queue || queue.length === 0) {
+            try {
+                const checklists = await getAllFromIndexedDB('checklists');
+                const pendentes = checklists.filter(c => !c.supabase_synced);
+                for (const c of pendentes) {
+                    await enfileirarChecklistParaSync(c);
+                }
+                queue = await getAllFromIndexedDB('sync_queue');
+            } catch (e) {
+                console.warn('Erro ao verificar checklists legados para fila:', e);
+            }
+        }
+
+        if (!queue || queue.length === 0) {
+            console.log('✅ [SyncQueue] Nenhum item pendente na fila.');
+            return;
+        }
+
+        console.log(`⚡ [SyncQueue] Processando ${queue.length} item(ns) pendente(s)...`);
+
+        for (const item of queue) {
+            try {
+                if (item.tipo === 'checklist') {
+                    const checklist = item.data;
+                    let fotosAtualizadas = false;
+
+                    // 1. Enviar fotos pendentes para o bucket nc-fotos no Supabase Storage
+                    if (checklist.items) {
+                        for (const [itemId, val] of Object.entries(checklist.items)) {
+                            if (itemId === '_form' || !val || !val.fotoLocalId || val.fotoUrl) continue;
+                            
+                            let blobParaUpload = null;
+                            const fotoStore = await getFromIndexedDB('fotos', val.fotoLocalId);
+                            if (fotoStore && fotoStore.blob) {
+                                blobParaUpload = fotoStore.blob;
+                            } else if (fotoStore && fotoStore.base64) {
+                                try {
+                                    const bRes = await fetch(fotoStore.base64);
+                                    blobParaUpload = await bRes.blob();
+                                } catch (be) {}
+                            } else if (item.fotosPendentes) {
+                                const fRef = item.fotosPendentes.find(f => f.fotoLocalId === val.fotoLocalId);
+                                if (fRef && fRef.blob) blobParaUpload = fRef.blob;
+                                else if (fRef && fRef.base64) {
+                                    try {
+                                        const bRes = await fetch(fRef.base64);
+                                        blobParaUpload = await bRes.blob();
+                                    } catch (be) {}
+                                }
+                            }
+
+                            if (blobParaUpload) {
+                                const publicUrl = await uploadFotoParaSupabase(val.fotoLocalId, blobParaUpload);
+                                if (publicUrl) {
+                                    val.fotoUrl = publicUrl;
+                                    fotosAtualizadas = true;
+                                    console.log(`📷 [SyncQueue] Foto enviada para Storage: ${publicUrl}`);
+                                }
+                            }
+                        }
+                    }
+
+                    if (fotosAtualizadas) {
+                        await saveToIndexedDB('checklists', checklist, true);
+                    }
+
+                    // 2. Inserir checklist em public.checklists
+                    const spObj = converterParaSupabase('checklists', checklist);
+                    const resChecklist = await supabaseFetch('checklists', {
+                        method: 'POST',
+                        query: '?on_conflict=id',
+                        prefer: 'resolution=merge-duplicates',
+                        body: spObj
+                    });
+
+                    if (!resChecklist.success) {
+                        console.warn(`❌ [SyncQueue] Erro ao sincronizar checklist ${item.id} no Supabase:`, resChecklist.error);
+                        item.tentativas = (item.tentativas || 0) + 1;
+                        item.ultimoErro = resChecklist.error;
+                        await saveToIndexedDB('sync_queue', item, true);
+                        continue; // Mantém na fila para próxima tentativa
+                    }
+
+                    // 3. Inserir Não Conformidades em public.nao_conformidades
+                    if (checklist.items) {
+                        const ncRows = [];
+                        for (const [k, v] of Object.entries(checklist.items)) {
+                            if (k === '_form' || !v || v.status !== 'NC') continue;
+                            const itemNome = ITEM_NAMES[k] || v.customText || k;
+                            let obsTexto = v.observation || '';
+                            if (v.fotoUrl && !obsTexto.includes(v.fotoUrl)) {
+                                obsTexto = obsTexto ? `${obsTexto} [Foto: ${v.fotoUrl}]` : `[Foto: ${v.fotoUrl}]`;
+                            }
+                            ncRows.push({
+                                checklist_id: String(checklist.id).trim(),
+                                date: checklist.date || '',
+                                patrimonio: (checklist.patrimonio || '').toUpperCase(),
+                                item_text: itemNome,
+                                nr: v.nr || '',
+                                risco: v.risk || 'high',
+                                observacao: obsTexto
+                            });
+                        }
+                        if (ncRows.length > 0) {
+                            await supabaseFetch('nao_conformidades', {
+                                method: 'POST',
+                                body: ncRows
+                            });
+                        }
+                    }
+
+                    // 4. Gravação confirmada com sucesso: marcar localmente e remover da sync_queue
+                    checklist.synced = true;
+                    checklist.supabase_synced = true;
+                    await saveToIndexedDB('checklists', checklist, true);
+                    await deleteFromIndexedDB('sync_queue', item.id);
+                    console.log(`✅ [SyncQueue] Checklist ${item.id} sincronizado com sucesso e removido da fila.`);
+                } else if (item.tipo === 'issue') {
+                    const issue = item.data;
+                    const spObj = converterParaSupabase('issues', issue);
+                    const resIssue = await supabaseFetch('relatos', {
+                        method: 'POST',
+                        query: '?on_conflict=id',
+                        prefer: 'resolution=merge-duplicates',
+                        body: spObj
+                    });
+                    if (resIssue.success) {
+                        issue.synced = true;
+                        issue.supabase_synced = true;
+                        await saveToIndexedDB('issues', issue, true);
+                        await deleteFromIndexedDB('sync_queue', item.id);
+                        console.log(`✅ [SyncQueue] Relato ${item.id} sincronizado com sucesso e removido da fila.`);
+                    } else {
+                        item.tentativas = (item.tentativas || 0) + 1;
+                        await saveToIndexedDB('sync_queue', item, true);
+                    }
+                }
+            } catch (errItem) {
+                console.error(`Erro ao processar item ${item.id} da fila:`, errItem);
+            }
+        }
+    } catch (err) {
+        console.error('Erro na execução de sincronizarFilaPendente:', err);
+    } finally {
+        syncEmAndamento = false;
+        updatePendingBadge();
     }
 }
 
@@ -3184,9 +3517,18 @@ async function salvarInterdicaoUrgente() {
     };
     
     await saveToIndexedDB('checklists', checklist);
+    await enfileirarChecklistParaSync(checklist);
     await updateCadastroLastChecklist(patrimonio);
     
-    showToast('🚫 Equipamento interditado com sucesso!');
+    if (!navigator.onLine) {
+        showToast('🚫 Interdição registrada no modo offline! Sincronização pendente.');
+    } else {
+        showToast('🚫 Equipamento interditado com sucesso!');
+        if (isSupabaseConfigured()) {
+            sincronizarFilaPendente().catch(err => console.log('Sincronização em background:', err));
+        }
+    }
+    updatePendingBadge();
     
     // Reset values
     document.getElementById('interdicaoPatrimonio').value = '';
@@ -3199,7 +3541,7 @@ async function salvarInterdicaoUrgente() {
     
     setTimeout(() => {
         showPage('pageHome');
-        if (isSupabaseConfigured()) {
+        if (isSupabaseConfigured() && navigator.onLine) {
             sincronizarComSupabase();
         }
     }, 1200);
@@ -3368,8 +3710,11 @@ async function saveChecklist() {
         synced: false
     };
     
-    // Salvar no IndexedDB
+    // Salvar no IndexedDB (store local)
     await saveToIndexedDB('checklists', checklist);
+    
+    // Enfileirar na fila de sincronização offline blindada (sync_queue)
+    await enfileirarChecklistParaSync(checklist);
     
     // Se for uma reinspeção concluída, atualizar o status do checklist original para "reinspecionado"
     if (currentReinspectionOriginalId) {
@@ -3379,8 +3724,9 @@ async function saveChecklist() {
                 originalChecklist.statusChecklist = 'reinspecionado';
                 originalChecklist.synced = false;
                 await saveToIndexedDB('checklists', originalChecklist);
+                await enfileirarChecklistParaSync(originalChecklist);
                 
-                if (isSupabaseConfigured()) {
+                if (isSupabaseConfigured() && navigator.onLine) {
                     sincronizarItemIndividualSupabase('checklists', originalChecklist);
                 }
             }
@@ -3390,8 +3736,8 @@ async function saveChecklist() {
         currentReinspectionOriginalId = null; // Limpar estado
     }
     
-    if (isSupabaseConfigured()) {
-        sincronizarItemIndividualSupabase('checklists', checklist);
+    if (isSupabaseConfigured() && navigator.onLine) {
+        sincronizarFilaPendente().catch(err => console.log('Sincronização em background:', err));
     }
 
     // Atualizar último checklist no cadastro
@@ -3401,7 +3747,14 @@ async function saveChecklist() {
     const avisoFita = (statusFinal === 'liberado' || statusFinal === 'liberado_restricao')
         ? ' • Identificação: fita ' + corFinalCheck.cor
         : '';
-    showToast('✅ Checklist salvo com sucesso!' + avisoFita);
+        
+    if (!navigator.onLine) {
+        showToast('✅ Modo Offline: Checklist salvo com sucesso no aparelho!' + avisoFita);
+    } else {
+        showToast('✅ Checklist salvo com sucesso!' + avisoFita);
+    }
+
+    updatePendingBadge();
     
     // Voltar para home e recarregar histórico
     setTimeout(() => {
@@ -3450,7 +3803,17 @@ function saveIssue() {
     };
     
     saveToIndexedDB('issues', issue);
-    showToast('Problema reportado com sucesso!');
+    enfileirarIssueParaSync(issue);
+    
+    if (!navigator.onLine) {
+        showToast('⚠️ Modo Offline: Problema reportado e salvo localmente!');
+    } else {
+        showToast('Problema reportado com sucesso!');
+        if (isSupabaseConfigured()) {
+            sincronizarFilaPendente().catch(() => {});
+        }
+    }
+    updatePendingBadge();
     
     // Limpar formulário
     document.getElementById('issueType').value = '';
@@ -3468,7 +3831,7 @@ function saveIssue() {
 
 function openDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open('ChecklistSeguranca', 9);
+        const request = indexedDB.open('ChecklistSeguranca', 10);
         request.onupgradeneeded = (e) => {
             const db = e.target.result;
             if (!db.objectStoreNames.contains('checklists')) {
@@ -3524,6 +3887,14 @@ function openDB() {
                 // entrega de EPI (nome/função/setor/status), não o cadastro inteiro
                 // (CPF, nascimento etc. ficam só no painel, não no celular do técnico).
                 db.createObjectStore('colaboradores_efetivo', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('cadastros_cache')) {
+                // Cache local de equipamentos/veículos para consulta rápida e 100% blindada offline
+                db.createObjectStore('cadastros_cache', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('sync_queue')) {
+                // Fila de sincronização offline: inspeções, checklists e relatos pendentes
+                db.createObjectStore('sync_queue', { keyPath: 'id' });
             }
         };
         request.onsuccess = (e) => resolve(e.target.result);
@@ -7683,6 +8054,7 @@ async function sincronizarComSupabase(forcar = false) {
     try {
         console.log('⚡ Iniciando sincronização com Supabase...');
 
+        try { await sincronizarFilaPendente(); } catch (e) { falhas.push({ etapa: 'fila pendente', erro: e.message }); }
         try { await sincronizarSenhasPendentes(); } catch (e) { falhas.push({ etapa: 'senhas pendentes', erro: e.message }); }
         try { await sincronizarFotosPendentes(); } catch (e) { falhas.push({ etapa: 'fotos pendentes', erro: e.message }); }
         try { await sincronizarChecklistItemSettings(); } catch (e) { falhas.push({ etapa: 'configurações de itens', erro: e.message }); }
@@ -7794,6 +8166,13 @@ async function sincronizarComSupabase(forcar = false) {
                 console.error(`Erro ao sincronizar tabela "${table}":`, tableErr.message);
                 falhas.push({ etapa: `tabela "${table}"`, erro: tableErr.message });
             }
+        }
+
+        // Atualizar silenciosamente o cache local de equipamentos (cadastros_cache) para uso 100% offline
+        try {
+            await atualizarCadastrosCache();
+        } catch (cacheErr) {
+            console.warn('Erro ao atualizar cadastros_cache:', cacheErr);
         }
 
         // Baixar não conformidades do Supabase (só o que mudou desde o último ciclo) e

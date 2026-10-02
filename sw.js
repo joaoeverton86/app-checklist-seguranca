@@ -1,4 +1,4 @@
-const CACHE_NAME = 'checklist-v160';
+const CACHE_NAME = 'app-checklist-v2.0';
 const SHELL_URLS = [
     './',
     './index.html',
@@ -6,15 +6,13 @@ const SHELL_URLS = [
     './data.js',
     './index.css',
     './manifest.json',
-    './qrcode.min.js'
+    './qrcode.min.js',
+    './icon-192.png',
+    './icon-512.png'
 ];
 
-// Bibliotecas de terceiro (CDN) usadas pelo app - leitura de QR Code, gráficos e
-// exportação de PDF. Antes só ficavam em cache depois do primeiro carregamento
-// ONLINE bem-sucedido; se o primeiro acesso de alguém acontecesse com internet ruim
-// (o cenário mais comum em campo, que é exatamente o problema que este app existe pra
-// resolver), a câmera do leitor de QR abria normal mas nunca decodificava nada, porque
-// jsQR simplesmente não existia - sem nenhum erro visível pra quem estava usando.
+// Bibliotecas de terceiro (CDN) essenciais para operação offline do aplicativo em campo:
+// Leitura de QR Code, gráficos, exportação PDF de espelho de checklist e hashes.
 const CDN_URLS = [
     'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
     'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -35,7 +33,7 @@ self.addEventListener('install', event => {
             return cache.addAll(SHELL_URLS).then(() => {
                 return Promise.allSettled(CDN_URLS.map(url => cache.add(url)));
             });
-        })
+        }).then(() => self.skipWaiting())
     );
 });
 
@@ -56,22 +54,18 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    // API do Supabase é dado dinâmico (mesma URL "?select=*" sempre) - com cache-first isso
-    // travava a resposta da PRIMEIRA consulta pra sempre no cache do SW, escondendo tudo que
-    // era sincronizado depois em outro aparelho até o próximo deploy trocar o CACHE_NAME.
+    // API do Supabase é dinâmica (PostgREST / Auth). A camada cliente de dados (IndexedDB / sync_queue)
+    // assume o controle total offline.
     if (url.hostname.endsWith('.supabase.co')) {
         return;
     }
 
-    // /dashboard/ é um site à parte (painel gerencial, sem PWA/offline próprio) - não deve
-    // ficar sob o cache deste Service Worker. Sem essa exclusão, qualquer atualização do
-    // dashboard.css/dashboard.js só aparecia pra quem já tinha aberto o app principal nesse
-    // navegador depois do próximo deploy do app (que troca o CACHE_NAME), mesmo sem nenhuma
-    // relação real entre as duas coisas.
+    // /dashboard/ é painel administrativo separado sem PWA offline
     if (url.pathname.includes('/dashboard/')) {
         return;
     }
 
+    // Bibliotecas CDN externas: Cache First com atualização em background quando online
     if (url.hostname === 'cdn.jsdelivr.net' || url.hostname === 'cdnjs.cloudflare.com') {
         event.respondWith(
             caches.match(event.request).then(cached => {
@@ -82,25 +76,37 @@ self.addEventListener('fetch', event => {
                         caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
                     }
                     return response;
+                }).catch(() => cached);
+            })
+        );
+        return;
+    }
+
+    const isShellFile = SHELL_URLS.some(s => url.pathname.endsWith(s.replace('./', '/')) || (s === './' && (url.pathname === '/' || url.pathname.endsWith('/index.html'))));
+
+    // Recursos da casca da aplicação (HTML/JS/CSS): Network first com fallback garantido para cache offline
+    if (isShellFile) {
+        event.respondWith(
+            fetch(event.request, { cache: 'no-cache' }).then(response => {
+                if (response && response.status === 200) {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+                }
+                return response;
+            }).catch(() => {
+                return caches.match(event.request).then(cached => {
+                    if (cached) return cached;
+                    if (event.request.mode === 'navigate') {
+                        return caches.match('./index.html') || caches.match('/');
+                    }
+                    return null;
                 });
             })
         );
         return;
     }
 
-    const isShellFile = SHELL_URLS.some(s => url.pathname.endsWith(s.replace('./', '/')));
-
-    if (isShellFile) {
-        event.respondWith(
-            fetch(event.request, { cache: 'no-cache' }).then(response => {
-                const clone = response.clone();
-                caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-                return response;
-            }).catch(() => caches.match(event.request))
-        );
-        return;
-    }
-
+    // Demais recursos: Cache com fallback para rede
     event.respondWith(
         caches.match(event.request).then(cached => {
             if (cached) return cached;
@@ -110,6 +116,11 @@ self.addEventListener('fetch', event => {
                     caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
                 }
                 return response;
+            }).catch(() => {
+                if (event.request.mode === 'navigate') {
+                    return caches.match('./index.html');
+                }
+                return null;
             });
         })
     );

@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v151';
+const DASHBOARD_VERSION = 'v152';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -3147,8 +3147,37 @@ let registroLoteSelecionados = null;
 let registroNovaEquipe = new Map();
 
 // Variáveis de estado do Lote de Impressão de Formulários DDSMS (lógica análoga a Treinamentos)
-let ddsLoteFiltroAno = String(hojeCronograma.getFullYear());
-let ddsLoteFiltroMes = String(hojeCronograma.getMonth());
+// Configurações e parametrizações operacionais do módulo DDSMA (Supabase configuracoes_sistema + localStorage)
+const DDS_CONFIG_PADRAO = {
+    regraSemana: 'primeira_segunda', // 'primeira_segunda' | 'maioria_dias' | 'dia_primeiro'
+    cicloEnvio: 'atual',             // 'atual' | 'subsequente'
+    linhasVaziasMin: 10              // linhas mínimas na tabela de colaboradores
+};
+let ddsConfiguracoes = { ...DDS_CONFIG_PADRAO };
+try {
+    const _savedDdsCfg = localStorage.getItem('dds_configuracoes');
+    if (_savedDdsCfg) {
+        const _parsed = JSON.parse(_savedDdsCfg);
+        ddsConfiguracoes = {
+            regraSemana: _parsed.regraSemana || 'primeira_segunda',
+            cicloEnvio: _parsed.cicloEnvio || 'atual',
+            linhasVaziasMin: parseInt(_parsed.linhasVaziasMin, 10) || 10
+        };
+    }
+} catch (e) {}
+
+function calcularMesAnoPadraoDds() {
+    const hoje = new Date();
+    if (ddsConfiguracoes.cicloEnvio === 'subsequente') {
+        const prox = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1);
+        return { ano: String(prox.getFullYear()), mes: String(prox.getMonth()) };
+    }
+    return { ano: String(hoje.getFullYear()), mes: String(hoje.getMonth()) };
+}
+
+const _padraoDdsInicial = calcularMesAnoPadraoDds();
+let ddsLoteFiltroAno = _padraoDdsInicial.ano;
+let ddsLoteFiltroMes = _padraoDdsInicial.mes;
 let ddsLoteFiltroSemana = ''; // '' = todas as semanas do mês, ou ISO da segunda-feira
 let ddsLoteFiltroTema = '';
 let ddsLoteFrentesSelecionadas = new Set();
@@ -3358,7 +3387,7 @@ function showTreinSubtab(tab) {
 // sempre redesenha a aba ao entrar nela (self-heal de gráfico com canvas
 // escondido) e inicializa os campos de data/select da primeira visita.
 function showDdsmaSubtab(tab) {
-    ['visao', 'lancar', 'calendario', 'frente', 'imprimir', 'relatorio'].forEach(t => {
+    ['visao', 'lancar', 'calendario', 'frente', 'imprimir', 'relatorio', 'config'].forEach(t => {
         const content = document.getElementById('ddsmaSubtab-' + t);
         const btn = document.getElementById('ddsmaSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -3394,6 +3423,7 @@ function showDdsmaSubtab(tab) {
     // ao abrir ela, força um recálculo da Visão Geral, garantindo que o relatório nunca
     // fique desatualizado mesmo que o usuário nunca tenha aberto essa outra sub-aba antes.
     if (tab === 'relatorio') { renderDdsPanel(); renderDdsmaRelatorioChecklist(); }
+    if (tab === 'config') { renderDdsConfiguracoes(); }
 }
 
 // ============================================
@@ -6745,29 +6775,224 @@ function renderDdsPanel() {
 // - Padrão Blob seguro imune a bloqueador de popups na Vercel (abrirDocumentoHtmlParaImpressao).
 // ============================================
 
-// Calcula as semanas de um determinado mês (de segunda-feira a domingo)
-function obterSemanasDoMes(ano, mes) {
-    const prim = new Date(ano, mes, 1);
-    const ult = new Date(ano, mes + 1, 0);
-    const semanas = [];
-    const segundasVistas = new Set();
+// ============================================
+// CONFIGURAÇÕES OPERACIONAIS DO DDSMA (Supabase + localStorage)
+// ============================================
 
-    let curr = segundaDaSemana(prim);
-    while (curr <= ult) {
-        const segIso = toISODateLocal(curr);
-        if (!segundasVistas.has(segIso)) {
-            segundasVistas.add(segIso);
+async function carregarConfiguracoesDdsDoSupabase() {
+    try {
+        const dados = await supabaseFetch('configuracoes_sistema', 'id=eq.dds_configuracoes&limit=1');
+        if (dados && dados.length > 0 && dados[0].valor) {
+            const v = dados[0].valor;
+            ddsConfiguracoes = {
+                regraSemana: v.regraSemana || ddsConfiguracoes.regraSemana || 'primeira_segunda',
+                cicloEnvio: v.cicloEnvio || ddsConfiguracoes.cicloEnvio || 'atual',
+                linhasVaziasMin: parseInt(v.linhasVaziasMin, 10) || ddsConfiguracoes.linhasVaziasMin || 10
+            };
+            try {
+                localStorage.setItem('dds_configuracoes', JSON.stringify(ddsConfiguracoes));
+            } catch (e) {}
+            preencherCamposConfiguracoesDds();
+            popularSelectSemanasDdsLote();
+            renderDdsLotePreview();
+        }
+    } catch (e) {
+        console.warn('Aviso: Não foi possível carregar dds_configuracoes do Supabase:', e);
+    }
+}
+
+async function salvarConfiguracoesDdsNoSupabase(cfg) {
+    try {
+        const token = await authTokenDashboard();
+        const url = `${SUPABASE_URL}/rest/v1/configuracoes_sistema?id=eq.dds_configuracoes`;
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                Prefer: 'resolution=merge-duplicates,return=representation'
+            },
+            body: JSON.stringify({
+                id: 'dds_configuracoes',
+                valor: cfg,
+                descricao: 'Parametrizações operacionais do módulo DDSMA (agrupamento de semanas, antecedência e linhas mínimas).',
+                atualizado_em: new Date().toISOString(),
+                atualizado_por: usuarioDashboardAtual() || 'Painel DDSMA'
+            })
+        });
+        if (!resp.ok) {
+            console.warn('Aviso: Falha ao salvar dds_configuracoes no Supabase:', resp.status);
+        }
+    } catch (e) {
+        console.warn('Erro de rede ao salvar dds_configuracoes no Supabase:', e);
+    }
+}
+
+function preencherCamposConfiguracoesDds() {
+    const selRegra = document.getElementById('ddsCfgRegraSemana');
+    if (selRegra) selRegra.value = ddsConfiguracoes.regraSemana || 'primeira_segunda';
+
+    const selCiclo = document.getElementById('ddsCfgCicloEnvio');
+    if (selCiclo) selCiclo.value = ddsConfiguracoes.cicloEnvio || 'atual';
+
+    const inpLinhas = document.getElementById('ddsCfgLinhasMin');
+    if (inpLinhas) inpLinhas.value = ddsConfiguracoes.linhasVaziasMin || 10;
+}
+
+function atualizarExemploRegraSemana() {
+    const sel = document.getElementById('ddsCfgRegraSemana');
+    const out = document.getElementById('ddsCfgExemploSemana');
+    if (!sel || !out) return;
+    const regra = sel.value;
+    const hoje = new Date();
+    const ano = hoje.getFullYear();
+    const mes = hoje.getMonth();
+    const nomeMes = NOMES_MESES[mes] || 'Mês Atual';
+    const semanas = obterSemanasDoMes(ano, mes, regra);
+
+    if (semanas.length > 0) {
+        out.innerHTML = `<strong>Demonstração (${nomeMes}/${ano}):</strong> ${semanas.map(s => s.label).join(' &nbsp;•&nbsp; ')}`;
+    }
+}
+
+function renderDdsConfiguracoes() {
+    preencherCamposConfiguracoesDds();
+    atualizarExemploRegraSemana();
+}
+
+function salvarConfiguracoesDds() {
+    const regraSemana = document.getElementById('ddsCfgRegraSemana')?.value || 'primeira_segunda';
+    const cicloEnvio = document.getElementById('ddsCfgCicloEnvio')?.value || 'atual';
+    const linhasVaziasMin = Math.max(5, Math.min(25, parseInt(document.getElementById('ddsCfgLinhasMin')?.value, 10) || 10));
+
+    ddsConfiguracoes = { regraSemana, cicloEnvio, linhasVaziasMin };
+
+    try {
+        localStorage.setItem('dds_configuracoes', JSON.stringify(ddsConfiguracoes));
+    } catch (e) {
+        console.warn('Erro ao salvar no localStorage:', e);
+    }
+
+    salvarConfiguracoesDdsNoSupabase(ddsConfiguracoes);
+
+    // Ajusta o mês padrão selecionado caso o ciclo de envio tenha mudado
+    const padrao = calcularMesAnoPadraoDds();
+    ddsLoteFiltroAno = padrao.ano;
+    ddsLoteFiltroMes = padrao.mes;
+    const anoSel = document.getElementById('ddsLoteFiltroAno');
+    if (anoSel) anoSel.value = ddsLoteFiltroAno;
+    const mesSel = document.getElementById('ddsLoteFiltroMes');
+    if (mesSel) mesSel.value = ddsLoteFiltroMes;
+
+    // Recalcula imediatamente os selects de semanas e lote na aba Imprimir
+    popularSelectSemanasDdsLote();
+    popularSelectTemasDdsLote();
+    renderDdsLotePreview();
+    atualizarExemploRegraSemana();
+
+    const msg = document.getElementById('ddsCfgStatusMsg');
+    if (msg) {
+        msg.style.display = 'inline-block';
+        msg.textContent = '✅ Preferências operacionais do DDSMA salvas com sucesso!';
+        setTimeout(() => { msg.style.display = 'none'; }, 4000);
+    }
+}
+
+function restaurarConfiguracoesDdsPadrao() {
+    if (!confirm('Deseja restaurar as parametrizações do DDSMA para os valores padrão do sistema?')) return;
+    ddsConfiguracoes = { ...DDS_CONFIG_PADRAO };
+    try {
+        localStorage.setItem('dds_configuracoes', JSON.stringify(ddsConfiguracoes));
+    } catch (e) {}
+
+    salvarConfiguracoesDdsNoSupabase(ddsConfiguracoes);
+    preencherCamposConfiguracoesDds();
+
+    const padrao = calcularMesAnoPadraoDds();
+    ddsLoteFiltroAno = padrao.ano;
+    ddsLoteFiltroMes = padrao.mes;
+    const anoSel = document.getElementById('ddsLoteFiltroAno');
+    if (anoSel) anoSel.value = ddsLoteFiltroAno;
+    const mesSel = document.getElementById('ddsLoteFiltroMes');
+    if (mesSel) mesSel.value = ddsLoteFiltroMes;
+
+    popularSelectSemanasDdsLote();
+    popularSelectTemasDdsLote();
+    renderDdsLotePreview();
+    atualizarExemploRegraSemana();
+
+    const msg = document.getElementById('ddsCfgStatusMsg');
+    if (msg) {
+        msg.style.display = 'inline-block';
+        msg.textContent = '🔄 Valores padrão restaurados com sucesso!';
+        setTimeout(() => { msg.style.display = 'none'; }, 4000);
+    }
+}
+
+// Calcula as semanas de um determinado mês (de segunda-feira a domingo)
+// Respeita a regra parametrizada em Configurações (primeira_segunda, maioria_dias ou dia_primeiro)
+function obterSemanasDoMes(ano, mes, regraOverride = null) {
+    const regra = regraOverride || ddsConfiguracoes.regraSemana || 'primeira_segunda';
+    const semanas = [];
+
+    if (regra === 'primeira_segunda') {
+        // Opção 1: Primeira segunda-feira dentro do mês (Ex: Outubro começa em 05/10/2026)
+        let curr = new Date(ano, mes, 1);
+        while (curr.getDay() !== 1) { // 1 = Segunda-feira
+            curr.setDate(curr.getDate() + 1);
+        }
+        while (curr.getMonth() === mes) {
+            const segIso = toISODateLocal(curr);
             const dom = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate() + 6);
             semanas.push({
-                inicio: curr,
+                inicio: new Date(curr),
                 fim: dom,
                 inicioIso: segIso,
                 fimIso: toISODateLocal(dom),
                 label: `Semana ${semanas.length + 1}: ${formatSimpleDate(segIso)} a ${formatSimpleDate(toISODateLocal(dom))}`
             });
+            curr.setDate(curr.getDate() + 7);
         }
-        curr = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate() + 7);
+    } else if (regra === 'maioria_dias') {
+        // Opção 2: Semana com a maioria dos dias no mês — ISO-8601 (Ex: 28/09/2026)
+        let curr = segundaDaSemana(new Date(ano, mes, 1));
+        const quintaPrimeira = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate() + 3);
+        if (quintaPrimeira.getMonth() !== mes) {
+            curr.setDate(curr.getDate() + 7);
+        }
+        while (true) {
+            const quinta = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate() + 3);
+            if (quinta.getMonth() !== mes) break;
+            const segIso = toISODateLocal(curr);
+            const dom = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate() + 6);
+            semanas.push({
+                inicio: new Date(curr),
+                fim: dom,
+                inicioIso: segIso,
+                fimIso: toISODateLocal(dom),
+                label: `Semana ${semanas.length + 1}: ${formatSimpleDate(segIso)} a ${formatSimpleDate(toISODateLocal(dom))}`
+            });
+            curr.setDate(curr.getDate() + 7);
+        }
+    } else {
+        // Opção 3: Semana contendo o dia 1º do mês
+        let curr = segundaDaSemana(new Date(ano, mes, 1));
+        const segProxMes = segundaDaSemana(new Date(ano, mes + 1, 1));
+        while (curr < segProxMes) {
+            const segIso = toISODateLocal(curr);
+            const dom = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate() + 6);
+            semanas.push({
+                inicio: new Date(curr),
+                fim: dom,
+                inicioIso: segIso,
+                fimIso: toISODateLocal(dom),
+                label: `Semana ${semanas.length + 1}: ${formatSimpleDate(segIso)} a ${formatSimpleDate(toISODateLocal(dom))}`
+            });
+            curr.setDate(curr.getDate() + 7);
+        }
     }
+
     return semanas;
 }
 
@@ -6776,8 +7001,12 @@ function inicializarDdsLote() {
     const anoSel = document.getElementById('ddsLoteFiltroAno');
     if (!anoSel) return;
 
+    const padrao = calcularMesAnoPadraoDds();
+    if (!ddsLoteFiltroAno) ddsLoteFiltroAno = padrao.ano;
+    if (!ddsLoteFiltroMes) ddsLoteFiltroMes = padrao.mes;
+
     if (anoSel.options.length === 0) {
-        const anos = new Set([new Date().getFullYear(), new Date().getFullYear() + 1]);
+        const anos = new Set([new Date().getFullYear(), new Date().getFullYear() + 1, parseInt(padrao.ano, 10)]);
         allDdsTemasCronograma.forEach(t => { if (t.data) anos.add(parseLocalDate(t.data).getFullYear()); });
         Array.from(anos).sort().forEach(ano => {
             const opt = document.createElement('option');
@@ -6925,8 +7154,9 @@ function onDdsLoteFiltroTemaChange() {
 }
 
 function limparFiltrosDdsLote() {
-    ddsLoteFiltroAno = String(new Date().getFullYear());
-    ddsLoteFiltroMes = String(new Date().getMonth());
+    const padrao = calcularMesAnoPadraoDds();
+    ddsLoteFiltroAno = padrao.ano;
+    ddsLoteFiltroMes = padrao.mes;
     ddsLoteFiltroSemana = '';
     ddsLoteFiltroTema = '';
     const anoSel = document.getElementById('ddsLoteFiltroAno');
@@ -7089,8 +7319,8 @@ function construirFolhaFichaDds(frente, seg, diasSemana, equipe) {
     const linhaResponsavel = diasSemana.map(() => `<td style="height:28px; font-size:8px; line-height:1; vertical-align:bottom; padding:2px 4px;">Ass:</td>`).join('');
 
     const equipeValida = Array.isArray(equipe) ? equipe : [];
-    const TOTAL_LINHAS_MIN = 10;
-    const totalLinhas = Math.max(TOTAL_LINHAS_MIN, equipeValida.length);
+    const minLinhas = parseInt(ddsConfiguracoes.linhasVaziasMin, 10) || 10;
+    const totalLinhas = Math.max(minLinhas, equipeValida.length);
 
     const linhasColab = [];
     for (let i = 0; i < totalLinhas; i++) {
@@ -23651,6 +23881,7 @@ function showDbPage(pageId) {
     // TELA, não a fonte de dados. Por isso reaproveita o mesmo treinamentosLoaded em
     // vez de criar uma busca nova no Supabase.
     if (pageId === 'ddsma') {
+        carregarConfiguracoesDdsDoSupabase();
         if (!treinamentosLoaded) { treinamentosLoaded = true; loadTreinamentosData(); }
         else if (document.getElementById('ddsmaSubtabBtn-visao')?.classList.contains('active')) renderDdsPanel();
     }
@@ -40142,4 +40373,9 @@ window.construirFolhaFichaDds = construirFolhaFichaDds;
 window.montarDocumentoImpressaoFichasDds = montarDocumentoImpressaoFichasDds;
 window.imprimirFormulariosDdsLote = imprimirFormulariosDdsLote;
 window.imprimirFichaDdsEmBranco = imprimirFichaDdsEmBranco;
+window.salvarConfiguracoesDds = salvarConfiguracoesDds;
+window.restaurarConfiguracoesDdsPadrao = restaurarConfiguracoesDdsPadrao;
+window.atualizarExemploRegraSemana = atualizarExemploRegraSemana;
+window.renderDdsConfiguracoes = renderDdsConfiguracoes;
+window.carregarConfiguracoesDdsDoSupabase = carregarConfiguracoesDdsDoSupabase;
 

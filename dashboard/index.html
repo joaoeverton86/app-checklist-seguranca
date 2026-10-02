@@ -2012,6 +2012,7 @@
                         <button id="ddsmaSubtabBtn-frente" class="db-filter-btn" onclick="showDdsmaSubtab('frente')">👥 Controle por Frente</button>
                         <button id="ddsmaSubtabBtn-imprimir" class="db-filter-btn" onclick="showDdsmaSubtab('imprimir')">🖨️ Imprimir</button>
                         <button id="ddsmaSubtabBtn-relatorio" class="db-filter-btn" onclick="showDdsmaSubtab('relatorio')">📄 Relatório</button>
+                        <button id="ddsmaSubtabBtn-config" class="db-filter-btn" onclick="showDdsmaSubtab('config')">⚙️ Configurações</button>
                     </div>
                 </div>
 
@@ -2508,6 +2509,73 @@
                         <span id="relatorioDdsmaStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
                 </div>
+                </div>
+
+                <!-- Subaba: Configurações do DDSMA -->
+                <div id="ddsmaSubtab-config" style="display:none;">
+                    <div class="db-chart-card" style="max-width: 860px; margin-bottom: 16px;">
+                        <div class="db-chart-title" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                            <span>⚙️ Parametrizações Operacionais do DDSMA</span>
+                            <span id="ddsCfgStatusBadge" style="font-size: 11px; font-weight: normal; color: var(--text-light); background: var(--bg); border: 1px solid var(--border); padding: 3px 8px; border-radius: 6px;">Sincronizado Supabase / Local</span>
+                        </div>
+                        <p style="font-size: 12.5px; color: var(--text-light); margin-bottom: 18px; line-height: 1.45;">
+                            Configure as regras de negócio para geração de formulários semanais, agrupamento de datas do cronograma e apresentação dos lotes para impressão no canteiro de obras.
+                        </p>
+
+                        <form id="formDdsConfiguracoes" onsubmit="event.preventDefault(); salvarConfiguracoesDds();">
+                            <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px;">
+                                <!-- Parâmetro 1: Regra de Início da Semana 1 -->
+                                <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;">
+                                    <label style="display: block; font-weight: 700; font-size: 13px; color: var(--text); margin-bottom: 4px;">
+                                        🗓️ Regra de Início da Semana 1 do Mês
+                                    </label>
+                                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px; line-height: 1.4;">
+                                        Define como as semanas (de segunda a domingo) são agrupadas dentro de cada mês no filtro do lote e no cabeçalho das fichas emitidas.
+                                    </p>
+                                    <select id="ddsCfgRegraSemana" onchange="atualizarExemploRegraSemana()" style="width: 100%; max-width: 520px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; background: var(--card); color: var(--text); font-size: 12.5px;">
+                                        <option value="primeira_segunda">Opção 1: Primeira segunda-feira dentro do mês (Ex: Outubro começa em 05/10/2026)</option>
+                                        <option value="maioria_dias">Opção 2: Semana com a maioria dos dias no mês — ISO-8601 (Ex: 28/09/2026)</option>
+                                        <option value="dia_primeiro">Opção 3: Semana contendo o dia 1º do mês</option>
+                                    </select>
+                                    <div id="ddsCfgExemploSemana" style="margin-top: 10px; font-size: 12px; color: var(--primary, #2563eb); line-height: 1.5; background: var(--card); border: 1px dashed var(--border); border-radius: 6px; padding: 8px 12px;"></div>
+                                </div>
+
+                                <!-- Parâmetro 2: Ciclo de Envio / Antecedência -->
+                                <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;">
+                                    <label style="display: block; font-weight: 700; font-size: 13px; color: var(--text); margin-bottom: 4px;">
+                                        ⏱️ Antecedência de Emissão / Ciclo de Envio
+                                    </label>
+                                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px; line-height: 1.4;">
+                                        Define qual mês deve vir pré-selecionado ao abrir a tela de impressão de fichas (ideal para planejamento prévio na última semana do mês corrente).
+                                    </p>
+                                    <select id="ddsCfgCicloEnvio" style="width: 100%; max-width: 520px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; background: var(--card); color: var(--text); font-size: 12.5px;">
+                                        <option value="atual">Mês Atual (foco na execução do período vigente)</option>
+                                        <option value="subsequente">Mês Subsequente (planejamento antecipado das fichas do próximo mês)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Parâmetro 3: Quantidade Padrão de Linhas -->
+                                <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;">
+                                    <label style="display: block; font-weight: 700; font-size: 13px; color: var(--text); margin-bottom: 4px;">
+                                        📝 Quantidade Padrão de Linhas em Branco (Frentes Pequenas)
+                                    </label>
+                                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px; line-height: 1.4;">
+                                        Número mínimo de linhas geradas na tabela de colaboradores com campos para anotações e rubrica manual (padrão: 10 linhas).
+                                    </p>
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <input type="number" id="ddsCfgLinhasMin" min="5" max="25" value="10" style="width: 100px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; background: var(--card); color: var(--text); font-size: 12.5px;">
+                                        <span style="font-size: 12px; color: var(--text-light);">linhas mínimas por folha semanal</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                <button type="submit" class="db-apply-btn" style="padding: 10px 20px; font-size: 13px;">💾 Salvar Preferências Operacionais</button>
+                                <button type="button" class="db-clear-btn" onclick="restaurarConfiguracoesDdsPadrao()" style="padding: 10px 16px; font-size: 12px;">Restaurar Padrões</button>
+                                <span id="ddsCfgStatusMsg" style="display:none; font-size: 12.5px; color: var(--success, #059669); font-weight: 600;"></span>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </section>
 
@@ -8255,7 +8323,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=151"></script>
+    <script src="dashboard.js?v=152"></script>
     <script src="placar_lideres.js?v=1"></script>
 <script>
 function filterMatrizEpi(q) {

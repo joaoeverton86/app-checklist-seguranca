@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v157';
+const DASHBOARD_VERSION = 'v158';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -21240,7 +21240,10 @@ function gerarListaOficialConvocacaoPsicossocial() {
 
     const logoCop = (typeof LOGO_COP_BASE64 !== 'undefined' && LOGO_COP_BASE64) ? LOGO_COP_BASE64 : '';
 
-    const linhasHtml = selecionados.map((c, idx) => {
+    // Ordenação estritamente alfabética pelo nome completo
+    const convocadosOrdenados = [...selecionados].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR', { sensitivity: 'base' }));
+
+    const linhasHtml = convocadosOrdenados.map((c, idx) => {
         let motivoTexto = c.motivo;
         if (c.avulso) {
             motivoTexto = 'Convocação Avulsa (SESMT)';
@@ -21261,16 +21264,12 @@ function gerarListaOficialConvocacaoPsicossocial() {
                 <td style="width: 145px; font-size: 9.5px;">${escapeHTML(c.gheNome)}</td>
                 <td style="width: 140px; font-size: 9.5px;">${escapeHTML(c.funcao)}</td>
                 <td style="width: 130px; font-size: 9px;">${escapeHTML(motivoTexto)}</td>
-                <td style="min-width: 155px; border-bottom: 1px solid #222; vertical-align: bottom; height: 32px; text-align: center;">
-                    <div style="font-size: 7.5px; color: #888; margin-bottom: 2px;">Assinatura do Trabalhador</div>
-                </td>
+                <td style="min-width: 160px; height: 38px; border-bottom: 1px solid #333; padding: 0;">&nbsp;</td>
                 <td style="width: 75px; text-align: center; font-size: 9px; line-height: 1.4;">
                     <div>[ &nbsp; ] Apto</div>
                     <div>[ &nbsp; ] Inapto</div>
                 </td>
-                <td style="width: 85px; border-bottom: 1px solid #222; vertical-align: bottom; text-align: center;">
-                    <div style="font-size: 7.5px; color: #888; margin-bottom: 2px;">Rubrica CRP</div>
-                </td>
+                <td style="width: 85px; border-bottom: 1px solid #333; padding: 0;">&nbsp;</td>
             </tr>
         `;
     }).join('');
@@ -21295,8 +21294,8 @@ function gerarListaOficialConvocacaoPsicossocial() {
         table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 9.5px; }
         th, td { border: 1px solid #333; padding: 5px 6px; }
         th { background: #f1f5f9; font-weight: 700; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.2px; }
-        .rodape-assinaturas { margin-top: 24px; display: flex; justify-content: space-around; text-align: center; page-break-inside: avoid; }
-        .linha-assinatura { width: 300px; border-top: 1px solid #111; padding-top: 5px; font-size: 10px; line-height: 1.35; }
+        .rodape-assinaturas { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; text-align: center; page-break-inside: avoid; }
+        .linha-assinatura { border-top: 1px solid #111; padding-top: 6px; font-size: 9.5px; line-height: 1.35; }
         .no-print { text-align: center; margin-bottom: 12px; }
         .no-print button { padding: 9px 22px; font-size: 13px; font-weight: 700; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
         @media print {
@@ -21330,7 +21329,7 @@ function gerarListaOficialConvocacaoPsicossocial() {
     <div class="info-bar">
         <div><strong>Data Prevista para os Atendimentos:</strong> ${dataAtendimentoFmt}</div>
         <div><strong>Competência:</strong> ${competenciaFmt}</div>
-        <div><strong>Total de Convocados:</strong> <strong>${selecionados.length} colaboradores</strong> (${totalInclusoes} inclusões PCMSO + ${totalRenovacoes} renovações periódicas)</div>
+        <div><strong>Total de Convocados:</strong> <strong>${convocadosOrdenados.length} colaboradores</strong> (${totalInclusoes} inclusões PCMSO + ${totalRenovacoes} renovações periódicas)</div>
         <div><strong>Local:</strong> Ambulatório / Canteiro de Obras Ramal do Agreste</div>
     </div>
 
@@ -21360,9 +21359,14 @@ function gerarListaOficialConvocacaoPsicossocial() {
             CREA 12345/D-PE — Consórcio COP
         </div>
         <div class="linha-assinatura">
+            <strong>Amanda Freire dos Santos</strong><br>
+            Técnica de Enfermagem do Trabalho<br>
+            Ambulatório — Consórcio COP
+        </div>
+        <div class="linha-assinatura">
             <strong>Psicólogo(a) Responsável</strong><br>
             Avaliação Psicossocial (NR-33 / NR-35 / NR-10)<br>
-            CRP: _______________________
+            CRP: ____________________
         </div>
     </div>
 
@@ -21374,7 +21378,7 @@ function gerarListaOficialConvocacaoPsicossocial() {
 </body>
 </html>`;
 
-    abrirDocumentoHtmlParaImpressao(html, `Convocacao_Avaliacao_Psicossocial_${dataAtendimentoFmt.replace(/\//g, '-')}`);
+    abrirDocumentoHtmlParaImpressao(html, 'Convocacao_Psicossocial_COP');
 }
 
 

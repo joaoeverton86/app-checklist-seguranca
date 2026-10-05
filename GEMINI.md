@@ -6,8 +6,15 @@
 
 ## Integrações e Serviços
 - **GitHub**: Repositório vinculado a `https://github.com/joaoeverton86/app-checklist-seguranca.git` (autenticado via `gh`).
-- **Vercel**: Projeto vinculado a `app-checklist-v2`. Deploys ocorrem automaticamente no push da branch `main` ou via Vercel CLI.
+- **Vercel**: Projeto vinculado a `app-checklist-v2` com domínio oficial de produção `https://app-checklist-seguranca.vercel.app`. Deploys ocorrem automaticamente no push da branch `main` ou via Vercel CLI.
 - **Supabase**: Banco de dados central em `https://qqtcwxvbjmybyzubocgd.supabase.co`.
+
+## Separação de Rotas e Domínios de Acesso
+O projeto é dividido em duas frentes com finalidades e rotas distintas:
+1. **App Mobile / PWA de Campo (Offline-First)**: Localizado na raiz (`/`, `index.html`, `app.js`, `sw.js`). Destinado à operação offline pelos técnicos e operadores em campo. **NÃO alterar** arquivos da raiz em demandas exclusivas do painel.
+2. **Painel Gerencial de Gestão SST (Dashboard Web)**: Localizado estritamente no subdiretório `/dashboard/` (`dashboard/index.html`, `dashboard/dashboard.js`, `dashboard/placar_lideres.js`, `dashboard/dashboard.css`).
+   - **URL Oficial de Produção do Dashboard**: `https://app-checklist-seguranca.vercel.app/dashboard/`
+   - **Diretriz de Feedback e Validação**: Todo resumo de entrega, links de teste, prévias e validações visuais de módulos gerenciais (Placar de Líderes, Treinamentos, APR, etc.) devem apontar obrigatoriamente para a rota com sufixo `/dashboard/`.
 
 ## Contexto de Negócio e Sistemas Externos
 - **SGG**: A empresa do usuário utiliza o software SGG como sistema de SST corporativo. Sempre que documentos, relatórios ou demandas forem extraídos do SGG, o objetivo é replicar suas funcionalidades de forma substancialmente melhorada, mais intuitiva e completa no nosso projeto.

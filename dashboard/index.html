@@ -1997,6 +1997,7 @@
                     </div>
                     <div style="display:flex; gap:10px; flex-wrap:wrap;">
                         <button class="db-apply-btn" onclick="gerarRelatorioMensalSms()">📄 Gerar Relatório (.docx)</button>
+                        <button class="db-apply-btn" style="background:#4f46e5; border-color:#4338ca;" onclick="imprimirRelatorioMensalSms()">🖨️ Visualizar / Imprimir (A4)</button>
                     </div>
                     <div id="relSmsStatus" style="margin-top:10px; font-size:12.5px;"></div>
                 </div>
@@ -8329,7 +8330,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=156"></script>
+    <script src="dashboard.js?v=157"></script>
     <script src="placar_lideres.js?v=4"></script>
 <script>
 function filterMatrizEpi(q) {

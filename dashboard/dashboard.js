@@ -14270,6 +14270,74 @@ function sanitizarTemaDdsRelSms(temaOriginal, dataStr, fallbackIndex = 0) {
     return t;
 }
 
+function obterLogoCopBase64RelSms() {
+    try {
+        if (typeof LOGO_COP_BASE64 !== 'undefined' && LOGO_COP_BASE64) return LOGO_COP_BASE64;
+    } catch (e) {}
+    try {
+        if (typeof window !== 'undefined' && window.LOGO_COP_BASE64) return window.LOGO_COP_BASE64;
+    } catch (e) {}
+    return '';
+}
+
+function gerarCabecalhoPadraoRelSmsHtml(mes, ano, tituloSecao = '') {
+    const nomeMes = NOMES_MESES[mes];
+    const codigoRev = (typeof codigoRevisaoDocumento === 'function' ? codigoRevisaoDocumento('relatorio_mensal_sms') : '') || 'REL.SMS.001 R00';
+    const logoBase64 = obterLogoCopBase64RelSms();
+    const logoHtml = logoBase64
+        ? `<img src="${logoBase64}" alt="Consórcio Operador Ramal do Agreste" style="max-height: 48px; max-width: 175px; object-fit: contain;">`
+        : `<div style="font-weight: 800; font-size: 14px; color: #1f3864;">COP RAMAL DO AGRESTE</div>`;
+
+    return `
+    <table class="cabecalho-tabela-rel-sms" style="width: 100%; border-collapse: collapse; border: 1.5px solid #1f3864; margin-bottom: 14px; font-family: Arial, Helvetica, sans-serif; background: #ffffff;">
+        <tr>
+            <td style="width: 190px; vertical-align: middle; text-align: center; border-right: 1.5px solid #1f3864; padding: 5px 8px; background: #ffffff;">
+                ${logoHtml}
+            </td>
+            <td style="vertical-align: middle; text-align: center; padding: 5px 10px; border-right: 1.5px solid #1f3864;">
+                <div style="font-size: 11px; font-weight: 800; color: #1f3864; letter-spacing: 0.5px; text-transform: uppercase;">
+                    CONSÓRCIO OPERADOR DO PISF – RAMAL DO AGRESTE
+                </div>
+                <div style="font-size: 13.5px; font-weight: 900; color: #0f172a; margin: 2px 0; text-transform: uppercase;">
+                    RELATÓRIO MENSAL CONSOLIDADO DE SMS
+                </div>
+                <div style="font-size: 9.5px; font-weight: 600; color: #475569; font-style: italic;">
+                    Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente • Obra: PISF Ramal do Agreste - Trecho VII
+                </div>
+                ${tituloSecao ? `<div style="font-size: 10.5px; font-weight: 700; color: #2e5395; margin-top: 2px; text-transform: uppercase;">${escapeHTML(tituloSecao)}</div>` : ''}
+            </td>
+            <td style="width: 220px; vertical-align: middle; text-align: right; font-size: 9px; color: #334155; line-height: 1.35; padding: 5px 8px; background: #f8fafc;">
+                <div><strong>Competência:</strong> ${nomeMes} / ${ano}</div>
+                <div><strong>Controle:</strong> ${escapeHTML(codigoRev)}</div>
+                <div><strong>Resp. Técnico:</strong> João Everton de S. Limeira</div>
+                <div>Eng. Seg. Trabalho • CREA/PE 181283311-8</div>
+            </td>
+        </tr>
+    </table>`;
+}
+
+function relSmsTabelaKpisHtml(kpis) {
+    if (!kpis || kpis.length === 0) return '<p class="rel-p">Nenhum dado disponível para o período.</p>';
+    return `
+    <table class="rel-tabela" style="width: 65%; margin-bottom: 12px;">
+        <thead><tr><th style="text-align: left;">Indicador</th><th style="width: 35%;">Valor</th></tr></thead>
+        <tbody>
+            ${kpis.map(k => `<tr><td style="text-align: left;">${escapeHTML(k.label)}</td><td><strong>${escapeHTML(String(k.value ?? '—'))}</strong></td></tr>`).join('')}
+        </tbody>
+    </table>`;
+}
+
+function relSmsTabelaGenericaHtml(colunas, linhas, largura = '100%') {
+    if (!linhas || linhas.length === 0) return '<p class="rel-p">Nenhum dado registrado para o período.</p>';
+    return `
+    <table class="rel-tabela" style="width: ${largura}; margin-bottom: 12px;">
+        <thead><tr>${colunas.map(c => `<th>${escapeHTML(c)}</th>`).join('')}</tr></thead>
+        <tbody>
+            ${linhas.map(l => `<tr>${l.map((v, i) => `<td${i === 0 ? ' style="text-align: left;"' : ''}>${escapeHTML(String(v ?? '—'))}</td>`).join('')}</tr>`).join('')}
+        </tbody>
+    </table>`;
+}
+
 function relSmsH1(text) {
     return new docx.Paragraph({
         heading: docx.HeadingLevel.HEADING_1,
@@ -15027,26 +15095,31 @@ function construirAnexosRelSms(mes, ano) {
 // mês/ano/versão escolhidos. Só a lib docx carregada globalmente via CDN (window.docx) -
 // ver comentário no topo desta seção.
 async function montarDocRelSms(mes, ano, fiscalizacao) {
+    if (typeof garantirDocumentosControleCarregados === 'function') {
+        await garantirDocumentosControleCarregados();
+    }
     const nomeMes = NOMES_MESES[mes];
+    const codigoRev = (typeof codigoRevisaoDocumento === 'function' ? codigoRevisaoDocumento('relatorio_mensal_sms') : '') || 'REL.SMS.001 R00';
     const hoje = new Date();
     const dataEmissao = String(hoje.getDate()).padStart(2, '0') + '/' + String(hoje.getMonth() + 1).padStart(2, '0') + '/' + hoje.getFullYear();
 
     const capa = [
-        ...Array(6).fill(0).map(() => new docx.Paragraph({ spacing: { after: 200 }, children: [] })),
-        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 100 }, children: [new docx.TextRun({ text: 'COP – CONSÓRCIO OPERADOR DO PISF', bold: true, color: RELSMS_NAVY, size: 26 })] }),
-        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 600 }, children: [new docx.TextRun({ text: 'Obra Ramal do Agreste', color: RELSMS_GREY, size: 22 })] }),
+        ...Array(4).fill(0).map(() => new docx.Paragraph({ spacing: { after: 200 }, children: [] })),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 100 }, children: [new docx.TextRun({ text: 'CONSÓRCIO OPERADOR DO PISF – RAMAL DO AGRESTE', bold: true, color: RELSMS_NAVY, size: 26 })] }),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 600 }, children: [new docx.TextRun({ text: 'Obra Ramal do Agreste — Trecho VII', color: RELSMS_GREY, size: 22 })] }),
         new docx.Paragraph({
             alignment: docx.AlignmentType.CENTER, spacing: { after: 100 },
             border: { top: { color: RELSMS_NAVY, space: 10, style: docx.BorderStyle.SINGLE, size: 12 }, bottom: { color: RELSMS_NAVY, space: 10, style: docx.BorderStyle.SINGLE, size: 12 } },
-            children: [new docx.TextRun({ text: 'RELATÓRIO MENSAL DE SMS', bold: true, color: RELSMS_NAVY, size: 40 })],
+            children: [new docx.TextRun({ text: 'RELATÓRIO MENSAL CONSOLIDADO DE SMS', bold: true, color: RELSMS_NAVY, size: 36 })],
         }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 100, after: 40 }, children: [new docx.TextRun({ text: '(Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente)', color: RELSMS_GREY, size: 20, italics: true })] }),
-        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 300, after: fiscalizacao ? 200 : 900 }, children: [new docx.TextRun({ text: (nomeMes + ' / ' + ano).toUpperCase(), bold: true, color: RELSMS_BLUE, size: 32 })] }),
-        ...(fiscalizacao ? [new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 900 }, children: [new docx.TextRun({ text: 'Versão para envio à Fiscalização', bold: true, color: RELSMS_GREY, size: 20 })] })] : []),
-        ...Array(4).fill(0).map(() => new docx.Paragraph({ spacing: { after: 150 }, children: [] })),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 300, after: fiscalizacao ? 200 : 700 }, children: [new docx.TextRun({ text: (nomeMes + ' / ' + ano).toUpperCase(), bold: true, color: RELSMS_BLUE, size: 32 })] }),
+        ...(fiscalizacao ? [new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 700 }, children: [new docx.TextRun({ text: 'Versão para envio à Fiscalização', bold: true, color: RELSMS_GREY, size: 20 })] })] : []),
+        ...Array(3).fill(0).map(() => new docx.Paragraph({ spacing: { after: 140 }, children: [] })),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'Elaborado por:', color: RELSMS_GREY, size: 20 })] }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'João Everton de Souza Limeira', bold: true, color: RELSMS_NAVY, size: 22 })] }),
-        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 300 }, children: [new docx.TextRun({ text: 'Engenheiro de Segurança do Trabalho', color: RELSMS_GREY, size: 20 })] }),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 80 }, children: [new docx.TextRun({ text: 'Engenheiro de Segurança do Trabalho — CREA/PE 181283311-8', color: RELSMS_GREY, size: 20 })] }),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'Código de Controle: ' + codigoRev, bold: true, color: RELSMS_GREY, size: 18 })] }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, children: [new docx.TextRun({ text: 'Data de emissão: ' + dataEmissao, color: RELSMS_GREY, size: 18 })] }),
         new docx.Paragraph({ children: [new docx.PageBreak()] }),
     ];
@@ -15090,7 +15163,9 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
         children: [new docx.Paragraph({
             alignment: docx.AlignmentType.RIGHT,
             border: { bottom: { color: 'BFBFBF', space: 4, style: docx.BorderStyle.SINGLE, size: 4 } },
-            children: [new docx.TextRun({ text: 'Relatório Mensal de SMS — COP Ramal do Agreste — ' + nomeMes + '/' + ano, size: 16, color: RELSMS_GREY })],
+            children: [
+                new docx.TextRun({ text: 'Relatório Mensal Consolidado de SMS — COP Ramal do Agreste (Trecho VII) — ' + nomeMes + '/' + ano + ' — ' + codigoRev, size: 16, color: RELSMS_GREY })
+            ],
         })],
     });
     const footer = new docx.Footer({
@@ -15127,7 +15202,7 @@ async function gerarRelatorioMensalSms() {
         if (statusEl) statusEl.textContent = '❌ Biblioteca de geração de Word não carregou. Verifique sua conexão e recarregue a página.';
         return;
     }
-    if (statusEl) statusEl.textContent = '⏳ Carregando dados e gerando... pode levar até 1-2 minutos (recalcula vários módulos do painel).';
+    if (statusEl) statusEl.textContent = '⏳ Carregando dados e gerando Word... pode levar até 1 minuto.';
     try {
         const doc = await montarDocRelSms(mes, ano, fiscalizacao);
         const blob = await docx.Packer.toBlob(doc);
@@ -15142,12 +15217,507 @@ async function gerarRelatorioMensalSms() {
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 30000);
         if (statusEl) {
-            statusEl.textContent = '✅ Relatório gerado (' + nomeMes + '/' + ano + ') — o download deve começar automaticamente. Relatório completo com dados do mês'
-                + (fiscalizacao ? ', versão para envio à Fiscalização.' : '.');
+            statusEl.textContent = '✅ Relatório gerado (' + nomeMes + '/' + ano + ') — download do Word iniciado.'
+                + (fiscalizacao ? ' (Versão para envio à Fiscalização).' : '.');
         }
     } catch (e) {
         console.error('Erro ao gerar Relatório Mensal SMS:', e);
         if (statusEl) statusEl.textContent = '❌ Erro ao gerar o relatório: ' + (e?.message || e);
+    }
+}
+
+// Botão "🖨️ Visualizar / Imprimir (A4)" - gera o documento completo em HTML calibrado para
+// impressão A4 com grade de cabeçalho formal padronizada (Logo COP, títulos e metadados com CREA).
+// Abre via abrirDocumentoHtmlParaImpressao() (imune a bloqueador de popups).
+async function imprimirRelatorioMensalSms() {
+    const statusEl = document.getElementById('relSmsStatus');
+    const mes = parseInt(document.getElementById('relSmsMes').value);
+    const ano = parseInt(document.getElementById('relSmsAno').value);
+    const fiscalizacao = document.getElementById('relSmsFiscalizacao').checked;
+    if (!ano) { alert('Informe o ano.'); return; }
+    if (statusEl) statusEl.textContent = '⏳ Carregando dados e preparando documento para impressão A4...';
+
+    try {
+        if (typeof garantirDocumentosControleCarregados === 'function') {
+            await garantirDocumentosControleCarregados();
+        }
+        await garantirDadosSecao1RelSms();
+        const d1 = coletarDadosSecao1RelSms(mes, ano);
+
+        await garantirDadosSecoes23RelSms();
+        const d23 = coletarDadosSecoes23RelSms(mes, ano);
+
+        await garantirDadosSecaoMeioAmbienteRelSms();
+        const dAmb = coletarDadosMeioAmbienteRelSms(mes, ano);
+
+        const dFotos = coletarDadosFase4RelSms(mes, ano);
+
+        const nomeMes = NOMES_MESES[mes];
+        const codigoRev = (typeof codigoRevisaoDocumento === 'function' ? codigoRevisaoDocumento('relatorio_mensal_sms') : '') || 'REL.SMS.001 R00';
+        const hoje = new Date();
+        const dataEmissao = String(hoje.getDate()).padStart(2, '0') + '/' + String(hoje.getMonth() + 1).padStart(2, '0') + '/' + hoje.getFullYear();
+
+        // 1.2 Treinamentos
+        const t = d1.treinamentos;
+        const linhasTrein = [
+            ['Integração (NR-01)', t.totais.participantes.integracao, t.totais.hht.integracao.toFixed(0)],
+            ['Segurança, Saúde e Meio Ambiente', t.totais.participantes.seguranca, t.totais.hht.seguranca.toFixed(0)],
+            ['Treinamentos Adicionais', t.totais.participantes.adicionais, t.totais.hht.adicionais.toFixed(0)],
+            ['DDSMS', t.totais.participantes.dds, t.totais.hht.dds.toFixed(0)],
+            ['TOTAL', t.totais.participantes.geral, t.totais.hht.geral.toFixed(0)],
+        ];
+
+        // 1.3 APR
+        const linhasApr = [
+            ['APRs emitidas no mês', d1.apr.emitidasNoMes],
+            ['Situação atual — ativas', d1.apr.situacaoAtual.ativas],
+            ['Situação atual — vencendo (≤5 dias)', d1.apr.situacaoAtual.vencendo],
+        ];
+        if (!fiscalizacao) linhasApr.push(['Situação atual — vencidas', d1.apr.situacaoAtual.vencidas]);
+        const classApr = d1.apr.classCounts;
+
+        // 1.4 Matriz Risco
+        const mr = d1.matrizRisco.porNivel;
+
+        // 1.5 EPI
+        const epiKpisVersao = fiscalizacao
+            ? d1.epiKpis.filter(k => k.key !== 'caVencidos' && k.key !== 'estoqueBaixo')
+            : d1.epiKpis;
+
+        // 1.8 Relatos
+        const rc = d1.relatos.statusCounts;
+        const linhasRelatos = [
+            ['Relatos registrados no mês', d1.relatos.totalMes],
+            ['— Abertos', rc.aberto],
+            ['— Em andamento', rc.em_andamento],
+            ['— Resolvidos', rc.resolvido],
+            ['Situação atual — total aberto/em andamento', d1.relatos.abertosAtual],
+        ];
+        const tiposRelatos = Object.entries(d1.relatos.tipoCounts).sort((a, b) => b[1] - a[1]);
+
+        // Seção 2 ADA
+        const a = d23.ada;
+
+        // Seção 3.2 Psico
+        const p = d23.psicossocial;
+
+        // Seção 4 Meio Ambiente
+        const lRes = dAmb.linhaResiduos;
+
+        // Seção 5 Considerações Finais
+        const pontos = [];
+        if (!fiscalizacao && d1.treinamentos.nrVencidas > 0) pontos.push(`${d1.treinamentos.nrVencidas} colaborador(es) ativo(s) com integração/NR vencida.`);
+        if (!fiscalizacao && d1.apr.situacaoAtual.vencidas > 0) pontos.push(`${d1.apr.situacaoAtual.vencidas} APR(s) vencida(s) — recomenda-se renovação imediata.`);
+        if (d1.apr.situacaoAtual.vencendo > 0) pontos.push(`${d1.apr.situacaoAtual.vencendo} APR(s) vencendo em até 5 dias.`);
+        if (!fiscalizacao) {
+            const epiCaVencidos = d1.epiKpis.find(k => k.key === 'caVencidos');
+            if (epiCaVencidos && Number(epiCaVencidos.value) > 0) pontos.push(`${epiCaVencidos.value} CA(s) de EPI vencido(s) — providenciar substituição do item no catálogo.`);
+            const epiEstoqueBaixo = d1.epiKpis.find(k => k.key === 'estoqueBaixo');
+            if (epiEstoqueBaixo && Number(epiEstoqueBaixo.value) > 0) pontos.push(`${epiEstoqueBaixo.value} item(ns) de EPI com estoque abaixo do mínimo.`);
+        }
+        if (d1.extintores.vencidos > 0) pontos.push(`${d1.extintores.vencidos} extintor(es) com recarga vencida.`);
+        if (d1.extintores.pendentes > 0) pontos.push(`${d1.extintores.pendentes} extintor(es) sem inspeção registrada no mês.`);
+        if (d1.relatos.abertosAtual > 0) pontos.push(`${d1.relatos.abertosAtual} relato(s) de segurança ainda aberto(s) ou em andamento.`);
+        if (d1.cipa.pendenciasAtrasadas > 0) pontos.push(`${d1.cipa.pendenciasAtrasadas} pendência(s) do plano de ação da CIPA em atraso.`);
+        const asoVencidos = d23.saudeKpis.find(k => k.key === 'asoVencidos');
+        if (asoVencidos && Number(asoVencidos.value) > 0) pontos.push(`${asoVencidos.value} colaborador(es) com ASO vencido — agendar exame.`);
+        const asoSemRegistro = d23.saudeKpis.find(k => k.key === 'asoSemRegistro');
+        if (asoSemRegistro && Number(asoSemRegistro.value) > 0) pontos.push(`${asoSemRegistro.value} colaborador(es) ativo(s) sem ASO registrado.`);
+        if (!fiscalizacao && p && p.criticas.length > 0) {
+            pontos.push(`${p.criticas.length} dimensão(ões) da avaliação psicossocial em situação crítica — ver seção 3.2.`);
+        }
+        if (!fiscalizacao && !dAmb.residuosConfirmados) pontos.push(`Quantidades de resíduos de ${nomeMes.toLowerCase()} de ${ano} ainda não confirmadas em "Resíduos (Refeições + EPI)" — ver seção 4.1.`);
+        if (!fiscalizacao && dAmb.trocasSemLitros > 0) pontos.push(`${dAmb.trocasSemLitros} troca(s) de óleo no mês sem volume informado pela terceira — ver seção 4.2.`);
+
+        // Seção 6 Fotos
+        const eventosFotos = dFotos.eventos;
+
+        const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Relatorio_Mensal_SMS_${nomeMes}_${ano}${fiscalizacao ? '_Fiscalizacao' : ''}</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 10mm 12mm 12mm 12mm;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 10.5px;
+            color: #1e293b;
+            background: #ffffff;
+            margin: 0;
+            padding: 0;
+            line-height: 1.45;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .no-print {
+            text-align: center;
+            padding: 12px;
+            background: #f1f5f9;
+            border-bottom: 1px solid #cbd5e1;
+            margin-bottom: 16px;
+        }
+        .btn-imprimir {
+            background: #4f46e5;
+            color: #ffffff;
+            border: none;
+            padding: 10px 24px;
+            font-size: 13px;
+            font-weight: 700;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .btn-imprimir:hover { background: #4338ca; }
+        .folha-relatorio {
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 0 10px;
+        }
+        .page-break {
+            page-break-after: always;
+            break-after: page;
+        }
+        .rel-tabela {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            margin: 8px 0 14px 0;
+        }
+        .rel-tabela th, .rel-tabela td {
+            border: 1px solid #cbd5e1;
+            padding: 5px 7px;
+            text-align: center;
+        }
+        .rel-tabela th {
+            background: #1f3864;
+            color: #ffffff;
+            font-weight: 700;
+        }
+        .rel-tabela tbody tr:nth-child(even) {
+            background: #f8fafc;
+        }
+        .rel-h1 {
+            font-size: 13.5px;
+            font-weight: 800;
+            color: #1f3864;
+            border-bottom: 2px solid #1f3864;
+            padding-bottom: 4px;
+            margin: 16px 0 8px 0;
+            text-transform: uppercase;
+        }
+        .rel-h2 {
+            font-size: 11.5px;
+            font-weight: 700;
+            color: #2e5395;
+            margin: 14px 0 6px 0;
+        }
+        .rel-p {
+            font-size: 10.5px;
+            margin: 0 0 8px 0;
+            text-align: justify;
+            line-height: 1.45;
+        }
+        .rel-nota {
+            font-size: 9.5px;
+            font-style: italic;
+            color: #64748b;
+            margin: -4px 0 10px 0;
+        }
+        .grid-fotos {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin: 12px 0;
+        }
+        .card-foto {
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            padding: 8px;
+            text-align: center;
+            background: #ffffff;
+            page-break-inside: avoid;
+        }
+        .espaco-foto {
+            height: 120px;
+            border: 1px dashed #94a3b8;
+            background: #f8fafc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #64748b;
+            font-size: 10.5px;
+            font-style: italic;
+            margin-bottom: 6px;
+        }
+        .legenda-foto-num {
+            font-size: 11px;
+            font-weight: 800;
+            color: #1f3864;
+        }
+        .legenda-foto-desc {
+            font-size: 9.5px;
+            color: #475569;
+        }
+        @media print {
+            .no-print { display: none !important; }
+            body { margin: 0; background: #ffffff; }
+            .folha-relatorio { max-width: 100%; padding: 0; }
+            tr { page-break-inside: avoid; }
+            thead { display: table-header-group; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <button class="btn-imprimir" onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button>
+    </div>
+
+    <div class="folha-relatorio">
+        <!-- FOLHA 1: CAPA -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Documento Oficial de SST')}
+        <div style="text-align: center; padding: 70px 20px 40px 20px;">
+            <div style="font-size: 13px; font-weight: 800; color: #1f3864; text-transform: uppercase; letter-spacing: 1px;">
+                COP – CONSÓRCIO OPERADOR DO PISF
+            </div>
+            <div style="font-size: 12px; color: #475569; margin: 4px 0 24px 0;">
+                Obra: PISF Ramal do Agreste — Trecho VII
+            </div>
+            <div style="display: inline-block; border-top: 3px solid #1f3864; border-bottom: 3px solid #1f3864; padding: 16px 30px; margin-bottom: 12px;">
+                <div style="font-size: 20px; font-weight: 900; color: #1f3864; text-transform: uppercase;">
+                    RELATÓRIO MENSAL CONSOLIDADO DE SMS
+                </div>
+                <div style="font-size: 11px; color: #475569; font-style: italic; margin-top: 6px;">
+                    (Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente)
+                </div>
+            </div>
+            <div style="font-size: 16px; font-weight: 800; color: #2e5395; margin-top: 18px; text-transform: uppercase;">
+                ${nomeMes} / ${ano}
+            </div>
+            ${fiscalizacao ? `<div style="display: inline-block; background: #e2e8f0; color: #334155; font-size: 10.5px; font-weight: 700; padding: 4px 14px; border-radius: 4px; margin-top: 10px;">Versão para envio à Fiscalização</div>` : ''}
+
+            <div style="margin-top: 90px; font-size: 10.5px; color: #475569; line-height: 1.6;">
+                <div>Elaborado por:</div>
+                <div style="font-size: 12px; font-weight: 800; color: #1f3864;">João Everton de Souza Limeira</div>
+                <div>Engenheiro de Segurança do Trabalho • CREA/PE 181283311-8</div>
+                <div style="margin-top: 8px;"><strong>Código de Controle:</strong> ${escapeHTML(codigoRev)}</div>
+                <div><strong>Data de Emissão:</strong> ${dataEmissao}</div>
+            </div>
+        </div>
+        <div class="page-break"></div>
+
+        <!-- FOLHA 2: SUMÁRIO EXECUTIVO & ÍNDICE -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Sumário Executivo')}
+        <div class="rel-h1">Sumário Executivo</div>
+        <p class="rel-p">
+            Este relatório consolida os indicadores de Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste referentes a ${nomeMes.toLowerCase()} de ${ano}, com base nos registros de campo consolidados pela equipe de SMS.
+        </p>
+        <p class="rel-p">
+            ${fiscalizacao
+                ? 'Este documento consolida os indicadores de desempenho em Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste no período, evidenciando o cumprimento dos programas legais e o monitoramento contínuo das atividades de campo.'
+                : 'Versão gerada automaticamente pelo painel: Segurança do Trabalho, Área Diretamente Afetada, Saúde Ocupacional, Meio Ambiente, Considerações Finais, Registros Fotográficos e Anexos trazem os dados reais e indicadores de gestão interna do mês.'}
+        </p>
+
+        <div class="rel-h2" style="margin-top: 24px;">Estrutura do Documento</div>
+        <table class="rel-tabela" style="width: 100%; text-align: left;">
+            <thead><tr><th style="width: 15%;">Item</th><th>Seção</th><th style="width: 25%;">Tema</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Seção 1</strong></td><td style="text-align: left;">Segurança do Trabalho</td><td style="text-align: left;">Checklists, Treinamentos, APR, GHE, EPI, Extintores, Acidentes, Relatos, CIPA</td></tr>
+                <tr><td><strong>Seção 2</strong></td><td style="text-align: left;">Área Diretamente Afetada (ADA)</td><td style="text-align: left;">Mão de Obra Local e Municípios de Origem</td></tr>
+                <tr><td><strong>Seção 3</strong></td><td style="text-align: left;">Saúde Ocupacional</td><td style="text-align: left;">ASO, Absenteísmo e Avaliação Psicossocial</td></tr>
+                <tr><td><strong>Seção 4</strong></td><td style="text-align: left;">Meio Ambiente</td><td style="text-align: left;">PGRS (Resíduos) e Manutenção Veicular (Troca de Óleo)</td></tr>
+                <tr><td><strong>Seção 5</strong></td><td style="text-align: left;">Considerações Finais</td><td style="text-align: left;">Pontos de Atenção e Monitoramento do Período</td></tr>
+                <tr><td><strong>Seção 6</strong></td><td style="text-align: left;">Registros Fotográficos</td><td style="text-align: left;">Evidências Visuais Cronológicas de Treinamentos e DDS</td></tr>
+                <tr><td><strong>Anexos</strong></td><td style="text-align: left;">Documentação Complementar</td><td style="text-align: left;">Listas de Presença, DDS e Cronogramas Oficiais</td></tr>
+            </tbody>
+        </table>
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 1: SEGURANÇA DO TRABALHO -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '1. Segurança do Trabalho')}
+        <div class="rel-h1">1. Segurança do Trabalho</div>
+        <p class="rel-p">Indicadores de Segurança do Trabalho referentes a ${nomeMes.toLowerCase()} de ${ano}, com base nos registros de campo consolidados pela equipe de SMS.</p>
+
+        <div class="rel-h2">1.1. Checklists de Equipamentos</div>
+        ${d1.checklistKpis.length > 0 ? relSmsTabelaKpisHtml(d1.checklistKpis) : '<p class="rel-p">Nenhum dado de checklist disponível para o período.</p>'}
+
+        <div class="rel-h2">1.2. Treinamentos e DDSMS</div>
+        ${relSmsTabelaGenericaHtml(['Categoria', 'Participantes', 'HHT (h)'], linhasTrein, '80%')}
+        <div class="rel-nota">Nº total de funcionários (base de cálculo): ${t.totalFuncionarios} — % de HHT sobre Efetivo × 220h: ${t.totais.percHhtEfetivo.toFixed(1)}%.</div>
+        ${!fiscalizacao ? `<div class="rel-nota">Colaboradores ativos com integração/NR vencida (situação atual): ${t.nrVencidas}.</div>` : ''}
+
+        <div class="rel-h2">1.3. Análise Preliminar de Risco (APR)</div>
+        ${relSmsTabelaGenericaHtml(['Indicador', 'Valor'], linhasApr, '65%')}
+        <p class="rel-p">Classificação de risco residual das APRs emitidas no mês: Baixo ${classApr.Baixo}, Moderado ${classApr.Moderado}, Alto ${classApr.Alto}, Crítico ${classApr['Crítico']}.</p>
+        ${!fiscalizacao && d1.apr.situacaoAtual.vencidas > 0 ? `<div class="rel-nota">⚠ ${d1.apr.situacaoAtual.vencidas} APR(s) vencida(s) na data de emissão deste relatório — recomenda-se renovação.</div>` : ''}
+
+        <div class="rel-h2">1.4. Matriz de Risco (GHE)</div>
+        ${relSmsTabelaGenericaHtml(['Nível de Risco', 'Quantidade'], NIVEIS_RISCO_ORDEM.map(n => [n, mr[n]]), '65%')}
+        <div class="rel-nota">Total de riscos classificados nos Grupos de Exposição Homogênea (GHE) cadastrados: ${d1.matrizRisco.total}.</div>
+
+        <div class="rel-h2">1.5. Equipamentos de Proteção Individual (EPI)</div>
+        ${epiKpisVersao.length > 0 ? relSmsTabelaKpisHtml(epiKpisVersao) : '<p class="rel-p">Nenhum dado de EPI disponível para o período.</p>'}
+
+        <div class="rel-h2">1.6. Extintores de Incêndio</div>
+        ${relSmsTabelaGenericaHtml(['Indicador', 'Valor'], [
+            ['Extintores ativos', d1.extintores.totalAtivos],
+            ['Inspecionados no mês — conforme', d1.extintores.conf],
+            ['Inspecionados no mês — não conforme', d1.extintores.naoConf],
+            ['Sem inspeção no mês', d1.extintores.pendentes],
+            ['Situação atual — vencidos', d1.extintores.vencidos],
+            ['Situação atual — vencendo (≤30 dias)', d1.extintores.vencendo],
+        ], '65%')}
+
+        <div class="rel-h2">1.7. Acidentabilidade</div>
+        ${d1.acidentesKpis.length > 0 ? relSmsTabelaKpisHtml(d1.acidentesKpis) : '<p class="rel-p">Nenhum dado de acidentabilidade disponível para o período.</p>'}
+
+        <div class="rel-h2">1.8. Relatos de Segurança</div>
+        ${relSmsTabelaGenericaHtml(['Indicador', 'Valor'], linhasRelatos, '65%')}
+        ${tiposRelatos.length > 0 ? `<p class="rel-p">Relatos do mês por tipo: ${tiposRelatos.map(([tipo, qtd]) => `${tipo} (${qtd})`).join('; ')}.</p>` : ''}
+        ${d1.relatos.totalMes === 0 ? `<div class="rel-nota">Nenhum desvio crítico ou relato pendente de intervenção imediata registrado no período.</div>` : ''}
+
+        <div class="rel-h2">1.9. CIPA</div>
+        ${relSmsTabelaGenericaHtml(['Indicador', 'Valor'], [
+            ['Reuniões realizadas no mês', d1.cipa.reunioesMes.length],
+            ['Membros ativos', d1.cipa.membrosAtivos],
+            ['Plano de ação — pendências abertas', d1.cipa.pendenciasAbertas],
+            ['Plano de ação — pendências atrasadas', d1.cipa.pendenciasAtrasadas],
+        ], '65%')}
+        ${d1.cipa.reunioesMes.length > 0 ? `<p class="rel-p">Reuniões do mês: ${d1.cipa.reunioesMes.map(r => `${CIPA_TIPO_LABELS[r.tipo] || r.tipo}${r.numero_ordinaria ? ' nº ' + r.numero_ordinaria : ''} em ${formatSimpleDate(r.data_reuniao)}`).join('; ')}.</p>` : ''}
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 2: ADA -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '2. ADA e Mão de Obra Local')}
+        <div class="rel-h1">2. Área Diretamente Afetada (ADA) e Mão de Obra Local</div>
+        ${a.linhasQuadro1.length === 0 ? `<p class="rel-p">Nenhum colaborador ativo encontrado em ${nomeMes.toLowerCase()} de ${ano}.</p>` : `
+        <div class="rel-h2">Quadro 1 — Demonstrativo da ocupação da mão de obra local por município (${nomeMes}/${ano})</div>
+        <div class="rel-nota">Número Total de Funcionários da Obra: ${a.totalFuncionarios}</div>
+        ${relSmsTabelaGenericaHtml(['Município de Origem', 'UF', 'Nº de Trabalhadores'], [...a.linhasQuadro1.map(l => [l.municipio, l.uf, l.qtd]), ['TOTAL', '', a.totalFuncionarios]], '80%')}
+
+        <div class="rel-h2">Quadro 2 — Municípios na Área Diretamente Afetada - ADA (${nomeMes}/${ano})</div>
+        ${a.linhasQuadro2.length === 0 ? '<p class="rel-p">Nenhum colaborador ativo é originário de município cadastrado como ADA neste mês.</p>' :
+            relSmsTabelaGenericaHtml(['Município de Origem ADA', 'UF', 'Nº de Funcionários', '% sobre o Total'], [...a.linhasQuadro2.map(l => [l.municipio, l.uf, l.qtd, r2(l.pct) + '%']), ['TOTAL', '', a.totalAda, r2(a.pctAda) + '%']], '85%')}
+        `}
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 3: SAÚDE OCUPACIONAL -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '3. Saúde Ocupacional')}
+        <div class="rel-h1">3. Saúde Ocupacional</div>
+        <div class="rel-h2">3.1. Atestados de Saúde Ocupacional (ASO) e Absenteísmo</div>
+        ${d23.saudeKpis.length > 0 ? relSmsTabelaKpisHtml(d23.saudeKpis) : '<p class="rel-p">Nenhum dado de ASO disponível para o período.</p>'}
+
+        <div class="rel-h2">3.2. Avaliação Psicossocial (COPSOQ II)</div>
+        ${!p ? `<p class="rel-p">Nenhuma aplicação do questionário psicossocial com período cobrindo ${nomeMes.toLowerCase()} de ${ano}.</p>` : `
+        <p class="rel-p">Aplicação referente a ${formatarPeriodoPsicossocial(p.aplicacao)} — taxa de participação: ${fmtPct(p.aplicacao.taxa_participacao)}.</p>
+        ${(() => {
+            const linhasP = [
+                ['Escalas avaliadas', p.totalEscalas],
+                ['Escalas em situação fortemente favorável (≥ ' + PSICO_LIMIAR_FAVORAVEL_FORTE + '%)', p.fortes.length],
+            ];
+            if (!fiscalizacao) linhasP.splice(1, 0, ['Escalas em situação crítica (risco ≥ ' + PSICO_LIMIAR_RISCO_CRITICO + '%)', p.criticas.length]);
+            return relSmsTabelaGenericaHtml(['Indicador', 'Valor'], linhasP, '70%');
+        })()}
+        ${!fiscalizacao && p.criticas.length > 0 ? `<div class="rel-nota">Dimensões críticas: ${p.criticas.map(e => `${e.escala} (${fmtPct(e.pct_risco)})`).join('; ')}.</div>` : ''}
+        `}
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 4: MEIO AMBIENTE -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '4. Meio Ambiente')}
+        <div class="rel-h1">4. Meio Ambiente</div>
+        <div class="rel-h2">4.1. Geração e Destinação de Resíduos</div>
+        ${!dAmb.residuosConfirmados ? `
+            <p class="rel-p">${fiscalizacao
+                ? 'A gestão, segregação e destinação de resíduos no canteiro e frentes de serviço foram conduzidas em conformidade com as diretrizes do PGRS, mantendo-se dentro dos parâmetros operacionais do período.'
+                : `As quantidades de resíduos (quentinhas de isopor, copos descartáveis e EPI usado sem contaminação) de ${nomeMes.toLowerCase()} de ${ano} ainda não foram confirmadas nos registros de campo consolidados pela equipe de SMS.`
+            }</p>
+        ` : `
+            <p class="rel-p">A quantidade de resíduos sólidos Classe II-A Não Perigosos (Não Inerte) e Classe II-B Não Perigosos (Inerte) gerados em ${nomeMes.toLowerCase()} de ${ano}, apurada a partir dos registros de campo consolidados pela equipe de SMS, é apresentada a seguir.</p>
+            ${(() => {
+                const epiQtd = Number(lRes.epi || 0);
+                const epiKg = epiQtd * RESIDUO_KG_POR_EPI;
+                const quentinhasKg = (lRes.quentinhas || 0) * RESIDUO_KG_POR_QUENTINHA;
+                const coposKg = (lRes.copos || 0) * RESIDUO_KG_POR_COPO;
+                return relSmsTabelaGenericaHtml(['Tipo de Resíduo', 'Quantidade', 'Peso (kg)'], [
+                    ['Quentinhas de isopor com sobra de comida', `${lRes.quentinhas || 0} un.`, quentinhasKg.toFixed(1)],
+                    ['Copo descartável', `${lRes.copos || 0} un.`, coposKg.toFixed(1)],
+                    ['EPI usado (sem contaminação)', `${epiQtd} un.`, epiKg.toFixed(1)],
+                    ['TOTAL NO MÊS', '', lRes.pesoKg.toFixed(1)],
+                ], '75%');
+            })()}
+            <div class="rel-nota">Memória de cálculo: quentinha = 23,9 g; copo = 1,8 g; EPI = 500 g. Transporte: 1ª etapa veículo próprio do Consórcio até Sertânia-PE; 2ª etapa Prefeitura Municipal até o Aterro Sanitário de Arcoverde-PE.</div>
+        `}
+
+        <div class="rel-h2">4.2. Rastreabilidade de Manutenção Veicular (Troca de Óleo)</div>
+        ${dAmb.manutRegistrosMes === 0 ? `
+            <p class="rel-p">${fiscalizacao
+                ? 'As manutenções preventivas, inspeções de nível e trocas de fluidos da frota e equipamentos operacionais foram realizadas conforme o plano de manutenção, sem ocorrências de vazamentos ou impactos ambientais no período.'
+                : `Nenhum registro de manutenção veicular no período em ${nomeMes.toLowerCase()} de ${ano}.`
+            }</p>
+        ` : `
+            ${(() => {
+                const kpisM = [
+                    { label: 'Trocas de óleo registradas no mês', value: dAmb.trocasOleoMes },
+                    { label: 'Litros de óleo trocados no mês', value: dAmb.litrosOleoMes.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) },
+                ];
+                if (!fiscalizacao) kpisM.push({ label: 'Trocas sem volume informado pela terceira', value: dAmb.trocasSemLitros });
+                return relSmsTabelaKpisHtml(kpisM);
+            })()}
+        `}
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 5: CONSIDERAÇÕES FINAIS -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '5. Considerações Finais')}
+        <div class="rel-h1">5. Considerações Finais e Plano de Ação</div>
+        <p class="rel-p">Síntese dos pontos de atenção identificados em ${nomeMes.toLowerCase()} de ${ano}, a partir dos indicadores apresentados nas seções anteriores deste relatório.</p>
+        <div class="rel-h2">Pontos de Atenção para o Próximo Período</div>
+        ${pontos.length === 0 ? '<p class="rel-p">Nenhum ponto crítico identificado nos indicadores monitorados neste relatório.</p>' : `
+            <ul style="padding-left: 20px; font-size: 10.5px; line-height: 1.6; margin: 8px 0 16px 0;">
+                ${pontos.map(p => `<li>${escapeHTML(p)}</li>`).join('')}
+            </ul>
+        `}
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 6: REGISTROS FOTOGRÁFICOS -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '6. Registros Fotográficos')}
+        <div class="rel-h1">6. Registros Fotográficos</div>
+        <p class="rel-p">Registros fotográficos de treinamentos e DDS/DDSMA realizados em ${nomeMes.toLowerCase()} de ${ano}, em ordem cronológica. Espaços reservados abaixo para inserção das fotos oficiais.</p>
+        ${eventosFotos.length === 0 ? '<p class="rel-p">Nenhum treinamento ou DDS registrado no período.</p>' : `
+            <div class="grid-fotos">
+                ${eventosFotos.map((ev, i) => `
+                    <div class="card-foto">
+                        <div class="espaco-foto">[ Espaço reservado para foto ]</div>
+                        <div class="legenda-foto-num">Foto - ${String(i + 1).padStart(2, '0')}</div>
+                        <div class="legenda-foto-desc">${formatSimpleDate(ev.data)} — ${escapeHTML(ev.nome)}</div>
+                    </div>
+                `).join('')}
+            </div>
+        `}
+        <div class="page-break"></div>
+
+        <!-- ANEXOS -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Anexos')}
+        <div class="rel-h1">Anexos</div>
+        <p class="rel-p">Os documentos abaixo acompanham este relatório como arquivos complementares:</p>
+        <ul style="padding-left: 20px; font-size: 10.5px; line-height: 1.8; margin: 12px 0;">
+            <li><strong>LISTA DE PRESENÇA TREINAMENTO - ENTREGUE EM ANEXO</strong></li>
+            <li><strong>DDS - ENTREGUE EM ANEXO</strong></li>
+            <li><strong>CRONOGRAMA DE TREINAMENTOS ${nomeMes.toUpperCase()}/${ano} - ENTREGUE EM ANEXO</strong></li>
+            <li><strong>CRONOGRAMA DE TREINAMENTOS ${NOMES_MESES[(mes + 1) % 12].toUpperCase()}/${mes === 11 ? ano + 1 : ano} - ENTREGUE EM ANEXO</strong></li>
+        </ul>
+    </div>
+</body>
+</html>`;
+
+        abrirDocumentoHtmlParaImpressao(html, `Relatorio_Mensal_SMS_${nomeMes}_${ano}${fiscalizacao ? '_Fiscalizacao' : ''}`);
+        if (statusEl) {
+            statusEl.textContent = `✅ Relatório gerado com sucesso (${nomeMes}/${ano}) — aberto na aba de impressão em formato A4.`;
+        }
+    } catch (err) {
+        console.error('Erro ao gerar visualização do Relatório Mensal SMS:', err);
+        if (statusEl) statusEl.textContent = '❌ Erro ao gerar visualização: ' + (err?.message || err);
     }
 }
 

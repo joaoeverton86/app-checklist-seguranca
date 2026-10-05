@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v153';
+const DASHBOARD_VERSION = 'v154';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -24680,7 +24680,10 @@ async function salvarCalendarioHhtMes() {
     const mes = calHhtMesAtual;
     const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
 
-    if (statusEl) { statusEl.textContent = '⏳ Salvando...'; statusEl.style.color = 'var(--text-light)'; }
+    if (statusEl) {
+        statusEl.textContent = '⏳ Salvando Mês e HHT...';
+        statusEl.style.color = 'var(--text-light)';
+    }
 
     try {
         const compMap = await carregarCompensacoesMes(ano, mes);
@@ -24712,25 +24715,29 @@ async function salvarCalendarioHhtMes() {
         }
 
         const mediaHorasDia = totalDias > 0 ? parseFloat((totalHoras / totalDias).toFixed(2)) : 8;
+        // Sanitização obrigatória para coluna INTEGER na tabela public.hht_dias_trabalhados
+        const horasDiaInt = Math.round(Number(mediaHorasDia) || 8);
 
-        // 1. Salva na tabela hht_dias_trabalhados
-        await supabaseUpsert('hht_dias_trabalhados', [{
+        // 1. Salva na tabela hht_dias_trabalhados com tipos inteiros estritos (evita erro 22P02 do PostgreSQL)
+        const payloadHht = {
             id: key,
-            ano,
-            mes: mes + 1,
-            dias_trabalhados: totalDias,
-            horas_por_dia: mediaHorasDia
-        }]);
+            ano: parseInt(ano, 10),
+            mes: parseInt(mes, 10) + 1,
+            dias_trabalhados: parseInt(totalDias, 10),
+            horas_por_dia: horasDiaInt
+        };
+        await supabaseUpsert('hht_dias_trabalhados', [payloadHht]);
 
-        // 2. Salva o detalhamento em configuracoes_sistema
+        // 2. Salva o detalhamento completo em configuracoes_sistema (preservando precisão decimal e total_horas)
         await supabaseUpsert('configuracoes_sistema', [{
             id: `cal_hht_${key}`,
             valor: {
-                ano,
-                mes: mes + 1,
+                ano: parseInt(ano, 10),
+                mes: parseInt(mes, 10) + 1,
                 total_horas: totalHoras,
-                dias_trabalhados: totalDias,
-                horas_por_dia: mediaHorasDia,
+                dias_trabalhados: parseInt(totalDias, 10),
+                horas_por_dia: horasDiaInt,
+                media_horas_dia: mediaHorasDia,
                 compensacoes: compMap
             },
             descricao: `Detalhamento de dias trabalhados e compensações para ${key}`,
@@ -24741,26 +24748,29 @@ async function salvarCalendarioHhtMes() {
         // Atualiza cache em memória
         hhtDiasTrabalhadosMap[key] = {
             id: key,
-            ano,
-            mes: mes + 1,
-            dias_trabalhados: totalDias,
-            horas_por_dia: mediaHorasDia
+            ano: parseInt(ano, 10),
+            mes: parseInt(mes, 10) + 1,
+            dias_trabalhados: parseInt(totalDias, 10),
+            horas_por_dia: horasDiaInt,
+            total_horas: totalHoras,
+            media_horas_dia: mediaHorasDia
         };
 
         if (statusEl) {
-            statusEl.textContent = `✅ Calendário salvo com sucesso! (${totalDias} dias, ${totalHoras}h apuradas)`;
+            statusEl.textContent = `✅ Mês e HHT salvos com sucesso! (${totalDias} dias úteis, ${totalHoras}h apuradas)`;
             statusEl.style.color = 'var(--success)';
             setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 4500);
         }
 
-        // Atualiza a tabela histórica abaixo e recalcula Acidentabilidade
+        // Atualiza a visualização do calendário, a tabela consolidada e recalcula indicadores de Acidentabilidade sem recarregar a página
+        renderCalendarioHht();
         renderDiasTrabalhadosConfig();
         renderAcidentesPanel();
 
     } catch (err) {
         console.error('Erro ao salvar calendário HHT:', err);
         if (statusEl) {
-            statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
+            statusEl.textContent = '❌ Falha ao salvar: ' + (err.message || 'Erro inesperado');
             statusEl.style.color = 'var(--danger)';
         }
     }

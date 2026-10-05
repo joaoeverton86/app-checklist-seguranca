@@ -77,7 +77,7 @@ function obterConfigRotinasPadrao() {
         
         // Outras lideranças operacionais com equipes dedicadas
         'DANILO': { ativo: true, exige_dds: true, exige_treinamento: true, exige_apr: true, setor: 'TRANSPORTE', apelido: 'Danilo (Transporte)' },
-        'DEYLON': { ativo: true, exige_dds: true, exige_treinamento: true, exige_apr: true, setor: 'OPERAÇÃO', apelido: 'Deylon (Operação)' },
+        'DEYLON': { ativo: true, exige_dds: true, exige_treinamento: true, exige_apr: true, setor: 'OPERAÇÃO', apelido: 'Deylon (Operação)', escala: 'turno_continuo' },
         'ROBSON': { ativo: true, exige_dds: true, exige_treinamento: true, exige_apr: true, setor: 'MANUTENÇÃO MECÂNICA', apelido: 'Robson (Mecânica)' },
         'ANDRÉ': { ativo: true, exige_dds: true, exige_treinamento: true, exige_apr: true, setor: 'TOPOGRAFIA', apelido: 'André (Topografia)' },
         'NESTOR': { ativo: true, exige_dds: true, exige_treinamento: true, exige_apr: true, setor: 'TOPOGRAFIA', apelido: 'Nestor (Topografia/Leiturista)' },
@@ -137,11 +137,65 @@ async function garantirDadosPlacarLideres() {
     if (!aprLoaded) { aprLoaded = true; tarefas.push(loadAprData()); }
     if (tarefas.length > 0) await Promise.all(tarefas);
     if (!allRotinasConfig) await carregarConfigRotinas();
+
+    // Carregar tabela de dias úteis/trabalhados se ainda não carregada
+    if (typeof hhtDiasTrabalhadosMap === 'undefined' || Object.keys(hhtDiasTrabalhadosMap).length === 0) {
+        try {
+            const rows = await supabaseFetch('hht_dias_trabalhados', '?select=*');
+            if (typeof hhtDiasTrabalhadosMap === 'undefined') window.hhtDiasTrabalhadosMap = {};
+            (rows || []).forEach(r => { hhtDiasTrabalhadosMap[r.id] = r; });
+        } catch (e) {
+            console.warn('Erro ao carregar hht_dias_trabalhados para o placar:', e);
+        }
+    }
+
+    // Carregar checklists para apuração de Não Conformidades/desvios por frente (critério de desempate)
+    if (!allChecklists || allChecklists.length === 0) {
+        try {
+            allChecklists = await supabaseFetch('checklists', '?select=*') || [];
+        } catch (e) {
+            console.warn('Erro ao carregar checklists em placar_lideres:', e);
+        }
+    }
+
+    // Carregar relatos de ocorrências/desvios
+    if (!allRelatos || allRelatos.length === 0) {
+        try {
+            allRelatos = await supabaseFetch('relatos', '?select=*') || [];
+        } catch (e) {
+            console.warn('Erro ao carregar relatos em placar_lideres:', e);
+        }
+    }
+}
+
+function obterMetaDdsMes(ano, mes) {
+    const anoNum = parseInt(ano, 10);
+    const mesIdx = parseInt(mes, 10);
+    const key = `${anoNum}-${String(mesIdx + 1).padStart(2, '0')}`;
+    if (typeof hhtDiasTrabalhadosMap !== 'undefined' && hhtDiasTrabalhadosMap[key] && hhtDiasTrabalhadosMap[key].dias_trabalhados > 0) {
+        return parseInt(hhtDiasTrabalhadosMap[key].dias_trabalhados, 10);
+    }
+    return calcularDiasUteisMes(anoNum, mesIdx);
+}
+
+function sincronizarInputMetaPlacar() {
+    const ano = parseInt(placarFiltroAno, 10) || new Date().getFullYear();
+    const mes = parseInt(placarFiltroMes, 10) || new Date().getMonth();
+    const metaVal = obterMetaDdsMes(ano, mes);
+    const metaInput = document.getElementById('placarMetaDiasDds');
+    if (metaInput) {
+        metaInput.value = metaVal;
+        const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+        metaInput.title = `Meta de DDS para ${key}: ${metaVal} dias úteis (persistido no banco)`;
+        metaInput.style.borderColor = '';
+    }
+    return metaVal;
 }
 
 async function abrirPaginaPlacarLideres() {
     await garantirDadosPlacarLideres();
     popularFiltrosPlacar();
+    sincronizarInputMetaPlacar();
     renderPlacarLideres();
 }
 
@@ -186,14 +240,15 @@ function calcularPlacarLideres(ano, mes) {
     const iniMes = new Date(ano, mes, 1);
     const fimMes = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
     
-    // Meta de DDS para o mês: customizada ou dias úteis
-    const diasUteisPadrao = calcularDiasUteisMes(ano, mes);
-    const metaDds = (placarMetaDiasCustom && placarMetaDiasCustom > 0) ? placarMetaDiasCustom : diasUteisPadrao;
+    // Meta de DDS para o mês: busca primeiro de public.hht_dias_trabalhados (persistência no banco)
+    const metaDds = obterMetaDdsMes(ano, mes);
 
-    // Atualiza input de meta na tela caso esteja visível
+    // Atualiza input de meta na tela caso esteja visível e o usuário não esteja editando
     const metaInput = document.getElementById('placarMetaDiasDds');
     if (metaInput && document.activeElement !== metaInput) {
         metaInput.value = metaDds;
+        const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+        metaInput.title = `Meta de DDS para ${key}: ${metaDds} dias úteis (persistido no banco)`;
     }
 
     if (!allRotinasConfig) allRotinasConfig = obterConfigRotinasPadrao();
@@ -242,8 +297,11 @@ function calcularPlacarLideres(ano, mes) {
         const setorNome = cfg.setor || (equipe[0] ? equipe[0].setor : 'GERAL');
         const apelido = cfg.apelido || frenteNome;
 
+        const ehTurnoContinuo = (cfg.escala === 'turno_continuo') || (frenteNome === 'DEYLON') || (cfg.setor && cfg.setor.includes('OPERAÇÃO'));
+        const metaEsperada = (cfg.meta_dias && cfg.meta_dias > 0) ? cfg.meta_dias : metaDds;
+
         // ----------------------------------------------------
-        // 1. ROTINA: DDSMA
+        // 1. ROTINA: DDSMA (COM CORTE ESTRITO EM 100% PARA EQUIDADE DE ESCALAS)
         // ----------------------------------------------------
         let pctDds = null;
         let diasDds = 0;
@@ -273,10 +331,11 @@ function calcularPlacarLideres(ano, mes) {
             ddsHistLider.forEach(h => { diasSet.add(h.data_dds); totalAssinaturasDds += (parseInt(h.participantes, 10) || 0); });
 
             diasDds = diasSet.size;
-            pctDds = Math.min(100, Math.round((diasDds / metaDds) * 100));
+            // Corte estrito de 100% no aproveitamento de DDS: frentes 12x36 ou com dias a mais não ultrapassam 100%
+            pctDds = Math.min(100, Math.round((diasDds / metaEsperada) * 100));
 
-            if (diasDds >= metaDds) statusDds = 'sucesso';
-            else if (diasDds >= Math.ceil(metaDds * 0.7)) statusDds = 'alerta';
+            if (diasDds >= metaEsperada) statusDds = 'sucesso';
+            else if (diasDds >= Math.ceil(metaEsperada * 0.7)) statusDds = 'alerta';
             else statusDds = 'perigo';
         }
 
@@ -341,6 +400,49 @@ function calcularPlacarLideres(ano, mes) {
         }
 
         // ----------------------------------------------------
+        // 4. REGULARIDADE OPERACIONAL / DESVIOS E NÃO CONFORMIDADES (DESEMPATE)
+        // ----------------------------------------------------
+        let totalDesvios = 0;
+        let totalNaoConformidades = 0;
+        let totalInterdicoes = 0;
+
+        (allChecklists || []).forEach(chk => {
+            if (!chk.date) return;
+            const dataChk = parseLocalDate(chk.date);
+            if (dataChk < iniMes || dataChk > fimMes) return;
+
+            const respChk = typeof resolverFrenteDds === 'function' ? resolverFrenteDds(chk.responsavel) : (chk.responsavel || '').trim().toUpperCase();
+            const bateFrente = respChk === frenteNome ||
+                (frenteNome === 'ELÉTRICA' && ((chk.empresa || '').toUpperCase().includes('ELÉTRICA') || (chk.nome || '').toUpperCase().includes('ELÉTRICA'))) ||
+                (frenteNome === 'OPERAÇÃO' && ((chk.empresa || '').toUpperCase().includes('OPERAÇÃO') || (chk.nome || '').toUpperCase().includes('OPERAÇÃO')));
+
+            if (bateFrente) {
+                const ncs = parseInt(chk.nao_conformes || chk.count_nao_conforme || 0, 10);
+                if (ncs > 0) {
+                    totalNaoConformidades += ncs;
+                    totalDesvios += ncs;
+                }
+                const st = (chk.status_checklist || '').toLowerCase();
+                if (st === 'interditado') {
+                    totalInterdicoes++;
+                    totalDesvios += 2; // Interdição de máquina/veículo tem peso dobrado
+                }
+            }
+        });
+
+        (allRelatos || []).forEach(rel => {
+            if (!rel.date) return;
+            const dataRel = parseLocalDate(rel.date);
+            if (dataRel < iniMes || dataRel > fimMes) return;
+
+            const repRole = typeof resolverFrenteDds === 'function' ? resolverFrenteDds(rel.role) : (rel.role || '').trim().toUpperCase();
+            const repId = typeof resolverFrenteDds === 'function' ? resolverFrenteDds(rel.identificacao) : (rel.identificacao || '').trim().toUpperCase();
+            if (repRole === frenteNome || repId === frenteNome) {
+                totalDesvios++;
+            }
+        });
+
+        // ----------------------------------------------------
         // ÍNDICE GERAL DE MATURIDADE DE SST
         // ----------------------------------------------------
         const rotinasAvaliadas = [];
@@ -358,9 +460,10 @@ function calcularPlacarLideres(ano, mes) {
             setor: setorNome,
             totalEquipe: equipe.length,
             cfg,
+            ehTurnoContinuo,
             // DDS
             diasDds,
-            metaDds,
+            metaDds: metaEsperada,
             pctDds,
             totalAssinaturasDds,
             statusDds,
@@ -373,20 +476,52 @@ function calcularPlacarLideres(ano, mes) {
             pctApr,
             totalAprsVigentes,
             statusApr,
+            // Regularidade / Desvios
+            totalDesvios,
+            totalNaoConformidades,
+            totalInterdicoes,
             // Geral
             mediaGeral
         });
     });
 
-    // Ordenação do Ranking:
-    // 1º Maior Índice Geral
-    // 2º Mais dias de DDS realizados
-    // 3º Mais colaboradores treinados
-    // 4º Nome
+    // Ordenação do Ranking de Excelência de SST com Critérios Objetivos:
+    // 1º Maior Índice Geral de Maturidade de SST (Média ponderada das rotinas)
+    // CRITÉRIOS DE DESEMPATE (inclusive para líderes com 100% no DDS):
+    // 1º Desempate: % de Treinamentos em dia, Colaboradores capacitados e Sessões realizadas
+    // 2º Desempate: Regularidade da APR Vigente no período e Quantidade de APRs
+    // 3º Desempate: Menor índice de Não Conformidades / desvios registrados na frente
+    // 4º Desempate: Aproveitamento efetivo de DDS (com teto estrito de 100%)
+    // 5º Desempate: Tamanho do efetivo gerenciado
+    // 6º Ordem alfabética pelo apelido
     ranking.sort((a, b) => {
         if (b.mediaGeral !== a.mediaGeral) return b.mediaGeral - a.mediaGeral;
-        if (b.diasDds !== a.diasDds) return b.diasDds - a.diasDds;
+
+        // 1º Desempate: Treinamento da equipe
+        const treinA = a.pctTrein !== null ? a.pctTrein : 100;
+        const treinB = b.pctTrein !== null ? b.pctTrein : 100;
+        if (treinB !== treinA) return treinB - treinA;
         if (b.totalColabsTreinados !== a.totalColabsTreinados) return b.totalColabsTreinados - a.totalColabsTreinados;
+        if (b.totalTreinamentos !== a.totalTreinamentos) return b.totalTreinamentos - a.totalTreinamentos;
+
+        // 2º Desempate: Regularidade da APR Vigente
+        const aprA = a.pctApr !== null ? a.pctApr : 100;
+        const aprB = b.pctApr !== null ? b.pctApr : 100;
+        if (aprB !== aprA) return aprB - aprA;
+        if (b.totalAprsVigentes !== a.totalAprsVigentes) return b.totalAprsVigentes - a.totalAprsVigentes;
+
+        // 3º Desempate: Menor índice de Não Conformidades e Desvios (quem tem menos ganha: a - b)
+        if (a.totalDesvios !== b.totalDesvios) return a.totalDesvios - b.totalDesvios;
+
+        // 4º Desempate: % de DDS (com teto de 100%, sem favorecer quem tem dias extras além da meta)
+        const ddsA = a.pctDds !== null ? a.pctDds : 100;
+        const ddsB = b.pctDds !== null ? b.pctDds : 100;
+        if (ddsB !== ddsA) return ddsB - ddsA;
+
+        // 5º Desempate: Tamanho do efetivo
+        if (b.totalEquipe !== a.totalEquipe) return b.totalEquipe - a.totalEquipe;
+
+        // 6º Alfabético
         return a.apelido.localeCompare(b.apelido);
     });
 
@@ -529,7 +664,7 @@ function renderPlacarPodio(top3, setorFiltro, mesAntNome) {
         const med = medalhas[idx] || (idx + 1) + 'º';
         const titPos = titulosPos[idx] || (idx + 1) + 'º Colocado';
 
-        const ddsTexto = lider.pctDds !== null ? (lider.diasDds + '/' + lider.metaDds + ' dias') : 'Isento';
+        const ddsTexto = lider.pctDds !== null ? (lider.diasDds + '/' + lider.metaDds + 'd' + (lider.ehTurnoContinuo && lider.diasDds > lider.metaDds ? ' (Teto 100%)' : '')) : 'Isento';
         const treinTexto = lider.pctTrein !== null ? (lider.pctTrein === 100 ? '✅ Realizado' : '❌ Pendente') : 'Isento';
         const aprTexto = lider.pctApr !== null ? (lider.pctApr === 100 ? '✅ Vigente' : '❌ Pendente') : 'Isenta';
         const trendBadge = formatarBadgeTendencia(lider, mesAntNome);
@@ -544,7 +679,10 @@ function renderPlacarPodio(top3, setorFiltro, mesAntNome) {
                     <span style="font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase;">${titPos}</span>
                 </div>
                 <div>
-                    <div class="podio-lider-nome">${escapeHTML(lider.apelido)}</div>
+                    <div class="podio-lider-nome">
+                        ${escapeHTML(lider.apelido)}
+                        ${lider.ehTurnoContinuo ? '<span class="placar-scale-badge" title="Regime de Turno Contínuo / 12x36 (Teto de 100%)">12x36</span>' : ''}
+                    </div>
                     <div class="podio-lider-setor">${escapeHTML(lider.setor)} • ${lider.totalEquipe} colaboradores</div>
                 </div>
                 <div class="podio-metricas-mini">
@@ -616,7 +754,8 @@ function renderPlacarTabela(rankingFiltrado, rankingCompleto, mesAntNome, setorF
         if (lider.pctDds === null) {
             chipDds = '<span class="placar-status-chip chip-isento">⚪ Isento</span>';
         } else if (lider.statusDds === 'sucesso') {
-            chipDds = `<span class="placar-status-chip chip-sucesso">🟢 ${lider.diasDds}/${lider.metaDds}d (100%)</span>`;
+            const rotuloTeto = (lider.ehTurnoContinuo && lider.diasDds > lider.metaDds) ? ' (100% • Teto)' : ' (100%)';
+            chipDds = `<span class="placar-status-chip chip-sucesso" title="${lider.ehTurnoContinuo ? 'Regime de Turno Contínuo / 12x36 — Aproveitamento com teto estrito em 100%' : 'Meta atingida'}">🟢 ${lider.diasDds}/${lider.metaDds}d${rotuloTeto}</span>`;
         } else if (lider.statusDds === 'alerta') {
             chipDds = `<span class="placar-status-chip chip-alerta">🟡 ${lider.diasDds}/${lider.metaDds}d (${lider.pctDds}%)</span>`;
         } else {
@@ -652,8 +791,14 @@ function renderPlacarTabela(rankingFiltrado, rankingCompleto, mesAntNome, setorF
                 </td>
                 <td>
                     <div class="placar-lider-cell">
-                        <span class="placar-lider-title">${escapeHTML(lider.apelido)}</span>
-                        <span class="placar-lider-sub">Equipe: ${lider.totalEquipe} pessoas ativas</span>
+                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                            <span class="placar-lider-title">${escapeHTML(lider.apelido)}</span>
+                            ${lider.ehTurnoContinuo ? '<span class="placar-scale-badge" title="Regime de Turno Contínuo / 12x36 (Aproveitamento com teto de 100%)">12x36 / Turno</span>' : ''}
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px;">
+                            <span class="placar-lider-sub">Equipe: ${lider.totalEquipe} pessoas ativas</span>
+                            ${lider.totalDesvios > 0 ? `<span style="font-size: 10.5px; color: #dc2626; font-weight: 700;" title="${lider.totalDesvios} não conformidade(s) ou desvio(s) registrados na frente">⚠️ ${lider.totalDesvios} desvio(s)</span>` : '<span style="font-size: 10.5px; color: #16a34a; font-weight: 600;" title="Nenhum desvio registrado no período">🛡️ 0 desvios</span>'}
+                        </div>
                     </div>
                 </td>
                 <td>
@@ -704,16 +849,55 @@ function onPlacarFiltroChange() {
         });
     }
 
+    // Sincroniza o campo de meta de DDS com a meta persistida do mês selecionado
+    sincronizarInputMetaPlacar();
+
     renderPlacarLideres();
 }
 
-function onPlacarMetaDiasChange() {
+async function onPlacarMetaDiasChange() {
     const metaInput = document.getElementById('placarMetaDiasDds');
-    if (metaInput) {
-        const val = parseInt(metaInput.value, 10);
-        placarMetaDiasCustom = (!isNaN(val) && val > 0) ? val : null;
-        renderPlacarLideres();
+    if (!metaInput) return;
+    const val = parseInt(metaInput.value, 10);
+    if (isNaN(val) || val <= 0 || val > 31) {
+        alert('Por favor, informe uma quantidade válida de dias no mês (entre 1 e 31).');
+        sincronizarInputMetaPlacar();
+        return;
     }
+
+    const ano = parseInt(placarFiltroAno, 10) || new Date().getFullYear();
+    const mes = parseInt(placarFiltroMes, 10) || new Date().getMonth();
+    const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+
+    if (typeof hhtDiasTrabalhadosMap === 'undefined') window.hhtDiasTrabalhadosMap = {};
+    const horasDia = (hhtDiasTrabalhadosMap[key] && hhtDiasTrabalhadosMap[key].horas_por_dia) ? Math.round(hhtDiasTrabalhadosMap[key].horas_por_dia) : 8;
+
+    hhtDiasTrabalhadosMap[key] = {
+        id: key,
+        ano: ano,
+        mes: mes + 1,
+        dias_trabalhados: val,
+        horas_por_dia: horasDia
+    };
+
+    // Feedback visual imediato no input
+    metaInput.style.borderColor = '#10b981';
+    metaInput.title = `Meta salva no Supabase (${key}: ${val} dias úteis)`;
+
+    try {
+        await supabaseUpsert('hht_dias_trabalhados', [{
+            id: key,
+            ano: ano,
+            mes: mes + 1,
+            dias_trabalhados: val,
+            horas_por_dia: horasDia
+        }]);
+        console.log(`[Placar] Meta de ${val} dias úteis salva com sucesso em hht_dias_trabalhados para ${key}`);
+    } catch (err) {
+        console.error('Erro ao persistir meta em hht_dias_trabalhados:', err);
+    }
+
+    renderPlacarLideres();
 }
 
 function onPlacarBuscaInput(val) {
@@ -911,7 +1095,7 @@ function abrirModalConfigRotinas() {
             apelido: f
         };
 
-        const apelido = cfg.apelido || f;
+        const ehTurno = (cfg.escala === 'turno_continuo') || (f === 'DEYLON') || (cfg.setor && cfg.setor.includes('OPERAÇÃO'));
 
         return `
             <tr style="border-bottom: 1px solid var(--border);">
@@ -932,6 +1116,12 @@ function abrirModalConfigRotinas() {
                 </td>
                 <td style="text-align: center; padding: 8px;">
                     <input type="checkbox" id="cfgPlacar_apr_${idx}" ${cfg.exige_apr ? 'checked' : ''} style="cursor: pointer;">
+                </td>
+                <td style="text-align: center; padding: 8px;">
+                    <select id="cfgPlacar_escala_${idx}" style="font-size: 11px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg, #fff); color: var(--text);">
+                        <option value="padrao" ${!ehTurno ? 'selected' : ''}>Padrão (Dias Úteis)</option>
+                        <option value="turno_continuo" ${ehTurno ? 'selected' : ''}>12x36 / Turno</option>
+                    </select>
                 </td>
             </tr>
         `;
@@ -966,11 +1156,13 @@ async function salvarModalConfigRotinas() {
         const exigeDds = document.getElementById(`cfgPlacar_dds_${idx}`)?.checked || false;
         const exigeTrein = document.getElementById(`cfgPlacar_trein_${idx}`)?.checked || false;
         const exigeApr = document.getElementById(`cfgPlacar_apr_${idx}`)?.checked || false;
+        const escala = document.getElementById(`cfgPlacar_escala_${idx}`)?.value || 'padrao';
 
         novasFrentes[frente] = {
             ativo: chkAtivo.checked,
             apelido: apelido,
             setor: (allRotinasConfig.frentes && allRotinasConfig.frentes[frente] && allRotinasConfig.frentes[frente].setor) || '',
+            escala: escala,
             exige_dds: exigeDds,
             exige_treinamento: exigeTrein,
             exige_apr: exigeApr
@@ -1157,7 +1349,8 @@ function imprimirPlacarLideres() {
         
         let ddsStr = 'Isento';
         if (lider.pctDds !== null) {
-            ddsStr = `${lider.diasDds}/${lider.metaDds}d (${lider.pctDds}%)`;
+            const rotuloTeto = (lider.ehTurnoContinuo && lider.diasDds > lider.metaDds) ? ' (100% • Teto)' : ` (${lider.pctDds}%)`;
+            ddsStr = `${lider.diasDds}/${lider.metaDds}d${rotuloTeto}`;
         }
 
         let treinStr = 'Isento';
@@ -1186,12 +1379,14 @@ function imprimirPlacarLideres() {
             trendCor = '#b91c1c';
         }
 
+        const tagTurnoImp = lider.ehTurnoContinuo ? ' <span style="font-size: 8.5px; color: #0284c7; font-weight: 700;">[12x36]</span>' : '';
+
         return `
             <tr style="background: ${bgLinha};">
                 <td style="text-align: center; font-weight: 700; padding: 6px 6px; border: 1px solid #cbd5e1;">${medalha}</td>
                 <td style="text-align: center; font-weight: 700; font-size: 10px; padding: 6px 4px; border: 1px solid #cbd5e1; color: ${trendCor};">${trendStr}</td>
                 <td style="font-weight: 700; padding: 6px 8px; border: 1px solid #cbd5e1;">
-                    ${escapeHTML(lider.apelido)}
+                    ${escapeHTML(lider.apelido)}${tagTurnoImp}
                 </td>
                 <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">${escapeHTML(lider.setor)}</td>
                 <td style="text-align: center; padding: 6px 8px; border: 1px solid #cbd5e1;">${lider.totalEquipe}</td>
@@ -1446,7 +1641,7 @@ function imprimirPlacarLideres() {
 
         <!-- Diretrizes e Responsabilidade Técnica -->
         <div style="margin-top: 14px; padding: 8px 10px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 10px; color: #475569; line-height: 1.45;">
-            <strong>Critérios de Apuração:</strong> O aproveitamento avalia o cumprimento das 3 entregas essenciais no período: (1) Diálogo Diário de Segurança (DDSMA) lançado dentro da meta mensal; (2) Capacitação/Treinamento de equipe realizado; (3) Análise Preliminar de Risco (APR) emitida e em vigor. A equipe da Elétrica é monitorada de forma unificada; equipes civis são acompanhadas individualmente por Encarregado de Campo; áreas de apoio/administrativas são isentas das rotinas de campo.
+            <strong>Critérios de Apuração e Governança de SST:</strong> O aproveitamento avalia o cumprimento das entregas operacionais essenciais no período: (1) <strong>DDSMA Diário</strong> apurado sobre os dias efetivamente trabalhados no mês (aproveitamento limitado ao teto estrito de 100%, assegurando equidade para equipes em escala 12x36/Turno Contínuo); (2) <strong>Treinamento da Equipe</strong> realizado no período; (3) <strong>APR Vigente</strong> no mês. <em>Critérios de desempate entre líderes com 100%:</em> 1º Taxa de Treinamento e capacitados na equipe; 2º Regularidade de APRs ativas; 3º Menor índice de Não Conformidades/desvios registrados na frente. A equipe da Elétrica é monitorada de forma unificada; equipes civis são acompanhadas por Encarregado de Campo; áreas administrativas são isentas das rotinas de campo.
         </div>
 
         <div class="rodape-assinaturas">

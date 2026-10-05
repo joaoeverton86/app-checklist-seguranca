@@ -1032,6 +1032,29 @@ body {
 .chip-perigo { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
 .chip-isento { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
 
+.placar-scale-badge {
+    display: inline-block;
+    background: #e0f2fe;
+    color: #0369a1;
+    border: 1px solid #bae6fd;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+.placar-scale-tag {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #0284c7;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 1px;
+}
+
 .placar-progress-wrap {
     display: flex;
     align-items: center;

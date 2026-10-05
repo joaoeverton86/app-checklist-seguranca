@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v152';
+const DASHBOARD_VERSION = 'v153';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 

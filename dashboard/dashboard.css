@@ -1583,3 +1583,66 @@ body {
     background: #f8fafc;
 }
 
+/* ==========================================================================
+   MÓDULO DE EFETIVO - CARTAZ & CONTROLE DE ANIVERSARIANTES (NR-01)
+   ========================================================================== */
+.aniv-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.aniv-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.aniv-btn-cartaz {
+    background: linear-gradient(135deg, #004085 0%, #002752 100%) !important;
+    border-color: #002752 !important;
+    color: #ffffff !important;
+    font-size: 12px !important;
+    padding: 6px 12px !important;
+    font-weight: 700 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    box-shadow: 0 1px 3px rgba(0,64,133,0.2) !important;
+    transition: all 0.15s ease !important;
+}
+
+.aniv-btn-cartaz:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 6px rgba(0,64,133,0.3) !important;
+    filter: brightness(1.1);
+}
+
+.aniv-btn-whatsapp {
+    border: 1px solid #25d366 !important;
+    color: #128c7e !important;
+    background: rgba(37,211,102,0.08) !important;
+    font-size: 12px !important;
+    padding: 6px 12px !important;
+    font-weight: 700 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+}
+
+.aniv-btn-whatsapp:hover {
+    background: rgba(37,211,102,0.18) !important;
+    color: #075e54 !important;
+    transform: translateY(-1px);
+}
+

@@ -4707,7 +4707,7 @@
                                 <button class="db-apply-btn" style="background: #059669; font-weight: 700;" id="btnBaixaLotePsico" onclick="abrirModalBaixaLoteMutirao()" title="Dar baixa em lote em colaboradores atendidos no mutirão ou clínica">✅ Baixa em Lote</button>
                                 <button class="db-apply-btn" style="background: #4f46e5;" id="btnConfigGhesPsico" onclick="abrirModalGerenciarGhesPsico()" title="Adicionar ou remover GHEs com exigência do exame">⚙️ Configurar GHEs</button>
                                 <button class="db-apply-btn" style="background: #7c3aed;" id="btnReprogDataPsico" onclick="abrirModalReprogramarDataMutirao()" title="Alterar ou reprogramar a data do próximo mutirão / visita">📅 Reprogramar Data</button>
-                                <button class="db-apply-btn" style="background: #2563eb;" id="btnImprimirConvocacaoPsico" onclick="imprimirConvocacaoExameAtual()">🖨️ Imprimir Convocação</button>
+                                <button class="db-apply-btn" style="background: #2563eb;" id="btnImprimirConvocacaoPsico" onclick="aoClicarEmitirConvocacaoExame()" title="Emitir lista de convocação com parametrização">🖨️ Imprimir Convocação</button>
                                 <button class="db-apply-btn" style="background: #0891b2;" onclick="exportarExcelExameAtual()">📊 Exportar Excel</button>
                                 <button class="db-apply-btn" style="background: #128c7e;" id="btnWhatsappPsico" onclick="copiarConvocacaoExameWhatsApp()">📲 Convocação WhatsApp</button>
                             </div>
@@ -4861,10 +4861,15 @@
 
             <!-- Página: Avaliação Psicossocial (COPSOQ II) -->
             <section class="db-page" id="page-psicossocial">
-                <div class="db-filters" style="margin-bottom: 16px;">
+                <div class="db-filters" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div class="db-filter-buttons">
                         <button id="psicossocialSubtabBtn-visao" class="db-filter-btn active" onclick="showPsicossocialSubtab('visao')">📊 Visão Geral</button>
                         <button id="psicossocialSubtabBtn-gerenciar" class="db-filter-btn" onclick="showPsicossocialSubtab('gerenciar')">⚙️ Gerenciar Aplicações</button>
+                    </div>
+                    <div>
+                        <button class="db-apply-btn" style="background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); font-size: 13px; font-weight: 700; padding: 7px 16px; box-shadow: 0 2px 6px rgba(124, 58, 237, 0.25); display: inline-flex; align-items: center; gap: 6px; cursor: pointer;" onclick="abrirModalConvocacaoPsicossocial()" title="Parametrizar período e triar colaboradores para convocação oficial">
+                            📋 Emitir Lista de Convocação
+                        </button>
                     </div>
                 </div>
 
@@ -8360,7 +8365,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=161"></script>
+    <script src="dashboard.js?v=157"></script>
     <script src="placar_lideres.js?v=4"></script>
 <script>
 function filterMatrizEpi(q) {
@@ -9087,6 +9092,137 @@ function filterMatrizEpi(q) {
                 <button type="button" class="db-apply-btn" id="btnImprimirValidadeAsos" style="background: #2563eb;" onclick="imprimirRelacaoValidadeAsos()">🖨️ Imprimir para Clínica</button>
                 <button type="button" class="db-apply-btn" style="background: #059669;" onclick="exportarExcelValidadeAsos()">📊 Exportar Excel</button>
                 <button type="button" class="db-apply-btn" style="background: #128c7e;" onclick="copiarAlertaValidadeAsosWhatsApp()">📲 Alerta WhatsApp</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Parametrização e Triagem de Convocação — Avaliação Psicossocial -->
+<div id="modalConvocacaoPsicossocial" class="placar-modal-overlay" style="display:none;" onclick="if(event.target===this) fecharModalConvocacaoPsicossocial()">
+    <div class="placar-modal-card" style="max-width: 1000px; width: 96%; max-height: 92vh; display: flex; flex-direction: column;" onclick="event.stopPropagation()">
+        <!-- Header -->
+        <div class="placar-modal-header" style="background: linear-gradient(135deg, #6d28d9 0%, #4338ca 100%); color: #fff; padding: 18px 24px;">
+            <div>
+                <h3 style="margin: 0; font-size: 17px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px;">
+                    <span>🧠</span> Parametrização &amp; Triagem de Convocação — Avaliação Psicossocial
+                </h3>
+                <p style="margin: 4px 0 0; font-size: 12px; color: #e0e7ff; opacity: 0.95;">
+                    Triagem para mutirão e emissão da lista oficial com assinatura, parecer de aptidão e rubrica CRP (NR-33, NR-35 e NR-10)
+                </p>
+            </div>
+            <button type="button" class="placar-modal-close" style="color: #fff;" onclick="fecharModalConvocacaoPsicossocial()">&times;</button>
+        </div>
+
+        <!-- Body -->
+        <div class="placar-modal-body" style="padding: 18px 22px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;">
+            <!-- Parametrização Superior -->
+            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;">
+                <div style="display: grid; grid-template-columns: 1.2fr 1fr 1.2fr; gap: 12px; margin-bottom: 10px;" id="convocPsico_filtrosGrid">
+                    <div>
+                        <label style="display:block; margin-bottom: 4px; font-size: 11.5px; font-weight: 700; color: var(--text);">
+                            📅 Período / Vencimento no PCMSO:
+                        </label>
+                        <select id="convocPsico_filtroPeriodo" onchange="aoMudarFiltroPeriodoConvocacao()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); font-weight: 600;">
+                            <!-- Opções dinâmicas -->
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block; margin-bottom: 4px; font-size: 11.5px; font-weight: 700; color: var(--text);">
+                            🩺 Data Prevista para os Atendimentos:
+                        </label>
+                        <input type="date" id="convocPsico_dataAtendimento" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text); font-weight: 600;">
+                    </div>
+                    <div>
+                        <label style="display:block; margin-bottom: 4px; font-size: 11.5px; font-weight: 700; color: var(--text);">
+                            🛡️ Filtrar por GHE / Frente:
+                        </label>
+                        <select id="convocPsico_filtroGhe" onchange="renderTabelaConvocacaoPsicossocial()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text);">
+                            <option value="">Todos os GHEs Monitorados</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Campo de busca rápida -->
+                <div style="position: relative;">
+                    <input type="text" id="convocPsico_buscaInput" placeholder="🔍 Filtrar rapidamente por nome, matrícula, CPF ou função..." oninput="renderTabelaConvocacaoPsicossocial()" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                </div>
+            </div>
+
+            <!-- Barra de Ações Rápidas & Contador Dinâmico -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="db-clear-btn" style="padding: 6px 12px; font-size: 12px; font-weight: 700;" onclick="marcarTodosConvocacaoPsico(true)">
+                        ☑️ Selecionar Todos
+                    </button>
+                    <button type="button" class="db-clear-btn" style="padding: 6px 12px; font-size: 12px; font-weight: 600;" onclick="marcarTodosConvocacaoPsico(false)">
+                        ⬜ Desmarcar Todos
+                    </button>
+                    <button type="button" class="db-apply-btn" style="background: #4f46e5; font-size: 12px; padding: 6px 12px;" onclick="alternarPainelAdicionarAvulsoPsico()">
+                        ➕ Adicionar Colaborador Avulso
+                    </button>
+                </div>
+
+                <div id="convocPsico_contadorDinamico" style="background: #f5f3ff; color: #5b21b6; border: 1px solid #ddd6fe; padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+                    Carregando triagem...
+                </div>
+            </div>
+
+            <!-- Painel Expansível de Adicionar Colaborador Avulso -->
+            <div id="convocPsico_painelAvulso" style="display:none; background: #faf5ff; border: 1px dashed #c084fc; border-radius: 10px; padding: 12px 14px;">
+                <div style="font-size: 12px; font-weight: 700; color: #6b21a8; margin-bottom: 8px;">
+                    ➕ Incluir Colaborador Fora da Regra Automática (Avulso):
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                    <input type="text" id="convocPsico_inputAvulso" list="convocPsico_colabsList" placeholder="Digite matrícula ou nome do colaborador ativo..." style="flex: 1; min-width: 260px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: #fff;">
+                    <datalist id="convocPsico_colabsList"></datalist>
+                    <button type="button" class="db-apply-btn" style="background: #7c3aed; font-size: 12px; padding: 8px 14px;" onclick="adicionarColaboradorAvulsoConvocacao()">
+                        Confirmar Inclusão
+                    </button>
+                    <button type="button" class="db-clear-btn" style="font-size: 12px; padding: 8px 12px;" onclick="alternarPainelAdicionarAvulsoPsico(false)">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Grade Interativa com Checkboxes -->
+            <div style="border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; max-height: 420px; background: var(--card);">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                    <thead>
+                        <tr style="background: var(--bg); border-bottom: 2px solid var(--border); color: var(--text-light); font-size: 11px; text-transform: uppercase; position: sticky; top: 0; z-index: 2;">
+                            <th style="padding: 10px 12px; width: 36px; text-align: center;">
+                                <input type="checkbox" id="convocPsico_thCheckAll" onchange="toggleHeaderCheckboxConvocacao(this.checked)" style="cursor: pointer;" title="Marcar/Desmarcar Todos">
+                            </th>
+                            <th style="padding: 10px 12px; width: 65px; text-align: center;">Matr.</th>
+                            <th style="padding: 10px 12px;">Colaborador</th>
+                            <th style="padding: 10px 12px;">GHE / Frente</th>
+                            <th style="padding: 10px 12px;">Função Contratual</th>
+                            <th style="padding: 10px 12px;">Motivo da Convocação</th>
+                            <th style="padding: 10px 12px; text-align: center; width: 105px;">Vencimento</th>
+                            <th style="padding: 10px 12px; text-align: center; width: 70px;">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="convocPsico_tabelaCorpo">
+                        <!-- Preenchido dinamicamente via JS -->
+                    </tbody>
+                </table>
+                <div id="convocPsico_tabelaVazia" style="display:none; padding: 32px; text-align: center; color: var(--text-light); font-size: 13px;">
+                    Nenhum colaborador encontrado para os parâmetros selecionados.
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="placar-modal-footer" style="padding: 14px 22px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="font-size: 11.5px; color: var(--text-light); line-height: 1.4;">
+                💡 A lista impressa conterá o cabeçalho institucional do <strong>Consórcio COP</strong> com prancheta de assinaturas, parecer <strong>Apto/Inapto</strong> e rubrica do <strong>CRP</strong>.
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <button type="button" class="db-clear-btn" onclick="fecharModalConvocacaoPsicossocial()">
+                    Cancelar
+                </button>
+                <button type="button" class="db-apply-btn" id="btnGerarListaOficialConvocacao" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); font-weight: 700; font-size: 13px; padding: 9px 18px; box-shadow: 0 2px 6px rgba(5,150,105,0.3); display: inline-flex; align-items: center; gap: 6px;" onclick="gerarListaOficialConvocacaoPsicossocial()">
+                    🖨️ Gerar Lista Oficial
+                </button>
             </div>
         </div>
     </div>

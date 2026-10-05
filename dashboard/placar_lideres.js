@@ -138,15 +138,13 @@ async function garantirDadosPlacarLideres() {
     if (tarefas.length > 0) await Promise.all(tarefas);
     if (!allRotinasConfig) await carregarConfigRotinas();
 
-    // Carregar tabela de dias úteis/trabalhados se ainda não carregada
-    if (typeof hhtDiasTrabalhadosMap === 'undefined' || Object.keys(hhtDiasTrabalhadosMap).length === 0) {
-        try {
-            const rows = await supabaseFetch('hht_dias_trabalhados', '?select=*');
-            if (typeof hhtDiasTrabalhadosMap === 'undefined') window.hhtDiasTrabalhadosMap = {};
-            (rows || []).forEach(r => { hhtDiasTrabalhadosMap[r.id] = r; });
-        } catch (e) {
-            console.warn('Erro ao carregar hht_dias_trabalhados para o placar:', e);
-        }
+    // Carregar tabela de dias úteis/trabalhados do HHT para manter perfeitamente sincronizado com Acidentabilidade
+    try {
+        const rows = await supabaseFetch('hht_dias_trabalhados', '?select=*');
+        if (typeof hhtDiasTrabalhadosMap === 'undefined') window.hhtDiasTrabalhadosMap = {};
+        (rows || []).forEach(r => { hhtDiasTrabalhadosMap[r.id] = r; });
+    } catch (e) {
+        console.warn('Erro ao carregar hht_dias_trabalhados para o placar:', e);
     }
 
     // Carregar checklists para apuração de Não Conformidades/desvios por frente (critério de desempate)
@@ -168,34 +166,100 @@ async function garantirDadosPlacarLideres() {
     }
 }
 
+// Obtém os dias úteis oficiais do mês diretamente da matriz de HHT
 function obterMetaDdsMes(ano, mes) {
     const anoNum = parseInt(ano, 10);
     const mesIdx = parseInt(mes, 10);
     const key = `${anoNum}-${String(mesIdx + 1).padStart(2, '0')}`;
-    if (typeof hhtDiasTrabalhadosMap !== 'undefined' && hhtDiasTrabalhadosMap[key] && hhtDiasTrabalhadosMap[key].dias_trabalhados > 0) {
+    if (typeof hhtDiasTrabalhadosMap !== 'undefined' && hhtDiasTrabalhadosMap[key] && parseInt(hhtDiasTrabalhadosMap[key].dias_trabalhados, 10) > 0) {
         return parseInt(hhtDiasTrabalhadosMap[key].dias_trabalhados, 10);
     }
     return calcularDiasUteisMes(anoNum, mesIdx);
 }
 
-function sincronizarInputMetaPlacar() {
+// Sincroniza o campo de meta de DDS com a tabela public.hht_dias_trabalhados no Supabase
+async function sincronizarInputMetaPlacar() {
     const ano = parseInt(placarFiltroAno, 10) || new Date().getFullYear();
     const mes = parseInt(placarFiltroMes, 10) || new Date().getMonth();
-    const metaVal = obterMetaDdsMes(ano, mes);
+    const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+
+    if (typeof hhtDiasTrabalhadosMap === 'undefined') window.hhtDiasTrabalhadosMap = {};
+
+    let registro = hhtDiasTrabalhadosMap[key];
+    if (!registro) {
+        try {
+            const rows = await supabaseFetch('hht_dias_trabalhados', `?id=eq.${key}&select=*`);
+            if (rows && rows.length > 0) {
+                registro = rows[0];
+                hhtDiasTrabalhadosMap[key] = registro;
+            }
+        } catch (e) {
+            console.warn('[Placar] Erro ao consultar hht_dias_trabalhados para ' + key, e);
+        }
+    }
+
+    const estaHomologado = Boolean(registro && parseInt(registro.dias_trabalhados, 10) > 0);
+    const metaVal = estaHomologado ? parseInt(registro.dias_trabalhados, 10) : calcularDiasUteisMes(ano, mes);
+
     const metaInput = document.getElementById('placarMetaDiasDds');
+    const statusEl = document.getElementById('placarMetaDdsStatus');
+
     if (metaInput) {
         metaInput.value = metaVal;
-        const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
-        metaInput.title = `Meta de DDS para ${key}: ${metaVal} dias úteis (persistido no banco)`;
-        metaInput.style.borderColor = '';
+        if (estaHomologado) {
+            metaInput.readOnly = true;
+            metaInput.style.backgroundColor = 'var(--bg-muted, #f1f5f9)';
+            metaInput.style.cursor = 'not-allowed';
+            metaInput.style.borderColor = '#10b981';
+            metaInput.style.fontWeight = '700';
+            metaInput.style.color = 'var(--text, #1e293b)';
+            metaInput.title = `Meta de DDS para ${key}: ${metaVal} dias úteis (Sincronizado com o Calendário HHT da obra). Clique em 'Calendário HHT' para ajustar.`;
+        } else {
+            metaInput.readOnly = false;
+            metaInput.style.backgroundColor = '#ffffff';
+            metaInput.style.cursor = 'text';
+            metaInput.style.borderColor = '#f59e0b';
+            metaInput.style.fontWeight = '700';
+            metaInput.style.color = 'var(--text, #1e293b)';
+            metaInput.title = `Meta estimada: ${metaVal} dias úteis. Mês ainda não homologado no Calendário HHT. Clique em 'Calendário HHT' para cadastrar feriados ou defina manualmente.`;
+        }
     }
+
+    if (statusEl) {
+        if (estaHomologado) {
+            statusEl.innerHTML = `<span style="color: #10b981; display: inline-flex; align-items: center; gap: 4px;" title="Dias úteis homologados na matriz de HHT da obra">🔒 Sincronizado com HHT</span>`;
+        } else {
+            statusEl.innerHTML = `<span style="color: #d97706; display: inline-flex; align-items: center; gap: 4px;" title="Clique em 'Calendário HHT' para homologar os dias úteis ou digite o valor no campo">⚠️ Mês ainda não homologado no Calendário HHT</span>`;
+        }
+    }
+
     return metaVal;
 }
+
+// Redireciona diretamente para a subaba Calendário & HHT de Acidentabilidade no mês selecionado
+function irParaCalendarioHhtDoPlacar() {
+    const ano = parseInt(placarFiltroAno, 10) || new Date().getFullYear();
+    const mes = parseInt(placarFiltroMes, 10) || new Date().getMonth();
+
+    if (typeof calHhtAnoAtual !== 'undefined') window.calHhtAnoAtual = ano;
+    if (typeof calHhtMesAtual !== 'undefined') window.calHhtMesAtual = mes;
+
+    if (typeof navPage === 'function') {
+        navPage('acidentes');
+    }
+    if (typeof showAcidentesSubtab === 'function') {
+        showAcidentesSubtab('hht');
+    }
+    if (typeof renderCalendarioHht === 'function') {
+        renderCalendarioHht();
+    }
+}
+window.irParaCalendarioHhtDoPlacar = irParaCalendarioHhtDoPlacar;
 
 async function abrirPaginaPlacarLideres() {
     await garantirDadosPlacarLideres();
     popularFiltrosPlacar();
-    sincronizarInputMetaPlacar();
+    await sincronizarInputMetaPlacar();
     renderPlacarLideres();
 }
 
@@ -242,14 +306,6 @@ function calcularPlacarLideres(ano, mes) {
     
     // Meta de DDS para o mês: busca primeiro de public.hht_dias_trabalhados (persistência no banco)
     const metaDds = obterMetaDdsMes(ano, mes);
-
-    // Atualiza input de meta na tela caso esteja visível e o usuário não esteja editando
-    const metaInput = document.getElementById('placarMetaDiasDds');
-    if (metaInput && document.activeElement !== metaInput) {
-        metaInput.value = metaDds;
-        const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
-        metaInput.title = `Meta de DDS para ${key}: ${metaDds} dias úteis (persistido no banco)`;
-    }
 
     if (!allRotinasConfig) allRotinasConfig = obterConfigRotinasPadrao();
     const configFrentes = allRotinasConfig.frentes || {};
@@ -833,7 +889,7 @@ function renderPlacarTabela(rankingFiltrado, rankingCompleto, mesAntNome, setorF
     }).join('');
 }
 
-function onPlacarFiltroChange() {
+async function onPlacarFiltroChange() {
     const anoSel = document.getElementById('placarFiltroAno');
     const mesSel = document.getElementById('placarFiltroMes');
     const setorSel = document.getElementById('placarFiltroSetor');
@@ -850,7 +906,7 @@ function onPlacarFiltroChange() {
     }
 
     // Sincroniza o campo de meta de DDS com a meta persistida do mês selecionado
-    sincronizarInputMetaPlacar();
+    await sincronizarInputMetaPlacar();
 
     renderPlacarLideres();
 }
@@ -861,7 +917,7 @@ async function onPlacarMetaDiasChange() {
     const val = parseInt(metaInput.value, 10);
     if (isNaN(val) || val <= 0 || val > 31) {
         alert('Por favor, informe uma quantidade válida de dias no mês (entre 1 e 31).');
-        sincronizarInputMetaPlacar();
+        await sincronizarInputMetaPlacar();
         return;
     }
 
@@ -870,14 +926,14 @@ async function onPlacarMetaDiasChange() {
     const key = `${ano}-${String(mes + 1).padStart(2, '0')}`;
 
     if (typeof hhtDiasTrabalhadosMap === 'undefined') window.hhtDiasTrabalhadosMap = {};
-    const horasDia = (hhtDiasTrabalhadosMap[key] && hhtDiasTrabalhadosMap[key].horas_por_dia) ? Math.round(hhtDiasTrabalhadosMap[key].horas_por_dia) : 8;
+    const horasDia = (hhtDiasTrabalhadosMap[key] && hhtDiasTrabalhadosMap[key].horas_por_dia) ? Math.round(Number(hhtDiasTrabalhadosMap[key].horas_por_dia)) : 8;
 
     hhtDiasTrabalhadosMap[key] = {
         id: key,
-        ano: ano,
-        mes: mes + 1,
-        dias_trabalhados: val,
-        horas_por_dia: horasDia
+        ano: parseInt(ano, 10),
+        mes: parseInt(mes, 10) + 1,
+        dias_trabalhados: parseInt(val, 10),
+        horas_por_dia: parseInt(horasDia, 10)
     };
 
     // Feedback visual imediato no input
@@ -887,14 +943,16 @@ async function onPlacarMetaDiasChange() {
     try {
         await supabaseUpsert('hht_dias_trabalhados', [{
             id: key,
-            ano: ano,
-            mes: mes + 1,
-            dias_trabalhados: val,
-            horas_por_dia: horasDia
+            ano: parseInt(ano, 10),
+            mes: parseInt(mes, 10) + 1,
+            dias_trabalhados: parseInt(val, 10),
+            horas_por_dia: parseInt(horasDia, 10)
         }]);
         console.log(`[Placar] Meta de ${val} dias úteis salva com sucesso em hht_dias_trabalhados para ${key}`);
+        await sincronizarInputMetaPlacar();
     } catch (err) {
         console.error('Erro ao persistir meta em hht_dias_trabalhados:', err);
+        alert('Erro ao salvar meta no banco: ' + (err.message || 'Falha de conexão'));
     }
 
     renderPlacarLideres();

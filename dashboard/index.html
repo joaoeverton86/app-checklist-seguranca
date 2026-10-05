@@ -6522,7 +6522,13 @@
                             </div>
                             <div>
                                 <label style="font-size: 11px; font-weight: 700; color: var(--text-light); display: block; margin-bottom: 3px; text-transform: uppercase;">Meta de DDS (Dias)</label>
-                                <input type="number" id="placarMetaDiasDds" class="placar-select" style="width: 80px;" min="1" max="31" onchange="onPlacarMetaDiasChange()" title="Meta de dias úteis com DDS no mês">
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <input type="number" id="placarMetaDiasDds" class="placar-select" style="width: 75px; font-weight: 700;" min="1" max="31" onchange="onPlacarMetaDiasChange()" title="Meta de dias úteis com DDS no mês">
+                                    <button type="button" id="btnAtalhoCalHht" onclick="irParaCalendarioHhtDoPlacar()" class="db-btn" style="padding: 6px 10px; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; background: var(--bg-hover, #f1f5f9); color: var(--text, #1e293b); border: 1px solid var(--border, #cbd5e1); border-radius: 6px; cursor: pointer; height: 34px;" title="Ajustar ou homologar dias úteis no Calendário & HHT da Acidentabilidade">
+                                        <span>📅</span> Calendário HHT
+                                    </button>
+                                </div>
+                                <div id="placarMetaDdsStatus" style="font-size: 10px; margin-top: 4px; line-height: 1.2; font-weight: 600;"></div>
                             </div>
                         </div>
 
@@ -8323,8 +8329,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=154"></script>
-    <script src="placar_lideres.js?v=3"></script>
+    <script src="dashboard.js?v=155"></script>
+    <script src="placar_lideres.js?v=4"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();

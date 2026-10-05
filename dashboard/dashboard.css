@@ -1451,3 +1451,135 @@ body {
     color: #475569;
 }
 
+/* Sumário / Índice Formal com Dot Leaders */
+.rel-sumario-box {
+    margin: 18px 0 16px 0;
+    padding: 14px 18px;
+    background: #ffffff;
+    border: 1.5px solid #1f3864;
+    border-radius: 4px;
+}
+
+.rel-sumario-item {
+    display: flex;
+    align-items: baseline;
+    font-size: 11px;
+    color: #1f3864;
+    padding: 6px 0;
+    border-bottom: 1px dashed #e2e8f0;
+}
+
+.rel-sumario-item:last-child {
+    border-bottom: none;
+}
+
+.rel-sumario-titulo {
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+.rel-sumario-dots {
+    flex-grow: 1;
+    border-bottom: 1.5px dotted #94a3b8;
+    margin: 0 10px 4px 10px;
+    min-width: 20px;
+}
+
+.rel-sumario-pag {
+    font-weight: 800;
+    color: #1f3864;
+    white-space: nowrap;
+}
+
+/* Rodapé Paginado por Folha (A4) */
+.folha-bloco {
+    page-break-after: always;
+    break-after: page;
+    min-height: 255mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    box-sizing: border-box;
+}
+
+.folha-bloco:last-child {
+    page-break-after: auto;
+    break-after: auto;
+}
+
+.folha-conteudo {
+    flex-grow: 1;
+}
+
+.folha-rodape {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1.5px solid #1f3864;
+    padding-top: 6px;
+    margin-top: 14px;
+    font-size: 9px;
+    color: #475569;
+    font-family: Arial, Helvetica, sans-serif;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+.rodape-esq {
+    font-weight: 700;
+    color: #1f3864;
+    text-align: left;
+}
+
+.rodape-centro {
+    font-weight: 800;
+    color: #475569;
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+
+.rodape-dir {
+    font-weight: 800;
+    color: #1f3864;
+    text-align: right;
+}
+
+/* ==========================================================================
+   Relatório Mensal Consolidado de SMS (relatoriosms) - Padrão Formal COP
+   ========================================================================== */
+.cabecalho-tabela-rel-sms {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    font-family: Calibri, 'Segoe UI', Arial, sans-serif;
+    border: 1.5px solid #1f3864;
+    background: #ffffff;
+}
+
+.cabecalho-tabela-rel-sms td {
+    padding: 6px 10px;
+    vertical-align: middle;
+    border: 1px solid #cbd5e1;
+}
+
+.cabecalho-tabela-rel-sms .col-logo {
+    width: 22%;
+    text-align: center;
+    border-right: 1.5px solid #1f3864;
+}
+
+.cabecalho-tabela-rel-sms .col-titulo {
+    width: 50%;
+    text-align: center;
+    line-height: 1.25;
+}
+
+.cabecalho-tabela-rel-sms .col-meta {
+    width: 28%;
+    font-size: 10px;
+    line-height: 1.35;
+    border-left: 1.5px solid #1f3864;
+    background: #f8fafc;
+}
+

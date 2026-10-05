@@ -14338,6 +14338,15 @@ function relSmsTabelaGenericaHtml(colunas, linhas, largura = '100%') {
     </table>`;
 }
 
+function relSmsRodapeHtml(numPagina, totalPaginas, codigoRev) {
+    return `
+    <div class="folha-rodape">
+        <span class="rodape-esq">Consórcio Operador do PISF Ramal do Agreste</span>
+        <span class="rodape-centro">${escapeHTML(codigoRev || 'REL.SMS.001 R00')}</span>
+        <span class="rodape-dir">Página ${numPagina} de ${totalPaginas}</span>
+    </div>`;
+}
+
 function relSmsH1(text) {
     return new docx.Paragraph({
         heading: docx.HeadingLevel.HEADING_1,
@@ -15075,7 +15084,7 @@ function construirAnexosRelSms(mes, ano) {
     const anoSeguinte = mes === 11 ? ano + 1 : ano;
     const nomeMesSeguinte = NOMES_MESES[mesSeguinte];
 
-    const out = [relSmsH1('ANEXOS')];
+    const out = [relSmsH1('7. Anexos Complementares')];
     out.push(relSmsP('Os documentos abaixo acompanham este relatório como arquivos separados:'));
     [
         'LISTA DE PRESENÇA TREINAMENTO - ENTREGUE EM ANEXO:',
@@ -15113,8 +15122,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
             children: [new docx.TextRun({ text: 'RELATÓRIO MENSAL CONSOLIDADO DE SMS', bold: true, color: RELSMS_NAVY, size: 36 })],
         }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 100, after: 40 }, children: [new docx.TextRun({ text: '(Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente)', color: RELSMS_GREY, size: 20, italics: true })] }),
-        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 300, after: fiscalizacao ? 200 : 700 }, children: [new docx.TextRun({ text: (nomeMes + ' / ' + ano).toUpperCase(), bold: true, color: RELSMS_BLUE, size: 32 })] }),
-        ...(fiscalizacao ? [new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 700 }, children: [new docx.TextRun({ text: 'Versão para envio à Fiscalização', bold: true, color: RELSMS_GREY, size: 20 })] })] : []),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 300, after: 700 }, children: [new docx.TextRun({ text: (nomeMes + ' / ' + ano).toUpperCase(), bold: true, color: RELSMS_BLUE, size: 32 })] }),
         ...Array(3).fill(0).map(() => new docx.Paragraph({ spacing: { after: 140 }, children: [] })),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'Elaborado por:', color: RELSMS_GREY, size: 20 })] }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'João Everton de Souza Limeira', bold: true, color: RELSMS_NAVY, size: 22 })] }),
@@ -15125,8 +15133,8 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
     ];
 
     const indice = [
-        relSmsH1('Índice'),
-        new docx.TableOfContents('Índice', { hyperlink: true, headingStyleRange: '1-3' }),
+        relSmsH1('Sumário / Índice'),
+        new docx.TableOfContents('Sumário / Índice', { hyperlink: true, headingStyleRange: '1-3' }),
         new docx.Paragraph({ spacing: { after: 150 }, children: [] }),
         new docx.Paragraph({ spacing: { after: 200 }, children: [new docx.TextRun({ text: 'Sumário gerado automaticamente pelo Word a partir dos títulos do documento. Se os números de página não aparecerem ao abrir o arquivo, clique com o botão direito sobre o índice acima e selecione "Atualizar campo" (ou selecione o índice e pressione F9).', italics: true, size: 18, color: RELSMS_GREY })] }),
         new docx.Paragraph({ children: [new docx.PageBreak()] }),
@@ -15135,9 +15143,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
     const sumario = [
         relSmsH1('Sumário Executivo'),
         relSmsP('Este relatório consolida os indicadores de Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste referentes a ' + nomeMes.toLowerCase() + ' de ' + ano + ', com base nos registros de campo consolidados pela equipe de SMS.'),
-        relSmsP(fiscalizacao
-            ? 'Este documento consolida os indicadores de desempenho em Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste no período, evidenciando o cumprimento dos programas legais e o monitoramento contínuo das atividades de campo.'
-            : 'Versão gerada automaticamente pelo painel (Fase 5 do módulo Relatório Mensal SMS): Segurança do Trabalho, Área Diretamente Afetada, Saúde Ocupacional, Meio Ambiente, Considerações Finais, Registros Fotográficos e Anexos já trazem os dados reais do mês.'),
+        relSmsP('Este documento consolida os indicadores de desempenho em Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste no período, evidenciando o cumprimento dos programas legais e o monitoramento contínuo das atividades de campo.'),
     ];
 
     await garantirDadosSecao1RelSms();
@@ -15169,14 +15175,47 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
         })],
     });
     const footer = new docx.Footer({
-        children: [new docx.Paragraph({
-            alignment: docx.AlignmentType.CENTER,
-            children: [
-                new docx.TextRun({ text: 'Página ', size: 16, color: RELSMS_GREY }),
-                new docx.TextRun({ children: [docx.PageNumber.CURRENT], size: 16, color: RELSMS_GREY }),
-                new docx.TextRun({ text: ' de ', size: 16, color: RELSMS_GREY }),
-                new docx.TextRun({ children: [docx.PageNumber.TOTAL_PAGES], size: 16, color: RELSMS_GREY }),
-            ],
+        children: [new docx.Table({
+            width: { size: 100, type: docx.WidthType.PERCENTAGE },
+            borders: {
+                top: { style: docx.BorderStyle.SINGLE, size: 4, color: 'BFBFBF' },
+                bottom: { style: docx.BorderStyle.NONE },
+                left: { style: docx.BorderStyle.NONE },
+                right: { style: docx.BorderStyle.NONE },
+            },
+            rows: [new docx.TableRow({
+                children: [
+                    new docx.TableCell({
+                        width: { size: 45, type: docx.WidthType.PERCENTAGE },
+                        borders: { top: { style: docx.BorderStyle.NONE }, bottom: { style: docx.BorderStyle.NONE }, left: { style: docx.BorderStyle.NONE }, right: { style: docx.BorderStyle.NONE } },
+                        children: [new docx.Paragraph({
+                            alignment: docx.AlignmentType.LEFT,
+                            children: [new docx.TextRun({ text: 'Consórcio Operador do PISF Ramal do Agreste', size: 16, color: RELSMS_GREY })],
+                        })],
+                    }),
+                    new docx.TableCell({
+                        width: { size: 25, type: docx.WidthType.PERCENTAGE },
+                        borders: { top: { style: docx.BorderStyle.NONE }, bottom: { style: docx.BorderStyle.NONE }, left: { style: docx.BorderStyle.NONE }, right: { style: docx.BorderStyle.NONE } },
+                        children: [new docx.Paragraph({
+                            alignment: docx.AlignmentType.CENTER,
+                            children: [new docx.TextRun({ text: codigoRev, bold: true, size: 16, color: RELSMS_GREY })],
+                        })],
+                    }),
+                    new docx.TableCell({
+                        width: { size: 30, type: docx.WidthType.PERCENTAGE },
+                        borders: { top: { style: docx.BorderStyle.NONE }, bottom: { style: docx.BorderStyle.NONE }, left: { style: docx.BorderStyle.NONE }, right: { style: docx.BorderStyle.NONE } },
+                        children: [new docx.Paragraph({
+                            alignment: docx.AlignmentType.RIGHT,
+                            children: [
+                                new docx.TextRun({ text: 'Página ', size: 16, color: RELSMS_GREY }),
+                                new docx.TextRun({ children: [docx.PageNumber.CURRENT], size: 16, color: RELSMS_GREY }),
+                                new docx.TextRun({ text: ' de ', size: 16, color: RELSMS_GREY }),
+                                new docx.TextRun({ children: [docx.PageNumber.TOTAL_PAGES], size: 16, color: RELSMS_GREY }),
+                            ],
+                        })],
+                    }),
+                ],
+            })],
         })],
     });
 
@@ -15207,7 +15246,7 @@ async function gerarRelatorioMensalSms() {
         const doc = await montarDocRelSms(mes, ano, fiscalizacao);
         const blob = await docx.Packer.toBlob(doc);
         const nomeMes = NOMES_MESES[mes];
-        const nomeArquivo = 'Relatorio_Mensal_SMS_' + nomeMes + '_' + ano + (fiscalizacao ? '_Fiscalizacao' : '') + '.docx';
+        const nomeArquivo = 'Relatorio_Mensal_SMS_' + nomeMes + '_' + ano + '.docx';
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -15217,8 +15256,7 @@ async function gerarRelatorioMensalSms() {
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 30000);
         if (statusEl) {
-            statusEl.textContent = '✅ Relatório gerado (' + nomeMes + '/' + ano + ') — download do Word iniciado.'
-                + (fiscalizacao ? ' (Versão para envio à Fiscalização).' : '.');
+            statusEl.textContent = '✅ Relatório gerado (' + nomeMes + '/' + ano + ') — download do Word iniciado.';
         }
     } catch (e) {
         console.error('Erro ao gerar Relatório Mensal SMS:', e);

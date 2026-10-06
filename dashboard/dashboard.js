@@ -808,6 +808,64 @@ async function supabaseDeleteMany(table, ids) {
     return true;
 }
 
+// Atualiza registros via PATCH (update em lote ou por filtro PostgREST).
+async function supabasePatch(table, query, payload) {
+    const q = query.startsWith('?') ? query.slice(1) : query;
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${q}`, {
+        method: 'PATCH',
+        headers: {
+            apikey: SUPABASE_KEY,
+            Authorization: `Bearer ${await authTokenDashboard()}`,
+            'Content-Type': 'application/json',
+            Prefer: 'return=representation'
+        },
+        body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    invalidarCacheTabela(table);
+    return await res.json().catch(() => []);
+}
+
+async function supabaseUpdate(table, idOuQuery, payload) {
+    const query = String(idOuQuery).includes('=') ? idOuQuery : `id=eq.${encodeURIComponent(idOuQuery)}`;
+    return await supabasePatch(table, query, payload);
+}
+
+// Notificação toast global visualmente moderna e flutuante
+function mostrarFeedbackToast(msg, tipo = 'sucesso') {
+    let toast = document.getElementById('dbGlobalToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'dbGlobalToast';
+        toast.style.position = 'fixed';
+        toast.style.bottom = '24px';
+        toast.style.right = '24px';
+        toast.style.zIndex = '99999';
+        toast.style.padding = '12px 20px';
+        toast.style.borderRadius = '10px';
+        toast.style.fontSize = '13px';
+        toast.style.fontWeight = '600';
+        toast.style.boxShadow = '0 8px 24px rgba(0,0,0,0.2)';
+        toast.style.transition = 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+        toast.style.display = 'none';
+        toast.style.maxWidth = '90vw';
+        document.body.appendChild(toast);
+    }
+    const bg = tipo === 'erro' ? '#ef4444' : (tipo === 'info' ? '#2563eb' : '#059669');
+    toast.style.background = bg;
+    toast.style.color = '#ffffff';
+    toast.textContent = msg;
+    toast.style.display = 'block';
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+    clearTimeout(toast._timeout);
+    toast._timeout = setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+        setTimeout(() => { toast.style.display = 'none'; }, 300);
+    }, 4000);
+}
+
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
     if (dateStr.includes('T')) {
@@ -3742,6 +3800,7 @@ function renderTreinHistLista() {
                 <div class="db-list-item-title">${formatSimpleDate(s.data)} — ${escapeHTML(s.nome || s.cod)}</div>
                 <div class="db-list-item-sub">${s.participantes.length} participante(s)</div>
             </div>
+            <button class="btn btn-sm btn-outline-primary btn-editar-sessao" onclick="abrirModalEditarSessaoTreinamento('${escapeHTML(s.cod)}', '${escapeHTML(s.data)}')" title="Editar Data da Sessão"><i class="fas fa-calendar-alt"></i> Alterar Data</button>
             <button class="db-clear-btn" onclick="abrirSessaoNoRegistro('${escapeHTML(s.cod)}', '${escapeHTML(s.data)}')">🖨️ Abrir no Registro</button>
             <button class="db-clear-btn" onclick="abrirAnexoModal('treinamentos_realizados', '${escapeHTML(s.chave)}', '${escapeHTML(formatSimpleDate(s.data))} — ${escapeHTML(s.nome || s.cod)}')">📎 Anexos${labelContagemAnexos('treinamentos_realizados', s.chave)}</button>
             ${detalhe}
@@ -4192,6 +4251,247 @@ async function excluirTreinamentoRealizadoHist(id) {
         alert('Falha ao excluir o registro: ' + err.message);
     }
 }
+
+// ============================================
+// EDITAR SESSÃO / ALTERAR DATA EM LOTE (TREINAMENTOS)
+// Em conformidade com a NR-01 (subitem 1.7 - Capacitação e Treinamento em SST),
+// permite corrigir a data de realização de todos os colaboradores daquela sessão,
+// recalculando automaticamente o vencimento conforme a periodicidade do catálogo
+// e unificando turmas caso a nova data já possua participantes.
+// ============================================
+
+function abrirModalEditarSessaoTreinamento(cod, data) {
+    if (typeof bloquearEdicaoSeNaoAutorizado === 'function' && bloquearEdicaoSeNaoAutorizado('treinamentos')) return;
+
+    const participantes = allTreinamentosRealizados.filter(r => String(r.treinamento_cod) === String(cod) && r.data_treinamento === data);
+    if (!participantes.length) {
+        alert('Nenhum colaborador encontrado para esta sessão.');
+        return;
+    }
+
+    const cat = allTreinamentosCatalogo.find(c => String(c.id) === String(cod) || String(c.codigo) === String(cod));
+    const nomeTreinamento = cat?.nome || participantes[0]?.treinamento_nome || ('Treinamento ' + cod);
+    const meses = cat ? (cat.meses_validade ?? cat.periodicidade_meses ?? null) : null;
+
+    const codEl = document.getElementById('editSessaoCod');
+    const dataAntigaEl = document.getElementById('editSessaoDataAntiga');
+    const nomeEl = document.getElementById('editSessaoTreinamentoNome');
+    const codTxtEl = document.getElementById('editSessaoTreinamentoCod');
+    const qtdEl = document.getElementById('editSessaoQtdParticipantes');
+    const dataAtualEl = document.getElementById('editSessaoDataAtual');
+    const novaDataInput = document.getElementById('novaDataSessaoTreinamento');
+    const checkRecalcular = document.getElementById('recalcularValidadeTreinamento');
+    const mesesTxtEl = document.getElementById('editSessaoMesesTxt');
+    const valInfoEl = document.getElementById('editSessaoValidadeInfo');
+    const avisoUnificacao = document.getElementById('editSessaoAvisoUnificacao');
+    const statusEl = document.getElementById('editSessaoStatus');
+    const btn = document.getElementById('btnConfirmarAlteracaoSessao');
+
+    if (codEl) codEl.value = cod;
+    if (dataAntigaEl) dataAntigaEl.value = data;
+    if (nomeEl) nomeEl.textContent = nomeTreinamento;
+    if (codTxtEl) codTxtEl.textContent = cod;
+    if (qtdEl) qtdEl.textContent = participantes.length;
+    if (dataAtualEl) dataAtualEl.textContent = formatSimpleDate(data);
+    if (novaDataInput) novaDataInput.value = data;
+
+    if (meses && Number(meses) > 0) {
+        if (checkRecalcular) {
+            checkRecalcular.checked = true;
+            checkRecalcular.disabled = false;
+        }
+        if (mesesTxtEl) {
+            mesesTxtEl.textContent = `Periodicidade do catálogo da NR: Reciclagem a cada ${meses} meses.`;
+            mesesTxtEl.style.color = '#15803d';
+        }
+        if (valInfoEl) {
+            valInfoEl.innerHTML = `🔄 <b>Norma Regulamentadora:</b> Treinamento periódico com validade de <b>${meses} meses</b>. O vencimento de todos os colaboradores será recalculado automaticamente para a nova data + ${meses} meses.`;
+        }
+    } else {
+        if (checkRecalcular) {
+            checkRecalcular.checked = false;
+            checkRecalcular.disabled = true;
+        }
+        if (mesesTxtEl) {
+            mesesTxtEl.textContent = 'Treinamento sem reciclagem periódica obrigatória cadastrada (curso avulso / sem validade).';
+            mesesTxtEl.style.color = 'var(--text-light)';
+        }
+        if (valInfoEl) {
+            valInfoEl.innerHTML = `ℹ️ Curso sem reciclagem periódica obrigatória cadastrada no catálogo.`;
+        }
+    }
+
+    if (avisoUnificacao) avisoUnificacao.style.display = 'none';
+    if (statusEl) statusEl.textContent = '';
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-check"></i> Confirmar Alteração';
+    }
+
+    const modal = document.getElementById('modalEditarSessaoTreinamento');
+    if (modal) modal.style.display = 'flex';
+}
+
+function fecharModalEditarSessaoTreinamento() {
+    const modal = document.getElementById('modalEditarSessaoTreinamento');
+    if (modal) modal.style.display = 'none';
+}
+
+function aoMudarNovaDataSessao() {
+    const cod = document.getElementById('editSessaoCod')?.value;
+    const dataAntiga = document.getElementById('editSessaoDataAntiga')?.value;
+    const novaData = document.getElementById('novaDataSessaoTreinamento')?.value;
+    const avisoEl = document.getElementById('editSessaoAvisoUnificacao');
+    if (!avisoEl) return;
+
+    if (!novaData || novaData === dataAntiga) {
+        avisoEl.style.display = 'none';
+        return;
+    }
+
+    const jaExistentes = allTreinamentosRealizados.filter(r => String(r.treinamento_cod) === String(cod) && r.data_treinamento === novaData);
+    if (jaExistentes.length > 0) {
+        const participantesAtuais = allTreinamentosRealizados.filter(r => String(r.treinamento_cod) === String(cod) && r.data_treinamento === dataAntiga);
+        avisoEl.innerHTML = `<i class="fas fa-info-circle"></i> <b>Atenção (Unificação de Turma):</b> Já existem <b>${jaExistentes.length}</b> colaborador(es) lançados neste treinamento em <b>${formatSimpleDate(novaData)}</b>. Ao confirmar, os <b>${participantesAtuais.length}</b> participante(s) desta sessão serão unificados na mesma data, totalizando <b>${jaExistentes.length + participantesAtuais.length}</b> colaboradores.`;
+        avisoEl.style.display = 'block';
+    } else {
+        avisoEl.style.display = 'none';
+    }
+}
+
+async function confirmarAlteracaoDataSessao() {
+    if (typeof bloquearEdicaoSeNaoAutorizado === 'function' && bloquearEdicaoSeNaoAutorizado('treinamentos')) return;
+
+    const cod = document.getElementById('editSessaoCod')?.value;
+    const dataAntiga = document.getElementById('editSessaoDataAntiga')?.value;
+    const novaData = document.getElementById('novaDataSessaoTreinamento')?.value;
+    const recalcular = !!document.getElementById('recalcularValidadeTreinamento')?.checked;
+    const statusEl = document.getElementById('editSessaoStatus');
+    const btn = document.getElementById('btnConfirmarAlteracaoSessao');
+
+    if (!cod || !dataAntiga) {
+        alert('Identificação da sessão inválida.');
+        return;
+    }
+
+    if (!novaData) {
+        if (statusEl) {
+            statusEl.textContent = '⚠️ Selecione uma nova data para a sessão.';
+            statusEl.style.color = 'var(--danger)';
+        }
+        return;
+    }
+
+    if (novaData === dataAntiga) {
+        if (statusEl) {
+            statusEl.textContent = '⚠️ A nova data é idêntica à data atual da sessão.';
+            statusEl.style.color = 'var(--danger)';
+        }
+        return;
+    }
+
+    const afetados = allTreinamentosRealizados.filter(r => String(r.treinamento_cod) === String(cod) && r.data_treinamento === dataAntiga);
+    if (afetados.length === 0) {
+        alert('Nenhum registro encontrado para esta sessão. A lista pode ter sido atualizada.');
+        fecharModalEditarSessaoTreinamento();
+        return;
+    }
+
+    let cat = allTreinamentosCatalogo.find(c => String(c.id) === String(cod) || String(c.codigo) === String(cod));
+    const mesesValidade = cat ? (cat.meses_validade ?? cat.periodicidade_meses ?? null) : null;
+
+    let novaDataVencimento = null;
+    if (recalcular && mesesValidade && Number(mesesValidade) > 0) {
+        const d = parseLocalDate(novaData);
+        const alvo = new Date(d.getFullYear(), d.getMonth() + Number(mesesValidade), d.getDate());
+        novaDataVencimento = `${alvo.getFullYear()}-${String(alvo.getMonth() + 1).padStart(2, '0')}-${String(alvo.getDate()).padStart(2, '0')}`;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Atualizando...';
+    }
+    if (statusEl) {
+        statusEl.textContent = `⏳ Atualizando ${afetados.length} colaborador(es)...`;
+        statusEl.style.color = 'var(--text-light)';
+    }
+
+    try {
+        // 1. Atualizar public.treinamentos_realizados no Supabase via PATCH
+        const payloadTrein = {
+            data_treinamento: novaData
+        };
+        if (recalcular) {
+            payloadTrein.data_proxima_reciclagem = novaDataVencimento;
+        }
+
+        const queryTrein = `treinamento_cod=eq.${encodeURIComponent(cod)}&data_treinamento=eq.${encodeURIComponent(dataAntiga)}`;
+        await supabasePatch('treinamentos_realizados', queryTrein, payloadTrein);
+
+        // 2. Sincronizar treinamentos_convocados (se houver lançamentos)
+        try {
+            await supabasePatch('treinamentos_convocados', queryTrein, { data_treinamento: novaData });
+        } catch (errConv) {
+            console.warn('Aviso ao sincronizar convocados:', errConv);
+        }
+
+        // 3. Sincronizar chave de anexos (anexos_sms) se houverem arquivos vinculados à sessão
+        try {
+            const queryAnexos = `tabela=eq.treinamentos_realizados&chave_registro=eq.${encodeURIComponent(cod + '||' + dataAntiga)}`;
+            await supabasePatch('anexos_sms', queryAnexos, { chave_registro: `${cod}||${novaData}` });
+        } catch (errAnexo) {
+            console.warn('Aviso ao sincronizar anexos:', errAnexo);
+        }
+
+        // 4. Invalidar caches do sessionStorage
+        invalidarCacheTabela('treinamentos_realizados');
+        invalidarCacheTabela('treinamentos_convocados');
+        invalidarCacheTabela('anexos_sms');
+
+        // 5. Atualizar estado em memória
+        allTreinamentosRealizados.forEach(r => {
+            if (String(r.treinamento_cod) === String(cod) && r.data_treinamento === dataAntiga) {
+                r.data_treinamento = novaData;
+                if (recalcular) {
+                    r.data_proxima_reciclagem = novaDataVencimento;
+                }
+            }
+        });
+
+        allTreinamentosConvocados.forEach(c => {
+            if (String(c.treinamento_cod) === String(cod) && c.data_treinamento === dataAntiga) {
+                c.data_treinamento = novaData;
+            }
+        });
+
+        // 6. Fechar modal
+        fecharModalEditarSessaoTreinamento();
+
+        // 7. Notificação de sucesso
+        const msgSucesso = `Sessão atualizada com sucesso para ${afetados.length} colaborador(es)!`;
+        mostrarFeedbackToast(msgSucesso, 'sucesso');
+
+        // 8. Re-renderizar as telas sem recarregar toda a página
+        renderTreinHistLista();
+        renderTreinamentosPanel();
+        if (typeof onRegistroCodigoChange === 'function' && document.getElementById('registroCodigoInput')?.value) {
+            onRegistroCodigoChange();
+        }
+
+    } catch (err) {
+        console.error('Erro ao atualizar data da sessão de treinamento:', err);
+        if (statusEl) {
+            statusEl.textContent = '❌ Falha ao atualizar: ' + (err.message || 'Erro de conexão');
+            statusEl.style.color = 'var(--danger)';
+        }
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-check"></i> Confirmar Alteração';
+        }
+        alert('Erro ao atualizar a sessão: ' + (err.message || 'Verifique sua conexão.'));
+    }
+}
+
 
 // ============================================
 // IMPORTAÇÃO/EXPORTAÇÃO DA PLANILHA (CSV no formato atual)
@@ -19910,30 +20210,35 @@ function obterDadosRecomendacaoPsicossocial() {
             // Marco temporal inicial oficial (corte em 01/07/2026) da Avaliação Psicossocial:
             // Exames anteriores à implantação oficial do programa são desconsiderados para fins de conformidade
             // e status de renovação periódica, eliminando falsos positivos de exames vencidos de 2025/início de 2026.
-            if (ehPsico && a.data_exame && a.data_exame < DATA_IMPLANTACAO_PSICOSSOCIAL) {
-                continue;
-            }
+            const dataAsoStr = a.data_exame || '';
+            const ehAnteriorAoMarco = ehPsico && dataAsoStr && dataAsoStr < DATA_IMPLANTACAO_PSICOSSOCIAL;
 
             let achouNoAso = false;
             let itemVenc = null;
+            let itemDataRealizacao = null;
 
             if (Array.isArray(a.exames_detalhe)) {
                 const item = a.exames_detalhe.find(ex => ex.nome && ex.nome.toLowerCase().includes(termoBusca));
                 if (item) {
-                    achouNoAso = true;
-                    itemVenc = item.data_vencimento || a.data_vencimento;
+                    const dtItem = item.data_avaliacao || item.data_exame;
+                    // Se o ASO principal for anterior ao marco, só valida se a avaliação complementar em si foi realizada a partir do marco
+                    if (!ehAnteriorAoMarco || (dtItem && dtItem >= DATA_IMPLANTACAO_PSICOSSOCIAL)) {
+                        achouNoAso = true;
+                        itemVenc = item.data_vencimento || a.data_vencimento;
+                        itemDataRealizacao = dtItem;
+                    }
                 }
             }
 
-            // Fallback por anotação em observações do ASO
-            if (!achouNoAso && ehPsico && a.obs && a.obs.toLowerCase().includes('psicossocial')) {
+            // Fallback por anotação em observações do ASO (somente se o ASO for a partir do marco)
+            if (!achouNoAso && !ehAnteriorAoMarco && ehPsico && a.obs && a.obs.toLowerCase().includes('psicossocial')) {
                 achouNoAso = true;
                 itemVenc = a.data_vencimento || (a.data_exame ? addMeses(a.data_exame, 12) : null);
             }
 
             if (achouNoAso) {
                 temExame = true;
-                dataExame = a.data_exame;
+                dataExame = itemDataRealizacao || a.data_exame;
                 vencExame = itemVenc || (dataExame ? addMeses(dataExame, exameCfg.periodicidadeMeses || 12) : null);
                 tipoAsoExame = a.tipo_aso;
                 asoIdExame = a.id;
@@ -20303,47 +20608,151 @@ function salvarConfiguracaoGhesPsico() {
     alert(`✅ ${selecionados.length} grupos configurados com sucesso para o exame!`);
 }
 
-// ---- Modal de Registro Rápido Individual ----
-function abrirModalRegistrarPsicoRapido(matricula) {
-    const colab = (allEfetivo || []).find(e => e.id === matricula);
-    if (!colab) return;
+// ---- Modal de Registro Individual / Avaliação Psicossocial ----
+function abrirModalPsicossocial(colaboradorOuMatricula) {
+    let matricula = '';
+    let colab = null;
 
-    const dataMutirao = obterDataMutiraoPsico();
-    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+    if (typeof colaboradorOuMatricula === 'object' && colaboradorOuMatricula !== null) {
+        matricula = String(colaboradorOuMatricula.matricula || colaboradorOuMatricula.id || '').trim();
+        colab = colaboradorOuMatricula;
+    } else {
+        matricula = String(colaboradorOuMatricula || '').trim();
+    }
+
+    if (!colab && matricula) {
+        colab = (allEfetivo || []).find(e => String(e.id || '').trim() === matricula);
+    }
+
+    if (!colab && !matricula) {
+        console.warn('abrirModalPsicossocial: colaborador não informado.');
+        return;
+    }
+
+    const modal = document.getElementById('modalRegistrarPsicoRapido') || document.getElementById('modalRegistrarPsicossocial');
+    if (!modal) return;
+
+    modal.dataset.matricula = matricula;
+
+    const dataMutirao = (typeof obterDataMutiraoPsico === 'function') 
+        ? obterDataMutiraoPsico() 
+        : new Date().toISOString().split('T')[0];
+
+    const exameCfg = (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' && CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual]) 
+        || (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' ? CATALOGO_EXAMES_COMPLEMENTARES.psicossocial : {
+            nomeExame: 'Avaliação Psicossocial',
+            profissionalPadrao: 'Psicóloga Responsável',
+            periodicidadeMeses: 12
+        });
 
     const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
-    setVal('regPsico_matricula', matricula);
-    setVal('regPsico_colaboradorNome', `${colab.nome} (Matrícula ${matricula})`);
-    setVal('regPsico_ghe', obterNomeGheCompleto(colab.ghe));
-    setVal('regPsico_dataExame', dataMutirao);
-    setVal('regPsico_resultado', 'Apto');
-    setVal('regPsico_psicologaNome', exameCfg.profissionalPadrao);
-    setVal('regPsico_crp', '');
-    setVal('regPsico_obs', `Atendimento realizado no mutirão de ${exameCfg.nomeExame}`);
+    const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
 
-    const statusMsg = document.getElementById('regPsico_statusMsg');
+    // Sincronizar todos os IDs de matrícula (ocultos)
+    setVal('psicoColaboradorMatricula', matricula);
+    setVal('modalPsico_matricula', matricula);
+    setVal('regPsico_matricula', matricula);
+
+    // Preencher cabeçalho e dados visuais do colaborador
+    const nomeColab = colab?.nome || 'Colaborador';
+    const funcColab = colab?.funcao || '—';
+    const gheColab = colab?.ghe 
+        ? (typeof obterNomeGheCompleto === 'function' ? obterNomeGheCompleto(colab.ghe) : colab.ghe)
+        : '—';
+
+    setText('modalPsico_nome', nomeColab);
+    setText('psicoColaboradorNome', nomeColab);
+    setText('modalPsico_lblMatricula', matricula || '—');
+    setText('psicoColaboradorMatriculaLbl', matricula || '—');
+    setText('modalPsico_lblFuncao', funcColab);
+    setText('modalPsico_lblGhe', gheColab);
+
+    // Fallbacks para campos textuais legados se existirem
+    setVal('regPsico_colaboradorNome', `${nomeColab} (Matrícula ${matricula})`);
+    setVal('regPsico_ghe', gheColab);
+
+    // Data da Avaliação (padrão: data do mutirão ou data atual)
+    const dataInicial = dataMutirao || new Date().toISOString().split('T')[0];
+    setVal('psicoDataAvaliacao', dataInicial);
+    setVal('modalPsico_data', dataInicial);
+    setVal('data_avaliacao', dataInicial);
+    setVal('regPsico_dataExame', dataInicial);
+
+    // Resultado padrão
+    setVal('modalPsico_resultado', 'Apto');
+    setVal('regPsico_resultado', 'Apto');
+
+    // Profissional e CRP
+    const profPadrao = exameCfg.profissionalPadrao || 'Psicóloga Responsável';
+    setVal('modalPsico_profissional', profPadrao);
+    setVal('regPsico_psicologaNome', profPadrao);
+    setVal('modalPsico_crp', '');
+    setVal('regPsico_crp', '');
+
+    // Observações
+    const obsPadrao = `Avaliação psicossocial realizada conforme diretrizes de NR-35/NR-33/NR-10.`;
+    setVal('modalPsico_obs', obsPadrao);
+    setVal('regPsico_obs', obsPadrao);
+
+    // Limpar mensagens de status anteriores
+    const statusMsg = document.getElementById('modalPsico_statusMsg') 
+        || document.getElementById('regPsico_statusMsg');
     if (statusMsg) statusMsg.innerHTML = '';
 
-    const modal = document.getElementById('modalRegistrarPsicoRapido');
-    if (modal) modal.style.display = 'flex';
+    modal.style.display = 'flex';
+}
+
+function abrirModalRegistrarPsicoRapido(matricula) {
+    return abrirModalPsicossocial(matricula);
 }
 
 function fecharModalRegistrarPsicoRapido() {
-    const modal = document.getElementById('modalRegistrarPsicoRapido');
+    const modal = document.getElementById('modalRegistrarPsicoRapido') || document.getElementById('modalRegistrarPsicossocial');
     if (modal) modal.style.display = 'none';
 }
 
-async function salvarRegistroPsicoRapido() {
-    const matricula = document.getElementById('regPsico_matricula')?.value;
-    const dataExame = document.getElementById('regPsico_dataExame')?.value;
-    const resultado = document.getElementById('regPsico_resultado')?.value || 'Apto';
-    const profissional = document.getElementById('regPsico_psicologaNome')?.value || 'Profissional Responsável';
-    const crp = document.getElementById('regPsico_crp')?.value || '';
-    const obs = document.getElementById('regPsico_obs')?.value || '';
-    const statusMsg = document.getElementById('regPsico_statusMsg');
+function fecharModalPsicossocial() {
+    return fecharModalRegistrarPsicoRapido();
+}
 
-    if (!matricula || !dataExame) {
-        alert('Data do exame é obrigatória.');
+async function salvarRegistroPsicoRapido() {
+    const modal = document.getElementById('modalRegistrarPsicoRapido') || document.getElementById('modalRegistrarPsicossocial');
+
+    // Captura segura e resiliente da matrícula
+    const matricula = (document.getElementById('psicoColaboradorMatricula')?.value ||
+                       document.getElementById('modalPsico_matricula')?.value ||
+                       document.getElementById('regPsico_matricula')?.value ||
+                       modal?.dataset?.matricula || '').trim();
+
+    // Captura segura e resiliente da data da avaliação
+    const dataExame = (document.getElementById('psicoDataAvaliacao')?.value ||
+                       document.getElementById('modalPsico_data')?.value ||
+                       document.getElementById('data_avaliacao')?.value ||
+                       document.getElementById('regPsico_dataExame')?.value || '').trim();
+
+    const resultado = document.getElementById('modalPsico_resultado')?.value ||
+                      document.getElementById('regPsico_resultado')?.value || 'Apto';
+
+    const profissional = document.getElementById('modalPsico_profissional')?.value ||
+                         document.getElementById('regPsico_psicologaNome')?.value || 'Psicóloga Responsável';
+
+    const crp = (document.getElementById('modalPsico_crp')?.value ||
+                 document.getElementById('regPsico_crp')?.value || '').trim();
+
+    const obs = (document.getElementById('modalPsico_obs')?.value ||
+                 document.getElementById('regPsico_obs')?.value || '').trim();
+
+    const statusMsg = document.getElementById('modalPsico_statusMsg') ||
+                      document.getElementById('regPsico_statusMsg');
+
+    // Validação estrita da data da avaliação
+    if (!dataExame) {
+        alert('Data da avaliação é obrigatória.');
+        return;
+    }
+
+    if (!matricula) {
+        alert('Colaborador não identificado para o registro.');
         return;
     }
 
@@ -20352,23 +20761,36 @@ async function salvarRegistroPsicoRapido() {
     }
 
     try {
-        const colab = (allEfetivo || []).find(e => e.id === matricula);
-        const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
-        const dataVencimento = addMeses(dataExame, exameCfg.periodicidadeMeses || 12);
+        const colab = (allEfetivo || []).find(e => String(e.id || '').trim() === matricula);
+        const exameCfg = (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' && CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual]) 
+            || (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' ? CATALOGO_EXAMES_COMPLEMENTARES.psicossocial : {
+                nomeExame: 'Avaliação Psicossocial',
+                profissionalPadrao: 'Psicóloga Responsável',
+                periodicidadeMeses: 12
+            });
 
-        const asos = (allAsoExames || []).filter(a => a.matricula === matricula)
-            .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
-        const ultimoAso = asos[0];
+        const periodicidade = exameCfg.periodicidadeMeses || 12;
+        const dataVencimento = (typeof addMeses === 'function') ? addMeses(dataExame, periodicidade) : dataExame;
+        const profFormatado = crp ? `${profissional} (${crp})` : profissional;
 
         const itemExame = {
             nome: exameCfg.nomeExame,
-            periodicidade: exameCfg.periodicidadeMeses || 12,
+            data_avaliacao: dataExame,
+            data_exame: dataExame,
+            periodicidade: periodicidade,
             data_vencimento: dataVencimento,
             resultado: resultado,
-            profissional: crp ? `${profissional} (${crp})` : profissional
+            profissional: profFormatado,
+            crp: crp,
+            obs: obs
         };
 
-        if (ultimoAso) {
+        const asos = (allAsoExames || []).filter(a => String(a.matricula || '').trim() === matricula)
+            .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
+        const ultimoAso = asos[0];
+
+        // Se já existe um ASO vigente do colaborador (da mesma data ou pós marco temporal)
+        if (ultimoAso && (!DATA_IMPLANTACAO_PSICOSSOCIAL || ultimoAso.data_exame >= DATA_IMPLANTACAO_PSICOSSOCIAL)) {
             let examesDetalhe = Array.isArray(ultimoAso.exames_detalhe) ? [...ultimoAso.exames_detalhe] : [];
             const idx = examesDetalhe.findIndex(e => e.nome && e.nome.toLowerCase().includes(exameCfg.nomeExame.toLowerCase().slice(0, 5)));
             if (idx >= 0) {
@@ -20386,8 +20808,10 @@ async function salvarRegistroPsicoRapido() {
             await supabaseUpsert('aso_exames', [payload]);
             ultimoAso.exames_detalhe = examesDetalhe;
         } else {
+            // Se não tem ASO ou o último ASO é anterior ao marco temporal de implantação,
+            // cria um registro dedicado em aso_exames com a data_exame da avaliação.
             const novoAso = {
-                id: `ASO_${Date.now()}_${matricula}`,
+                id: `ASO_PSICO_${Date.now()}_${matricula}`,
                 matricula: matricula,
                 nome_colaborador: colab?.nome || '',
                 funcao: colab?.funcao || '',
@@ -20396,7 +20820,7 @@ async function salvarRegistroPsicoRapido() {
                 data_exame: dataExame,
                 data_vencimento: dataVencimento,
                 resultado: resultado.toLowerCase().includes('inapto') ? 'inapto' : 'apto',
-                medico_responsavel: profissional + (crp ? ` (${crp})` : ''),
+                medico_responsavel: profFormatado,
                 obs: obs || `${exameCfg.nomeExame} (PGR/PCMSO)`,
                 exames_detalhe: [itemExame]
             };
@@ -20410,17 +20834,23 @@ async function salvarRegistroPsicoRapido() {
 
         setTimeout(() => {
             fecharModalRegistrarPsicoRapido();
-            renderRecomendacaoPsicossocial();
-            renderSaudePanel();
+            if (typeof renderRecomendacaoPsicossocial === 'function') renderRecomendacaoPsicossocial();
+            if (typeof renderSaudePanel === 'function') renderSaudePanel();
         }, 900);
 
     } catch (err) {
-        console.error('Erro ao salvar avaliação:', err);
+        console.error('Erro ao salvar avaliação psicossocial:', err);
         if (statusMsg) {
             statusMsg.innerHTML = `<span style="color:var(--danger); font-weight:700;">❌ Falha ao salvar: ${err.message}</span>`;
         }
     }
 }
+
+window.abrirModalPsicossocial = abrirModalPsicossocial;
+window.abrirModalRegistrarPsicoRapido = abrirModalRegistrarPsicoRapido;
+window.fecharModalPsicossocial = fecharModalPsicossocial;
+window.fecharModalRegistrarPsicoRapido = fecharModalRegistrarPsicoRapido;
+window.salvarRegistroPsicoRapido = salvarRegistroPsicoRapido;
 
 // ============================================
 // BAIXA EM LOTE PÓS-MUTIRÃO DE EXAMES

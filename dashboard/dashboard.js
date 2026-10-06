@@ -20718,131 +20718,174 @@ function fecharModalPsicossocial() {
 async function salvarRegistroPsicoRapido() {
     const modal = document.getElementById('modalRegistrarPsicoRapido') || document.getElementById('modalRegistrarPsicossocial');
 
-    // Captura segura e resiliente da matrícula
+    // 1. Captura segura e resiliente da matrícula
     const matricula = (document.getElementById('psicoColaboradorMatricula')?.value ||
                        document.getElementById('modalPsico_matricula')?.value ||
                        document.getElementById('regPsico_matricula')?.value ||
                        modal?.dataset?.matricula || '').trim();
 
-    // Captura segura e resiliente da data da avaliação
-    const dataExame = (document.getElementById('psicoDataAvaliacao')?.value ||
-                       document.getElementById('modalPsico_data')?.value ||
-                       document.getElementById('data_avaliacao')?.value ||
-                       document.getElementById('regPsico_dataExame')?.value || '').trim();
+    // 2. Captura da Data da Avaliação (suporte a múltiplos IDs)
+    const inputData = (document.getElementById('psicoDataAvaliacao')?.value 
+                    || document.getElementById('data_avaliacao')?.value 
+                    || document.getElementById('psicoData')?.value
+                    || document.getElementById('modalPsico_data')?.value
+                    || document.getElementById('regPsico_dataExame')?.value 
+                    || '').trim();
 
     const resultado = document.getElementById('modalPsico_resultado')?.value ||
                       document.getElementById('regPsico_resultado')?.value || 'Apto';
 
-    const profissional = document.getElementById('modalPsico_profissional')?.value ||
-                         document.getElementById('regPsico_psicologaNome')?.value || 'Psicóloga Responsável';
+    const nomePsicologa = (document.getElementById('modalPsico_profissional')?.value ||
+                           document.getElementById('regPsico_psicologaNome')?.value || 'Psicóloga Responsável').trim();
 
     const crp = (document.getElementById('modalPsico_crp')?.value ||
                  document.getElementById('regPsico_crp')?.value || '').trim();
 
-    const obs = (document.getElementById('modalPsico_obs')?.value ||
-                 document.getElementById('regPsico_obs')?.value || '').trim();
+    const parecerObs = (document.getElementById('modalPsico_obs')?.value ||
+                        document.getElementById('regPsico_obs')?.value || '').trim();
 
     const statusMsg = document.getElementById('modalPsico_statusMsg') ||
                       document.getElementById('regPsico_statusMsg');
 
+    const btnSalvar = document.getElementById('btnSalvarPsicoModal') ||
+                      modal?.querySelector('.db-apply-btn');
+
     // Validação estrita da data da avaliação
-    if (!dataExame) {
-        alert('Data da avaliação é obrigatória.');
+    if (!inputData) {
+        if (statusMsg) {
+            statusMsg.innerHTML = '<span style="color:var(--danger); font-weight:700;">⚠️ Por favor, informe a Data da Avaliação.</span>';
+        } else {
+            alert('Por favor, informe a Data da Avaliação.');
+        }
         return;
     }
 
     if (!matricula) {
-        alert('Colaborador não identificado para o registro.');
+        if (statusMsg) {
+            statusMsg.innerHTML = '<span style="color:var(--danger); font-weight:700;">⚠️ Colaborador não identificado para o registro.</span>';
+        } else {
+            alert('Colaborador não identificado para o registro.');
+        }
         return;
     }
 
+    if (btnSalvar) {
+        btnSalvar.disabled = true;
+        btnSalvar.innerHTML = '⏳ Salvando...';
+    }
     if (statusMsg) {
-        statusMsg.innerHTML = '<span style="color:var(--primary); font-weight:700;">Salvando no prontuário...</span>';
+        statusMsg.innerHTML = '<span style="color:var(--primary); font-weight:700;">Salvando no prontuário ocupacional...</span>';
     }
 
     try {
         const colab = (allEfetivo || []).find(e => String(e.id || '').trim() === matricula);
-        const exameCfg = (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' && CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual]) 
-            || (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' ? CATALOGO_EXAMES_COMPLEMENTARES.psicossocial : {
-                nomeExame: 'Avaliação Psicossocial',
-                profissionalPadrao: 'Psicóloga Responsável',
-                periodicidadeMeses: 12
-            });
+        const nomeColaborador = colab?.nome || document.getElementById('modalPsico_nome')?.textContent || 'Colaborador';
+        const funcaoColaborador = colab?.funcao || '';
+        const setorColaborador = colab?.setor || '';
 
-        const periodicidade = exameCfg.periodicidadeMeses || 12;
-        const dataVencimento = (typeof addMeses === 'function') ? addMeses(dataExame, periodicidade) : dataExame;
-        const profFormatado = crp ? `${profissional} (${crp})` : profissional;
+        const periodicidadeMeses = 12;
+        const dataVencimento = typeof addMeses === 'function' ? addMeses(inputData, periodicidadeMeses) : inputData;
+        const profFormatado = crp ? `${nomePsicologa} (${crp})` : nomePsicologa;
 
         const itemExame = {
-            nome: exameCfg.nomeExame,
-            data_avaliacao: dataExame,
-            data_exame: dataExame,
-            periodicidade: periodicidade,
+            nome: 'Avaliação Psicossocial',
+            tipo: 'psicossocial',
+            data_avaliacao: inputData,
+            data_exame: inputData,
+            periodicidade: periodicidadeMeses,
             data_vencimento: dataVencimento,
             resultado: resultado,
             profissional: profFormatado,
             crp: crp,
-            obs: obs
+            obs: parecerObs
         };
 
+        const obsTexto = crp ? `CRP: ${crp} | Parecer: ${parecerObs}` : (parecerObs || 'Avaliação Psicossocial (PGR/PCMSO)');
+
+        // Garantir ID único para o registro dedicado
+        const idAsoPsico = `ASO_PSICO_${Date.now()}_${matricula}`;
+
+        const payloadAso = {
+            id: idAsoPsico,
+            matricula: matricula,
+            nome_colaborador: nomeColaborador,
+            funcao: funcaoColaborador,
+            setor: setorColaborador,
+            tipo_aso: 'AVALIAÇÃO PSICOSSOCIAL',
+            data_exame: inputData, // <-- CAMPO OBRIGATÓRIO (NOT NULL)
+            data_vencimento: dataVencimento,
+            resultado: resultado.toLowerCase().includes('inapto') ? 'inapto' : 'apto',
+            medico_responsavel: profFormatado,
+            obs: obsTexto,
+            exames_detalhe: [itemExame]
+        };
+
+        // 1. Gravar registro dedicado de Avaliação Psicossocial com data_exame explícito
+        await supabaseUpsert('aso_exames', [payloadAso]);
+
+        // 2. Se houver ASO geral prévio do colaborador, sincronizar o exame_detalhe com data_exame SEMPRE presente
         const asos = (allAsoExames || []).filter(a => String(a.matricula || '').trim() === matricula)
             .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
-        const ultimoAso = asos[0];
+        const ultimoAso = asos.find(a => a.id !== idAsoPsico);
 
-        // Se já existe um ASO vigente do colaborador (da mesma data ou pós marco temporal)
-        if (ultimoAso && (!DATA_IMPLANTACAO_PSICOSSOCIAL || ultimoAso.data_exame >= DATA_IMPLANTACAO_PSICOSSOCIAL)) {
+        if (ultimoAso && (!DATA_IMPLANTACAO_PSICOSSOCIAL || (ultimoAso.data_exame && ultimoAso.data_exame >= DATA_IMPLANTACAO_PSICOSSOCIAL))) {
             let examesDetalhe = Array.isArray(ultimoAso.exames_detalhe) ? [...ultimoAso.exames_detalhe] : [];
-            const idx = examesDetalhe.findIndex(e => e.nome && e.nome.toLowerCase().includes(exameCfg.nomeExame.toLowerCase().slice(0, 5)));
+            const idx = examesDetalhe.findIndex(e => e.nome && e.nome.toLowerCase().includes('psico'));
             if (idx >= 0) {
                 examesDetalhe[idx] = { ...examesDetalhe[idx], ...itemExame };
             } else {
                 examesDetalhe.push(itemExame);
             }
 
-            const payload = {
+            const payloadUpdateUltimoAso = {
                 id: ultimoAso.id,
+                matricula: ultimoAso.matricula || matricula,
+                data_exame: ultimoAso.data_exame || inputData, // <-- CAMPO OBRIGATÓRIO (NOT NULL)
                 exames_detalhe: examesDetalhe,
-                obs: obs ? `${ultimoAso.obs ? ultimoAso.obs + ' | ' : ''}${exameCfg.nomeExame} em ${formatSimpleDate(dataExame)}: ${obs}` : ultimoAso.obs
+                obs: parecerObs ? `${ultimoAso.obs ? ultimoAso.obs + ' | ' : ''}Avaliação Psicossocial em ${formatSimpleDate(inputData)}: ${parecerObs}` : ultimoAso.obs
             };
-
-            await supabaseUpsert('aso_exames', [payload]);
-            ultimoAso.exames_detalhe = examesDetalhe;
-        } else {
-            // Se não tem ASO ou o último ASO é anterior ao marco temporal de implantação,
-            // cria um registro dedicado em aso_exames com a data_exame da avaliação.
-            const novoAso = {
-                id: `ASO_PSICO_${Date.now()}_${matricula}`,
-                matricula: matricula,
-                nome_colaborador: colab?.nome || '',
-                funcao: colab?.funcao || '',
-                setor: colab?.setor || '',
-                tipo_aso: 'periodico',
-                data_exame: dataExame,
-                data_vencimento: dataVencimento,
-                resultado: resultado.toLowerCase().includes('inapto') ? 'inapto' : 'apto',
-                medico_responsavel: profFormatado,
-                obs: obs || `${exameCfg.nomeExame} (PGR/PCMSO)`,
-                exames_detalhe: [itemExame]
-            };
-            await supabaseUpsert('aso_exames', [novoAso]);
-            allAsoExames.push(novoAso);
+            try {
+                await supabaseUpsert('aso_exames', [payloadUpdateUltimoAso]);
+                ultimoAso.exames_detalhe = examesDetalhe;
+            } catch (errSync) {
+                console.warn('Aviso ao sincronizar exame detalhado no ASO anterior:', errSync);
+            }
         }
 
+        // 3. Atualizar cache e estado local
+        invalidarCacheTabela('aso_exames');
+        allAsoExames.unshift(payloadAso);
+
         if (statusMsg) {
-            statusMsg.innerHTML = `<span style="color:var(--success); font-weight:700;">✅ ${exameCfg.nomeExame} registrada com sucesso!</span>`;
+            statusMsg.innerHTML = `<span style="color:var(--success); font-weight:700;">✅ Avaliação psicossocial registrada com sucesso!</span>`;
+        }
+
+        if (typeof mostrarFeedbackToast === 'function') {
+            mostrarFeedbackToast('Avaliação psicossocial registrada com sucesso!', 'sucesso');
+        } else if (typeof showToast === 'function') {
+            showToast('Avaliação psicossocial registrada com sucesso!', 'success');
         }
 
         setTimeout(() => {
             fecharModalRegistrarPsicoRapido();
+            if (btnSalvar) {
+                btnSalvar.disabled = false;
+                btnSalvar.innerHTML = '💾 Salvar e Regularizar';
+            }
             if (typeof renderRecomendacaoPsicossocial === 'function') renderRecomendacaoPsicossocial();
             if (typeof renderSaudePanel === 'function') renderSaudePanel();
-        }, 900);
+        }, 600);
 
     } catch (err) {
         console.error('Erro ao salvar avaliação psicossocial:', err);
+        if (btnSalvar) {
+            btnSalvar.disabled = false;
+            btnSalvar.innerHTML = '💾 Salvar e Regularizar';
+        }
         if (statusMsg) {
             statusMsg.innerHTML = `<span style="color:var(--danger); font-weight:700;">❌ Falha ao salvar: ${err.message}</span>`;
         }
+        alert('Erro ao salvar no banco de dados: ' + err.message);
     }
 }
 
@@ -21725,6 +21768,8 @@ async function confirmarSinalizarPsicoEmDia() {
 
             const payload = {
                 id: ultimoAso.id,
+                matricula: ultimoAso.matricula || matricula,
+                data_exame: ultimoAso.data_exame || dataExame,
                 exames_detalhe: examesDetalhe,
                 obs: obs ? `${ultimoAso.obs ? ultimoAso.obs + ' | ' : ''}Psicossocial regularizado em ${formatSimpleDate(dataExame)}: ${obs}` : ultimoAso.obs
             };

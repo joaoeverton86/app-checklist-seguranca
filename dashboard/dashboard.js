@@ -20975,7 +20975,7 @@ async function salvarBaixaLoteMutirao() {
 
     const dataExame = document.getElementById('baixaLote_data')?.value;
     const resultado = document.getElementById('baixaLote_resultado')?.value || 'Apto';
-    const profissional = document.getElementById('baixaLote_profissional')?.value || 'Profissional Responsável';
+    const profissional = document.getElementById('baixaLote_profissional')?.value || 'Psicóloga Responsável';
     const obs = document.getElementById('baixaLote_obs')?.value || '';
     const statusMsg = document.getElementById('baixaLote_statusMsg');
     const btnConfirmar = document.getElementById('btnConfirmarBaixaLote');
@@ -20989,26 +20989,61 @@ async function salvarBaixaLoteMutirao() {
     if (statusMsg) statusMsg.innerHTML = `<span style="color:var(--primary); font-weight:700;">Salvando baixa de ${selecionados.length} colaboradores...</span>`;
 
     try {
-        const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
-        const dataVencimento = addMeses(dataExame, exameCfg.periodicidadeMeses || 12);
+        const exameCfg = (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' && CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual]) 
+            || (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' ? CATALOGO_EXAMES_COMPLEMENTARES.psicossocial : {
+                nomeExame: 'Avaliação Psicossocial',
+                profissionalPadrao: 'Psicóloga Responsável',
+                periodicidadeMeses: 12
+            });
+
+        const periodicidadeMeses = exameCfg.periodicidadeMeses || 12;
+        const dataVencimento = typeof addMeses === 'function' ? addMeses(dataExame, periodicidadeMeses) : dataExame;
 
         const itemExame = {
             nome: exameCfg.nomeExame,
-            periodicidade: exameCfg.periodicidadeMeses || 12,
+            tipo: 'psicossocial',
+            data_avaliacao: dataExame,
+            data_exame: dataExame,
+            periodicidade: periodicidadeMeses,
             data_vencimento: dataVencimento,
             resultado: resultado,
-            profissional: profissional
+            profissional: profissional,
+            obs: obs
         };
 
         const payloadsUpsert = [];
 
         for (const matricula of selecionados) {
-            const colab = (allEfetivo || []).find(e => e.id === matricula);
-            const asos = (allAsoExames || []).filter(a => a.matricula === matricula)
-                .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
-            const ultimoAso = asos[0];
+            const colab = (allEfetivo || []).find(e => String(e.id || '').trim() === matricula);
+            const nomeColab = colab?.nome || '';
+            const funcColab = colab?.funcao || '';
+            const setorColab = colab?.setor || '';
 
-            if (ultimoAso) {
+            // Cada avaliação realizada no mutirão gera um registro em aso_exames com data_exame OBRIGATÓRIA (NOT NULL)
+            const idAsoPsico = `ASO_PSICO_${Date.now()}_${matricula}_${Math.floor(Math.random() * 1000)}`;
+            const novoAso = {
+                id: idAsoPsico,
+                matricula: matricula,
+                nome_colaborador: nomeColab,
+                funcao: funcColab,
+                setor: setorColab,
+                tipo_aso: 'AVALIAÇÃO PSICOSSOCIAL',
+                data_exame: dataExame, // <-- CAMPO OBRIGATÓRIO (NOT NULL)
+                data_vencimento: dataVencimento,
+                resultado: resultado.toLowerCase().includes('inapto') ? 'inapto' : 'apto',
+                medico_responsavel: profissional,
+                obs: obs || `${exameCfg.nomeExame} realizada no mutirão de ${formatSimpleDate(dataExame)}`,
+                exames_detalhe: [itemExame]
+            };
+            allAsoExames.push(novoAso);
+            payloadsUpsert.push(novoAso);
+
+            // Se o colaborador possuir um ASO ocupacional anterior, também atualiza o exames_detalhe com data_exame SEMPRE presente
+            const asos = (allAsoExames || []).filter(a => String(a.matricula || '').trim() === matricula)
+                .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
+            const ultimoAso = asos.find(a => a.id !== idAsoPsico);
+
+            if (ultimoAso && (!DATA_IMPLANTACAO_PSICOSSOCIAL || (ultimoAso.data_exame && ultimoAso.data_exame >= DATA_IMPLANTACAO_PSICOSSOCIAL))) {
                 let examesDetalhe = Array.isArray(ultimoAso.exames_detalhe) ? [...ultimoAso.exames_detalhe] : [];
                 const idx = examesDetalhe.findIndex(e => e.nome && e.nome.toLowerCase().includes(exameCfg.nomeExame.toLowerCase().slice(0, 5)));
                 if (idx >= 0) {
@@ -21020,35 +21055,32 @@ async function salvarBaixaLoteMutirao() {
                 ultimoAso.exames_detalhe = examesDetalhe;
                 payloadsUpsert.push({
                     id: ultimoAso.id,
+                    matricula: ultimoAso.matricula || matricula,
+                    data_exame: ultimoAso.data_exame || dataExame, // <-- CAMPO OBRIGATÓRIO (NUNCA NULL)
+                    data_vencimento: ultimoAso.data_vencimento || dataVencimento,
+                    tipo_aso: ultimoAso.tipo_aso || 'periodico',
+                    resultado: ultimoAso.resultado || 'apto',
+                    medico_responsavel: ultimoAso.medico_responsavel || profissional,
+                    nome_colaborador: ultimoAso.nome_colaborador || nomeColab,
+                    funcao: ultimoAso.funcao || funcColab,
+                    setor: ultimoAso.setor || setorColab,
                     exames_detalhe: examesDetalhe,
                     obs: obs ? `${ultimoAso.obs ? ultimoAso.obs + ' | ' : ''}${exameCfg.nomeExame} em ${formatSimpleDate(dataExame)}: ${obs}` : ultimoAso.obs
                 });
-            } else {
-                const novoAso = {
-                    id: `ASO_${Date.now()}_${matricula}_${Math.floor(Math.random()*1000)}`,
-                    matricula: matricula,
-                    nome_colaborador: colab?.nome || '',
-                    funcao: colab?.funcao || '',
-                    setor: colab?.setor || '',
-                    tipo_aso: 'periodico',
-                    data_exame: dataExame,
-                    data_vencimento: dataVencimento,
-                    resultado: resultado.toLowerCase().includes('inapto') ? 'inapto' : 'apto',
-                    medico_responsavel: profissional,
-                    obs: obs || `${exameCfg.nomeExame} (PGR/PCMSO)`,
-                    exames_detalhe: [itemExame]
-                };
-                allAsoExames.push(novoAso);
-                payloadsUpsert.push(novoAso);
             }
         }
 
         if (payloadsUpsert.length > 0) {
             await supabaseUpsert('aso_exames', payloadsUpsert);
+            invalidarCacheTabela('aso_exames');
         }
 
         if (statusMsg) {
             statusMsg.innerHTML = `<span style="color:var(--success); font-weight:700;">✅ Baixa concluída com sucesso para ${selecionados.length} colaborador(es)!</span>`;
+        }
+
+        if (typeof mostrarFeedbackToast === 'function') {
+            mostrarFeedbackToast(`Baixa em lote de ${selecionados.length} colaborador(es) concluída com sucesso!`, 'sucesso');
         }
 
         setTimeout(() => {
@@ -21057,7 +21089,7 @@ async function salvarBaixaLoteMutirao() {
             renderRecomendacaoPsicossocial();
             renderSaudePanel();
             alert(`🎉 Pronto! ${selecionados.length} colaboradores tiveram a realização de ${exameCfg.nomeExame} confirmada e estão 100% regulares no PCMSO.`);
-        }, 1000);
+        }, 800);
 
     } catch (err) {
         console.error('Erro na baixa em lote:', err);

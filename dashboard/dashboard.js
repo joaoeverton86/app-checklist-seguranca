@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v158';
+const DASHBOARD_VERSION = 'v159';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -19658,6 +19658,11 @@ function copiarAlertaValidadeAsosWhatsApp() {
 // ============================================
 let exameComplementarFocoAtual = 'psicossocial';
 
+// Marco temporal inicial oficial de implantação do programa estruturado de Avaliação Psicossocial
+// (NR-01, NR-33, NR-35 e NR-10) no Consórcio Operador do PISF Ramal do Agreste (Julho/2026).
+// Apenas admissões e exames realizados a partir de 01/07/2026 são considerados para fins de conformidade e renovação periódica.
+let DATA_IMPLANTACAO_PSICOSSOCIAL = '2026-07-01';
+
 const CATALOGO_EXAMES_COMPLEMENTARES = {
     psicossocial: {
         id: 'psicossocial',
@@ -19801,6 +19806,13 @@ function salvarDataMutiraoPsico(novaData) {
         localStorage.setItem(`exame_data_mutirao_${exameComplementarFocoAtual}`, novaData);
         if (exameComplementarFocoAtual === 'psicossocial') {
             localStorage.setItem('psico_data_mutirao', novaData);
+            supabaseUpsert('configuracoes_sistema', [{
+                id: 'psico_data_mutirao',
+                valor: novaData,
+                descricao: 'Data prevista para o mutirão/atendimento da Avaliação Psicossocial.',
+                atualizado_em: new Date().toISOString(),
+                atualizado_por: usuarioDashboardAtual() || 'painel'
+            }]).catch(err => console.warn('Erro ao sincronizar data mutirão no banco:', err));
         }
     }
 }
@@ -19874,6 +19886,7 @@ function obterDadosRecomendacaoPsicossocial() {
     const dataMutirao = obterDataMutiraoPsico();
     const ghesObrigatorios = obterGhesObrigatoriosPsicossocial();
     const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+    const ehPsico = (exameComplementarFocoAtual === 'psicossocial' || exameCfg.id === 'psicossocial');
     const termoBusca = exameCfg.nomeExame.toLowerCase().slice(0, 5);
     const lista = [];
 
@@ -19894,16 +19907,37 @@ function obterDadosRecomendacaoPsicossocial() {
         let asoIdExame = null;
 
         for (const a of asos) {
+            // Marco temporal inicial oficial (corte em 01/07/2026) da Avaliação Psicossocial:
+            // Exames anteriores à implantação oficial do programa são desconsiderados para fins de conformidade
+            // e status de renovação periódica, eliminando falsos positivos de exames vencidos de 2025/início de 2026.
+            if (ehPsico && a.data_exame && a.data_exame < DATA_IMPLANTACAO_PSICOSSOCIAL) {
+                continue;
+            }
+
+            let achouNoAso = false;
+            let itemVenc = null;
+
             if (Array.isArray(a.exames_detalhe)) {
                 const item = a.exames_detalhe.find(ex => ex.nome && ex.nome.toLowerCase().includes(termoBusca));
                 if (item) {
-                    temExame = true;
-                    dataExame = a.data_exame;
-                    vencExame = item.data_vencimento || a.data_vencimento;
-                    tipoAsoExame = a.tipo_aso;
-                    asoIdExame = a.id;
-                    break;
+                    achouNoAso = true;
+                    itemVenc = item.data_vencimento || a.data_vencimento;
                 }
+            }
+
+            // Fallback por anotação em observações do ASO
+            if (!achouNoAso && ehPsico && a.obs && a.obs.toLowerCase().includes('psicossocial')) {
+                achouNoAso = true;
+                itemVenc = a.data_vencimento || (a.data_exame ? addMeses(a.data_exame, 12) : null);
+            }
+
+            if (achouNoAso) {
+                temExame = true;
+                dataExame = a.data_exame;
+                vencExame = itemVenc || (dataExame ? addMeses(dataExame, exameCfg.periodicidadeMeses || 12) : null);
+                tipoAsoExame = a.tipo_aso;
+                asoIdExame = a.id;
+                break;
             }
         }
 
@@ -19913,11 +19947,12 @@ function obterDadosRecomendacaoPsicossocial() {
 
         if (!temExame) {
             statusKey = 'PENDENTE';
-            statusLabel = `🔴 PENDENTE (Convocação ${formatSimpleDate(dataMutirao)})`;
-            statusBadge = `<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🔴 PENDENTE (Convocação ${formatSimpleDate(dataMutirao)})</span>`;
+            const rotuloPendente = ehPsico ? 'Inclusão PCMSO (Implantação do Programa)' : `Convocação ${formatSimpleDate(dataMutirao)}`;
+            statusLabel = `🔴 PENDENTE (${rotuloPendente})`;
+            statusBadge = `<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🔴 ${ehPsico ? 'PENDENTE DE INCLUSÃO' : 'PENDENTE'}</span>`;
         } else if (vencExame && vencExame < hojeStr) {
             statusKey = 'VENCIDO';
-            statusLabel = '🔴 VENCIDO';
+            statusLabel = '🔴 VENCIDO (Renovação Periódica)';
             statusBadge = '<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🔴 VENCIDO</span>';
         } else if (vencExame && vencExame <= dataLimiteVencendo) {
             statusKey = 'VENCENDO';
@@ -20025,15 +20060,23 @@ function renderTextoGruposObrigatoriosPsico() {
 
     const ghes = Array.from(obterGhesObrigatoriosPsicossocial()).sort();
     const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+    const ehPsico = (exameComplementarFocoAtual === 'psicossocial' || exameCfg.id === 'psicossocial');
 
     const listaHtml = ghes.map(g => {
         const nomeCurto = obterNomeCurtoSetorGhe(g);
         return `<b style="color:var(--text);">GHE ${g}</b> (${escapeHTML(nomeCurto)})`;
     }).join(' • ');
 
+    const infoMarcoTemporal = ehPsico
+        ? `<div style="margin-top: 4px; font-size: 11.5px; color: #4338ca; background: #eef2ff; border: 1px solid #c7d2fe; padding: 4px 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px;">
+            <span>🗓️</span> <span><b>Marco Temporal do Programa:</b> Implantação oficial em <b>${formatSimpleDate(DATA_IMPLANTACAO_PSICOSSOCIAL)}</b> • Validade Periódica: <b>12 meses</b> (renovações a partir de 07/2027)</span>
+           </div>`
+        : '';
+
     el.innerHTML = `
         <div>${exameCfg.descricaoBase}</div>
-        <div style="margin-top: 3px;">
+        ${infoMarcoTemporal}
+        <div style="margin-top: 5px;">
             <span style="font-weight:700; color:var(--text);">Grupos Monitorados (${ghes.length}):</span> ${listaHtml}
         </div>
     `;
@@ -20075,6 +20118,11 @@ function renderRecomendacaoPsicossocial() {
     setTxt('kpiPsicoVencendo', vencendo);
     setTxt('kpiPsicoEmDia', emDia);
     setTxt('kpiPsicoConformidade', `${conformidade}%`);
+
+    const lblPendentes = document.getElementById('lblKpiPsicoPendentes');
+    if (lblPendentes) {
+        lblPendentes.textContent = (exameComplementarFocoAtual === 'psicossocial') ? '🔴 Pendentes de Inclusão' : '🔴 Pendentes (Convocação)';
+    }
 
     setTxt('psicoCountTodos', total);
     setTxt('psicoCountPendentes', pendentes);
@@ -20126,9 +20174,10 @@ function renderTabelaRecomendacaoPsicossocial() {
             ? `<div>${formatSimpleDate(d.ultimoAsoData)}</div><div style="font-size:10.5px; color:var(--text-light); text-transform:uppercase;">${d.ultimoAsoTipo || 'ASO'}</div>`
             : '<span style="color:var(--text-light);">Sem registro</span>';
 
+        const rotuloNaoRealizada = (exameComplementarFocoAtual === 'psicossocial') ? 'Pendente de Inclusão' : 'Não realizada';
         const dataPsicoFmt = d.dataPsico
             ? `<div style="font-weight:700; color:#4338ca;">${formatSimpleDate(d.dataPsico)}</div>`
-            : '<span style="color:#b91c1c; font-weight:600; font-size:11.5px;">Não realizada</span>';
+            : `<span style="color:#b91c1c; font-weight:600; font-size:11.5px;">${rotuloNaoRealizada}</span>`;
 
         const vencPsicoFmt = d.vencPsico
             ? `<div>${formatSimpleDate(d.vencPsico)}</div>`
@@ -20557,7 +20606,7 @@ function imprimirConvocacaoExameAtual() {
 
     const linhasHtml = prioridadeConvocacao.map((c, i) => {
         const motivo = c.statusKey === 'PENDENTE' 
-            ? 'Inclusão PCMSO (Pendente)' 
+            ? ((exameComplementarFocoAtual === 'psicossocial' || exameCfg.id === 'psicossocial') ? 'Inclusão PCMSO (Implantação do Programa)' : 'Inclusão PCMSO (Pendente)') 
             : `Renovação Periódica (Venc: ${formatSimpleDate(c.vencPsico)})`;
         return `
             <tr>
@@ -20719,7 +20768,9 @@ function copiarConvocacaoExameWhatsApp() {
     for (const [gheNome, colabs] of Object.entries(porGhe)) {
         txt += `🔹 *${gheNome.toUpperCase()}* (${colabs.length} colaboradores):\n`;
         colabs.forEach((c, idx) => {
-            const tag = c.statusKey === 'PENDENTE' ? '🔴 [Pendente Inclusão]' : '🟡 [Renovação Periódica]';
+            const tag = c.statusKey === 'PENDENTE' 
+                ? ((exameComplementarFocoAtual === 'psicossocial' || exameCfg.id === 'psicossocial') ? '🔴 [Inclusão PCMSO (Implantação)]' : '🔴 [Pendente Inclusão]') 
+                : (c.statusKey === 'VENCIDO' ? '🔴 [Renovação Vencida]' : '🟡 [Renovação Periódica]');
             txt += `   ${idx + 1}. ${c.nome} (Matrícula ${c.matricula} - ${c.funcao}) ${tag}\n`;
         });
         txt += `\n`;
@@ -20850,7 +20901,7 @@ function popularSelectPeriodosConvocacaoPsico() {
         <option value="mes_atual" selected>🎯 Mês Atual (${mesAtualNome}/${anoAtual})</option>
         <option value="60d">⏱️ Mês Atual + Próximo (60d: ${mesAtualNome} e ${proxMesNome})</option>
         <option value="90d">🗓️ Próximos 90 dias (${mesAtualNome} a ${mesSub2Nome})</option>
-        <option value="apenas_inclusoes">🔴 Inclusões Pendentes Apenas (Sem avaliação prévia)</option>
+        <option value="apenas_inclusoes">🔴 Inclusões PCMSO (Implantação do Programa)</option>
         <option value="todos">🌐 Todos os Colaboradores Monitorados</option>
     `;
 }
@@ -20919,12 +20970,18 @@ function carregarColaboradoresTriagemPsicossocial() {
         let vencPsico = null;
 
         for (const a of asos) {
+            // Marco temporal inicial oficial (corte em 01/07/2026) da Avaliação Psicossocial:
+            // Apenas exames a partir de 01/07/2026 contam como avaliação válida do programa.
+            if (a.data_exame && a.data_exame < DATA_IMPLANTACAO_PSICOSSOCIAL) {
+                continue;
+            }
+
             if (Array.isArray(a.exames_detalhe)) {
                 const item = a.exames_detalhe.find(ex => ex.nome && ex.nome.toLowerCase().includes('psico'));
                 if (item) {
                     temPsico = true;
                     dataPsico = a.data_exame;
-                    vencPsico = item.data_vencimento || a.data_vencimento;
+                    vencPsico = item.data_vencimento || a.data_vencimento || (dataPsico ? addMeses(dataPsico, 12) : null);
                     break;
                 }
             }
@@ -20942,7 +20999,7 @@ function carregarColaboradoresTriagemPsicossocial() {
 
         if (!temPsico) {
             deveEntrar = true;
-            motivo = 'Inclusão PCMSO (Pendente)';
+            motivo = 'Inclusão PCMSO (Implantação do Programa)';
             tipoConvocacao = 'inclusao';
         } else {
             tipoConvocacao = 'renovacao';
@@ -21248,7 +21305,7 @@ function gerarListaOficialConvocacaoPsicossocial() {
         if (c.avulso) {
             motivoTexto = 'Convocação Avulsa (SESMT)';
         } else if (c.tipoConvocacao === 'inclusao') {
-            motivoTexto = 'Inclusão PCMSO (Pendente)';
+            motivoTexto = 'Inclusão PCMSO (Implantação do Programa)';
         } else if (c.vencPsico) {
             motivoTexto = `Renovação Periódica (Venc: ${formatSimpleDate(c.vencPsico)})`;
         }
@@ -21329,7 +21386,7 @@ function gerarListaOficialConvocacaoPsicossocial() {
     <div class="info-bar">
         <div><strong>Data Prevista para os Atendimentos:</strong> ${dataAtendimentoFmt}</div>
         <div><strong>Competência:</strong> ${competenciaFmt}</div>
-        <div><strong>Total de Convocados:</strong> <strong>${convocadosOrdenados.length} colaboradores</strong> (${totalInclusoes} inclusões PCMSO + ${totalRenovacoes} renovações periódicas)</div>
+        <div><strong>Total de Convocados:</strong> <strong>${convocadosOrdenados.length} colaboradores</strong> (${totalInclusoes} inclusões do programa + ${totalRenovacoes} renovações periódicas)</div>
         <div><strong>Local:</strong> Ambulatório / Canteiro de Obras Ramal do Agreste</div>
     </div>
 
@@ -32664,6 +32721,16 @@ async function carregarConfiguracoesSistema() {
             if (typeof porId.psico_limiares.risco_critico === 'number') PSICO_LIMIAR_RISCO_CRITICO = porId.psico_limiares.risco_critico;
             if (typeof porId.psico_limiares.favoravel_forte === 'number') PSICO_LIMIAR_FAVORAVEL_FORTE = porId.psico_limiares.favoravel_forte;
         }
+        if (porId.data_implantacao_psicossocial) {
+            DATA_IMPLANTACAO_PSICOSSOCIAL = typeof porId.data_implantacao_psicossocial === 'string'
+                ? porId.data_implantacao_psicossocial
+                : (porId.data_implantacao_psicossocial.data || '2026-07-01');
+        }
+        if (porId.psico_data_mutirao) {
+            const dtMut = typeof porId.psico_data_mutirao === 'string' ? porId.psico_data_mutirao : (porId.psico_data_mutirao.data || '2026-10-06');
+            localStorage.setItem('psico_data_mutirao', dtMut);
+            localStorage.setItem('exame_data_mutirao_psicossocial', dtMut);
+        }
         if (porId.residuos_fatores) {
             if (typeof porId.residuos_fatores.kg_por_quentinha === 'number') RESIDUO_KG_POR_QUENTINHA = porId.residuos_fatores.kg_por_quentinha;
             if (typeof porId.residuos_fatores.kg_por_copo === 'number') RESIDUO_KG_POR_COPO = porId.residuos_fatores.kg_por_copo;
@@ -32711,6 +32778,8 @@ function renderConfigGeral() {
 
     document.getElementById('cfgPsicoCritico').value = PSICO_LIMIAR_RISCO_CRITICO;
     document.getElementById('cfgPsicoFavoravel').value = PSICO_LIMIAR_FAVORAVEL_FORTE;
+    const inputDtImplantacao = document.getElementById('cfgPsicoDataImplantacao');
+    if (inputDtImplantacao) inputDtImplantacao.value = DATA_IMPLANTACAO_PSICOSSOCIAL;
 
     document.getElementById('cfgResiduoQuentinha').value = RESIDUO_KG_POR_QUENTINHA;
     document.getElementById('cfgResiduoCopo').value = RESIDUO_KG_POR_COPO;
@@ -32827,8 +32896,10 @@ async function salvarConfigPsico() {
     const statusEl = document.getElementById('cfgPsicoStatus');
     const critico = parseFloat(document.getElementById('cfgPsicoCritico').value);
     const favoravel = parseFloat(document.getElementById('cfgPsicoFavoravel').value);
+    const dtImplantacao = document.getElementById('cfgPsicoDataImplantacao')?.value || DATA_IMPLANTACAO_PSICOSSOCIAL;
+
     if (isNaN(critico) || isNaN(favoravel) || critico < 0 || critico > 100 || favoravel < 0 || favoravel > 100) {
-        statusEl.textContent = '❌ Informe valores entre 0 e 100.';
+        statusEl.textContent = '❌ Informe valores entre 0 e 100 para os limiares.';
         statusEl.style.color = 'var(--danger)';
         return;
     }
@@ -32836,13 +32907,18 @@ async function salvarConfigPsico() {
     statusEl.textContent = '⏳ Salvando...';
     statusEl.style.color = 'var(--text-light)';
     try {
-        await supabaseUpsert('configuracoes_sistema', [{ id: 'psico_limiares', valor, descricao: 'Limiares (%) de destaque visual da Avaliação Psicossocial (COPSOQ II).', atualizado_em: new Date().toISOString(), atualizado_por: usuarioDashboardAtual() || 'painel' }]);
+        await supabaseUpsert('configuracoes_sistema', [
+            { id: 'psico_limiares', valor, descricao: 'Limiares (%) de destaque visual da Avaliação Psicossocial (COPSOQ II).', atualizado_em: new Date().toISOString(), atualizado_por: usuarioDashboardAtual() || 'painel' },
+            { id: 'data_implantacao_psicossocial', valor: dtImplantacao, descricao: 'Marco temporal inicial oficial do programa de avaliação psicossocial.', atualizado_em: new Date().toISOString(), atualizado_por: usuarioDashboardAtual() || 'painel' }
+        ]);
         PSICO_LIMIAR_RISCO_CRITICO = critico;
         PSICO_LIMIAR_FAVORAVEL_FORTE = favoravel;
-        statusEl.textContent = '✅ Salvo.';
+        DATA_IMPLANTACAO_PSICOSSOCIAL = dtImplantacao;
+        statusEl.textContent = '✅ Salvo com sucesso.';
         statusEl.style.color = 'var(--success)';
+        if (typeof renderRecomendacaoPsicossocial === 'function') renderRecomendacaoPsicossocial();
     } catch (e) {
-        console.error('Erro ao salvar limiares do Psicossocial:', e);
+        console.error('Erro ao salvar configurações do Psicossocial:', e);
         statusEl.textContent = '❌ Falha ao salvar: ' + e.message;
         statusEl.style.color = 'var(--danger)';
     }

@@ -8041,21 +8041,25 @@
                 </div>
 
                 <div class="db-chart-card" style="margin-bottom: 16px;">
-                    <div class="db-chart-title">🧠 Limiares do Psicossocial</div>
+                    <div class="db-chart-title">🧠 Parâmetros do Psicossocial</div>
                     <p style="font-size: 12px; color: var(--text-light); margin-bottom: 12px;">
-                        Só definem a partir de qual % a tela pinta o resultado como "risco crítico" ou "favorável forte". Não vêm do PGR nem do instrumento de avaliação - é só um destaque visual.
+                        Configure o marco temporal inicial de implantação da Avaliação Psicossocial no PCMSO (exames anteriores a este corte são desconsiderados para status e conformidade técnica) e os limiares de destaque visual.
                     </p>
-                    <div style="display:flex; gap:10px; max-width:320px;">
-                        <div style="flex:1;">
+                    <div style="display:flex; gap:12px; max-width:540px; flex-wrap:wrap; margin-bottom:10px;">
+                        <div style="flex:1; min-width:180px;">
+                            <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Marco Temporal Inicial (Implantação)</label>
+                            <input type="date" id="cfgPsicoDataImplantacao" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
+                        </div>
+                        <div style="flex:1; min-width:150px;">
                             <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Risco crítico a partir de (%)</label>
                             <input type="number" id="cfgPsicoCritico" min="0" max="100" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
                         </div>
-                        <div style="flex:1;">
+                        <div style="flex:1; min-width:150px;">
                             <label style="font-size:12px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Favorável forte a partir de (%)</label>
                             <input type="number" id="cfgPsicoFavoravel" min="0" max="100" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px;">
                         </div>
                     </div>
-                    <button class="db-apply-btn" style="margin-top:12px;" onclick="salvarConfigPsico()">Salvar</button>
+                    <button class="db-apply-btn" style="margin-top:4px;" onclick="salvarConfigPsico()">Salvar</button>
                     <div id="cfgPsicoStatus" style="margin-top: 8px; font-size: 12.5px;"></div>
                 </div>
 
@@ -8365,7 +8369,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=158"></script>
+    <script src="dashboard.js?v=159"></script>
     <script src="placar_lideres.js?v=4"></script>
 <script>
 function filterMatrizEpi(q) {

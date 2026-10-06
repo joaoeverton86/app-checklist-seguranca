@@ -8369,7 +8369,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=159"></script>
+    <script src="dashboard.js?v=160"></script>
     <script src="placar_lideres.js?v=4"></script>
 <script>
 function filterMatrizEpi(q) {
@@ -9146,6 +9146,33 @@ function filterMatrizEpi(q) {
                     </div>
                 </div>
 
+                <!-- Segunda Linha de Controles: Filtro de Status & Checkbox de Legado -->
+                <div style="display: grid; grid-template-columns: 1.4fr 1.6fr; gap: 12px; margin-bottom: 10px;">
+                    <div>
+                        <label style="display:block; margin-bottom: 4px; font-size: 11.5px; font-weight: 700; color: var(--text);">
+                            📊 Filtro de Status de Triagem:
+                        </label>
+                        <select id="convocPsico_filtroStatusTriagem" onchange="aoMudarFiltroStatusTriagem()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); font-weight: 600;">
+                            <option value="pendentes_periodo" selected>⚡ Pendentes do Período (Padrão)</option>
+                            <option value="apenas_inclusoes">🔴 Apenas Inclusões Pendentes</option>
+                            <option value="apenas_renovacoes">🟡 Apenas Renovações do Mês</option>
+                            <option value="em_dia">🟢 Colaboradores com Exame em Dia</option>
+                            <option value="todos">🌐 Todos os Colaboradores do GHE</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block; margin-bottom: 4px; font-size: 11.5px; font-weight: 700; color: var(--text);">
+                            📜 Histórico / Admissões Pré-Programa:
+                        </label>
+                        <div style="display: flex; align-items: center; min-height: 37px;">
+                            <label style="display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:700; color:var(--text); cursor:pointer; user-select:none; background:var(--card); padding:7px 12px; border:1px solid var(--border); border-radius:8px; width:100%; box-sizing:border-box;">
+                                <input type="checkbox" id="convocPsico_chkExibirLegado" onchange="aoMudarFiltroStatusTriagem()" style="cursor:pointer; width:16px; height:16px; accent-color: #6d28d9;">
+                                <span>Exibir admissões anteriores a Julho/2026 (Legado)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Campo de busca rápida -->
                 <div style="position: relative;">
                     <input type="text" id="convocPsico_buscaInput" placeholder="🔍 Filtrar rapidamente por nome, matrícula, CPF ou função..." oninput="renderTabelaConvocacaoPsicossocial()" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; box-sizing: border-box; background: var(--card); color: var(--text);">
@@ -9202,7 +9229,7 @@ function filterMatrizEpi(q) {
                             <th style="padding: 10px 12px;">Função Contratual</th>
                             <th style="padding: 10px 12px;">Motivo da Convocação</th>
                             <th style="padding: 10px 12px; text-align: center; width: 105px;">Vencimento</th>
-                            <th style="padding: 10px 12px; text-align: center; width: 70px;">Ação</th>
+                            <th style="padding: 10px 12px; text-align: center; width: 135px;">Ações</th>
                         </tr>
                     </thead>
                     <tbody id="convocPsico_tabelaCorpo">
@@ -9228,6 +9255,81 @@ function filterMatrizEpi(q) {
                     🖨️ Gerar Lista Oficial
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Sinalizar Exame em Dia (Regularização Rápida) -->
+<div id="modalSinalizarPsicoEmDia" class="placar-modal-overlay" style="display:none; z-index: 10050;" onclick="if(event.target===this) fecharModalSinalizarPsicoEmDia()">
+    <div class="placar-modal-card" style="max-width: 480px; width: 94%;" onclick="event.stopPropagation()">
+        <!-- Header -->
+        <div class="placar-modal-header" style="background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #fff; padding: 16px 20px;">
+            <div>
+                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px;">
+                    <span>🩺</span> Sinalizar Avaliação em Dia
+                </h3>
+                <p style="margin: 3px 0 0; font-size: 11.5px; color: #d1fae5;">
+                    Regularização de laudo pré-existente / histórico (Validade: +12 meses)
+                </p>
+            </div>
+            <button type="button" class="placar-modal-close" style="color: #fff;" onclick="fecharModalSinalizarPsicoEmDia()">&times;</button>
+        </div>
+
+        <!-- Body -->
+        <div class="placar-modal-body" style="padding: 18px 20px; display: flex; flex-direction: column; gap: 12px;">
+            <input type="hidden" id="sinPsico_matricula">
+            
+            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px;">
+                <div style="font-weight: 700; font-size: 13px; color: var(--text);" id="sinPsico_colabNome">—</div>
+                <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;" id="sinPsico_colabDetalhe">—</div>
+            </div>
+
+            <div>
+                <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">
+                    📅 Data da Avaliação Realizada: <span style="color:var(--danger)">*</span>
+                </label>
+                <input type="date" id="sinPsico_dataExame" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text); font-weight: 600;">
+                <small style="font-size: 11px; color: var(--text-light); display: block; margin-top: 3px;">
+                    A nova validade periódica anual (+12 meses) será computada a partir desta data.
+                </small>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">
+                        📋 Parecer / Conclusão:
+                    </label>
+                    <select id="sinPsico_resultado" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); font-weight: 600;">
+                        <option value="Apto" selected>🟢 Apto</option>
+                        <option value="Inapto">🔴 Inapto</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">
+                        👩‍⚕️ Profissional / CRP:
+                    </label>
+                    <input type="text" id="sinPsico_crp" placeholder="Ex: CRP 02/..." style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                </div>
+            </div>
+
+            <div>
+                <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">
+                    📝 Observações / Laudo:
+                </label>
+                <input type="text" id="sinPsico_obs" placeholder="Ex: Laudo admissional/periódico prévio apresentado" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+            </div>
+
+            <div id="sinPsico_statusMsg" style="font-size: 12px; min-height: 18px; text-align: center;"></div>
+        </div>
+
+        <!-- Footer -->
+        <div class="placar-modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px; background: var(--bg);">
+            <button type="button" class="db-clear-btn" onclick="fecharModalSinalizarPsicoEmDia()">
+                Cancelar
+            </button>
+            <button type="button" class="db-apply-btn" id="sinPsico_btnConfirmar" style="background: #059669; font-weight: 700; padding: 8px 16px;" onclick="confirmarSinalizarPsicoEmDia()">
+                💾 Confirmar &amp; Regularizar
+            </button>
         </div>
     </div>
 </div>

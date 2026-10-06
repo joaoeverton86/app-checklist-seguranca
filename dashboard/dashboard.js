@@ -20866,6 +20866,12 @@ async function abrirModalConvocacaoPsicossocial() {
     const buscaInput = document.getElementById('convocPsico_buscaInput');
     if (buscaInput) buscaInput.value = '';
 
+    // Resetar novos filtros de triagem
+    const selStatus = document.getElementById('convocPsico_filtroStatusTriagem');
+    if (selStatus) selStatus.value = 'pendentes_periodo';
+    const chkLegado = document.getElementById('convocPsico_chkExibirLegado');
+    if (chkLegado) chkLegado.checked = false;
+
     // Fechar painel avulso caso esteja aberto
     alternarPainelAdicionarAvulsoPsico(false);
 
@@ -20930,27 +20936,35 @@ function popularDatalistColabsAvulsosPsico() {
     }).join('');
 }
 
+function aoMudarFiltroPeriodoConvocacao() {
+    carregarColaboradoresTriagemPsicossocial();
+}
+
+function aoMudarFiltroStatusTriagem() {
+    carregarColaboradoresTriagemPsicossocial();
+}
+
 function carregarColaboradoresTriagemPsicossocial() {
     const filtroPeriodo = document.getElementById('convocPsico_filtroPeriodo')?.value || 'mes_atual';
+    const filtroStatus = document.getElementById('convocPsico_filtroStatusTriagem')?.value || 'pendentes_periodo';
+    const exibirLegado = !!document.getElementById('convocPsico_chkExibirLegado')?.checked;
+
     const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
     const ghesObrigatorios = obterGhesObrigatoriosPsicossocial();
     const hoje = new Date();
     const hojeStr = hoje.toISOString().split('T')[0];
 
-    // Limites de data para os filtros
-    // Fim do mês atual:
+    // Limites de data para os filtros de período
     const dFimMesAtual = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
     const ultimoDiaMesAtual = dFimMesAtual.toISOString().split('T')[0];
 
-    // Fim do mês seguinte (60d):
     const dFim60d = new Date(hoje.getFullYear(), hoje.getMonth() + 2, 0);
     const ultimoDia60d = dFim60d.toISOString().split('T')[0];
 
-    // Fim de 2 meses após (90d):
     const dFim90d = new Date(hoje.getFullYear(), hoje.getMonth() + 3, 0);
     const ultimoDia90d = dFim90d.toISOString().split('T')[0];
 
-    // Preservar seleções anteriores
+    // Preservar seleções anteriores feitas pelo usuário
     const selecaoAnteriorMap = new Map();
     (convocacaoPsicoLista || []).forEach(item => {
         selecaoAnteriorMap.set(item.matricula, item.selecionado);
@@ -20962,6 +20976,9 @@ function carregarColaboradoresTriagemPsicossocial() {
         const g = normalizarGhe(c.ghe);
         if (!ghesObrigatorios.has(g)) return;
 
+        const dtAdm = c.dt_admissao || c.data_admissao || '';
+        const ehAdmissaoLegada = !!(dtAdm && dtAdm < DATA_IMPLANTACAO_PSICOSSOCIAL);
+
         const asos = (allAsoExames || []).filter(a => a.matricula === c.id)
             .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
 
@@ -20971,7 +20988,8 @@ function carregarColaboradoresTriagemPsicossocial() {
 
         for (const a of asos) {
             // Marco temporal inicial oficial (corte em 01/07/2026) da Avaliação Psicossocial:
-            // Apenas exames a partir de 01/07/2026 contam como avaliação válida do programa.
+            // Apenas exames a partir de 01/07/2026 contam como avaliação válida do programa
+            // (a não ser que o colaborador já tenha sido regularizado diretamente).
             if (a.data_exame && a.data_exame < DATA_IMPLANTACAO_PSICOSSOCIAL) {
                 continue;
             }
@@ -20993,29 +21011,43 @@ function carregarColaboradoresTriagemPsicossocial() {
             }
         }
 
+        // Determinar se vence dentro da competência/período selecionado
+        let venceNoPeriodo = false;
+        if (!vencPsico || vencPsico <= ultimoDiaMesAtual) {
+            venceNoPeriodo = true;
+        } else if (filtroPeriodo === '60d' && vencPsico <= ultimoDia60d) {
+            venceNoPeriodo = true;
+        } else if (filtroPeriodo === '90d' && vencPsico <= ultimoDia90d) {
+            venceNoPeriodo = true;
+        } else if (filtroPeriodo === 'todos') {
+            venceNoPeriodo = true;
+        }
+
         let deveEntrar = false;
         let motivo = '';
         let tipoConvocacao = 'inclusao';
+        let selecaoPadrao = true;
 
         if (!temPsico) {
-            deveEntrar = true;
-            motivo = 'Inclusão PCMSO (Implantação do Programa)';
             tipoConvocacao = 'inclusao';
-        } else {
-            tipoConvocacao = 'renovacao';
-            if (filtroPeriodo === 'apenas_inclusoes') {
-                deveEntrar = false;
-            } else if (filtroPeriodo === 'mes_atual') {
-                deveEntrar = !vencPsico || vencPsico <= ultimoDiaMesAtual;
-            } else if (filtroPeriodo === '60d') {
-                deveEntrar = !vencPsico || vencPsico <= ultimoDia60d;
-            } else if (filtroPeriodo === '90d') {
-                deveEntrar = !vencPsico || vencPsico <= ultimoDia90d;
-            } else if (filtroPeriodo === 'todos') {
-                deveEntrar = true;
-            }
+            motivo = ehAdmissaoLegada 
+                ? 'Inclusão PCMSO (Admissão Pré-Julho/2026)' 
+                : 'Inclusão PCMSO (Implantação do Programa)';
 
-            if (deveEntrar) {
+            // Regra de legado: admissões anteriores a Julho/2026 sem avaliação
+            // só aparecem na rotina de triagem caso o checkbox de legado esteja ativado.
+            if (ehAdmissaoLegada && !exibirLegado) {
+                deveEntrar = false;
+            } else {
+                if (filtroStatus === 'pendentes_periodo' || filtroStatus === 'apenas_inclusoes' || filtroStatus === 'todos') {
+                    deveEntrar = true;
+                    selecaoPadrao = true;
+                }
+            }
+        } else {
+            // Possui avaliação válida registrada
+            if (venceNoPeriodo) {
+                tipoConvocacao = 'renovacao';
                 if (vencPsico && vencPsico < hojeStr) {
                     motivo = `Renovação Periódica (🔴 Vencido em ${formatSimpleDate(vencPsico)})`;
                 } else if (vencPsico) {
@@ -21023,11 +21055,25 @@ function carregarColaboradoresTriagemPsicossocial() {
                 } else {
                     motivo = 'Renovação Periódica';
                 }
+
+                if (filtroStatus === 'pendentes_periodo' || filtroStatus === 'apenas_renovacoes' || filtroStatus === 'todos') {
+                    deveEntrar = true;
+                    selecaoPadrao = true;
+                }
+            } else {
+                // Está em dia com validade futura
+                tipoConvocacao = 'em_dia';
+                motivo = `Exame em Dia (Validade: ${formatSimpleDate(vencPsico)})`;
+
+                if (filtroStatus === 'em_dia' || filtroStatus === 'todos') {
+                    deveEntrar = true;
+                    selecaoPadrao = false; // Em dia fica desmarcado por padrão na convocação
+                }
             }
         }
 
         if (deveEntrar) {
-            const jaEstavaSel = selecaoAnteriorMap.has(c.id) ? selecaoAnteriorMap.get(c.id) : true;
+            const jaEstavaSel = selecaoAnteriorMap.has(c.id) ? selecaoAnteriorMap.get(c.id) : selecaoPadrao;
             novaLista.push({
                 matricula: c.id,
                 nome: c.nome || '',
@@ -21036,6 +21082,8 @@ function carregarColaboradoresTriagemPsicossocial() {
                 setor: c.setor || '—',
                 ghe: g,
                 gheNome: obterNomeGheCompleto(g),
+                dt_admissao: dtAdm,
+                ehLegado: ehAdmissaoLegada,
                 temPsico: temPsico,
                 dataPsico: dataPsico,
                 vencPsico: vencPsico,
@@ -21061,15 +21109,11 @@ function carregarColaboradoresTriagemPsicossocial() {
         if (a.vencPsico && b.vencPsico && a.vencPsico !== b.vencPsico) {
             return a.vencPsico.localeCompare(b.vencPsico);
         }
-        return a.nome.localeCompare(b.nome);
+        return (a.nome || '').localeCompare(b.nome || '', 'pt-BR', { sensitivity: 'base' });
     });
 
     convocacaoPsicoLista = novaLista;
     renderTabelaConvocacaoPsicossocial();
-}
-
-function aoMudarFiltroPeriodoConvocacao() {
-    carregarColaboradoresTriagemPsicossocial();
 }
 
 function renderTabelaConvocacaoPsicossocial() {
@@ -21107,21 +21151,29 @@ function renderTabelaConvocacaoPsicossocial() {
         if (c.avulso) {
             motivoBadge = `<span style="background:#f3e8ff; color:#7e22ce; border:1px solid #d8b4fe; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">➕ Avulso / SESMT</span>`;
         } else if (c.tipoConvocacao === 'inclusao') {
-            motivoBadge = `<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">🔴 Inclusão PCMSO</span>`;
+            const rotuloInc = c.ehLegado ? '🔴 Inclusão (Legado)' : '🔴 Inclusão PCMSO';
+            motivoBadge = `<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">${rotuloInc}</span>`;
+        } else if (c.tipoConvocacao === 'em_dia') {
+            motivoBadge = `<span style="background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">🟢 Em Dia</span>`;
         } else if (c.vencPsico && c.vencPsico < new Date().toISOString().split('T')[0]) {
             motivoBadge = `<span style="background:#fef2f2; color:#b91c1c; border:1px solid #fca5a5; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">🔴 Vencido (${vencFmt})</span>`;
         } else {
             motivoBadge = `<span style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">🟡 Renovação Periódica</span>`;
         }
 
-        const btnAcao = c.avulso 
-            ? `<button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:11px; color:var(--danger); border-color:var(--danger);" onclick="removerColaboradorAvulsoConvocacao('${escapeHTML(c.matricula)}')" title="Remover da convocação">✕</button>`
-            : `<span style="color:var(--text-light); font-size:11px;">—</span>`;
+        const btnAcao = `
+            <div style="display:inline-flex; align-items:center; justify-content:center; gap:5px;">
+                <button type="button" class="db-clear-btn" style="padding:3px 7px; font-size:11px; font-weight:700; color:#059669; border-color:#10b981; background:#ecfdf5; border-radius:6px; cursor:pointer;" onclick="abrirModalSinalizarPsicoEmDia('${escapeHTML(c.matricula)}')" title="Sinalizar que colaborador possui avaliação válida e regularizar no sistema">
+                    🩺 Em Dia
+                </button>
+                ${c.avulso ? `<button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:11px; color:var(--danger); border-color:var(--danger);" onclick="removerColaboradorAvulsoConvocacao('${escapeHTML(c.matricula)}')" title="Remover da convocação">✕</button>` : ''}
+            </div>
+        `;
 
         return `
             <tr style="border-bottom: 1px solid var(--border); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(109,40,217,0.03)'" onmouseout="this.style.background=''">
                 <td style="padding: 8px 12px; text-align: center;">
-                    <input type="checkbox" class="chk-convoc-psico" value="${escapeHTML(c.matricula)}" ${checked} onchange="onCheckboxConvocacaoIndividual(this, '${escapeHTML(c.matricula)}')" style="cursor: pointer; width: 16px; height: 16px;">
+                    <input type="checkbox" class="chk-convoc-psico" value="${escapeHTML(c.matricula)}" ${checked} onchange="onCheckboxConvocacaoIndividual(this, '${escapeHTML(c.matricula)}')" style="cursor: pointer; width: 16px; height: 16px; accent-color: #6d28d9;">
                 </td>
                 <td style="padding: 8px 12px; font-weight: 700; color: var(--primary); text-align: center;">
                     ${escapeHTML(c.matricula)}
@@ -21155,6 +21207,169 @@ function renderTabelaConvocacaoPsicossocial() {
     }
 
     atualizarContadorDinamicoConvocacao();
+}
+
+// ---- Modal de Regularização Rápida: Sinalizar Avaliação em Dia ----
+function abrirModalSinalizarPsicoEmDia(matricula) {
+    const colab = (convocacaoPsicoLista || []).find(c => c.matricula === matricula)
+        || (allEfetivo || []).find(e => e.id === matricula);
+    if (!colab) return;
+
+    const modal = document.getElementById('modalSinalizarPsicoEmDia');
+    if (!modal) return;
+
+    const matriculaVal = colab.matricula || colab.id;
+    document.getElementById('sinPsico_matricula').value = matriculaVal;
+    document.getElementById('sinPsico_colabNome').textContent = `${colab.nome} (Matrícula: ${matriculaVal})`;
+    document.getElementById('sinPsico_colabDetalhe').textContent = `GHE: ${colab.gheNome || colab.ghe || '—'} | Função: ${colab.funcao || '—'}`;
+
+    // Sugestão de data: hoje ou data existente
+    const hojeStr = new Date().toISOString().split('T')[0];
+    document.getElementById('sinPsico_dataExame').value = colab.dataPsico || hojeStr;
+    document.getElementById('sinPsico_resultado').value = 'Apto';
+    document.getElementById('sinPsico_crp').value = '';
+    document.getElementById('sinPsico_obs').value = 'Regularização de laudo pré-existente (SESMT)';
+    document.getElementById('sinPsico_statusMsg').innerHTML = '';
+
+    const btnConfirmar = document.getElementById('sinPsico_btnConfirmar');
+    if (btnConfirmar) {
+        btnConfirmar.disabled = false;
+        btnConfirmar.textContent = '💾 Confirmar & Regularizar';
+    }
+
+    modal.style.display = 'flex';
+}
+
+function fecharModalSinalizarPsicoEmDia() {
+    const modal = document.getElementById('modalSinalizarPsicoEmDia');
+    if (modal) modal.style.display = 'none';
+}
+
+async function confirmarSinalizarPsicoEmDia() {
+    const matricula = document.getElementById('sinPsico_matricula')?.value;
+    const dataExame = document.getElementById('sinPsico_dataExame')?.value;
+    const resultado = document.getElementById('sinPsico_resultado')?.value || 'Apto';
+    const crp = (document.getElementById('sinPsico_crp')?.value || '').trim();
+    const obs = (document.getElementById('sinPsico_obs')?.value || '').trim();
+    const statusMsg = document.getElementById('sinPsico_statusMsg');
+    const btnConfirmar = document.getElementById('sinPsico_btnConfirmar');
+
+    if (!matricula || !dataExame) {
+        alert('Por favor, informe a data em que a avaliação foi realizada.');
+        return;
+    }
+
+    if (btnConfirmar) {
+        btnConfirmar.disabled = true;
+        btnConfirmar.textContent = '⏳ Salvando...';
+    }
+    if (statusMsg) {
+        statusMsg.innerHTML = '<span style="color:var(--primary); font-weight:700;">Gravando regularização no banco de dados...</span>';
+    }
+
+    try {
+        const colab = (allEfetivo || []).find(e => e.id === matricula);
+        const dataVencimento = addMeses(dataExame, 12);
+        const profissionalTexto = crp ? `Psicóloga Responsável (${crp})` : 'Psicóloga Responsável';
+
+        const itemExame = {
+            nome: 'Avaliação Psicossocial',
+            periodicidade: 12,
+            data_vencimento: dataVencimento,
+            resultado: resultado,
+            profissional: profissionalTexto
+        };
+
+        const asos = (allAsoExames || []).filter(a => a.matricula === matricula)
+            .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
+        const ultimoAso = asos[0];
+
+        if (ultimoAso) {
+            let examesDetalhe = Array.isArray(ultimoAso.exames_detalhe) ? [...ultimoAso.exames_detalhe] : [];
+            const idx = examesDetalhe.findIndex(e => e.nome && e.nome.toLowerCase().includes('psico'));
+            if (idx >= 0) {
+                examesDetalhe[idx] = { ...examesDetalhe[idx], ...itemExame };
+            } else {
+                examesDetalhe.push(itemExame);
+            }
+
+            const payload = {
+                id: ultimoAso.id,
+                exames_detalhe: examesDetalhe,
+                obs: obs ? `${ultimoAso.obs ? ultimoAso.obs + ' | ' : ''}Psicossocial regularizado em ${formatSimpleDate(dataExame)}: ${obs}` : ultimoAso.obs
+            };
+
+            await supabaseUpsert('aso_exames', [payload]);
+            ultimoAso.exames_detalhe = examesDetalhe;
+        } else {
+            const novoAso = {
+                id: `ASO_${Date.now()}_${matricula}`,
+                matricula: matricula,
+                nome_colaborador: colab?.nome || '',
+                funcao: colab?.funcao || '',
+                setor: colab?.setor || '',
+                tipo_aso: 'periodico',
+                data_exame: dataExame,
+                data_vencimento: dataVencimento,
+                resultado: resultado.toLowerCase().includes('inapto') ? 'inapto' : 'apto',
+                medico_responsavel: profissionalTexto,
+                obs: obs || 'Avaliação Psicossocial (PGR/PCMSO)',
+                exames_detalhe: [itemExame]
+            };
+            await supabaseUpsert('aso_exames', [novoAso]);
+            allAsoExames.push(novoAso);
+        }
+
+        // Tentar gravar também na tabela auxiliar avaliacoes_psicossociais se existir
+        try {
+            await supabaseUpsert('avaliacoes_psicossociais', [{
+                id: `AVAL_PSICO_${matricula}_${dataExame}`,
+                matricula: matricula,
+                data_avaliacao: dataExame,
+                data_vencimento: dataVencimento,
+                resultado: resultado,
+                parecer: resultado,
+                profissional: profissionalTexto,
+                observacoes: obs || 'Regularização de laudo pré-existente (SESMT)',
+                atualizado_em: new Date().toISOString()
+            }]);
+        } catch (ePsico) {
+            console.warn('Registro em avaliacoes_psicossociais dispensado:', ePsico);
+        }
+
+        // Atualizar imediatamente a linha correspondente na lista de convocação
+        const colabConvoc = (convocacaoPsicoLista || []).find(c => c.matricula === matricula);
+        if (colabConvoc) {
+            colabConvoc.temPsico = true;
+            colabConvoc.dataPsico = dataExame;
+            colabConvoc.vencPsico = dataVencimento;
+            colabConvoc.tipoConvocacao = 'em_dia';
+            colabConvoc.motivo = `Regularizado em Dia (Validade: ${formatSimpleDate(dataVencimento)})`;
+            colabConvoc.selecionado = false; // Desmarcar pois acabou de ser regularizado
+        }
+
+        if (statusMsg) {
+            statusMsg.innerHTML = `<span style="color:var(--success); font-weight:700;">✅ Regularizado com sucesso! Validade anual estendida até ${formatSimpleDate(dataVencimento)}.</span>`;
+        }
+
+        setTimeout(() => {
+            fecharModalSinalizarPsicoEmDia();
+            renderTabelaConvocacaoPsicossocial();
+            atualizarContadorDinamicoConvocacao();
+            if (typeof renderRecomendacaoPsicossocial === 'function') renderRecomendacaoPsicossocial();
+            if (typeof renderSaudePanel === 'function') renderSaudePanel();
+        }, 700);
+
+    } catch (err) {
+        console.error('Erro ao salvar regularização psicossocial:', err);
+        if (btnConfirmar) {
+            btnConfirmar.disabled = false;
+            btnConfirmar.textContent = '💾 Confirmar & Regularizar';
+        }
+        if (statusMsg) {
+            statusMsg.innerHTML = `<span style="color:var(--danger); font-weight:700;">❌ Falha ao salvar: ${err.message}</span>`;
+        }
+    }
 }
 
 function onCheckboxConvocacaoIndividual(chk, matricula) {

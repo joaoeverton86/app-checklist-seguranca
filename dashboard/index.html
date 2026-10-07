@@ -501,12 +501,47 @@
 
                 <div id="checklistsSubtab-historico" style="display:none;">
                 <div class="db-chart-card">
-                    <div class="db-chart-title" style="margin-bottom: 12px;">📜 Histórico de Checklists Realizados</div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+                        <div class="db-chart-title" style="margin-bottom: 0;">📜 Histórico de Checklists Realizados</div>
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <button type="button" class="db-apply-btn" id="btnSyncChecklistsDrive" onclick="sincronizarChecklistsPendentesAoGoogleDrive()" style="padding: 7px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; background: #0284c7; border: none;" title="Sincronizar checklists pendentes com o Google Drive organizados por Ano e Mês">
+                                <i class="fab fa-google-drive"></i> Sincronizar com Drive <span id="badgeChecklistsPendentesDrive" style="background: #ffffff; color: #0369a1; padding: 1px 6px; border-radius: 10px; font-weight: 700; font-size: 11px; margin-left: 2px;">0</span>
+                            </button>
+                            <button type="button" class="db-clear-btn" onclick="abrirModalImportarChecklistsLegados()" style="padding: 7px 12px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; border-color: #0284c7; color: #0284c7; background: rgba(2,132,199,0.05);" title="Importar PDFs de checklists anteriores para o histórico e para o Drive">
+                                <i class="fas fa-file-import"></i> Importar Checklists Antigos (PDF)
+                            </button>
+                            <button type="button" class="db-clear-btn" onclick="abrirModalConfigGoogleDrive()" style="padding: 7px 10px; font-size: 12px;" title="Configurações da integração com Google Drive">
+                                <i class="fas fa-cog"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Barra de Progresso de Sincronização em Lote com Google Drive -->
+                    <div id="historicoDriveProgressContainer" style="display: none; margin-bottom: 14px; padding: 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span id="historicoDriveProgressStatus" style="font-size: 12px; font-weight: 700; color: #0369a1;">Sincronizando com o Google Drive...</span>
+                            <span id="historicoDriveProgressCount" style="font-size: 11.5px; color: #0284c7; font-weight: 600;">0 / 0</span>
+                        </div>
+                        <div style="width: 100%; height: 8px; background: #e0f2fe; border-radius: 4px; overflow: hidden;">
+                            <div id="historicoDriveProgressBar" style="width: 0%; height: 100%; background: #0284c7; transition: width 0.3s ease;"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+                            <span id="historicoDriveProgressItem" style="font-size: 11px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80%;">Iniciando...</span>
+                            <button type="button" class="db-clear-btn" onclick="cancelarSincronizacaoDrive()" style="padding: 2px 8px; font-size: 11px; color: #ef4444; border-color: #fca5a5;">Cancelar</button>
+                        </div>
+                    </div>
+
                     <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
                         <select id="histCategoria" onchange="renderHistoricoChecklists()" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
                             <option value="">Todos os Tipos</option>
                         </select>
-                        <input type="text" id="histPatrimonio" placeholder="Buscar por patrimônio..."
+                        <select id="histDriveStatus" onchange="renderHistoricoChecklists()" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
+                            <option value="">Status Drive: Todos</option>
+                            <option value="synced">☁️ Arquivados no Drive</option>
+                            <option value="pending">⏳ Pendentes no Drive</option>
+                            <option value="legado">📁 Legados Importados</option>
+                        </select>
+                        <input type="text" id="histPatrimonio" placeholder="Buscar por patrimônio, equipamento ou empresa..."
                                oninput="renderHistoricoChecklists()"
                                style="flex: 1; min-width: 160px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box;">
                         <button class="db-clear-btn" onclick="limparFiltroHistorico()">✕ Limpar</button>
@@ -8374,12 +8409,13 @@
         </main>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=166"></script>
+    <script src="dashboard.js?v=167"></script>
     <script src="placar_lideres.js?v=4"></script>
 <script>
 function filterMatrizEpi(q) {
@@ -9398,6 +9434,135 @@ function filterMatrizEpi(q) {
             </div>
 
             <div id="editSessaoStatus" style="font-size:12.5px; text-align:center;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Importar Checklists Legados (PDF) -->
+<div id="modalImportarChecklistsLegados" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:10050; align-items:center; justify-content:center; padding:20px;" onclick="if (event.target === this) fecharModalImportarChecklistsLegados();">
+    <div style="background:var(--card); border-radius:14px; max-width:960px; width:100%; max-height:90vh; display:flex; flex-direction:column; padding:24px; box-shadow:var(--shadow); border:1px solid var(--border); box-sizing:border-box;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div class="db-chart-title" style="margin-bottom:0; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-file-import" style="color:#0284c7;"></i> 📥 Importar Checklists Anteriores / Legados (PDF)
+            </div>
+            <button class="db-clear-btn" style="padding:4px 8px;" onclick="fecharModalImportarChecklistsLegados()">✕</button>
+        </div>
+
+        <div style="font-size:12px; color:var(--text-light); margin-bottom:14px; line-height:1.4;">
+            Envie arquivos PDF de inspeções já realizadas para arquivamento no <b>Google Drive</b> (organizados por Ano e Mês) e registro no histórico oficial de SST.
+        </div>
+
+        <!-- Área de Drag & Drop -->
+        <div id="dropzoneLegados" class="db-dropzone" onclick="document.getElementById('inputFilesLegadosPdf').click();">
+            <div class="db-dropzone-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+            <div style="font-weight:700; font-size:13.5px; color:#1e293b; margin-bottom:4px;">Arraste seus PDFs aqui ou clique para selecionar</div>
+            <div style="font-size:11.5px; color:#64748b;">Suporta múltiplos arquivos PDF simultâneos</div>
+            <input type="file" id="inputFilesLegadosPdf" multiple accept=".pdf,application/pdf" style="display:none;" onchange="aoSelecionarArquivosLegados(event)">
+        </div>
+
+        <datalist id="datalistPatrimoniosChecklist"></datalist>
+
+        <!-- Barra de Progresso de Upload de Legados -->
+        <div id="progressoLegadosContainer" style="display:none; margin-top:14px; padding:12px; background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <span id="progressoLegadosStatus" style="font-size:12px; font-weight:700; color:#0369a1;">Enviando para o Google Drive...</span>
+                <span id="progressoLegadosCount" style="font-size:11.5px; color:#0284c7; font-weight:600;">0 / 0</span>
+            </div>
+            <div style="width:100%; height:8px; background:#e0f2fe; border-radius:4px; overflow:hidden;">
+                <div id="progressoLegadosBar" style="width:0%; height:100%; background:#0284c7; transition:width 0.3s ease;"></div>
+            </div>
+            <div id="progressoLegadosItem" style="font-size:11px; color:#64748b; margin-top:4px;">Iniciando processamento...</div>
+        </div>
+
+        <!-- Tabela de Conferência de Arquivos -->
+        <div style="flex:1; overflow-y:auto; margin-top:14px; margin-bottom:14px; border:1px solid var(--border); border-radius:8px;">
+            <table class="legados-table">
+                <thead>
+                    <tr>
+                        <th style="width:24%;">Arquivo Original</th>
+                        <th style="width:16%;">Data do CKL *</th>
+                        <th style="width:18%;">Patrimônio *</th>
+                        <th style="width:22%;">Equipamento *</th>
+                        <th style="width:15%;">Empresa</th>
+                        <th style="width:5%; text-align:center;">✕</th>
+                    </tr>
+                </thead>
+                <tbody id="tabelaArquivosLegadosBody">
+                    <tr>
+                        <td colspan="6" style="text-align:center; padding:24px; color:var(--text-light); font-size:12px;">
+                            Nenhum arquivo adicionado. Arraste ou clique na área acima para selecionar.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Rodapé de Ações do Modal -->
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <button type="button" class="db-clear-btn" style="padding:8px 12px; font-size:12px;" onclick="document.getElementById('inputFilesLegadosPdf').click();">
+                    <i class="fas fa-plus"></i> Adicionar Mais PDFs
+                </button>
+                <button type="button" class="db-clear-btn" style="padding:8px 12px; font-size:12px; color:var(--danger);" onclick="limparFilaLegados()">
+                    Limpar Lista
+                </button>
+                <span id="legadosCountBadge" style="font-size:11.5px; color:var(--text-light); font-weight:600;"></span>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button type="button" class="db-clear-btn" style="padding:8px 16px; font-size:12.5px;" onclick="fecharModalImportarChecklistsLegados()">
+                    Cancelar
+                </button>
+                <button type="button" class="db-apply-btn" id="btnIniciarUploadLegados" style="padding:8px 20px; font-size:12.5px; background:#0284c7; border:none; display:flex; align-items:center; gap:6px;" onclick="iniciarUploadChecklistsLegados()">
+                    <i class="fas fa-cloud-upload-alt"></i> Enviar para o Google Drive e Registrar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Configuração do Google Drive -->
+<div id="modalConfigGoogleDrive" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:10050; align-items:center; justify-content:center; padding:20px;" onclick="if (event.target === this) fecharModalConfigGoogleDrive();">
+    <div style="background:var(--card); border-radius:14px; max-width:540px; width:100%; padding:22px 24px; box-shadow:var(--shadow); border:1px solid var(--border); box-sizing:border-box;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <div class="db-chart-title" style="margin-bottom:0; display:flex; align-items:center; gap:8px;">
+                <i class="fab fa-google-drive" style="color:#0284c7;"></i> ⚙️ Configuração da Integração com Google Drive
+            </div>
+            <button class="db-clear-btn" style="padding:4px 8px;" onclick="fecharModalConfigGoogleDrive()">✕</button>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:16px;">
+            <div>
+                <label style="display:block; font-size:12px; font-weight:600; color:var(--text-light); margin-bottom:4px;">
+                    URL do Aplicativo da Web (Google Apps Script) *
+                </label>
+                <input type="text" id="cfgDriveScriptUrl" placeholder="https://script.google.com/macros/s/.../exec" style="width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
+                <div style="font-size:11px; color:var(--text-light); margin-top:4px;">
+                    Endpoint seguro para criação automática das pastas <code>Checklists SST / {Ano} / {Mês} /</code>.
+                </div>
+            </div>
+
+            <div>
+                <label style="display:block; font-size:12px; font-weight:600; color:var(--text-light); margin-bottom:4px;">
+                    Nome da Pasta Raiz no Drive
+                </label>
+                <input type="text" id="cfgDriveRootFolder" value="Checklists SST" placeholder="Checklists SST" style="width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
+            </div>
+
+            <div style="display:flex; gap:10px; align-items:center; margin-top:4px;">
+                <button type="button" class="db-clear-btn" id="btnTestarConexaoDrive" style="padding:8px 14px; font-size:12px; display:inline-flex; align-items:center; gap:6px;" onclick="testarConexaoGoogleDrive()">
+                    <i class="fas fa-plug"></i> Testar Conexão
+                </button>
+                <span id="cfgDriveTestStatus" style="font-size:12px; font-weight:600;"></span>
+            </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+            <button type="button" class="db-clear-btn" style="padding:8px 16px; font-size:12.5px;" onclick="fecharModalConfigGoogleDrive()">
+                Cancelar
+            </button>
+            <button type="button" class="db-apply-btn" style="padding:8px 20px; font-size:12.5px; background:#0284c7; border:none;" onclick="salvarConfigGoogleDrive()">
+                💾 Salvar Configurações
+            </button>
         </div>
     </div>
 </div>

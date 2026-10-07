@@ -2,7 +2,8 @@
   "root": true,
   "env": {
     "browser": true,
-    "es2021": true
+    "es2021": true,
+    "node": true
   },
   "parserOptions": {
     "ecmaVersion": 2021,
@@ -20,7 +21,17 @@
     "jsQR": "readonly",
     "qrcode": "readonly",
     "dcodeIO": "readonly",
-    "sendPrompt": "readonly"
+    "sendPrompt": "readonly",
+    "supabase": "readonly",
+    "docx": "readonly",
+    "LOGO_COP_BASE64": "writable",
+    "showToast": "readonly",
+    "mostrarFeedbackToast": "readonly",
+    "usuarioLogadoPainel": "readonly",
+    "usuarioLogadoNome": "readonly",
+    "abrirPaginaPlacarLideres": "readonly",
+    "filterMatrizEpi": "readonly",
+    "abrirDocumentoHtmlParaImpressao": "readonly"
   },
   "rules": {
     "no-undef": "error",

@@ -2,6 +2,45 @@
   "workbench.iconTheme": "vscode-icons",
   "editor.formatOnSave": true,
   "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[javascript]": {
+    "editor.formatOnSave": false,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "explicit"
+    }
+  },
+  "eslint.enable": true,
+  "eslint.validate": [
+    "javascript",
+    "html"
+  ],
+  "eslint.options": {
+    "configFile": ".eslintrc.undef-check.json"
+  },
+  "editor.bracketPairColorization.enabled": true,
+  "editor.guides.bracketPairs": "active",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "path-intellisense.mappings": {
+    "/": "${workspaceFolder}",
+    "dashboard": "${workspaceFolder}/dashboard"
+  },
+  "auto-rename-tag.activationOnLanguage": [
+    "html",
+    "xml",
+    "javascript"
+  ],
   "liveServer.settings.donotShowInfoMsg": true,
-  "liveServer.settings.port": 5500
+  "liveServer.settings.port": 5500,
+  "liveServer.settings.host": "127.0.0.1",
+  "[markdown]": {
+    "editor.wordWrap": "on",
+    "editor.quickSuggestions": {
+      "comments": "off",
+      "strings": "off",
+      "other": "on"
+    }
+  },
+  "[plaintext]": {
+    "editor.wordWrap": "on"
+  }
 }

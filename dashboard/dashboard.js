@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v165';
+const DASHBOARD_VERSION = 'v167';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -864,6 +864,11 @@ function mostrarFeedbackToast(msg, tipo = 'sucesso') {
         toast.style.transform = 'translateY(10px)';
         setTimeout(() => { toast.style.display = 'none'; }, 300);
     }, 4000);
+}
+
+// Alias de compatibilidade para notificações no painel gerencial
+function showToast(msg, tipo = 'sucesso') {
+    mostrarFeedbackToast(msg, tipo);
 }
 
 function formatSimpleDate(dateStr) {
@@ -2166,8 +2171,12 @@ function popularHistCategoriaSelect() {
 }
 
 function limparFiltroHistorico() {
-    document.getElementById('histCategoria').value = '';
-    document.getElementById('histPatrimonio').value = '';
+    const elCat = document.getElementById('histCategoria');
+    const elPatr = document.getElementById('histPatrimonio');
+    const elDrive = document.getElementById('histDriveStatus');
+    if (elCat) elCat.value = '';
+    if (elPatr) elPatr.value = '';
+    if (elDrive) elDrive.value = '';
     renderHistoricoChecklists();
 }
 
@@ -2178,25 +2187,47 @@ function renderHistoricoChecklists() {
     const resumoEl = document.getElementById('historicoResumo');
     if (!listaEl) return;
 
-    const categoriaFiltro = document.getElementById('histCategoria').value;
-    const patrimonioFiltro = (document.getElementById('histPatrimonio').value || '').trim().toUpperCase();
+    // Atualiza badge de pendentes no botão do cabeçalho
+    const pendentesCount = allChecklists.filter(c => !c.drive_file_url).length;
+    const badgePendentes = document.getElementById('badgeChecklistsPendentesDrive');
+    if (badgePendentes) badgePendentes.textContent = pendentesCount;
+
+    const categoriaFiltro = document.getElementById('histCategoria')?.value || '';
+    const driveFiltro = document.getElementById('histDriveStatus')?.value || '';
+    const patrimonioFiltro = (document.getElementById('histPatrimonio')?.value || '').trim().toUpperCase();
 
     const cadastroByPatr = {};
     allCadastros.forEach(c => { if (c.patrimonio) cadastroByPatr[c.patrimonio.toUpperCase()] = c; });
 
     let lista = allChecklists.slice();
+
     if (categoriaFiltro) {
         lista = lista.filter(c => {
             const cad = c.patrimonio ? cadastroByPatr[c.patrimonio.toUpperCase()] : null;
             return cad && cad.categoria === categoriaFiltro;
         });
     }
-    if (patrimonioFiltro) {
-        lista = lista.filter(c => (c.patrimonio || '').toUpperCase().includes(patrimonioFiltro));
+
+    if (driveFiltro === 'synced') {
+        lista = lista.filter(c => !!c.drive_file_url);
+    } else if (driveFiltro === 'pending') {
+        lista = lista.filter(c => !c.drive_file_url);
+    } else if (driveFiltro === 'legado') {
+        lista = lista.filter(c => c.origem === 'legado_importado');
     }
+
+    if (patrimonioFiltro) {
+        lista = lista.filter(c => {
+            const patr = (c.patrimonio || '').toUpperCase();
+            const nome = (c.equipment?.name || c.nome || '').toUpperCase();
+            const emp = (c.empresa || '').toUpperCase();
+            return patr.includes(patrimonioFiltro) || nome.includes(patrimonioFiltro) || emp.includes(patrimonioFiltro);
+        });
+    }
+
     lista.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-    if (resumoEl) resumoEl.textContent = `${lista.length} checklist(s) encontrado(s)`;
+    if (resumoEl) resumoEl.textContent = `${lista.length} checklist(s) encontrado(s)${pendentesCount > 0 ? ` • ${pendentesCount} pendente(s) no Drive` : ''}`;
 
     const LIMITE = 300;
     const listaExibida = lista.slice(0, LIMITE);
@@ -2226,13 +2257,42 @@ function renderHistoricoChecklists() {
                   '</div>';
         }
 
+        let botoesAcaoHtml = '';
+        if (expandido) {
+            botoesAcaoHtml = `
+            <div style="margin-top:10px; padding-top:8px; border-top:1px dashed var(--border); display:flex; gap:8px; flex-wrap:wrap; align-items:center;" onclick="event.stopPropagation();">
+                <button type="button" class="db-apply-btn" style="padding:6px 12px; font-size:11.5px; background:#0284c7; border:none; display:inline-flex; align-items:center; gap:5px;" onclick="enviarChecklistAoGoogleDrive('${escapeHTML(c.id)}', true)">
+                    <i class="fab fa-google-drive"></i> ${c.drive_file_url ? 'Reenviar ao Drive' : 'Salvar no Drive'}
+                </button>
+                <button type="button" class="db-clear-btn" style="padding:6px 12px; font-size:11.5px; display:inline-flex; align-items:center; gap:5px;" onclick="visualizarPdfChecklist('${escapeHTML(c.id)}')">
+                    <i class="fas fa-file-pdf" style="color:#ef4444;"></i> Ver / Baixar PDF
+                </button>
+                ${c.drive_file_url ? `<a href="${escapeHTML(c.drive_file_url)}" target="_blank" rel="noopener noreferrer" class="db-clear-btn" style="padding:6px 12px; font-size:11.5px; display:inline-flex; align-items:center; gap:5px; text-decoration:none; color:#0369a1; border-color:#bae6fd; background:#f0f9ff;"><i class="fas fa-external-link-alt"></i> Abrir no Drive</a>` : ''}
+                ${c.drive_synced_at ? `<span style="font-size:10.5px; color:var(--text-light); margin-left:auto;">Sincronizado em ${formatSimpleDate(c.drive_synced_at.split('T')[0])}</span>` : ''}
+            </div>`;
+        }
+
         const corInfo = getCorDoMes(c.date);
         const corTagHtml = `<span title="Cor da inspeção do checklist: ${corInfo.cor}" style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:12px; font-size:10.5px; font-weight:800; letter-spacing:0.5px; background:${corInfo.bg}; color:${corInfo.fg}; border:1px solid ${corInfo.border}; margin-left:6px; vertical-align:middle; box-shadow:0 1px 2px rgba(0,0,0,0.06);">🏷️ ${corInfo.cor}</span>`;
 
+        let driveTagHtml = '';
+        if (c.drive_file_url) {
+            driveTagHtml = `<a href="${escapeHTML(c.drive_file_url)}" target="_blank" rel="noopener noreferrer" class="db-drive-badge synced" onclick="event.stopPropagation();" title="Arquivo arquivado no Google Drive (Clique para abrir)"><i class="fab fa-google-drive"></i> No Drive <i class="fas fa-external-link-alt" style="font-size:8px;"></i></a>`;
+        } else {
+            driveTagHtml = `<span class="db-drive-badge pending" title="Pendente de arquivamento no Google Drive"><i class="fas fa-cloud-upload-alt"></i> Pendente Drive</span>`;
+        }
+        if (c.origem === 'legado_importado') {
+            driveTagHtml += ` <span class="db-drive-badge legado" title="Checklist antigo importado via PDF"><i class="fas fa-archive"></i> Legado</span>`;
+        }
+
         return `<div class="db-list-item ${cls}" style="cursor:pointer;" onclick="toggleHistoricoItem('${escapeHTML(c.id)}')">
-            <div class="db-list-item-title">${escapeHTML(c.equipment?.name || c.nome || 'Equipamento')} — ${escapeHTML(c.patrimonio || '—')} ${corTagHtml}</div>
+            <div class="db-list-item-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                <div>${escapeHTML(c.equipment?.name || c.nome || 'Equipamento')} — ${escapeHTML(c.patrimonio || '—')} ${corTagHtml}</div>
+                <div>${driveTagHtml}</div>
+            </div>
             <div class="db-list-item-sub">${formatSimpleDate(c.date)} — ${escapeHTML(c.empresa || 'Sem empresa')} — ${statusLabel} — ${stats.conformes}✅ ${stats.naoConformes}❌ ${stats.na}➖</div>
             ${detalheHtml}
+            ${botoesAcaoHtml}
         </div>`;
     }).join('') + (lista.length > LIMITE ? `<div class="db-list-empty">Mostrando os ${LIMITE} mais recentes de ${lista.length} — refine o filtro pra ver outros.</div>` : '');
 }
@@ -2240,6 +2300,909 @@ function renderHistoricoChecklists() {
 function toggleHistoricoItem(id) {
     historicoExpandido[id] = !historicoExpandido[id];
     renderHistoricoChecklists();
+}
+
+// ============================================
+// INTEGRAÇÃO COM GOOGLE DRIVE & RETENÇÃO DOCUMENTAL SST
+// Pastas: Checklists SST / {YYYY} / {MM - NomeDoMes} /
+// Nome Padrão: CKL_{YYYY-MM-DD}_{PATRIMONIO}_{NOME_EQUIPAMENTO}.pdf
+// ============================================
+
+const DEFAULT_CHECKLIST_DRIVE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzhFCnB2VLSH4i7i_JNZajCc_88UgQEWdeHtgzHtcJGaS_kHQd7ixffVab2F9zHiMWFZQ/exec';
+
+function getDriveScriptUrl() {
+    return localStorage.getItem('checklist_drive_script_url') || localStorage.getItem('sync_script_url') || DEFAULT_CHECKLIST_DRIVE_SCRIPT_URL;
+}
+
+function getDriveRootFolder() {
+    return localStorage.getItem('checklist_drive_root_folder') || 'Checklists SST';
+}
+
+function abrirModalConfigGoogleDrive() {
+    const modal = document.getElementById('modalConfigGoogleDrive');
+    if (!modal) return;
+    const inpUrl = document.getElementById('cfgDriveScriptUrl');
+    const inpFolder = document.getElementById('cfgDriveRootFolder');
+    const status = document.getElementById('cfgDriveTestStatus');
+
+    if (inpUrl) inpUrl.value = getDriveScriptUrl();
+    if (inpFolder) inpFolder.value = getDriveRootFolder();
+    if (status) status.textContent = '';
+
+    modal.style.display = 'flex';
+}
+
+function fecharModalConfigGoogleDrive() {
+    const modal = document.getElementById('modalConfigGoogleDrive');
+    if (modal) modal.style.display = 'none';
+}
+
+function salvarConfigGoogleDrive() {
+    const inpUrl = document.getElementById('cfgDriveScriptUrl');
+    const inpFolder = document.getElementById('cfgDriveRootFolder');
+
+    const url = (inpUrl?.value || '').trim();
+    const folder = (inpFolder?.value || '').trim() || 'Checklists SST';
+
+    if (!url) {
+        mostrarFeedbackToast('A URL do Web App não pode estar vazia.', 'erro');
+        return;
+    }
+
+    localStorage.setItem('checklist_drive_script_url', url);
+    localStorage.setItem('sync_script_url', url);
+    localStorage.setItem('checklist_drive_root_folder', folder);
+
+    mostrarFeedbackToast('Configurações do Google Drive salvas com sucesso!');
+    fecharModalConfigGoogleDrive();
+}
+
+async function testarConexaoGoogleDrive() {
+    const inpUrl = document.getElementById('cfgDriveScriptUrl');
+    const status = document.getElementById('cfgDriveTestStatus');
+    const btn = document.getElementById('btnTestarConexaoDrive');
+
+    const url = (inpUrl?.value || '').trim();
+    if (!url) {
+        if (status) { status.textContent = '❌ Digite a URL'; status.style.color = '#ef4444'; }
+        return;
+    }
+
+    if (status) { status.textContent = 'Testando...'; status.style.color = '#0284c7'; }
+    if (btn) btn.disabled = true;
+
+    try {
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ store: 'test' })
+        });
+        const res = await resp.json();
+        if (res && res.success) {
+            if (status) { status.textContent = '✅ Conexão OK!'; status.style.color = '#10b981'; }
+        } else {
+            throw new Error(res?.error || 'Falha');
+        }
+    } catch (err) {
+        if (status) { status.textContent = '❌ Falha: ' + err.message; status.style.color = '#ef4444'; }
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+function formatarPastaMesChecklist(dateStr) {
+    const meses = [
+        '01 - Janeiro', '02 - Fevereiro', '03 - Março', '04 - Abril',
+        '05 - Maio', '06 - Junho', '07 - Julho', '08 - Agosto',
+        '09 - Setembro', '10 - Outubro', '11 - Novembro', '12 - Dezembro'
+    ];
+    if (dateStr && String(dateStr).includes('-')) {
+        const parts = String(dateStr).split('-');
+        if (parts.length >= 2) {
+            const idx = parseInt(parts[1], 10) - 1;
+            if (idx >= 0 && idx < 12) return meses[idx];
+        }
+    }
+    const m = new Date().getMonth();
+    return meses[m];
+}
+
+function sanitizeFileName(str) {
+    return String(str || '')
+        .trim()
+        .replace(/[\\/:*?"<>|]/g, '_')
+        .replace(/\s+/g, '_')
+        .toUpperCase();
+}
+
+function obterNomeArquivoChecklistPadrao(c) {
+    const dataIso = (c.date || new Date().toISOString().split('T')[0]).trim();
+    const patr = sanitizeFileName(c.patrimonio || 'SEM_PATRIMONIO');
+    const equip = sanitizeFileName(c.equipment?.name || c.nome || 'EQUIPAMENTO');
+    return `CKL_${dataIso}_${patr}_${equip}.pdf`;
+}
+
+// Gera o arquivo PDF oficial do checklist com layout padronizado de SST
+async function gerarPdfChecklistBlob(c) {
+    if (typeof window.jspdf === 'undefined' && typeof jspdf === 'undefined') {
+        throw new Error('Biblioteca jsPDF não carregada. Por favor, recarregue a página.');
+    }
+    const { jsPDF } = window.jspdf || jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 14;
+
+    const stats = recalcularStatsChecklist(c);
+    const cad = c.patrimonio ? allCadastros.find(x => x.patrimonio && x.patrimonio.toUpperCase() === c.patrimonio.toUpperCase()) : null;
+    const placa = cad ? (cad.placa || 'N/A') : 'N/A';
+
+    // Barra de Cabeçalho Superior
+    doc.setFillColor(31, 56, 100); // Azul Escuro Corporativo / Navy
+    doc.rect(14, y, pageWidth - 28, 12, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(11);
+    doc.text('CHECKLIST DE SEGURANÇA DO TRABALHO - CONSÓRCIO COP', pageWidth / 2, y + 7.5, { align: 'center' });
+    y += 16;
+
+    // Se houver LOGO_COP_BASE64, insere no cabeçalho
+    if (typeof LOGO_COP_BASE64 !== 'undefined' && LOGO_COP_BASE64) {
+        try {
+            doc.addImage(LOGO_COP_BASE64, 'PNG', 16, y, 42, 10);
+        } catch (eLogo) {
+            console.warn('Logo COP não inserido no PDF:', eLogo);
+        }
+    }
+
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(31, 56, 100);
+    doc.text('FICHA OFICIAL DE INSPEÇÃO VEICULAR E EQUIPAMENTOS', pageWidth - 14, y + 6, { align: 'right' });
+    y += 14;
+
+    // Caixa de Metadados
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(203, 213, 225);
+    doc.rect(14, y, pageWidth - 28, 44, 'FD');
+
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+
+    function drawField(label, value, xVal, yVal) {
+        doc.setFont(undefined, 'bold');
+        doc.text(label, xVal, yVal);
+        const lWidth = doc.getTextWidth(label);
+        doc.setFont(undefined, 'normal');
+        doc.text(String(value || '—'), xVal + lWidth + 2, yVal);
+    }
+
+    const col1X = 18;
+    const col2X = pageWidth / 2 + 6;
+    let my = y + 7;
+
+    drawField('Data da Inspeção: ', formatSimpleDate(c.date), col1X, my);
+    drawField('Equipamento: ', c.equipment?.name || c.nome || '—', col1X, my + 6);
+    drawField('Patrimônio: ', c.patrimonio || '—', col1X, my + 12);
+    drawField('Placa / Identificação: ', placa, col1X, my + 18);
+    drawField('Empresa: ', c.empresa || 'Consórcio COP', col1X, my + 24);
+    drawField('Origem: ', c.origem === 'legado_importado' ? 'Legado (Importado)' : 'App Mobile Campo (Offline)', col1X, my + 30);
+
+    drawField('Operador / Condutor: ', c.operador || '—', col2X, my);
+    drawField('Encarregado / Responsável: ', c.responsavel || '—', col2X, my + 6);
+    drawField('Técnico / Eng. SST: ', c.sst || '—', col2X, my + 12);
+
+    // Status do Equipamento Badge
+    const stNorm = normalizarStatusChecklist(c.status_checklist || c.statusChecklist, c);
+    let stText = 'LIBERADO';
+    let stColor = [16, 185, 129];
+    if (stNorm === 'interditado') {
+        stText = 'INTERDITADO';
+        stColor = [239, 68, 68];
+    } else if (stNorm === 'liberado_restricao') {
+        stText = 'LIBERADO COM RESTRIÇÃO';
+        stColor = [245, 158, 11];
+    }
+
+    doc.setFont(undefined, 'bold');
+    doc.text('Status:', col2X, my + 18);
+    const lblW = doc.getTextWidth('Status:');
+    doc.setFillColor(...stColor);
+    doc.rect(col2X + lblW + 3, my + 14.5, 52, 5, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(7.5);
+    doc.text(stText, col2X + lblW + 29, my + 18, { align: 'center' });
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(8.5);
+    drawField('Resumo:', `✓ ${stats.conformes} C | ✗ ${stats.naoConformes} NC | — ${stats.na} N/A`, col2X, my + 24);
+    if (c.prazo_adequacao || c.prazoAdequacao) {
+        drawField('Prazo Adequação:', formatSimpleDate(c.prazo_adequacao || c.prazoAdequacao), col2X, my + 30);
+    }
+
+    y += 50;
+
+    // Tabela de Itens de Verificação
+    doc.setFillColor(31, 56, 100);
+    doc.rect(14, y, pageWidth - 28, 7, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(8);
+    doc.text('ITEM DE VERIFICAÇÃO', 18, y + 5);
+    doc.text('SITUAÇÃO', pageWidth - 18, y + 5, { align: 'right' });
+    y += 7;
+
+    const itemsEntries = c.items ? Object.entries(c.items).filter(([k]) => k !== '_form') : [];
+
+    for (let i = 0; i < itemsEntries.length; i++) {
+        const [itemId, data] = itemsEntries[i];
+        const nomeItem = (typeof ITEM_NAMES !== 'undefined' && ITEM_NAMES[itemId]) || data.customText || itemId;
+        const itemLines = doc.splitTextToSize(nomeItem, pageWidth - 65);
+        let rowHeight = itemLines.length * 4 + 4;
+        if (data.obs || data.observation) rowHeight += 4;
+        if (data.resolved) rowHeight += 4;
+
+        if (y + rowHeight > 275) {
+            doc.addPage();
+            y = 14;
+            // Repete cabeçalho da tabela
+            doc.setFillColor(31, 56, 100);
+            doc.rect(14, y, pageWidth - 28, 7, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(8);
+            doc.text('ITEM DE VERIFICAÇÃO (CONT.)', 18, y + 5);
+            doc.text('SITUAÇÃO', pageWidth - 18, y + 5, { align: 'right' });
+            y += 7;
+        }
+
+        // Fundo alternado
+        if (i % 2 === 0) {
+            doc.setFillColor(248, 250, 252);
+            doc.rect(14, y, pageWidth - 28, rowHeight, 'F');
+        }
+
+        doc.setDrawColor(226, 232, 240);
+        doc.line(14, y + rowHeight, pageWidth - 14, y + rowHeight);
+
+        doc.setTextColor(15, 23, 42);
+        doc.setFont(undefined, 'normal');
+        doc.setFontSize(8);
+        doc.text(itemLines, 18, y + 4);
+
+        // Status
+        const stItem = data.status || 'NA';
+        if (stItem === 'C') {
+            doc.setTextColor(16, 185, 129);
+            doc.setFont(undefined, 'bold');
+            doc.text('✓ Conforme', pageWidth - 18, y + 4, { align: 'right' });
+        } else if (stItem === 'NC') {
+            doc.setTextColor(239, 68, 68);
+            doc.setFont(undefined, 'bold');
+            doc.text('✗ Não Conforme', pageWidth - 18, y + 4, { align: 'right' });
+        } else {
+            doc.setTextColor(148, 163, 184);
+            doc.setFont(undefined, 'normal');
+            doc.text('— N/A', pageWidth - 18, y + 4, { align: 'right' });
+        }
+
+        let subY = y + itemLines.length * 4 + 1;
+        const obs = data.obs || data.observation;
+        if (obs) {
+            doc.setTextColor(100, 116, 139);
+            doc.setFont(undefined, 'italic');
+            doc.setFontSize(7.5);
+            doc.text(`Obs: ${obs}`, 22, subY);
+            subY += 4;
+        }
+        if (data.resolved) {
+            doc.setTextColor(16, 185, 129);
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(7.5);
+            doc.text(`✓ Resolvido em ${formatSimpleDate(data.resolvedAt || '')} por ${data.resolvedBy || '—'}`, 22, subY);
+        }
+
+        y += rowHeight;
+    }
+
+    if (itemsEntries.length === 0) {
+        doc.setFontSize(8);
+        doc.setTextColor(100, 116, 139);
+        doc.text('Itens de verificação detalhados em anexo na ficha de inspeção de campo.', 18, y + 5);
+        y += 8;
+    }
+
+    // Observações Gerais
+    if (c.observacoes) {
+        y += 6;
+        if (y > 255) { doc.addPage(); y = 14; }
+        doc.setFillColor(254, 243, 199);
+        doc.setDrawColor(252, 211, 77);
+        doc.rect(14, y, pageWidth - 28, 14, 'FD');
+        doc.setTextColor(180, 83, 9);
+        doc.setFont(undefined, 'bold');
+        doc.setFontSize(8);
+        doc.text('Observações Gerais:', 17, y + 4.5);
+        doc.setTextColor(15, 23, 42);
+        doc.setFont(undefined, 'normal');
+        doc.setFontSize(7.5);
+        const obsLines = doc.splitTextToSize(c.observacoes, pageWidth - 34);
+        doc.text(obsLines, 17, y + 9);
+        y += 18;
+    }
+
+    // Assinaturas Digitais Lado a Lado
+    y += 8;
+    if (y > 240) { doc.addPage(); y = 14; }
+
+    const colWidth = (pageWidth - 36) / 2;
+
+    // Assinatura 1: SST
+    doc.setFontSize(8);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont(undefined, 'bold');
+    doc.text('Responsável de Segurança (SST):', 14, y);
+    doc.setFont(undefined, 'normal');
+    doc.text(c.sst || '—', 14, y + 4.5);
+    if (c.signature) {
+        try {
+            doc.addImage(c.signature, 'PNG', 14, y + 6, 60, 20);
+        } catch (eSig1) {
+            doc.setDrawColor(203, 213, 225);
+            doc.line(14, y + 22, 14 + colWidth, y + 22);
+            doc.setFontSize(7);
+            doc.setTextColor(148, 163, 184);
+            doc.text('(Assinatura Digital Registrada)', 14, y + 26);
+        }
+    } else {
+        doc.setDrawColor(203, 213, 225);
+        doc.line(14, y + 22, 14 + colWidth, y + 22);
+        doc.setFontSize(7);
+        doc.setTextColor(148, 163, 184);
+        doc.text('(Pendente de Assinatura SST)', 14, y + 26);
+    }
+
+    // Assinatura 2: Encarregado
+    const col2SigX = 14 + colWidth + 8;
+    doc.setFontSize(8);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont(undefined, 'bold');
+    doc.text('Encarregado / Responsável:', col2SigX, y);
+    doc.setFont(undefined, 'normal');
+    doc.text(c.responsavel || '—', col2SigX, y + 4.5);
+    const sigResp = c.signature_responsavel || c.signatureResponsavel;
+    if (sigResp) {
+        try {
+            doc.addImage(sigResp, 'PNG', col2SigX, y + 6, 60, 20);
+        } catch (eSig2) {
+            doc.setDrawColor(203, 213, 225);
+            doc.line(col2SigX, y + 22, pageWidth - 14, y + 22);
+            doc.setFontSize(7);
+            doc.setTextColor(148, 163, 184);
+            doc.text('(Assinatura Digital Registrada)', col2SigX, y + 26);
+        }
+    } else {
+        doc.setDrawColor(203, 213, 225);
+        doc.line(col2SigX, y + 22, pageWidth - 14, y + 22);
+        doc.setFontSize(7);
+        doc.setTextColor(148, 163, 184);
+        doc.text('(Pendente de Assinatura Encarregado)', col2SigX, y + 26);
+    }
+
+    // Rodapé em todas as páginas
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        doc.setDrawColor(203, 213, 225);
+        doc.line(14, 287, pageWidth - 14, 287);
+        doc.setFontSize(6.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text('Consórcio COP - Ramal do Agreste • Arquivo de Retenção Documental SST / Data Book • NRs 1, 11, 12, 18 e 34', 14, 291);
+        doc.text(`Página ${p} de ${totalPages}`, pageWidth - 14, 291, { align: 'right' });
+    }
+
+    const fileName = obterNomeArquivoChecklistPadrao(c);
+    const blob = doc.output('blob');
+    const dataUri = doc.output('datauristring');
+    const base64 = dataUri.split(',')[1];
+
+    return { blob, base64, fileName, doc };
+}
+
+// Visualiza ou descarrega o PDF do checklist pelo navegador
+async function visualizarPdfChecklist(idChecklist) {
+    const c = allChecklists.find(x => String(x.id) === String(idChecklist));
+    if (!c) {
+        mostrarFeedbackToast('Checklist não encontrado.', 'erro');
+        return;
+    }
+    try {
+        mostrarFeedbackToast('Gerando documento PDF...', 'info');
+        const { blob, fileName } = await gerarPdfChecklistBlob(c);
+        const blobUrl = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.target = '_blank';
+        link.download = fileName;
+        window.open(blobUrl, '_blank');
+    } catch (err) {
+        console.error('Erro ao gerar PDF do checklist:', err);
+        mostrarFeedbackToast('Erro ao gerar PDF: ' + err.message, 'erro');
+    }
+}
+
+// Envia um checklist individualmente ao Google Drive
+async function enviarChecklistAoGoogleDrive(idChecklist, forcarReenvio = false) {
+    const c = allChecklists.find(x => String(x.id) === String(idChecklist));
+    if (!c) {
+        mostrarFeedbackToast('Checklist não encontrado.', 'erro');
+        return false;
+    }
+    if (c.drive_file_url && !forcarReenvio) {
+        if (!confirm('Este checklist já foi arquivado no Google Drive. Deseja reenviar e atualizar o link?')) {
+            return false;
+        }
+    }
+
+    const scriptUrl = getDriveScriptUrl();
+    if (!scriptUrl) {
+        mostrarFeedbackToast('URL do Google Drive não configurada. Clique na engrenagem ⚙️.', 'erro');
+        abrirModalConfigGoogleDrive();
+        return false;
+    }
+
+    mostrarFeedbackToast('Gerando PDF e enviando para o Google Drive...', 'info');
+
+    try {
+        const { base64, fileName } = await gerarPdfChecklistBlob(c);
+        const rootFolder = getDriveRootFolder();
+        const dateIso = (c.date || new Date().toISOString().split('T')[0]).trim();
+        const year = dateIso.split('-')[0] || new Date().getFullYear().toString();
+        const monthFolder = formatarPastaMesChecklist(dateIso);
+
+        const payload = {
+            action: 'upload_checklist_pdf',
+            store: 'upload_checklist_drive',
+            base64: base64,
+            fileName: fileName,
+            date: dateIso,
+            year: year,
+            monthFolder: monthFolder,
+            rootFolder: rootFolder
+        };
+
+        const resp = await fetch(scriptUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        });
+
+        const res = await resp.json();
+        if (!res || !res.success || !res.fileUrl) {
+            throw new Error(res?.error || 'Resposta inválida do Google Apps Script');
+        }
+
+        // Atualiza no Supabase
+        const nowIso = new Date().toISOString();
+        await supabasePatch('checklists', `id=eq.${encodeURIComponent(c.id)}`, {
+            drive_file_url: res.fileUrl,
+            drive_synced_at: nowIso
+        });
+
+        // Atualiza localmente
+        c.drive_file_url = res.fileUrl;
+        c.drive_synced_at = nowIso;
+
+        renderHistoricoChecklists();
+        mostrarFeedbackToast('✅ Checklist salvo no Google Drive com sucesso!');
+        return true;
+    } catch (err) {
+        console.error('Erro ao enviar checklist ao Drive:', err);
+        mostrarFeedbackToast('❌ Erro ao enviar ao Google Drive: ' + err.message, 'erro');
+        return false;
+    }
+}
+
+// Sincronização em Lote de Checklists Pendentes
+let syncDriveCancelado = false;
+
+function cancelarSincronizacaoDrive() {
+    syncDriveCancelado = true;
+    mostrarFeedbackToast('Cancelando sincronização...', 'info');
+}
+
+async function sincronizarChecklistsPendentesAoGoogleDrive() {
+    const pendentes = allChecklists.filter(c => !c.drive_file_url);
+    if (pendentes.length === 0) {
+        mostrarFeedbackToast('Todos os checklists já estão arquivados no Google Drive! 🎉', 'sucesso');
+        return;
+    }
+
+    const scriptUrl = getDriveScriptUrl();
+    if (!scriptUrl) {
+        mostrarFeedbackToast('URL do Google Drive não configurada. Clique na engrenagem ⚙️.', 'erro');
+        abrirModalConfigGoogleDrive();
+        return;
+    }
+
+    if (!confirm(`Existem ${pendentes.length} checklist(s) pendente(s) de envio ao Google Drive.\n\nDeseja iniciar a sincronização em lote agora?`)) {
+        return;
+    }
+
+    syncDriveCancelado = false;
+    const progressContainer = document.getElementById('historicoDriveProgressContainer');
+    const progressBar = document.getElementById('historicoDriveProgressBar');
+    const progressStatus = document.getElementById('historicoDriveProgressStatus');
+    const progressCount = document.getElementById('historicoDriveProgressCount');
+    const progressItem = document.getElementById('historicoDriveProgressItem');
+
+    if (progressContainer) progressContainer.style.display = 'block';
+
+    let enviados = 0;
+    let falhas = 0;
+    const total = pendentes.length;
+
+    for (let i = 0; i < total; i++) {
+        if (syncDriveCancelado) {
+            mostrarFeedbackToast(`Sincronização interrompida pelo usuário. ${enviados} enviado(s).`, 'aviso');
+            break;
+        }
+
+        const c = pendentes[i];
+        const nomeArq = obterNomeArquivoChecklistPadrao(c);
+
+        if (progressCount) progressCount.textContent = `${i + 1} / ${total}`;
+        if (progressStatus) progressStatus.textContent = `Sincronizando ${i + 1} de ${total}...`;
+        if (progressItem) progressItem.textContent = nomeArq;
+        if (progressBar) progressBar.style.width = `${Math.round(((i + 1) / total) * 100)}%`;
+
+        const ok = await enviarChecklistAoGoogleDrive(c.id, true);
+        if (ok) {
+            enviados++;
+        } else {
+            falhas++;
+        }
+
+        await new Promise(r => setTimeout(r, 350));
+    }
+
+    if (progressContainer) {
+        setTimeout(() => {
+            progressContainer.style.display = 'none';
+        }, 2000);
+    }
+
+    renderHistoricoChecklists();
+    mostrarFeedbackToast(`Concluído: ${enviados} checklist(s) arquivado(s) no Drive!${falhas > 0 ? ` (${falhas} falha(s))` : ''}`);
+}
+
+// ============================================
+// IMPORTADOR DE CHECKLISTS ANTERIORES (LEGADOS VIA PDF)
+// ============================================
+
+let arquivosLegadosSelecionados = [];
+
+function abrirModalImportarChecklistsLegados() {
+    const modal = document.getElementById('modalImportarChecklistsLegados');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    popularDatalistPatrimoniosChecklist();
+    renderTabelaArquivosLegados();
+    configurarDropzoneLegados();
+}
+
+function fecharModalImportarChecklistsLegados() {
+    const modal = document.getElementById('modalImportarChecklistsLegados');
+    if (modal) modal.style.display = 'none';
+}
+
+function popularDatalistPatrimoniosChecklist() {
+    const dl = document.getElementById('datalistPatrimoniosChecklist');
+    if (!dl) return;
+    const patrs = new Set();
+    allCadastros.forEach(c => {
+        if (c.patrimonio) patrs.add(c.patrimonio.toUpperCase());
+    });
+    dl.innerHTML = Array.from(patrs).sort().map(p => `<option value="${escapeHTML(p)}"></option>`).join('');
+}
+
+function configurarDropzoneLegados() {
+    const dz = document.getElementById('dropzoneLegados');
+    if (!dz || dz._configured) return;
+    dz._configured = true;
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dz.addEventListener(eventName, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            dz.classList.add('dragover');
+        });
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dz.addEventListener(eventName, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            dz.classList.remove('dragover');
+        });
+    });
+
+    dz.addEventListener('drop', e => {
+        const dt = e.dataTransfer;
+        if (dt && dt.files && dt.files.length) {
+            aoSelecionarArquivosLegados({ target: { files: dt.files } });
+        }
+    });
+}
+
+function extrairMetadadosNomeArquivoPdf(filename) {
+    let dataExtraida = '';
+    const mIso = filename.match(/\b(20\d\d)[-_](0[1-9]|1[0-2])[-_](0[1-9]|[12]\d|3[01])\b/);
+    if (mIso) {
+        dataExtraida = `${mIso[1]}-${mIso[2]}-${mIso[3]}`;
+    } else {
+        const mBr = filename.match(/\b(0[1-9]|[12]\d|3[01])[-_.](0[1-9]|1[0-2])[-_.](20\d\d)\b/);
+        if (mBr) {
+            dataExtraida = `${mBr[3]}-${mBr[2]}-${mBr[1]}`;
+        }
+    }
+    if (!dataExtraida) {
+        dataExtraida = new Date().toISOString().split('T')[0];
+    }
+
+    let patrEncontrado = '';
+    let equipEncontrado = '';
+    let empresaEncontrada = 'Consórcio COP';
+
+    const fnUpper = filename.toUpperCase();
+    for (const cad of allCadastros) {
+        if (cad.patrimonio && fnUpper.includes(cad.patrimonio.toUpperCase())) {
+            patrEncontrado = cad.patrimonio.toUpperCase();
+            equipEncontrado = cad.nome || cad.categoria || '';
+            empresaEncontrada = cad.empresa || empresaEncontrada;
+            break;
+        }
+    }
+
+    return {
+        data: dataExtraida,
+        patrimonio: patrEncontrado,
+        equipamento: equipEncontrado,
+        empresa: empresaEncontrada
+    };
+}
+
+function aoSelecionarArquivosLegados(event) {
+    const files = event.target.files;
+    if (!files || !files.length) return;
+
+    for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        if (!f.name.toLowerCase().endsWith('.pdf') && f.type !== 'application/pdf') {
+            continue;
+        }
+        const meta = extrairMetadadosNomeArquivoPdf(f.name);
+        arquivosLegadosSelecionados.push({
+            id: 'arq_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+            file: f,
+            nomeArquivo: f.name,
+            tamanho: f.size,
+            data: meta.data,
+            patrimonio: meta.patrimonio,
+            equipamento: meta.equipamento,
+            empresa: meta.empresa
+        });
+    }
+
+    event.target.value = '';
+    renderTabelaArquivosLegados();
+}
+
+function renderTabelaArquivosLegados() {
+    const tbody = document.getElementById('tabelaArquivosLegadosBody');
+    const badge = document.getElementById('legadosCountBadge');
+    if (badge) badge.textContent = `${arquivosLegadosSelecionados.length} arquivo(s) na fila`;
+
+    if (!tbody) return;
+    if (arquivosLegadosSelecionados.length === 0) {
+        tbody.innerHTML = `<tr>
+            <td colspan="6" style="text-align:center; padding:24px; color:var(--text-light); font-size:12px;">
+                Nenhum arquivo adicionado. Arraste ou clique na área acima para selecionar.
+            </td>
+        </tr>`;
+        return;
+    }
+
+    tbody.innerHTML = arquivosLegadosSelecionados.map((item, idx) => {
+        const kb = Math.round(item.tamanho / 1024);
+        return `<tr>
+            <td>
+                <div style="font-weight:600; color:#1e293b; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHTML(item.nomeArquivo)}">
+                    📄 ${escapeHTML(item.nomeArquivo)}
+                </div>
+                <div style="font-size:10.5px; color:#64748b;">${kb} KB</div>
+            </td>
+            <td>
+                <input type="date" value="${item.data}" onchange="atualizarItemLegado(${idx}, 'data', this.value)" required>
+            </td>
+            <td>
+                <input type="text" list="datalistPatrimoniosChecklist" value="${escapeHTML(item.patrimonio)}" placeholder="Ex: PAT-102" onchange="aoMudarPatrimonioLegado(${idx}, this.value)" required>
+            </td>
+            <td>
+                <input type="text" id="legadoEquip_${idx}" value="${escapeHTML(item.equipamento)}" placeholder="Ex: Caminhão Pipa" onchange="atualizarItemLegado(${idx}, 'equipamento', this.value)" required>
+            </td>
+            <td>
+                <input type="text" id="legadoEmpresa_${idx}" value="${escapeHTML(item.empresa)}" placeholder="Consórcio COP" onchange="atualizarItemLegado(${idx}, 'empresa', this.value)">
+            </td>
+            <td style="text-align:center;">
+                <button type="button" class="db-clear-btn" style="padding:3px 6px; color:#ef4444; border-color:#fca5a5;" onclick="removerArquivoLegado(${idx})" title="Remover este arquivo">✕</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function aoMudarPatrimonioLegado(idx, val) {
+    const patr = (val || '').trim().toUpperCase();
+    if (!arquivosLegadosSelecionados[idx]) return;
+    arquivosLegadosSelecionados[idx].patrimonio = patr;
+
+    const cad = allCadastros.find(c => c.patrimonio && c.patrimonio.toUpperCase() === patr);
+    if (cad) {
+        if (!arquivosLegadosSelecionados[idx].equipamento) {
+            arquivosLegadosSelecionados[idx].equipamento = cad.nome || cad.categoria || '';
+            const elEq = document.getElementById(`legadoEquip_${idx}`);
+            if (elEq) elEq.value = arquivosLegadosSelecionados[idx].equipamento;
+        }
+        if (!arquivosLegadosSelecionados[idx].empresa || arquivosLegadosSelecionados[idx].empresa === 'Consórcio COP') {
+            arquivosLegadosSelecionados[idx].empresa = cad.empresa || 'Consórcio COP';
+            const elEmp = document.getElementById(`legadoEmpresa_${idx}`);
+            if (elEmp) elEmp.value = arquivosLegadosSelecionados[idx].empresa;
+        }
+    }
+}
+
+function atualizarItemLegado(idx, campo, val) {
+    if (arquivosLegadosSelecionados[idx]) {
+        arquivosLegadosSelecionados[idx][campo] = val;
+    }
+}
+
+function removerArquivoLegado(idx) {
+    arquivosLegadosSelecionados.splice(idx, 1);
+    renderTabelaArquivosLegados();
+}
+
+function limparFilaLegados() {
+    if (arquivosLegadosSelecionados.length === 0) return;
+    if (confirm('Deseja limpar todos os arquivos da lista?')) {
+        arquivosLegadosSelecionados = [];
+        renderTabelaArquivosLegados();
+    }
+}
+
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const dataUrl = reader.result;
+            const base64 = dataUrl.split(',')[1];
+            resolve(base64);
+        };
+        reader.onerror = error => reject(error);
+        reader.readAsDataURL(file);
+    });
+}
+
+async function iniciarUploadChecklistsLegados() {
+    if (arquivosLegadosSelecionados.length === 0) {
+        mostrarFeedbackToast('Adicione pelo menos um arquivo PDF para importar.', 'erro');
+        return;
+    }
+
+    for (let i = 0; i < arquivosLegadosSelecionados.length; i++) {
+        const it = arquivosLegadosSelecionados[i];
+        if (!it.data || !it.patrimonio || !it.equipamento) {
+            mostrarFeedbackToast(`Preencha a Data, Patrimônio e Equipamento para o arquivo: ${it.nomeArquivo}`, 'erro');
+            return;
+        }
+    }
+
+    const scriptUrl = getDriveScriptUrl();
+    if (!scriptUrl) {
+        mostrarFeedbackToast('URL do Google Drive não configurada. Clique na engrenagem ⚙️.', 'erro');
+        abrirModalConfigGoogleDrive();
+        return;
+    }
+
+    const btn = document.getElementById('btnIniciarUploadLegados');
+    if (btn) btn.disabled = true;
+
+    const progContainer = document.getElementById('progressoLegadosContainer');
+    const progBar = document.getElementById('progressoLegadosBar');
+    const progStatus = document.getElementById('progressoLegadosStatus');
+    const progCount = document.getElementById('progressoLegadosCount');
+    const progItem = document.getElementById('progressoLegadosItem');
+
+    if (progContainer) progContainer.style.display = 'block';
+
+    let enviados = 0;
+    let falhas = 0;
+    const total = arquivosLegadosSelecionados.length;
+    const rootFolder = getDriveRootFolder();
+
+    for (let i = 0; i < total; i++) {
+        const it = arquivosLegadosSelecionados[i];
+        const dataIso = it.data.trim();
+        const year = dataIso.split('-')[0] || new Date().getFullYear().toString();
+        const monthFolder = formatarPastaMesChecklist(dataIso);
+        const fileName = `CKL_${dataIso}_${sanitizeFileName(it.patrimonio)}_${sanitizeFileName(it.equipamento)}.pdf`;
+
+        if (progCount) progCount.textContent = `${i + 1} / ${total}`;
+        if (progStatus) progStatus.textContent = `Enviando arquivo ${i + 1} de ${total}...`;
+        if (progItem) progItem.textContent = fileName;
+        if (progBar) progBar.style.width = `${Math.round(((i + 1) / total) * 100)}%`;
+
+        try {
+            const base64 = await fileToBase64(it.file);
+            const payload = {
+                action: 'upload_checklist_pdf',
+                store: 'upload_checklist_drive',
+                base64: base64,
+                fileName: fileName,
+                date: dataIso,
+                year: year,
+                monthFolder: monthFolder,
+                rootFolder: rootFolder
+            };
+
+            const resp = await fetch(scriptUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload)
+            });
+
+            const res = await resp.json();
+            if (!res || !res.success || !res.fileUrl) {
+                throw new Error(res?.error || 'Erro na resposta do Google Apps Script');
+            }
+
+            const novoChecklistLegado = {
+                id: 'legado_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                date: dataIso,
+                patrimonio: it.patrimonio.toUpperCase(),
+                nome: it.equipamento,
+                empresa: it.empresa || 'Consórcio COP',
+                status_checklist: 'liberado',
+                origem: 'legado_importado',
+                drive_file_url: res.fileUrl,
+                drive_synced_at: new Date().toISOString(),
+                observacoes: `Checklist legado importado via PDF (${it.nomeArquivo})`,
+                conformes: 1,
+                nao_conformes: 0,
+                na: 0,
+                total: 1,
+                items: {}
+            };
+
+            await supabaseInsert('checklists', novoChecklistLegado);
+            allChecklists.unshift(novoChecklistLegado);
+            enviados++;
+        } catch (err) {
+            console.error('Falha no upload do arquivo legado:', it.nomeArquivo, err);
+            falhas++;
+        }
+
+        await new Promise(r => setTimeout(r, 300));
+    }
+
+    if (btn) btn.disabled = false;
+    if (progContainer) progContainer.style.display = 'none';
+
+    arquivosLegadosSelecionados = [];
+    fecharModalImportarChecklistsLegados();
+    renderHistoricoChecklists();
+    mostrarFeedbackToast(`Importação concluída! ${enviados} checklist(s) arquivado(s) no Google Drive.${falhas > 0 ? ` (${falhas} falha(s))` : ''}`);
 }
 
 // ============================================

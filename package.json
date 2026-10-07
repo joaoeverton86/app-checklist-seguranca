@@ -1,6 +1,12 @@
 {
+  "name": "app-checklist-seguranca",
+  "version": "2.0.0",
+  "private": true,
   "scripts": {
-    "lint:undef": "eslint --no-eslintrc -c .eslintrc.undef-check.json app.js data.js"
+    "dev": "node server.js",
+    "lint": "eslint --no-eslintrc -c .eslintrc.undef-check.json app.js data.js dashboard/dashboard.js",
+    "lint:undef": "eslint --no-eslintrc -c .eslintrc.undef-check.json app.js data.js dashboard/dashboard.js",
+    "deploy": "vercel --prod"
   },
   "dependencies": {
     "node-forge": "^1.4.0",

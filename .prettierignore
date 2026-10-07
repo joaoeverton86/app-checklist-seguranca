@@ -1,0 +1,12 @@
+node_modules/
+package-lock.json
+.vercel/
+scratch/
+Documentos_Consultas/
+qrcode.min.js
+*.min.js
+*.min.css
+*.pdf
+*.txt
+*.pem
+*.key

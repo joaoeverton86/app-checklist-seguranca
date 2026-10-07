@@ -1870,5 +1870,109 @@ body {
     margin-top: 2px;
 }
 
+/* ==========================================================================
+   INTEGRAÇÃO DE CHECKLISTS COM GOOGLE DRIVE & IMPORTAÇÃO DE LEGADOS
+   ========================================================================== */
+
+.db-drive-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    text-decoration: none;
+    line-height: 1.2;
+    transition: all 0.15s ease;
+    cursor: default;
+    vertical-align: middle;
+}
+
+.db-drive-badge.synced {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #a7f3d0;
+    cursor: pointer;
+}
+.db-drive-badge.synced:hover {
+    background: #d1fae5;
+    color: #065f46;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(4, 120, 87, 0.15);
+}
+
+.db-drive-badge.pending {
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #cbd5e1;
+}
+
+.db-drive-badge.legado {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
+.db-dropzone {
+    border: 2px dashed #93c5fd;
+    border-radius: 12px;
+    background: #f8fafc;
+    padding: 28px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.db-dropzone:hover, .db-dropzone.dragover {
+    background: #eff6ff;
+    border-color: #3b82f6;
+    transform: scale(1.005);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.08);
+}
+
+.db-dropzone-icon {
+    font-size: 34px;
+    color: #3b82f6;
+    margin-bottom: 8px;
+}
+
+.legados-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 12px;
+}
+
+.legados-table th, .legados-table td {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+.legados-table th {
+    background: var(--bg);
+    color: var(--text-light);
+    font-weight: 700;
+    text-align: left;
+}
+
+.legados-table tr:hover {
+    background: #f8fafc;
+}
+
+.legados-table input[type="text"],
+.legados-table input[type="date"] {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    box-sizing: border-box;
+    background: var(--card);
+    color: var(--text);
+}
+
+
 
 

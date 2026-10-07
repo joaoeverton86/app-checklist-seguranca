@@ -179,6 +179,8 @@ function doPost(e) {
             return processarEsqueciSenha(record);
         } else if (data.store === 'reset_password_verify') {
             return processarRedefinirSenha(record);
+        } else if (data.store === 'upload_checklist_drive' || data.action === 'upload_checklist_pdf' || data.store === 'checklists_pdf_upload') {
+            return processarUploadChecklistDrive(data);
         } else if (data.store === 'delete_record') {
             return deletarRegistro(data.aba, data.id);
         } else {
@@ -980,3 +982,87 @@ function processarRedefinirSenha(record) {
         .createTextOutput(JSON.stringify({ success: true }))
         .setMimeType(ContentService.MimeType.JSON);
 }
+
+// ============================================
+// ARQUIVAMENTO DE CHECKLISTS NO GOOGLE DRIVE
+// Hierarquia: Checklists SST / {YYYY} / {MM - NomeDoMes} /
+// ============================================
+function processarUploadChecklistDrive(payload) {
+    try {
+        var base64Data = payload.base64 || (payload.data && payload.data.base64);
+        if (!base64Data) {
+            return ContentService
+                .createTextOutput(JSON.stringify({ success: false, error: 'Nenhum dado Base64 enviado.' }))
+                .setMimeType(ContentService.MimeType.JSON);
+        }
+        if (base64Data.indexOf('base64,') > -1) {
+            base64Data = base64Data.split('base64,')[1];
+        }
+        var fileName = payload.fileName || (payload.data && payload.data.fileName) || ('CKL_' + Date.now() + '.pdf');
+        var decodedBytes = Utilities.base64Decode(base64Data);
+        var blob = Utilities.newBlob(decodedBytes, "application/pdf", fileName);
+
+        // Hierarquia de Pastas: Checklists SST / {YYYY} / {MM - NomeDoMes} /
+        var rootFolderName = payload.rootFolder || "Checklists SST";
+        var rootFolder = obterOuCriarPastaGoogleDrive(DriveApp.getRootFolder(), rootFolderName);
+
+        var dateStr = payload.date || (payload.data && payload.data.date) || new Date().toISOString().split('T')[0];
+        var year = payload.year || dateStr.split('-')[0] || new Date().getFullYear().toString();
+        var yearFolder = obterOuCriarPastaGoogleDrive(rootFolder, year);
+
+        var monthFolder = payload.monthFolder || formatarPastaMesGoogleDrive(dateStr);
+        var targetFolder = obterOuCriarPastaGoogleDrive(yearFolder, monthFolder);
+
+        // Salvar arquivo no Drive
+        var file = targetFolder.createFile(blob);
+        try {
+            file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        } catch (eSharing) {
+            Logger.log("Aviso de compartilhamento: " + eSharing.toString());
+        }
+
+        var fileUrl = file.getUrl();
+        return ContentService
+            .createTextOutput(JSON.stringify({
+                success: true,
+                fileUrl: fileUrl,
+                fileId: file.getId(),
+                fileName: file.getName(),
+                folderPath: rootFolderName + " / " + year + " / " + monthFolder
+            }))
+            .setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+        Logger.log('Erro ao salvar no Drive: ' + err.toString());
+        return ContentService
+            .createTextOutput(JSON.stringify({ success: false, error: err.toString() }))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+}
+
+function obterOuCriarPastaGoogleDrive(parentFolder, name) {
+    var folders = parentFolder.getFoldersByName(name);
+    if (folders.hasNext()) {
+        return folders.next();
+    }
+    return parentFolder.createFolder(name);
+}
+
+function formatarPastaMesGoogleDrive(dateStr) {
+    var meses = [
+        "01 - Janeiro", "02 - Fevereiro", "03 - Março", "04 - Abril",
+        "05 - Maio", "06 - Junho", "07 - Julho", "08 - Agosto",
+        "09 - Setembro", "10 - Outubro", "11 - Novembro", "12 - Dezembro"
+    ];
+    if (dateStr && dateStr.indexOf('-') > -1) {
+        var parts = dateStr.split('-');
+        if (parts.length >= 2) {
+            var mesIdx = parseInt(parts[1], 10) - 1;
+            if (mesIdx >= 0 && mesIdx < 12) {
+                return meses[mesIdx];
+            }
+        }
+    }
+    var m = new Date().getMonth();
+    return meses[m];
+}
+

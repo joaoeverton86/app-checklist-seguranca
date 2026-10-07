@@ -77,8 +77,17 @@ CREATE TABLE IF NOT EXISTS public.checklists (
                             -- sincronizada) como evidência de não conformidade.
     signature TEXT,             -- assinatura do Resp. SST, PNG base64 (data URL)
     signature_responsavel TEXT, -- assinatura do Encarregado/Responsável, PNG base64
+    drive_file_url TEXT,        -- Link direto do PDF arquivado no Google Drive (Data Book / Retenção NRs)
+    drive_synced_at TIMESTAMPTZ, -- Data/hora em que foi enviado para o Google Drive
+    origem TEXT DEFAULT 'app',  -- Origem do registro ('app' ou 'legado_importado')
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migrações idempotentes para colunas de integração com Google Drive (Checklists)
+ALTER TABLE public.checklists ADD COLUMN IF NOT EXISTS drive_file_url TEXT;
+ALTER TABLE public.checklists ADD COLUMN IF NOT EXISTS drive_synced_at TIMESTAMPTZ;
+ALTER TABLE public.checklists ADD COLUMN IF NOT EXISTS origem TEXT DEFAULT 'app';
+
 
 -- 4. Tabela Relacional de Não Conformidades (Relacionada diretamente ao Checklist)
 CREATE TABLE IF NOT EXISTS public.nao_conformidades (

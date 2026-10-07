@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Verificar Código (ESLint)",
+      "type": "npm",
+      "script": "lint",
+      "problemMatcher": ["$eslint-stylish"],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "detail": "Verifica sintaxe e variáveis não declaradas em todo o projeto"
+    },
+    {
+      "label": "Iniciar Servidor HTTPS Local",
+      "type": "npm",
+      "script": "dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "detail": "Inicia o servidor Node.js local na porta 8000 para testes no PC e celular"
+    },
+    {
+      "label": "Deploy Produção Vercel",
+      "type": "npm",
+      "script": "deploy",
+      "problemMatcher": [],
+      "detail": "Publica a versão atual diretamente na Vercel"
+    }
+  ]
+}

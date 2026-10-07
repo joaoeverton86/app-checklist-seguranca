@@ -1,0 +1,13 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "christian-kohler.path-intellisense",
+    "formulahendry.auto-rename-tag",
+    "pranaygp.vscode-css-peek",
+    "mechatroner.rainbow-csv",
+    "mtxr.sqltools",
+    "esbenp.prettier-vscode",
+    "ritwickdey.liveserver",
+    "vscode-icons-team.vscode-icons"
+  ]
+}

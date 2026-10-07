@@ -2849,6 +2849,9 @@ async function fazerUploadArquivoAoGoogleDrive(file, { tabela = 'checklists', re
         if (res && res.success && res.fileUrl) {
             return res;
         }
+        if (res && res.error && res.error.indexOf('upload_checklist_drive') > -1) {
+            throw new Error('O Google Apps Script da planilha precisa ser atualizado com a nova versão do código para suportar o arquivamento por Ano/Mês.');
+        }
         throw new Error(res?.error || 'Erro na resposta do Google Apps Script');
     }
 
@@ -28746,15 +28749,9 @@ let acervoDriveItens = [];
 let acervoDriveNextPageToken = null;
 let acervoArquivosParaUpload = [];
 let acervoPastaContextualAtiva = null;
-
-let acervoDriveCategoria = null;
-let acervoDriveTrilha = [];
-let acervoDriveItens = [];
-let acervoDriveNextPageToken = null;
-let acervoArquivosParaUpload = [];
-let acervoPastaContextualAtiva = null;
 let acervoDrivePastaUrlAtual = null;
 let acervoDriveTermoBusca = '';
+
 
 function resetAcervoDrive() {
     acervoDriveCategoria = null;

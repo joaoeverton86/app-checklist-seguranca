@@ -93,7 +93,7 @@ export default async function handler(req, res) {
         pastaDestinoId 
     } = req.body || {};
 
-    if (!nomeArquivo) {
+    if (!nomeArquivo && !req.body?.infoOnly) {
         res.status(400).json({ erro: 'Campo obrigatório: nomeArquivo' });
         return;
     }
@@ -124,6 +124,31 @@ export default async function handler(req, res) {
                 const idAno = await encontrarOuCriarPasta(ano, idRaiz, accessToken);
                 idPastaAlvo = await encontrarOuCriarPasta(mes, idAno, accessToken);
             }
+        }
+
+        // Identifica o e-mail da conta Google conectada para diagnóstico
+        let emailConta = null;
+        try {
+            const aboutRes = await fetch('https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress)', {
+                headers: { Authorization: `Bearer ${accessToken}` }
+            });
+            if (aboutRes.ok) {
+                const aboutData = await aboutRes.json();
+                emailConta = aboutData.user?.emailAddress || null;
+            }
+        } catch (_) {}
+
+        // Se for apenas consulta de informações/teste de conexão
+        if (req.body && req.body.infoOnly) {
+            res.status(200).json({
+                ok: true,
+                emailConta,
+                pastaDestinoId: idPastaAlvo,
+                pastaDestinoUrl: idPastaAlvo ? `https://drive.google.com/drive/folders/${idPastaAlvo}` : null,
+                pastaRaizId: idRaizAlvo,
+                pastaRaizUrl: idRaizAlvo ? `https://drive.google.com/drive/folders/${idRaizAlvo}` : null
+            });
+            return;
         }
 
         const nomeFinal = customNomeFinal || (registroChave && registroChave !== 'ACERVO' 
@@ -177,6 +202,7 @@ export default async function handler(req, res) {
 
         res.status(200).json({ 
             uploadUrl,
+            emailConta,
             pastaDestinoId: idPastaAlvo,
             pastaDestinoUrl: idPastaAlvo ? `https://drive.google.com/drive/folders/${idPastaAlvo}` : null,
             pastaRaizId: idRaizAlvo,

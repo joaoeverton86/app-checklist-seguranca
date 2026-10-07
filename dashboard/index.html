@@ -8436,7 +8436,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=171"></script>
+    <script src="dashboard.js?v=173"></script>
     <script src="placar_lideres.js?v=4"></script>
 <script>
 function filterMatrizEpi(q) {
@@ -9581,11 +9581,14 @@ function filterMatrizEpi(q) {
                 </div>
             </div>
 
-            <div style="display:flex; gap:10px; align-items:center; margin-top:4px;">
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:4px;">
                 <button type="button" class="db-clear-btn" id="btnTestarConexaoDrive" style="padding:8px 14px; font-size:12px; display:inline-flex; align-items:center; gap:6px;" onclick="testarConexaoGoogleDrive()">
                     <i class="fas fa-plug"></i> Testar Conexão com o Drive
                 </button>
-                <span id="cfgDriveTestStatus" style="font-size:12px; font-weight:600;"></span>
+                <a href="#" id="cfgDriveLinkPasta" onclick="abrirPastaChecklistsNoDrive(event)" target="_blank" rel="noopener noreferrer" style="font-size:12px; color:#0284c7; text-decoration:underline; font-weight:700; display:inline-flex; align-items:center; gap:4px;">
+                    <i class="fab fa-google-drive"></i> Abrir Pasta no Drive ↗
+                </a>
+                <span id="cfgDriveTestStatus" style="font-size:12px; font-weight:600; width:100%; margin-top:2px;"></span>
             </div>
         </div>
 

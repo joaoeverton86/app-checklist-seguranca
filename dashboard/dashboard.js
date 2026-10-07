@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v171';
+const DASHBOARD_VERSION = 'v173';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -2192,6 +2192,11 @@ function renderHistoricoChecklists() {
     const badgePendentes = document.getElementById('badgeChecklistsPendentesDrive');
     if (badgePendentes) badgePendentes.textContent = pendentesCount;
 
+    const btnPastaDrive = document.getElementById('btnAbrirPastaChecklistsDrive');
+    if (btnPastaDrive) {
+        btnPastaDrive.href = getDriveFolderUrl();
+    }
+
     const categoriaFiltro = document.getElementById('histCategoria')?.value || '';
     const driveFiltro = document.getElementById('histDriveStatus')?.value || '';
     const patrimonioFiltro = (document.getElementById('histPatrimonio')?.value || '').trim().toUpperCase();
@@ -2308,6 +2313,19 @@ function toggleHistoricoItem(id) {
 // Nome Padrão: CKL_{YYYY-MM-DD}_{PATRIMONIO}_{NOME_EQUIPAMENTO}.pdf
 // ============================================
 
+const DRIVE_ROOT_FOLDER_CHECKLISTS_ID = '1rMsZNvgDdk4Lu0WbPYW4ScxBOx1TBsCY';
+const DRIVE_ROOT_FOLDER_CHECKLISTS_URL = 'https://drive.google.com/drive/folders/1rMsZNvgDdk4Lu0WbPYW4ScxBOx1TBsCY';
+
+function getDriveFolderUrl() {
+    return localStorage.getItem('checklist_drive_folder_url') || DRIVE_ROOT_FOLDER_CHECKLISTS_URL;
+}
+
+function abrirPastaChecklistsNoDrive(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const url = getDriveFolderUrl();
+    window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 const DEFAULT_CHECKLIST_DRIVE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzhFCnB2VLSH4i7i_JNZajCc_88UgQEWdeHtgzHtcJGaS_kHQd7ixffVab2F9zHiMWFZQ/exec';
 
 function getDriveScriptUrl() {
@@ -2328,6 +2346,9 @@ function abrirModalConfigGoogleDrive() {
     if (inpUrl) inpUrl.value = getDriveScriptUrl();
     if (inpFolder) inpFolder.value = getDriveRootFolder();
     if (status) status.textContent = '';
+
+    const linkPasta = document.getElementById('cfgDriveLinkPasta');
+    if (linkPasta) linkPasta.href = getDriveFolderUrl();
 
     modal.style.display = 'flex';
 }
@@ -2366,8 +2387,8 @@ async function testarConexaoGoogleDrive() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+                infoOnly: true,
                 tabela: 'checklists',
-                registroChave: 'TESTE_CONEXAO',
                 nomeArquivo: 'teste_diagnostico.pdf',
                 mimeType: 'application/pdf',
                 pastaRaiz: getDriveRootFolder()
@@ -2376,8 +2397,15 @@ async function testarConexaoGoogleDrive() {
 
         if (respVercel.ok) {
             const dataV = await respVercel.json();
-            if (dataV && dataV.uploadUrl) {
-                if (status) { status.textContent = '✅ Conectado via API Google Drive!'; status.style.color = '#10b981'; }
+            if (dataV && (dataV.uploadUrl || dataV.ok || dataV.pastaDestinoId)) {
+                if (dataV.pastaRaizUrl) {
+                    localStorage.setItem('checklist_drive_folder_url', dataV.pastaRaizUrl);
+                }
+                const emailInfo = dataV.emailConta ? ` (Conta: ${dataV.emailConta})` : '';
+                if (status) { 
+                    status.innerHTML = `✅ Conectado ao Google Drive!${emailInfo} <a href="${getDriveFolderUrl()}" target="_blank" style="color:#0284c7; text-decoration:underline; margin-left:6px; font-weight:700;">Abrir Pasta ↗</a>`; 
+                    status.style.color = '#10b981'; 
+                }
                 return;
             }
         }

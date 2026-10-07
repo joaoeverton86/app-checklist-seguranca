@@ -77,8 +77,9 @@ async function encontrarPastaPorNome(nome, idPai, token) {
     return null;
 }
 
-async function pastaEhPermitida(pastaId, raizId, token) {
-    if (!pastaId || pastaId === raizId) return true;
+async function pastaEhPermitida(pastaId, raizesValidas, token) {
+    const raizes = Array.isArray(raizesValidas) ? raizesValidas.filter(Boolean) : [raizesValidas].filter(Boolean);
+    if (!pastaId || raizes.includes(pastaId)) return true;
 
     // 1. Tenta validação rápida subindo pelos pais (direto e sem varredura em massa)
     try {
@@ -86,7 +87,7 @@ async function pastaEhPermitida(pastaId, raizId, token) {
         for (let i = 0; i < 6; i++) {
             const meta = await chamarDrive(`files/${atual}`, { fields: 'id,parents' }, token);
             const pais = meta.parents || [];
-            if (pais.includes(raizId)) return true;
+            if (pais.some(p => raizes.includes(p))) return true;
             if (pais.length === 0) break;
             atual = pais[0];
         }
@@ -94,9 +95,9 @@ async function pastaEhPermitida(pastaId, raizId, token) {
         // Segue para a validação descendo caso o campo parents não esteja exposto
     }
 
-    // 2. Validação descendo a partir da raiz (até 6 níveis)
+    // 2. Validação descendo a partir das raízes (até 6 níveis)
     const MAX_PROFUNDIDADE = 6;
-    let nivelAtual = [raizId];
+    let nivelAtual = raizes.slice();
     for (let profundidade = 0; profundidade < MAX_PROFUNDIDADE; profundidade++) {
         const listas = await Promise.all(nivelAtual.map((id) => chamarDrive('files', {
             q: `'${id}' in parents and trashed = false and mimeType = 'application/vnd.google-apps.folder'`,
@@ -131,6 +132,7 @@ export default async function handler(req, res) {
         const tokenParaUsar = ehCategoriaPublica ? null : accessToken;
 
         let raizId = RAIZES_ESTATICAS[categoria] || null;
+        let legadaId = null;
 
         if (!raizId && accessToken) {
             if (categoria === 'checklists') {
@@ -150,14 +152,21 @@ export default async function handler(req, res) {
             }
         }
 
+        if (categoria === 'checklists' && accessToken) {
+            legadaId = await encontrarPastaPorNome('Checklists_PDFs', 'root', accessToken);
+        }
+
         if (!raizId) {
             res.status(400).json({ erro: `Categoria não localizada ou sem pasta configurada no Drive: ${categoria}` });
             return;
         }
 
+        const raizesValidas = [raizId];
+        if (legadaId && legadaId !== raizId) raizesValidas.push(legadaId);
+
         const idAlvo = pastaId || raizId;
-        if (idAlvo !== raizId) {
-            const permitida = await pastaEhPermitida(idAlvo, raizId, tokenParaUsar);
+        if (!raizesValidas.includes(idAlvo)) {
+            const permitida = await pastaEhPermitida(idAlvo, raizesValidas, tokenParaUsar);
             if (!permitida) {
                 res.status(403).json({ erro: 'Pasta fora do acervo permitido.' });
                 return;
@@ -197,12 +206,35 @@ export default async function handler(req, res) {
             pageToken
         }, tokenParaUsar);
 
+        // Se estivermos na raiz de Checklists SST e a pasta de apoio Checklists_PDFs existir no Drive,
+        // inclui ela na listagem no mesmo nível dos anos (2026, etc.)
+        if (categoria === 'checklists' && idAlvo === raizId && legadaId && legadaId !== raizId) {
+            if (!dados.files.some(f => f.id === legadaId)) {
+                let legadaNome = 'Checklists_PDFs (Legado)';
+                let legadaLink = `https://drive.google.com/drive/folders/${legadaId}`;
+                try {
+                    const infoLeg = await chamarDrive(`files/${legadaId}`, { fields: 'id,name,webViewLink' }, tokenParaUsar);
+                    if (infoLeg && infoLeg.name) legadaNome = `${infoLeg.name} (Legado)`;
+                    if (infoLeg && infoLeg.webViewLink) legadaLink = infoLeg.webViewLink;
+                } catch (_) {}
+                dados.files.push({
+                    id: legadaId,
+                    name: legadaNome,
+                    mimeType: 'application/vnd.google-apps.folder',
+                    webViewLink: legadaLink,
+                    size: '0',
+                    modifiedTime: new Date().toISOString()
+                });
+            }
+        }
+
         res.status(200).json({
             categoria,
             pastaId: idAlvo,
             pastaNome,
             pastaUrl,
             raizId,
+            legadaId,
             usuarioDrive,
             itens: dados.files || [],
             nextPageToken: dados.nextPageToken || null

@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v173';
+const DASHBOARD_VERSION = 'v174';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -28747,18 +28747,37 @@ let acervoDriveNextPageToken = null;
 let acervoArquivosParaUpload = [];
 let acervoPastaContextualAtiva = null;
 
+let acervoDriveCategoria = null;
+let acervoDriveTrilha = [];
+let acervoDriveItens = [];
+let acervoDriveNextPageToken = null;
+let acervoArquivosParaUpload = [];
+let acervoPastaContextualAtiva = null;
+let acervoDrivePastaUrlAtual = null;
+let acervoDriveTermoBusca = '';
+
 function resetAcervoDrive() {
     acervoDriveCategoria = null;
     acervoDriveTrilha = [];
     acervoDriveItens = [];
     acervoDriveNextPageToken = null;
     acervoPastaContextualAtiva = null;
+    acervoDrivePastaUrlAtual = null;
+    acervoDriveTermoBusca = '';
     const categoriasEl = document.getElementById('acervoDriveCategorias');
     const barraNav = document.getElementById('acervoDriveBarraNavegacao');
+    const barraBusca = document.getElementById('acervoDriveBarraBusca');
+    const statusItens = document.getElementById('acervoDriveStatusItens');
+    const btnLinkExt = document.getElementById('acervoDriveBtnLinkPastaExterna');
     const listaEl = document.getElementById('acervoDriveLista');
     const carregarMaisWrap = document.getElementById('acervoDriveCarregarMaisWrap');
-    if (categoriasEl) categoriasEl.style.display = 'flex';
+    const inpBusca = document.getElementById('acervoDriveBuscaInput');
+    if (inpBusca) inpBusca.value = '';
+    if (categoriasEl) categoriasEl.style.display = 'grid';
     if (barraNav) barraNav.style.display = 'none';
+    if (barraBusca) barraBusca.style.display = 'none';
+    if (statusItens) statusItens.style.display = 'none';
+    if (btnLinkExt) btnLinkExt.style.display = 'none';
     if (listaEl) { listaEl.style.display = 'none'; listaEl.innerHTML = ''; }
     if (carregarMaisWrap) carregarMaisWrap.style.display = 'none';
     renderAcervoDriveTrilha();
@@ -28802,9 +28821,25 @@ function voltarTrilhaAcervoDrive(indice) {
     carregarPastaAcervoDrive(nivel.id, false);
 }
 
+function filtrarItensAcervoDrive() {
+    const inp = document.getElementById('acervoDriveBuscaInput');
+    acervoDriveTermoBusca = (inp ? inp.value : '').trim().toLowerCase();
+    renderAcervoDriveLista();
+}
+
+function limparBuscaAcervoDrive() {
+    const inp = document.getElementById('acervoDriveBuscaInput');
+    if (inp) inp.value = '';
+    acervoDriveTermoBusca = '';
+    renderAcervoDriveLista();
+}
+
 async function carregarPastaAcervoDrive(pastaId, appendMode) {
     const listaEl = document.getElementById('acervoDriveLista');
     const carregarMaisWrap = document.getElementById('acervoDriveCarregarMaisWrap');
+    const barraBusca = document.getElementById('acervoDriveBarraBusca');
+    const statusItens = document.getElementById('acervoDriveStatusItens');
+    const btnLinkExt = document.getElementById('acervoDriveBtnLinkPastaExterna');
     if (!listaEl) return;
     listaEl.style.display = 'block';
     renderAcervoDriveTrilha();
@@ -28816,7 +28851,7 @@ async function carregarPastaAcervoDrive(pastaId, appendMode) {
     if (!appendMode) {
         acervoDriveItens = [];
         acervoDriveNextPageToken = null;
-        listaEl.innerHTML = '<div class="db-list-empty" style="padding:20px; text-align:center;"><i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i> Carregando arquivos do Google Drive...</div>';
+        listaEl.innerHTML = '<div class="db-list-empty" style="padding:24px; text-align:center;"><i class="fas fa-spinner fa-spin" style="margin-right:8px; color:#0284c7;"></i> Carregando arquivos do Google Drive...</div>';
         if (carregarMaisWrap) carregarMaisWrap.style.display = 'none';
     }
     try {
@@ -28829,6 +28864,22 @@ async function carregarPastaAcervoDrive(pastaId, appendMode) {
 
         acervoDriveItens = appendMode ? acervoDriveItens.concat(dados.itens || []) : (dados.itens || []);
         acervoDriveNextPageToken = dados.nextPageToken || null;
+        acervoDrivePastaUrlAtual = dados.pastaUrl || null;
+
+        // Atualiza link externo para o Google Drive
+        if (btnLinkExt) {
+            if (dados.pastaUrl) {
+                btnLinkExt.href = dados.pastaUrl;
+                btnLinkExt.style.display = 'inline-flex';
+            } else {
+                btnLinkExt.style.display = 'none';
+            }
+        }
+
+        // Mostra busca e contador
+        if (barraBusca) barraBusca.style.display = 'flex';
+        if (statusItens) statusItens.style.display = 'flex';
+
         renderAcervoDriveLista();
         if (carregarMaisWrap) carregarMaisWrap.style.display = acervoDriveNextPageToken ? 'block' : 'none';
     } catch (err) {
@@ -28862,24 +28913,72 @@ function renderAcervoDriveTrilha() {
 
 function renderAcervoDriveLista() {
     const el = document.getElementById('acervoDriveLista');
+    const contEl = document.getElementById('acervoDriveContadorItens');
+    const infoPastaEl = document.getElementById('acervoDriveInfoPasta');
     if (!el) return;
+
+    const nivelAtual = acervoDriveTrilha[acervoDriveTrilha.length - 1];
+    if (infoPastaEl) {
+        infoPastaEl.textContent = nivelAtual ? `Pasta: ${nivelAtual.nome}` : '';
+    }
+
     if (acervoDriveItens.length === 0) {
-        el.innerHTML = '<div class="db-list-empty" style="padding:24px; text-align:center; color:var(--text-light);"><i class="fas fa-folder-open" style="font-size:24px; margin-bottom:8px; display:block; opacity:0.6;"></i>Nenhum arquivo ou subpasta nesta pasta.</div>';
+        if (contEl) contEl.textContent = '0 itens';
+        el.innerHTML = '<div class="db-list-empty" style="padding:24px; text-align:center; color:var(--text-light);"><i class="fas fa-folder-open" style="font-size:24px; margin-bottom:8px; display:block; opacity:0.6;"></i>Nenhum arquivo ou subpasta nesta pasta do Drive.</div>';
         return;
     }
-    el.innerHTML = acervoDriveItens.map(item => {
+
+    let itensExibidos = acervoDriveItens;
+    if (acervoDriveTermoBusca) {
+        itensExibidos = acervoDriveItens.filter(item => {
+            const nome = (item.name || '').toLowerCase();
+            return nome.includes(acervoDriveTermoBusca);
+        });
+    }
+
+    if (contEl) {
+        if (acervoDriveTermoBusca) {
+            contEl.textContent = `Exibindo ${itensExibidos.length} de ${acervoDriveItens.length} itens`;
+        } else {
+            contEl.textContent = `${acervoDriveItens.length} item(ns) encontrado(s)`;
+        }
+    }
+
+    if (itensExibidos.length === 0) {
+        el.innerHTML = `<div class="db-list-empty" style="padding:20px; text-align:center; color:var(--text-light);"><i class="fas fa-search" style="font-size:20px; margin-bottom:6px; display:block; opacity:0.5;"></i>Nenhum item encontrado para "<strong>${escapeHTML(acervoDriveTermoBusca)}</strong>".</div>`;
+        return;
+    }
+
+    el.innerHTML = itensExibidos.map(item => {
         const ehPasta = item.mimeType === 'application/vnd.google-apps.folder';
-        const icone = ehPasta ? '<i class="fas fa-folder" style="color:#f59e0b; margin-right:6px; font-size:16px;"></i>' : '<i class="fas fa-file-pdf" style="color:#ef4444; margin-right:6px; font-size:16px;"></i>';
-        const detalhe = ehPasta ? 'Pasta' : `${formatarTamanhoArquivoAcervoDrive(item.size)} — Modificado em ${formatSimpleDate(item.modifiedTime)}`;
-        return `<div class="db-list-item" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border-bottom:1px solid var(--border);" onclick="abrirItemAcervoDrive('${escapeHTML(item.id)}')">
+        const icone = ehPasta 
+            ? '<i class="fas fa-folder" style="color:#f59e0b; margin-right:8px; font-size:18px;"></i>' 
+            : '<i class="fas fa-file-pdf" style="color:#ef4444; margin-right:8px; font-size:18px;"></i>';
+
+        // Extrai código de patrimônio amigável se for checklist padrão CKL_YYYY-MM-DD_PATR_EQUIP
+        let badgePatrimonio = '';
+        let badgeLegado = '';
+        const matchCkl = (item.name || '').match(/^CKL_[^_]+_([A-Za-z0-9-]+)_(.+)\.pdf$/i);
+        if (matchCkl) {
+            badgePatrimonio = `<span class="acervo-badge-patr">${escapeHTML(matchCkl[1])}</span>`;
+        }
+        if (item.name && item.name.includes('(Legado)')) {
+            badgeLegado = `<span class="acervo-badge-legado">Legado</span>`;
+        }
+
+        const detalhe = ehPasta 
+            ? 'Pasta do Google Drive' 
+            : `${formatarTamanhoArquivoAcervoDrive(item.size)} • Modificado em ${formatSimpleDate(item.modifiedTime)}`;
+
+        return `<div class="acervo-drive-item" onclick="abrirItemAcervoDrive('${escapeHTML(item.id)}')">
             <div style="min-width:0; flex:1;">
-                <div class="db-list-item-title" style="font-weight:600; display:flex; align-items:center; word-break:break-word;">
-                    ${icone} <span>${escapeHTML(item.name || '(sem nome)')}</span>
+                <div class="db-list-item-title" style="font-weight:600; display:flex; align-items:center; flex-wrap:wrap; word-break:break-word; gap:4px;">
+                    ${icone} ${badgePatrimonio}<span>${escapeHTML(item.name || '(sem nome)')}</span> ${badgeLegado}
                 </div>
-                <div class="db-list-item-sub" style="font-size:11.5px; color:var(--text-light); margin-top:2px;">${detalhe}</div>
+                <div class="acervo-file-meta">${detalhe}</div>
             </div>
             <div style="flex-shrink:0; margin-left:12px;">
-                ${ehPasta ? '<i class="fas fa-chevron-right" style="color:var(--text-light); font-size:12px;"></i>' : '<span style="font-size:11px; color:#0284c7; font-weight:600; text-decoration:underline;"><i class="fas fa-external-link-alt"></i> Abrir</span>'}
+                ${ehPasta ? '<i class="fas fa-chevron-right" style="color:var(--text-light); font-size:12px;"></i>' : '<span style="font-size:11.5px; color:#0284c7; font-weight:700; text-decoration:underline;"><i class="fas fa-external-link-alt"></i> Abrir</span>'}
             </div>
         </div>`;
     }).join('');
@@ -28902,6 +29001,15 @@ function formatarTamanhoArquivoAcervoDrive(bytes) {
     if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
     return (n / (1024 * 1024)).toFixed(1).replace('.', ',') + ' MB';
 }
+
+window.resetAcervoDrive = resetAcervoDrive;
+window.recarregarAcervoDrive = recarregarAcervoDrive;
+window.abrirCategoriaAcervoDrive = abrirCategoriaAcervoDrive;
+window.abrirPastaAcervoDrive = abrirPastaAcervoDrive;
+window.voltarTrilhaAcervoDrive = voltarTrilhaAcervoDrive;
+window.filtrarItensAcervoDrive = filtrarItensAcervoDrive;
+window.limparBuscaAcervoDrive = limparBuscaAcervoDrive;
+window.abrirItemAcervoDrive = abrirItemAcervoDrive;
 
 // ============================================
 // MODAL DE UPLOAD DE ARQUIVOS PARA O ACERVO DRIVE

@@ -7975,22 +7975,81 @@
                     </div>
 
                     <!-- Categorias Principais do Acervo -->
-                    <div id="acervoDriveCategorias" style="display:flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
-                        <button class="db-apply-btn" onclick="abrirCategoriaAcervoDrive('treinamentos')">📁 Treinamentos</button>
-                        <button class="db-apply-btn" onclick="abrirCategoriaAcervoDrive('dds')">📁 DDSMA</button>
-                        <button class="db-apply-btn" onclick="abrirCategoriaAcervoDrive('checklists')">📁 Checklists SST</button>
-                        <button class="db-apply-btn" onclick="abrirCategoriaAcervoDrive('sms_cop')">📁 SMS_COP (Geral)</button>
+                    <div id="acervoDriveCategorias" class="acervo-drive-grid-cat">
+                        <div class="acervo-cat-card" onclick="abrirCategoriaAcervoDrive('checklists')">
+                            <div class="acervo-cat-icon" style="background:#e0f2fe; color:#0284c7;">
+                                <i class="fas fa-tasks"></i>
+                            </div>
+                            <div class="acervo-cat-info">
+                                <div class="acervo-cat-title">Checklists SST</div>
+                                <div class="acervo-cat-desc">Inspeções veiculares e de equipamentos (Ano/Mês e Legados)</div>
+                            </div>
+                        </div>
+
+                        <div class="acervo-cat-card" onclick="abrirCategoriaAcervoDrive('treinamentos')">
+                            <div class="acervo-cat-icon" style="background:#dcfce7; color:#10b981;">
+                                <i class="fas fa-graduation-cap"></i>
+                            </div>
+                            <div class="acervo-cat-info">
+                                <div class="acervo-cat-title">Treinamentos</div>
+                                <div class="acervo-cat-desc">Fichas, listas e certificados SCAN em nuvem</div>
+                            </div>
+                        </div>
+
+                        <div class="acervo-cat-card" onclick="abrirCategoriaAcervoDrive('dds')">
+                            <div class="acervo-cat-icon" style="background:#fef3c7; color:#f59e0b;">
+                                <i class="fas fa-comments"></i>
+                            </div>
+                            <div class="acervo-cat-info">
+                                <div class="acervo-cat-title">DDSMA</div>
+                                <div class="acervo-cat-desc">Diálogos diários, atas e presenças SCAN</div>
+                            </div>
+                        </div>
+
+                        <div class="acervo-cat-card" onclick="abrirCategoriaAcervoDrive('sms_cop')">
+                            <div class="acervo-cat-icon" style="background:#e0e7ff; color:#6366f1;">
+                                <i class="fas fa-folder-open"></i>
+                            </div>
+                            <div class="acervo-cat-info">
+                                <div class="acervo-cat-title">SMS_COP (Geral)</div>
+                                <div class="acervo-cat-desc">Acervo documental e institucional da obra</div>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Barra de Navegação Contextual (Trilha / Breadcrumb e Ação Rápida de Upload) -->
-                    <div id="acervoDriveBarraNavegacao" style="display:none; justify-content:space-between; align-items:center; background:rgba(2,132,199,0.06); border:1px solid rgba(2,132,199,0.2); border-radius:8px; padding:10px 14px; margin-bottom:12px;">
+                    <!-- Barra de Navegação Contextual (Trilha / Breadcrumb e Ações) -->
+                    <div id="acervoDriveBarraNavegacao" style="display:none; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; background:rgba(2,132,199,0.06); border:1px solid rgba(2,132,199,0.2); border-radius:8px; padding:10px 14px; margin-bottom:12px;">
                         <div id="acervoDriveTrilha" style="font-size: 12.5px; font-weight:500;"></div>
-                        <button class="db-apply-btn" id="btnUploadPastaAtualAcervo" style="padding:6px 12px; font-size:12px; background:#0284c7; border:none; display:inline-flex; align-items:center; gap:5px;" onclick="abrirModalUploadAcervoDriveContextual()">
-                            <i class="fas fa-upload"></i> Subir Nesta Pasta
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <a href="#" id="acervoDriveBtnLinkPastaExterna" target="_blank" rel="noopener noreferrer" class="db-clear-btn" style="padding:6px 12px; font-size:11.5px; display:none; align-items:center; gap:5px; text-decoration:none;" title="Abrir esta pasta diretamente no Google Drive">
+                                <i class="fab fa-google-drive" style="color:#0284c7;"></i> Abrir no Drive ↗
+                            </a>
+                            <button class="db-apply-btn" id="btnUploadPastaAtualAcervo" style="padding:6px 12px; font-size:12px; background:#0284c7; border:none; display:inline-flex; align-items:center; gap:5px;" onclick="abrirModalUploadAcervoDriveContextual()">
+                                <i class="fas fa-upload"></i> Subir Nesta Pasta
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Campo de Busca Dinâmica nos Arquivos da Pasta Aberta -->
+                    <div id="acervoDriveBarraBusca" style="display:none; gap:10px; align-items:center; margin-bottom:12px;">
+                        <div style="position:relative; flex:1;">
+                            <i class="fas fa-search" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--text-light); font-size:13px;"></i>
+                            <input type="text" id="acervoDriveBuscaInput" placeholder="Buscar nesta pasta por nome, patrimônio (ex: VL-01, MN-02), equipamento ou data..."
+                                   oninput="filtrarItensAcervoDrive()"
+                                   style="width:100%; padding:9px 12px 9px 34px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
+                        </div>
+                        <button type="button" class="db-clear-btn" onclick="limparBuscaAcervoDrive()" style="padding:8px 12px; font-size:12px;" title="Limpar busca">
+                            ✕ Limpar
                         </button>
                     </div>
 
-                    <div id="acervoDriveLista" class="db-list" style="max-height: 520px; margin-top: 10px; display:none;"></div>
+                    <!-- Contador e Status da Pasta -->
+                    <div id="acervoDriveStatusItens" style="display:none; font-size:12px; color:var(--text-light); margin-bottom:8px; justify-content:space-between; align-items:center;">
+                        <span id="acervoDriveContadorItens"></span>
+                        <span id="acervoDriveInfoPasta" style="font-weight:600; color:var(--text);"></span>
+                    </div>
+
+                    <div id="acervoDriveLista" class="db-list" style="max-height: 540px; margin-top: 6px; display:none;"></div>
 
                     <div id="acervoDriveCarregarMaisWrap" style="text-align:center; margin-top: 10px; display:none;">
                         <button class="db-clear-btn" onclick="carregarMaisAcervoDrive()">Carregar mais</button>
@@ -8436,7 +8495,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=173"></script>
+    <script src="dashboard.js?v=174"></script>
     <script src="placar_lideres.js?v=4"></script>
 <script>
 function filterMatrizEpi(q) {

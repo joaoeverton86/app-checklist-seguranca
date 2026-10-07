@@ -15301,83 +15301,260 @@ function construirSecao4RelSms(dadosSecao1, dadosSecoes23, dadosMeioAmbiente, me
 // aparece aqui).
 // ================================================================
 
-// Lista cronológica de treinamentos + DDS do mês, um "evento" por linha - reaproveita
-// montarLinhasRelatorioMensal() de novo, mas com agrupamento 'diario' (não 'semanal' como
-// na Seção 1.2), porque aqui cada sessão/dia vira um espaço de foto individual.
+// ================================================================
+// SEÇÃO 6 (Registros Fotográficos): SEGREGAÇÃO 6.1 (Treinamentos) e 6.2 (DDSMA)
+// Agrupa treinamentos por tema distinto no mês com 02 fotos representativas.
+// Filtra DDSMA exclusivamente em dias úteis (segunda a sexta) com 02 fotos por dia útil/tema.
+// ================================================================
+
 function coletarDadosFase4RelSms(mes, ano) {
-    const treinamentosDiario = montarLinhasRelatorioMensal(ano, mes, 'diario');
-    const eventos = [];
-    let fallbackFotoIdx = 0;
-    treinamentosDiario.categorias.forEach(cat => {
-        cat.linhas.forEach(l => {
-            const rawNome = l.nome || '';
-            const nomeFinal = sanitizarTemaDdsRelSms(rawNome, l.data, fallbackFotoIdx);
-            if (!rawNome || rawNome === '(sem tema cadastrado)' || rawNome.toLowerCase().includes('sem tema')) {
-                fallbackFotoIdx++;
-            }
-            eventos.push({ data: l.data, nome: nomeFinal, categoria: cat.label });
+    const inicio = new Date(ano, mes, 1, 0, 0, 0, 0);
+    const fim = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
+    const dentroPeriodo = (dataStr) => {
+        if (!dataStr) return false;
+        const d = parseLocalDate(dataStr);
+        return d >= inicio && d <= fim;
+    };
+    const ehDiaUtil = (dataStr) => {
+        if (!dataStr) return false;
+        const d = parseLocalDate(dataStr);
+        const day = d.getDay(); // 0 = Domingo, 1 = Segunda ... 5 = Sexta, 6 = Sábado
+        return day >= 1 && day <= 5;
+    };
+
+    // ----------------------------------------------------
+    // 6.1. TREINAMENTOS: Agrupar por tema realizado no mês
+    // ----------------------------------------------------
+    const gruposTreinamentos = new Map();
+
+    (allTreinamentosRealizados || []).forEach(r => {
+        if (!dentroPeriodo(r.data_treinamento)) return;
+        let temaNome = '';
+        if (r.treinamento_cod === '1' || (r.treinamento_nome || '').toUpperCase().includes('INTEGRAÇÃO')) {
+            temaNome = 'INTEGRAÇÃO DE SEGURANÇA (NR-01)';
+        } else {
+            const cat = (allTreinamentosCatalogo || []).find(c => String(c.codigo) === String(r.treinamento_cod));
+            temaNome = (cat?.nome || r.treinamento_nome || ('Treinamento ' + r.treinamento_cod)).trim();
+        }
+        if (!temaNome) temaNome = 'TREINAMENTO OPERACIONAL DE SST';
+
+        const chaveTema = temaNome.toUpperCase();
+        if (!gruposTreinamentos.has(chaveTema)) {
+            gruposTreinamentos.set(chaveTema, {
+                tema: temaNome,
+                datas: new Set(),
+                codigo: r.treinamento_cod
+            });
+        }
+        if (r.data_treinamento) {
+            gruposTreinamentos.get(chaveTema).datas.add(r.data_treinamento);
+        }
+    });
+
+    // Se houver treinamentos concluídos no cronograma mas não individualizados:
+    (allTreinamentosCronograma || []).forEach(c => {
+        if (!dentroPeriodo(c.data_prevista)) return;
+        if (c.status !== 'lancado' && c.status !== 'concluido') return;
+        const cat = (allTreinamentosCatalogo || []).find(x => String(x.codigo) === String(c.treinamento_cod));
+        const temaNome = (cat?.nome || c.treinamento_nome || ('Treinamento ' + c.treinamento_cod)).trim();
+        const chaveTema = temaNome.toUpperCase();
+        if (!gruposTreinamentos.has(chaveTema)) {
+            gruposTreinamentos.set(chaveTema, {
+                tema: temaNome,
+                datas: new Set([c.data_prevista]),
+                codigo: c.treinamento_cod
+            });
+        } else if (c.data_prevista) {
+            gruposTreinamentos.get(chaveTema).datas.add(c.data_prevista);
+        }
+    });
+
+    const listaTreinamentos = [];
+    gruposTreinamentos.forEach(g => {
+        const datasArr = Array.from(g.datas).sort();
+        let dataTexto = '';
+        if (datasArr.length === 0) {
+            dataTexto = `${NOMES_MESES[mes].toUpperCase()}/${ano}`;
+        } else if (datasArr.length === 1) {
+            dataTexto = formatSimpleDate(datasArr[0]);
+        } else if (datasArr.length === 2) {
+            dataTexto = `${formatSimpleDate(datasArr[0])} e ${formatSimpleDate(datasArr[1])}`;
+        } else {
+            dataTexto = `${formatSimpleDate(datasArr[0])} a ${formatSimpleDate(datasArr[datasArr.length - 1])}`;
+        }
+        const tituloCompleto = `${dataTexto} — ${g.tema.toUpperCase()}`;
+        listaTreinamentos.push({
+            tipo: 'treinamento',
+            codigo: g.codigo,
+            tema: g.tema,
+            dataTexto,
+            primeiraData: datasArr[0] || '',
+            titulo: tituloCompleto
         });
     });
-    eventos.sort((a, b) => (a.data || '').localeCompare(b.data || ''));
-    return { eventos };
+    listaTreinamentos.sort((a, b) => (a.primeiraData || '').localeCompare(b.primeiraData || ''));
+
+    // ----------------------------------------------------
+    // 6.2. DDSMA: Mapear temas aplicados no mês, apenas dias úteis (Seg-Sex)
+    // ----------------------------------------------------
+    const ddsPorDataUtil = new Map();
+    let fallbackFotoIdx = 0;
+
+    (allDdsRealizados || []).forEach(r => {
+        if (!dentroPeriodo(r.data_dds)) return;
+        if (!ehDiaUtil(r.data_dds)) return; // descarta sábado e domingo
+        if (!ddsPorDataUtil.has(r.data_dds)) {
+            ddsPorDataUtil.set(r.data_dds, { data: r.data_dds, temas: new Set() });
+        }
+        if (r.tema && r.tema.trim()) {
+            ddsPorDataUtil.get(r.data_dds).temas.add(r.tema.trim());
+        }
+    });
+
+    (allDdsHistoricoAgregado || []).forEach(h => {
+        if (!dentroPeriodo(h.data_dds)) return;
+        if (!ehDiaUtil(h.data_dds)) return; // descarta sábado e domingo
+        if (!ddsPorDataUtil.has(h.data_dds)) {
+            ddsPorDataUtil.set(h.data_dds, { data: h.data_dds, temas: new Set() });
+        }
+        if (h.tema && h.tema.trim()) {
+            ddsPorDataUtil.get(h.data_dds).temas.add(h.tema.trim());
+        }
+    });
+
+    const listaDdsma = [];
+    const datasOrdenadasDds = Array.from(ddsPorDataUtil.keys()).sort();
+
+    datasOrdenadasDds.forEach(dataStr => {
+        const info = ddsPorDataUtil.get(dataStr);
+        let temaFinal = '';
+        if (info.temas.size > 0) {
+            temaFinal = Array.from(info.temas).join(' / ');
+        } else {
+            const crono = (allDdsTemasCronograma || []).find(t => t.data === dataStr);
+            temaFinal = crono ? (crono.tema || '') : '';
+        }
+        temaFinal = sanitizarTemaDdsRelSms(temaFinal, dataStr, fallbackFotoIdx);
+        if (!temaFinal || temaFinal === '(sem tema cadastrado)' || temaFinal.toLowerCase().includes('sem tema')) {
+            fallbackFotoIdx++;
+        }
+
+        const dataTexto = formatSimpleDate(dataStr);
+        const tituloCompleto = `${dataTexto} — ${temaFinal.toUpperCase()}`;
+        listaDdsma.push({
+            tipo: 'ddsma',
+            data: dataStr,
+            dataTexto,
+            tema: temaFinal,
+            titulo: tituloCompleto
+        });
+    });
+
+    const eventos = [
+        ...listaTreinamentos.map(t => ({ data: t.primeiraData, nome: t.tema, categoria: 'Treinamentos', titulo: t.titulo })),
+        ...listaDdsma.map(d => ({ data: d.data, nome: d.tema, categoria: 'DDSMA', titulo: d.titulo }))
+    ];
+
+    return {
+        treinamentos: listaTreinamentos,
+        ddsma: listaDdsma,
+        eventos
+    };
 }
 
-// Uma célula de foto: espaço reservado (borda, sem imagem - João insere manualmente
-// depois de gerado o .docx) + legenda "Foto - NN" + data/título, exatamente como descrito
-// na convenção do relatório (quadro 2 colunas, ordem cronológica).
-function relSmsCelulaFoto(numero, dataStr, titulo) {
+// Célula individual de foto para documento Word (.docx)
+function relSmsCelulaRegistroFoto(numero) {
+    const numFmt = String(numero).padStart(2, '0');
     return new docx.TableCell({
-        margins: { top: 100, bottom: 100, left: 100, right: 100 },
+        width: { size: 50, type: docx.WidthType.PERCENTAGE },
+        margins: { top: 80, bottom: 80, left: 80, right: 80 },
         borders: { top: RELSMS_BORDA_FINA, bottom: RELSMS_BORDA_FINA, left: RELSMS_BORDA_FINA, right: RELSMS_BORDA_FINA },
-        verticalAlign: docx.VerticalAlign.TOP,
+        verticalAlign: docx.VerticalAlign.CENTER,
+        shading: { fill: 'FAFAFA' },
         children: [
             new docx.Paragraph({
                 alignment: docx.AlignmentType.CENTER,
-                spacing: { before: 600, after: 600 },
+                spacing: { before: 450, after: 450 },
                 border: { top: RELSMS_BORDA_FINA, bottom: RELSMS_BORDA_FINA, left: RELSMS_BORDA_FINA, right: RELSMS_BORDA_FINA },
-                children: [new docx.TextRun({ text: '[Espaço reservado para foto]', italics: true, color: RELSMS_GREY, size: 18 })],
+                shading: { fill: 'FFFFFF' },
+                children: [new docx.TextRun({ text: `[ Espaço reservado para Registro Fotográfico ${numFmt} ]`, italics: true, color: RELSMS_GREY, size: 18 })],
             }),
             new docx.Paragraph({
                 alignment: docx.AlignmentType.CENTER,
-                spacing: { before: 80, after: 20 },
-                children: [new docx.TextRun({ text: `Foto - ${String(numero).padStart(2, '0')}`, bold: true, size: 18, color: RELSMS_NAVY })],
-            }),
-            new docx.Paragraph({
-                alignment: docx.AlignmentType.CENTER,
-                children: [new docx.TextRun({ text: `${formatSimpleDate(dataStr)} — ${titulo}`, size: 16, color: RELSMS_GREY })],
+                spacing: { before: 50, after: 10 },
+                children: [new docx.TextRun({ text: `Registro ${numFmt}`, bold: true, size: 17, color: '64748B' })],
             }),
         ],
     });
 }
 
-function relSmsCelulaVazia() {
-    return new docx.TableCell({
-        borders: { top: RELSMS_BORDA_FINA, bottom: RELSMS_BORDA_FINA, left: RELSMS_BORDA_FINA, right: RELSMS_BORDA_FINA },
-        children: [new docx.Paragraph({ children: [] })],
+// Tabela estruturada para cada Tema em Word (.docx) com cabeçalho largo e exatamente 02 fotos
+function relSmsTabelaTemaFotoDocx(titulo) {
+    return new docx.Table({
+        width: { size: 100, type: docx.WidthType.PERCENTAGE },
+        rows: [
+            new docx.TableRow({
+                children: [
+                    new docx.TableCell({
+                        columnSpan: 2,
+                        shading: { fill: 'F1F5F9' },
+                        borders: { top: RELSMS_BORDA_FINA, bottom: RELSMS_BORDA_FINA, left: RELSMS_BORDA_FINA, right: RELSMS_BORDA_FINA },
+                        margins: { top: 80, bottom: 80, left: 120, right: 120 },
+                        children: [
+                            new docx.Paragraph({
+                                children: [
+                                    new docx.TextRun({ text: titulo, bold: true, color: '1E293B', size: 20 })
+                                ]
+                            })
+                        ]
+                    })
+                ]
+            }),
+            new docx.TableRow({
+                height: { value: 2400, rule: docx.HeightRule.ATLEAST },
+                children: [
+                    relSmsCelulaRegistroFoto(1),
+                    relSmsCelulaRegistroFoto(2)
+                ]
+            })
+        ]
     });
 }
 
 function construirSecao5RelSms(dadosFotos, mes, ano) {
     const nomeMes = NOMES_MESES[mes];
     const out = [relSmsH1('6. Registros Fotográficos')];
-    out.push(relSmsP(`Registros fotográficos de treinamentos e DDS/DDSMA realizados em ${nomeMes.toLowerCase()} de ${ano}, em ordem cronológica. Espaços reservados abaixo para inserção manual das fotos após a geração deste documento.`));
+    out.push(relSmsP(`Evidências fotográficas das capacitações, treinamentos normativos e diálogos diários de segurança realizados no canteiro e frentes de serviço em ${nomeMes.toLowerCase()} de ${ano}, conforme os requisitos de evidência documental do PGR (NR-01). Espaços reservados abaixo para inserção manual das fotos após a emissão deste documento.`));
 
-    const eventos = dadosFotos.eventos;
-    if (eventos.length === 0) {
-        out.push(relSmsP('Nenhum treinamento ou DDS registrado no período.'));
-        out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
-        return out;
+    // 6.1. Registros Fotográficos — Treinamentos
+    out.push(relSmsH2('6.1. Registros Fotográficos — Treinamentos'));
+    out.push(relSmsP(`Registros fotográficos de treinamentos e capacitações normativas realizados em ${nomeMes.toLowerCase()} de ${ano}, agrupados por tema. Espaço reservado para exatamente 02 fotos representativas por tema:`));
+
+    const treins = dadosFotos.treinamentos || [];
+    if (treins.length === 0) {
+        out.push(relSmsNota('Nenhum treinamento registrado no período para inserção fotográfica.'));
+    } else {
+        treins.forEach(t => {
+            out.push(relSmsTabelaTemaFotoDocx(t.titulo));
+            out.push(new docx.Paragraph({ spacing: { after: 120 }, children: [] }));
+        });
     }
 
-    const linhasTabela = [];
-    for (let i = 0; i < eventos.length; i += 2) {
-        const par = [eventos[i], eventos[i + 1] || null];
-        linhasTabela.push(new docx.TableRow({
-            height: { value: 2600, rule: docx.HeightRule.ATLEAST },
-            children: par.map((ev, idx) => ev ? relSmsCelulaFoto(i + idx + 1, ev.data, ev.nome) : relSmsCelulaVazia()),
-        }));
+    out.push(new docx.Paragraph({ spacing: { after: 180 }, children: [] }));
+
+    // 6.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA)
+    out.push(relSmsH2('6.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA)'));
+    out.push(relSmsP(`Registros fotográficos dos Diálogos Diários de Segurança e Meio Ambiente (DDSMA) executados nas frentes de trabalho nos dias úteis (segunda a sexta-feira). Espaço reservado para exatamente 02 fotos representativas por tema/dia útil:`));
+
+    const dds = dadosFotos.ddsma || [];
+    if (dds.length === 0) {
+        out.push(relSmsNota('Nenhum DDSMA registrado em dias úteis no período para inserção fotográfica.'));
+    } else {
+        dds.forEach(d => {
+            out.push(relSmsTabelaTemaFotoDocx(d.titulo));
+            out.push(new docx.Paragraph({ spacing: { after: 120 }, children: [] }));
+        });
     }
-    out.push(new docx.Table({ width: { size: 100, type: docx.WidthType.PERCENTAGE }, rows: linhasTabela }));
 
     out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
     return out;
@@ -16320,6 +16497,45 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             font-size: 9px;
             color: #475569;
         }
+        .tabela-registro-foto {
+            width: 100%;
+            margin-bottom: 16px;
+            border-collapse: collapse;
+            border: 1px solid #cbd5e1;
+            page-break-inside: avoid;
+            background: #ffffff;
+        }
+        .tabela-registro-foto thead tr {
+            background-color: #f1f5f9;
+        }
+        .tabela-registro-foto th {
+            padding: 8px 12px;
+            text-align: left;
+            font-size: 11pt;
+            font-weight: bold;
+            color: #1e293b;
+            border-bottom: 1px solid #cbd5e1;
+        }
+        .tabela-registro-foto td {
+            width: 50%;
+            text-align: center;
+            vertical-align: middle;
+            padding: 10px;
+            height: 180px;
+            background-color: #fafafa;
+        }
+        .photo-placeholder {
+            height: 130px;
+            border: 1px dashed #94a3b8;
+            background: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #64748b;
+            font-size: 9.5pt;
+            font-style: italic;
+            border-radius: 4px;
+        }
         @media print {
             .no-print { display: none !important; }
             body { margin: 0; background: #ffffff; }
@@ -16716,19 +16932,77 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
 
         <!-- SEÇÃO 13: REGISTROS FOTOGRÁFICOS -->
         ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '13. Registros Fotográficos')}
-        <div class="rel-h1">13. Registros Fotográficos de Treinamentos e DDS</div>
-        <p class="rel-p">Evidências fotográficas cronológicas das capacitações e diálogos de segurança realizados no canteiro e frentes de serviço.</p>
-        ${fotos.eventos.length === 0 ? '<div class="rel-nota">Nenhum evento registrado no período para inserção fotográfica.</div>' : `
-            <div class="grid-fotos">
-                ${fotos.eventos.map((ev, i) => `
-                    <div class="card-foto">
-                        <div class="espaco-foto">[ Espaço reservado para foto oficial ]</div>
-                        <div class="legenda-foto-num">Foto ${String(i + 1).padStart(2, '0')}</div>
-                        <div class="legenda-foto-desc">${formatSimpleDate(ev.data)} — ${escapeHTML(ev.nome)}</div>
-                    </div>
-                `).join('')}
-            </div>
-        `}
+        <div class="rel-h1">13. Registros Fotográficos (Treinamentos e DDSMA)</div>
+        <p class="rel-p">Evidências documentais e registros fotográficos em conformidade com as diretrizes do PGR (NR-01) e cronogramas de capacitação operacional do contrato.</p>
+
+        <!-- 6.1. Registros Fotográficos — Treinamentos -->
+        <div class="rel-h2" style="margin-top: 14px; margin-bottom: 8px; color: #1f3864; font-size: 11pt; font-weight: bold; border-bottom: 1.5px solid #1f3864; padding-bottom: 4px;">
+            6.1. Registros Fotográficos — Treinamentos
+        </div>
+        <p class="rel-p" style="margin-bottom: 12px; color: #475569;">
+            Evidências fotográficas dos treinamentos normativos e capacitações técnicas realizados em ${nomeMes.toLowerCase()} de ${ano}, agrupados por tema desenvolvido no canteiro de obras (02 registros por tema).
+        </p>
+        ${(!fotos.treinamentos || fotos.treinamentos.length === 0) ? '<div class="rel-nota" style="padding:10px; background:#f8fafc; border:1px solid #cbd5e1; margin-bottom:16px;">Nenhum treinamento registrado no período para inserção fotográfica.</div>' :
+            fotos.treinamentos.map(t => `
+                <table class="tabela-registro-foto" style="width:100%; margin-bottom:16px; border-collapse:collapse; border:1px solid #cbd5e1; page-break-inside:avoid;">
+                  <thead>
+                    <tr style="background-color:#f1f5f9;">
+                      <th colspan="2" style="padding:8px 12px; text-align:left; font-size:11pt; font-weight:bold; color:#1e293b; border-bottom:1px solid #cbd5e1;">
+                        ${escapeHTML(t.titulo)}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style="width:50%; text-align:center; vertical-align:middle; border-right:1px solid #cbd5e1; padding:10px; height:180px; background-color:#fafafa;">
+                        <div class="photo-placeholder" style="height:130px; border:1px dashed #94a3b8; background:#ffffff; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:9.5pt; font-style:italic;">[ Espaço reservado para Registro Fotográfico 01 ]</div>
+                        <span style="font-size:9pt; color:#64748b; display:block; margin-top:6px; font-weight:600;">Registro 01</span>
+                      </td>
+                      <td style="width:50%; text-align:center; vertical-align:middle; padding:10px; height:180px; background-color:#fafafa;">
+                        <div class="photo-placeholder" style="height:130px; border:1px dashed #94a3b8; background:#ffffff; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:9.5pt; font-style:italic;">[ Espaço reservado para Registro Fotográfico 02 ]</div>
+                        <span style="font-size:9pt; color:#64748b; display:block; margin-top:6px; font-weight:600;">Registro 02</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+            `).join('')
+        }
+
+        <div class="page-break"></div>
+
+        <!-- 6.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA) -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '13. Registros Fotográficos — DDSMA')}
+        <div class="rel-h2" style="margin-top: 14px; margin-bottom: 8px; color: #1f3864; font-size: 11pt; font-weight: bold; border-bottom: 1.5px solid #1f3864; padding-bottom: 4px;">
+            6.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA)
+        </div>
+        <p class="rel-p" style="margin-bottom: 12px; color: #475569;">
+            Evidências fotográficas dos Diálogos Diários de Segurança e Meio Ambiente executados nas frentes de trabalho nos dias úteis (segunda a sexta-feira) em ${nomeMes.toLowerCase()} de ${ano} (02 registros por tema/dia útil).
+        </p>
+        ${(!fotos.ddsma || fotos.ddsma.length === 0) ? '<div class="rel-nota" style="padding:10px; background:#f8fafc; border:1px solid #cbd5e1; margin-bottom:16px;">Nenhum DDSMA registrado em dias úteis no período para inserção fotográfica.</div>' :
+            fotos.ddsma.map(d => `
+                <table class="tabela-registro-foto" style="width:100%; margin-bottom:16px; border-collapse:collapse; border:1px solid #cbd5e1; page-break-inside:avoid;">
+                  <thead>
+                    <tr style="background-color:#f1f5f9;">
+                      <th colspan="2" style="padding:8px 12px; text-align:left; font-size:11pt; font-weight:bold; color:#1e293b; border-bottom:1px solid #cbd5e1;">
+                        ${escapeHTML(d.titulo)}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style="width:50%; text-align:center; vertical-align:middle; border-right:1px solid #cbd5e1; padding:10px; height:180px; background-color:#fafafa;">
+                        <div class="photo-placeholder" style="height:130px; border:1px dashed #94a3b8; background:#ffffff; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:9.5pt; font-style:italic;">[ Espaço reservado para Registro Fotográfico 01 ]</div>
+                        <span style="font-size:9pt; color:#64748b; display:block; margin-top:6px; font-weight:600;">Registro 01</span>
+                      </td>
+                      <td style="width:50%; text-align:center; vertical-align:middle; padding:10px; height:180px; background-color:#fafafa;">
+                        <div class="photo-placeholder" style="height:130px; border:1px dashed #94a3b8; background:#ffffff; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:9.5pt; font-style:italic;">[ Espaço reservado para Registro Fotográfico 02 ]</div>
+                        <span style="font-size:9pt; color:#64748b; display:block; margin-top:6px; font-weight:600;">Registro 02</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+            `).join('')
+        }
         <div class="page-break"></div>
 
         <!-- ANEXOS OFICIAIS -->
@@ -16752,7 +17026,7 @@ function renderRelSmsPainel(dados, fiscalizacao) {
     const previewEl = document.getElementById('relSmsPainelPreview');
     if (!previewEl) return;
 
-    const { meta, efetivo, hht, kpisRapidos, checklists, naoConformidades, relatos, apr, matrizRisco, treinamentos, acidentes, pgr, saude, ergonomia, psicossocial, periculosidade, extintores, brigada, cipa, epi, ada, meioAmbiente } = dados;
+    const { meta, efetivo, hht, kpisRapidos, checklists, naoConformidades, relatos, apr, matrizRisco, treinamentos, acidentes, pgr, saude, ergonomia, psicossocial, periculosidade, extintores, brigada, cipa, epi, ada, meioAmbiente, fotos } = dados;
 
     const html = `
     <!-- Topo do Dossiê -->
@@ -16904,6 +17178,19 @@ function renderRelSmsPainel(dados, fiscalizacao) {
                 <div>• <strong>Mão de Obra Local (ADA):</strong> ${ada.totalAda} de ${ada.totalFuncionarios} trabalhadores originários da ADA (${r2(ada.pctAda)}%)</div>
                 <div>• <strong>PGRS (Resíduos de Refeições):</strong> ${meioAmbiente.residuosConfirmados ? `${meioAmbiente.linhaResiduos.pesoKg.toFixed(1)} kg gerados e destinados a Aterro Sanitário` : 'Segregação e transporte conforme diretrizes do PGRS'}</div>
                 <div>• <strong>Manutenção Veicular:</strong> ${meioAmbiente.trocasOleoMes} trocas de óleo registradas (${meioAmbiente.litrosOleoMes.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} L)</div>
+            </div>
+        </div>
+
+        <!-- Card 7: Registros Fotográficos (Segregação 6.1 e 6.2) -->
+        <div class="rel-sms-section-box">
+            <div class="rel-sms-section-header">
+                <div class="rel-sms-section-title"><i class="fa-solid fa-camera" style="color:#0284c7;"></i> 7. Registros Fotográficos (Evidências de Campo)</div>
+                <span class="rel-sms-badge info">${(fotos?.treinamentos?.length || 0) + (fotos?.ddsma?.length || 0)} temas</span>
+            </div>
+            <div style="font-size: 13px; line-height: 1.6;">
+                <div>• <strong>6.1. Treinamentos:</strong> ${fotos?.treinamentos?.length || 0} tema(s) distinto(s) no mês • ${((fotos?.treinamentos?.length || 0) * 2)} slots de fotos reservados (2 fotos/tema)</div>
+                <div>• <strong>6.2. DDSMA:</strong> ${fotos?.ddsma?.length || 0} dia(s) útil(eis) com DDSMA • ${((fotos?.ddsma?.length || 0) * 2)} slots de fotos reservados (segunda a sexta)</div>
+                <div>• <strong>Filtro Operacional:</strong> Fins de semana ignorados sem slots vazios; tabelas com cabeçalho largo sem quebra de temas longos</div>
             </div>
         </div>
     </div>

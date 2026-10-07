@@ -9,6 +9,7 @@
 
 const PASTA_RAIZ = 'SMS_COP';
 const SUBPASTA_POR_TABELA = {
+    checklists: 'Checklists',
     dds_realizados: 'DDSMA',
     treinamentos_realizados: 'Treinamentos',
     cipa_reunioes: 'CIPA',
@@ -78,7 +79,7 @@ export default async function handler(req, res) {
         return;
     }
 
-    const { tabela, registroChave, nomeArquivo, mimeType } = req.body || {};
+    const { tabela, registroChave, nomeArquivo, mimeType, ano: customAno, mes: customMes, pastaRaiz: customPastaRaiz, nomeFinal: customNomeFinal } = req.body || {};
     if (!tabela || !registroChave || !nomeArquivo) {
         res.status(400).json({ erro: 'Campos obrigatórios: tabela, registroChave, nomeArquivo' });
         return;
@@ -92,15 +93,25 @@ export default async function handler(req, res) {
     try {
         const accessToken = await obterAccessToken();
         const agora = new Date();
-        const ano = String(agora.getFullYear());
-        const mes = String(agora.getMonth() + 1).padStart(2, '0');
+        const ano = customAno ? String(customAno) : String(agora.getFullYear());
+        const mes = customMes ? String(customMes) : String(agora.getMonth() + 1).padStart(2, '0');
+        const pastaRaiz = customPastaRaiz || PASTA_RAIZ;
 
-        const idRaiz = await encontrarOuCriarPasta(PASTA_RAIZ, 'root', accessToken);
-        const idSubpasta = await encontrarOuCriarPasta(subpasta, idRaiz, accessToken);
-        const idAno = await encontrarOuCriarPasta(ano, idSubpasta, accessToken);
-        const idMes = await encontrarOuCriarPasta(mes, idAno, accessToken);
+        let idMes;
+        if (pastaRaiz === 'SMS_COP') {
+            // Hierarquia padrão SMS_COP / {subpasta} / {ano} / {mes}
+            const idRaiz = await encontrarOuCriarPasta(pastaRaiz, 'root', accessToken);
+            const idSubpasta = await encontrarOuCriarPasta(subpasta, idRaiz, accessToken);
+            const idAno = await encontrarOuCriarPasta(ano, idSubpasta, accessToken);
+            idMes = await encontrarOuCriarPasta(mes, idAno, accessToken);
+        } else {
+            // Hierarquia dedicada (ex: Checklists SST / {ano} / {mes})
+            const idRaiz = await encontrarOuCriarPasta(pastaRaiz, 'root', accessToken);
+            const idAno = await encontrarOuCriarPasta(ano, idRaiz, accessToken);
+            idMes = await encontrarOuCriarPasta(mes, idAno, accessToken);
+        }
 
-        const nomeFinal = `${sanitizarNome(registroChave)}_${sanitizarNome(nomeArquivo)}`;
+        const nomeFinal = customNomeFinal || `${sanitizarNome(registroChave)}_${sanitizarNome(nomeArquivo)}`;
         const metadata = { name: nomeFinal, parents: [idMes] };
 
         // A origem que vai fazer o PUT direto pro Google (navegador do usuário).

@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v167';
+const DASHBOARD_VERSION = 'v168';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -2344,13 +2344,8 @@ function salvarConfigGoogleDrive() {
     const url = (inpUrl?.value || '').trim();
     const folder = (inpFolder?.value || '').trim() || 'Checklists SST';
 
-    if (!url) {
-        mostrarFeedbackToast('A URL do Web App não pode estar vazia.', 'erro');
-        return;
-    }
-
     localStorage.setItem('checklist_drive_script_url', url);
-    localStorage.setItem('sync_script_url', url);
+    if (url) localStorage.setItem('sync_script_url', url);
     localStorage.setItem('checklist_drive_root_folder', folder);
 
     mostrarFeedbackToast('Configurações do Google Drive salvas com sucesso!');
@@ -2362,27 +2357,47 @@ async function testarConexaoGoogleDrive() {
     const status = document.getElementById('cfgDriveTestStatus');
     const btn = document.getElementById('btnTestarConexaoDrive');
 
-    const url = (inpUrl?.value || '').trim();
-    if (!url) {
-        if (status) { status.textContent = '❌ Digite a URL'; status.style.color = '#ef4444'; }
-        return;
-    }
-
-    if (status) { status.textContent = 'Testando...'; status.style.color = '#0284c7'; }
+    if (status) { status.textContent = 'Testando conexão...'; status.style.color = '#0284c7'; }
     if (btn) btn.disabled = true;
 
     try {
-        const resp = await fetch(url, {
+        // 1. Testa a API nativa Vercel -> Google Drive
+        const respVercel = await fetch('/api/anexo-iniciar', {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ store: 'test' })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tabela: 'checklists',
+                registroChave: 'TESTE_CONEXAO',
+                nomeArquivo: 'teste_diagnostico.pdf',
+                mimeType: 'application/pdf',
+                pastaRaiz: getDriveRootFolder()
+            })
         });
-        const res = await resp.json();
-        if (res && res.success) {
-            if (status) { status.textContent = '✅ Conexão OK!'; status.style.color = '#10b981'; }
-        } else {
-            throw new Error(res?.error || 'Falha');
+
+        if (respVercel.ok) {
+            const dataV = await respVercel.json();
+            if (dataV && dataV.uploadUrl) {
+                if (status) { status.textContent = '✅ Conectado via API Google Drive!'; status.style.color = '#10b981'; }
+                return;
+            }
         }
+
+        // 2. Se a API Vercel não estiver ativa neste ambiente, testa via Apps Script (se configurado)
+        const url = (inpUrl?.value || '').trim();
+        if (url) {
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ store: 'test' })
+            });
+            const res = await resp.json();
+            if (res && res.success) {
+                if (status) { status.textContent = '✅ Conexão Apps Script OK!'; status.style.color = '#10b981'; }
+                return;
+            }
+        }
+
+        throw new Error('Não foi possível autenticar no Google Drive nem no Apps Script');
     } catch (err) {
         if (status) { status.textContent = '❌ Falha: ' + err.message; status.style.color = '#ef4444'; }
     } finally {
@@ -2732,6 +2747,86 @@ async function visualizarPdfChecklist(idChecklist) {
     }
 }
 
+// Upload unificado: API nativa Vercel -> Google Drive com fallback para Apps Script
+async function fazerUploadArquivoAoGoogleDrive(file, { tabela = 'checklists', registroChave, fileName, dataIso, rootFolder, statusEl } = {}) {
+    const dateStr = (dataIso || new Date().toISOString().split('T')[0]).trim();
+    const year = dateStr.split('-')[0] || new Date().getFullYear().toString();
+    const monthFolder = formatarPastaMesChecklist(dateStr);
+    const pastaRaiz = rootFolder || getDriveRootFolder() || 'Checklists SST';
+    const nomeFinal = fileName || file.name || `CKL_${dateStr}.pdf`;
+
+    // 1. Tenta envio nativo via API Vercel -> Google Drive
+    try {
+        const iniciarResp = await fetch('/api/anexo-iniciar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tabela: tabela,
+                registroChave: registroChave || ('chk_' + Date.now()),
+                nomeArquivo: nomeFinal,
+                mimeType: file.type || 'application/pdf',
+                ano: year,
+                mes: monthFolder,
+                pastaRaiz: pastaRaiz,
+                nomeFinal: nomeFinal
+            })
+        });
+
+        if (iniciarResp.ok) {
+            const iniciarDados = await iniciarResp.json();
+            if (iniciarDados && iniciarDados.uploadUrl) {
+                const arquivo = await enviarArquivoEmPedacos(file, iniciarDados.uploadUrl, statusEl);
+                try {
+                    await fetch('/api/anexo-finalizar', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ driveFileId: arquivo.id })
+                    });
+                } catch (eFin) {
+                    console.warn('Aviso de permissão no Drive:', eFin);
+                }
+                return {
+                    success: true,
+                    fileUrl: arquivo.webViewLink,
+                    fileId: arquivo.id,
+                    folderPath: `${pastaRaiz} / ${year} / ${monthFolder}`
+                };
+            }
+        }
+    } catch (errVercel) {
+        console.warn('Upload nativo Vercel falhou, tentando fallback Apps Script:', errVercel);
+    }
+
+    // 2. Fallback via Google Apps Script (se configurado)
+    const scriptUrl = getDriveScriptUrl();
+    if (scriptUrl) {
+        const base64 = await fileToBase64(file);
+        const payload = {
+            action: 'upload_checklist_pdf',
+            store: 'upload_checklist_drive',
+            base64: base64,
+            fileName: nomeFinal,
+            date: dateStr,
+            year: year,
+            monthFolder: monthFolder,
+            rootFolder: pastaRaiz
+        };
+
+        const resp = await fetch(scriptUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        });
+        const res = await resp.json();
+        if (res && res.success && res.fileUrl) {
+            return res;
+        }
+        throw new Error(res?.error || 'Erro na resposta do Google Apps Script');
+    }
+
+    throw new Error('Falha ao comunicar com a API do Google Drive.');
+}
+
 // Envia um checklist individualmente ao Google Drive
 async function enviarChecklistAoGoogleDrive(idChecklist, forcarReenvio = false) {
     const c = allChecklists.find(x => String(x.id) === String(idChecklist));
@@ -2745,53 +2840,33 @@ async function enviarChecklistAoGoogleDrive(idChecklist, forcarReenvio = false) 
         }
     }
 
-    const scriptUrl = getDriveScriptUrl();
-    if (!scriptUrl) {
-        mostrarFeedbackToast('URL do Google Drive não configurada. Clique na engrenagem ⚙️.', 'erro');
-        abrirModalConfigGoogleDrive();
-        return false;
-    }
-
-    mostrarFeedbackToast('Gerando PDF e enviando para o Google Drive...', 'info');
+    mostrarFeedbackToast('Gerando PDF e arquivando no Google Drive...', 'info');
 
     try {
-        const { base64, fileName } = await gerarPdfChecklistBlob(c);
-        const rootFolder = getDriveRootFolder();
+        const { blob, fileName } = await gerarPdfChecklistBlob(c);
+        const file = new File([blob], fileName, { type: 'application/pdf' });
         const dateIso = (c.date || new Date().toISOString().split('T')[0]).trim();
-        const year = dateIso.split('-')[0] || new Date().getFullYear().toString();
-        const monthFolder = formatarPastaMesChecklist(dateIso);
 
-        const payload = {
-            action: 'upload_checklist_pdf',
-            store: 'upload_checklist_drive',
-            base64: base64,
+        const uploadRes = await fazerUploadArquivoAoGoogleDrive(file, {
+            tabela: 'checklists',
+            registroChave: c.id,
             fileName: fileName,
-            date: dateIso,
-            year: year,
-            monthFolder: monthFolder,
-            rootFolder: rootFolder
-        };
-
-        const resp = await fetch(scriptUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
+            dataIso: dateIso
         });
 
-        const res = await resp.json();
-        if (!res || !res.success || !res.fileUrl) {
-            throw new Error(res?.error || 'Resposta inválida do Google Apps Script');
+        if (!uploadRes || !uploadRes.fileUrl) {
+            throw new Error('Não foi possível obter o link do arquivo no Google Drive.');
         }
 
         // Atualiza no Supabase
         const nowIso = new Date().toISOString();
         await supabasePatch('checklists', `id=eq.${encodeURIComponent(c.id)}`, {
-            drive_file_url: res.fileUrl,
+            drive_file_url: uploadRes.fileUrl,
             drive_synced_at: nowIso
         });
 
         // Atualiza localmente
-        c.drive_file_url = res.fileUrl;
+        c.drive_file_url = uploadRes.fileUrl;
         c.drive_synced_at = nowIso;
 
         renderHistoricoChecklists();
@@ -2816,13 +2891,6 @@ async function sincronizarChecklistsPendentesAoGoogleDrive() {
     const pendentes = allChecklists.filter(c => !c.drive_file_url);
     if (pendentes.length === 0) {
         mostrarFeedbackToast('Todos os checklists já estão arquivados no Google Drive! 🎉', 'sucesso');
-        return;
-    }
-
-    const scriptUrl = getDriveScriptUrl();
-    if (!scriptUrl) {
-        mostrarFeedbackToast('URL do Google Drive não configurada. Clique na engrenagem ⚙️.', 'erro');
-        abrirModalConfigGoogleDrive();
         return;
     }
 
@@ -3134,8 +3202,6 @@ async function iniciarUploadChecklistsLegados() {
     for (let i = 0; i < total; i++) {
         const it = arquivosLegadosSelecionados[i];
         const dataIso = it.data.trim();
-        const year = dataIso.split('-')[0] || new Date().getFullYear().toString();
-        const monthFolder = formatarPastaMesChecklist(dataIso);
         const fileName = `CKL_${dataIso}_${sanitizeFileName(it.patrimonio)}_${sanitizeFileName(it.equipamento)}.pdf`;
 
         if (progCount) progCount.textContent = `${i + 1} / ${total}`;
@@ -3144,27 +3210,16 @@ async function iniciarUploadChecklistsLegados() {
         if (progBar) progBar.style.width = `${Math.round(((i + 1) / total) * 100)}%`;
 
         try {
-            const base64 = await fileToBase64(it.file);
-            const payload = {
-                action: 'upload_checklist_pdf',
-                store: 'upload_checklist_drive',
-                base64: base64,
+            const uploadRes = await fazerUploadArquivoAoGoogleDrive(it.file, {
+                tabela: 'checklists',
+                registroChave: 'legado_' + Date.now(),
                 fileName: fileName,
-                date: dataIso,
-                year: year,
-                monthFolder: monthFolder,
+                dataIso: dataIso,
                 rootFolder: rootFolder
-            };
-
-            const resp = await fetch(scriptUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify(payload)
             });
 
-            const res = await resp.json();
-            if (!res || !res.success || !res.fileUrl) {
-                throw new Error(res?.error || 'Erro na resposta do Google Apps Script');
+            if (!uploadRes || !uploadRes.fileUrl) {
+                throw new Error('Falha ao obter URL do Google Drive');
             }
 
             const novoChecklistLegado = {

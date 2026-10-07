@@ -9,6 +9,8 @@
 
 const PASTA_RAIZ = 'SMS_COP';
 const SUBPASTA_POR_TABELA = {
+    acervo: 'Acervo',
+    documentos: 'Documentos',
     checklists: 'Checklists',
     dds_realizados: 'DDSMA',
     treinamentos_realizados: 'Treinamentos',
@@ -79,16 +81,23 @@ export default async function handler(req, res) {
         return;
     }
 
-    const { tabela, registroChave, nomeArquivo, mimeType, ano: customAno, mes: customMes, pastaRaiz: customPastaRaiz, nomeFinal: customNomeFinal } = req.body || {};
-    if (!tabela || !registroChave || !nomeArquivo) {
-        res.status(400).json({ erro: 'Campos obrigatórios: tabela, registroChave, nomeArquivo' });
+    const { 
+        tabela = 'acervo', 
+        registroChave, 
+        nomeArquivo, 
+        mimeType, 
+        ano: customAno, 
+        mes: customMes, 
+        pastaRaiz: customPastaRaiz, 
+        nomeFinal: customNomeFinal,
+        pastaDestinoId 
+    } = req.body || {};
+
+    if (!nomeArquivo) {
+        res.status(400).json({ erro: 'Campo obrigatório: nomeArquivo' });
         return;
     }
-    const subpasta = SUBPASTA_POR_TABELA[tabela];
-    if (!subpasta) {
-        res.status(400).json({ erro: `Tabela desconhecida: ${tabela}` });
-        return;
-    }
+    const subpasta = SUBPASTA_POR_TABELA[tabela] || 'Acervo';
 
     try {
         const accessToken = await obterAccessToken();
@@ -97,31 +106,35 @@ export default async function handler(req, res) {
         const mes = customMes ? String(customMes) : String(agora.getMonth() + 1).padStart(2, '0');
         const pastaRaiz = customPastaRaiz || PASTA_RAIZ;
 
-        let idMes;
-        if (pastaRaiz === 'SMS_COP') {
-            // Hierarquia padrão SMS_COP / {subpasta} / {ano} / {mes}
-            const idRaiz = await encontrarOuCriarPasta(pastaRaiz, 'root', accessToken);
-            const idSubpasta = await encontrarOuCriarPasta(subpasta, idRaiz, accessToken);
-            const idAno = await encontrarOuCriarPasta(ano, idSubpasta, accessToken);
-            idMes = await encontrarOuCriarPasta(mes, idAno, accessToken);
-        } else {
-            // Hierarquia dedicada (ex: Checklists SST / {ano} / {mes})
-            const idRaiz = await encontrarOuCriarPasta(pastaRaiz, 'root', accessToken);
-            const idAno = await encontrarOuCriarPasta(ano, idRaiz, accessToken);
-            idMes = await encontrarOuCriarPasta(mes, idAno, accessToken);
+        let idPastaAlvo = pastaDestinoId;
+        let idRaizAlvo = null;
+
+        if (!idPastaAlvo) {
+            if (pastaRaiz === 'SMS_COP') {
+                // Hierarquia padrão SMS_COP / {subpasta} / {ano} / {mes}
+                const idRaiz = await encontrarOuCriarPasta(pastaRaiz, 'root', accessToken);
+                idRaizAlvo = idRaiz;
+                const idSubpasta = await encontrarOuCriarPasta(subpasta, idRaiz, accessToken);
+                const idAno = await encontrarOuCriarPasta(ano, idSubpasta, accessToken);
+                idPastaAlvo = await encontrarOuCriarPasta(mes, idAno, accessToken);
+            } else {
+                // Hierarquia dedicada (ex: Checklists SST / {ano} / {mes})
+                const idRaiz = await encontrarOuCriarPasta(pastaRaiz, 'root', accessToken);
+                idRaizAlvo = idRaiz;
+                const idAno = await encontrarOuCriarPasta(ano, idRaiz, accessToken);
+                idPastaAlvo = await encontrarOuCriarPasta(mes, idAno, accessToken);
+            }
         }
 
-        const nomeFinal = customNomeFinal || `${sanitizarNome(registroChave)}_${sanitizarNome(nomeArquivo)}`;
-        const metadata = { name: nomeFinal, parents: [idMes] };
+        const nomeFinal = customNomeFinal || (registroChave && registroChave !== 'ACERVO' 
+            ? `${sanitizarNome(registroChave)}_${sanitizarNome(nomeArquivo)}` 
+            : sanitizarNome(nomeArquivo));
+        
+        let metadata = { name: nomeFinal, parents: [idPastaAlvo] };
 
-        // A origem que vai fazer o PUT direto pro Google (navegador do usuário).
-        // É preciso mandar esse header 'Origin' já nesta requisição de abertura
-        // da sessão retomável - é isso que faz o Google liberar CORS pra essa
-        // origem na URL de sessão (Location) devolvida logo abaixo. Sem isso, o
-        // navegador recebe "blocked by CORS policy" ao tentar enviar o arquivo.
         const origemNavegador = req.headers.origin || `https://${req.headers.host}`;
 
-        const sessaoRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink', {
+        let sessaoRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink', {
             method: 'POST',
             headers: {
                 Authorization: `Bearer ${accessToken}`,
@@ -132,6 +145,29 @@ export default async function handler(req, res) {
             body: JSON.stringify(metadata)
         });
 
+        // Se falhar ao tentar salvar na pasta direta (ex: permissão na pasta legada), faz fallback pra hierarquia padrão SMS_COP
+        if (!sessaoRes.ok && pastaDestinoId) {
+            console.warn('Tentativa em pastaDestinoId falhou. Tentando hierarquia padrão SMS_COP...');
+            const idRaiz = await encontrarOuCriarPasta(pastaRaiz, 'root', accessToken);
+            idRaizAlvo = idRaiz;
+            const idSubpasta = await encontrarOuCriarPasta(subpasta, idRaiz, accessToken);
+            const idAno = await encontrarOuCriarPasta(ano, idSubpasta, accessToken);
+            const idMes = await encontrarOuCriarPasta(mes, idAno, accessToken);
+            idPastaAlvo = idMes;
+            metadata = { name: nomeFinal, parents: [idMes] };
+
+            sessaoRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json; charset=UTF-8',
+                    'X-Upload-Content-Type': mimeType || 'application/octet-stream',
+                    'Origin': origemNavegador
+                },
+                body: JSON.stringify(metadata)
+            });
+        }
+
         if (!sessaoRes.ok) {
             const erroTexto = await sessaoRes.text();
             throw new Error('Falha ao abrir sessão de envio no Drive: ' + erroTexto);
@@ -139,7 +175,13 @@ export default async function handler(req, res) {
         const uploadUrl = sessaoRes.headers.get('location');
         if (!uploadUrl) throw new Error('O Google não devolveu a URL de envio (Location).');
 
-        res.status(200).json({ uploadUrl });
+        res.status(200).json({ 
+            uploadUrl,
+            pastaDestinoId: idPastaAlvo,
+            pastaDestinoUrl: idPastaAlvo ? `https://drive.google.com/drive/folders/${idPastaAlvo}` : null,
+            pastaRaizId: idRaizAlvo,
+            pastaRaizUrl: idRaizAlvo ? `https://drive.google.com/drive/folders/${idRaizAlvo}` : null
+        });
     } catch (err) {
         console.error('Erro em /api/anexo-iniciar:', err);
         res.status(500).json({ erro: err.message || 'Erro desconhecido ao iniciar envio' });

@@ -510,6 +510,9 @@
                             <button type="button" class="db-clear-btn" onclick="abrirModalImportarChecklistsLegados()" style="padding: 7px 12px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; border-color: #0284c7; color: #0284c7; background: rgba(2,132,199,0.05);" title="Importar PDFs de checklists anteriores para o histórico e para o Drive">
                                 <i class="fas fa-file-import"></i> Importar Checklists Antigos (PDF)
                             </button>
+                            <a href="#" id="btnAbrirPastaChecklistsDrive" onclick="abrirPastaChecklistsNoDrive(event)" target="_blank" rel="noopener noreferrer" class="db-clear-btn" style="padding: 7px 12px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; border-color: #0284c7; color: #0284c7; background: #f0f9ff; text-decoration: none;" title="Abrir pasta de Checklists diretamente no Google Drive">
+                                <i class="fab fa-google-drive" style="color: #0284c7;"></i> Abrir Pasta no Drive
+                            </a>
                             <button type="button" class="db-clear-btn" onclick="abrirModalConfigGoogleDrive()" style="padding: 7px 10px; font-size: 12px;" title="Configurações da integração com Google Drive">
                                 <i class="fas fa-cog"></i>
                             </button>
@@ -7949,27 +7952,45 @@
                 </div>
             </section>
 
-            <!-- Página: Acervo (Drive) - navegação somente-leitura pelo acervo histórico de
-                 digitalizações (Treinamentos/DDSMA) já guardadas no Google Drive. Diferente
-                 do botão "📎 Anexos" (upload de um anexo NUM registro específico). -->
+            <!-- Página: Acervo (Drive) - Gestão e Consulta de Documentos no Google Drive -->
             <section class="db-page" id="page-acervodrive">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
-                    <div class="db-chart-title">🗄️ Acervo Histórico (Google Drive)</div>
-                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 12px;">
-                        Navegação somente-leitura pelas digitalizações antigas de Treinamentos e DDSMA já
-                        guardadas no Google Drive. Isto é diferente do botão "📎 Anexos" (que anexa um
-                        arquivo novo a um registro específico) - aqui é só consulta do acervo histórico,
-                        sem nenhuma ação de criar, editar, mover ou apagar.
-                    </p>
-
-                    <div id="acervoDriveTrilha" style="font-size: 12.5px; margin-bottom: 10px; display:none;"></div>
-
-                    <div id="acervoDriveCategorias" style="display:flex; gap: 10px; flex-wrap: wrap;">
-                        <button class="db-apply-btn" onclick="abrirCategoriaAcervoDrive('treinamentos')">📁 Treinamentos</button>
-                        <button class="db-apply-btn" onclick="abrirCategoriaAcervoDrive('dds')">📁 DDSMA</button>
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+                        <div>
+                            <div class="db-chart-title" style="margin-bottom:4px; display:flex; align-items:center; gap:8px;">
+                                <i class="fab fa-google-drive" style="color:#0284c7;"></i> 🗄️ Acervo Documental (Google Drive)
+                            </div>
+                            <p style="font-size: 11.5px; color: var(--text-light); margin:0;">
+                                Navegue pelo acervo de SST em nuvem e suba documentos, atas, digitalizações e relatórios diretamente para o Google Drive.
+                            </p>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <button class="db-apply-btn" id="btnUploadAcervoDrive" style="background:#0284c7; border:none; display:inline-flex; align-items:center; gap:6px; padding:8px 16px; font-weight:600; font-size:12.5px;" onclick="abrirModalUploadAcervoDrive()">
+                                <i class="fas fa-cloud-upload-alt"></i> 📤 Subir Arquivo para o Acervo
+                            </button>
+                            <button class="db-clear-btn" style="padding:8px 12px; font-size:12.5px; display:inline-flex; align-items:center; gap:6px;" onclick="recarregarAcervoDrive()" title="Atualizar pasta">
+                                <i class="fas fa-sync-alt"></i> Atualizar
+                            </button>
+                        </div>
                     </div>
 
-                    <div id="acervoDriveLista" class="db-list" style="max-height: 480px; margin-top: 12px; display:none;"></div>
+                    <!-- Categorias Principais do Acervo -->
+                    <div id="acervoDriveCategorias" style="display:flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
+                        <button class="db-apply-btn" onclick="abrirCategoriaAcervoDrive('treinamentos')">📁 Treinamentos</button>
+                        <button class="db-apply-btn" onclick="abrirCategoriaAcervoDrive('dds')">📁 DDSMA</button>
+                        <button class="db-apply-btn" onclick="abrirCategoriaAcervoDrive('checklists')">📁 Checklists SST</button>
+                        <button class="db-apply-btn" onclick="abrirCategoriaAcervoDrive('sms_cop')">📁 SMS_COP (Geral)</button>
+                    </div>
+
+                    <!-- Barra de Navegação Contextual (Trilha / Breadcrumb e Ação Rápida de Upload) -->
+                    <div id="acervoDriveBarraNavegacao" style="display:none; justify-content:space-between; align-items:center; background:rgba(2,132,199,0.06); border:1px solid rgba(2,132,199,0.2); border-radius:8px; padding:10px 14px; margin-bottom:12px;">
+                        <div id="acervoDriveTrilha" style="font-size: 12.5px; font-weight:500;"></div>
+                        <button class="db-apply-btn" id="btnUploadPastaAtualAcervo" style="padding:6px 12px; font-size:12px; background:#0284c7; border:none; display:inline-flex; align-items:center; gap:5px;" onclick="abrirModalUploadAcervoDriveContextual()">
+                            <i class="fas fa-upload"></i> Subir Nesta Pasta
+                        </button>
+                    </div>
+
+                    <div id="acervoDriveLista" class="db-list" style="max-height: 520px; margin-top: 10px; display:none;"></div>
 
                     <div id="acervoDriveCarregarMaisWrap" style="text-align:center; margin-top: 10px; display:none;">
                         <button class="db-clear-btn" onclick="carregarMaisAcervoDrive()">Carregar mais</button>
@@ -8415,7 +8436,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=168"></script>
+    <script src="dashboard.js?v=171"></script>
     <script src="placar_lideres.js?v=4"></script>
 <script>
 function filterMatrizEpi(q) {
@@ -9574,6 +9595,104 @@ function filterMatrizEpi(q) {
             </button>
             <button type="button" class="db-apply-btn" style="padding:8px 20px; font-size:12.5px; background:#0284c7; border:none;" onclick="salvarConfigGoogleDrive()">
                 💾 Salvar Configurações
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Upload de Arquivo para o Acervo (Google Drive) -->
+<div id="modalUploadAcervoDrive" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:10050; align-items:center; justify-content:center; padding:20px;" onclick="if (event.target === this) fecharModalUploadAcervoDrive();">
+    <div style="background:var(--card); border-radius:14px; max-width:620px; width:100%; padding:22px 24px; box-shadow:var(--shadow); border:1px solid var(--border); box-sizing:border-box;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <div class="db-chart-title" style="margin-bottom:0; display:flex; align-items:center; gap:8px;">
+                <i class="fab fa-google-drive" style="color:#0284c7;"></i> 📤 Subir Arquivo para o Acervo Drive
+            </div>
+            <button class="db-clear-btn" style="padding:4px 8px;" onclick="fecharModalUploadAcervoDrive()">✕</button>
+        </div>
+
+        <p style="font-size:12px; color:var(--text-light); margin-bottom:14px; line-height:1.4;">
+            Envie documentos, atas, certificados, digitalizações ou relatórios diretamente para o Google Drive. Os arquivos serão organizados na nuvem e ficarão acessíveis imediatamente.
+        </p>
+
+        <!-- Destino no Drive -->
+        <div style="background:rgba(2,132,199,0.06); border:1px solid rgba(2,132,199,0.2); border-radius:8px; padding:12px; margin-bottom:14px;">
+            <div style="font-size:11.5px; font-weight:700; color:#0284c7; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">
+                <i class="fas fa-folder"></i> Destino no Google Drive
+            </div>
+            
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <div id="wrapAcervoDestinoContextual" style="display:none; font-size:12px; color:var(--text);">
+                    <span>Salvar na pasta aberta:</span>
+                    <strong id="labelAcervoPastaContextual" style="color:#0284c7;"></strong>
+                    <div style="margin-top:4px;">
+                        <label style="font-size:11.5px; color:var(--text-light); cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                            <input type="checkbox" id="chkAcervoTrocarDestino" onchange="toggleAcervoCustomDestino()">
+                            Escolher outro destino manual
+                        </label>
+                    </div>
+                </div>
+
+                <div id="wrapAcervoDestinoCampos" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                    <div>
+                        <label style="display:block; font-size:11.5px; font-weight:600; color:var(--text-light); margin-bottom:3px;">Categoria / Pasta</label>
+                        <select id="selAcervoCategoriaDestino" style="width:100%; padding:8px; border-radius:6px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:12px;">
+                            <option value="treinamentos">Treinamentos</option>
+                            <option value="dds">DDSMA</option>
+                            <option value="checklists">Checklists SST</option>
+                            <option value="documentos">Documentos SMS (SMS_COP)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:11.5px; font-weight:600; color:var(--text-light); margin-bottom:3px;">Ano</label>
+                        <select id="selAcervoAnoDestino" style="width:100%; padding:8px; border-radius:6px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:12px;">
+                            <option value="2026">2026</option>
+                            <option value="2025">2025</option>
+                            <option value="2024">2024</option>
+                            <option value="2027">2027</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Zona de Upload Drag & Drop -->
+        <div id="dropzoneAcervoDrive" style="border:2px dashed var(--border); border-radius:10px; padding:24px 16px; text-align:center; background:rgba(0,0,0,0.02); cursor:pointer; transition:all 0.2s ease; margin-bottom:14px;" onclick="document.getElementById('fileInputAcervoDrive').click()">
+            <input type="file" id="fileInputAcervoDrive" multiple style="display:none;" onchange="aoSelecionarArquivosAcervo(event)">
+            <i class="fas fa-cloud-upload-alt" style="font-size:32px; color:#0284c7; margin-bottom:8px; display:block;"></i>
+            <div style="font-size:13px; font-weight:600; color:var(--text); margin-bottom:4px;">
+                Clique para selecionar ou arraste arquivos aqui
+            </div>
+            <div style="font-size:11px; color:var(--text-light);">
+                Suporta múltiplos PDFs, Imagens (JPG, PNG), DOCX, XLSX (máx. 25 MB por arquivo)
+            </div>
+        </div>
+
+        <!-- Lista de Arquivos Selecionados -->
+        <div id="wrapAcervoArquivosSelecionados" style="display:none; max-height:160px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:8px; margin-bottom:14px;">
+            <div id="listaAcervoArquivos" style="display:flex; flex-direction:column; gap:6px;"></div>
+        </div>
+
+        <!-- Barra de Progresso e Status -->
+        <div id="wrapAcervoProgresso" style="display:none; margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:600; margin-bottom:4px; color:var(--text);">
+                <span id="acervoProgressoTexto">Enviando...</span>
+                <span id="acervoProgressoPct">0%</span>
+            </div>
+            <div style="width:100%; height:8px; background:rgba(0,0,0,0.08); border-radius:4px; overflow:hidden;">
+                <div id="acervoProgressoBarra" style="height:100%; width:0%; background:#0284c7; transition:width 0.2s ease;"></div>
+            </div>
+        </div>
+
+        <!-- Alerta de Status / Mensagens -->
+        <div id="acervoUploadStatusMsg" style="display:none; font-size:12px; padding:10px 12px; border-radius:8px; margin-bottom:14px;"></div>
+
+        <!-- Botões de Ação -->
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+            <button type="button" class="db-clear-btn" id="btnCancelarUploadAcervo" style="padding:8px 16px; font-size:12.5px;" onclick="fecharModalUploadAcervoDrive()">
+                Cancelar
+            </button>
+            <button type="button" class="db-apply-btn" id="btnIniciarUploadAcervo" style="padding:8px 20px; font-size:12.5px; background:#0284c7; border:none; display:flex; align-items:center; gap:6px;" onclick="iniciarUploadArquivosAcervo()">
+                <i class="fas fa-cloud-upload-alt"></i> Iniciar Upload para o Drive
             </button>
         </div>
     </div>

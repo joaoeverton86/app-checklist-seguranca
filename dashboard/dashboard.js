@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v168';
+const DASHBOARD_VERSION = 'v171';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -28708,34 +28708,57 @@ function showDbPage(pageId) {
 // ANEXOS" acima, que continua 100% intacto). Sem cache/estado persistido entre
 // visitas de propósito - é sempre uma consulta ao vivo no Drive.
 // ============================================
+// ACERVO (DRIVE) - Navegação e Gestão de Documentos no Google Drive
+// Suporta Treinamentos (SCAN), DDSMA (SCAN - DDS), Checklists SST e SMS_COP.
+// Permite consulta e upload direto para pastas do Drive via Vercel Serverless / Google Drive API.
+// ============================================
 let acervoDriveCategoria = null;
-// Trilha (breadcrumb) - primeiro item é sempre a raiz virtual "Acervo (Drive)" (clicar
-// nela volta pra tela de escolha de categoria); id null significa "raiz da categoria"
-// (o endpoint usa a raiz permitida quando pastaId não é informado).
 let acervoDriveTrilha = [];
 let acervoDriveItens = [];
 let acervoDriveNextPageToken = null;
+let acervoArquivosParaUpload = [];
+let acervoPastaContextualAtiva = null;
 
 function resetAcervoDrive() {
     acervoDriveCategoria = null;
     acervoDriveTrilha = [];
     acervoDriveItens = [];
     acervoDriveNextPageToken = null;
+    acervoPastaContextualAtiva = null;
     const categoriasEl = document.getElementById('acervoDriveCategorias');
+    const barraNav = document.getElementById('acervoDriveBarraNavegacao');
     const listaEl = document.getElementById('acervoDriveLista');
     const carregarMaisWrap = document.getElementById('acervoDriveCarregarMaisWrap');
     if (categoriasEl) categoriasEl.style.display = 'flex';
+    if (barraNav) barraNav.style.display = 'none';
     if (listaEl) { listaEl.style.display = 'none'; listaEl.innerHTML = ''; }
     if (carregarMaisWrap) carregarMaisWrap.style.display = 'none';
     renderAcervoDriveTrilha();
 }
 
+function recarregarAcervoDrive() {
+    if (!acervoDriveCategoria) {
+        resetAcervoDrive();
+        return;
+    }
+    const nivelAtual = acervoDriveTrilha[acervoDriveTrilha.length - 1];
+    carregarPastaAcervoDrive(nivelAtual ? nivelAtual.id : null, false);
+}
+
 function abrirCategoriaAcervoDrive(categoria) {
     acervoDriveCategoria = categoria;
-    const nomeCategoria = categoria === 'treinamentos' ? 'Treinamentos' : 'DDSMA';
+    const nomes = {
+        treinamentos: 'Treinamentos',
+        dds: 'DDSMA',
+        checklists: 'Checklists SST',
+        sms_cop: 'SMS_COP (Geral)'
+    };
+    const nomeCategoria = nomes[categoria] || categoria;
     acervoDriveTrilha = [{ id: null, nome: 'Acervo (Drive)' }, { id: null, nome: nomeCategoria }];
     const categoriasEl = document.getElementById('acervoDriveCategorias');
+    const barraNav = document.getElementById('acervoDriveBarraNavegacao');
     if (categoriasEl) categoriasEl.style.display = 'none';
+    if (barraNav) barraNav.style.display = 'flex';
     carregarPastaAcervoDrive(null, false);
 }
 
@@ -28744,9 +28767,6 @@ function abrirPastaAcervoDrive(pastaId, nome) {
     carregarPastaAcervoDrive(pastaId, false);
 }
 
-// indice 0 = raiz virtual "Acervo (Drive)" (volta pra escolha de categoria); qualquer
-// outro índice recarrega aquele nível da trilha (índice 1 = raiz da categoria, sem
-// pastaId).
 function voltarTrilhaAcervoDrive(indice) {
     if (indice === 0) { resetAcervoDrive(); return; }
     acervoDriveTrilha = acervoDriveTrilha.slice(0, indice + 1);
@@ -28760,10 +28780,15 @@ async function carregarPastaAcervoDrive(pastaId, appendMode) {
     if (!listaEl) return;
     listaEl.style.display = 'block';
     renderAcervoDriveTrilha();
+
+    // Guarda pasta contextual para uploads diretos
+    const nivelAtual = acervoDriveTrilha[acervoDriveTrilha.length - 1];
+    acervoPastaContextualAtiva = nivelAtual ? { id: nivelAtual.id, nome: nivelAtual.nome } : null;
+
     if (!appendMode) {
         acervoDriveItens = [];
         acervoDriveNextPageToken = null;
-        listaEl.innerHTML = '<div class="db-list-empty">Carregando...</div>';
+        listaEl.innerHTML = '<div class="db-list-empty" style="padding:20px; text-align:center;"><i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i> Carregando arquivos do Google Drive...</div>';
         if (carregarMaisWrap) carregarMaisWrap.style.display = 'none';
     }
     try {
@@ -28780,7 +28805,7 @@ async function carregarPastaAcervoDrive(pastaId, appendMode) {
         if (carregarMaisWrap) carregarMaisWrap.style.display = acervoDriveNextPageToken ? 'block' : 'none';
     } catch (err) {
         console.error('Erro ao listar acervo do Drive:', err);
-        listaEl.innerHTML = `<div class="db-list-empty">❌ ${escapeHTML(err.message)}</div>`;
+        listaEl.innerHTML = `<div class="db-list-empty" style="padding:16px; color:var(--danger);"><i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i> ${escapeHTML(err.message)}</div>`;
         if (carregarMaisWrap) carregarMaisWrap.style.display = 'none';
     }
 }
@@ -28799,11 +28824,11 @@ function renderAcervoDriveTrilha() {
     }
     el.style.display = 'block';
     el.innerHTML = acervoDriveTrilha.map((nivel, i) => {
-        const separador = i > 0 ? ' <span style="color: var(--text-light);">›</span> ' : '';
+        const separador = i > 0 ? ' <span style="color: var(--text-light); margin:0 4px;">›</span> ' : '';
         const ultimo = i === acervoDriveTrilha.length - 1;
         return separador + (ultimo
-            ? `<strong>${escapeHTML(nivel.nome)}</strong>`
-            : `<a href="#" onclick="voltarTrilhaAcervoDrive(${i}); return false;" style="color: var(--primary); text-decoration:none;">${escapeHTML(nivel.nome)}</a>`);
+            ? `<strong style="color:var(--text);">${escapeHTML(nivel.nome)}</strong>`
+            : `<a href="#" onclick="voltarTrilhaAcervoDrive(${i}); return false;" style="color: #0284c7; text-decoration:none; font-weight:600;">${escapeHTML(nivel.nome)}</a>`);
     }).join('');
 }
 
@@ -28811,16 +28836,23 @@ function renderAcervoDriveLista() {
     const el = document.getElementById('acervoDriveLista');
     if (!el) return;
     if (acervoDriveItens.length === 0) {
-        el.innerHTML = '<div class="db-list-empty">Nenhum arquivo nesta pasta.</div>';
+        el.innerHTML = '<div class="db-list-empty" style="padding:24px; text-align:center; color:var(--text-light);"><i class="fas fa-folder-open" style="font-size:24px; margin-bottom:8px; display:block; opacity:0.6;"></i>Nenhum arquivo ou subpasta nesta pasta.</div>';
         return;
     }
     el.innerHTML = acervoDriveItens.map(item => {
         const ehPasta = item.mimeType === 'application/vnd.google-apps.folder';
-        const icone = ehPasta ? '📁' : '📄';
-        const detalhe = ehPasta ? 'Pasta' : `${formatarTamanhoArquivoAcervoDrive(item.size)} — ${formatSimpleDate(item.modifiedTime)}`;
-        return `<div class="db-list-item" style="cursor:pointer;" onclick="abrirItemAcervoDrive('${escapeHTML(item.id)}')">
-            <div class="db-list-item-title">${icone} ${escapeHTML(item.name || '(sem nome)')}</div>
-            <div class="db-list-item-sub">${detalhe}</div>
+        const icone = ehPasta ? '<i class="fas fa-folder" style="color:#f59e0b; margin-right:6px; font-size:16px;"></i>' : '<i class="fas fa-file-pdf" style="color:#ef4444; margin-right:6px; font-size:16px;"></i>';
+        const detalhe = ehPasta ? 'Pasta' : `${formatarTamanhoArquivoAcervoDrive(item.size)} — Modificado em ${formatSimpleDate(item.modifiedTime)}`;
+        return `<div class="db-list-item" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border-bottom:1px solid var(--border);" onclick="abrirItemAcervoDrive('${escapeHTML(item.id)}')">
+            <div style="min-width:0; flex:1;">
+                <div class="db-list-item-title" style="font-weight:600; display:flex; align-items:center; word-break:break-word;">
+                    ${icone} <span>${escapeHTML(item.name || '(sem nome)')}</span>
+                </div>
+                <div class="db-list-item-sub" style="font-size:11.5px; color:var(--text-light); margin-top:2px;">${detalhe}</div>
+            </div>
+            <div style="flex-shrink:0; margin-left:12px;">
+                ${ehPasta ? '<i class="fas fa-chevron-right" style="color:var(--text-light); font-size:12px;"></i>' : '<span style="font-size:11px; color:#0284c7; font-weight:600; text-decoration:underline;"><i class="fas fa-external-link-alt"></i> Abrir</span>'}
+            </div>
         </div>`;
     }).join('');
 }
@@ -28842,6 +28874,213 @@ function formatarTamanhoArquivoAcervoDrive(bytes) {
     if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
     return (n / (1024 * 1024)).toFixed(1).replace('.', ',') + ' MB';
 }
+
+// ============================================
+// MODAL DE UPLOAD DE ARQUIVOS PARA O ACERVO DRIVE
+// ============================================
+function abrirModalUploadAcervoDrive(isContextual = false) {
+    const modal = document.getElementById('modalUploadAcervoDrive');
+    if (!modal) return;
+    acervoArquivosParaUpload = [];
+    renderListaArquivosAcervo();
+
+    const wrapContextual = document.getElementById('wrapAcervoDestinoContextual');
+    const labelContextual = document.getElementById('labelAcervoPastaContextual');
+    const chkTrocar = document.getElementById('chkAcervoTrocarDestino');
+    const wrapCampos = document.getElementById('wrapAcervoDestinoCampos');
+    const selCat = document.getElementById('selAcervoCategoriaDestino');
+    const statusMsg = document.getElementById('acervoUploadStatusMsg');
+    const wrapProg = document.getElementById('wrapAcervoProgresso');
+
+    if (statusMsg) statusMsg.style.display = 'none';
+    if (wrapProg) wrapProg.style.display = 'none';
+
+    // Se o usuário está dentro de uma pasta e clicou "Subir Nesta Pasta"
+    if (isContextual && acervoPastaContextualAtiva && acervoPastaContextualAtiva.id) {
+        if (wrapContextual) wrapContextual.style.display = 'block';
+        if (labelContextual) labelContextual.textContent = acervoPastaContextualAtiva.nome;
+        if (chkTrocar) chkTrocar.checked = false;
+        if (wrapCampos) wrapCampos.style.display = 'none';
+    } else {
+        if (wrapContextual) wrapContextual.style.display = 'none';
+        if (wrapCampos) wrapCampos.style.display = 'grid';
+        if (acervoDriveCategoria && selCat) selCat.value = acervoDriveCategoria;
+    }
+
+    modal.style.display = 'flex';
+}
+
+function abrirModalUploadAcervoDriveContextual() {
+    abrirModalUploadAcervoDrive(true);
+}
+
+function fecharModalUploadAcervoDrive() {
+    const modal = document.getElementById('modalUploadAcervoDrive');
+    if (modal) modal.style.display = 'none';
+    acervoArquivosParaUpload = [];
+}
+
+function toggleAcervoCustomDestino() {
+    const chk = document.getElementById('chkAcervoTrocarDestino');
+    const wrapCampos = document.getElementById('wrapAcervoDestinoCampos');
+    if (wrapCampos) {
+        wrapCampos.style.display = chk && chk.checked ? 'grid' : 'none';
+    }
+}
+
+function aoSelecionarArquivosAcervo(evt) {
+    const files = Array.from(evt.target.files || []);
+    for (const f of files) {
+        if (f.size > 25 * 1024 * 1024) {
+            mostrarFeedbackToast(`O arquivo "${f.name}" excede 25 MB e foi ignorado.`, 'aviso');
+            continue;
+        }
+        if (!acervoArquivosParaUpload.some(item => item.name === f.name && item.size === f.size)) {
+            acervoArquivosParaUpload.push(f);
+        }
+    }
+    renderListaArquivosAcervo();
+    evt.target.value = '';
+}
+
+function removerArquivoUploadAcervo(index) {
+    acervoArquivosParaUpload.splice(index, 1);
+    renderListaArquivosAcervo();
+}
+
+function renderListaArquivosAcervo() {
+    const wrap = document.getElementById('wrapAcervoArquivosSelecionados');
+    const lista = document.getElementById('listaAcervoArquivos');
+    if (!wrap || !lista) return;
+
+    if (acervoArquivosParaUpload.length === 0) {
+        wrap.style.display = 'none';
+        lista.innerHTML = '';
+        return;
+    }
+
+    wrap.style.display = 'block';
+    lista.innerHTML = acervoArquivosParaUpload.map((f, i) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.03); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:12px;">
+            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:80%;">
+                📄 <strong>${escapeHTML(f.name)}</strong> <span style="color:var(--text-light); font-size:11px;">(${formatarTamanhoArquivoAcervoDrive(f.size)})</span>
+            </div>
+            <button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:11px; color:var(--danger);" onclick="removerArquivoUploadAcervo(${i})">✕</button>
+        </div>
+    `).join('');
+}
+
+async function iniciarUploadArquivosAcervo() {
+    if (acervoArquivosParaUpload.length === 0) {
+        mostrarFeedbackToast('Selecione pelo menos um arquivo para enviar.', 'aviso');
+        return;
+    }
+
+    const btnIniciar = document.getElementById('btnIniciarUploadAcervo');
+    const btnCancelar = document.getElementById('btnCancelarUploadAcervo');
+    const wrapProg = document.getElementById('wrapAcervoProgresso');
+    const barraProg = document.getElementById('acervoProgressoBarra');
+    const pctProg = document.getElementById('acervoProgressoPct');
+    const txtProg = document.getElementById('acervoProgressoTexto');
+    const statusMsg = document.getElementById('acervoUploadStatusMsg');
+
+    if (btnIniciar) btnIniciar.disabled = true;
+    if (btnCancelar) btnCancelar.disabled = true;
+    if (wrapProg) wrapProg.style.display = 'block';
+    if (statusMsg) statusMsg.style.display = 'none';
+
+    // Determina pasta de destino
+    const chkTrocar = document.getElementById('chkAcervoTrocarDestino');
+    const wrapContextual = document.getElementById('wrapAcervoDestinoContextual');
+    const usarContextual = wrapContextual && wrapContextual.style.display !== 'none' && !(chkTrocar && chkTrocar.checked);
+
+    let categoriaAlvo = document.getElementById('selAcervoCategoriaDestino')?.value || 'checklists';
+    let anoAlvo = document.getElementById('selAcervoAnoDestino')?.value || new Date().getFullYear().toString();
+    let pastaDestinoId = null;
+
+    if (usarContextual && acervoPastaContextualAtiva && acervoPastaContextualAtiva.id) {
+        pastaDestinoId = acervoPastaContextualAtiva.id;
+    }
+
+    const totalArquivos = acervoArquivosParaUpload.length;
+    let enviadosComSucesso = 0;
+    let erros = [];
+
+    for (let i = 0; i < totalArquivos; i++) {
+        const file = acervoArquivosParaUpload[i];
+        const pct = Math.round((i / totalArquivos) * 100);
+        if (barraProg) barraProg.style.width = pct + '%';
+        if (pctProg) pctProg.textContent = pct + '%';
+        if (txtProg) txtProg.textContent = `Enviando "${file.name}" (${i + 1} de ${totalArquivos})...`;
+
+        try {
+            // 1. Inicia sessão de upload
+            const iniciarResp = await fetch('/api/anexo-iniciar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tabela: categoriaAlvo,
+                    registroChave: 'ACERVO_' + Date.now(),
+                    nomeArquivo: file.name,
+                    mimeType: file.type || 'application/octet-stream',
+                    ano: anoAlvo,
+                    pastaRaiz: categoriaAlvo === 'checklists' ? 'Checklists SST' : (categoriaAlvo === 'sms_cop' ? 'SMS_COP' : undefined),
+                    pastaDestinoId: pastaDestinoId
+                })
+            });
+
+            const iniciarDados = await iniciarResp.json();
+            if (!iniciarResp.ok) throw new Error(iniciarDados.erro || `HTTP ${iniciarResp.status}`);
+
+            // 2. Transfere arquivo em pedaços com suporte a CORS
+            const arquivo = await enviarArquivoEmPedacos(file, iniciarDados.uploadUrl, txtProg);
+
+            // 3. Finaliza permissão pública do arquivo
+            try {
+                await fetch('/api/anexo-finalizar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ driveFileId: arquivo.id })
+                });
+            } catch (eFin) {
+                console.warn('Aviso ao finalizar anexo:', eFin);
+            }
+
+            enviadosComSucesso++;
+        } catch (err) {
+            console.error(`Erro ao subir ${file.name}:`, err);
+            erros.push(`${file.name}: ${err.message}`);
+        }
+    }
+
+    if (barraProg) barraProg.style.width = '100%';
+    if (pctProg) pctProg.textContent = '100%';
+    if (btnIniciar) btnIniciar.disabled = false;
+    if (btnCancelar) btnCancelar.disabled = false;
+
+    if (statusMsg) {
+        statusMsg.style.display = 'block';
+        if (erros.length === 0) {
+            statusMsg.style.background = 'rgba(16,185,129,0.1)';
+            statusMsg.style.border = '1px solid #10b981';
+            statusMsg.style.color = '#065f46';
+            statusMsg.innerHTML = `<strong>✅ Sucesso!</strong> Todos os ${enviadosComSucesso} arquivo(s) foram enviados com sucesso para o Google Drive.`;
+            acervoArquivosParaUpload = [];
+            renderListaArquivosAcervo();
+            setTimeout(() => {
+                fecharModalUploadAcervoDrive();
+                recarregarAcervoDrive();
+            }, 1500);
+        } else {
+            statusMsg.style.background = 'rgba(239,68,68,0.1)';
+            statusMsg.style.border = '1px solid #ef4444';
+            statusMsg.style.color = '#991b1b';
+            statusMsg.innerHTML = `<strong>⚠️ Concluído com avisos:</strong> ${enviadosComSucesso} enviados, ${erros.length} com falha.<br><small>${erros.join('<br>')}</small>`;
+            recarregarAcervoDrive();
+        }
+    }
+}
+
 
 function showAcidentesSubtab(tab) {
     ['visao', 'registrar', 'hht', 'relatorio'].forEach(t => {

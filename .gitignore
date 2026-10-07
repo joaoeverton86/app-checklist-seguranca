@@ -8,3 +8,5 @@ package-lock.json
 scratch/
 Documentos_Consultas/
 *.log
+
+.env*

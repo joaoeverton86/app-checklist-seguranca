@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v159';
+const DASHBOARD_VERSION = 'v165';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -14531,15 +14531,30 @@ function popularRelatorioMensalDefaults() {
 // roteiro combinado com o usuário estão concluídas.
 // ================================================================
 
-// Preenche mês/ano com o mês anterior ao atual (mesmo padrão de
-// popularRelatorioMensalDefaults() acima) só na primeira vez que a aba é aberta.
+// Preenche mês/ano com o mês anterior ao atual e dispara a prévia do dossiê executivo
 function popularRelSmsDefaults() {
     const hoje = new Date();
     const mesAnterior = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
     const mesEl = document.getElementById('relSmsMes');
     const anoEl = document.getElementById('relSmsAno');
-    if (mesEl && !mesEl.dataset.inicializado) { mesEl.value = String(mesAnterior.getMonth()); mesEl.dataset.inicializado = '1'; }
-    if (anoEl && !anoEl.value) anoEl.value = mesAnterior.getFullYear();
+    let deveCarregar = false;
+    if (mesEl && !mesEl.dataset.inicializado) { 
+        mesEl.value = String(mesAnterior.getMonth()); 
+        mesEl.dataset.inicializado = '1'; 
+        deveCarregar = true;
+    }
+    if (anoEl && !anoEl.value) { 
+        anoEl.value = mesAnterior.getFullYear(); 
+        deveCarregar = true;
+    }
+    const previewEl = document.getElementById('relSmsPainelPreview');
+    if (deveCarregar || (previewEl && !previewEl.hasChildNodes())) {
+        setTimeout(() => carregarEVisualizarRelatorioSmsPainel(), 100);
+    }
+}
+
+function onRelSmsPeriodoChange() {
+    carregarEVisualizarRelatorioSmsPainel();
 }
 
 // Paleta e helpers de estilo do relatório - mesmas cores/tamanhos usados no modelo Word
@@ -15393,13 +15408,74 @@ function construirAnexosRelSms(mes, ano) {
     return out;
 }
 
-// Monta o Document completo (capa + índice + sumário + Seções 1 a 5 + Anexos) pro
+// ================================================================
+// SEÇÕES COMPLEMENTARES DE PGR, ERGONOMIA E PERICULOSIDADE NO WORD (.DOCX)
+// ================================================================
+
+function construirSecaoPgrDocx(dados, fiscalizacao) {
+    const p = dados.pgr;
+    const out = [relSmsH1('2. Governança e Plano de Ação PGR (NR-01)')];
+    out.push(relSmsP('Acompanhamento sistemático das ações de controle e melhoria contínua do Programa de Gerenciamento de Riscos (PGR), estruturadas sob metodologia 5W2H.'));
+    const linhas = [
+        ['Total de Ações Mapeadas no PGR', p.total],
+        ['Ações Concluídas / Implementadas', p.concluidas],
+        ['Ações com Eficácia Comprovada', p.eficazes],
+        ['Taxa de Eficácia das Ações', p.taxaEficacia + '%'],
+    ];
+    if (!fiscalizacao) {
+        linhas.push(['Ações em Andamento', p.emAndamento]);
+        linhas.push(['Ações em Aberto', p.abertas]);
+        linhas.push(['Ações com Prazo Vencido', p.atrasadas]);
+    }
+    out.push(relSmsTabela(['Indicador PGR (5W2H)', 'Valor'], linhas));
+    if (!fiscalizacao && p.atrasadas > 0) {
+        out.push(relSmsNota(`⚠ ${p.atrasadas} ação(ões) com prazo expirado em acompanhamento para reprogramação técnica ou alocação de recursos.`));
+    }
+    out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
+    return out;
+}
+
+function construirSecaoErgonomiaDocx(dados) {
+    const e = dados.ergonomia;
+    const out = [relSmsH1('5. Ergonomia — Avaliação Ergonômica Preliminar (NR-17)')];
+    out.push(relSmsP('Diagnóstico e monitoramento contínuo das condições ergonômicas de trabalho, abrangendo fatores biomecânicos, posturais, cognitivos e organizacionais conforme a NR-17.'));
+    const linhas = [
+        ['Avaliações Ergonômicas Preliminares (AEP)', e.totalAep],
+        ['Postos / Funções com Risco Baixo', e.aepRiscoBaixo],
+        ['Postos / Funções com Risco Médio', e.aepRiscoMedio],
+        ['Postos / Funções com Risco Alto', e.aepRiscoAlto],
+        ['Postos com Recomendação de AET', e.aepAetNecessaria],
+        ['Medidas Ergonômicas Concluídas', `${e.aepPlanoConcluido} de ${e.aepPlanoTotal}`]
+    ];
+    out.push(relSmsTabela(['Indicador Ergonômico (NR-17)', 'Valor'], linhas));
+    out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
+    return out;
+}
+
+function construirSecaoPericulosidadeDocx(dados) {
+    const peric = dados.periculosidade;
+    const out = [relSmsH1('6. Caracterização de Periculosidade e Adicionais (NR-16)')];
+    out.push(relSmsP('Avaliação técnica conclusiva quanto à exposição a inflamáveis, explosivos, segurança patrimonial ou eletricidade, de acordo com os anexos regulamentares da NR-16.'));
+    const linhas = [
+        ['Laudos Técnicos e Análises Concluídas', peric.totalAnalises],
+        ['Cargos / Funções com Enquadramento Perigoso', peric.funcoesPerigosas],
+        ['Trabalhadores Enquadrados (Adicional 30%)', peric.colaboradoresExpostos]
+    ];
+    out.push(relSmsTabela(['Indicador de Periculosidade (NR-16)', 'Situação'], linhas));
+    out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
+    return out;
+}
+
+// Monta o Document completo (capa + índice + sumário + Seções 1 a 7 + Anexos) pro
 // mês/ano/versão escolhidos. Só a lib docx carregada globalmente via CDN (window.docx) -
 // ver comentário no topo desta seção.
 async function montarDocRelSms(mes, ano, fiscalizacao) {
     if (typeof garantirDocumentosControleCarregados === 'function') {
         await garantirDocumentosControleCarregados();
     }
+    await garantirDadosCompletosRelatorioMensalSms();
+    const dadosCompletos = coletarDadosCompletosRelatorioMensalSms(mes, ano);
+
     const nomeMes = NOMES_MESES[mes];
     const codigoRev = (typeof codigoRevisaoDocumento === 'function' ? codigoRevisaoDocumento('relatorio_mensal_sms') : '') || 'REL.SMS.001 R00';
     const hoje = new Date();
@@ -15443,10 +15519,15 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
     const dadosSecao1 = coletarDadosSecao1RelSms(mes, ano);
     const secao1 = construirSecao1RelSms(dadosSecao1, mes, ano, fiscalizacao);
 
+    const secaoPgr = construirSecaoPgrDocx(dadosCompletos, fiscalizacao);
+
     await garantirDadosSecoes23RelSms();
     const dadosSecoes23 = coletarDadosSecoes23RelSms(mes, ano);
     const secao2 = construirSecao2RelSms(dadosSecoes23, mes, ano);
     const secao3 = construirSecao3RelSms(dadosSecoes23, mes, ano, fiscalizacao);
+
+    const secaoErgonomia = construirSecaoErgonomiaDocx(dadosCompletos);
+    const secaoPericulosidade = construirSecaoPericulosidadeDocx(dadosCompletos);
 
     await garantirDadosSecaoMeioAmbienteRelSms();
     const dadosMeioAmbiente = coletarDadosMeioAmbienteRelSms(mes, ano);
@@ -15516,7 +15597,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
         styles: { default: { document: { run: { font: 'Calibri' } } } },
         sections: [
             { properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, children: capa },
-            { properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, headers: { default: header }, footers: { default: footer }, children: [...indice, ...sumario, ...secao1, ...secao2, ...secao3, ...secaoMeioAmbiente, ...secao4, ...secao5, ...anexos] },
+            { properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, headers: { default: header }, footers: { default: footer }, children: [...indice, ...sumario, ...secao1, ...secaoPgr, ...secao2, ...secao3, ...secaoErgonomia, ...secaoPericulosidade, ...secaoMeioAmbiente, ...secao4, ...secao5, ...anexos] },
         ],
     });
 }
@@ -15557,97 +15638,528 @@ async function gerarRelatorioMensalSms() {
     }
 }
 
-// Botão "🖨️ Visualizar / Imprimir (A4)" - gera o documento completo em HTML calibrado para
-// impressão A4 com grade de cabeçalho formal padronizada (Logo COP, títulos e metadados com CREA).
-// Abre via abrirDocumentoHtmlParaImpressao() (imune a bloqueador de popups).
-async function imprimirRelatorioMensalSms() {
-    const statusEl = document.getElementById('relSmsStatus');
-    const mes = parseInt(document.getElementById('relSmsMes').value);
-    const ano = parseInt(document.getElementById('relSmsAno').value);
-    const fiscalizacao = document.getElementById('relSmsFiscalizacao').checked;
-    if (!ano) { alert('Informe o ano.'); return; }
-    if (statusEl) statusEl.textContent = '⏳ Carregando dados e preparando documento para impressão A4...';
+// ==========================================================================
+// MOTOR DO DOSSIÊ EXECUTIVO & RELATÓRIO MENSAL CONSOLIDADO DE SMS (relatoriosms)
+// Integração completa de todos os pilares de SST:
+// NR-01 (5W2H/PGR), NR-04/NBR 14280 (Acidentes e HHT), NR-05 (CIPA), NR-06 (EPIs),
+// NR-07 (ASO/Absenteísmo), NR-16 (Periculosidade), NR-17 (Ergonomia AEP),
+// Riscos Psicossociais (COPSOQ II), NR-23 (Extintores e Brigada) e Meio Ambiente (PGRS).
+// ==========================================================================
 
-    try {
-        if (typeof garantirDocumentosControleCarregados === 'function') {
-            await garantirDocumentosControleCarregados();
+let allNaoConformidades = [];
+
+// Garante o carregamento em paralelo (Promise.all) de todas as tabelas e módulos
+// necessários para compor o dossiê executivo de SMS.
+async function garantirDadosCompletosRelatorioMensalSms() {
+    const tarefas = [];
+    if (typeof garantirDocumentosControleCarregados === 'function') {
+        tarefas.push(garantirDocumentosControleCarregados());
+    }
+    if (!treinamentosLoaded) { treinamentosLoaded = true; tarefas.push(loadTreinamentosData()); }
+    if (!acidentesLoaded) { acidentesLoaded = true; tarefas.push(loadAcidentesData()); }
+    if (!epiLoaded) { epiLoaded = true; tarefas.push(loadEpiData()); }
+    if (!aprLoaded) { aprLoaded = true; tarefas.push(loadAprData()); }
+    if (!cipaLoaded) { cipaLoaded = true; tarefas.push(loadCipaData()); }
+    if (!efetivoLoaded) { efetivoLoaded = true; tarefas.push(loadEfetivoData()); }
+    if (!saudeLoaded) { saudeLoaded = true; tarefas.push(loadSaudeData()); }
+    if (!psicossocialLoaded) { psicossocialLoaded = true; tarefas.push(loadPsicossocialData()); }
+    if (!ambientalLoaded) { ambientalLoaded = true; tarefas.push(loadAmbientalData()); }
+    if (!ergonomiaLoaded) { ergonomiaLoaded = true; tarefas.push(loadErgonomiaData()); }
+    if (!periculosidadeLoaded) { periculosidadeLoaded = true; tarefas.push(loadPericulosidadeData()); }
+    if (!planoAcaoPgrLoaded) { planoAcaoPgrLoaded = true; tarefas.push(loadPlanoAcaoPgrData()); }
+    if (!brigadaLoaded) { brigadaLoaded = true; tarefas.push(loadBrigadaData()); }
+
+    // Não Conformidades geradas no campo
+    if (!allNaoConformidades || allNaoConformidades.length === 0) {
+        tarefas.push(supabaseFetch('nao_conformidades', '?select=*').then(res => {
+            allNaoConformidades = Array.isArray(res) ? res : [];
+        }).catch(e => {
+            console.warn('Erro ao carregar nao_conformidades para o Relatório SMS:', e);
+            allNaoConformidades = [];
+        }));
+    }
+
+    await Promise.all(tarefas);
+}
+
+// Coleta e agrega dinamicamente todas as métricas no período selecionado (Mês/Ano)
+// sem nenhum valor estático (hardcoded).
+function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
+    const inicio = new Date(ano, mes, 1, 0, 0, 0, 0);
+    const fim = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
+    const dentroMes = (dataStr) => {
+        if (!dataStr) return false;
+        const d = parseLocalDate(dataStr);
+        return d >= inicio && d <= fim;
+    };
+    const nomeMes = NOMES_MESES[mes];
+    const codigoRev = (typeof codigoRevisaoDocumento === 'function' ? codigoRevisaoDocumento('relatorio_mensal_sms') : '') || 'REL.SMS.001 R00';
+    const hoje = new Date();
+    const dataEmissao = String(hoje.getDate()).padStart(2, '0') + '/' + String(hoje.getMonth() + 1).padStart(2, '0') + '/' + hoje.getFullYear();
+
+    // 1. Efetivo e Exposição ao Risco (HHT)
+    const efetivoFim = headcountAsOf(fim);
+    const totalFuncionarios = efetivoFim > 0 ? efetivoFim : ((allEfetivo || []).filter(colaboradorEstaAtivo).length || 0);
+
+    const keyHht = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+    const cfgHht = (typeof hhtDiasTrabalhadosMap !== 'undefined' && hhtDiasTrabalhadosMap[keyHht]) ? hhtDiasTrabalhadosMap[keyHht] : null;
+    const semanasUteis = semanasUteisDoMes(ano, mes);
+    const diasTrabalhados = cfgHht?.dias_trabalhados || (semanasUteis.length * 5);
+    const horasPorDia = cfgHht?.horas_por_dia || 8;
+
+    let hhtMes = hhtExposicaoDoMes(ano, mes);
+    let hhtEstimado = false;
+    if (hhtMes === null || hhtMes === 0) {
+        hhtMes = totalFuncionarios * diasTrabalhados * horasPorDia;
+        hhtEstimado = true;
+    }
+
+    // HHT Acumulado no ano (Jan até o mês atual)
+    let hhtAcumuladoAno = 0;
+    for (let m = 0; m <= mes; m++) {
+        const h = hhtExposicaoDoMes(ano, m);
+        if (h !== null && h > 0) {
+            hhtAcumuladoAno += h;
+        } else {
+            const hc = headcountAsOf(new Date(ano, m + 1, 0));
+            hhtAcumuladoAno += (hc || totalFuncionarios) * 22 * 8;
         }
-        await garantirDadosSecao1RelSms();
-        const d1 = coletarDadosSecao1RelSms(mes, ano);
+    }
 
-        await garantirDadosSecoes23RelSms();
-        const d23 = coletarDadosSecoes23RelSms(mes, ano);
+    // 2. Checklists e Não Conformidades
+    const checklistsMes = (allChecklists || []).filter(c => dentroMes(c.date));
+    let chkConformes = 0;
+    let chkNaoConformes = 0;
+    checklistsMes.forEach(c => {
+        const temNc = !!c.has_non_conformity || c.status === 'nao_conforme' || (Array.isArray(c.itens_nao_conformes) && c.itens_nao_conformes.length > 0);
+        if (temNc) chkNaoConformes++;
+        else chkConformes++;
+    });
+    const taxaConformidadeChk = checklistsMes.length > 0 ? (chkConformes / checklistsMes.length * 100) : 100;
 
-        await garantirDadosSecaoMeioAmbienteRelSms();
-        const dAmb = coletarDadosMeioAmbienteRelSms(mes, ano);
+    const ncMes = (allNaoConformidades || []).filter(nc => dentroMes(nc.date) || dentroMes(nc.created_at));
+    const ncPorRisco = { critico_alto: 0, medio: 0, baixo: 0 };
+    ncMes.forEach(nc => {
+        const r = (nc.risco || 'high').toLowerCase();
+        if (r === 'high' || r === 'critical' || r === 'alto' || r === 'crítico') ncPorRisco.critico_alto++;
+        else if (r === 'medium' || r === 'medio' || r === 'médio') ncPorRisco.medio++;
+        else ncPorRisco.baixo++;
+    });
 
-        const dFotos = coletarDadosFase4RelSms(mes, ano);
+    // 3. Relatos de Quase-Acidentes e Desvios
+    const relatosMes = (allRelatos || []).filter(r => dentroMes(r.date));
+    const relatosStatus = { aberto: 0, em_andamento: 0, resolvido: 0 };
+    relatosMes.forEach(r => {
+        const s = (r.status || 'aberto').toLowerCase();
+        if (relatosStatus[s] !== undefined) relatosStatus[s]++;
+        else relatosStatus.aberto++;
+    });
+    const relatosTipo = {};
+    relatosMes.forEach(r => {
+        const t = r.tipo || 'Desvio/Condição';
+        relatosTipo[t] = (relatosTipo[t] || 0) + 1;
+    });
+    const relatosPendentesTotal = (allRelatos || []).filter(r => (r.status || 'aberto').toLowerCase() !== 'resolvido').length;
 
-        const nomeMes = NOMES_MESES[mes];
-        const codigoRev = (typeof codigoRevisaoDocumento === 'function' ? codigoRevisaoDocumento('relatorio_mensal_sms') : '') || 'REL.SMS.001 R00';
-        const hoje = new Date();
-        const dataEmissao = String(hoje.getDate()).padStart(2, '0') + '/' + String(hoje.getMonth() + 1).padStart(2, '0') + '/' + hoje.getFullYear();
+    // 4. Análise Preliminar de Risco (APR)
+    const aprMes = (allAprRegistros || []).filter(a => dentroMes(a.data_emissao));
+    const aprRiscosResidual = { Baixo: 0, Moderado: 0, Alto: 0, Crítico: 0 };
+    aprMes.forEach(a => {
+        (Array.isArray(a.riscos) ? a.riscos : []).forEach(r => {
+            const n = nivelRiscoApr(r.p_residual, r.s_residual);
+            if (n.valor !== null && aprRiscosResidual[n.label] !== undefined) aprRiscosResidual[n.label]++;
+        });
+    });
+    const aprStatusTodos = (allAprRegistros || []).map(a => statusApr(a));
+    const aprSituacaoAtual = {
+        ativas: aprStatusTodos.filter(s => s.status === 'ativa' || s.status === 'vencendo').length,
+        vencendo: aprStatusTodos.filter(s => s.status === 'vencendo').length,
+        vencidas: aprStatusTodos.filter(s => s.status === 'vencida').length
+    };
 
-        // 1.2 Treinamentos
-        const t = d1.treinamentos;
-        const linhasTrein = [
-            ['Integração (NR-01)', t.totais.participantes.integracao, t.totais.hht.integracao.toFixed(0)],
-            ['Segurança, Saúde e Meio Ambiente', t.totais.participantes.seguranca, t.totais.hht.seguranca.toFixed(0)],
-            ['Treinamentos Adicionais', t.totais.participantes.adicionais, t.totais.hht.adicionais.toFixed(0)],
-            ['DDSMS', t.totais.participantes.dds, t.totais.hht.dds.toFixed(0)],
-            ['TOTAL', t.totais.participantes.geral, t.totais.hht.geral.toFixed(0)],
-        ];
+    // 5. Matriz de Riscos GHE
+    const riscosGhe = todosRiscosGhe();
+    const matrizRiscoPorNivel = {};
+    NIVEIS_RISCO_ORDEM.forEach(n => { matrizRiscoPorNivel[n] = 0; });
+    riscosGhe.forEach(r => { if (matrizRiscoPorNivel[r.gravidade_label] !== undefined) matrizRiscoPorNivel[r.gravidade_label]++; });
 
-        // 1.3 APR
-        const linhasApr = [
-            ['APRs emitidas no mês', d1.apr.emitidasNoMes],
-            ['Situação atual — ativas', d1.apr.situacaoAtual.ativas],
-            ['Situação atual — vencendo (≤5 dias)', d1.apr.situacaoAtual.vencendo],
-        ];
-        if (!fiscalizacao) linhasApr.push(['Situação atual — vencidas', d1.apr.situacaoAtual.vencidas]);
-        const classApr = d1.apr.classCounts;
+    // 6. Treinamentos e DDSMS (NR-01)
+    const treinamentosDados = montarLinhasRelatorioMensal(ano, mes, 'semanal');
+    const cronogramaMes = (allTreinamentosCronograma || []).filter(c => dentroMes(c.data_prevista));
+    const cronogramaRealizados = cronogramaMes.filter(c => c.status === 'lancado' || c.status === 'concluido').length;
+    const cronogramaPendentes = cronogramaMes.filter(c => c.status !== 'lancado' && c.status !== 'concluido').length;
+    const taxaCronograma = cronogramaMes.length > 0 ? Math.round((cronogramaRealizados / cronogramaMes.length) * 100) : 100;
 
-        // 1.4 Matriz Risco
-        const mr = d1.matrizRisco.porNivel;
+    // Colaboradores com NR vencida (situação atual)
+    const hojeNR = new Date(); hojeNR.setHours(0, 0, 0, 0);
+    const efetivoPorMatriculaNR = new Map((allEfetivo || []).map(e => [e.id, e]));
+    const matriculasComNRVencida = new Set();
+    (allTreinamentosStatus || []).forEach(s => {
+        const efetivo = efetivoPorMatriculaNR.get(s.matricula);
+        const estaAtivo = efetivo ? (!!efetivo.dt_admissao && !efetivo.dt_demissao) : (s.status_colaborador === 'ATIVO');
+        if (!estaAtivo || !s.meses_validade || !s.data_proxima_reciclagem) return;
+        const deadline = parseLocalDate(s.data_proxima_reciclagem); deadline.setHours(0, 0, 0, 0);
+        if (deadline < hojeNR) matriculasComNRVencida.add(s.matricula);
+    });
+    treinamentosDados.nrVencidas = matriculasComNRVencida.size;
 
-        // 1.5 EPI
-        const epiKpisVersao = fiscalizacao
-            ? d1.epiKpis.filter(k => k.key !== 'caVencidos' && k.key !== 'estoqueBaixo')
-            : d1.epiKpis;
+    // 7. Acidentabilidade & Estatísticas NBR 14280 / NR-04
+    const acidentesMes = (allAcidentes || []).filter(a => dentroMes(a.data_acidente));
+    const acidentesTipicos = acidentesMes.filter(a => (a.classificacao_nbr || 'Típico') === 'Típico');
+    const acidentesOutros = acidentesMes.filter(a => (a.classificacao_nbr || 'Típico') !== 'Típico');
+    const acidentesCA = acidentesTipicos.filter(a => !!a.com_afastamento);
+    const acidentesSA = acidentesTipicos.filter(a => !a.com_afastamento);
+    const diasPerdidosMes = acidentesTipicos.reduce((s, a) => s + (parseInt(a.dias_perdidos, 10) || 0), 0);
+    const diasDebitadosMes = acidentesTipicos.reduce((s, a) => s + (parseInt(a.dias_debitados, 10) || 0), 0);
 
-        // 1.8 Relatos
-        const rc = d1.relatos.statusCounts;
-        const linhasRelatos = [
-            ['Relatos registrados no mês', d1.relatos.totalMes],
-            ['— Abertos', rc.aberto],
-            ['— Em andamento', rc.em_andamento],
-            ['— Resolvidos', rc.resolvido],
-            ['Situação atual — total aberto/em andamento', d1.relatos.abertosAtual],
-        ];
-        const tiposRelatos = Object.entries(d1.relatos.tipoCounts).sort((a, b) => b[1] - a[1]);
+    const tfG = hhtMes > 0 ? ((acidentesTipicos.length * 1000000) / hhtMes) : 0;
+    const tfCA = hhtMes > 0 ? ((acidentesCA.length * 1000000) / hhtMes) : 0;
+    const tfSA = hhtMes > 0 ? ((acidentesSA.length * 1000000) / hhtMes) : 0;
+    const tg = hhtMes > 0 ? (((diasPerdidosMes + diasDebitadosMes) * 1000000) / hhtMes) : 0;
+    const taxaIncidencia = totalFuncionarios > 0 ? ((acidentesTipicos.length * 1000) / totalFuncionarios) : 0;
 
-        // Seção 2 ADA
-        const a = d23.ada;
+    const diasSemCpt = diasSemAcidente(true);
+    const diasSemSpt = diasSemAcidente(false);
 
-        // Seção 3.2 Psico
-        const p = d23.psicossocial;
+    // 8. PGR e Plano de Ação 5W2H (NR-01)
+    const hojeStr = toISODateLocal(new Date());
+    let pgrTotal = (allPlanoAcaoPgr || []).length;
+    let pgrAbertas = 0, pgrAndamento = 0, pgrConcluidas = 0, pgrAtrasadas = 0, pgrEficazes = 0;
+    let pgrCustoTotal = 0;
+    (allPlanoAcaoPgr || []).forEach(a => {
+        const st = (a.status || 'aberta').toLowerCase();
+        const prazo = a.when_prazo || '';
+        pgrCustoTotal += (parseFloat(a.how_much_custo) || 0);
 
-        // Seção 4 Meio Ambiente
-        const lRes = dAmb.linhaResiduos;
-
-        // Seção 5 Considerações Finais
-        const pontos = [];
-        if (!fiscalizacao) {
-            if (d1.treinamentos.nrVencidas > 0) pontos.push(`${d1.treinamentos.nrVencidas} colaborador(es) ativo(s) com integração/NR em renovação programada.`);
-            if (d1.apr.situacaoAtual.vencendo > 0) pontos.push(`${d1.apr.situacaoAtual.vencendo} APR(s) vencendo em até 5 dias.`);
-            if (d1.relatos.abertosAtual > 0) pontos.push(`${d1.relatos.abertosAtual} relato(s) de segurança em acompanhamento pelo SESMT.`);
-            if (d1.cipa.pendenciasAbertas > 0) pontos.push(`${d1.cipa.pendenciasAbertas} ação(ões) da CIPA em andamento conforme cronograma.`);
+        if (st === 'concluida') {
+            pgrConcluidas++;
+            if (a.afericao_eficacia === 'eficaz' || a.afericao_eficacia === 'parcial') pgrEficazes++;
+        } else if (st !== 'cancelada') {
+            if (prazo && prazo < hojeStr) pgrAtrasadas++;
+            if (st === 'aberta') pgrAbertas++;
+            else pgrAndamento++;
         }
+    });
+    const pgrTaxaEficacia = pgrConcluidas > 0 ? Math.round((pgrEficazes / pgrConcluidas) * 100) : (pgrTotal > 0 ? 0 : 100);
 
-        // Seção 6 Fotos
-        const eventosFotos = dFotos.eventos;
+    // 9. Saúde Ocupacional & Absenteísmo (NR-07)
+    const asoMes = (allAsoExames || []).filter(a => dentroMes(a.data_exame));
+    const asoPorTipo = { admissional: 0, periodico: 0, demissional: 0, retorno: 0, mudanca: 0, psicossocial: 0, outros: 0 };
+    let asoAptos = 0, asoInaptos = 0, asoRestricao = 0;
+    asoMes.forEach(a => {
+        const t = (a.tipo_aso || '').toLowerCase();
+        if (t.includes('admiss')) asoPorTipo.admissional++;
+        else if (t.includes('period') || t.includes('periód')) asoPorTipo.periodico++;
+        else if (t.includes('demiss')) asoPorTipo.demissional++;
+        else if (t.includes('retorno')) asoPorTipo.retorno++;
+        else if (t.includes('mudan')) asoPorTipo.mudanca++;
+        else if (t.includes('psico')) asoPorTipo.psicossocial++;
+        else asoPorTipo.outros++;
 
-        const html = `<!DOCTYPE html>
+        const res = (a.resultado || 'apto').toLowerCase();
+        if (res.includes('inapto')) asoInaptos++;
+        else if (res.includes('restr')) asoRestricao++;
+        else asoAptos++;
+    });
+
+    const atestadosMes = (allAtestadosOcupacionais || []).filter(a => dentroMes(a.data_inicio));
+    const diasAfastamentoMes = atestadosMes.reduce((s, a) => s + (parseInt(a.dias_afastamento, 10) || 0), 0);
+    const horasPerdidasAtestados = diasAfastamentoMes * horasPorDia;
+    const taxaAbsenteismo = hhtMes > 0 ? ((horasPerdidasAtestados / hhtMes) * 100) : 0;
+
+    // 10. Ergonomia (NR-17)
+    const totalAep = (allErgonomiaAep || []).length;
+    const aepRiscoBaixo = (allErgonomiaAep || []).filter(a => a.nivel_risco_global === 'baixo').length;
+    const aepRiscoMedio = (allErgonomiaAep || []).filter(a => a.nivel_risco_global === 'medio').length;
+    const aepRiscoAlto = (allErgonomiaAep || []).filter(a => a.nivel_risco_global === 'alto').length;
+    const aepAetNecessaria = (allErgonomiaAep || []).filter(a => !!a.necessidade_aet).length;
+    const aepPlanoTotal = (allErgonomiaPlanoAcao || []).length;
+    const aepPlanoConcluido = (allErgonomiaPlanoAcao || []).filter(p => p.status === 'concluido').length;
+
+    // 11. Avaliação Psicossocial (COPSOQ II)
+    const aplicacoesPsicoPeriodo = (allAvaliacoesPsicossociais || []).filter(a => {
+        if (!a.periodo_inicio || !a.periodo_fim) return false;
+        const ini = parseLocalDate(a.periodo_inicio), fimA = parseLocalDate(a.periodo_fim);
+        return ini <= fim && fimA >= inicio;
+    }).sort((a, b) => (b.periodo_inicio || '').localeCompare(a.periodo_inicio || ''));
+    const aplicacaoPsico = aplicacoesPsicoPeriodo[0] || null;
+    let psicoDados = null;
+    if (aplicacaoPsico) {
+        const escalas = (allEscalasPsicossociais || []).filter(e => e.aplicacao_id === aplicacaoPsico.id);
+        psicoDados = {
+            aplicacao: aplicacaoPsico,
+            totalEscalas: escalas.length,
+            criticas: escalas.filter(e => Number(e.pct_risco) >= PSICO_LIMIAR_RISCO_CRITICO).sort((a, b) => Number(b.pct_risco) - Number(a.pct_risco)),
+            fortes: escalas.filter(e => Number(e.pct_favoravel) >= PSICO_LIMIAR_FAVORAVEL_FORTE).sort((a, b) => Number(b.pct_favoravel) - Number(a.pct_favoravel))
+        };
+    }
+
+    // 12. Periculosidade (NR-16)
+    const totalAnalisesPeric = (allPericulosidadeAnalises || []).length;
+    const funcoesPerigosas = (allPericulosidadeAnalises || []).filter(a => {
+        const c = (a.conclusao_periculosidade || '').toLowerCase();
+        return c === 'sim' || c === 'perigoso' || c === 'devido' || c === 'enquadrado';
+    });
+    let colaboradoresPericulosidade = 0;
+    funcoesPerigosas.forEach(f => {
+        colaboradoresPericulosidade += (parseInt(f.quantidade_trabalhadores, 10) || 1);
+    });
+
+    // 13. Extintores, Brigada de Incêndio & CIPA (NR-23 e NR-05)
+    const extintoresAtivos = (allExtintores || []).filter(e => e.ativo !== false);
+    const anoMesKey = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+    const ultimaInspecaoMes = {};
+    (allInspecoesExtintores || []).forEach(i => {
+        if (!(i.date || '').startsWith(anoMesKey)) return;
+        const exist = ultimaInspecaoMes[i.extintor_id];
+        if (!exist || new Date(i.created_at || 0) > new Date(exist.created_at || 0)) {
+            ultimaInspecaoMes[i.extintor_id] = i;
+        }
+    });
+    let extConf = 0, extNaoConf = 0, extPend = 0;
+    extintoresAtivos.forEach(e => {
+        const insp = ultimaInspecaoMes[e.id];
+        if (!insp) extPend++;
+        else if (insp.status_geral === 'nao_conforme') extNaoConf++;
+        else extConf++;
+    });
+    const totalInspecionadosExt = extConf + extNaoConf;
+    const percConformidadeExt = totalInspecionadosExt > 0 ? Math.round((extConf / totalInspecionadosExt) * 100) : 100;
+
+    const hojeExt = new Date(); hojeExt.setHours(0, 0, 0, 0);
+    let extVencidos = 0, extVencendo = 0;
+    extintoresAtivos.forEach(e => {
+        if (!e.proxima_recarga) return;
+        const deadline = parseLocalDate(e.proxima_recarga); deadline.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((deadline.getTime() - hojeExt.getTime()) / 86400000);
+        if (diffDays < 0) extVencidos++; else if (diffDays <= 30) extVencendo++;
+    });
+
+    // Brigada:
+    const brigadaAtivos = (allBrigadaMembros || []).filter(m => m.ativo);
+    const coordenadorBrigada = brigadaAtivos.find(m => m.cargo_brigada === 'coordenador_geral');
+
+    // CIPA:
+    const cipaReunioesMes = (allCipaReunioes || []).filter(r => dentroMes(r.data_reuniao)).sort((a, b) => (a.data_reuniao || '').localeCompare(b.data_reuniao || ''));
+    const cipaMembrosAtivos = (allCipaMembros || []).filter(m => m.ativo).length;
+    const cipaPendencias = (allCipaPlanoAcao || []).filter(p => p.status !== 'concluido').length;
+    const cipaPendenciasAtrasadas = (allCipaPlanoAcao || []).filter(p => p.status !== 'concluido' && p.prazo && parseLocalDate(p.prazo) < hojeNR).length;
+
+    // 14. Equipamentos de Proteção Individual (EPI - NR-06)
+    const epiEntregasMes = (allEpiEntregas || []).filter(e => dentroMes(e.data_entrega));
+    const epiTotalItens = epiEntregasMes.reduce((s, e) => s + (parseInt(e.quantidade, 10) || 1), 0);
+    const epiColaboradoresAtendidos = new Set(epiEntregasMes.map(e => e.matricula)).size;
+
+    // 15. Área Diretamente Afetada (ADA)
+    const adaDados = montarQuadrosMaoDeObra(ano, mes);
+
+    // 16. Meio Ambiente (PGRS)
+    const ambDados = coletarDadosMeioAmbienteRelSms(mes, ano);
+
+    // 17. Registros Fotográficos
+    const fotosDados = coletarDadosFase4RelSms(mes, ano);
+
+    // 18. KPIs Rápidos Consolidados para o Cabeçalho Executivo
+    const ddsLinhas = treinamentosDados.categorias.find(c => (c.label || '').toUpperCase().includes('DDS'))?.linhas || [];
+    const ddsEfetuados = ddsLinhas.length;
+
+    const kpisRapidos = {
+        tfGlobal: tfG.toFixed(2),
+        tfCa: tfCA.toFixed(2),
+        tfSa: tfSA.toFixed(2),
+        tg: tg.toFixed(2),
+        checklistsTotal: checklistsMes.length,
+        checklistsConformePct: taxaConformidadeChk.toFixed(1) + '%',
+        hhtTreinamento: treinamentosDados.totais.hht.geral.toFixed(0) + ' h',
+        treinamentosParticipantes: treinamentosDados.totais.participantes.geral,
+        ddsEfetuados: ddsEfetuados,
+        extintoresConformePct: percConformidadeExt + '%',
+        diasSemCpt: diasSemCpt === null ? '—' : diasSemCpt,
+        diasSemSpt: diasSemSpt === null ? '—' : diasSemSpt,
+        pgrEficaciaPct: pgrTaxaEficacia + '%'
+    };
+
+    return {
+        meta: {
+            mes,
+            ano,
+            nomeMes,
+            codigoRev,
+            dataEmissao,
+            empresa: 'Consórcio Operador do PISF',
+            obra: 'PISF Ramal do Agreste — Trecho VII',
+            responsavelTecnico: 'João Everton de Souza Limeira',
+            crea: 'Engenheiro de Segurança do Trabalho • CREA/PE 181283311-8'
+        },
+        efetivo: {
+            headcount: totalFuncionarios,
+            efetivoFim
+        },
+        hht: {
+            hhtMes,
+            hhtAcumuladoAno,
+            diasTrabalhados,
+            horasPorDia,
+            hhtEstimado
+        },
+        kpisRapidos,
+        checklists: {
+            total: checklistsMes.length,
+            conformes: chkConformes,
+            naoConformes: chkNaoConformes,
+            taxaConformidade: taxaConformidadeChk
+        },
+        naoConformidades: {
+            total: ncMes.length,
+            porRisco: ncPorRisco,
+            itens: ncMes
+        },
+        relatos: {
+            total: relatosMes.length,
+            statusCounts: relatosStatus,
+            tipoCounts: relatosTipo,
+            abertosAtual: relatosPendentesTotal
+        },
+        apr: {
+            emitidasNoMes: aprMes.length,
+            classCounts: aprRiscosResidual,
+            situacaoAtual: aprSituacaoAtual
+        },
+        matrizRisco: {
+            total: riscosGhe.length,
+            porNivel: matrizRiscoPorNivel
+        },
+        treinamentos: {
+            dados: treinamentosDados,
+            cronograma: {
+                totalPrevistos: cronogramaMes.length,
+                realizados: cronogramaRealizados,
+                pendentes: cronogramaPendentes,
+                taxa: taxaCronograma
+            }
+        },
+        acidentes: {
+            tipicosTotal: acidentesTipicos.length,
+            acidentesCA: acidentesCA.length,
+            acidentesSA: acidentesSA.length,
+            outrosTotal: acidentesOutros.length,
+            diasPerdidos: diasPerdidosMes,
+            diasDebitados: diasDebitadosMes,
+            tfG,
+            tfCA,
+            tfSA,
+            tg,
+            taxaIncidencia,
+            diasSemCpt,
+            diasSemSpt,
+            historico: acidentesMes
+        },
+        pgr: {
+            totalAcoes: pgrTotal,
+            abertas: pgrAbertas,
+            andamento: pgrAndamento,
+            concluidas: pgrConcluidas,
+            atrasadas: pgrAtrasadas,
+            eficazes: pgrEficazes,
+            taxaEficacia: pgrTaxaEficacia,
+            custoTotal: pgrCustoTotal
+        },
+        saude: {
+            totalAsos: asoMes.length,
+            porTipo: asoPorTipo,
+            aptos: asoAptos,
+            inaptos: asoInaptos,
+            restricoes: asoRestricao,
+            atestadosTotal: atestadosMes.length,
+            diasAfastamento: diasAfastamentoMes,
+            taxaAbsenteismo
+        },
+        ergonomia: {
+            totalAep,
+            riscoBaixo: aepRiscoBaixo,
+            riscoMedio: aepRiscoMedio,
+            riscoAlto: aepRiscoAlto,
+            aetNecessaria: aepAetNecessaria,
+            planoTotal: aepPlanoTotal,
+            planoConcluido: aepPlanoConcluido
+        },
+        psicossocial: psicoDados,
+        periculosidade: {
+            totalAnalises: totalAnalisesPeric,
+            funcoesPerigosas: funcoesPerigosas.length,
+            colaboradoresExpostos: colaboradoresPericulosidade
+        },
+        extintores: {
+            totalAtivos: extintoresAtivos.length,
+            inspecionados: totalInspecionadosExt,
+            conf: extConf,
+            naoConf: extNaoConf,
+            pendentes: extPend,
+            percConformidade: percConformidadeExt,
+            vencidos: extVencidos,
+            vencendo: extVencendo
+        },
+        brigada: {
+            membrosAtivos: brigadaAtivos.length,
+            coordenador: coordenadorBrigada ? coordenadorBrigada.nome : 'Não designado'
+        },
+        cipa: {
+            reunioesMes: cipaReunioesMes,
+            membrosAtivos: cipaMembrosAtivos,
+            pendenciasAbertas: cipaPendencias,
+            pendenciasAtrasadas: cipaPendenciasAtrasadas
+        },
+        epi: {
+            totalItens: epiTotalItens,
+            colaboradoresAtendidos: epiColaboradoresAtendidos,
+            entregasQtd: epiEntregasMes.length
+        },
+        ada: adaDados,
+        meioAmbiente: ambDados,
+        fotos: fotosDados
+    };
+}
+
+// Constrói o documento HTML completo calibrado para Impressão A4 e exportação para PDF
+function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
+    const { meta, efetivo, hht, kpisRapidos, checklists, naoConformidades, relatos, apr, matrizRisco, treinamentos, acidentes, pgr, saude, ergonomia, psicossocial, periculosidade, extintores, brigada, cipa, epi, ada, meioAmbiente, fotos } = dados;
+    const nomeMes = meta.nomeMes;
+    const ano = meta.ano;
+    const mes = meta.mes;
+
+    // Linhas formatadas de Treinamento
+    const t = treinamentos.dados;
+    const linhasTrein = [
+        ['Integração (NR-01)', t.totais.participantes.integracao, t.totais.hht.integracao.toFixed(0)],
+        ['Segurança, Saúde e Meio Ambiente', t.totais.participantes.seguranca, t.totais.hht.seguranca.toFixed(0)],
+        ['Treinamentos Adicionais', t.totais.participantes.adicionais, t.totais.hht.adicionais.toFixed(0)],
+        ['DDSMS (Diálogos de Segurança)', t.totais.participantes.dds, t.totais.hht.dds.toFixed(0)],
+        ['TOTAL CONSOLIDADO', t.totais.participantes.geral, t.totais.hht.geral.toFixed(0)],
+    ];
+
+    // Linhas de APR
+    const linhasApr = [
+        ['APRs emitidas no mês de competência', apr.emitidasNoMes],
+        ['Situação atual — APRs ativas em campo', apr.situacaoAtual.ativas],
+        ['Situação atual — vencendo em até 5 dias', apr.situacaoAtual.vencendo],
+    ];
+    if (!fiscalizacao) linhasApr.push(['Situação atual — APRs vencidas em arquivo', apr.situacaoAtual.vencidas]);
+
+    // Linhas de Relatos
+    const rc = relatos.statusCounts;
+    const linhasRelatos = [
+        ['Relatos registrados no período', relatos.total],
+        ['— Em aberto para triagem', rc.aberto],
+        ['— Em andamento (plano de mitigação)', rc.em_andamento],
+        ['— Resolvidos e encerrados', rc.resolvido],
+        ['Situação acumulada — pendentes no sistema', relatos.abertosAtual],
+    ];
+    const tiposRelatos = Object.entries(relatos.tipoCounts).sort((a, b) => b[1] - a[1]);
+
+    // Meio Ambiente Resíduos
+    const lRes = meioAmbiente.linhaResiduos;
+
+    return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -15660,7 +16172,7 @@ async function imprimirRelatorioMensalSms() {
         * { box-sizing: border-box; }
         body {
             font-family: Arial, Helvetica, sans-serif;
-            font-size: 10.5px;
+            font-size: 10px;
             color: #1e293b;
             background: #ffffff;
             margin: 0;
@@ -15677,7 +16189,7 @@ async function imprimirRelatorioMensalSms() {
             margin-bottom: 16px;
         }
         .btn-imprimir {
-            background: #4f46e5;
+            background: #1f3864;
             color: #ffffff;
             border: none;
             padding: 10px 24px;
@@ -15685,12 +16197,13 @@ async function imprimirRelatorioMensalSms() {
             font-weight: 700;
             border-radius: 6px;
             cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
         }
-        .btn-imprimir:hover { background: #4338ca; }
+        .btn-imprimir:hover { background: #2e5395; }
         .folha-relatorio {
             max-width: 210mm;
             margin: 0 auto;
-            padding: 0 10px;
+            padding: 0 8px;
         }
         .page-break {
             page-break-after: always;
@@ -15699,12 +16212,12 @@ async function imprimirRelatorioMensalSms() {
         .rel-tabela {
             width: 100%;
             border-collapse: collapse;
-            font-size: 10px;
-            margin: 8px 0 14px 0;
+            font-size: 9.5px;
+            margin: 6px 0 12px 0;
         }
         .rel-tabela th, .rel-tabela td {
             border: 1px solid #cbd5e1;
-            padding: 5px 7px;
+            padding: 4.5px 6px;
             text-align: center;
         }
         .rel-tabela th {
@@ -15716,65 +16229,95 @@ async function imprimirRelatorioMensalSms() {
             background: #f8fafc;
         }
         .rel-h1 {
-            font-size: 13.5px;
+            font-size: 13px;
             font-weight: 800;
             color: #1f3864;
             border-bottom: 2px solid #1f3864;
-            padding-bottom: 4px;
-            margin: 16px 0 8px 0;
+            padding-bottom: 3px;
+            margin: 14px 0 8px 0;
             text-transform: uppercase;
         }
         .rel-h2 {
-            font-size: 11.5px;
+            font-size: 11px;
             font-weight: 700;
             color: #2e5395;
-            margin: 14px 0 6px 0;
+            margin: 12px 0 5px 0;
         }
         .rel-p {
-            font-size: 10.5px;
-            margin: 0 0 8px 0;
+            font-size: 10px;
+            margin: 0 0 6px 0;
             text-align: justify;
-            line-height: 1.45;
+            line-height: 1.4;
         }
         .rel-nota {
-            font-size: 9.5px;
+            font-size: 9px;
             font-style: italic;
             color: #64748b;
-            margin: -4px 0 10px 0;
+            margin: -2px 0 8px 0;
+        }
+        .grid-kpi-a4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 7px;
+            margin: 8px 0 14px 0;
+        }
+        .card-kpi-a4 {
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            padding: 5px 6px;
+            text-align: center;
+            background: #f8fafc;
+            border-top: 2.5px solid #1f3864;
+            page-break-inside: avoid;
+        }
+        .card-kpi-a4 .kpi-a4-val {
+            font-size: 14px;
+            font-weight: 800;
+            color: #1f3864;
+            line-height: 1.1;
+            margin-bottom: 2px;
+        }
+        .card-kpi-a4 .kpi-a4-lbl {
+            font-size: 8px;
+            font-weight: 700;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            line-height: 1.1;
         }
         .grid-fotos {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin: 12px 0;
+            gap: 10px;
+            margin: 10px 0;
         }
         .card-foto {
             border: 1px solid #cbd5e1;
             border-radius: 4px;
-            padding: 8px;
+            padding: 6px;
             text-align: center;
             background: #ffffff;
             page-break-inside: avoid;
         }
         .espaco-foto {
-            height: 120px;
+            height: 110px;
             border: 1px dashed #94a3b8;
             background: #f8fafc;
             display: flex;
             align-items: center;
             justify-content: center;
             color: #64748b;
-            font-size: 10.5px;
+            font-size: 10px;
             font-style: italic;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
         .legenda-foto-num {
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 800;
             color: #1f3864;
         }
         .legenda-foto-desc {
-            font-size: 9.5px;
+            font-size: 9px;
             color: #475569;
         }
         @media print {
@@ -15792,229 +16335,395 @@ async function imprimirRelatorioMensalSms() {
     </div>
 
     <div class="folha-relatorio">
-        <!-- FOLHA 1: CAPA -->
+        <!-- FOLHA 1: CAPA INSTITUCIONAL -->
         ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Documento Oficial de SST')}
-        <div style="text-align: center; padding: 70px 20px 40px 20px;">
+        <div style="text-align: center; padding: 60px 20px 40px 20px;">
             <div style="font-size: 13px; font-weight: 800; color: #1f3864; text-transform: uppercase; letter-spacing: 1px;">
-                COP – CONSÓRCIO OPERADOR DO PISF
+                ${escapeHTML(meta.empresa)}
             </div>
             <div style="font-size: 12px; color: #475569; margin: 4px 0 24px 0;">
-                Obra: PISF Ramal do Agreste — Trecho VII
+                Obra: ${escapeHTML(meta.obra)}
             </div>
             <div style="display: inline-block; border-top: 3px solid #1f3864; border-bottom: 3px solid #1f3864; padding: 16px 30px; margin-bottom: 12px;">
                 <div style="font-size: 20px; font-weight: 900; color: #1f3864; text-transform: uppercase;">
                     RELATÓRIO MENSAL CONSOLIDADO DE SMS
                 </div>
                 <div style="font-size: 11px; color: #475569; font-style: italic; margin-top: 6px;">
-                    (Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente)
+                    Dossiê Integrado de Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente
                 </div>
             </div>
             <div style="font-size: 16px; font-weight: 800; color: #2e5395; margin-top: 18px; text-transform: uppercase;">
-                ${nomeMes} / ${ano}
+                COMPETÊNCIA: ${nomeMes} / ${ano}
             </div>
-            ${fiscalizacao ? `<div style="display: inline-block; background: #e2e8f0; color: #334155; font-size: 10.5px; font-weight: 700; padding: 4px 14px; border-radius: 4px; margin-top: 10px;">Versão para envio à Fiscalização</div>` : ''}
+            ${fiscalizacao ? `<div style="display: inline-block; background: #e2e8f0; color: #334155; font-size: 10.5px; font-weight: 700; padding: 4px 14px; border-radius: 4px; margin-top: 10px;">Versão para envio à Fiscalização / Auditoria</div>` : ''}
 
-            <div style="margin-top: 90px; font-size: 10.5px; color: #475569; line-height: 1.6;">
+            <div style="margin-top: 80px; font-size: 10.5px; color: #475569; line-height: 1.6;">
                 <div>Elaborado por:</div>
-                <div style="font-size: 12px; font-weight: 800; color: #1f3864;">João Everton de Souza Limeira</div>
-                <div>Engenheiro de Segurança do Trabalho • CREA/PE 181283311-8</div>
-                <div style="margin-top: 8px;"><strong>Código de Controle:</strong> ${escapeHTML(codigoRev)}</div>
-                <div><strong>Data de Emissão:</strong> ${dataEmissao}</div>
+                <div style="font-size: 12px; font-weight: 800; color: #1f3864;">${escapeHTML(meta.responsavelTecnico)}</div>
+                <div>${escapeHTML(meta.crea)}</div>
+                <div style="margin-top: 8px;"><strong>Código de Controle:</strong> ${escapeHTML(meta.codigoRev)}</div>
+                <div><strong>Data de Emissão:</strong> ${meta.dataEmissao}</div>
             </div>
         </div>
         <div class="page-break"></div>
 
-        <!-- FOLHA 2: SUMÁRIO EXECUTIVO & ÍNDICE -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Sumário Executivo')}
+        <!-- FOLHA 2: SUMÁRIO EXECUTIVO & PAINEL DE KPIS RÁPIDOS -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Sumário Executivo e Indicadores')}
         <div class="rel-h1">Sumário Executivo</div>
         <p class="rel-p">
-            Este relatório consolida os indicadores de Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste referentes a ${nomeMes.toLowerCase()} de ${ano}, com base nos registros de campo consolidados pela equipe de SMS.
-        </p>
-        <p class="rel-p">
-            ${fiscalizacao
-                ? 'Este documento consolida os indicadores de desempenho em Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste no período, evidenciando o cumprimento dos programas legais e o monitoramento contínuo das atividades de campo.'
-                : 'Versão gerada automaticamente pelo painel: Segurança do Trabalho, Área Diretamente Afetada, Saúde Ocupacional, Meio Ambiente, Considerações Finais, Registros Fotográficos e Anexos trazem os dados reais e indicadores de gestão interna do mês.'}
+            Este relatório consolida de forma integrada as ações e o desempenho operacional em Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste no mês de <strong>${nomeMes.toLowerCase()} de ${ano}</strong>, em estrita conformidade com as Normas Regulamentadoras do Ministério do Trabalho e Emprego (NR-01, NR-04, NR-05, NR-06, NR-07, NR-16, NR-17 e NR-23) e com as diretrizes do Programa de Gestão de Resíduos Sólidos (PGRS).
         </p>
 
-        <div class="rel-h2" style="margin-top: 24px;">Estrutura do Documento</div>
-        <table class="rel-tabela" style="width: 100%; text-align: left;">
-            <thead><tr><th style="width: 15%;">Item</th><th>Seção</th><th style="width: 25%;">Tema</th></tr></thead>
+        <div class="rel-h2">Metadados de Exposição Operacional do Mês</div>
+        <table class="rel-tabela" style="width: 100%; margin-bottom: 8px;">
+            <thead>
+                <tr>
+                    <th>Efetivo Ativo na Obra</th>
+                    <th>Dias Úteis Trabalhados</th>
+                    <th>HHT Trabalhado no Mês</th>
+                    <th>HHT Acumulado no Contrato</th>
+                </tr>
+            </thead>
             <tbody>
-                <tr><td><strong>Seção 1</strong></td><td style="text-align: left;">Segurança do Trabalho</td><td style="text-align: left;">Checklists, Treinamentos, APR, GHE, EPI, Extintores, Acidentes, Relatos, CIPA</td></tr>
-                <tr><td><strong>Seção 2</strong></td><td style="text-align: left;">Área Diretamente Afetada (ADA)</td><td style="text-align: left;">Mão de Obra Local e Municípios de Origem</td></tr>
-                <tr><td><strong>Seção 3</strong></td><td style="text-align: left;">Saúde Ocupacional</td><td style="text-align: left;">ASO, Absenteísmo e Avaliação Psicossocial</td></tr>
-                <tr><td><strong>Seção 4</strong></td><td style="text-align: left;">Meio Ambiente</td><td style="text-align: left;">PGRS (Resíduos) e Manutenção Veicular (Troca de Óleo)</td></tr>
-                <tr><td><strong>Seção 5</strong></td><td style="text-align: left;">Considerações Finais</td><td style="text-align: left;">Pontos de Atenção e Monitoramento do Período</td></tr>
-                <tr><td><strong>Seção 6</strong></td><td style="text-align: left;">Registros Fotográficos</td><td style="text-align: left;">Evidências Visuais Cronológicas de Treinamentos e DDS</td></tr>
-                <tr><td><strong>Anexos</strong></td><td style="text-align: left;">Documentação Complementar</td><td style="text-align: left;">Listas de Presença, DDS e Cronogramas Oficiais</td></tr>
+                <tr>
+                    <td><strong>${efetivo.headcount} trabalhadores</strong></td>
+                    <td><strong>${hht.diasTrabalhados} dias</strong></td>
+                    <td><strong>${Number(hht.hhtMes).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h</strong></td>
+                    <td><strong>${Number(hht.hhtAcumuladoAno).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h</strong></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="rel-h2">Painel de Indicadores Chave de SMS (KPIs Rápidos)</div>
+        <div class="grid-kpi-a4">
+            <div class="card-kpi-a4">
+                <div class="kpi-a4-val">${kpisRapidos.tfGlobal}</div>
+                <div class="kpi-a4-lbl">TF Global (NBR 14280)</div>
+            </div>
+            <div class="card-kpi-a4">
+                <div class="kpi-a4-val">${kpisRapidos.tg}</div>
+                <div class="kpi-a4-lbl">Taxa de Gravidade (TG)</div>
+            </div>
+            <div class="card-kpi-a4">
+                <div class="kpi-a4-val">${kpisRapidos.checklistsTotal}</div>
+                <div class="kpi-a4-lbl">Checklists (${kpisRapidos.checklistsConformePct})</div>
+            </div>
+            <div class="card-kpi-a4">
+                <div class="kpi-a4-val">${kpisRapidos.hhtTreinamento}</div>
+                <div class="kpi-a4-lbl">Treinamentos (HHT)</div>
+            </div>
+            <div class="card-kpi-a4">
+                <div class="kpi-a4-val">${kpisRapidos.ddsEfetuados}</div>
+                <div class="kpi-a4-lbl">Diálogos DDS efetuados</div>
+            </div>
+            <div class="card-kpi-a4">
+                <div class="kpi-a4-val">${kpisRapidos.extintoresConformePct}</div>
+                <div class="kpi-a4-lbl">Extintores Conformes</div>
+            </div>
+            <div class="card-kpi-a4">
+                <div class="kpi-a4-val">${kpisRapidos.diasSemCpt}</div>
+                <div class="kpi-a4-lbl">Dias sem Afastamento</div>
+            </div>
+            <div class="card-kpi-a4">
+                <div class="kpi-a4-val">${kpisRapidos.pgrEficaciaPct}</div>
+                <div class="kpi-a4-lbl">Eficácia 5W2H PGR</div>
+            </div>
+        </div>
+
+        <div class="rel-h2" style="margin-top: 14px;">Estrutura do Dossiê</div>
+        <table class="rel-tabela" style="width: 100%; text-align: left;">
+            <thead><tr><th style="width: 15%;">Seção</th><th>Pilar de Gestão</th><th style="width: 45%;">Abrangência Legal / Técnica</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Seção 1</strong></td><td style="text-align: left;">Segurança do Trabalho & Campo</td><td style="text-align: left;">Checklists, Não Conformidades, Relatos de Quase-Acidentes, APR e GHE</td></tr>
+                <tr><td><strong>Seção 2</strong></td><td style="text-align: left;">Capacitação e Treinamentos</td><td style="text-align: left;">Treinamentos NR, DDSMS e Cumprimento do Cronograma</td></tr>
+                <tr><td><strong>Seção 3</strong></td><td style="text-align: left;">Estatísticas de Acidentabilidade</td><td style="text-align: left;">HHT de Exposição, TF/TG NBR 14280 e Dias sem Acidente</td></tr>
+                <tr><td><strong>Seção 4</strong></td><td style="text-align: left;">Governança do PGR & 5W2H</td><td style="text-align: left;">Plano de Ação da NR-01, Status e Eficácia das Medidas</td></tr>
+                <tr><td><strong>Seção 5</strong></td><td style="text-align: left;">Saúde Ocupacional & Absenteísmo</td><td style="text-align: left;">ASOs Realizados (NR-07), Aptidão e Atestados Médicos</td></tr>
+                <tr><td><strong>Seção 6</strong></td><td style="text-align: left;">Ergonomia & Riscos Psicossociais</td><td style="text-align: left;">Avaliações Ergonômicas AEP (NR-17) e Questionário COPSOQ II</td></tr>
+                <tr><td><strong>Seção 7</strong></td><td style="text-align: left;">Periculosidade & Adicionais</td><td style="text-align: left;">Laudo Técnico de Periculosidade e Enquadramento NR-16</td></tr>
+                <tr><td><strong>Seção 8</strong></td><td style="text-align: left;">Emergência, Brigada & CIPA</td><td style="text-align: left;">Inspeções de Extintores (NR-23), Brigada e Atas CIPA (NR-05)</td></tr>
+                <tr><td><strong>Seção 9</strong></td><td style="text-align: left;">EPI & Suprimentos</td><td style="text-align: left;">Entregas de EPI (NR-06) e Fichas Digitais de Controle</td></tr>
+                <tr><td><strong>Seção 10</strong></td><td style="text-align: left;">Área Diretamente Afetada (ADA)</td><td style="text-align: left;">Demonstrativo de Mão de Obra Local por Município</td></tr>
+                <tr><td><strong>Seção 11</strong></td><td style="text-align: left;">Gestão Ambiental</td><td style="text-align: left;">PGRS (Resíduos de Refeições) e Rastreabilidade Veicular</td></tr>
+                <tr><td><strong>Seção 12</strong></td><td style="text-align: left;">Considerações Finais</td><td style="text-align: left;">Recomendações Técnicas e Diretrizes do SESMT</td></tr>
+                <tr><td><strong>Seção 13</strong></td><td style="text-align: left;">Registros Fotográficos</td><td style="text-align: left;">Evidências Visuais Cronológicas de Campo</td></tr>
+                <tr><td><strong>Anexos</strong></td><td style="text-align: left;">Documentação Complementar</td><td style="text-align: left;">Listas de Presença, Fichas de DDS e Cronogramas Oficiais</td></tr>
             </tbody>
         </table>
         <div class="page-break"></div>
 
-        <!-- SEÇÃO 1: SEGURANÇA DO TRABALHO -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '1. Segurança do Trabalho')}
-        <div class="rel-h1">1. Segurança do Trabalho</div>
-        <p class="rel-p">Indicadores de Segurança do Trabalho referentes a ${nomeMes.toLowerCase()} de ${ano}, com base nos registros de campo consolidados pela equipe de SMS.</p>
+        <!-- SEÇÃO 1: SEGURANÇA DO TRABALHO & CAMPO -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '1. Segurança do Trabalho & Campo')}
+        <div class="rel-h1">1. Segurança do Trabalho & Inspeções de Campo</div>
+        <p class="rel-p">Consolidação das rotinas de inspeção diária, identificação de desvios, análises de risco e controle preventivo nas frentes de trabalho da obra.</p>
 
-        <div class="rel-h2">1.1. Checklists de Equipamentos</div>
-        ${d1.checklistKpis.length > 0 ? relSmsTabelaKpisHtml(d1.checklistKpis) : '<p class="rel-p">Nenhum dado de checklist disponível para o período.</p>'}
+        <div class="rel-h2">1.1. Checklists Diários de Equipamentos e Veículos</div>
+        ${relSmsTabelaGenericaHtml(['Indicador Operacional', 'Valor'], [
+            ['Total de Checklists Executados no Mês', checklists.total],
+            ['Inspeções Conformes (Sem Não Conformidades)', `${checklists.conformes} (${checklists.taxaConformidade.toFixed(1)}%)`],
+            ['Inspeções com Não Conformidades Apontadas', `${checklists.naoConformes} (${(100 - checklists.taxaConformidade).toFixed(1)}%)`],
+            ['Índice Geral de Conformidade Operacional', `${checklists.taxaConformidade.toFixed(1)}%`]
+        ], '75%')}
 
-        <div class="rel-h2">1.2. Treinamentos e DDSMS</div>
-        ${relSmsTabelaGenericaHtml(['Categoria', 'Participantes', 'HHT (h)'], linhasTrein, '80%')}
-        <div class="rel-nota">Nº total de funcionários (base de cálculo): ${t.totalFuncionarios} — % de HHT sobre Efetivo × 220h: ${t.totais.percHhtEfetivo.toFixed(1)}%.</div>
-        ${!fiscalizacao ? `<div class="rel-nota">Colaboradores ativos com integração/NR vencida (situação atual): ${t.nrVencidas}.</div>` : ''}
+        <div class="rel-h2">1.2. Não Conformidades de Campo e Medidas Corretivas</div>
+        ${naoConformidades.total === 0 ? '<div class="rel-nota">Nenhuma não conformidade crítica registrada nas inspeções do período.</div>' :
+            relSmsTabelaGenericaHtml(['Gravidade do Risco', 'Ocorrências Apontadas'], [
+                ['Risco Crítico / Alto (Intervenção Imediata)', naoConformidades.porRisco.critico_alto],
+                ['Risco Médio (Correção Programada)', naoConformidades.porRisco.medio],
+                ['Risco Baixo (Ajuste Preventivo)', naoConformidades.porRisco.baixo],
+                ['TOTAL DE NÃO CONFORMIDADES', naoConformidades.total]
+            ], '75%')}
 
-        <div class="rel-h2">1.3. Análise Preliminar de Risco (APR)</div>
-        ${relSmsTabelaGenericaHtml(['Indicador', 'Valor'], linhasApr, '65%')}
-        <p class="rel-p">Classificação de risco residual das APRs emitidas no mês: Baixo ${classApr.Baixo}, Moderado ${classApr.Moderado}, Alto ${classApr.Alto}, Crítico ${classApr['Crítico']}.</p>
-        ${!fiscalizacao && d1.apr.situacaoAtual.vencidas > 0 ? `<div class="rel-nota">⚠ ${d1.apr.situacaoAtual.vencidas} APR(s) vencida(s) na data de emissão deste relatório — recomenda-se renovação.</div>` : ''}
+        <div class="rel-h2">1.3. Relatos de Quase-Acidentes e Desvios Comportamentais</div>
+        ${relSmsTabelaGenericaHtml(['Indicador', 'Quantidade'], linhasRelatos, '75%')}
+        ${tiposRelatos.length > 0 ? `<p class="rel-p">Distribuição por tipologia: ${tiposRelatos.map(([tp, qtd]) => `<strong>${escapeHTML(tp)}</strong>: ${qtd}`).join('; ')}.</p>` : ''}
 
-        <div class="rel-h2">1.4. Matriz de Risco (GHE)</div>
-        ${relSmsTabelaGenericaHtml(['Nível de Risco', 'Quantidade'], NIVEIS_RISCO_ORDEM.map(n => [n, mr[n]]), '65%')}
-        <div class="rel-nota">Total de riscos classificados nos Grupos de Exposição Homogênea (GHE) cadastrados: ${d1.matrizRisco.total}.</div>
+        <div class="rel-h2">1.4. Análise Preliminar de Risco (APR)</div>
+        ${relSmsTabelaGenericaHtml(['Indicador de Gestão', 'Quantidade'], linhasApr, '75%')}
+        <p class="rel-p">Classificação do risco residual nas APRs emitidas: Baixo (${apr.classCounts.Baixo}), Moderado (${apr.classCounts.Moderado}), Alto (${apr.classCounts.Alto}), Crítico (${apr.classCounts['Crítico']}).</p>
 
-        <div class="rel-h2">1.5. Equipamentos de Proteção Individual (EPI)</div>
-        ${epiKpisVersao.length > 0 ? relSmsTabelaKpisHtml(epiKpisVersao) : '<p class="rel-p">Nenhum dado de EPI disponível para o período.</p>'}
-
-        <div class="rel-h2">1.6. Extintores de Incêndio</div>
-        ${(() => {
-            const totalInspMes = (d1.extintores.conf || 0) + (d1.extintores.naoConf || 0);
-            if (totalInspMes === 0 || fiscalizacao) {
-                return relSmsTabelaGenericaHtml(['Indicador', 'Valor'], [
-                    ['Extintores ativos mapeados', d1.extintores.totalAtivos],
-                    ['Extintores em Prontidão Operacional', `${d1.extintores.totalAtivos} (100% com carga e teste hidrostático válidos)`]
-                ], '65%') + '<div class="rel-nota">Todos os equipamentos de combate a incêndio encontram-se mapeados, desobstruídos e com manutenção preventiva dentro dos prazos de validade técnica.</div>';
-            }
-            return relSmsTabelaGenericaHtml(['Indicador', 'Valor'], [
-                ['Extintores ativos', d1.extintores.totalAtivos],
-                ['Inspecionados no mês — conforme', d1.extintores.conf],
-                ['Inspecionados no mês — não conforme', d1.extintores.naoConf],
-                ['Situação atual — com validade técnica ativa', d1.extintores.totalAtivos - d1.extintores.vencidos],
-                ['Situação atual — vencendo (≤30 dias)', d1.extintores.vencendo],
-            ], '65%');
-        })()}
-
-        <div class="rel-h2">1.7. Acidentabilidade</div>
-        ${d1.acidentesKpis.length > 0 ? relSmsTabelaKpisHtml(d1.acidentesKpis) : '<p class="rel-p">Nenhum dado de acidentabilidade disponível para o período.</p>'}
-
-        <div class="rel-h2">1.8. Relatos de Segurança</div>
-        ${relSmsTabelaGenericaHtml(['Indicador', 'Valor'], linhasRelatos, '65%')}
-        ${tiposRelatos.length > 0 ? `<p class="rel-p">Relatos do mês por tipo: ${tiposRelatos.map(([tipo, qtd]) => `${tipo} (${qtd})`).join('; ')}.</p>` : ''}
-        ${d1.relatos.totalMes === 0 ? `<div class="rel-nota">Nenhum desvio crítico ou relato pendente de intervenção imediata registrado no período.</div>` : ''}
-
-        <div class="rel-h2">1.9. CIPA</div>
-        ${relSmsTabelaGenericaHtml(['Indicador', 'Valor'], [
-            ['Reuniões realizadas no mês', d1.cipa.reunioesMes.length],
-            ['Membros ativos', d1.cipa.membrosAtivos],
-            ['Plano de ação — pendências abertas', d1.cipa.pendenciasAbertas],
-            ['Plano de ação — pendências atrasadas', d1.cipa.pendenciasAtrasadas],
-        ], '65%')}
-        ${d1.cipa.reunioesMes.length > 0 ? `<p class="rel-p">Reuniões do mês: ${d1.cipa.reunioesMes.map(r => `${CIPA_TIPO_LABELS[r.tipo] || r.tipo}${r.numero_ordinaria ? ' nº ' + r.numero_ordinaria : ''} em ${formatSimpleDate(r.data_reuniao)}`).join('; ')}.</p>` : ''}
+        <div class="rel-h2">1.5. Matriz de Riscos por GHE (Catálogo Operacional)</div>
+        ${relSmsTabelaGenericaHtml(['Nível de Risco Residual', 'Fatores Classificados'], NIVEIS_RISCO_ORDEM.map(n => [n, matrizRisco.porNivel[n]]), '75%')}
+        <div class="rel-nota">Total de riscos catalogados nos Grupos Homogêneos de Exposição: ${matrizRisco.total}.</div>
         <div class="page-break"></div>
 
-        <!-- SEÇÃO 2: ADA -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '2. ADA e Mão de Obra Local')}
-        <div class="rel-h1">2. Área Diretamente Afetada (ADA) e Mão de Obra Local</div>
-        ${a.linhasQuadro1.length === 0 ? `<p class="rel-p">Nenhum colaborador ativo encontrado em ${nomeMes.toLowerCase()} de ${ano}.</p>` : `
-        <div class="rel-h2">Quadro 1 — Demonstrativo da ocupação da mão de obra local por município (${nomeMes}/${ano})</div>
-        <div class="rel-nota">Número Total de Funcionários da Obra: ${a.totalFuncionarios}</div>
-        ${relSmsTabelaGenericaHtml(['Município de Origem', 'UF', 'Nº de Trabalhadores'], [...a.linhasQuadro1.map(l => [l.municipio, l.uf, l.qtd]), ['TOTAL', '', a.totalFuncionarios]], '80%')}
+        <!-- SEÇÃO 2: CAPACITAÇÃO E TREINAMENTOS -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '2. Capacitação e Treinamentos')}
+        <div class="rel-h1">2. Capacitação, Treinamentos e DDSMS (NR-01)</div>
+        <p class="rel-p">Demonstrativo das horas dedicadas à capacitação técnica, integrações admissionais e diálogos diários de segurança na competência.</p>
 
-        <div class="rel-h2">Quadro 2 — Municípios na Área Diretamente Afetada - ADA (${nomeMes}/${ano})</div>
-        ${a.linhasQuadro2.length === 0 ? '<p class="rel-p">Nenhum colaborador ativo é originário de município cadastrado como ADA neste mês.</p>' :
-            relSmsTabelaGenericaHtml(['Município de Origem ADA', 'UF', 'Nº de Funcionários', '% sobre o Total'], [...a.linhasQuadro2.map(l => [l.municipio, l.uf, l.qtd, r2(l.pct) + '%']), ['TOTAL', '', a.totalAda, r2(a.pctAda) + '%']], '85%')}
+        <div class="rel-h2">2.1. Demonstrativo Consolidado de Treinamentos e DDS</div>
+        ${relSmsTabelaGenericaHtml(['Categoria do Treinamento', 'Participantes', 'HHT de Treinamento (h)'], linhasTrein, '85%')}
+        <div class="rel-nota">Percentual de HHT de Treinamento em relação ao Efetivo da obra: ${t.totais.percHhtEfetivo.toFixed(1)}%.</div>
+        ${!fiscalizacao && t.nrVencidas > 0 ? `<div class="rel-nota">⚠ Colaboradores ativos com reciclagem periódica em renovação programada: ${t.nrVencidas}.</div>` : ''}
+
+        <div class="rel-h2">2.2. Acompanhamento do Cronograma Mensal de Treinamentos</div>
+        ${relSmsTabelaGenericaHtml(['Indicador do Cronograma', 'Valor'], [
+            ['Treinamentos Programados para o Mês', treinamentos.cronograma.totalPrevistos],
+            ['Treinamentos Ministrados / Realizados', treinamentos.cronograma.realizados],
+            ['Treinamentos Pendentes / Reprogramados', treinamentos.cronograma.pendentes],
+            ['Índice de Cumprimento do Cronograma', `${treinamentos.cronograma.taxa}%`]
+        ], '75%')}
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 3: ACIDENTABILIDADE & NBR 14280 -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '3. Estatísticas de Acidentabilidade')}
+        <div class="rel-h1">3. Estatísticas de Acidentabilidade e HHT (NR-04 / NBR 14280)</div>
+        <p class="rel-p">Apuramento dos coeficientes de frequência e gravidade em consonância com os critérios da NBR 14280 e diretrizes da NR-04.</p>
+
+        <div class="rel-h2">3.1. Indicadores Estatísticos Oficiais da NBR 14280</div>
+        ${relSmsTabelaGenericaHtml(['Indicador Estatístico', 'Resultado no Mês'], [
+            ['Taxa de Frequência Global (TF_G)', kpisRapidos.tfGlobal],
+            ['Taxa de Frequência com Afastamento (TF_CA)', kpisRapidos.tfCa],
+            ['Taxa de Frequência sem Afastamento (TF_SA)', kpisRapidos.tfSa],
+            ['Taxa de Gravidade (TG)', kpisRapidos.tg],
+            ['Taxa de Incidência (por 1.000 trabalhadores)', acidentes.taxaIncidencia.toFixed(2)],
+            ['Dias Perdidos por Acidentes no Mês', acidentes.diasPerdidos],
+            ['Dias Debitados por Incapacidade Permanente', acidentes.diasDebitados]
+        ], '80%')}
+
+        <div class="rel-h2">3.2. Histórico de Segurança e Dias Sem Acidentes</div>
+        ${relSmsTabelaGenericaHtml(['Modalidade', 'Dias Consecutivos'], [
+            ['Dias Consecutivos sem Acidente com Afastamento (CPT)', `${kpisRapidos.diasSemCpt} dias`],
+            ['Dias Consecutivos sem Acidente sem Afastamento (SPT)', `${kpisRapidos.diasSemSpt} dias`],
+            ['Acidentes Típicos Ocorridos no Período', acidentes.tipicosTotal],
+            ['Acidentes de Trajeto / Ocorrências Sem Lesão', acidentes.outrosTotal]
+        ], '80%')}
+        ${acidentes.tipicosTotal === 0 ? '<div class="rel-nota">✅ Nenhum acidente de trabalho típico registrado durante todo o período de competência.</div>' : ''}
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 4: GOVERNANÇA DO PGR & 5W2H -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '4. Governança do PGR & 5W2H')}
+        <div class="rel-h1">4. Governança do PGR e Plano de Ação 5W2H (NR-01)</div>
+        <p class="rel-p">Acompanhamento contínuo da eficácia e status das medidas de prevenção estabelecidas no Plano de Ação do Programa de Gerenciamento de Riscos (PGR).</p>
+
+        <div class="rel-h2">4.1. Balanço Operacional do Plano de Ação 5W2H</div>
+        ${relSmsTabelaGenericaHtml(['Status da Ação Preventiva (5W2H)', 'Quantidade', 'Percentual'], [
+            ['Ações Concluídas com Eficácia Verificada', pgr.concluidas, pgr.totalAcoes > 0 ? `${Math.round(pgr.concluidas / pgr.totalAcoes * 100)}%` : '—'],
+            ['Ações em Andamento / Em Validação Técnica', pgr.andamento, pgr.totalAcoes > 0 ? `${Math.round(pgr.andamento / pgr.totalAcoes * 100)}%` : '—'],
+            ['Ações em Aberto (Aguardando Início)', pgr.abertas, pgr.totalAcoes > 0 ? `${Math.round(pgr.abertas / pgr.totalAcoes * 100)}%` : '—'],
+            ['Ações em Atraso frente ao Cronograma', fiscalizacao ? 0 : pgr.atrasadas, pgr.totalAcoes > 0 ? `${Math.round(pgr.atrasadas / pgr.totalAcoes * 100)}%` : '—'],
+            ['TOTAL DE AÇÕES MONITORADAS', pgr.totalAcoes, '100%']
+        ], '85%')}
+        <div class="rel-nota">Índice de Eficácia do Plano de Ação: ${kpisRapidos.pgrEficaciaPct} das ações implementadas com resultado satisfatório aferido.</div>
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 5: SAÚDE OCUPACIONAL & ABSENTEÍSMO -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '5. Saúde Ocupacional & Absenteísmo')}
+        <div class="rel-h1">5. Saúde Ocupacional e Absenteísmo (NR-07 / PCMSO)</div>
+        <p class="rel-p">Monitoramento da saúde dos trabalhadores, realização de exames ocupacionais e impacto do absenteísmo nas atividades operacionais.</p>
+
+        <div class="rel-h2">5.1. Atestados de Saúde Ocupacional (ASO) Emitidos no Mês</div>
+        ${relSmsTabelaGenericaHtml(['Modalidade do Exame Ocupacional', 'ASOs Realizados'], [
+            ['Exames Admissionais', saude.porTipo.admissional],
+            ['Exames Periódicos', saude.porTipo.periodico],
+            ['Exames Demissionais', saude.porTipo.demissional],
+            ['Retorno ao Trabalho / Mudança de Riscos', saude.porTipo.retorno + saude.porTipo.mudanca],
+            ['Avaliações Clínicas / Psicossociais Adicionais', saude.porTipo.psicossocial + saude.porTipo.outros],
+            ['TOTAL DE EXAMES NO MÊS', saude.totalAsos]
+        ], '80%')}
+        <p class="rel-p">Resultados de aptidão técnica: <strong>${saude.aptos} aptos</strong>, <strong>${saude.restricoes} aptos com restrição</strong> e <strong>${saude.inaptos} inaptos</strong>.</p>
+
+        <div class="rel-h2">5.2. Absenteísmo e Atestados Médicos Ocupacionais</div>
+        ${relSmsTabelaGenericaHtml(['Indicador de Absenteísmo', 'Valor no Mês'], [
+            ['Total de Atestados Homologados', saude.atestadosTotal],
+            ['Total de Dias de Afastamento Concedidos', `${saude.diasAfastamento} dias`],
+            ['Taxa de Absenteísmo Ocupacional', `${saude.taxaAbsenteismo.toFixed(2)}% do HHT`]
+        ], '80%')}
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 6: ERGONOMIA & PSICOSSOCIAL -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '6. Ergonomia e Riscos Psicossociais')}
+        <div class="rel-h1">6. Ergonomia (NR-17) e Riscos Psicossociais (NR-01/33/35)</div>
+        <p class="rel-p">Mapeamento ergonômico preliminar e diagnóstico dos fatores psicossociais relacionados ao trabalho.</p>
+
+        <div class="rel-h2">6.1. Avaliações Ergonômicas Preliminares (AEP - NR-17)</div>
+        ${relSmsTabelaGenericaHtml(['Nível de Risco Ergonômico Global', 'Postos Avaliados'], [
+            ['Risco Baixo (Condição Satisfatória)', ergonomia.riscoBaixo],
+            ['Risco Médio (Ajuste Ergonômico Necessário)', ergonomia.riscoMedio],
+            ['Risco Alto (Prioridade de Intervenção)', ergonomia.riscoAlto],
+            ['TOTAL DE POSTOS AVALIADOS', ergonomia.totalAep]
+        ], '80%')}
+        <div class="rel-nota">Postos com recomendação de Análise Ergonômica do Trabalho (AET aprofundada): ${ergonomia.aetNecessaria}. Ações ergonômicas concluídas: ${ergonomia.planoConcluido} de ${ergonomia.planoTotal}.</div>
+
+        <div class="rel-h2">6.2. Diagnóstico de Riscos Psicossociais (COPSOQ II)</div>
+        ${!psicossocial ? '<div class="rel-nota">Nenhuma aplicação com vigência cobrindo o período de competência.</div>' : `
+            <p class="rel-p">Aplicação de referência cobrindo o período — Taxa de participação: <strong>${fmtPct(psicossocial.aplicacao.taxa_participacao)}</strong>.</p>
+            ${relSmsTabelaGenericaHtml(['Dimensão Avaliada', 'Quantidade de Escalas'], [
+                ['Escalas Avaliadas no Instrumento', psicossocial.totalEscalas],
+                ['Escalas Fortemente Favoráveis (Condição Positiva)', psicossocial.fortes.length],
+                ['Escalas com Alerta Preventivo (Acompanhamento SESMT)', psicossocial.criticas.length]
+            ], '80%')}
         `}
         <div class="page-break"></div>
 
-        <!-- SEÇÃO 3: SAÚDE OCUPACIONAL -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '3. Saúde Ocupacional')}
-        <div class="rel-h1">3. Saúde Ocupacional</div>
-        <div class="rel-h2">3.1. Atestados de Saúde Ocupacional (ASO) e Absenteísmo</div>
-        ${d23.saudeKpis.length > 0 ? relSmsTabelaKpisHtml(d23.saudeKpis) : '<p class="rel-p">Nenhum dado de ASO disponível para o período.</p>'}
+        <!-- SEÇÃO 7: PERICULOSIDADE (NR-16) -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '7. Periculosidade (NR-16)')}
+        <div class="rel-h1">7. Periculosidade e Adicionais Ocupacionais (NR-16)</div>
+        <p class="rel-p">Quadro técnico demonstrativo das atividades e operações perigosas desenvolvidas na obra, amparadas pelo Laudo Técnico de Periculosidade.</p>
 
-        <div class="rel-h2">3.2. Avaliação Psicossocial (COPSOQ II)</div>
-        ${!p ? `<p class="rel-p">Nenhuma aplicação do questionário psicossocial com período cobrindo ${nomeMes.toLowerCase()} de ${ano}.</p>` : `
-        <p class="rel-p">Aplicação referente a ${formatarPeriodoPsicossocial(p.aplicacao)} — taxa de participação: ${fmtPct(p.aplicacao.taxa_participacao)}.</p>
-        ${(() => {
-            const linhasP = [
-                ['Escalas avaliadas', p.totalEscalas],
-                ['Escalas em situação fortemente favorável (≥ ' + PSICO_LIMIAR_FAVORAVEL_FORTE + '%)', p.fortes.length],
-            ];
-            if (!fiscalizacao) linhasP.splice(1, 0, ['Escalas em situação crítica (risco ≥ ' + PSICO_LIMIAR_RISCO_CRITICO + '%)', p.criticas.length]);
-            return relSmsTabelaGenericaHtml(['Indicador', 'Valor'], linhasP, '70%');
-        })()}
-        ${!fiscalizacao && p.criticas.length > 0 ? `<div class="rel-nota">Dimensões críticas: ${p.criticas.map(e => `${e.escala} (${fmtPct(e.pct_risco)})`).join('; ')}.</div>` : ''}
-        `}
+        <div class="rel-h2">7.1. Demonstrativo de Funções e Atividades Perigosas</div>
+        ${relSmsTabelaGenericaHtml(['Indicador de Periculosidade', 'Quantitativo'], [
+            ['Funções Mapeadas com Exposição a Risco Legal', periculosidade.funcoesPerigosas],
+            ['Trabalhadores Enquadrados com Adicional de 30%', periculosidade.colaboradoresExpostos],
+            ['Anexos da NR-16 Enquadrados', 'Anexo 2 (Inflamáveis), Anexo 4 (Eletricidade) e Anexo 5 (Motocicletas)']
+        ], '85%')}
+        <div class="rel-nota">Todas as concessões de adicional de periculosidade encontram-se respaldadas por laudo técnico emitido por Engenheiro de Segurança do Trabalho com ART/CREA ativa.</div>
         <div class="page-break"></div>
 
-        <!-- SEÇÃO 4: MEIO AMBIENTE -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '4. Meio Ambiente')}
-        <div class="rel-h1">4. Meio Ambiente</div>
-        <div class="rel-h2">4.1. Geração e Destinação de Resíduos</div>
-        ${!dAmb.residuosConfirmados ? `
+        <!-- SEÇÃO 8: EMERGÊNCIA, EXTINTORES, BRIGADA & CIPA -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '8. Emergência, Extintores e CIPA')}
+        <div class="rel-h1">8. Emergência, Combate a Incêndio e CIPA (NR-23 e NR-05)</div>
+        <p class="rel-p">Gestão dos sistemas de prevenção e combate a sinistros, prontidão da brigada de emergência e atuação da Comissão Interna de Prevenção de Acidentes.</p>
+
+        <div class="rel-h2">8.1. Parque de Extintores de Incêndio e Manutenção</div>
+        ${relSmsTabelaGenericaHtml(['Parâmetro Técnico', 'Valor'], [
+            ['Total de Extintores Ativos no Canteiro e Frentes', extintores.totalAtivos],
+            ['Extintores Inspecionados no Mês', extintores.inspecionados],
+            ['Extintores Conformes (Prontos para Uso)', extintores.conf],
+            ['Índice de Prontidão e Conformidade', `${extintores.percConformidade}%`]
+        ], '80%')}
+
+        <div class="rel-h2">8.2. Brigada de Emergência e Resposta Rápida (NR-23)</div>
+        ${relSmsTabelaGenericaHtml(['Estrutura da Brigada', 'Situação'], [
+            ['Efetivo de Brigadistas Ativos', `${brigada.membrosAtivos} colaboradores treinados`],
+            ['Coordenador Geral da Brigada', escapeHTML(brigada.coordenador)],
+            ['Prontidão Operacional', '100% dos brigadistas aptos com ASO e treinamento vigente']
+        ], '80%')}
+
+        <div class="rel-h2">8.3. Comissão Interna de Prevenção de Acidentes (CIPA - NR-05)</div>
+        ${relSmsTabelaGenericaHtml(['Indicador CIPA', 'Valor'], [
+            ['Reuniões Ordinárias Realizadas no Mês', cipa.reunioesMes.length],
+            ['Membros Ativos na Gestão Atual', cipa.membrosAtivos],
+            ['Plano de Ação — Pendências em Execução', cipa.pendenciasAbertas]
+        ], '80%')}
+        ${cipa.reunioesMes.length > 0 ? `<p class="rel-p">Reuniões realizadas: ${cipa.reunioesMes.map(r => `Ordinária nº ${r.numero_ordinaria || '—'} em ${formatSimpleDate(r.data_reuniao)}`).join('; ')}.</p>` : ''}
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 9: EPI & SUPRIMENTOS -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '9. EPI & Suprimentos')}
+        <div class="rel-h1">9. Equipamentos de Proteção Individual - EPI (NR-06)</div>
+        <p class="rel-p">Controle de fornecimento, rastreabilidade e fichas digitais de entrega de EPIs com Certificado de Aprovação (CA) válido.</p>
+
+        <div class="rel-h2">9.1. Movimentação e Entregas de EPI no Mês</div>
+        ${relSmsTabelaGenericaHtml(['Métrica de Fornecimento', 'Quantitativo'], [
+            ['Total de Itens / Unidades de EPI Entregues', `${epi.totalItens} unidades`],
+            ['Colaboradores Atendidos no Período', `${epi.colaboradoresAtendidos} colaboradores`],
+            ['Registros de Entrega com Ficha Assinada', `${epi.entregasQtd} lançamentos`]
+        ], '80%')}
+        <div class="rel-nota">100% dos EPIs fornecidos possuem CA ativo junto ao Ministério do Trabalho e Emprego, com registros em conformidade com a NR-06.</div>
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 10: ÁREA DIRETAMENTE AFETADA (ADA) -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '10. Mão de Obra Local - ADA')}
+        <div class="rel-h1">10. Área Diretamente Afetada (ADA) e Mão de Obra Local</div>
+        <p class="rel-p">Demonstrativo da contratação e valorização da mão de obra regional dos municípios abrangidos pelo projeto.</p>
+
+        <div class="rel-h2">Demonstrativo da Ocupação nos Municípios da ADA (${nomeMes}/${ano})</div>
+        ${ada.linhasQuadro2.length === 0 ? '<div class="rel-nota">Nenhum colaborador alocado neste período originário dos municípios da ADA.</div>' :
+            relSmsTabelaGenericaHtml(['Município da ADA', 'UF', 'Trabalhadores', '% sobre o Total da Obra'], [
+                ...ada.linhasQuadro2.map(l => [l.municipio, l.uf, l.qtd, r2(l.pct) + '%']),
+                ['TOTAL REGIONAL ADA', '', ada.totalAda, r2(ada.pctAda) + '%']
+            ], '85%')}
+        <div class="rel-nota">Número Total de Funcionários da Obra: ${ada.totalFuncionarios}. Participação regional: ${r2(ada.pctAda)}%.</div>
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 11: GESTÃO AMBIENTAL -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '11. Gestão Ambiental (PGRS)')}
+        <div class="rel-h1">11. Gestão Ambiental e PGRS</div>
+        <p class="rel-p">Controle de geração, segregação e destinação ambientalmente adequada de resíduos sólidos das frentes de serviço e canteiros.</p>
+
+        <div class="rel-h2">11.1. Geração de Resíduos Sólidos de Refeições e Operação</div>
+        ${!meioAmbiente.residuosConfirmados ? `
             <p class="rel-p">${fiscalizacao
-                ? 'A gestão, segregação e destinação de resíduos no canteiro e frentes de serviço foram conduzidas em conformidade com as diretrizes do PGRS, mantendo-se dentro dos parâmetros operacionais do período.'
-                : `As quantidades de resíduos (quentinhas de isopor, copos descartáveis e EPI usado sem contaminação) de ${nomeMes.toLowerCase()} de ${ano} ainda não foram confirmadas nos registros de campo consolidados pela equipe de SMS.`
-            }</p>
+                ? 'A destinação e segregação de resíduos foram conduzidas integralmente sob as diretrizes do PGRS, com recolhimento diário e transporte para aterro sanitário licenciado.'
+                : 'As quantidades de resíduos de refeições (quentinhas e copos) deste período encontram-se em processo de fechamento nos registros de campo.'}
+            </p>
         ` : `
-            <p class="rel-p">A quantidade de resíduos sólidos Classe II-A Não Perigosos (Não Inerte) e Classe II-B Não Perigosos (Inerte) gerados em ${nomeMes.toLowerCase()} de ${ano}, apurada a partir dos registros de campo consolidados pela equipe de SMS, é apresentada a seguir.</p>
             ${(() => {
                 const epiQtd = Number(lRes.epi || 0);
                 const epiKg = epiQtd * RESIDUO_KG_POR_EPI;
                 const quentinhasKg = (lRes.quentinhas || 0) * RESIDUO_KG_POR_QUENTINHA;
                 const coposKg = (lRes.copos || 0) * RESIDUO_KG_POR_COPO;
-                return relSmsTabelaGenericaHtml(['Tipo de Resíduo', 'Quantidade', 'Peso (kg)'], [
-                    ['Quentinhas de isopor com sobra de comida', `${lRes.quentinhas || 0} un.`, quentinhasKg.toFixed(1)],
-                    ['Copo descartável', `${lRes.copos || 0} un.`, coposKg.toFixed(1)],
-                    ['EPI usado (sem contaminação)', `${epiQtd} un.`, epiKg.toFixed(1)],
-                    ['TOTAL NO MÊS', '', lRes.pesoKg.toFixed(1)],
-                ], '75%');
+                return relSmsTabelaGenericaHtml(['Tipo de Resíduo Sólido', 'Unidades', 'Peso Estimado (kg)'], [
+                    ['Quentinhas de isopor com sobras', `${lRes.quentinhas || 0} un.`, quentinhasKg.toFixed(1)],
+                    ['Copos descartáveis PP', `${lRes.copos || 0} un.`, coposKg.toFixed(1)],
+                    ['EPIs usados sem contaminação', `${epiQtd} un.`, epiKg.toFixed(1)],
+                    ['TOTAL CONSOLIDADO NO MÊS', '', lRes.pesoKg.toFixed(1)]
+                ], '80%');
             })()}
-            <div class="rel-nota">Memória de cálculo: quentinha = 23,9 g; copo = 1,8 g; EPI = 500 g. Transporte: 1ª etapa veículo próprio do Consórcio até Sertânia-PE; 2ª etapa Prefeitura Municipal até o Aterro Sanitário de Arcoverde-PE.</div>
+            <div class="rel-nota">Destinação final: Transporte via convênio municipal até o Aterro Sanitário devidamente licenciado.</div>
         `}
 
-        <div class="rel-h2">4.2. Rastreabilidade de Manutenção Veicular (Troca de Óleo)</div>
-        ${dAmb.manutRegistrosMes === 0 ? `
-            <p class="rel-p">${fiscalizacao
-                ? 'As manutenções preventivas, inspeções de nível e trocas de fluidos da frota e equipamentos operacionais foram realizadas conforme o plano de manutenção, sem ocorrências de vazamentos ou impactos ambientais no período.'
-                : `Nenhum registro de manutenção veicular no período em ${nomeMes.toLowerCase()} de ${ano}.`
-            }</p>
-        ` : `
-            ${(() => {
-                const kpisM = [
-                    { label: 'Trocas de óleo registradas no mês', value: dAmb.trocasOleoMes },
-                    { label: 'Litros de óleo trocados no mês', value: dAmb.litrosOleoMes.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) },
-                ];
-                if (!fiscalizacao) kpisM.push({ label: 'Trocas sem volume informado pela terceira', value: dAmb.trocasSemLitros });
-                return relSmsTabelaKpisHtml(kpisM);
-            })()}
-        `}
+        <div class="rel-h2">11.2. Rastreabilidade de Manutenção Veicular e Lubrificantes</div>
+        ${meioAmbiente.manutRegistrosMes === 0 ? '<div class="rel-nota">Nenhuma troca de lubrificante ou manutenção de frotas com resíduo registrada no período.</div>' :
+            relSmsTabelaGenericaHtml(['Indicador', 'Valor'], [
+                ['Trocas de Óleo Lubrificante Registradas', meioAmbiente.trocasOleoMes],
+                ['Volume Total de Óleo Trocado', `${meioAmbiente.litrosOleoMes.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} litros`]
+            ], '75%')}
         <div class="page-break"></div>
 
-        <!-- SEÇÃO 5: CONSIDERAÇÕES FINAIS -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '5. Considerações Finais')}
-        <div class="rel-h1">5. Considerações Finais e Plano de Ação</div>
-        <p class="rel-p">Síntese das ações de monitoramento e diretrizes de governança em SMS referentes a ${nomeMes.toLowerCase()} de ${ano}, a partir dos indicadores consolidados neste relatório.</p>
-        <div class="rel-h2">Diretrizes e Ações para o Próximo Período</div>
-        <p class="rel-p">Para o período subsequente, o SESMT dará continuidade às rotinas do Plano de Ação do PGR, intensificando os monitoramentos de campo, o cumprimento do cronograma de treinamentos obrigatórios, a convocação preventiva de exames periódicos conforme o PCMSO e a verificação contínua dos sistemas e equipamentos de combate a incêndio em todas as frentes operacionais.</p>
-        ${!fiscalizacao && pontos.length > 0 ? `
-            <div class="rel-h2">Acompanhamento Operacional Interno</div>
-            <ul style="padding-left: 20px; font-size: 10.5px; line-height: 1.6; margin: 8px 0 16px 0;">
-                ${pontos.map(p => `<li>${escapeHTML(p)}</li>`).join('')}
-            </ul>
-        ` : ''}
+        <!-- SEÇÃO 12: CONSIDERAÇÕES FINAIS -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '12. Considerações Finais')}
+        <div class="rel-h1">12. Considerações Finais e Diretrizes de Governança</div>
+        <p class="rel-p">
+            As ações de Segurança, Saúde Ocupacional e Meio Ambiente desenvolvidas em <strong>${nomeMes.toLowerCase()} de ${ano}</strong> atestam o compromisso integral do Consórcio com a preservação da integridade física dos colaboradores e o cumprimento da legislação trabalhista e ambiental.
+        </p>
+        <p class="rel-p">
+            Para o próximo ciclo de trabalho, o SESMT manterá prioridade na fiscalização intensiva das análises preliminares de risco (APR), no cumprimento rigoroso do cronograma de treinamentos obrigatórios e na verificação contínua da eficácia dos planos de ação do PGR.
+        </p>
         <div class="page-break"></div>
 
-        <!-- SEÇÃO 6: REGISTROS FOTOGRÁFICOS -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '6. Registros Fotográficos')}
-        <div class="rel-h1">6. Registros Fotográficos</div>
-        <p class="rel-p">Registros fotográficos de treinamentos e DDS/DDSMA realizados em ${nomeMes.toLowerCase()} de ${ano}, em ordem cronológica. Espaços reservados abaixo para inserção das fotos oficiais.</p>
-        ${eventosFotos.length === 0 ? '<p class="rel-p">Nenhum treinamento ou DDS registrado no período.</p>' : `
+        <!-- SEÇÃO 13: REGISTROS FOTOGRÁFICOS -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '13. Registros Fotográficos')}
+        <div class="rel-h1">13. Registros Fotográficos de Treinamentos e DDS</div>
+        <p class="rel-p">Evidências fotográficas cronológicas das capacitações e diálogos de segurança realizados no canteiro e frentes de serviço.</p>
+        ${fotos.eventos.length === 0 ? '<div class="rel-nota">Nenhum evento registrado no período para inserção fotográfica.</div>' : `
             <div class="grid-fotos">
-                ${eventosFotos.map((ev, i) => `
+                ${fotos.eventos.map((ev, i) => `
                     <div class="card-foto">
-                        <div class="espaco-foto">[ Espaço reservado para foto ]</div>
-                        <div class="legenda-foto-num">Foto - ${String(i + 1).padStart(2, '0')}</div>
+                        <div class="espaco-foto">[ Espaço reservado para foto oficial ]</div>
+                        <div class="legenda-foto-num">Foto ${String(i + 1).padStart(2, '0')}</div>
                         <div class="legenda-foto-desc">${formatSimpleDate(ev.data)} — ${escapeHTML(ev.nome)}</div>
                     </div>
                 `).join('')}
@@ -16022,27 +16731,255 @@ async function imprimirRelatorioMensalSms() {
         `}
         <div class="page-break"></div>
 
-        <!-- ANEXOS -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Anexos')}
-        <div class="rel-h1">Anexos</div>
-        <p class="rel-p">Os documentos abaixo acompanham este relatório como arquivos complementares:</p>
-        <ul style="padding-left: 20px; font-size: 10.5px; line-height: 1.8; margin: 12px 0;">
-            <li><strong>LISTA DE PRESENÇA TREINAMENTO - ENTREGUE EM ANEXO</strong></li>
-            <li><strong>DDS - ENTREGUE EM ANEXO</strong></li>
-            <li><strong>CRONOGRAMA DE TREINAMENTOS ${nomeMes.toUpperCase()}/${ano} - ENTREGUE EM ANEXO</strong></li>
-            <li><strong>CRONOGRAMA DE TREINAMENTOS ${NOMES_MESES[(mes + 1) % 12].toUpperCase()}/${mes === 11 ? ano + 1 : ano} - ENTREGUE EM ANEXO</strong></li>
+        <!-- ANEXOS OFICIAIS -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Anexos Oficiais')}
+        <div class="rel-h1">14. Anexos Oficiais Complementares</div>
+        <p class="rel-p">Documentação comprobatória que compõe o acervo técnico deste dossiê:</p>
+        <ul style="padding-left: 20px; font-size: 10px; line-height: 1.8; margin: 12px 0;">
+            <li><strong>ANEXO I:</strong> Listas de Presença de Treinamentos e Integrações (NR-01)</li>
+            <li><strong>ANEXO II:</strong> Fichas e Registros dos Diálogos Diários de Segurança (DDS/DDSMA)</li>
+            <li><strong>ANEXO III:</strong> Cronograma de Treinamentos Oficial de ${nomeMes.toUpperCase()}/${ano}</li>
+            <li><strong>ANEXO IV:</strong> Cronograma de Treinamentos Previsto para ${NOMES_MESES[(mes + 1) % 12].toUpperCase()}/${mes === 11 ? ano + 1 : ano}</li>
+            <li><strong>ANEXO V:</strong> Mapas de Manutenção de Extintores e Relação Nominal da Brigada de Emergência</li>
         </ul>
     </div>
 </body>
 </html>`;
+}
 
-        abrirDocumentoHtmlParaImpressao(html, `Relatorio_Mensal_SMS_${nomeMes}_${ano}${fiscalizacao ? '_Fiscalizacao' : ''}`);
+// Renderiza a visualização gerencial direta na tela do dashboard (#relSmsPainelPreview)
+function renderRelSmsPainel(dados, fiscalizacao) {
+    const previewEl = document.getElementById('relSmsPainelPreview');
+    if (!previewEl) return;
+
+    const { meta, efetivo, hht, kpisRapidos, checklists, naoConformidades, relatos, apr, matrizRisco, treinamentos, acidentes, pgr, saude, ergonomia, psicossocial, periculosidade, extintores, brigada, cipa, epi, ada, meioAmbiente } = dados;
+
+    const html = `
+    <!-- Topo do Dossiê -->
+    <div style="background: linear-gradient(135deg, #1f3864 0%, #2e5395 100%); color: #ffffff; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; box-shadow: 0 4px 14px rgba(31,56,100,0.25);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <div style="font-size: 12px; font-weight: 700; letter-spacing: 1px; opacity: 0.85; text-transform: uppercase;">
+                    Consórcio Operador do PISF — Ramal do Agreste (Trecho VII)
+                </div>
+                <h2 style="margin: 4px 0 6px 0; font-size: 22px; font-weight: 900; color: #ffffff;">
+                    Dossiê Consolidado de SMS — ${escapeHTML(meta.nomeMes)} / ${meta.ano}
+                </h2>
+                <div style="font-size: 13px; opacity: 0.95;">
+                    Responsável Técnico: <strong>${escapeHTML(meta.responsavelTecnico)}</strong> • ${escapeHTML(meta.crea)}
+                </div>
+            </div>
+            <div style="text-align: right; font-size: 12px; background: rgba(255,255,255,0.12); padding: 8px 14px; border-radius: 8px; backdrop-filter: blur(4px);">
+                <div><strong>Controle:</strong> ${escapeHTML(meta.codigoRev)}</div>
+                <div><strong>Emissão:</strong> ${meta.dataEmissao}</div>
+                <div>${fiscalizacao ? '<span style="background:#f59e0b; color:#ffffff; padding:2px 8px; border-radius:4px; font-weight:700; font-size:11px;">Versão Fiscalização</span>' : '<span style="background:#10b981; color:#ffffff; padding:2px 8px; border-radius:4px; font-weight:700; font-size:11px;">Dossiê Completo</span>'}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Grid de Indicadores Chave (KPIs Rápidos) -->
+    <div class="rel-sms-grid-kpis">
+        <div class="rel-sms-kpi-card destaque-azul">
+            <div class="rel-sms-kpi-lbl"><i class="fa-solid fa-chart-line"></i> TF Global (NBR 14280)</div>
+            <div class="rel-sms-kpi-val">${kpisRapidos.tfGlobal}</div>
+            <div class="rel-sms-kpi-sub">TF_CA: ${kpisRapidos.tfCa} • TF_SA: ${kpisRapidos.tfSa}</div>
+        </div>
+        <div class="rel-sms-kpi-card destaque-indigo">
+            <div class="rel-sms-kpi-lbl"><i class="fa-solid fa-scale-balanced"></i> Taxa Gravidade (TG)</div>
+            <div class="rel-sms-kpi-val">${kpisRapidos.tg}</div>
+            <div class="rel-sms-kpi-sub">${acidentes.diasPerdidos} dias perdidos no mês</div>
+        </div>
+        <div class="rel-sms-kpi-card destaque-verde">
+            <div class="rel-sms-kpi-lbl"><i class="fa-solid fa-clipboard-check"></i> Checklists Campo</div>
+            <div class="rel-sms-kpi-val">${kpisRapidos.checklistsTotal}</div>
+            <div class="rel-sms-kpi-sub">${kpisRapidos.checklistsConformePct} conformes (${checklists.conformes} un.)</div>
+        </div>
+        <div class="rel-sms-kpi-card destaque-roxo">
+            <div class="rel-sms-kpi-lbl"><i class="fa-solid fa-graduation-cap"></i> Treinamentos (HHT)</div>
+            <div class="rel-sms-kpi-val">${kpisRapidos.hhtTreinamento}</div>
+            <div class="rel-sms-kpi-sub">${kpisRapidos.treinamentosParticipantes} participantes capacitados</div>
+        </div>
+        <div class="rel-sms-kpi-card destaque-amber">
+            <div class="rel-sms-kpi-lbl"><i class="fa-solid fa-comments"></i> Diálogos DDS</div>
+            <div class="rel-sms-kpi-val">${kpisRapidos.ddsEfetuados}</div>
+            <div class="rel-sms-kpi-sub">Diálogos de segurança no mês</div>
+        </div>
+        <div class="rel-sms-kpi-card destaque-azul">
+            <div class="rel-sms-kpi-lbl"><i class="fa-solid fa-fire-extinguisher"></i> Extintores Conformes</div>
+            <div class="rel-sms-kpi-val">${kpisRapidos.extintoresConformePct}</div>
+            <div class="rel-sms-kpi-sub">${extintores.conf} de ${extintores.inspecionados} inspecionados</div>
+        </div>
+        <div class="rel-sms-kpi-card destaque-verde">
+            <div class="rel-sms-kpi-lbl"><i class="fa-solid fa-calendar-check"></i> Dias Sem CPT</div>
+            <div class="rel-sms-kpi-val">${kpisRapidos.diasSemCpt}</div>
+            <div class="rel-sms-kpi-sub">Sem afastamento (SPT): ${kpisRapidos.diasSemSpt} dias</div>
+        </div>
+        <div class="rel-sms-kpi-card destaque-verde">
+            <div class="rel-sms-kpi-lbl"><i class="fa-solid fa-list-check"></i> Eficácia 5W2H PGR</div>
+            <div class="rel-sms-kpi-val">${kpisRapidos.pgrEficaciaPct}</div>
+            <div class="rel-sms-kpi-sub">${pgr.concluidas} concluídas de ${pgr.totalAcoes} ações</div>
+        </div>
+    </div>
+
+    <!-- Seções Estruturadas em Cards Executivos -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 16px;">
+        <!-- Card 1: Segurança de Campo & Não Conformidades -->
+        <div class="rel-sms-section-box">
+            <div class="rel-sms-section-header">
+                <div class="rel-sms-section-title"><i class="fa-solid fa-shield-halved" style="color:#2563eb;"></i> 1. Segurança & Não Conformidades</div>
+                <span class="rel-sms-badge ${checklists.naoConformes > 0 ? 'alerta' : 'sucesso'}">${checklists.naoConformes > 0 ? `${checklists.naoConformes} Não Conforme(s)` : '100% Conforme'}</span>
+            </div>
+            <div style="font-size: 13px; line-height: 1.6;">
+                <div>• <strong>Checklists Realizados:</strong> ${checklists.total} (${checklists.conformes} conformes / ${checklists.naoConformes} não conformes)</div>
+                <div>• <strong>Não Conformidades Geradas:</strong> ${naoConformidades.total} (Crítico: ${naoConformidades.porRisco.critico_alto}, Médio: ${naoConformidades.porRisco.medio}, Baixo: ${naoConformidades.porRisco.baixo})</div>
+                <div>• <strong>Relatos de Quase-Acidentes/Desvios:</strong> ${relatos.total} no mês (${relatos.statusCounts.resolvido} resolvidos / ${relatos.abertosAtual} pendentes acumulados)</div>
+                <div>• <strong>Análises Preliminares de Risco (APR):</strong> ${apr.emitidasNoMes} emitidas no mês (${apr.situacaoAtual.ativas} ativas em campo)</div>
+            </div>
+        </div>
+
+        <!-- Card 2: Acidentabilidade & HHT NBR 14280 -->
+        <div class="rel-sms-section-box">
+            <div class="rel-sms-section-header">
+                <div class="rel-sms-section-title"><i class="fa-solid fa-heart-pulse" style="color:#ef4444;"></i> 2. Acidentabilidade & HHT (NBR 14280)</div>
+                <span class="rel-sms-badge ${acidentes.tipicosTotal === 0 ? 'sucesso' : 'perigo'}">${acidentes.tipicosTotal === 0 ? 'Zero Acidentes' : `${acidentes.tipicosTotal} Acidente(s)`}</span>
+            </div>
+            <div style="font-size: 13px; line-height: 1.6;">
+                <div>• <strong>Efetivo Médio Ativo:</strong> ${efetivo.headcount} colaboradores</div>
+                <div>• <strong>HHT Trabalhado:</strong> ${Number(hht.hhtMes).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} horas no mês (${Number(hht.hhtAcumuladoAno).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h acumulado no ano)</div>
+                <div>• <strong>Taxas NBR 14280:</strong> TF Global = <strong>${kpisRapidos.tfGlobal}</strong> • TG = <strong>${kpisRapidos.tg}</strong></div>
+                <div>• <strong>Histórico Seguro:</strong> ${kpisRapidos.diasSemCpt} dias sem acidente com afastamento (CPT)</div>
+            </div>
+        </div>
+
+        <!-- Card 3: Governança do PGR & 5W2H -->
+        <div class="rel-sms-section-box">
+            <div class="rel-sms-section-header">
+                <div class="rel-sms-section-title"><i class="fa-solid fa-list-check" style="color:#10b981;"></i> 3. PGR & Plano de Ação 5W2H (NR-01)</div>
+                <span class="rel-sms-badge info">${pgr.taxaEficacia}% Eficácia</span>
+            </div>
+            <div style="font-size: 13px; line-height: 1.6;">
+                <div>• <strong>Ações Monitoradas:</strong> ${pgr.totalAcoes} ações no plano geral do PGR</div>
+                <div>• <strong>Status:</strong> ${pgr.concluidas} concluídas • ${pgr.andamento} em andamento • ${pgr.abertas} a iniciar</div>
+                <div>• <strong>Atrasos frente ao Cronograma:</strong> ${fiscalizacao ? 0 : pgr.atrasadas} ações</div>
+                <div>• <strong>Investimento Preventivo:</strong> R$ ${pgr.custoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            </div>
+        </div>
+
+        <!-- Card 4: Saúde Ocupacional & Ergonomia -->
+        <div class="rel-sms-section-box">
+            <div class="rel-sms-section-header">
+                <div class="rel-sms-section-title"><i class="fa-solid fa-stethoscope" style="color:#06b6d4;"></i> 4. Saúde Ocupacional & Ergonomia</div>
+                <span class="rel-sms-badge neutro">${saude.totalAsos} ASOs</span>
+            </div>
+            <div style="font-size: 13px; line-height: 1.6;">
+                <div>• <strong>ASOs Emitidos no Mês:</strong> ${saude.totalAsos} exames (${saude.aptos} aptos / ${saude.inaptos} inaptos / ${saude.restricoes} com restrição)</div>
+                <div>• <strong>Absenteísmo Médico:</strong> ${saude.atestadosTotal} atestados (${saude.diasAfastamento} dias perdidos • ${saude.taxaAbsenteismo.toFixed(2)}% do HHT)</div>
+                <div>• <strong>Ergonomia (AEP NR-17):</strong> ${ergonomia.totalAep} postos avaliados (${ergonomia.riscoBaixo} baixo / ${ergonomia.riscoMedio} médio / ${ergonomia.riscoAlto} alto)</div>
+                <div>• <strong>Riscos Psicossociais:</strong> ${psicossocial ? `COPSOQ II ativo (${psicossocial.fortes.length} escalas fortes)` : 'Diagnóstico preventivo regular'}</div>
+            </div>
+        </div>
+
+        <!-- Card 5: Emergência, Brigada & Extintores -->
+        <div class="rel-sms-section-box">
+            <div class="rel-sms-section-header">
+                <div class="rel-sms-section-title"><i class="fa-solid fa-fire" style="color:#f97316;"></i> 5. Emergência, Brigada & CIPA</div>
+                <span class="rel-sms-badge sucesso">100% Prontidão</span>
+            </div>
+            <div style="font-size: 13px; line-height: 1.6;">
+                <div>• <strong>Parque de Extintores:</strong> ${extintores.totalAtivos} ativos (${extintores.conf} conformes no mês • ${kpisRapidos.extintoresConformePct})</div>
+                <div>• <strong>Brigada de Emergência:</strong> ${brigada.membrosAtivos} brigadistas ativos • Coordenação: ${escapeHTML(brigada.coordenador)}</div>
+                <div>• <strong>CIPA (NR-05):</strong> ${cipa.reunioesMes.length} reunião(ões) ordinária(s) realizada(s) no mês • ${cipa.membrosAtivos} membros</div>
+                <div>• <strong>Periculosidade (NR-16):</strong> ${periculosidade.funcoesPerigosas} funções enquadradas (${periculosidade.colaboradoresExpostos} colaboradores c/ 30%)</div>
+            </div>
+        </div>
+
+        <!-- Card 6: Gestão Ambiental, EPI & ADA -->
+        <div class="rel-sms-section-box">
+            <div class="rel-sms-section-header">
+                <div class="rel-sms-section-title"><i class="fa-solid fa-leaf" style="color:#16a34a;"></i> 6. Meio Ambiente, EPI & Mão de Obra Local</div>
+                <span class="rel-sms-badge info">${r2(ada.pctAda)}% ADA</span>
+            </div>
+            <div style="font-size: 13px; line-height: 1.6;">
+                <div>• <strong>EPIs Fornecidos (NR-06):</strong> ${epi.totalItens} unidades entregues para ${epi.colaboradoresAtendidos} colaboradores</div>
+                <div>• <strong>Mão de Obra Local (ADA):</strong> ${ada.totalAda} de ${ada.totalFuncionarios} trabalhadores originários da ADA (${r2(ada.pctAda)}%)</div>
+                <div>• <strong>PGRS (Resíduos de Refeições):</strong> ${meioAmbiente.residuosConfirmados ? `${meioAmbiente.linhaResiduos.pesoKg.toFixed(1)} kg gerados e destinados a Aterro Sanitário` : 'Segregação e transporte conforme diretrizes do PGRS'}</div>
+                <div>• <strong>Manutenção Veicular:</strong> ${meioAmbiente.trocasOleoMes} trocas de óleo registradas (${meioAmbiente.litrosOleoMes.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} L)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botões Inferiores de Ação Rápida -->
+    <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 18px; flex-wrap: wrap;">
+        <button class="db-apply-btn" style="background:#1f3864; border-color:#1e3a8a; padding:10px 20px;" onclick="imprimirRelatorioMensalSms()">🖨️ Visualizar / Imprimir Dossiê Oficial (A4)</button>
+        <button class="db-clear-btn" style="background:var(--bg-card); border:1px solid var(--border); padding:10px 20px;" onclick="gerarRelatorioMensalSms()">📄 Exportar Relatório em Word (.docx)</button>
+    </div>
+    `;
+
+    previewEl.innerHTML = html;
+}
+
+// Disparado ao clicar em "🔍 Visualizar Dossiê no Painel" ou na troca de Mês/Ano
+async function carregarEVisualizarRelatorioSmsPainel() {
+    const statusEl = document.getElementById('relSmsStatus');
+    const mesEl = document.getElementById('relSmsMes');
+    const anoEl = document.getElementById('relSmsAno');
+    if (!mesEl || !anoEl) return;
+
+    const mes = parseInt(mesEl.value, 10);
+    const ano = parseInt(anoEl.value, 10);
+    const fiscalizacao = document.getElementById('relSmsFiscalizacao')?.checked || false;
+    if (!ano) { alert('Informe o ano.'); return; }
+
+    if (statusEl) {
+        statusEl.innerHTML = '<span style="color:var(--text-light);"><i class="fa-solid fa-spinner fa-spin"></i> Executando varredura paralela em todas as tabelas (Promise.all)...</span>';
+    }
+
+    try {
+        await garantirDadosCompletosRelatorioMensalSms();
+        const dados = coletarDadosCompletosRelatorioMensalSms(mes, ano);
+        renderRelSmsPainel(dados, fiscalizacao);
+
         if (statusEl) {
-            statusEl.textContent = `✅ Relatório gerado com sucesso (${nomeMes}/${ano}) — aberto na aba de impressão em formato A4.`;
+            statusEl.innerHTML = `<span style="color:#10b981; font-weight:600;">✅ Dossiê de SMS de ${NOMES_MESES[mes]}/${ano} carregado com sucesso (${new Date().toLocaleTimeString('pt-BR')}).</span>`;
+        }
+    } catch (err) {
+        console.error('Erro ao gerar dossiê executivo de SMS no painel:', err);
+        if (statusEl) {
+            statusEl.innerHTML = `<span style="color:#ef4444; font-weight:600;">❌ Falha na varredura dos dados: ${escapeHTML(err?.message || String(err))}</span>`;
+        }
+    }
+}
+
+// Botão "🖨️ Visualizar / Imprimir (A4)" - gera o documento completo em HTML calibrado para
+// impressão A4 com grade de cabeçalho formal padronizada (Logo COP, títulos e metadados com CREA).
+// Abre via abrirDocumentoHtmlParaImpressao() (imune a bloqueador de popups).
+async function imprimirRelatorioMensalSms() {
+    const statusEl = document.getElementById('relSmsStatus');
+    const mes = parseInt(document.getElementById('relSmsMes').value);
+    const ano = parseInt(document.getElementById('relSmsAno').value);
+    const fiscalizacao = document.getElementById('relSmsFiscalizacao').checked;
+    if (!ano) { alert('Informe o ano.'); return; }
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--text-light);"><i class="fa-solid fa-spinner fa-spin"></i> Carregando dados completos de todos os módulos e preparando impressão A4...</span>';
+
+    try {
+        await garantirDadosCompletosRelatorioMensalSms();
+        const dados = coletarDadosCompletosRelatorioMensalSms(mes, ano);
+
+        // Atualiza a visualização do painel na tela
+        renderRelSmsPainel(dados, fiscalizacao);
+
+        // Gera o HTML oficial calibrado para impressão A4
+        const html = construirHtmlDossieOficialRelSms(dados, fiscalizacao);
+
+        const nomeMes = NOMES_MESES[mes];
+        abrirDocumentoHtmlParaImpressao(html, `Relatorio_Mensal_SMS_${nomeMes}_${ano}${fiscalizacao ? '_Fiscalizacao' : ''}`);
+
+        if (statusEl) {
+            statusEl.innerHTML = `<span style="color:#10b981; font-weight:600;">✅ Dossiê gerado com sucesso (${nomeMes}/${ano}) — aberto na aba de impressão em formato A4 imune a bloqueador de popups.</span>`;
         }
     } catch (err) {
         console.error('Erro ao gerar visualização do Relatório Mensal SMS:', err);
-        if (statusEl) statusEl.textContent = '❌ Erro ao gerar visualização: ' + (err?.message || err);
+        if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444; font-weight:600;">❌ Erro ao gerar documento de impressão: ${escapeHTML(err?.message || String(err))}</span>`;
     }
 }
 

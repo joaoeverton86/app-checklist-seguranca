@@ -1673,4 +1673,152 @@ body {
     transform: translateY(-1px);
 }
 
+/* ==========================================================================
+   DOSSIÊ EXECUTIVO & RELATÓRIO MENSAL CONSOLIDADO DE SMS (relatoriosms)
+   Estilos dedicados para Painel na Tela e Impressão A4
+   ========================================================================== */
+.rel-sms-grid-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+}
+
+.rel-sms-kpi-card {
+    background: var(--bg-card, #ffffff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 10px;
+    padding: 16px 18px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    border-top: 3.5px solid #1f3864;
+}
+
+.rel-sms-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.rel-sms-kpi-card.destaque-verde { border-top-color: #10b981; }
+.rel-sms-kpi-card.destaque-azul { border-top-color: #2563eb; }
+.rel-sms-kpi-card.destaque-indigo { border-top-color: #6366f1; }
+.rel-sms-kpi-card.destaque-amber { border-top-color: #f59e0b; }
+.rel-sms-kpi-card.destaque-roxo { border-top-color: #8b5cf6; }
+
+.rel-sms-kpi-lbl {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-light, #64748b);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.rel-sms-kpi-val {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--text-dark, #0f172a);
+    line-height: 1.15;
+    margin-bottom: 4px;
+}
+
+.rel-sms-kpi-sub {
+    font-size: 11.5px;
+    color: var(--text-light, #64748b);
+    font-weight: 500;
+}
+
+.rel-sms-section-box {
+    background: var(--bg-card, #ffffff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.rel-sms-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid var(--border, #e2e8f0);
+    padding-bottom: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.rel-sms-section-title {
+    font-size: 15px;
+    font-weight: 800;
+    color: #1f3864;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.rel-sms-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+
+.rel-sms-badge.sucesso { background: #dcfce7; color: #15803d; }
+.rel-sms-badge.alerta { background: #fef3c7; color: #b45309; }
+.rel-sms-badge.perigo { background: #fee2e2; color: #b91c1c; }
+.rel-sms-badge.info { background: #e0e7ff; color: #3730a3; }
+.rel-sms-badge.neutro { background: #f1f5f9; color: #475569; }
+
+/* Grid de KPIs no Documento Oficial A4 para Impressão */
+.grid-kpi-a4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin: 12px 0 16px 0;
+}
+
+.card-kpi-a4 {
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 6px 8px;
+    text-align: center;
+    background: #f8fafc;
+    border-top: 2.5px solid #1f3864;
+    page-break-inside: avoid;
+}
+
+.card-kpi-a4 .kpi-a4-val {
+    font-size: 15px;
+    font-weight: 800;
+    color: #1f3864;
+    line-height: 1.1;
+    margin-bottom: 2px;
+}
+
+.card-kpi-a4 .kpi-a4-lbl {
+    font-size: 8.5px;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    line-height: 1.15;
+}
+
+.card-kpi-a4 .kpi-a4-sub {
+    font-size: 7.5px;
+    color: #64748b;
+    margin-top: 2px;
+}
+
+
 

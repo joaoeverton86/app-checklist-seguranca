@@ -8,7 +8,7 @@
     <meta http-equiv="Expires" content="0">
     <title>Painel Gerencial - Checklist Segurança</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=6">
+    <link rel="stylesheet" href="dashboard.css?v=7">
 </head>
 <body>
 
@@ -1966,17 +1966,22 @@
 
             </section>
 
-            <!-- Página: Relatório Mensal SMS (Fase 1 - capa + índice + sumário; seções completas vêm nas próximas etapas) -->
+            <!-- Página: Relatório Mensal SMS (Dossiê Executivo Integrado de SMS) -->
             <section class="db-page" id="page-relatoriosms">
-                <div class="db-card">
-                    <h3>📄 Relatório Mensal de SMS</h3>
-                    <p style="font-size:12.5px; color:var(--text-light); margin-top:-6px;">
-                        Emissão do Relatório Mensal Consolidado de SMS (Segurança do Trabalho, ADA, Saúde Ocupacional, Meio Ambiente, Registros Fotográficos e Anexos) com cabeçalho institucional formal padronizado. Disponível para exportação em Word (.docx) ou Visualização/Impressão direta calibrada em formato A4.
-                    </p>
-                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
+                <div class="db-card" style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
                         <div>
-                            <label style="display:block; font-size:12px; margin-bottom:4px;">Mês</label>
-                            <select id="relSmsMes" style="padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                            <h3 style="margin: 0 0 6px 0;">📄 Dossiê & Relatório Mensal Consolidado de SMS</h3>
+                            <p style="font-size:12.5px; color:var(--text-light); margin:0;">
+                                Dossiê executivo e relatório consolidado mensal de Segurança, Saúde Ocupacional e Meio Ambiente (NR-01, NR-04/NBR 14280, NR-05, NR-06, NR-07, NR-16, NR-17, NR-23 e Gestão Ambiental) com evidências de campo e auditoria.
+                            </p>
+                        </div>
+                    </div>
+                    <hr style="border:0; border-top:1px solid var(--border); margin:14px 0;">
+                    <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end;">
+                        <div>
+                            <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Mês de Competência</label>
+                            <select id="relSmsMes" onchange="onRelSmsPeriodoChange()" style="padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-main); font-weight:600;">
                                 <option value="0">Janeiro</option><option value="1">Fevereiro</option><option value="2">Março</option>
                                 <option value="3">Abril</option><option value="4">Maio</option><option value="5">Junho</option>
                                 <option value="6">Julho</option><option value="7">Agosto</option><option value="8">Setembro</option>
@@ -1984,21 +1989,25 @@
                             </select>
                         </div>
                         <div>
-                            <label style="display:block; font-size:12px; margin-bottom:4px;">Ano</label>
-                            <input type="number" id="relSmsAno" style="width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:6px;">
+                            <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Ano</label>
+                            <input type="number" id="relSmsAno" onchange="onRelSmsPeriodoChange()" style="width:95px; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-main); font-weight:600;">
                         </div>
                         <div>
-                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">
-                                <input type="checkbox" id="relSmsFiscalizacao"> Versão para envio à Fiscalização
+                            <label style="display:flex; align-items:center; gap:7px; cursor:pointer; font-size:13px; font-weight:600; padding-bottom:7px;">
+                                <input type="checkbox" id="relSmsFiscalizacao" onchange="onRelSmsPeriodoChange()"> Versão para envio à Fiscalização
                             </label>
                         </div>
+                        <div style="margin-left:auto; display:flex; gap:10px; flex-wrap:wrap;">
+                            <button class="db-apply-btn" style="background:#1e3a8a; border-color:#1e40af;" onclick="carregarEVisualizarRelatorioSmsPainel()">🔍 Visualizar Dossiê no Painel</button>
+                            <button class="db-apply-btn" style="background:#4f46e5; border-color:#4338ca;" onclick="imprimirRelatorioMensalSms()">🖨️ Visualizar / Imprimir (A4)</button>
+                            <button class="db-clear-btn" style="background:var(--bg-card); border:1px solid var(--border);" onclick="gerarRelatorioMensalSms()">📄 Exportar (.docx)</button>
+                        </div>
                     </div>
-                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                        <button class="db-apply-btn" onclick="gerarRelatorioMensalSms()">📄 Gerar Relatório (.docx)</button>
-                        <button class="db-apply-btn" style="background:#4f46e5; border-color:#4338ca;" onclick="imprimirRelatorioMensalSms()">🖨️ Visualizar / Imprimir (A4)</button>
-                    </div>
-                    <div id="relSmsStatus" style="margin-top:10px; font-size:12.5px;"></div>
+                    <div id="relSmsStatus" style="margin-top:12px; font-size:12.5px; font-weight:500;"></div>
                 </div>
+
+                <!-- Container do Painel Executivo do Dossiê na Tela -->
+                <div id="relSmsPainelPreview"></div>
             </section>
 
             <!-- Página: DDSMA -->
@@ -8370,7 +8379,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=164"></script>
+    <script src="dashboard.js?v=165"></script>
     <script src="placar_lideres.js?v=4"></script>
 <script>
 function filterMatrizEpi(q) {

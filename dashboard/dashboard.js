@@ -5948,9 +5948,10 @@ function renderCronogramaLista() {
             </div>
             ${statusBadge}
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button class="db-clear-btn" style="color:#0284c7; border-color:#bae6fd; background:#f0f9ff; display:inline-flex; align-items:center; gap:5px;" onclick="abrirPastaFotosOperacional('01_Treinamentos', '${escapeHTML(c.data_prevista)}', '${escapeHTML(nome || c.treinamento_cod)}')" title="Acessar ou preparar pasta de fotos e evidências no Google Drive">📷 Pasta Drive</button>
                 ${!lancado ? `<button class="db-apply-btn" onclick="lancarPresencaDoCronograma('${escapeHTML(c.id)}')" title="Leva pra Lançar Treinamento já preenchido - marca este item como lançado ao salvar">✅ Lançar Presença</button>` : ''}
                 ${!lancado ? `<button class="db-clear-btn" onclick="abrirFormCronograma('${escapeHTML(c.id)}')">✏️ Editar</button>
-                ${!lancado ? `<button class="db-clear-btn" onclick="abrirModalReprogramarCronograma('${escapeHTML(c.id)}')">🔄 Reprogramar Data</button>` : ''}` : ''}
+                <button class="db-clear-btn" onclick="abrirModalReprogramarCronograma('${escapeHTML(c.id)}')">🔄 Reprogramar Data</button>` : ''}
                 ${!lancado ? `<button class="db-clear-btn" style="color:var(--danger); border-color:var(--danger);" onclick="excluirItemCronograma('${escapeHTML(c.id)}')">🗑️ Excluir</button>` : ''}
             </div>
         </div>`;
@@ -7234,7 +7235,8 @@ async function renderDdsLancamentosRecentes() {
                 <div class="db-list-item-title">${formatSimpleDate(lote.data_dds)} — ${escapeHTML(lote.frente_responsavel || '')}${lote.setor && lote.setor !== lote.frente_responsavel ? ` <span style="font-size:11px; font-weight:normal; color:var(--text-light);">(${escapeHTML(lote.setor)})</span>` : ''}</div>
                 <div class="db-list-item-sub">${escapeHTML(lote.tema || 'Sem tema')} — ${lote.ids.length} participante(s) — ${lote.horas.toLocaleString('pt-BR')}h</div>
             </div>
-            <div style="display:flex; gap:6px;">
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button class="db-clear-btn" style="color:#0284c7; border-color:#bae6fd; background:#f0f9ff; display:inline-flex; align-items:center; gap:5px;" onclick="abrirPastaFotosOperacional('02_DDSMA', '${escapeHTML(lote.data_dds)}', '${escapeHTML(lote.tema || lote.frente_responsavel || 'DDSMA')}')" title="Acessar ou preparar pasta de fotos e evidências no Google Drive">📷 Pasta Drive</button>
                 <button class="db-clear-btn" onclick="abrirAnexoModal('dds_realizados', '${escapeHTML(lote.key)}', '${escapeHTML(formatSimpleDate(lote.data_dds))} — ${escapeHTML(lote.frente_responsavel || '')}')">📎 Anexos${labelContagemAnexos('dds_realizados', lote.key)}</button>
                 <button class="db-clear-btn" onclick="editarLoteDds('${escapeHTML(lote.key)}')">✏️ Editar</button>
                 <button class="db-clear-btn" style="color:var(--danger); border-color:var(--danger);" onclick="excluirLoteDds('${escapeHTML(lote.key)}')">🗑️ Excluir</button>
@@ -7728,7 +7730,10 @@ function renderDdsCalendarioTemas() {
                 <div class="db-list-item-title">${escapeHTML(label)}</div>
                 <div class="db-list-item-sub">${cronograma ? escapeHTML(cronograma.tema) : '— sem tema cadastrado —'}</div>
             </div>
-            <button class="db-clear-btn" onclick="editarDdsTemaDia('${dataIso}')">✏️ Editar</button>
+            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                <button class="db-clear-btn" style="color:#0284c7; border-color:#bae6fd; background:#f0f9ff; display:inline-flex; align-items:center; gap:5px;" onclick="abrirPastaFotosOperacional('02_DDSMA', '${dataIso}', '${escapeHTML(cronograma ? cronograma.tema : 'DDSMA')}')" title="Acessar ou preparar pasta de fotos e evidências no Google Drive">📷 Pasta Drive</button>
+                <button class="db-clear-btn" onclick="editarDdsTemaDia('${dataIso}')">✏️ Editar</button>
+            </div>
         </div>`;
     }).join('');
 }
@@ -30185,6 +30190,241 @@ function formatarTamanhoArquivoAcervoDrive(bytes) {
     return (n / (1024 * 1024)).toFixed(1).replace('.', ',') + ' MB';
 }
 
+// ============================================
+// MÓDULO ACERVO DRIVE - ESTRUTURA HIERÁRQUICA DE FOTOS & INTEGRAÇÃO OPERACIONAL
+// Convenção: [Raiz_Fotos] / [AAAA] / [AAAA-MM - NomeMes] / [Categoria] / [AAAA-MM-DD - Tema/Identificador]
+// Categorias: 01_Treinamentos, 02_DDSMA, 03_Boas Praticas, 04_Nao Conformidades
+// ============================================
+
+function montarEstruturaPastaFotos(tipoOuCategoria, dataStr, temaStr) {
+    let d = dataStr ? parseLocalDate(dataStr) : new Date();
+    if (!d || isNaN(d.getTime())) d = new Date();
+
+    const ano = String(d.getFullYear());
+    const mesNum = d.getMonth() + 1;
+    const mesStr = String(mesNum).padStart(2, '0');
+    const diaStr = String(d.getDate()).padStart(2, '0');
+    const dataIso = `${ano}-${mesStr}-${diaStr}`;
+    const nomeMes = (typeof NOMES_MESES !== 'undefined' && NOMES_MESES[d.getMonth()]) ? NOMES_MESES[d.getMonth()] : 'Mes';
+    const mesPasta = `${ano}-${mesStr} - ${nomeMes}`;
+
+    let categoria = '01_Treinamentos';
+    const catLow = String(tipoOuCategoria || '').toLowerCase();
+    if (catLow.includes('dds')) {
+        categoria = '02_DDSMA';
+    } else if (catLow.includes('boa') || catLow.includes('pratica')) {
+        categoria = '03_Boas Praticas';
+    } else if (catLow.includes('nao_conf') || catLow.includes('desvio') || catLow.includes('nc') || catLow.includes('04_')) {
+        categoria = '04_Nao Conformidades';
+    } else if (catLow.includes('03_')) {
+        categoria = '03_Boas Praticas';
+    } else if (catLow.includes('02_')) {
+        categoria = '02_DDSMA';
+    } else {
+        categoria = '01_Treinamentos';
+    }
+
+    const temaLimpo = String(temaStr || 'Geral')
+        .replace(/[\/\\:*?"<>|]/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const subpastaFinal = `${dataIso} - ${temaLimpo}`;
+
+    const raizNome = 'SST - Fotos & Evidências';
+    const caminhoCompleto = `${raizNome} / ${ano} / ${mesPasta} / ${categoria} / ${subpastaFinal}`;
+
+    return {
+        ano,
+        mesNum,
+        mesStr,
+        diaStr,
+        dataIso,
+        nomeMes,
+        mesPasta,
+        categoria,
+        temaLimpo,
+        subpastaFinal,
+        raizNome,
+        caminhoCompleto
+    };
+}
+
+function getDriveGasWebhookUrl() {
+    const fromSettings = (allChecklistItemSettings || []).find(s => 
+        s.id === 'drive_config' || 
+        s.id === 'drive_settings' || 
+        s.key === 'drive_gas_webhook_url' ||
+        s.drive_gas_webhook_url
+    );
+    return fromSettings?.drive_gas_webhook_url || 
+           fromSettings?.value || 
+           localStorage.getItem('drive_gas_webhook_url') || 
+           localStorage.getItem('checklist_drive_script_url') || 
+           localStorage.getItem('sync_script_url') || 
+           (typeof DEFAULT_CHECKLIST_DRIVE_SCRIPT_URL !== 'undefined' ? DEFAULT_CHECKLIST_DRIVE_SCRIPT_URL : '');
+}
+
+function getDriveFolderFotosUrl() {
+    const fromSettings = (allChecklistItemSettings || []).find(s => 
+        s.id === 'drive_config' || 
+        s.id === 'drive_settings' || 
+        s.key === 'drive_folder_fotos_url' ||
+        s.drive_folder_fotos_url
+    );
+    return fromSettings?.drive_folder_fotos_url || 
+           fromSettings?.value || 
+           localStorage.getItem('drive_folder_fotos_url') || 
+           'https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
+}
+
+function abrirPastaRaizFotosDrive(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const url = getDriveFolderFotosUrl();
+    window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+async function abrirPastaFotosOperacional(tipoOuCategoria, dataStr, temaStr) {
+    const info = montarEstruturaPastaFotos(tipoOuCategoria, dataStr, temaStr);
+    const webhookUrl = getDriveGasWebhookUrl();
+    const raizFotosUrl = getDriveFolderFotosUrl();
+    const temSwal = (typeof Swal !== 'undefined');
+
+    if (temSwal) {
+        Swal.fire({
+            title: 'Preparando pasta no Drive...',
+            html: `
+                <p style="font-size:12px; color:#64748b; margin-bottom:8px;">Verificando ou criando diretório na nuvem:</p>
+                <div style="background:#f1f5f9; padding:8px 10px; border-radius:6px; font-size:11px; font-family:monospace; color:#0369a1; word-break:break-all; text-align:left;">
+                    ${escapeHTML(info.caminhoCompleto)}
+                </div>
+            `,
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+    }
+
+    let urlDestino = null;
+
+    if (webhookUrl) {
+        try {
+            const payload = {
+                action: 'criar_pasta_fotos',
+                ano: info.ano,
+                mesPasta: info.mesPasta,
+                categoria: info.categoria,
+                subpasta: info.subpastaFinal,
+                caminhoCompleto: info.caminhoCompleto,
+                path: [info.ano, info.mesPasta, info.categoria, info.subpastaFinal]
+            };
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+            const resp = await fetch(webhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (resp.ok) {
+                const resJson = await resp.json().catch(() => null);
+                if (resJson && (resJson.folderUrl || resJson.pastaUrl || resJson.url)) {
+                    urlDestino = resJson.folderUrl || resJson.pastaUrl || resJson.url;
+                }
+            }
+        } catch (err) {
+            console.warn('Webhook do Google Drive offline ou com timeout, acionando fallback:', err);
+        }
+    }
+
+    const finalUrl = urlDestino || raizFotosUrl;
+
+    let copiado = false;
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(info.caminhoCompleto);
+            copiado = true;
+        }
+    } catch (_) {}
+
+    if (temSwal) {
+        Swal.fire({
+            icon: urlDestino ? 'success' : 'info',
+            title: urlDestino ? 'Pasta Pronta no Drive!' : 'Estrutura das Evidências Fotográficas',
+            html: `
+                <div style="font-size:12.5px; color:#475569; margin-bottom:10px; text-align:left;">
+                    ${copiado 
+                        ? '✅ <span style="color:#10b981; font-weight:600;">Caminho copiado para a área de transferência!</span>' 
+                        : 'Diretório padronizado:'}
+                </div>
+                <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:10px; font-size:11px; font-family:monospace; color:#1e293b; margin-bottom:14px; word-break:break-all; text-align:left;">
+                    ${escapeHTML(info.caminhoCompleto)}
+                </div>
+                <p style="font-size:11.5px; color:#64748b; margin-bottom:16px; text-align:left;">
+                    ${urlDestino 
+                        ? 'Clique abaixo para abrir a pasta específica no Google Drive:' 
+                        : 'Navegue até a pasta no Drive ou utilize o caminho copiado:'}
+                </p>
+                <div style="text-align:center;">
+                    <a href="${finalUrl}" target="_blank" rel="noopener noreferrer" class="swal2-confirm swal2-styled" style="text-decoration:none; display:inline-block; padding:10px 22px; background:#0284c7; color:#ffffff; font-weight:700; border-radius:6px; box-shadow:0 2px 6px rgba(2,132,199,0.25);">
+                        Abrir Pasta no Google Drive ↗
+                    </a>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCancelButton: true,
+            cancelButtonText: 'Fechar'
+        });
+    } else {
+        abrirModalConfirmacaoFotosDrive(info, finalUrl, copiado);
+    }
+}
+
+function abrirModalConfirmacaoFotosDrive(info, url, copiado) {
+    const modal = document.getElementById('modalPastaFotosDrive');
+    if (!modal) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        return;
+    }
+    const txtEl = document.getElementById('modalPastaFotosCaminhoTexto');
+    const linkEl = document.getElementById('modalPastaFotosLinkDrive');
+    const statusEl = document.getElementById('modalPastaFotosStatus');
+
+    if (txtEl) txtEl.textContent = info.caminhoCompleto;
+    if (linkEl) linkEl.href = url;
+    if (statusEl) {
+        statusEl.innerHTML = copiado 
+            ? '✅ <strong>Caminho copiado para a área de transferência!</strong>' 
+            : 'Navegue até a pasta ou cole o caminho no Google Drive.';
+        statusEl.style.color = copiado ? 'var(--success)' : 'var(--text-light)';
+    }
+
+    modal.style.display = 'flex';
+}
+
+function fecharModalPastaFotosDrive() {
+    const modal = document.getElementById('modalPastaFotosDrive');
+    if (modal) modal.style.display = 'none';
+}
+
+function copiarCaminhoModalFotos() {
+    const txtEl = document.getElementById('modalPastaFotosCaminhoTexto');
+    if (txtEl && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txtEl.textContent.trim()).then(() => {
+            const btn = document.getElementById('btnCopiarCaminhoFotos');
+            if (btn) {
+                const old = btn.textContent;
+                btn.textContent = '✅ Copiado!';
+                setTimeout(() => { btn.textContent = old; }, 2000);
+            }
+        });
+    }
+}
+
 window.resetAcervoDrive = resetAcervoDrive;
 window.recarregarAcervoDrive = recarregarAcervoDrive;
 window.abrirCategoriaAcervoDrive = abrirCategoriaAcervoDrive;
@@ -30195,6 +30435,12 @@ window.limparBuscaAcervoDrive = limparBuscaAcervoDrive;
 window.abrirItemAcervoDrive = abrirItemAcervoDrive;
 window.visualizarArquivoAcervoDrive = visualizarArquivoAcervoDrive;
 window.fecharModalPreviewDrivePdf = fecharModalPreviewDrivePdf;
+window.abrirPastaRaizFotosDrive = abrirPastaRaizFotosDrive;
+window.abrirPastaFotosOperacional = abrirPastaFotosOperacional;
+window.fecharModalPastaFotosDrive = fecharModalPastaFotosDrive;
+window.copiarCaminhoModalFotos = copiarCaminhoModalFotos;
+window.getDriveFolderFotosUrl = getDriveFolderFotosUrl;
+window.getDriveGasWebhookUrl = getDriveGasWebhookUrl;
 
 // ============================================
 // MODAL DE UPLOAD DE ARQUIVOS PARA O ACERVO DRIVE
@@ -44552,7 +44798,8 @@ function renderScannerPlanoAcaoPgr() {
                         <span>👤 <strong>Sugerido:</strong> ${escapeHTML(d.responsavelSugerido)}</span>
                     </div>
                 </div>
-                <div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                    <button class="db-clear-btn" style="color:#0284c7; border-color:#bae6fd; background:#f0f9ff; padding: 8px 12px; font-size: 12px; display:inline-flex; align-items:center; gap:5px;" onclick="abrirPastaFotosOperacional('04_Nao Conformidades', '${escapeHTML(d.data)}', '${escapeHTML(d.titulo)}')" title="Acessar ou preparar pasta de fotos e evidências no Google Drive">📷 Pasta Drive</button>
                     <button class="db-apply-btn" style="padding: 8px 14px; font-size: 12px; background: var(--primary);" onclick="criarAcaoPgrDeDesvio('${dJson}')">
                         🎯 Criar Ação 5W2H
                     </button>

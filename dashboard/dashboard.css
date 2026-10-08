@@ -1989,9 +1989,15 @@ body {
    ============================================ */
 .acervo-drive-grid-cat {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 12px;
     margin-bottom: 14px;
+}
+
+@media (min-width: 1200px) {
+    .acervo-drive-grid-cat {
+        grid-template-columns: repeat(5, 1fr);
+    }
 }
 
 .acervo-cat-card {

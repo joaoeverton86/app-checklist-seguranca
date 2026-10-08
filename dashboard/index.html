@@ -8039,6 +8039,16 @@
                                 <div class="acervo-cat-desc">Acervo documental e institucional da obra</div>
                             </div>
                         </div>
+
+                        <div class="acervo-cat-card" onclick="abrirPastaRaizFotosDrive()" title="Abrir pasta raiz de Fotos e Evidências no Google Drive">
+                            <div class="acervo-cat-icon" style="background:#fce7f3; color:#ec4899;">
+                                <i class="fas fa-camera-retro"></i>
+                            </div>
+                            <div class="acervo-cat-info">
+                                <div class="acervo-cat-title">Fotos & Evidências</div>
+                                <div class="acervo-cat-desc">Árvore de registros fotográficos categorizada por ano, mês, treinamentos, DDSMA, desvios e boas práticas</div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Barra de Navegação Contextual (Trilha / Breadcrumb e Ações) -->
@@ -8518,8 +8528,9 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=20261008_fix_nomemes"></script>
+    <script src="dashboard.js?v=20261008_acervo_fotos"></script>
     <script src="placar_lideres.js?v=20261008_layout_a4"></script>
 <script>
 function filterMatrizEpi(q) {
@@ -9682,6 +9693,45 @@ function filterMatrizEpi(q) {
             <button type="button" class="db-apply-btn" style="padding:8px 20px; font-size:12.5px; background:#0284c7; border:none;" onclick="salvarConfigGoogleDrive()">
                 💾 Salvar Configurações
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Acesso e Confirmação de Pasta de Fotos & Evidências no Drive -->
+<div id="modalPastaFotosDrive" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:10050; align-items:center; justify-content:center; padding:20px;" onclick="if (event.target === this) fecharModalPastaFotosDrive();">
+    <div style="background:var(--card); border-radius:14px; max-width:560px; width:100%; padding:22px 24px; box-shadow:var(--shadow); border:1px solid var(--border); box-sizing:border-box;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div class="db-chart-title" style="margin-bottom:0; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-camera-retro" style="color:#ec4899;"></i> 📷 Pasta de Fotos & Evidências (Drive)
+            </div>
+            <button class="db-clear-btn" style="padding:4px 8px;" onclick="fecharModalPastaFotosDrive()">✕</button>
+        </div>
+
+        <p style="font-size:12px; color:var(--text-light); margin-bottom:14px; line-height:1.4;">
+            Estrutura hierárquica oficial de armazenamento de evidências fotográficas em nuvem.
+        </p>
+
+        <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:12px; margin-bottom:14px;">
+            <div style="font-size:11px; font-weight:700; color:#1e293b; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                <span>Caminho no Google Drive:</span>
+                <button type="button" class="db-clear-btn" id="btnCopiarCaminhoFotos" style="padding:2px 8px; font-size:10.5px;" onclick="copiarCaminhoModalFotos()">
+                    📋 Copiar Caminho
+                </button>
+            </div>
+            <div id="modalPastaFotosCaminhoTexto" style="font-family:monospace; font-size:11.5px; color:#0369a1; word-break:break-all; line-height:1.4; background:#ffffff; padding:8px 10px; border-radius:6px; border:1px solid #e2e8f0;">
+                SST - Fotos & Evidências / ...
+            </div>
+        </div>
+
+        <div id="modalPastaFotosStatus" style="font-size:11.5px; color:#64748b; margin-bottom:16px;"></div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+            <button type="button" class="db-clear-btn" style="padding:8px 14px; font-size:12.5px;" onclick="fecharModalPastaFotosDrive()">
+                Fechar
+            </button>
+            <a href="#" id="modalPastaFotosLinkDrive" target="_blank" rel="noopener noreferrer" class="db-apply-btn" style="background:#0284c7; border:none; display:inline-flex; align-items:center; gap:6px; padding:8px 18px; font-size:12.5px; font-weight:600; text-decoration:none; color:#ffffff;">
+                <i class="fab fa-google-drive"></i> Abrir no Google Drive ↗
+            </a>
         </div>
     </div>
 </div>

@@ -181,6 +181,8 @@ function doPost(e) {
             return processarRedefinirSenha(record);
         } else if (data.store === 'upload_checklist_drive' || data.action === 'upload_checklist_pdf' || data.store === 'checklists_pdf_upload') {
             return processarUploadChecklistDrive(data);
+        } else if (data.action === 'criar_pasta_fotos' || data.nomePastaFinal || data.store === 'criar_pasta_fotos') {
+            return processarCriarPastaFotosDrive(data);
         } else if (data.store === 'delete_record') {
             return deletarRegistro(data.aba, data.id);
         } else {
@@ -1064,5 +1066,63 @@ function formatarPastaMesGoogleDrive(dateStr) {
     }
     var m = new Date().getMonth();
     return meses[m];
+}
+
+// ============================================
+// CRIAÇÃO RECURSIVA DE PASTAS DE FOTOS & EVIDÊNCIAS
+// Hierarquia: [Raiz] / [AAAA] / [AAAA-MM - NomeMes] / [Categoria] / [AAAA-MM-DD - Tema]
+// ============================================
+function processarCriarPastaFotosDrive(data) {
+    try {
+        var rootFolderId = data.rootFolderId || data.folderId || data.pastaRaizId;
+        var ano = String(data.ano || new Date().getFullYear());
+        var mes = data.mes || data.mesPasta || formatarPastaMesGoogleDrive(new Date().toISOString().slice(0, 10));
+        var categoria = data.categoria || data.categoriaPasta || '01_Treinamentos';
+        var nomePastaFinal = data.nomePastaFinal || data.subpasta || data.subpastaFinal || 'Evidencias';
+
+        if (rootFolderId && (rootFolderId.indexOf('http://') === 0 || rootFolderId.indexOf('https://') === 0)) {
+            var match = rootFolderId.match(/folders\/([a-zA-Z0-9_-]+)/);
+            if (match && match[1]) {
+                rootFolderId = match[1];
+            }
+        }
+
+        var pastaAtual;
+        if (rootFolderId) {
+            pastaAtual = DriveApp.getFolderById(rootFolderId);
+        } else {
+            pastaAtual = DriveApp.getRootFolder();
+        }
+
+        pastaAtual = getOrCreateSubFolder(pastaAtual, String(ano));
+        pastaAtual = getOrCreateSubFolder(pastaAtual, mes);
+        pastaAtual = getOrCreateSubFolder(pastaAtual, categoria);
+        var pastaFinal = getOrCreateSubFolder(pastaAtual, nomePastaFinal);
+
+        try {
+            pastaFinal.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        } catch (_) {}
+
+        return ContentService.createTextOutput(JSON.stringify({
+            status: 'sucesso',
+            folderId: pastaFinal.getId(),
+            folderUrl: pastaFinal.getUrl(),
+            caminho: ano + " / " + mes + " / " + categoria + " / " + nomePastaFinal
+        })).setMimeType(ContentService.MimeType.JSON);
+    } catch (error) {
+        Logger.log('Erro ao criar pasta de fotos: ' + error.toString());
+        return ContentService.createTextOutput(JSON.stringify({
+            status: 'erro',
+            message: error.toString()
+        })).setMimeType(ContentService.MimeType.JSON);
+    }
+}
+
+function getOrCreateSubFolder(parentFolder, folderName) {
+    var folders = parentFolder.getFoldersByName(folderName);
+    if (folders.hasNext()) {
+        return folders.next();
+    }
+    return parentFolder.createFolder(folderName);
 }
 

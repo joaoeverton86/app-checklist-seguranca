@@ -2341,14 +2341,20 @@ function abrirModalConfigGoogleDrive() {
     if (!modal) return;
     const inpUrl = document.getElementById('cfgDriveScriptUrl');
     const inpFolder = document.getElementById('cfgDriveRootFolder');
+    const inpFolderFotos = document.getElementById('cfgDriveFolderFotosUrl');
+    const inpGasFotos = document.getElementById('cfgDriveGasWebhookUrl');
     const status = document.getElementById('cfgDriveTestStatus');
 
     if (inpUrl) inpUrl.value = getDriveScriptUrl();
     if (inpFolder) inpFolder.value = getDriveRootFolder();
+    if (inpFolderFotos) inpFolderFotos.value = getDriveFolderFotosUrl();
+    if (inpGasFotos) inpGasFotos.value = getDriveGasWebhookUrl();
     if (status) status.textContent = '';
 
     const linkPasta = document.getElementById('cfgDriveLinkPasta');
     if (linkPasta) linkPasta.href = getDriveFolderUrl();
+    const linkPastaFotos = document.getElementById('cfgDriveLinkPastaFotos');
+    if (linkPastaFotos) linkPastaFotos.href = getDriveFolderFotosUrl();
 
     modal.style.display = 'flex';
 }
@@ -2361,17 +2367,84 @@ function fecharModalConfigGoogleDrive() {
 function salvarConfigGoogleDrive() {
     const inpUrl = document.getElementById('cfgDriveScriptUrl');
     const inpFolder = document.getElementById('cfgDriveRootFolder');
+    const inpFolderFotos = document.getElementById('cfgDriveFolderFotosUrl');
+    const inpGasFotos = document.getElementById('cfgDriveGasWebhookUrl');
 
     const url = (inpUrl?.value || '').trim();
     const folder = (inpFolder?.value || '').trim() || 'Checklists SST';
+    const folderFotos = (inpFolderFotos?.value || '').trim();
+    const gasFotos = (inpGasFotos?.value || '').trim();
 
     localStorage.setItem('checklist_drive_script_url', url);
     if (url) localStorage.setItem('sync_script_url', url);
     localStorage.setItem('checklist_drive_root_folder', folder);
 
+    if (folderFotos) {
+        localStorage.setItem('drive_folder_fotos_url', folderFotos);
+    }
+    if (gasFotos) {
+        localStorage.setItem('drive_gas_webhook_url', gasFotos);
+    }
+
     mostrarFeedbackToast('Configurações do Google Drive salvas com sucesso!');
     fecharModalConfigGoogleDrive();
 }
+
+async function testarWebhookFotosDrive() {
+    const inpGasFotos = document.getElementById('cfgDriveGasWebhookUrl');
+    const status = document.getElementById('cfgDriveTestStatus');
+    const btn = document.getElementById('btnTestarWebhookFotos');
+    const url = (inpGasFotos?.value || getDriveGasWebhookUrl() || '').trim();
+
+    if (!url) {
+        if (status) {
+            status.textContent = '❌ Por favor preencha a URL do Web App Apps Script de Fotos.';
+            status.style.color = '#ef4444';
+        }
+        return;
+    }
+
+    if (status) { status.textContent = 'Testando Web App de Fotos...'; status.style.color = '#0284c7'; }
+    if (btn) btn.disabled = true;
+
+    try {
+        const resp = await fetch(url, {
+            method: 'GET'
+        });
+        if (resp.ok) {
+            const data = await resp.json().catch(() => null);
+            if (status) {
+                status.innerHTML = `✅ Web App conectado e operacional! ${data?.servico ? `(${data.servico})` : ''}`;
+                status.style.color = '#10b981';
+            }
+        } else {
+            throw new Error(`Servidor respondeu com código HTTP ${resp.status}`);
+        }
+    } catch (err) {
+        try {
+            const respPost = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'ping' })
+            });
+            if (respPost.ok) {
+                if (status) {
+                    status.innerHTML = `✅ Web App respondeu à chamada POST com sucesso!`;
+                    status.style.color = '#10b981';
+                }
+                return;
+            }
+        } catch (_) {}
+
+        if (status) {
+            status.innerHTML = `⚠️ Teste: Verifique se o Web App foi implantado como "Qualquer pessoa" (Anyone). Erro: ${escapeHTML(err.message)}`;
+            status.style.color = '#f59e0b';
+        }
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
 
 async function testarConexaoGoogleDrive() {
     const inpUrl = document.getElementById('cfgDriveScriptUrl');
@@ -30283,6 +30356,14 @@ function abrirPastaRaizFotosDrive(e) {
     window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+function extrairIdPastaDrive(urlOuId) {
+    if (!urlOuId) return '';
+    const str = String(urlOuId).trim();
+    const match = str.match(/folders\/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) return match[1];
+    return str;
+}
+
 async function abrirPastaFotosOperacional(tipoOuCategoria, dataStr, temaStr) {
     const info = montarEstruturaPastaFotos(tipoOuCategoria, dataStr, temaStr);
     const webhookUrl = getDriveGasWebhookUrl();
@@ -30311,9 +30392,12 @@ async function abrirPastaFotosOperacional(tipoOuCategoria, dataStr, temaStr) {
         try {
             const payload = {
                 action: 'criar_pasta_fotos',
+                rootFolderId: extrairIdPastaDrive(raizFotosUrl),
                 ano: info.ano,
+                mes: info.mesPasta,
                 mesPasta: info.mesPasta,
                 categoria: info.categoria,
+                nomePastaFinal: info.subpastaFinal,
                 subpasta: info.subpastaFinal,
                 caminhoCompleto: info.caminhoCompleto,
                 path: [info.ano, info.mesPasta, info.categoria, info.subpastaFinal]

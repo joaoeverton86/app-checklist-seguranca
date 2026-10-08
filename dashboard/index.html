@@ -9667,20 +9667,46 @@ function filterMatrizEpi(q) {
 
             <div>
                 <label style="display:block; font-size:12px; font-weight:600; color:var(--text-light); margin-bottom:4px;">
-                    URL do Apps Script (Opcional / Fallback)
+                    URL do Apps Script (Checklists / Fallback)
                 </label>
                 <input type="text" id="cfgDriveScriptUrl" placeholder="https://script.google.com/macros/s/.../exec (opcional)" style="width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
                 <div style="font-size:11px; color:var(--text-light); margin-top:4px;">
-                    Preencha apenas se quiser utilizar uma planilha ou Google Apps Script personalizado como contingência.
+                    Preencha caso utilize uma planilha ou Google Apps Script personalizado para sincronização de checklists.
+                </div>
+            </div>
+
+            <div style="border-top:1px dashed var(--border); padding-top:10px; margin-top:2px;">
+                <label style="display:block; font-size:12px; font-weight:700; color:#0284c7; margin-bottom:4px;">
+                    <i class="fas fa-camera-retro"></i> Pasta Raiz de Fotos & Evidências (Google Drive)
+                </label>
+                <input type="text" id="cfgDriveFolderFotosUrl" placeholder="https://drive.google.com/drive/folders/..." style="width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
+                <div style="font-size:11px; color:var(--text-light); margin-top:4px;">
+                    URL ou ID da pasta no Drive onde serão criadas as subpastas por Ano, Mês e Categoria.
+                </div>
+            </div>
+
+            <div>
+                <label style="display:block; font-size:12px; font-weight:700; color:#0284c7; margin-bottom:4px;">
+                    <i class="fas fa-bolt"></i> URL do Web App Apps Script (Automação Recursiva de Pastas)
+                </label>
+                <input type="text" id="cfgDriveGasWebhookUrl" placeholder="https://script.google.com/macros/s/.../exec" style="width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
+                <div style="font-size:11px; color:var(--text-light); margin-top:4px;">
+                    URL gerada ao implantar o script como <b>Aplicativo da Web</b> (Executar como: Eu / Acesso: Qualquer pessoa).
                 </div>
             </div>
 
             <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:4px;">
                 <button type="button" class="db-clear-btn" id="btnTestarConexaoDrive" style="padding:8px 14px; font-size:12px; display:inline-flex; align-items:center; gap:6px;" onclick="testarConexaoGoogleDrive()">
-                    <i class="fas fa-plug"></i> Testar Conexão com o Drive
+                    <i class="fas fa-plug"></i> Testar Conexão Checklists
+                </button>
+                <button type="button" class="db-clear-btn" id="btnTestarWebhookFotos" style="padding:8px 14px; font-size:12px; display:inline-flex; align-items:center; gap:6px; color:#ec4899; border-color:#fbcfe8;" onclick="testarWebhookFotosDrive()">
+                    <i class="fas fa-magic"></i> Testar Web App Fotos
                 </button>
                 <a href="#" id="cfgDriveLinkPasta" onclick="abrirPastaChecklistsNoDrive(event)" target="_blank" rel="noopener noreferrer" style="font-size:12px; color:#0284c7; text-decoration:underline; font-weight:700; display:inline-flex; align-items:center; gap:4px;">
-                    <i class="fab fa-google-drive"></i> Abrir Pasta no Drive ↗
+                    <i class="fab fa-google-drive"></i> Abrir Pasta Checklists ↗
+                </a>
+                <a href="#" id="cfgDriveLinkPastaFotos" onclick="abrirPastaRaizFotosDrive(event)" target="_blank" rel="noopener noreferrer" style="font-size:12px; color:#ec4899; text-decoration:underline; font-weight:700; display:inline-flex; align-items:center; gap:4px;">
+                    <i class="fas fa-folder"></i> Abrir Pasta Fotos ↗
                 </a>
                 <span id="cfgDriveTestStatus" style="font-size:12px; font-weight:600; width:100%; margin-top:2px;"></span>
             </div>

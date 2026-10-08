@@ -1332,18 +1332,23 @@ body {
 /* ================================================================
    RELATÓRIO MENSAL CONSOLIDADO DE SMS (relatoriosms) - A4 / Impressão
    ================================================================ */
+.cabecalho-tabela,
+.header-dossie,
 .cabecalho-tabela-rel-sms {
-    width: 100%;
-    border-collapse: collapse;
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
     border: 1.5px solid #1f3864;
-    margin-bottom: 14px;
+    margin-bottom: 12px !important;
     font-family: Arial, Helvetica, sans-serif;
     background: #ffffff;
+    box-sizing: border-box !important;
 }
 
 .cabecalho-tabela-rel-sms td {
-    padding: 6px 10px;
-    box-sizing: border-box;
+    padding: 5px 8px;
+    box-sizing: border-box !important;
 }
 
 .folha-relatorio {
@@ -1613,20 +1618,26 @@ body {
     border: 1px solid #cbd5e1;
 }
 
+.cabecalho-tabela .col-logo,
+.header-dossie .col-logo,
 .cabecalho-tabela-rel-sms .col-logo {
-    width: 22%;
+    width: 20% !important;
     text-align: center;
     border-right: 1.5px solid #1f3864;
 }
 
+.cabecalho-tabela .col-titulo,
+.header-dossie .col-titulo,
 .cabecalho-tabela-rel-sms .col-titulo {
-    width: 50%;
+    width: 50% !important;
     text-align: center;
     line-height: 1.25;
 }
 
+.cabecalho-tabela .col-meta,
+.header-dossie .col-meta,
 .cabecalho-tabela-rel-sms .col-meta {
-    width: 28%;
+    width: 30% !important;
     font-size: 10px;
     line-height: 1.35;
     border-left: 1.5px solid #1f3864;
@@ -2174,9 +2185,51 @@ body {
 }
 
 @media print {
+    @page {
+        size: A4 portrait;
+        margin: 10mm 10mm 10mm 10mm;
+    }
     * {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+        box-sizing: border-box !important;
+    }
+    .cabecalho-tabela,
+    .header-dossie,
+    .cabecalho-tabela-rel-sms {
+        width: 100% !important;
+        max-width: 100% !important;
+        table-layout: fixed !important;
+        border-collapse: collapse !important;
+        margin-bottom: 12px !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        box-sizing: border-box !important;
+    }
+    .cabecalho-tabela td,
+    .header-dossie td,
+    .cabecalho-tabela-rel-sms td {
+        box-sizing: border-box !important;
+    }
+    .cabecalho-tabela .col-logo,
+    .header-dossie .col-logo,
+    .cabecalho-tabela-rel-sms .col-logo {
+        width: 20% !important;
+    }
+    .cabecalho-tabela .col-titulo,
+    .header-dossie .col-titulo,
+    .cabecalho-tabela-rel-sms .col-titulo {
+        width: 50% !important;
+    }
+    .cabecalho-tabela .col-meta,
+    .header-dossie .col-meta,
+    .cabecalho-tabela-rel-sms .col-meta {
+        width: 30% !important;
+    }
+    .page-break,
+    .page-break-forced {
+        page-break-before: always !important;
+        break-before: page !important;
     }
     .grafico-container {
         page-break-inside: avoid !important;
@@ -2188,3 +2241,4 @@ body {
         height: auto !important;
     }
 }
+

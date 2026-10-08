@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v179';
+const DASHBOARD_VERSION = 'v180';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -15649,28 +15649,73 @@ function gerarCabecalhoPadraoRelSmsHtml(mes, ano, tituloSecao = '') {
     const codigoRev = (typeof codigoRevisaoDocumento === 'function' ? codigoRevisaoDocumento('relatorio_mensal_sms') : '') || 'REL.SMS.001 R00';
     const logoBase64 = obterLogoCopBase64RelSms();
     const logoHtml = logoBase64
-        ? `<img src="${logoBase64}" alt="Consórcio Operador Ramal do Agreste" style="max-height: 48px; max-width: 175px; object-fit: contain;">`
-        : `<div style="font-weight: 800; font-size: 14px; color: #1f3864;">COP RAMAL DO AGRESTE</div>`;
+        ? `<img src="${logoBase64}" alt="Consórcio Operador Ramal do Agreste" style="max-height: 48px; max-width: 100%; object-fit: contain;">`
+        : `<div style="font-weight: 800; font-size: 13px; color: #1f3864;">COP RAMAL DO AGRESTE</div>`;
 
     return `
-    <table class="cabecalho-tabela-rel-sms" style="width: 100%; border-collapse: collapse; border: 1.5px solid #1f3864; margin-bottom: 14px; font-family: Arial, Helvetica, sans-serif; background: #ffffff;">
+    <table class="cabecalho-tabela cabecalho-tabela-rel-sms header-dossie" style="width: 100% !important; max-width: 100% !important; table-layout: fixed !important; border-collapse: collapse !important; border: 1.5px solid #1f3864; margin-bottom: 12px !important; font-family: Arial, Helvetica, sans-serif; background: #ffffff; box-sizing: border-box !important;">
+        <colgroup>
+            <col style="width: 20%;">
+            <col style="width: 50%;">
+            <col style="width: 30%;">
+        </colgroup>
         <tr>
-            <td style="width: 190px; vertical-align: middle; text-align: center; border-right: 1.5px solid #1f3864; padding: 5px 8px; background: #ffffff;">
+            <td class="col-logo" style="width: 20% !important; vertical-align: middle; text-align: center; border-right: 1.5px solid #1f3864; padding: 4px 6px; background: #ffffff; box-sizing: border-box !important; overflow: hidden;">
                 ${logoHtml}
             </td>
-            <td style="vertical-align: middle; text-align: center; padding: 5px 10px; border-right: 1.5px solid #1f3864;">
-                <div style="font-size: 11px; font-weight: 800; color: #1f3864; letter-spacing: 0.5px; text-transform: uppercase;">
+            <td class="col-titulo" style="width: 50% !important; vertical-align: middle; text-align: center; padding: 4px 8px; border-right: 1.5px solid #1f3864; box-sizing: border-box !important; overflow: hidden;">
+                <div style="font-size: 10.5px; font-weight: 800; color: #1f3864; letter-spacing: 0.4px; text-transform: uppercase;">
                     CONSÓRCIO OPERADOR DO PISF – RAMAL DO AGRESTE
                 </div>
-                <div style="font-size: 13.5px; font-weight: 900; color: #0f172a; margin: 2px 0; text-transform: uppercase;">
+                <div style="font-size: 13px; font-weight: 900; color: #0f172a; margin: 2px 0; text-transform: uppercase;">
                     RELATÓRIO MENSAL CONSOLIDADO DE SMS
                 </div>
-                <div style="font-size: 9.5px; font-weight: 600; color: #475569; font-style: italic;">
+                <div style="font-size: 9px; font-weight: 600; color: #475569; font-style: italic;">
                     Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente • Obra: PISF Ramal do Agreste - Trecho VII
                 </div>
-                ${tituloSecao ? `<div style="font-size: 10.5px; font-weight: 700; color: #2e5395; margin-top: 2px; text-transform: uppercase;">${escapeHTML(tituloSecao)}</div>` : ''}
+                ${tituloSecao ? `<div style="font-size: 10px; font-weight: 700; color: #2e5395; margin-top: 2px; text-transform: uppercase;">${escapeHTML(tituloSecao)}</div>` : ''}
             </td>
-            <td style="width: 220px; vertical-align: middle; text-align: right; font-size: 9px; color: #334155; line-height: 1.35; padding: 5px 8px; background: #f8fafc;">
+            <td class="col-meta" style="width: 30% !important; vertical-align: middle; text-align: right; font-size: 8.5px; color: #334155; line-height: 1.35; padding: 4px 6px; background: #f8fafc; box-sizing: border-box !important; overflow: hidden;">
+                <div><strong>Competência:</strong> ${nomeMes} / ${ano}</div>
+                <div><strong>Controle:</strong> ${escapeHTML(codigoRev)}</div>
+                <div><strong>Resp. Técnico:</strong> João Everton de S. Limeira</div>
+                <div>Eng. Seg. Trabalho • CREA/PE 181283311-8</div>
+            </td>
+        </tr>
+    </table>`;
+}
+
+function gerarBarraCabecalhoInstitucionalRelSmsHtml(mes, ano, subtitulo = '') {
+    const nomeMes = NOMES_MESES[mes];
+    const codigoRev = (typeof codigoRevisaoDocumento === 'function' ? codigoRevisaoDocumento('relatorio_mensal_sms') : '') || 'REL.SMS.001 R00';
+    const logoBase64 = obterLogoCopBase64RelSms();
+    const logoHtml = logoBase64
+        ? `<img src="${logoBase64}" alt="Consórcio Operador Ramal do Agreste" style="max-height: 42px; max-width: 100%; object-fit: contain;">`
+        : `<div style="font-weight: 800; font-size: 11px; color: #1f3864;">COP RAMAL DO AGRESTE</div>`;
+
+    return `
+    <table class="cabecalho-tabela cabecalho-tabela-rel-sms header-dossie cabecalho-secundario-dossie" style="width: 100% !important; max-width: 100% !important; table-layout: fixed !important; border-collapse: collapse !important; border: 1.5px solid #1f3864; margin-bottom: 12px !important; font-family: Arial, Helvetica, sans-serif; background: #ffffff; box-sizing: border-box !important;">
+        <colgroup>
+            <col style="width: 20%;">
+            <col style="width: 50%;">
+            <col style="width: 30%;">
+        </colgroup>
+        <tr>
+            <td class="col-logo" style="width: 20% !important; vertical-align: middle; text-align: center; border-right: 1.5px solid #1f3864; padding: 4px 6px; background: #ffffff; box-sizing: border-box !important; overflow: hidden;">
+                ${logoHtml}
+            </td>
+            <td class="col-titulo" style="width: 50% !important; vertical-align: middle; text-align: center; padding: 4px 8px; border-right: 1.5px solid #1f3864; box-sizing: border-box !important; overflow: hidden;">
+                <div style="font-size: 10px; font-weight: 800; color: #1f3864; letter-spacing: 0.3px; text-transform: uppercase;">
+                    CONSÓRCIO OPERADOR DO PISF – RAMAL DO AGRESTE
+                </div>
+                <div style="font-size: 12px; font-weight: 900; color: #0f172a; margin: 1px 0; text-transform: uppercase;">
+                    DOSSIÊ CONSOLIDADO DE SMS - TRECHO VII
+                </div>
+                <div style="font-size: 8.5px; font-weight: 600; color: #475569; font-style: italic;">
+                    ${subtitulo ? escapeHTML(subtitulo) : 'Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente'}
+                </div>
+            </td>
+            <td class="col-meta" style="width: 30% !important; vertical-align: middle; text-align: right; font-size: 8.5px; color: #334155; line-height: 1.35; padding: 4px 6px; background: #f8fafc; box-sizing: border-box !important; overflow: hidden;">
                 <div><strong>Competência:</strong> ${nomeMes} / ${ano}</div>
                 <div><strong>Controle:</strong> ${escapeHTML(codigoRev)}</div>
                 <div><strong>Resp. Técnico:</strong> João Everton de S. Limeira</div>
@@ -15895,34 +15940,32 @@ function gerarGraficoBarrasRiscosSVG(baixoQtd, moderadoQtd, altoQtd, criticoQtd)
     ];
 
     const maxQtd = Math.max(...niveis.map(n => n.qtd), 1);
-    const w = 600, h = 180;
-    const labelW = 145, trackW = 340, trackH = 18;
+    const w = 520, h = 140;
+    const labelW = 135, trackW = 290, trackH = 18;
 
     let barsHtml = '';
     niveis.forEach((n, idx) => {
-        const y = 40 + idx * 30;
+        const y = 10 + idx * 32;
         const barW = total > 0 ? Math.max((n.qtd / maxQtd) * trackW, (n.qtd > 0 ? 8 : 0)) : 0;
         const pct = total > 0 ? ((n.qtd / total) * 100).toFixed(1) : '0.0';
 
         barsHtml += `
             <text x="${labelW}" y="${y + 13}" text-anchor="end" font-size="10" font-weight="600" fill="#334155" font-family="Arial, sans-serif">${n.label}</text>
-            <rect x="${labelW + 12}" y="${y}" width="${trackW}" height="${trackH}" rx="4" fill="#f1f5f9"/>
-            ${barW > 0 ? `<rect x="${labelW + 12}" y="${y}" width="${barW}" height="${trackH}" rx="4" fill="${n.cor}"><title>${n.label}: ${n.qtd} (${pct}%)</title></rect>` : ''}
-            <text x="${labelW + 20 + trackW}" y="${y + 13}" font-size="10" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">
+            <rect x="${labelW + 10}" y="${y}" width="${trackW}" height="${trackH}" rx="4" fill="#f1f5f9"/>
+            ${barW > 0 ? `<rect x="${labelW + 10}" y="${y}" width="${barW}" height="${trackH}" rx="4" fill="${n.cor}"><title>${n.label}: ${n.qtd} (${pct}%)</title></rect>` : ''}
+            <text x="${labelW + 18 + trackW}" y="${y + 13}" font-size="10" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">
                 ${n.qtd} <tspan font-weight="400" fill="#64748b">(${pct}%)</tspan>
             </text>
         `;
     });
 
     return `
-    <div class="grafico-container">
-        <svg viewBox="0 0 ${w} ${h}" width="100%" height="auto" style="max-width: ${w}px;" xmlns="http://www.w3.org/2000/svg">
-            <text x="15" y="20" font-size="12" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
-                PERFIL DE RISCO RESIDUAL DOS FATORES INVENTARIADOS (NR-01 / GRO)
-            </text>
-            <text x="${w - 15}" y="20" text-anchor="end" font-size="10" font-weight="700" fill="#475569" font-family="Arial, sans-serif">
-                Total: ${total} fatores catalogados
-            </text>
+    <div class="grafico-container" style="text-align: center; margin: 10px 0 14px 0;">
+        <div style="font-weight: bold; font-size: 11px; color: #1b365d; margin-bottom: 6px; text-transform: uppercase;">Perfil de Risco Residual dos Fatores Inventariados (NR-01 / GRO)</div>
+        <div style="font-size: 9.5px; color: #475569; font-weight: 600; margin-bottom: 8px;">
+            Total: ${total} fatores catalogados
+        </div>
+        <svg viewBox="0 0 520 140" width="100%" height="auto" style="max-width: 520px; display: block; margin: 0 auto;" xmlns="http://www.w3.org/2000/svg">
             ${barsHtml}
         </svg>
     </div>`;
@@ -17998,9 +18041,13 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
     <style>
         @page {
             size: A4 portrait;
-            margin: 10mm 12mm 12mm 12mm;
+            margin: 10mm 10mm 10mm 10mm;
         }
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
         body {
             font-family: Arial, Helvetica, sans-serif;
             font-size: 10px;
@@ -18009,8 +18056,6 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             margin: 0;
             padding: 0;
             line-height: 1.45;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
         }
         .no-print {
             text-align: center;
@@ -18032,24 +18077,58 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         }
         .btn-imprimir:hover { background: #2e5395; }
         .folha-relatorio {
-            max-width: 210mm;
+            width: 100%;
+            max-width: 190mm;
             margin: 0 auto;
-            padding: 0 8px;
+            padding: 0;
+            box-sizing: border-box !important;
         }
         .page-break {
             page-break-after: always;
             break-after: page;
+        }
+        .cabecalho-tabela,
+        .header-dossie,
+        .cabecalho-tabela-rel-sms {
+            width: 100% !important;
+            max-width: 100% !important;
+            table-layout: fixed !important;
+            border-collapse: collapse !important;
+            margin-bottom: 12px !important;
+            box-sizing: border-box !important;
+        }
+        .cabecalho-tabela td,
+        .header-dossie td,
+        .cabecalho-tabela-rel-sms td {
+            box-sizing: border-box !important;
+        }
+        .cabecalho-tabela .col-logo,
+        .header-dossie .col-logo,
+        .cabecalho-tabela-rel-sms .col-logo {
+            width: 20% !important;
+        }
+        .cabecalho-tabela .col-titulo,
+        .header-dossie .col-titulo,
+        .cabecalho-tabela-rel-sms .col-titulo {
+            width: 50% !important;
+        }
+        .cabecalho-tabela .col-meta,
+        .header-dossie .col-meta,
+        .cabecalho-tabela-rel-sms .col-meta {
+            width: 30% !important;
         }
         .rel-tabela {
             width: 100%;
             border-collapse: collapse;
             font-size: 9.5px;
             margin: 6px 0 12px 0;
+            box-sizing: border-box !important;
         }
         .rel-tabela th, .rel-tabela td {
             border: 1px solid #cbd5e1;
             padding: 4.5px 6px;
             text-align: center;
+            box-sizing: border-box !important;
         }
         .rel-tabela th {
             background: #1f3864;
@@ -18163,10 +18242,55 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         .grafico-container { page-break-inside: avoid; break-inside: avoid; margin: 10px 0 14px 0; text-align: center; }
         .grafico-container svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
         @media print {
-            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            @page {
+                size: A4 portrait;
+                margin: 10mm 10mm 10mm 10mm;
+            }
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                box-sizing: border-box !important;
+            }
             .no-print { display: none !important; }
-            body { margin: 0; background: #ffffff; }
-            .folha-relatorio { max-width: 100%; padding: 0; }
+            body { margin: 0; padding: 0; background: #ffffff; }
+            .folha-relatorio { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
+            .cabecalho-tabela,
+            .header-dossie,
+            .cabecalho-tabela-rel-sms {
+                width: 100% !important;
+                max-width: 100% !important;
+                table-layout: fixed !important;
+                border-collapse: collapse !important;
+                margin-bottom: 12px !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                box-sizing: border-box !important;
+            }
+            .cabecalho-tabela td,
+            .header-dossie td,
+            .cabecalho-tabela-rel-sms td {
+                box-sizing: border-box !important;
+            }
+            .cabecalho-tabela .col-logo,
+            .header-dossie .col-logo,
+            .cabecalho-tabela-rel-sms .col-logo {
+                width: 20% !important;
+            }
+            .cabecalho-tabela .col-titulo,
+            .header-dossie .col-titulo,
+            .cabecalho-tabela-rel-sms .col-titulo {
+                width: 50% !important;
+            }
+            .cabecalho-tabela .col-meta,
+            .header-dossie .col-meta,
+            .cabecalho-tabela-rel-sms .col-meta {
+                width: 30% !important;
+            }
+            .page-break,
+            .page-break-forced {
+                page-break-before: always !important;
+                break-before: page !important;
+            }
             tr { page-break-inside: avoid; }
             thead { display: table-header-group; }
             .grafico-container { page-break-inside: avoid !important; break-inside: avoid !important; margin: 8px 0 !important; }
@@ -18381,6 +18505,11 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         ${relSmsTabelaGenericaHtml(['Indicador de Gestão', 'Quantidade'], linhasApr, '75%')}
         <p class="rel-p">Classificação do risco residual nas APRs emitidas: Baixo (${apr.classCounts.Baixo}), Moderado (${apr.classCounts.Moderado}), Alto (${apr.classCounts.Alto}), Crítico (${apr.classCounts['Crítico']}).</p>
 
+        <div class="page-break" style="page-break-before: always; break-before: page;"></div>
+
+        <!-- SEÇÃO 1 (CONTINUAÇÃO): MATRIZ DE RISCOS & CAPACITAÇÃO / HHT -->
+        ${gerarBarraCabecalhoInstitucionalRelSmsHtml(mes, ano, '1.5. Matriz de Riscos por GHE & 1.6. Treinamentos (NR-01)')}
+
         <div class="rel-h2">1.5. Matriz de Riscos por GHE (Catálogo Operacional)</div>
         ${gerarGraficoBarrasRiscosSVG(
             (matrizRisco.porNivel['Baixo'] || 0) + (matrizRisco.porNivel['Trivial'] || 0),
@@ -18406,6 +18535,11 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             ['Treinamentos Pendentes / Reprogramados', treinamentos.cronograma.pendentes],
             ['Índice de Cumprimento do Cronograma', `${treinamentos.cronograma.taxa}%`]
         ], '75%')}
+
+        <div class="page-break" style="page-break-before: always; break-before: page;"></div>
+
+        <!-- SEÇÃO 1 (CONTINUAÇÃO): ACIDENTABILIDADE, EMERGÊNCIA & EPIS -->
+        ${gerarBarraCabecalhoInstitucionalRelSmsHtml(mes, ano, '1.7. Acidentabilidade NBR 14280, 1.8. Emergência & 1.9. EPIs')}
 
         <div class="rel-h2">1.7. Estatísticas de Acidentabilidade e HHT (NR-04 / NBR 14280)</div>
         <p class="rel-p">Apuramento dos coeficientes de frequência e gravidade em consonância com os critérios da NBR 14280 e diretrizes da NR-04.</p>

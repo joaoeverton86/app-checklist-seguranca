@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v178';
+const DASHBOARD_VERSION = 'v179';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -17490,7 +17490,23 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
     riscosGhe.forEach(r => { if (matrizRiscoPorNivel[r.gravidade_label] !== undefined) matrizRiscoPorNivel[r.gravidade_label]++; });
 
     // 6. Treinamentos e DDSMS (NR-01)
-    const treinamentosDados = montarLinhasRelatorioMensal(ano, mes, 'semanal');
+    if (!Array.isArray(allTreinamentosRealizados)) allTreinamentosRealizados = [];
+    if (!Array.isArray(allTreinamentosCronograma)) allTreinamentosCronograma = [];
+    if (!Array.isArray(allTreinamentosStatus)) allTreinamentosStatus = [];
+    if (!Array.isArray(allDdsRealizados)) allDdsRealizados = [];
+    if (!Array.isArray(allDdsHistoricoAgregado)) allDdsHistoricoAgregado = [];
+
+    const treinamentosDados = (typeof montarLinhasRelatorioMensal === 'function'
+        ? montarLinhasRelatorioMensal(ano, mes, 'semanal')
+        : null) || {
+            totalFuncionarios: totalFuncionarios || 0,
+            categorias: [],
+            totais: {
+                participantes: { integracao: 0, seguranca: 0, adicionais: 0, dds: 0, geral: 0 },
+                hht: { integracao: 0, seguranca: 0, adicionais: 0, dds: 0, geral: 0 },
+                totalTurmas: 0, mediaParticipantesPorTurma: 0, percMedia: 0, efetivoX220: 0, percHhtEfetivo: 0
+            }
+        };
     const cronogramaMes = (allTreinamentosCronograma || []).filter(c => dentroMes(c.data_prevista));
     const cronogramaRealizados = cronogramaMes.filter(c => c.status === 'lancado' || c.status === 'concluido').length;
     const cronogramaPendentes = cronogramaMes.filter(c => c.status !== 'lancado' && c.status !== 'concluido').length;
@@ -17742,11 +17758,12 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
         tg: tg.toFixed(2),
         checklistsTotal: checklistsMes.length,
         checklistsConformePct: taxaConformidadeChk.toFixed(1) + '%',
-        hhtTreinamento: treinamentosDados.totais.hht.geral.toFixed(0) + ' h',
-        treinamentosParticipantes: treinamentosDados.totais.participantes.geral,
+        hhtTreinamento: (treinamentosDados?.totais?.hht?.geral || 0).toFixed(0) + ' h',
+        treinamentosParticipantes: treinamentosDados?.totais?.participantes?.geral || 0,
         ddsEfetuados: ddsEfetuadosValor,
         ddsSessoes: sessoesTotaisDds,
         ddsDias: diasUteisComDds,
+        ddsParticipantes: treinamentosDados?.totais?.participantes?.dds || 0,
         extintoresConformePct: percConformidadeExt + '%',
         extintoresFracao: fracaoExtintoresTexto,
         diasSemCpt: (diasSemCpt !== null && diasSemCpt !== undefined) ? diasSemCpt : 0,
@@ -18692,6 +18709,7 @@ function renderRelSmsPainel(dados, fiscalizacao) {
     if (!previewEl) return;
 
     const { meta, efetivo, hht, kpisRapidos, checklists, naoConformidades, relatos, apr, matrizRisco, treinamentos, acidentes, pgr, saude, ergonomia, psicossocial, periculosidade, extintores, brigada, cipa, epi, ada, meioAmbiente, fotos } = dados;
+    const treinamentosDados = (treinamentos && treinamentos.dados) ? treinamentos.dados : { totais: { participantes: { dds: 0, geral: 0 }, hht: { dds: 0, geral: 0 } }, categorias: [] };
 
     const html = `
     <!-- Topo do Dossiê -->
@@ -18763,7 +18781,7 @@ function renderRelSmsPainel(dados, fiscalizacao) {
         <div class="rel-sms-kpi-card destaque-amber">
             <div class="rel-sms-kpi-lbl"><i class="fa-solid fa-comments"></i> Sessões de DDS</div>
             <div class="rel-sms-kpi-val">${kpisRapidos.ddsEfetuados}</div>
-            <div class="rel-sms-kpi-sub">${kpisRapidos.ddsDias} dias úteis c/ DDS (${treinamentosDados.totais.participantes.dds || 0} part.)</div>
+            <div class="rel-sms-kpi-sub">${kpisRapidos.ddsDias} dias úteis c/ DDS (${kpisRapidos.ddsParticipantes || treinamentosDados?.totais?.participantes?.dds || 0} part.)</div>
         </div>
         <div class="rel-sms-kpi-card destaque-azul">
             <div class="rel-sms-kpi-lbl"><i class="fa-solid fa-fire-extinguisher"></i> Extintores Conformes</div>

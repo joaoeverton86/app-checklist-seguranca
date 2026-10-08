@@ -26414,7 +26414,7 @@ async function loadEpiData() {
 }
 
 function showEpiSubtab(tab) {
-    ['visao', 'lancamentos', 'estoque', 'cadastro', 'diretrizes', 'matriz', 'historico', 'relatorio'].forEach(t => {
+    ['visao', 'lancamentos', 'estoque', 'consumo', 'cadastro', 'diretrizes', 'matriz', 'historico', 'relatorio'].forEach(t => {
         const content = document.getElementById('epiSubtab-' + t);
         const btn = document.getElementById('epiSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -26422,6 +26422,7 @@ function showEpiSubtab(tab) {
     });
     if (tab === 'visao') renderEpiPanel();
     if (tab === 'estoque') renderEpiEstoquePanel();
+    if (tab === 'consumo') renderEpiConsumoComprasPanel();
     if (tab === 'cadastro') { renderEpiCatalogoResumo(); filterEpiCatalogoLista(document.getElementById('epiCatalogoSearchInput')?.value || ''); }
     if (tab === 'lancamentos') { renderEpiEntregasResumo(); filterEpiEntregasLista(document.getElementById('epiEntregasSearchInput')?.value || ''); }
     if (tab === 'matriz') {
@@ -27626,7 +27627,10 @@ function filterEpiEstoqueLista(query) {
                             ${caExemplo}${marcaExemplo} · Total: <b>${saldoTotalFam} un</b> · Consumo: <b>${consumoMensalFam.toFixed(1)}/mês</b> · Cobertura: <b>${cobFamDias >= 999 ? 'Estável' : cobFamDias + ' dias'}</b>${valorFamStr}
                         </div>
                     </div>
-                    <div>${statusGeralBadge}</div>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                        <button onclick="event.stopPropagation(); abrirConsumoEpiFamilia('${escapeHTML(famNome)}')" title="Ver consumo mensal, média e justificativa de compras desta família" class="db-clear-btn" style="padding:4px 8px; font-size:11px; background:rgba(79, 70, 229, 0.08); color:var(--primary); border-color:rgba(79, 70, 229, 0.3);">📊 Consumo</button>
+                        ${statusGeralBadge}
+                    </div>
                 </div>
                 <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding-top: 4px; border-top: 1px dashed var(--border);">
                     <span style="font-size: 11px; font-weight: 600; color: var(--text-light); margin-right: 4px;">Grade de Tamanhos:</span>
@@ -27653,7 +27657,10 @@ function filterEpiEstoqueLista(query) {
                         Saldo: <b>${m.saldo}</b> (Mín: ${m.minimo}) · Consumo: <b>${m.consumoMensal.toFixed(1)}/mês</b> · Cobertura: <b>${m.coberturaDias >= 999 ? 'Estável' : m.coberturaDias + ' dias'}</b>${caStr}${custoStr}${valorTotalItemStr}
                     </div>
                 </div>
-                <div>${m.badgeHtml}</div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <button onclick="event.stopPropagation(); abrirConsumoEpiItem('${escapeHTML(c.id)}')" title="Ver consumo mensal e justificativa de compras deste item" class="db-clear-btn" style="padding:4px 8px; font-size:11px; background:rgba(79, 70, 229, 0.08); color:var(--primary); border-color:rgba(79, 70, 229, 0.3);">📊 Consumo</button>
+                    ${m.badgeHtml}
+                </div>
             </div>`;
         }).join('');
     }
@@ -27808,9 +27815,11 @@ function renderEpiTabelaItensCompras() {
 
         return `
         <tr style="border-bottom: 1px solid var(--border);">
-            <td style="padding: 6px; text-align: center;">
+            <td style="padding: 6px; text-align: center; white-space: nowrap;">
                 <button onclick="removerItemSolicitacaoCompras('${escapeHTML(m.catalogoId)}')" title="Remover este item da solicitação de compras"
-                        style="background: transparent; border: none; cursor: pointer; color: var(--danger); font-size: 14px; padding: 2px 4px;">🗑️</button>
+                        style="background: transparent; border: none; cursor: pointer; color: var(--danger); font-size: 14px; padding: 2px 3px;">🗑️</button>
+                <button onclick="abrirConsumoEpiItem('${escapeHTML(m.catalogoId)}')" title="Ver consumo médio mensal e parecer técnico deste item"
+                        style="background: transparent; border: none; cursor: pointer; color: var(--primary); font-size: 14px; padding: 2px 3px;">📊</button>
             </td>
             <td style="padding: 6px; text-align: center;">${idx + 1}</td>
             <td style="padding: 6px;"><b>${escapeHTML(cat.descricao)}</b></td>
@@ -28867,6 +28876,827 @@ async function importarEpiCSV() {
         console.error('Erro ao importar histórico de EPI:', err);
         statusEl.textContent = '❌ Erro na importação: ' + err.message;
     }
+}
+
+// ================================================================
+// MÓDULO OFICIAL: INTELIGÊNCIA DE CONSUMO & JUSTIFICATIVA DE COMPRAS DE EPI
+// Responde à demanda executiva: "Quantas saem por mês?" (Run Rate, Giro de Almoxarifado
+// e Justificativa Técnica NR-06 para Suprimentos e Diretoria)
+// ================================================================
+
+let epiConsumoEstado = {
+    diasHorizonte: 60,
+    dadosCalculados: null
+};
+
+function popularEpiCatalogoConsumoDatalist() {
+    const dl = document.getElementById('epiCatalogoConsumoList');
+    if (!dl) return;
+    const itensAtivos = (allEpiCatalogo || []).filter(c => c.ativo !== false);
+    dl.innerHTML = itensAtivos.map(c => {
+        const caStr = c.ca ? ` (CA: ${c.ca})` : '';
+        const tamStr = c.tamanho ? ` - Tam. ${c.tamanho}` : '';
+        return `<option value="${escapeHTML(c.descricao + caStr + tamStr)}" data-id="${escapeHTML(c.id)}"></option>`;
+    }).join('');
+}
+
+function aoMudarFiltroConsumoEpi(limparItem) {
+    if (limparItem) {
+        const itemInp = document.getElementById('epiConsumo_filtroItem');
+        if (itemInp) itemInp.value = '';
+    }
+    renderEpiConsumoComprasPanel();
+}
+
+function abrirConsumoEpiItem(catalogoId) {
+    const cat = (allEpiCatalogo || []).find(c => c.id === catalogoId);
+    if (!cat) return;
+    showEpiSubtab('consumo');
+    const tipoSel = document.getElementById('epiConsumo_filtroTipo');
+    const itemInp = document.getElementById('epiConsumo_filtroItem');
+    if (tipoSel) tipoSel.value = cat.tipo_protecao || 'todos';
+    if (itemInp) {
+        const caStr = cat.ca ? ` (CA: ${cat.ca})` : '';
+        const tamStr = cat.tamanho ? ` - Tam. ${cat.tamanho}` : '';
+        itemInp.value = `${cat.descricao}${caStr}${tamStr}`;
+    }
+    renderEpiConsumoComprasPanel();
+    const subtab = document.getElementById('epiSubtab-consumo');
+    if (subtab) subtab.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function abrirConsumoEpiFamilia(famNome) {
+    showEpiSubtab('consumo');
+    const itemInp = document.getElementById('epiConsumo_filtroItem');
+    if (itemInp) itemInp.value = famNome;
+    renderEpiConsumoComprasPanel();
+    const subtab = document.getElementById('epiSubtab-consumo');
+    if (subtab) subtab.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function calcularConsumoComprasEpi() {
+    const tipoFiltro = document.getElementById('epiConsumo_filtroTipo')?.value || 'maos';
+    const termoFiltro = (document.getElementById('epiConsumo_filtroItem')?.value || '').trim().toLowerCase();
+    const janelaMesesVal = document.getElementById('epiConsumo_filtroJanela')?.value || '6';
+
+    const estoquePorId = new Map((allEpiEstoque || []).map(es => [es.epi_catalogo_id, es]));
+    const todosAtivos = (allEpiCatalogo || []).filter(c => c.ativo !== false);
+
+    // 1. Filtragem do Catálogo
+    let itensFiltrados = [];
+    let nomeSelecao = '';
+
+    if (termoFiltro.length >= 2) {
+        itensFiltrados = todosAtivos.filter(c => {
+            const desc = (c.descricao || '').toLowerCase();
+            const ca = (c.ca || '').toLowerCase();
+            const id = (c.id || '').toLowerCase();
+            const fam = extrairFamiliaEpi(c).toLowerCase();
+            return desc.includes(termoFiltro) || ca.includes(termoFiltro) || id.includes(termoFiltro) || fam.includes(termoFiltro);
+        });
+        if (itensFiltrados.length === 0) itensFiltrados = todosAtivos;
+        nomeSelecao = itensFiltrados.length === 1 ? itensFiltrados[0].descricao : `Itens filtrados por "${termoFiltro}"`;
+    } else {
+        if (tipoFiltro === 'todos') {
+            itensFiltrados = todosAtivos;
+            nomeSelecao = 'Todos os EPIs do Catálogo';
+        } else {
+            itensFiltrados = todosAtivos.filter(c => c.tipo_protecao === tipoFiltro);
+            const rotulosBonitos = {
+                maos: 'Luvas (Proteção das Mãos)',
+                pes: 'Calçados / Botas (Proteção dos Pés)',
+                olhos: 'Óculos e Viseiras (Proteção Ocular)',
+                audicao: 'Protetores Auriculares (Proteção Auditiva)',
+                respiratorio: 'Máscaras e Respiradores (Proteção Respiratória)',
+                cabeca: 'Capacetes (Proteção da Cabeça)',
+                corpo: 'Vestimentas e Uniformes (Proteção do Corpo)',
+                altura: 'Cintos e Trava-quedas (Trabalho em Altura)',
+                outro: 'Outros Equipamentos'
+            };
+            nomeSelecao = rotulosBonitos[tipoFiltro] || EPI_TIPO_LABELS[tipoFiltro] || 'EPIs';
+        }
+    }
+
+    const catIdsSet = new Set(itensFiltrados.map(c => c.id));
+
+    // 2. Janela de Cálculo de Datas
+    const hoje = new Date();
+    let dataInicio;
+    let mesesJanela = 6;
+
+    if (janelaMesesVal === 'todos') {
+        const datasValidas = (allEpiEntregas || [])
+            .filter(e => catIdsSet.has(e.epi_catalogo_id) && e.data_entrega)
+            .map(e => parseLocalDate(e.data_entrega));
+        if (datasValidas.length > 0) {
+            dataInicio = new Date(Math.min(...datasValidas.map(d => d.getTime())));
+            dataInicio = new Date(dataInicio.getFullYear(), dataInicio.getMonth(), 1);
+            mesesJanela = Math.max(1, Math.round((hoje.getTime() - dataInicio.getTime()) / (30.4375 * 24 * 60 * 60 * 1000)));
+        } else {
+            mesesJanela = 6;
+            dataInicio = new Date(hoje.getFullYear(), hoje.getMonth() - 6, 1);
+        }
+    } else {
+        mesesJanela = parseInt(janelaMesesVal, 10) || 6;
+        dataInicio = new Date(hoje.getFullYear(), hoje.getMonth() - mesesJanela, 1);
+    }
+
+    const dataInicioStr = toISODateLocal(dataInicio);
+    const dataFimStr = toISODateLocal(hoje);
+
+    // 3. Entregas filtradas na janela
+    const entregasJanela = (allEpiEntregas || []).filter(e => {
+        if (!e.data_entrega || !catIdsSet.has(e.epi_catalogo_id)) return false;
+        return e.data_entrega >= dataInicioStr && e.data_entrega <= dataFimStr;
+    });
+
+    const qtdTotal = entregasJanela.reduce((acc, e) => acc + (Number(e.quantidade) || 1), 0);
+    const consumoMensal = mesesJanela > 0 ? (qtdTotal / mesesJanela) : 0;
+    const consumoDiario = consumoMensal / 30;
+
+    // 4. Saldo somado do almoxarifado
+    let saldoTotal = 0;
+    let valorEstoqueTotal = 0;
+    let somaCustos = 0;
+    let itensComCusto = 0;
+
+    itensFiltrados.forEach(c => {
+        const es = estoquePorId.get(c.id);
+        const s = es ? (es.quantidade_atual || 0) : 0;
+        saldoTotal += s;
+        const cu = Number(c.custo_unitario) || 0;
+        if (cu > 0) {
+            valorEstoqueTotal += s * cu;
+            somaCustos += cu;
+            itensComCusto++;
+        }
+    });
+
+    const custoMedioUnitario = itensComCusto > 0 ? (somaCustos / itensComCusto) : 0;
+
+    // 5. Cobertura Restante (Run Rate)
+    let coberturaDias = 0;
+    if (consumoDiario > 0) {
+        coberturaDias = Math.floor(saldoTotal / consumoDiario);
+    } else {
+        coberturaDias = saldoTotal > 0 ? 999 : 0;
+    }
+
+    let nivelCobertura = 'seguro';
+    let coberturaBadgeHtml = '<span class="badge" style="background:#e6f7ee; color:#1a7f4b; border:1px solid #b8e6cc; font-size:12px; padding:4px 8px;">🟢 Estoque Seguro</span>';
+
+    if (saldoTotal <= 0) {
+        nivelCobertura = 'zerado';
+        coberturaBadgeHtml = '<span class="badge" style="background:#fdf2f2; color:#c0392b; border:1px solid #f3c6c6; font-size:12px; padding:4px 8px;">🚫 Estoque Desabastecido (Zerado)</span>';
+    } else if (coberturaDias < 15) {
+        nivelCobertura = 'critico';
+        coberturaBadgeHtml = `<span class="badge" style="background:#fdf2f2; color:#c0392b; border:1px solid #f3c6c6; font-size:12px; padding:4px 8px;">🔴 Crítico (${coberturaDias} dias restantes)</span>`;
+    } else if (coberturaDias <= 30) {
+        nivelCobertura = 'reposicao';
+        coberturaBadgeHtml = `<span class="badge" style="background:#fff9e6; color:#b78a00; border:1px solid #ffe8a1; font-size:12px; padding:4px 8px;">🟡 Ponto de Pedido (${coberturaDias} dias restantes)</span>`;
+    } else {
+        const dStr = coberturaDias >= 999 ? 'Estável (sem saídas no período)' : `${coberturaDias} dias de estoque`;
+        coberturaBadgeHtml = `<span class="badge" style="background:#e6f7ee; color:#1a7f4b; border:1px solid #b8e6cc; font-size:12px; padding:4px 8px;">🟢 ${dStr}</span>`;
+    }
+
+    // Taxa de reposição
+    const reposicoes = entregasJanela.filter(e => e.tipo_entrega && e.tipo_entrega !== 'inicial').length;
+    const taxaReposicao = entregasJanela.length > 0 ? (reposicoes / entregasJanela.length * 100) : 0;
+
+    // 6. Evolução mês a mês
+    const mesesGrafico = [];
+    let cursorMes = new Date(dataInicio.getFullYear(), dataInicio.getMonth(), 1);
+    const limiteMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+
+    while (cursorMes <= limiteMes) {
+        const a = cursorMes.getFullYear();
+        const m = cursorMes.getMonth();
+        const rotulo = cursorMes.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+        const iniMes = new Date(a, m, 1);
+        const fimMes = new Date(a, m + 1, 0);
+
+        const sub = entregasJanela.filter(e => {
+            const dt = parseLocalDate(e.data_entrega);
+            return dt >= iniMes && dt <= fimMes;
+        });
+
+        const q = sub.reduce((sum, e) => sum + (Number(e.quantidade) || 1), 0);
+        const colabs = new Set(sub.map(e => e.matricula)).size;
+        const rep = sub.filter(e => e.tipo_entrega && e.tipo_entrega !== 'inicial').length;
+
+        mesesGrafico.push({ rotulo, ano: a, mes: m, quantidade: q, colaboradores: colabs, reposicoes: rep });
+        cursorMes = new Date(a, m + 1, 1);
+    }
+
+    // 7. Saídas por Setor
+    const setorMap = new Map();
+    entregasJanela.forEach(e => {
+        const s = (e.setor || 'Não informado').trim();
+        setorMap.set(s, (setorMap.get(s) || 0) + (Number(e.quantidade) || 1));
+    });
+    const setoresArray = Array.from(setorMap.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([nome, qtd]) => ({
+            nome,
+            quantidade: qtd,
+            percentual: qtdTotal > 0 ? (qtd / qtdTotal * 100) : 0,
+            mediaMensal: mesesJanela > 0 ? (qtd / mesesJanela) : 0
+        }));
+
+    // 8. Desdobramento por Modelo da seleção
+    const modelosArray = itensFiltrados.map(cat => {
+        const es = estoquePorId.get(cat.id);
+        const saldo = es ? (es.quantidade_atual || 0) : 0;
+        const minimo = es ? (es.quantidade_minima || 0) : 0;
+        const subEntregas = entregasJanela.filter(e => e.epi_catalogo_id === cat.id);
+        const subQtd = subEntregas.reduce((acc, e) => acc + (Number(e.quantidade) || 1), 0);
+        const subMediaMensal = mesesJanela > 0 ? (subQtd / mesesJanela) : 0;
+        const subDiario = subMediaMensal / 30;
+        const subCobDias = subDiario > 0 ? Math.floor(saldo / subDiario) : (saldo > 0 ? 999 : 0);
+
+        let subNivel = 'seguro';
+        let subBadge = '<span class="badge" style="background:#e6f7ee; color:#1a7f4b; border:1px solid #b8e6cc;">🟢 Seguro</span>';
+        if (saldo <= 0) {
+            subNivel = 'zerado';
+            subBadge = '<span class="badge" style="background:#fdf2f2; color:#c0392b; border:1px solid #f3c6c6;">🚫 Zerado</span>';
+        } else if (subCobDias < 15 || (minimo > 0 && saldo <= minimo)) {
+            subNivel = 'critico';
+            subBadge = `<span class="badge" style="background:#fdf2f2; color:#c0392b; border:1px solid #f3c6c6;">🔴 ${subCobDias}d</span>`;
+        } else if (subCobDias <= 30) {
+            subNivel = 'reposicao';
+            subBadge = `<span class="badge" style="background:#fff9e6; color:#b78a00; border:1px solid #ffe8a1;">🟡 ${subCobDias}d</span>`;
+        }
+
+        return {
+            cat,
+            saldo,
+            minimo,
+            qtdEntregue: subQtd,
+            consumoMensal: subMediaMensal,
+            coberturaDias: subCobDias,
+            nivel: subNivel,
+            badgeHtml: subBadge
+        };
+    }).sort((a, b) => (b.consumoMensal - a.consumoMensal) || (a.saldo - b.saldo));
+
+    return {
+        tipoFiltro,
+        termoFiltro,
+        nomeSelecao,
+        itensFiltrados,
+        mesesJanela,
+        dataInicioStr,
+        dataFimStr,
+        entregasJanelaCount: entregasJanela.length,
+        qtdTotal,
+        consumoMensal,
+        consumoDiario,
+        saldoTotal,
+        valorEstoqueTotal,
+        custoMedioUnitario,
+        coberturaDias,
+        nivelCobertura,
+        coberturaBadgeHtml,
+        taxaReposicao,
+        mesesGrafico,
+        setoresArray,
+        modelosArray
+    };
+}
+
+function renderEpiConsumoComprasPanel() {
+    popularEpiCatalogoConsumoDatalist();
+    const d = calcularConsumoComprasEpi();
+    epiConsumoEstado.dadosCalculados = d;
+
+    // 1. Banner Principal de Resposta Executiva
+    const banner = document.getElementById('epiConsumoBannerResposta');
+    if (banner) {
+        let icone = '📦';
+        if (d.tipoFiltro === 'maos') icone = '🧤';
+        else if (d.tipoFiltro === 'pes') icone = '🥾';
+        else if (d.tipoFiltro === 'olhos') icone = '👓';
+        else if (d.tipoFiltro === 'audicao') icone = '🎧';
+        else if (d.tipoFiltro === 'respiratorio') icone = '😷';
+        else if (d.tipoFiltro === 'cabeca') icone = '🪖';
+        else if (d.tipoFiltro === 'corpo') icone = '🛡️';
+        else if (d.tipoFiltro === 'altura') icone = '🧗';
+
+        banner.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+            <div style="flex:1; min-width:280px;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                    <span style="font-size:18px;">${icone}</span>
+                    <span style="font-size:11.5px; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:0.5px;">Resposta Executiva para Compras &amp; Diretoria</span>
+                </div>
+                <div style="font-size:22px; font-weight:800; color:var(--text); line-height:1.2;">
+                    Saem em média <span style="color:#2563eb; background:rgba(37,99,235,0.08); padding:2px 8px; border-radius:8px;">${d.consumoMensal.toFixed(1)} unidades/mês</span> de ${escapeHTML(d.nomeSelecao)}
+                </div>
+                <div style="font-size:12.5px; color:var(--text-light); margin-top:6px; line-height:1.4;">
+                    Ritmo diário de <b>${d.consumoDiario.toFixed(1)} un/dia</b> · Base histórica real: <b>${d.qtdTotal} unidades entregues</b> em <b>${d.entregasJanelaCount} retiradas</b> nos últimos <b>${d.mesesJanela} meses</b> (${formatSimpleDate(d.dataInicioStr)} a ${formatSimpleDate(d.dataFimStr)}).
+                </div>
+            </div>
+            <div style="text-align:right; min-width:180px; padding:10px 14px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">
+                <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; font-weight:600;">Saldo Atual no Almoxarifado:</div>
+                <div style="font-size:20px; font-weight:800; color:var(--text); margin:2px 0;">${d.saldoTotal} unidades</div>
+                <div style="margin-top:4px;">${d.coberturaBadgeHtml}</div>
+            </div>
+        </div>`;
+    }
+
+    // 2. Atualizar 4 KPIs
+    const kpiMedia = document.getElementById('kpiConsumoMediaMensal');
+    if (kpiMedia) kpiMedia.textContent = `${d.consumoMensal.toFixed(1)} un/mês`;
+    const kpiSaldo = document.getElementById('kpiConsumoSaldoAtual');
+    if (kpiSaldo) kpiSaldo.textContent = `${d.saldoTotal} un`;
+    const kpiCob = document.getElementById('kpiConsumoCoberturaDias');
+    if (kpiCob) {
+        kpiCob.textContent = d.coberturaDias >= 999 ? 'Estável' : `${d.coberturaDias} dias`;
+        const cardCob = document.getElementById('kpiCardConsumoCobertura');
+        if (cardCob) {
+            cardCob.className = 'db-kpi-card ' + (d.nivelCobertura === 'critico' || d.nivelCobertura === 'zerado' ? 'db-kpi-danger' : (d.nivelCobertura === 'reposicao' ? 'db-kpi-warning' : 'db-kpi-success'));
+        }
+    }
+    const kpiTaxa = document.getElementById('kpiConsumoTaxaReposicao');
+    if (kpiTaxa) kpiTaxa.textContent = `${d.taxaReposicao.toFixed(1)}%`;
+
+    // 3. Gráfico de Evolução Mês a Mês (com linha de média)
+    const mediaLabelEl = document.getElementById('epiConsumoMediaLinhaLabel');
+    if (mediaLabelEl) mediaLabelEl.textContent = `Média: ${d.consumoMensal.toFixed(1)}/mês`;
+
+    if (typeof Chart !== 'undefined') {
+        if (chartInstances.epiConsumoMensal) chartInstances.epiConsumoMensal.destroy();
+        if (chartInstances.epiConsumoPorSetor) chartInstances.epiConsumoPorSetor.destroy();
+
+        const canvasMes = document.getElementById('chartEpiConsumoMensal');
+        if (canvasMes) {
+            const rotulos = d.mesesGrafico.map(m => m.rotulo);
+            const dadosQtd = d.mesesGrafico.map(m => m.quantidade);
+            const linhaMedia = d.mesesGrafico.map(() => Number(d.consumoMensal.toFixed(1)));
+
+            chartInstances.epiConsumoMensal = new Chart(canvasMes, {
+                type: 'bar',
+                data: {
+                    labels: rotulos,
+                    datasets: [
+                        {
+                            label: 'Saídas Reais (unidades)',
+                            data: dadosQtd,
+                            backgroundColor: '#4f46e5',
+                            borderRadius: 6,
+                            order: 2
+                        },
+                        {
+                            label: 'Consumo Médio Mensal',
+                            data: linhaMedia,
+                            type: 'line',
+                            borderColor: '#ef4444',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            fill: false,
+                            order: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+                        tooltip: {
+                            callbacks: {
+                                footer: function(items) {
+                                    const idx = items[0]?.dataIndex;
+                                    const mesInfo = d.mesesGrafico[idx];
+                                    if (!mesInfo) return '';
+                                    return `Colaboradores atendidos: ${mesInfo.colaboradores}\nReposições: ${mesInfo.reposicoes}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                    }
+                }
+            });
+        }
+
+        // Gráfico de Saídas por Setor
+        const canvasSetor = document.getElementById('chartEpiConsumoPorSetor');
+        if (canvasSetor) {
+            const setoresLabels = d.setoresArray.map(s => wrapChartLabel(s.nome));
+            ajustarAlturaBarrasHorizontais('chartEpiConsumoPorSetor', setoresLabels);
+            chartInstances.epiConsumoPorSetor = new Chart(canvasSetor, {
+                type: 'bar',
+                data: {
+                    labels: setoresLabels,
+                    datasets: [{
+                        label: 'Unidades Retiradas',
+                        data: d.setoresArray.map(s => s.quantidade),
+                        backgroundColor: '#10b981',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(item) {
+                                    const s = d.setoresArray[item.dataIndex];
+                                    return `${s.percentual.toFixed(1)}% do total (${s.mediaMensal.toFixed(1)} un/mês)`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { beginAtZero: true, ticks: { stepSize: 1 } },
+                        y: { ticks: { autoSkip: false } }
+                    }
+                }
+            });
+        }
+    }
+
+    // 4. Tabela de Desdobramento por Modelo
+    const contagemModelosEl = document.getElementById('epiConsumoContagemModelos');
+    if (contagemModelosEl) contagemModelosEl.textContent = `${d.modelosArray.length} modelo(s) cadastrado(s)`;
+
+    const tabModelos = document.getElementById('epiConsumoTabelaModelos');
+    if (tabModelos) {
+        if (d.modelosArray.length === 0) {
+            tabModelos.innerHTML = '<div class="db-list-empty">Nenhum item encontrado para esta seleção.</div>';
+        } else {
+            const linhasMod = d.modelosArray.map((m, idx) => {
+                const cat = m.cat;
+                const tamStr = cat.tamanho || (cat.descricao.match(/TAMANHO:\s*([^\s\-]+)/i)?.[1] || 'Único');
+                const cobTexto = m.coberturaDias >= 999 ? 'Estável' : `${m.coberturaDias} dias`;
+                return `
+                <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:7px 8px; text-align:center;">${idx + 1}</td>
+                    <td style="padding:7px 8px;">
+                        <b>${escapeHTML(cat.descricao)}</b>
+                        ${cat.marca ? ` <span style="font-size:11px; color:var(--text-light);">(Marca: ${escapeHTML(cat.marca)})</span>` : ''}
+                    </td>
+                    <td style="padding:7px 8px; text-align:center;">${escapeHTML(tamStr)}</td>
+                    <td style="padding:7px 8px; text-align:center;">${escapeHTML(cat.ca || '—')}</td>
+                    <td style="padding:7px 8px; text-align:center; font-weight:700;">${m.saldo}</td>
+                    <td style="padding:7px 8px; text-align:center; color:#2563eb; font-weight:700;">${m.consumoMensal.toFixed(1)}</td>
+                    <td style="padding:7px 8px; text-align:center;">${m.badgeHtml}</td>
+                    <td style="padding:7px 8px; text-align:center; white-space:nowrap;">
+                        <button onclick="abrirConsumoEpiItem('${escapeHTML(cat.id)}')" title="Focar a análise e simulador de compras exclusivamente neste item"
+                                class="db-clear-btn" style="padding:3px 7px; font-size:11px; color:#2563eb; border-color:#2563eb;">🔍 Focar Item</button>
+                    </td>
+                </tr>`;
+            }).join('');
+
+            tabModelos.innerHTML = `
+            <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                <thead>
+                    <tr style="background:var(--bg); text-align:left; border-bottom:2px solid var(--border);">
+                        <th style="padding:7px 8px; width:30px; text-align:center;">#</th>
+                        <th style="padding:7px 8px;">Item de EPI (Modelo / Descrição)</th>
+                        <th style="padding:7px 8px; width:65px; text-align:center;">Tam</th>
+                        <th style="padding:7px 8px; width:75px; text-align:center;">CA</th>
+                        <th style="padding:7px 8px; width:60px; text-align:center;">Saldo</th>
+                        <th style="padding:7px 8px; width:80px; text-align:center; color:#2563eb;">Média/mês</th>
+                        <th style="padding:7px 8px; width:100px; text-align:center;">Cobertura</th>
+                        <th style="padding:7px 8px; width:85px; text-align:center;">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>${linhasMod}</tbody>
+            </table>`;
+        }
+    }
+
+    // 5. Atualizar Simulador de Pedido
+    recalcularSimuladorCompraEpi();
+}
+
+function definirHorizonteCompra(dias) {
+    epiConsumoEstado.diasHorizonte = dias;
+    ['30', '60', '90'].forEach(h => {
+        const btn = document.getElementById('btnHorizonte' + h);
+        if (btn) btn.classList.toggle('active', parseInt(h, 10) === dias);
+    });
+    const inp = document.getElementById('epiSimulador_diasPersonalizados');
+    if (inp) inp.value = dias;
+    recalcularSimuladorCompraEpi();
+}
+
+function aoMudarDiasPersonalizados(val) {
+    const d = parseInt(val, 10);
+    if (!isNaN(d) && d > 0) {
+        epiConsumoEstado.diasHorizonte = d;
+        ['30', '60', '90'].forEach(h => {
+            const btn = document.getElementById('btnHorizonte' + h);
+            if (btn) btn.classList.toggle('active', parseInt(h, 10) === d);
+        });
+        recalcularSimuladorCompraEpi();
+    }
+}
+
+function recalcularSimuladorCompraEpi() {
+    const d = epiConsumoEstado.dadosCalculados;
+    if (!d) return;
+
+    const diasHorizonte = epiConsumoEstado.diasHorizonte || 60;
+    const adicionais = parseInt(document.getElementById('epiSimulador_adicionais')?.value, 10) || 0;
+    const totalEfetivo = Math.max(1, (allEfetivo || []).length);
+    const fatorExpansao = adicionais > 0 ? (1 + (adicionais / totalEfetivo)) : 1;
+
+    // Cálculo da necessidade operacional
+    const demandaBruta = Math.ceil(d.consumoDiario * diasHorizonte * fatorExpansao);
+    const loteSugerido = Math.max(0, demandaBruta - d.saldoTotal);
+    const estoqueProjetadoFinal = d.saldoTotal + loteSugerido;
+    const diasCoberturaFinal = d.consumoDiario > 0 ? Math.round(estoqueProjetadoFinal / d.consumoDiario) : diasHorizonte;
+
+    // Custo financeiro estimado
+    const valorEstimado = loteSugerido * (d.custoMedioUnitario || 0);
+
+    // Box de Resultados do Simulador
+    const boxRes = document.getElementById('epiSimuladorResultadoBox');
+    if (boxRes) {
+        boxRes.innerHTML = `
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; align-items:center;">
+            <div style="padding:8px 12px; background:var(--bg); border-radius:6px; border:1px solid var(--border);">
+                <div style="font-size:11px; color:var(--text-light); font-weight:600; text-transform:uppercase;">1. Demanda para ${diasHorizonte} dias:</div>
+                <div style="font-size:17px; font-weight:700; color:var(--text);">${demandaBruta} unidades</div>
+                <div style="font-size:11px; color:var(--text-light);">${(demandaBruta / (diasHorizonte / 30)).toFixed(1)} un/mês no período</div>
+            </div>
+            <div style="padding:8px 12px; background:var(--bg); border-radius:6px; border:1px solid var(--border);">
+                <div style="font-size:11px; color:var(--text-light); font-weight:600; text-transform:uppercase;">2. Saldo Atual Deduzido:</div>
+                <div style="font-size:17px; font-weight:700; color:#10b981;">- ${d.saldoTotal} unidades</div>
+                <div style="font-size:11px; color:var(--text-light);">Já em almoxarifado</div>
+            </div>
+            <div style="padding:10px 14px; background:#eff6ff; border-radius:8px; border:2px solid #2563eb;">
+                <div style="font-size:11px; color:#1d4ed8; font-weight:700; text-transform:uppercase;">3. Lote Sugerido para Compra:</div>
+                <div style="font-size:24px; font-weight:800; color:#2563eb;">${loteSugerido} unidades</div>
+                <div style="font-size:11.5px; color:#1e40af; font-weight:600;">Garante ${diasCoberturaFinal} dias de operação</div>
+            </div>
+            <div style="padding:8px 12px; background:var(--bg); border-radius:6px; border:1px solid var(--border);">
+                <div style="font-size:11px; color:var(--text-light); font-weight:600; text-transform:uppercase;">4. Investimento Estimado:</div>
+                <div style="font-size:17px; font-weight:700; color:var(--text);">${valorEstimado > 0 ? 'R$ ' + valorEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : 'Aguardando cotação'}</div>
+                <div style="font-size:11px; color:var(--text-light);">${d.custoMedioUnitario > 0 ? `Ref: R$ ${d.custoMedioUnitario.toFixed(2)}/un` : 'Sem custo unitário cadastrado'}</div>
+            </div>
+        </div>`;
+    }
+
+    // Texto Oficial da Justificativa Técnica
+    const textarea = document.getElementById('epiSimuladorTextoJustificativa');
+    if (textarea) {
+        const dataHojeStr = formatSimpleDate(toISODateLocal(new Date()));
+        const casArray = Array.from(new Set(d.itensFiltrados.map(c => c.ca).filter(Boolean)));
+        const casStr = casArray.length > 0 ? casArray.join(', ') : 'Conforme especificações técnicas cadastradas';
+        const setoresStr = d.setoresArray.slice(0, 4).map(s => `  • ${s.nome}: ${s.quantidade} retiradas (${s.percentual.toFixed(1)}% do consumo)`).join('\n') || '  • Frentes gerais da obra';
+
+        const textoParecer = `PARECER TÉCNICO DE JUSTIFICATIVA DE COMPRA DE EPI (NR-06)
+EMPRESA: ${EMPRESA_INFO.razaoSocial} | CNPJ: ${EMPRESA_INFO.cnpj}
+DATA DA EMISSÃO: ${dataHojeStr}
+ITEM / CATEGORIA: ${d.nomeSelecao}
+CERTIFICADOS DE APROVAÇÃO (CA DE REFERÊNCIA): ${casStr}
+
+1. FINALIDADE E ENQUADRAMENTO LEGAL:
+Aquisição necessária para reposição preventiva e atendimento contínuo às frentes de trabalho, em estrito cumprimento à Norma Regulamentadora NR-06 do Ministério do Trabalho e Emprego (Portaria MTP nº 2.175/2022) e Art. 166 da CLT, que determinam o fornecimento obrigatório e gratuito de EPI adequado ao risco, em perfeito estado de conservação e funcionamento.
+
+2. DIAGNÓSTICO DE CONSUMO REAL E RUN RATE (TAXA DE SAÍDA):
+- Consumo Médio Mensal Comprovado: ${d.consumoMensal.toFixed(1)} unidades/mês (média dos últimos ${d.mesesJanela} meses);
+- Ritmo de Consumo Diário: ${d.consumoDiario.toFixed(1)} unidades/dia;
+- Saldo Físico Disponível em Almoxarifado: ${d.saldoTotal} unidades;
+- Cobertura Operacional do Saldo Atual: ${d.coberturaDias >= 999 ? 'Estável' : d.coberturaDias + ' dias'} (${d.nivelCobertura === 'critico' || d.nivelCobertura === 'zerado' ? 'SITUAÇÃO CRÍTICA DE RISCO DE DESABASTECIMENTO' : 'Ponto de reposição atingido'});
+- Taxa de Reposição por Desgaste/Troca: ${d.taxaReposicao.toFixed(1)}% das retiradas.
+
+3. MEMÓRIA DE CÁLCULO DO LOTE SOLICITADO:
+- Prazo de Cobertura Planejado: ${diasHorizonte} dias corridos (horizonte de segurança de suprimentos);
+- Consumo Projetado para o Período: ${demandaBruta} unidades;
+- Dedução do Estoque Físico Existente: - ${d.saldoTotal} unidades;
+- QUANTIDADE SOLICITADA PARA COMPRA: ${loteSugerido} UNIDADES.
+${valorEstimado > 0 ? `- Orçamento Interno Estimado de Referência: R$ ${valorEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (com base no custo histórico médio)` : ''}
+
+4. PRINCIPAIS SETORES E FRENTES DE TRABALHO ATENDIDAS:
+${setoresStr}
+
+5. CONCLUSÃO E RECOMENDAÇÃO TÉCNICA:
+A quantidade de ${loteSugerido} unidades solicitada é estritamente aderente ao histórico real de consumo auditado no sistema. A aquisição no prazo indicado é indispensável para impedir a ruptura de estoque no almoxarifado, o que acarretaria na interrupção de atividades operacionais por impedimento legal de segurança do trabalho. Parecer FAVORÁVEL à autorização de compra.
+
+Responsável Técnico: Engenharia de Segurança do Trabalho - SESMT`;
+
+        textarea.value = textoParecer;
+    }
+}
+
+function copiarJustificativaCompraEpi() {
+    const textarea = document.getElementById('epiSimuladorTextoJustificativa');
+    if (!textarea) return;
+    navigator.clipboard.writeText(textarea.value).then(() => {
+        const fb = document.getElementById('epiCopiadoFeedback');
+        if (fb) {
+            fb.style.display = 'inline';
+            setTimeout(() => { fb.style.display = 'none'; }, 3500);
+        }
+    }).catch(err => {
+        console.error('Erro ao copiar texto:', err);
+        alert('Não foi possível copiar automaticamente. Por favor, selecione o texto e use Ctrl+C.');
+    });
+}
+
+function imprimirDossieConsumoEpi() {
+    const d = epiConsumoEstado.dadosCalculados;
+    if (!d) {
+        alert('Dados de consumo não disponíveis.');
+        return;
+    }
+
+    const diasHorizonte = epiConsumoEstado.diasHorizonte || 60;
+    const demandaBruta = Math.ceil(d.consumoDiario * diasHorizonte);
+    const loteSugerido = Math.max(0, demandaBruta - d.saldoTotal);
+    const valorEstimado = loteSugerido * (d.custoMedioUnitario || 0);
+    const dataHojeStr = formatSimpleDate(toISODateLocal(new Date()));
+
+    const linhasMesesHtml = d.mesesGrafico.map(m => `
+        <tr>
+            <td style="text-align:center; padding:5px;">${m.rotulo}</td>
+            <td style="text-align:center; font-weight:700; padding:5px;">${m.quantidade}</td>
+            <td style="text-align:center; padding:5px;">${m.colaboradores}</td>
+            <td style="text-align:center; padding:5px;">${m.reposicoes}</td>
+        </tr>
+    `).join('');
+
+    const linhasSetoresHtml = d.setoresArray.map(s => `
+        <tr>
+            <td style="padding:5px;">${escapeHTML(s.nome)}</td>
+            <td style="text-align:center; font-weight:700; padding:5px;">${s.quantidade}</td>
+            <td style="text-align:center; padding:5px;">${s.percentual.toFixed(1)}%</td>
+            <td style="text-align:center; padding:5px;">${s.mediaMensal.toFixed(1)}/mês</td>
+        </tr>
+    `).join('');
+
+    const linhasModelosHtml = d.modelosArray.slice(0, 15).map(m => `
+        <tr>
+            <td style="padding:5px;">${escapeHTML(m.cat.descricao)}</td>
+            <td style="text-align:center; padding:5px;">${escapeHTML(m.cat.ca || '—')}</td>
+            <td style="text-align:center; font-weight:700; padding:5px;">${m.saldo}</td>
+            <td style="text-align:center; padding:5px;">${m.consumoMensal.toFixed(1)}</td>
+            <td style="text-align:center; padding:5px;">${m.coberturaDias >= 999 ? 'Estável' : m.coberturaDias + ' dias'}</td>
+        </tr>
+    `).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Dossiê Executivo de Consumo e Justificativa de Compra - ${escapeHTML(d.nomeSelecao)}</title>
+    <style>
+        @page { size: A4; margin: 12mm 15mm; }
+        body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5px; color: #111; margin: 0; line-height: 1.35; }
+        .folha { max-width: 900px; margin: 0 auto; }
+        .cabecalho { border: 2px solid #000; padding: 10px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+        .cabecalho-texto { text-align: center; flex: 1; }
+        .cabecalho-texto h1 { font-size: 13px; font-weight: 700; margin: 0 0 3px 0; text-transform: uppercase; }
+        .cabecalho-texto h2 { font-size: 11px; font-weight: 700; margin: 0 0 2px 0; color: #222; }
+        .cabecalho-texto p { font-size: 9.5px; margin: 0; color: #444; }
+        .secao { border: 1px solid #000; margin-bottom: 10px; }
+        .secao-titulo { background: #e5e7eb; padding: 5px 8px; font-weight: 700; font-size: 10.5px; border-bottom: 1px solid #000; text-transform: uppercase; }
+        .secao-corpo { padding: 8px 10px; }
+        .grid-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; margin-bottom: 8px; }
+        .card-kpi { border: 1px solid #ccc; padding: 6px; border-radius: 4px; background: #fafafa; }
+        .card-kpi .val { font-size: 15px; font-weight: 800; color: #1e3a8a; }
+        .card-kpi .rot { font-size: 9px; color: #555; text-transform: uppercase; font-weight: 600; margin-top: 2px; }
+        table { width: 100%; border-collapse: collapse; font-size: 9.5px; margin-top: 4px; }
+        th, td { border: 1px solid #bbb; padding: 4px 6px; }
+        th { background: #f3f4f6; font-weight: 700; text-align: left; }
+        .grid-duplo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .bloco-calculo { background: #eff6ff; border: 1px solid #93c5fd; padding: 8px 12px; border-radius: 4px; margin-top: 6px; }
+        .bloco-calculo .destaque { font-size: 14px; font-weight: 800; color: #1d4ed8; }
+        .assinaturas { margin-top: 24px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; text-align: center; font-size: 9.5px; }
+        .linha-assinatura { border-top: 1px solid #000; padding-top: 4px; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <div class="folha">
+        <div class="cabecalho">
+            <div style="font-weight:900; font-size:16px; color:#1e3a8a; letter-spacing:1px;">COP</div>
+            <div class="cabecalho-texto">
+                <h1>${escapeHTML(EMPRESA_INFO.razaoSocial)}</h1>
+                <h2>DEPARTAMENTO DE ENGENHARIA DE SEGURANÇA DO TRABALHO (SESMT)</h2>
+                <p>CNPJ: ${escapeHTML(EMPRESA_INFO.cnpj)} · GESTÃO TÉCNICA DE COMPRAS &amp; ALMOXARIFADO DE EPI (NR-06)</p>
+            </div>
+            <div style="font-size:9.5px; text-align:right;">
+                <b>Data:</b> ${dataHojeStr}<br>
+                <b>Emissão:</b> Painel SST
+            </div>
+        </div>
+
+        <div class="secao">
+            <div class="secao-titulo">1. Objeto &amp; Resposta Executiva de Demanda</div>
+            <div class="secao-corpo">
+                <div style="font-size:12px; font-weight:700; color:#1e3a8a; margin-bottom:6px;">
+                    EQUIPAMENTO / CATEGORIA: ${escapeHTML(d.nomeSelecao)}
+                </div>
+                <div class="grid-kpis">
+                    <div class="card-kpi">
+                        <div class="val">${d.consumoMensal.toFixed(1)} un/mês</div>
+                        <div class="rot">Consumo Médio Mensal</div>
+                    </div>
+                    <div class="card-kpi">
+                        <div class="val">${d.saldoTotal} un</div>
+                        <div class="rot">Saldo Físico Atual</div>
+                    </div>
+                    <div class="card-kpi">
+                        <div class="val">${d.coberturaDias >= 999 ? 'Estável' : d.coberturaDias + ' dias'}</div>
+                        <div class="rot">Cobertura do Estoque</div>
+                    </div>
+                    <div class="card-kpi">
+                        <div class="val">${d.taxaReposicao.toFixed(1)}%</div>
+                        <div class="rot">Taxa de Reposição</div>
+                    </div>
+                </div>
+                <div style="font-size:9.5px; color:#444;">
+                    * Cálculo baseado em <b>${d.qtdTotal} unidades retiradas</b> nos últimos <b>${d.mesesJanela} meses</b> (${formatSimpleDate(d.dataInicioStr)} a ${formatSimpleDate(d.dataFimStr)}). Ritmo médio diário de <b>${d.consumoDiario.toFixed(1)} unidades/dia</b>.
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-duplo">
+            <div class="secao">
+                <div class="secao-titulo">2. Histórico Mês a Mês (Giro Real)</div>
+                <div class="secao-corpo">
+                    <table>
+                        <thead><tr><th>Mês</th><th style="text-align:center;">Saídas</th><th style="text-align:center;">Colabs</th><th style="text-align:center;">Trocas</th></tr></thead>
+                        <tbody>${linhasMesesHtml}</tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="secao">
+                <div class="secao-titulo">3. Setores que Demandam o Equipamento</div>
+                <div class="secao-corpo">
+                    <table>
+                        <thead><tr><th>Setor</th><th style="text-align:center;">Total</th><th style="text-align:center;">%</th><th style="text-align:center;">Média/mês</th></tr></thead>
+                        <tbody>${linhasSetoresHtml}</tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="secao">
+            <div class="secao-titulo">4. Desdobramento por Modelo no Almoxarifado</div>
+            <div class="secao-corpo">
+                <table>
+                    <thead><tr><th>Modelo / Especificação</th><th style="text-align:center;">CA</th><th style="text-align:center;">Saldo</th><th style="text-align:center;">Média/mês</th><th style="text-align:center;">Cobertura</th></tr></thead>
+                    <tbody>${linhasModelosHtml}</tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="secao">
+            <div class="secao-titulo">5. Dimensionamento do Pedido &amp; Parecer Técnico Oficial</div>
+            <div class="secao-corpo">
+                <div class="bloco-calculo">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <div><b>Horizonte de Suprimento:</b> ${diasHorizonte} dias corridos</div>
+                            <div><b>Demanda Operacional Projetada:</b> ${demandaBruta} unidades</div>
+                            <div><b>Saldo Físico a Descontar:</b> - ${d.saldoTotal} unidades</div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="font-size:10px; color:#1e40af; font-weight:700; text-transform:uppercase;">Lote Sugerido de Compra:</div>
+                            <div class="destaque">${loteSugerido} UNIDADES</div>
+                            ${valorEstimado > 0 ? `<div style="font-size:10px; color:#555;">Estimativa: R$ ${valorEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>` : ''}
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top:8px; font-size:9.5px; text-align:justify; color:#222;">
+                    <b>Justificativa Técnica NR-06:</b> A quantidade de ${loteSugerido} unidades solicitada é dimensionada com base estrita no histórico de consumo comprovado acima. A reposição no prazo solicitado é mandatória para evitar a ruptura de estoque no almoxarifado e consequente paralisação de frentes de trabalho por falta de EPI obrigatório, atendendo integralmente ao Art. 166 da CLT e à Portaria MTP nº 2.175/2022. Parecer favorável à aprovação da requisição.
+                </div>
+            </div>
+        </div>
+
+        <div class="assinaturas">
+            <div>
+                <div class="linha-assinatura">Engenharia de Segurança (SESMT)</div>
+                <div>Elaboração Técnica / Dimensionamento</div>
+            </div>
+            <div>
+                <div class="linha-assinatura">Encarregado de Almoxarifado</div>
+                <div>Conferência Física de Saldo</div>
+            </div>
+            <div>
+                <div class="linha-assinatura">Gerência / Diretoria de Operações</div>
+                <div>Aprovação de Suprimentos</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    abrirDocumentoHtmlParaImpressao(html, `Dossie_Compra_EPI_${d.nomeSelecao.replace(/[^a-zA-Z0-9]/g, '_')}`);
 }
 
 // ============================================

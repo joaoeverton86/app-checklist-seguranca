@@ -8,7 +8,7 @@
     <meta http-equiv="Expires" content="0">
     <title>Painel Gerencial - Checklist Segurança</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=181">
+    <link rel="stylesheet" href="dashboard.css?v=182">
 </head>
 <body>
 
@@ -21,7 +21,7 @@
         <div style="width:100%; max-width:380px; margin:20px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:32px 28px; box-shadow:0 8px 32px rgba(0,0,0,0.08); box-sizing:border-box;">
             <div style="text-align:center; margin-bottom:22px;">
                 <div style="font-size:34px; margin-bottom:6px;">🛡️</div>
-                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v181</span></div>
+                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v182</span></div>
                 <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; letter-spacing:.5px; margin-top:2px;">PISF Ramal do Agreste</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:12px;">
@@ -137,7 +137,7 @@
             <div class="db-brand">
                 <div class="db-brand-icon">🛡️</div>
                 <div>
-                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v181</span></div>
+                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v182</span></div>
                     <div class="db-brand-sub">PISF Ramal do Agreste</div>
                 </div>
             </div>
@@ -5723,6 +5723,7 @@
                         <button id="epiSubtabBtn-visao" class="db-filter-btn active" onclick="showEpiSubtab('visao')">📊 Visão Geral</button>
                         <button id="epiSubtabBtn-lancamentos" class="db-filter-btn" onclick="showEpiSubtab('lancamentos')">📝 Lançar Entrega</button>
                         <button id="epiSubtabBtn-estoque" class="db-filter-btn" onclick="showEpiSubtab('estoque')">📦 Estoque</button>
+                        <button id="epiSubtabBtn-consumo" class="db-filter-btn" onclick="showEpiSubtab('consumo')">🛒 Consumo &amp; Compras</button>
                         <button id="epiSubtabBtn-cadastro" class="db-filter-btn" onclick="showEpiSubtab('cadastro')">📋 Cadastro</button>
                         <button id="epiSubtabBtn-diretrizes" class="db-filter-btn" onclick="showEpiSubtab('diretrizes')">📖 Diretrizes NR-06</button>
                         <button id="epiSubtabBtn-matriz" class="db-filter-btn" onclick="showEpiSubtab('matriz')">🎯 Matriz NR-6</button>
@@ -5946,6 +5947,7 @@
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
                             <div class="db-chart-title" style="margin-bottom: 0;">📦 Gestão de Estoque de EPI</div>
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button class="db-apply-btn" style="background: #4f46e5;" onclick="showEpiSubtab('consumo')" title="Analisar consumo mensal, médias de saídas e gerar justificativas de compras">📊 Análise de Consumo &amp; Giro</button>
                                 <button id="epiBtnSugestaoCompras" class="db-apply-btn" style="background: #2563eb;" onclick="abrirEpiSugestaoComprasModal()">🛒 Sugestão de Compras</button>
                                 <button id="epiEstoqueRelatorioBtn" class="db-apply-btn" style="background: var(--success);" onclick="gerarRelatorioEstoqueEpi()">🖨️ Relatório de Estoque (Todos)</button>
                                 <button class="db-apply-btn" onclick="abrirFormEpiEntrada()">+ Registrar Entrada / Compra</button>
@@ -6058,6 +6060,169 @@
                         </div>
 
                         <div id="epiSugestaoComprasList" style="max-height: 480px; overflow-y: auto;"></div>
+                    </div>
+                </div>
+
+                <!-- Subaba: Consumo & Justificativa de Compras de EPI -->
+                <div id="epiSubtab-consumo" style="display:none;">
+                    <!-- Painel de Controles e Filtros -->
+                    <div class="db-chart-card" style="margin-bottom: 16px; background: linear-gradient(135deg, var(--card) 0%, rgba(79, 70, 229, 0.05) 100%); border-left: 4px solid var(--primary);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+                            <div>
+                                <h3 style="margin:0; font-size:16px; font-weight:700; color:var(--text); display:flex; align-items:center; gap:8px;">
+                                    🛒 Inteligência de Consumo &amp; Justificativa de Compras
+                                </h3>
+                                <p style="margin:4px 0 0 0; font-size:12px; color:var(--text-light);">
+                                    Responda com precisão: <b>"Quantas unidades saem por mês?"</b>, analise giro real de estoque, setores atendidos e gere parecer técnico com memória de cálculo para requisições de compra.
+                                </p>
+                            </div>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                <button class="db-apply-btn" style="background:#2563eb;" onclick="abrirEpiSugestaoComprasModal()">🛒 Itens em Ponto de Pedido</button>
+                                <button class="db-apply-btn" style="background:var(--success);" onclick="imprimirDossieConsumoEpi()">🖨️ Imprimir Dossiê Executivo</button>
+                            </div>
+                        </div>
+
+                        <!-- Controles: Categoria + Item do Catálogo + Janela Temporal -->
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:10px; font-size:12.5px;">
+                            <div>
+                                <label style="display:block; margin-bottom:4px; font-weight:600; color:var(--text-light);">1. Categoria / Tipo de Proteção</label>
+                                <select id="epiConsumo_filtroTipo" onchange="aoMudarFiltroConsumoEpi(true)" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:13px;">
+                                    <option value="maos" selected>🧤 Proteção das Mãos (Luvas) — Mais Solicitado</option>
+                                    <option value="pes">🥾 Proteção dos Pés (Calçados/Botas)</option>
+                                    <option value="olhos">👓 Proteção Ocular (Óculos/Viseiras)</option>
+                                    <option value="audicao">🎧 Proteção Auditiva (Protetores/Abafadores)</option>
+                                    <option value="respiratorio">😷 Proteção Respiratória (Máscaras/Respiradores)</option>
+                                    <option value="cabeca">🪖 Proteção da Cabeça (Capacetes)</option>
+                                    <option value="corpo">🛡️ Proteção do Corpo (Uniformes/Macacões/Aventais)</option>
+                                    <option value="altura">🧗 Proteção Contra Quedas (Cintos/Talabartes)</option>
+                                    <option value="outro">📦 Outros Equipamentos</option>
+                                    <option value="todos">🌐 Todas as Categorias (Geral)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label style="display:block; margin-bottom:4px; font-weight:600; color:var(--text-light);">2. Filtrar Item Específico do Catálogo</label>
+                                <input type="text" id="epiConsumo_filtroItem" list="epiCatalogoConsumoList" placeholder="Todos os modelos da categoria (ou selecione um específico)"
+                                       oninput="aoMudarFiltroConsumoEpi(false)"
+                                       style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:13px; box-sizing:border-box;">
+                                <datalist id="epiCatalogoConsumoList"></datalist>
+                            </div>
+
+                            <div>
+                                <label style="display:block; margin-bottom:4px; font-weight:600; color:var(--text-light);">3. Janela de Cálculo da Média Mensal</label>
+                                <select id="epiConsumo_filtroJanela" onchange="aoMudarFiltroConsumoEpi(false)" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:13px;">
+                                    <option value="3">Últimos 3 meses (Consumo Recente / Giro Imediato)</option>
+                                    <option value="6" selected>Últimos 6 meses (Recomendado Corporativo / Menos Ruído)</option>
+                                    <option value="12">Últimos 12 meses (Média Anual / Sazonalidade Completa)</option>
+                                    <option value="todos">Todo o Histórico Disponível</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- BANNER PRINCIPAL DE RESPOSTA EXECUTIVA -->
+                    <div id="epiConsumoBannerResposta" style="background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px 20px; margin-bottom:16px; box-shadow:var(--shadow);">
+                        <!-- Inserido dinamicamente via JS -->
+                    </div>
+
+                    <!-- 4 KPIS DO RECORTE SELECIONADO -->
+                    <div class="db-kpi-grid" style="margin-bottom: 16px;">
+                        <div class="db-kpi-card db-kpi-primary">
+                            <div class="db-kpi-value" id="kpiConsumoMediaMensal">0 un/mês</div>
+                            <div class="db-kpi-label">Média de Saídas / Mês (Run Rate)</div>
+                        </div>
+                        <div class="db-kpi-card db-kpi-success">
+                            <div class="db-kpi-value" id="kpiConsumoSaldoAtual">0 un</div>
+                            <div class="db-kpi-label">Saldo Atual em Almoxarifado</div>
+                        </div>
+                        <div class="db-kpi-card db-kpi-warning" id="kpiCardConsumoCobertura">
+                            <div class="db-kpi-value" id="kpiConsumoCoberturaDias">0 dias</div>
+                            <div class="db-kpi-label">Tempo de Cobertura Restante</div>
+                        </div>
+                        <div class="db-kpi-card">
+                            <div class="db-kpi-value" id="kpiConsumoTaxaReposicao">0%</div>
+                            <div class="db-kpi-label">Reposições / Trocas (vs. Entrega Inicial)</div>
+                        </div>
+                    </div>
+
+                    <!-- GRÁFICOS: EVOLUÇÃO MENSAL (TENDÊNCIA) & DISTRIBUIÇÃO POR SETOR -->
+                    <div class="db-charts-grid" style="margin-bottom: 16px;">
+                        <div class="db-chart-card">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                                <div class="db-chart-title" style="margin-bottom:0;">📈 Evolução do Consumo Mês a Mês</div>
+                                <span id="epiConsumoMediaLinhaLabel" style="font-size:11px; background:rgba(79, 70, 229, 0.1); color:var(--primary); padding:3px 8px; border-radius:12px; font-weight:600;">Média: 0/mês</span>
+                            </div>
+                            <div class="db-chart-canvas-wrap"><canvas id="chartEpiConsumoMensal"></canvas></div>
+                        </div>
+
+                        <div class="db-chart-card">
+                            <div class="db-chart-title">🏢 Quem Consome? (Saídas por Setor no Período)</div>
+                            <div class="db-chart-canvas-wrap"><canvas id="chartEpiConsumoPorSetor"></canvas></div>
+                        </div>
+                    </div>
+
+                    <!-- TABELA DE DESDOBRAMENTO POR MODELOS / ITENS DA CATEGORIA -->
+                    <div class="db-chart-card" style="margin-bottom: 16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                            <div>
+                                <div class="db-chart-title" style="margin-bottom:2px;">📋 Desdobramento por Modelo &amp; Tamanho</div>
+                                <div style="font-size:11.5px; color:var(--text-light);">Detalhamento de saldo, média mensal individual e dias de cobertura de cada item da seleção.</div>
+                            </div>
+                            <span id="epiConsumoContagemModelos" style="font-size:12px; font-weight:600; color:var(--text-light);"></span>
+                        </div>
+                        <div id="epiConsumoTabelaModelos" style="overflow-x:auto;"></div>
+                    </div>
+
+                    <!-- SIMULADOR DE PEDIDO DE COMPRA & JUSTIFICATIVA TÉCNICA PRONTA -->
+                    <div class="db-chart-card" style="margin-bottom: 16px; border: 2px solid #2563eb; background: linear-gradient(180deg, var(--card) 0%, rgba(37, 99, 235, 0.02) 100%);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                            <div class="db-chart-title" style="margin-bottom:0; color:#2563eb; display:flex; align-items:center; gap:6px;">
+                                🧮 Simulador de Pedido &amp; Justificativa Técnica para Compras
+                            </div>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                <button class="db-apply-btn" style="background:#4f46e5;" onclick="copiarJustificativaCompraEpi()">📋 Copiar Parecer p/ ERP / E-mail</button>
+                                <button class="db-apply-btn" style="background:var(--success);" onclick="imprimirDossieConsumoEpi()">🖨️ Imprimir Requisição Técnica</button>
+                            </div>
+                        </div>
+                        <p style="font-size:12px; color:var(--text-light); margin-bottom:14px;">
+                            Calcule a quantidade exata a pedir com base no saldo atual e no giro real de saídas. O sistema gera automaticamente a justificativa formal em conformidade com a NR-06 pronta para aprovação da diretoria e setor de compras.
+                        </p>
+
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; background:var(--bg); padding:14px; border-radius:10px; margin-bottom:14px; border:1px solid var(--border);">
+                            <div>
+                                <label style="display:block; margin-bottom:5px; font-weight:600; font-size:12px; color:var(--text-light);">Horizonte de Abastecimento Desejado</label>
+                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button type="button" class="db-filter-btn" id="btnHorizonte30" onclick="definirHorizonteCompra(30)">30 dias (1 mês)</button>
+                                    <button type="button" class="db-filter-btn active" id="btnHorizonte60" onclick="definirHorizonteCompra(60)">60 dias (2 meses)</button>
+                                    <button type="button" class="db-filter-btn" id="btnHorizonte90" onclick="definirHorizonteCompra(90)">90 dias (3 meses)</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:5px; font-weight:600; font-size:12px; color:var(--text-light);">Ou Dias Personalizados</label>
+                                <input type="number" id="epiSimulador_diasPersonalizados" min="7" max="365" value="60" oninput="aoMudarDiasPersonalizados(this.value)"
+                                       style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; box-sizing:border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:5px; font-weight:600; font-size:12px; color:var(--text-light);">Previsão de Novas Contratações (Adicional)</label>
+                                <input type="number" id="epiSimulador_adicionais" min="0" value="0" placeholder="Ex: +10 colaboradores" oninput="recalcularSimuladorCompraEpi()"
+                                       style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; box-sizing:border-box;">
+                            </div>
+                        </div>
+
+                        <!-- Resumo do Cálculo da Compra -->
+                        <div id="epiSimuladorResultadoBox" style="background:var(--card); padding:14px; border-radius:8px; border:1px solid var(--border); margin-bottom:14px;">
+                            <!-- Preenchido via JS: Lote Sugerido, Cobertura Adicional, Estimativa de Custo -->
+                        </div>
+
+                        <!-- Parecer / Texto Formal para Copiar -->
+                        <div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <label style="font-weight:600; font-size:12px; color:var(--text-light);">📝 Parecer Técnico Oficial para Envio / Aprovação:</label>
+                                <span id="epiCopiadoFeedback" style="font-size:11px; color:var(--success); font-weight:600; display:none;">✅ Texto copiado para a área de transferência!</span>
+                            </div>
+                            <textarea id="epiSimuladorTextoJustificativa" readonly rows="8"
+                                      style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); font-family:monospace; font-size:12px; line-height:1.5; box-sizing:border-box; resize:vertical;"></textarea>
+                        </div>
                     </div>
                 </div>
 
@@ -8533,7 +8698,7 @@
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=20261008_acervo_fotos"></script>
+    <script src="dashboard.js?v=20261008_consumo_epi_v182"></script>
     <script src="placar_lideres.js?v=20261008_layout_a4"></script>
 <script>
 function filterMatrizEpi(q) {

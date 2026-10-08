@@ -15760,8 +15760,8 @@ function relSmsTabelaGenericaHtml(colunas, linhas, largura = '100%') {
 
 function gerarGraficoBarrasHHTSVG(dadosHistorico) {
     if (!dadosHistorico || !dadosHistorico.length) return '';
-    const w = 680, h = 260;
-    const paddingLeft = 55, paddingRight = 30, paddingTop = 75, paddingBottom = 40;
+    const w = 680, h = 145;
+    const paddingLeft = 50, paddingRight = 20, paddingTop = 30, paddingBottom = 26;
     const plotW = w - paddingLeft - paddingRight;
     const plotH = h - paddingTop - paddingBottom;
 
@@ -15771,7 +15771,7 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
     const yMax = step * yTicks;
 
     const n = dadosHistorico.length;
-    const barWidth = Math.min(48, Math.floor((plotW / n) * 0.55));
+    const barWidth = Math.min(42, Math.floor((plotW / n) * 0.55));
     const gap = (plotW - (barWidth * n)) / (n + 1);
 
     let gridLinesSvg = '';
@@ -15780,7 +15780,7 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
         const yPos = paddingTop + plotH - (val / yMax) * plotH;
         gridLinesSvg += `
             <line x1="${paddingLeft}" y1="${yPos}" x2="${w - paddingRight}" y2="${yPos}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="${i === 0 ? 'none' : '3,3'}"/>
-            <text x="${paddingLeft - 8}" y="${yPos + 3.5}" text-anchor="end" font-size="9" fill="#64748b" font-family="Arial, sans-serif">${val.toLocaleString('pt-BR')}</text>
+            <text x="${paddingLeft - 6}" y="${yPos + 3}" text-anchor="end" font-size="8.5" fill="#64748b" font-family="Arial, sans-serif">${val.toLocaleString('pt-BR')}</text>
         `;
     }
 
@@ -15817,12 +15817,12 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
             `;
         }
 
-        const yTexto = Math.min(yDds - 6, paddingTop + plotH - 6);
+        const yTexto = Math.min(yDds - 4, paddingTop + plotH - 4);
         barsSvg += `
-            <text x="${xPos + barWidth / 2}" y="${yTexto}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">
+            <text x="${xPos + barWidth / 2}" y="${yTexto}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">
                 ${Math.round(sumVal).toLocaleString('pt-BR')}
             </text>
-            <text x="${xPos + barWidth / 2}" y="${h - 16}" text-anchor="middle" font-size="10" font-weight="600" fill="#334155" font-family="Arial, sans-serif">
+            <text x="${xPos + barWidth / 2}" y="${h - 10}" text-anchor="middle" font-size="9" font-weight="600" fill="#334155" font-family="Arial, sans-serif">
                 ${d.mes}
             </text>
         `;
@@ -15831,21 +15831,21 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
     const totalPeriodo = totalAcumuladoTrein + totalAcumuladoDds;
 
     return `
-    <div class="grafico-container">
+    <div class="grafico-container" style="margin: 4px 0 6px 0;">
         <svg viewBox="0 0 ${w} ${h}" width="100%" height="auto" style="max-width: ${w}px;" xmlns="http://www.w3.org/2000/svg">
-            <text x="${paddingLeft}" y="25" font-size="12" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
+            <text x="${paddingLeft}" y="16" font-size="10.5" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
                 EVOLUÇÃO HISTÓRICA DE HHT DE CAPACITAÇÃO E DIÁLOGOS (HHT)
             </text>
-            <rect x="180" y="40" width="12" height="12" rx="2" fill="#1b365d"/>
-            <text x="198" y="50" font-size="11" font-weight="600" fill="#334155" font-family="Arial, sans-serif">Treinamentos</text>
-            <rect x="310" y="40" width="12" height="12" rx="2" fill="#0080ff"/>
-            <text x="328" y="50" font-size="11" font-weight="600" fill="#334155" font-family="Arial, sans-serif">DDSMA</text>
-            <text x="${w - paddingRight}" y="50" text-anchor="end" font-size="11" font-weight="bold" fill="#15803d" font-family="Arial, sans-serif">
+            <rect x="${w - 280}" y="7" width="10" height="10" rx="2" fill="#1b365d"/>
+            <text x="${w - 266}" y="15" font-size="9.5" font-weight="600" fill="#334155" font-family="Arial, sans-serif">Treinamentos</text>
+            <rect x="${w - 180}" y="7" width="10" height="10" rx="2" fill="#0080ff"/>
+            <text x="${w - 166}" y="15" font-size="9.5" font-weight="600" fill="#334155" font-family="Arial, sans-serif">DDSMA</text>
+            <text x="${w - paddingRight}" y="15" text-anchor="end" font-size="9.5" font-weight="bold" fill="#15803d" font-family="Arial, sans-serif">
                 Total: ${Math.round(totalPeriodo).toLocaleString('pt-BR')} h
             </text>
             ${gridLinesSvg}
             ${barsSvg}
-            <line x1="${paddingLeft}" y1="${paddingTop + plotH}" x2="${w - paddingRight}" y2="${paddingTop + plotH}" stroke="#94a3b8" stroke-width="1.5"/>
+            <line x1="${paddingLeft}" y1="${paddingTop + plotH}" x2="${w - paddingRight}" y2="${paddingTop + plotH}" stroke="#94a3b8" stroke-width="1.2"/>
         </svg>
     </div>`;
 }
@@ -15940,32 +15940,32 @@ function gerarGraficoBarrasRiscosSVG(baixoQtd, moderadoQtd, altoQtd, criticoQtd)
     ];
 
     const maxQtd = Math.max(...niveis.map(n => n.qtd), 1);
-    const w = 520, h = 140;
-    const labelW = 135, trackW = 290, trackH = 18;
+    const w = 520, h = 100;
+    const labelW = 125, trackW = 280, trackH = 13;
 
     let barsHtml = '';
     niveis.forEach((n, idx) => {
-        const y = 10 + idx * 32;
+        const y = 4 + idx * 24;
         const barW = total > 0 ? Math.max((n.qtd / maxQtd) * trackW, (n.qtd > 0 ? 8 : 0)) : 0;
         const pct = total > 0 ? ((n.qtd / total) * 100).toFixed(1) : '0.0';
 
         barsHtml += `
-            <text x="${labelW}" y="${y + 13}" text-anchor="end" font-size="10" font-weight="600" fill="#334155" font-family="Arial, sans-serif">${n.label}</text>
-            <rect x="${labelW + 10}" y="${y}" width="${trackW}" height="${trackH}" rx="4" fill="#f1f5f9"/>
-            ${barW > 0 ? `<rect x="${labelW + 10}" y="${y}" width="${barW}" height="${trackH}" rx="4" fill="${n.cor}"><title>${n.label}: ${n.qtd} (${pct}%)</title></rect>` : ''}
-            <text x="${labelW + 18 + trackW}" y="${y + 13}" font-size="10" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">
+            <text x="${labelW}" y="${y + 10.5}" text-anchor="end" font-size="9" font-weight="600" fill="#334155" font-family="Arial, sans-serif">${n.label}</text>
+            <rect x="${labelW + 8}" y="${y}" width="${trackW}" height="${trackH}" rx="3" fill="#f1f5f9"/>
+            ${barW > 0 ? `<rect x="${labelW + 8}" y="${y}" width="${barW}" height="${trackH}" rx="3" fill="${n.cor}"><title>${n.label}: ${n.qtd} (${pct}%)</title></rect>` : ''}
+            <text x="${labelW + 15 + trackW}" y="${y + 10.5}" font-size="9" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">
                 ${n.qtd} <tspan font-weight="400" fill="#64748b">(${pct}%)</tspan>
             </text>
         `;
     });
 
     return `
-    <div class="grafico-container" style="text-align: center; margin: 10px 0 14px 0;">
-        <div style="font-weight: bold; font-size: 11px; color: #1b365d; margin-bottom: 6px; text-transform: uppercase;">Perfil de Risco Residual dos Fatores Inventariados (NR-01 / GRO)</div>
-        <div style="font-size: 9.5px; color: #475569; font-weight: 600; margin-bottom: 8px;">
+    <div class="grafico-container" style="text-align: center; margin: 4px 0 6px 0;">
+        <div style="font-weight: bold; font-size: 10px; color: #1b365d; margin-bottom: 2px; text-transform: uppercase;">Perfil de Risco Residual dos Fatores Inventariados (NR-01 / GRO)</div>
+        <div style="font-size: 8.5px; color: #475569; font-weight: 600; margin-bottom: 4px;">
             Total: ${total} fatores catalogados
         </div>
-        <svg viewBox="0 0 520 140" width="100%" height="auto" style="max-width: 520px; display: block; margin: 0 auto;" xmlns="http://www.w3.org/2000/svg">
+        <svg viewBox="0 0 520 100" width="100%" height="auto" style="max-width: 520px; display: block; margin: 0 auto;" xmlns="http://www.w3.org/2000/svg">
             ${barsHtml}
         </svg>
     </div>`;
@@ -18041,7 +18041,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
     <style>
         @page {
             size: A4 portrait;
-            margin: 10mm 10mm 10mm 10mm;
+            margin: 8mm 10mm 8mm 10mm;
         }
         * {
             box-sizing: border-box !important;
@@ -18050,19 +18050,20 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         }
         body {
             font-family: Arial, Helvetica, sans-serif;
-            font-size: 10px;
+            font-size: 9.5px;
             color: #1e293b;
-            background: #ffffff;
+            background: #f1f5f9;
             margin: 0;
             padding: 0;
-            line-height: 1.45;
+            line-height: 1.35;
         }
         .no-print {
             text-align: center;
             padding: 12px;
-            background: #f1f5f9;
-            border-bottom: 1px solid #cbd5e1;
+            background: #ffffff;
+            border-bottom: 2px solid #cbd5e1;
             margin-bottom: 16px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
         }
         .btn-imprimir {
             background: #1f3864;
@@ -18074,6 +18075,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             border-radius: 6px;
             cursor: pointer;
             box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+            transition: background 0.15s ease;
         }
         .btn-imprimir:hover { background: #2e5395; }
         .folha-relatorio {
@@ -18083,9 +18085,20 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             padding: 0;
             box-sizing: border-box !important;
         }
-        .page-break {
+        .pagina-relatorio {
+            width: 100%;
+            max-width: 190mm;
+            margin: 0 auto 20px auto;
+            padding: 0;
+            background: #ffffff;
+            box-sizing: border-box !important;
             page-break-after: always;
             break-after: page;
+        }
+        .pagina-relatorio:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
+            margin-bottom: 0;
         }
         .cabecalho-tabela,
         .header-dossie,
@@ -18094,7 +18107,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             max-width: 100% !important;
             table-layout: fixed !important;
             border-collapse: collapse !important;
-            margin-bottom: 12px !important;
+            margin-bottom: 8px !important;
             box-sizing: border-box !important;
         }
         .cabecalho-tabela td,
@@ -18120,13 +18133,13 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         .rel-tabela {
             width: 100%;
             border-collapse: collapse;
-            font-size: 9.5px;
-            margin: 6px 0 12px 0;
+            font-size: 9px;
+            margin: 4px 0 8px 0;
             box-sizing: border-box !important;
         }
         .rel-tabela th, .rel-tabela td {
             border: 1px solid #cbd5e1;
-            padding: 4.5px 6px;
+            padding: 3.5px 5px;
             text-align: center;
             box-sizing: border-box !important;
         }
@@ -18139,67 +18152,67 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             background: #f8fafc;
         }
         .rel-h1 {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 800;
             color: #1f3864;
             border-bottom: 2px solid #1f3864;
-            padding-bottom: 3px;
-            margin: 14px 0 8px 0;
+            padding-bottom: 2px;
+            margin: 8px 0 4px 0;
             text-transform: uppercase;
         }
         .rel-h2 {
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 700;
             color: #2e5395;
-            margin: 12px 0 5px 0;
+            margin: 6px 0 3px 0;
         }
         .rel-p {
-            font-size: 10px;
-            margin: 0 0 6px 0;
+            font-size: 9.5px;
+            margin: 0 0 5px 0;
             text-align: justify;
-            line-height: 1.4;
+            line-height: 1.35;
         }
         .rel-nota {
-            font-size: 9px;
+            font-size: 8.5px;
             font-style: italic;
             color: #64748b;
-            margin: -2px 0 8px 0;
+            margin: -2px 0 6px 0;
         }
         .grid-kpi-a4 {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 7px;
-            margin: 8px 0 14px 0;
+            gap: 6px;
+            margin: 4px 0 8px 0;
         }
         .card-kpi-a4 {
             border: 1px solid #cbd5e1;
             border-radius: 4px;
-            padding: 5px 6px;
+            padding: 4px 5px;
             text-align: center;
             background: #f8fafc;
             border-top: 2.5px solid #1f3864;
             page-break-inside: avoid;
         }
         .card-kpi-a4 .kpi-a4-val {
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 800;
             color: #1f3864;
             line-height: 1.1;
-            margin-bottom: 2px;
+            margin-bottom: 1px;
         }
         .card-kpi-a4 .kpi-a4-lbl {
-            font-size: 8px;
+            font-size: 7.5px;
             font-weight: 700;
             color: #475569;
             text-transform: uppercase;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.2px;
             line-height: 1.1;
         }
         .grade-fotos-2col {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin: 8px 0 16px 0;
+            gap: 10px;
+            margin: 6px 0 12px 0;
             page-break-inside: avoid;
         }
         .card-foto-evidencia {
@@ -18214,7 +18227,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         }
         .foto-img-container {
             width: 100%;
-            height: 165px;
+            height: 150px;
             background: #f1f5f9;
             display: flex;
             align-items: center;
@@ -18230,21 +18243,21 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         .carimbo-foto {
             background: #f8fafc;
             border-top: 1px solid #e2e8f0;
-            padding: 6px 8px;
-            font-size: 8.5px;
+            padding: 5px 7px;
+            font-size: 8px;
             color: #334155;
-            line-height: 1.35;
+            line-height: 1.3;
         }
         .carimbo-foto strong {
             color: #1f3864;
         }
         svg { max-width: 100%; height: auto; display: block; }
-        .grafico-container { page-break-inside: avoid; break-inside: avoid; margin: 10px 0 14px 0; text-align: center; }
+        .grafico-container { page-break-inside: avoid; break-inside: avoid; margin: 4px 0 6px 0; text-align: center; }
         .grafico-container svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
         @media print {
             @page {
                 size: A4 portrait;
-                margin: 10mm 10mm 10mm 10mm;
+                margin: 8mm 10mm 8mm 10mm;
             }
             * {
                 -webkit-print-color-adjust: exact !important;
@@ -18254,6 +18267,23 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             .no-print { display: none !important; }
             body { margin: 0; padding: 0; background: #ffffff; }
             .folha-relatorio { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
+            .pagina-relatorio {
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                page-break-after: always !important;
+                break-after: page !important;
+                box-shadow: none !important;
+            }
+            .pagina-relatorio:last-child {
+                page-break-after: auto !important;
+                break-after: auto !important;
+            }
+            .page-break {
+                display: none !important;
+            }
             .cabecalho-tabela,
             .header-dossie,
             .cabecalho-tabela-rel-sms {
@@ -18261,7 +18291,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                 max-width: 100% !important;
                 table-layout: fixed !important;
                 border-collapse: collapse !important;
-                margin-bottom: 12px !important;
+                margin-bottom: 8px !important;
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
                 box-sizing: border-box !important;
@@ -18286,14 +18316,9 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             .cabecalho-tabela-rel-sms .col-meta {
                 width: 30% !important;
             }
-            .page-break,
-            .page-break-forced {
-                page-break-before: always !important;
-                break-before: page !important;
-            }
             tr { page-break-inside: avoid; }
             thead { display: table-header-group; }
-            .grafico-container { page-break-inside: avoid !important; break-inside: avoid !important; margin: 8px 0 !important; }
+            .grafico-container { page-break-inside: avoid !important; break-inside: avoid !important; margin: 4px 0 6px 0 !important; }
         }
     </style>
 </head>
@@ -18303,535 +18328,581 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
     </div>
 
     <div class="folha-relatorio">
-        <!-- FOLHA 1: CAPA INSTITUCIONAL -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Documento Oficial de SST')}
-        <div style="text-align: center; padding: 60px 20px 40px 20px;">
-            <div style="font-size: 13px; font-weight: 800; color: #1f3864; text-transform: uppercase; letter-spacing: 1px;">
-                ${escapeHTML(meta.empresa)}
-            </div>
-            <div style="font-size: 12px; color: #475569; margin: 4px 0 24px 0;">
-                Obra: ${escapeHTML(meta.obra)}
-            </div>
-            <div style="display: inline-block; border-top: 3px solid #1f3864; border-bottom: 3px solid #1f3864; padding: 16px 30px; margin-bottom: 12px;">
-                <div style="font-size: 20px; font-weight: 900; color: #1f3864; text-transform: uppercase;">
-                    RELATÓRIO MENSAL CONSOLIDADO DE SMS
+        <!-- PÁGINA 1: CAPA INSTITUCIONAL -->
+        <div class="pagina-relatorio">
+            ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Documento Oficial de SST')}
+            <div style="text-align: center; padding: 70px 20px 40px 20px;">
+                <div style="font-size: 13px; font-weight: 800; color: #1f3864; text-transform: uppercase; letter-spacing: 1px;">
+                    ${escapeHTML(meta.empresa)}
                 </div>
-                <div style="font-size: 11px; color: #475569; font-style: italic; margin-top: 6px;">
-                    Dossiê Integrado de Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente
+                <div style="font-size: 12px; color: #475569; margin: 4px 0 26px 0;">
+                    Obra: ${escapeHTML(meta.obra)}
                 </div>
-            </div>
-            <div style="font-size: 16px; font-weight: 800; color: #2e5395; margin-top: 18px; text-transform: uppercase;">
-                COMPETÊNCIA: ${nomeMes} / ${ano}
-            </div>
-            ${fiscalizacao ? `<div style="display: inline-block; background: #e2e8f0; color: #334155; font-size: 10.5px; font-weight: 700; padding: 4px 14px; border-radius: 4px; margin-top: 10px;">Versão para envio à Fiscalização / Auditoria</div>` : ''}
+                <div style="display: inline-block; border-top: 3px solid #1f3864; border-bottom: 3px solid #1f3864; padding: 18px 34px; margin-bottom: 14px;">
+                    <div style="font-size: 21px; font-weight: 900; color: #1f3864; text-transform: uppercase; letter-spacing: 0.5px;">
+                        RELATÓRIO MENSAL CONSOLIDADO DE SMS
+                    </div>
+                    <div style="font-size: 11px; color: #475569; font-style: italic; margin-top: 6px;">
+                        Dossiê Integrado de Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente
+                    </div>
+                </div>
+                <div style="font-size: 16px; font-weight: 800; color: #2e5395; margin-top: 20px; text-transform: uppercase;">
+                    COMPETÊNCIA: ${nomeMes} / ${ano}
+                </div>
+                ${fiscalizacao ? `<div style="display: inline-block; background: #e2e8f0; color: #334155; font-size: 10.5px; font-weight: 700; padding: 4px 14px; border-radius: 4px; margin-top: 12px;">Versão para envio à Fiscalização / Auditoria</div>` : ''}
 
-            <div style="margin-top: 80px; font-size: 10.5px; color: #475569; line-height: 1.6;">
-                <div>Elaborado por:</div>
-                <div style="font-size: 12px; font-weight: 800; color: #1f3864;">${escapeHTML(meta.responsavelTecnico)}</div>
-                <div>${escapeHTML(meta.crea)}</div>
-                <div style="margin-top: 8px;"><strong>Código de Controle:</strong> ${escapeHTML(meta.codigoRev)}</div>
-                <div><strong>Data de Emissão:</strong> ${meta.dataEmissao}</div>
-            </div>
-        </div>
-        <div class="page-break"></div>
-
-        <!-- FOLHA 2: SUMÁRIO EXECUTIVO & PAINEL DE KPIS RÁPIDOS -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Sumário Executivo e Indicadores')}
-        <div class="rel-h1">Sumário Executivo</div>
-        <p class="rel-p">
-            Este relatório consolida de forma integrada as ações e o desempenho operacional em Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste no mês de <strong>${nomeMes.toLowerCase()} de ${ano}</strong>, em estrita conformidade com as Normas Regulamentadoras do Ministério do Trabalho e Emprego (NR-01, NR-04, NR-05, NR-06, NR-07, NR-16, NR-17 e NR-23) e com as diretrizes do Programa de Gestão de Resíduos Sólidos (PGRS).
-        </p>
-
-        <div class="rel-h2">Destaques do Período</div>
-        <ul style="padding-left: 18px; margin: 4px 0 10px 0; font-size: 9.5px; line-height: 1.5; color: #1e293b;">
-            ${(dados.destaques || []).map(d => `
-                <li style="margin-bottom: 4px;">
-                    <strong>${escapeHTML(d.titulo)}:</strong> ${escapeHTML(d.texto)}
-                </li>
-            `).join('')}
-        </ul>
-
-        <div class="rel-h2">Metadados de Exposição Operacional do Mês</div>
-        <table class="rel-tabela" style="width: 100%; margin-bottom: 8px;">
-            <thead>
-                <tr>
-                    <th>Efetivo Ativo na Obra</th>
-                    <th>Dias Úteis Trabalhados</th>
-                    <th>HHT Trabalhado no Mês</th>
-                    <th>HHT Acumulado no Contrato</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td><strong>${efetivo.headcount} trabalhadores</strong></td>
-                    <td><strong>${hht.diasTrabalhados} dias</strong></td>
-                    <td><strong>${Number(hht.hhtMes).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h</strong></td>
-                    <td><strong>${Number(hht.hhtAcumuladoAno).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h</strong></td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div class="rel-h2">Tabela de Indicadores Gerais de SMS</div>
-        <table class="rel-tabela" style="width: 100%; margin-bottom: 10px;">
-            <thead>
-                <tr>
-                    <th style="width: 28%; text-align: left;">Indicador Estratégico</th>
-                    <th style="width: 24%;">Parâmetro / Referência</th>
-                    <th style="width: 24%;">Desempenho no Período</th>
-                    <th style="width: 24%;">Status Operacional</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td style="text-align: left;">Taxa de Frequência Global (TF_G)</td>
-                    <td>NBR 14280 / Zero Acidentes</td>
-                    <td><strong>${kpisRapidos.tfGlobal}</strong></td>
-                    <td><span style="color: ${Number(kpisRapidos.tfGlobal) === 0 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${Number(kpisRapidos.tfGlobal) === 0 ? '✅ Meta Atingida' : '⚠ Atenção'}</span></td>
-                </tr>
-                <tr>
-                    <td style="text-align: left;">Taxa de Gravidade (TG)</td>
-                    <td>NBR 14280 / Zero Gravidade</td>
-                    <td><strong>${kpisRapidos.tg}</strong></td>
-                    <td><span style="color: ${Number(kpisRapidos.tg) === 0 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${Number(kpisRapidos.tg) === 0 ? '✅ Meta Atingida' : '⚠ Atenção'}</span></td>
-                </tr>
-                <tr>
-                    <td style="text-align: left;">Conformidade de Checklists</td>
-                    <td>≥ 95% Inspeções Conformes</td>
-                    <td><strong>${kpisRapidos.checklistsConformePct}</strong> (${checklists.conformes}/${checklists.total})</td>
-                    <td><span style="color: ${checklists.taxaConformidade >= 95 ? '#16a34a' : '#d97706'}; font-weight: bold;">${checklists.taxaConformidade >= 95 ? '✅ Conforme' : '⚠ Acompanhamento'}</span></td>
-                </tr>
-                <tr>
-                    <td style="text-align: left;">Capacitação Técnica e DDSMA</td>
-                    <td>Cronograma Normativo NR-01</td>
-                    <td><strong>${kpisRapidos.hhtTreinamento}</strong> (${treinamentos.cronograma.taxa}% crono)</td>
-                    <td><span style="color: #16a34a; font-weight: bold;">✅ Realizado</span></td>
-                </tr>
-                <tr>
-                    <td style="text-align: left;">Prontidão de Extintores (NR-23)</td>
-                    <td>100% Inspecionados / Conformes</td>
-                    <td><strong>${kpisRapidos.extintoresConformePct}</strong> (${extintores.fracaoTexto})</td>
-                    <td><span style="color: ${extintores.percConformidade >= 90 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${extintores.percConformidade >= 90 ? '✅ Conforme' : '⚠ Ação Necessária'}</span></td>
-                </tr>
-                <tr>
-                    <td style="text-align: left;">Eficácia 5W2H PGR (NR-01)</td>
-                    <td>Melhoria Contínua SST</td>
-                    <td><strong>${kpisRapidos.pgrEficaciaPct}</strong> (${pgr.concluidas}/${pgr.totalAcoes} ações)</td>
-                    <td><span style="color: #16a34a; font-weight: bold;">✅ Conforme</span></td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div class="rel-h2">Painel de Indicadores Chave de SMS (KPIs Rápidos)</div>
-        <div class="grid-kpi-a4">
-            <div class="card-kpi-a4">
-                <div class="kpi-a4-val">${kpisRapidos.tfGlobal}</div>
-                <div class="kpi-a4-lbl">TF Global (NBR 14280)</div>
-            </div>
-            <div class="card-kpi-a4">
-                <div class="kpi-a4-val">${kpisRapidos.tg}</div>
-                <div class="kpi-a4-lbl">Taxa de Gravidade (TG)</div>
-            </div>
-            <div class="card-kpi-a4">
-                <div class="kpi-a4-val">${kpisRapidos.checklistsTotal}</div>
-                <div class="kpi-a4-lbl">Checklists (${kpisRapidos.checklistsConformePct})</div>
-            </div>
-            <div class="card-kpi-a4">
-                <div class="kpi-a4-val">${kpisRapidos.hhtTreinamento}</div>
-                <div class="kpi-a4-lbl">Treinamentos (HHT)</div>
-            </div>
-            <div class="card-kpi-a4">
-                <div class="kpi-a4-val">${kpisRapidos.ddsEfetuados}</div>
-                <div class="kpi-a4-lbl">Sessões de DDS Realizadas</div>
-            </div>
-            <div class="card-kpi-a4">
-                <div class="kpi-a4-val">${kpisRapidos.extintoresConformePct}</div>
-                <div class="kpi-a4-lbl">Extintores Conformes (${extintores.fracaoTexto})</div>
-            </div>
-            <div class="card-kpi-a4">
-                <div class="kpi-a4-val">${kpisRapidos.diasSemCpt}</div>
-                <div class="kpi-a4-lbl">Dias sem Afastamento</div>
-            </div>
-            <div class="card-kpi-a4">
-                <div class="kpi-a4-val">${kpisRapidos.pgrEficaciaPct}</div>
-                <div class="kpi-a4-lbl">Eficácia 5W2H PGR</div>
+                <div style="margin-top: 85px; font-size: 10.5px; color: #475569; line-height: 1.6;">
+                    <div>Elaborado por:</div>
+                    <div style="font-size: 12.5px; font-weight: 800; color: #1f3864; margin: 2px 0;">${escapeHTML(meta.responsavelTecnico)}</div>
+                    <div>${escapeHTML(meta.crea)}</div>
+                    <div style="margin-top: 10px;"><strong>Código de Controle:</strong> ${escapeHTML(meta.codigoRev)}</div>
+                    <div><strong>Data de Emissão:</strong> ${meta.dataEmissao}</div>
+                </div>
             </div>
         </div>
 
-        <div class="rel-h2" style="margin-top: 10px;">Estrutura do Dossiê</div>
-        <table class="rel-tabela" style="width: 100%; text-align: left;">
-            <thead><tr><th style="width: 15%;">Seção</th><th>Pilar de Gestão</th><th style="width: 45%;">Abrangência Legal / Técnica</th></tr></thead>
-            <tbody>
-                <tr><td><strong>Seção 1</strong></td><td style="text-align: left;">Segurança do Trabalho & Inspeções de Campo</td><td style="text-align: left;">Checklists, Não Conformidades, Relatos, APR, Matriz GHE, Treinamentos, Acidentabilidade NBR 14280, Emergência/Extintores/Brigada/CIPA e EPIs</td></tr>
-                <tr><td><strong>Seção 2</strong></td><td style="text-align: left;">Governança e Plano de Ação PGR (NR-01)</td><td style="text-align: left;">Plano de Ação 5W2H, Status, Monitoramento e Eficácia das Medidas</td></tr>
-                <tr><td><strong>Seção 3</strong></td><td style="text-align: left;">Área Diretamente Afetada (ADA) e Mão de Obra Local</td><td style="text-align: left;">Demonstrativo de Mão de Obra Regional por Município</td></tr>
-                <tr><td><strong>Seção 4</strong></td><td style="text-align: left;">Saúde Ocupacional e Absenteísmo (NR-07 / PCMSO)</td><td style="text-align: left;">ASOs Realizados, Aptidão Clínica, Atestados Médicos e Riscos Psicossociais (COPSOQ II)</td></tr>
-                <tr><td><strong>Seção 5</strong></td><td style="text-align: left;">Ergonomia - Avaliação Ergonômica Preliminar (NR-17)</td><td style="text-align: left;">Diagnóstico Preliminar AEP, Postos de Trabalho e Ações Ergonômicas</td></tr>
-                <tr><td><strong>Seção 6</strong></td><td style="text-align: left;">Caracterização de Periculosidade e Adicionais (NR-16)</td><td style="text-align: left;">Laudo Técnico, Funções Enquadradas e Adicional de 30%</td></tr>
-                <tr><td><strong>Seção 7</strong></td><td style="text-align: left;">Meio Ambiente e PGRS</td><td style="text-align: left;">Geração e Destinação de Resíduos Sólidos e Manutenção Veicular</td></tr>
-                <tr><td><strong>Seção 8</strong></td><td style="text-align: left;">Considerações Finais e Diretrizes de Governança</td><td style="text-align: left;">Recomendações Técnicas do SESMT e Diretrizes de Prevenção</td></tr>
-                <tr><td><strong>Seção 9</strong></td><td style="text-align: left;">Registros Fotográficos (Treinamentos e DDSMA)</td><td style="text-align: left;">Evidências Fotográficas Reais com Carimbos Técnicos (Data, Hora, Local)</td></tr>
-                <tr><td><strong>Seção 10</strong></td><td style="text-align: left;">Anexos Oficiais Complementares</td><td style="text-align: left;">Listas de Presença, Fichas de DDSMA e Cronogramas de Treinamentos</td></tr>
-            </tbody>
-        </table>
-        <div class="page-break"></div>
-
-        <!-- SEÇÃO 1: SEGURANÇA DO TRABALHO & CAMPO -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '1. Segurança do Trabalho & Campo')}
-        <div class="rel-h1">1. Segurança do Trabalho & Inspeções de Campo</div>
-        <p class="rel-p">Consolidação das rotinas de inspeção diária, identificação de desvios, análises de risco e controle preventivo nas frentes de trabalho da obra.</p>
-
-        <div class="rel-h2">1.1. Checklists Diários de Equipamentos e Veículos</div>
-        ${relSmsTabelaGenericaHtml(['Indicador Operacional', 'Valor'], [
-            ['Total de Checklists Executados no Mês', checklists.total],
-            ['Inspeções Conformes (Sem Não Conformidades)', `${checklists.conformes} (${checklists.taxaConformidade.toFixed(1)}%)`],
-            ['Inspeções com Não Conformidades Apontadas', `${checklists.naoConformes} (${(100 - checklists.taxaConformidade).toFixed(1)}%)`],
-            ['Índice Geral de Conformidade Operacional', `${checklists.taxaConformidade.toFixed(1)}%`]
-        ], '75%')}
-
-        <div class="rel-h2">1.2. Não Conformidades de Campo e Medidas Corretivas</div>
-        ${naoConformidades.total === 0 ? '<div class="rel-nota">Nenhuma não conformidade crítica registrada nas inspeções do período.</div>' :
-            relSmsTabelaGenericaHtml(['Gravidade do Risco', 'Ocorrências Apontadas'], [
-                ['Risco Crítico / Alto (Intervenção Imediata)', naoConformidades.porRisco.critico_alto],
-                ['Risco Médio (Correção Programada)', naoConformidades.porRisco.medio],
-                ['Risco Baixo (Ajuste Preventivo)', naoConformidades.porRisco.baixo],
-                ['TOTAL DE NÃO CONFORMIDADES', naoConformidades.total]
-            ], '75%')}
-
-        <div class="rel-h2">1.3. Relatos de Quase-Acidentes e Desvios Comportamentais</div>
-        ${relSmsTabelaGenericaHtml(['Indicador', 'Quantidade'], linhasRelatos, '75%')}
-        ${tiposRelatos.length > 0 ? `<p class="rel-p">Distribuição por tipologia: ${tiposRelatos.map(([tp, qtd]) => `<strong>${escapeHTML(tp)}</strong>: ${qtd}`).join('; ')}.</p>` : ''}
-
-        <div class="rel-h2">1.4. Análise Preliminar de Risco (APR)</div>
-        ${relSmsTabelaGenericaHtml(['Indicador de Gestão', 'Quantidade'], linhasApr, '75%')}
-        <p class="rel-p">Classificação do risco residual nas APRs emitidas: Baixo (${apr.classCounts.Baixo}), Moderado (${apr.classCounts.Moderado}), Alto (${apr.classCounts.Alto}), Crítico (${apr.classCounts['Crítico']}).</p>
-
-        <div class="page-break" style="page-break-before: always; break-before: page;"></div>
-
-        <!-- SEÇÃO 1 (CONTINUAÇÃO): MATRIZ DE RISCOS & CAPACITAÇÃO / HHT -->
-        ${gerarBarraCabecalhoInstitucionalRelSmsHtml(mes, ano, '1.5. Matriz de Riscos por GHE & 1.6. Treinamentos (NR-01)')}
-
-        <div class="rel-h2">1.5. Matriz de Riscos por GHE (Catálogo Operacional)</div>
-        ${gerarGraficoBarrasRiscosSVG(
-            (matrizRisco.porNivel['Baixo'] || 0) + (matrizRisco.porNivel['Trivial'] || 0),
-            matrizRisco.porNivel['Moderado'] || 0,
-            matrizRisco.porNivel['Alto'] || 0,
-            matrizRisco.porNivel['Muito Alto'] || 0
-        )}
-        ${relSmsTabelaGenericaHtml(['Nível de Risco Residual', 'Fatores Classificados'], NIVEIS_RISCO_ORDEM.map(n => [n, matrizRisco.porNivel[n]]), '75%')}
-        <div class="rel-nota">Total de riscos catalogados nos Grupos Homogêneos de Exposição: ${matrizRisco.total}.</div>
-
-        <div class="rel-h2">1.6. Capacitação, Treinamentos e DDSMS (NR-01)</div>
-        <p class="rel-p">Demonstrativo das horas dedicadas à capacitação técnica, integrações admissionais e diálogos diários de segurança na competência.</p>
-        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 6px 0 3px 0;">1.6.1. Demonstrativo Consolidado de Treinamentos e DDS</div>
-        ${relSmsTabelaGenericaHtml(['Categoria do Treinamento', 'Participantes', 'HHT de Treinamento (h)'], linhasTrein, '85%')}
-        ${gerarGraficoBarrasHHTSVG(treinamentos.historicoHht)}
-        <div class="rel-nota">Percentual de HHT de Treinamento em relação ao Efetivo da obra: ${t.totais.percHhtEfetivo.toFixed(1)}%.</div>
-        ${!fiscalizacao && t.nrVencidas > 0 ? `<div class="rel-nota">⚠ Colaboradores ativos com reciclagem periódica em renovação programada: ${t.nrVencidas}.</div>` : ''}
-
-        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 8px 0 3px 0;">1.6.2. Acompanhamento do Cronograma Mensal de Treinamentos</div>
-        ${relSmsTabelaGenericaHtml(['Indicador do Cronograma', 'Valor'], [
-            ['Treinamentos Programados para o Mês', treinamentos.cronograma.totalPrevistos],
-            ['Treinamentos Ministrados / Realizados', treinamentos.cronograma.realizados],
-            ['Treinamentos Pendentes / Reprogramados', treinamentos.cronograma.pendentes],
-            ['Índice de Cumprimento do Cronograma', `${treinamentos.cronograma.taxa}%`]
-        ], '75%')}
-
-        <div class="page-break" style="page-break-before: always; break-before: page;"></div>
-
-        <!-- SEÇÃO 1 (CONTINUAÇÃO): ACIDENTABILIDADE, EMERGÊNCIA & EPIS -->
-        ${gerarBarraCabecalhoInstitucionalRelSmsHtml(mes, ano, '1.7. Acidentabilidade NBR 14280, 1.8. Emergência & 1.9. EPIs')}
-
-        <div class="rel-h2">1.7. Estatísticas de Acidentabilidade e HHT (NR-04 / NBR 14280)</div>
-        <p class="rel-p">Apuramento dos coeficientes de frequência e gravidade em consonância com os critérios da NBR 14280 e diretrizes da NR-04.</p>
-        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 6px 0 3px 0;">1.7.1. Indicadores Estatísticos Oficiais da NBR 14280</div>
-        ${relSmsTabelaGenericaHtml(['Indicador Estatístico', 'Resultado no Mês'], [
-            ['Taxa de Frequência Global (TF_G)', kpisRapidos.tfGlobal],
-            ['Taxa de Frequência com Afastamento (TF_CA)', kpisRapidos.tfCa],
-            ['Taxa de Frequência sem Afastamento (TF_SA)', kpisRapidos.tfSa],
-            ['Taxa de Gravidade (TG)', kpisRapidos.tg],
-            ['Taxa de Incidência (por 1.000 trabalhadores)', acidentes.taxaIncidencia.toFixed(2)],
-            ['Dias Perdidos por Acidentes no Mês', acidentes.diasPerdidos],
-            ['Dias Debitados por Incapacidade Permanente', acidentes.diasDebitados]
-        ], '80%')}
-
-        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 8px 0 3px 0;">1.7.2. Histórico de Segurança e Dias Sem Acidentes</div>
-        ${relSmsTabelaGenericaHtml(['Modalidade', 'Dias Consecutivos'], [
-            ['Dias Consecutivos sem Acidente com Afastamento (CPT)', `${kpisRapidos.diasSemCpt} dias`],
-            ['Dias Consecutivos sem Acidente sem Afastamento (SPT)', `${kpisRapidos.diasSemSpt} dias`],
-            ['Acidentes Típicos Ocorridos no Período', acidentes.tipicosTotal],
-            ['Acidentes de Trajeto / Ocorrências Sem Lesão', acidentes.outrosTotal]
-        ], '80%')}
-        ${acidentes.tipicosTotal === 0 ? '<div class="rel-nota">✅ Nenhum acidente de trabalho típico registrado durante todo o período de competência.</div>' : ''}
-
-        <div class="rel-h2">1.8. Emergência, Combate a Incêndio e CIPA (NR-23 e NR-05)</div>
-        <p class="rel-p">Gestão dos sistemas de prevenção e combate a sinistros, prontidão da brigada de emergência e atuação da Comissão Interna de Prevenção de Acidentes.</p>
-        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 6px 0 3px 0;">1.8.1. Parque de Extintores de Incêndio e Manutenção</div>
-        ${relSmsTabelaGenericaHtml(['Parâmetro Técnico', 'Valor'], [
-            ['Total de Extintores Ativos no Canteiro e Frentes', extintores.totalAtivos],
-            ['Extintores Inspecionados / Prontos para Uso', extintores.inspecionados],
-            ['Extintores Conformes (Validade Técnica Ativa)', extintores.conf],
-            ['Índice de Prontidão e Conformidade', `${extintores.percConformidade}% (${extintores.fracaoTexto})`]
-        ], '80%')}
-
-        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 8px 0 3px 0;">1.8.2. Brigada de Emergência e Resposta Rápida (NR-23)</div>
-        ${relSmsTabelaGenericaHtml(['Estrutura da Brigada', 'Situação'], [
-            ['Efetivo de Brigadistas Ativos', `${brigada.membrosAtivos} colaboradores treinados`],
-            ['Coordenador Geral da Brigada', escapeHTML(brigada.coordenador)],
-            ['Prontidão Operacional', '100% dos brigadistas aptos com ASO e treinamento vigente']
-        ], '80%')}
-
-        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 8px 0 3px 0;">1.8.3. Comissão Interna de Prevenção de Acidentes (CIPA - NR-05)</div>
-        ${relSmsTabelaGenericaHtml(['Indicador CIPA', 'Valor'], [
-            ['Reuniões Ordinárias Realizadas no Mês', cipa.reunioesMes.length],
-            ['Membros Ativos na Gestão Atual', cipa.membrosAtivos],
-            ['Plano de Ação — Pendências em Execução', cipa.pendenciasAbertas]
-        ], '80%')}
-        ${cipa.reunioesMes.length > 0 ? `<p class="rel-p">Reuniões realizadas: ${cipa.reunioesMes.map(r => `Ordinária nº ${r.numero_ordinaria || '—'} em ${formatSimpleDate(r.data_reuniao)}`).join('; ')}.</p>` : ''}
-
-        <div class="rel-h2">1.9. Equipamentos de Proteção Individual - EPI (NR-06)</div>
-        <p class="rel-p">Controle de fornecimento, rastreabilidade e fichas digitais de entrega de EPIs com Certificado de Aprovação (CA) válido.</p>
-        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 6px 0 3px 0;">1.9.1. Movimentação e Entregas de EPI no Mês</div>
-        ${relSmsTabelaGenericaHtml(['Métrica de Fornecimento', 'Quantitativo'], [
-            ['Total de Itens / Unidades de EPI Entregues', `${epi.totalItens} unidades`],
-            ['Colaboradores Atendidos no Período', `${epi.colaboradoresAtendidos} colaboradores`],
-            ['Registros de Entrega com Ficha Assinada', `${epi.entregasQtd} lançamentos`]
-        ], '80%')}
-        <div class="rel-nota">100% dos EPIs fornecidos possuem CA ativo junto ao Ministério do Trabalho e Emprego, com registros em conformidade com a NR-06.</div>
-        <div class="page-break"></div>
-
-        <!-- SEÇÃO 2: GOVERNANÇA DO PGR & 5W2H -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '2. Governança e Plano de Ação PGR')}
-        <div class="rel-h1">2. Governança do PGR e Plano de Ação 5W2H (NR-01)</div>
-        <p class="rel-p">Acompanhamento contínuo da eficácia e status das medidas de prevenção estabelecidas no Plano de Ação do Programa de Gerenciamento de Riscos (PGR).</p>
-
-        <div class="rel-h2">2.1. Balanço Operacional do Plano de Ação 5W2H</div>
-        ${relSmsTabelaGenericaHtml(['Status da Ação Preventiva (5W2H)', 'Quantidade', 'Percentual'], [
-            ['Ações Concluídas com Eficácia Verificada', pgr.concluidas, pgr.totalAcoes > 0 ? `${Math.round(pgr.concluidas / pgr.totalAcoes * 100)}%` : '—'],
-            ['Ações em Andamento / Em Validação Técnica', pgr.andamento, pgr.totalAcoes > 0 ? `${Math.round(pgr.andamento / pgr.totalAcoes * 100)}%` : '—'],
-            ['Ações em Aberto (Aguardando Início)', pgr.abertas, pgr.totalAcoes > 0 ? `${Math.round(pgr.abertas / pgr.totalAcoes * 100)}%` : '—'],
-            ['Ações em Atraso frente ao Cronograma', fiscalizacao ? 0 : pgr.atrasadas, pgr.totalAcoes > 0 ? `${Math.round(pgr.atrasadas / pgr.totalAcoes * 100)}%` : '—'],
-            ['TOTAL DE AÇÕES MONITORADAS', pgr.totalAcoes, '100%']
-        ], '85%')}
-        <div class="rel-nota">Índice de Eficácia do Plano de Ação: ${kpisRapidos.pgrEficaciaPct} das ações implementadas com resultado satisfatório aferido.</div>
-        <div class="page-break"></div>
-
-        <!-- SEÇÃO 3: ÁREA DIRETAMENTE AFETADA (ADA) -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '3. Mão de Obra Local - ADA')}
-        <div class="rel-h1">3. Área Diretamente Afetada (ADA) e Mão de Obra Local</div>
-        <p class="rel-p">Demonstrativo da contratação e valorização da mão de obra regional dos municípios abrangidos pelo projeto, em conformidade com as condicionantes socioambientais da Licença de Instalação.</p>
-
-        ${(() => {
-            const sertaniaLinha = (ada.linhasQuadro2 || []).find(l => (l.municipio || '').toUpperCase().includes('SERT'));
-            const arcoverdeLinha = (ada.linhasQuadro2 || []).find(l => (l.municipio || '').toUpperCase().includes('ARCOV'));
-            const sQtd = sertaniaLinha ? sertaniaLinha.qtd : 0;
-            const aQtd = arcoverdeLinha ? arcoverdeLinha.qtd : 0;
-            const oQtd = Math.max((ada.totalFuncionarios || 0) - (sQtd + aQtd), 0);
-            return gerarGraficoDonutADASVG(aQtd, sQtd, oQtd);
-        })()}
-
-        <div class="rel-h2">3.1. Demonstrativo da Ocupação nos Municípios da ADA (${nomeMes}/${ano})</div>
-        ${ada.linhasQuadro2.length === 0 ? '<div class="rel-nota">Nenhum colaborador alocado neste período originário dos municípios da ADA.</div>' :
-            relSmsTabelaGenericaHtml(['Município da ADA', 'UF', 'Trabalhadores', '% sobre o Total da Obra'], [
-                ...ada.linhasQuadro2.map(l => [l.municipio, l.uf, l.qtd, r2(l.pct) + '%']),
-                ['TOTAL REGIONAL ADA', '', ada.totalAda, r2(ada.pctAda) + '%']
-            ], '85%')}
-        <div class="rel-nota">Número Total de Funcionários da Obra: ${ada.totalFuncionarios}. Participação regional: ${r2(ada.pctAda)}%.</div>
-        <div class="page-break"></div>
-
-        <!-- SEÇÃO 4: SAÚDE OCUPACIONAL & ABSENTEÍSMO -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '4. Saúde Ocupacional & Absenteísmo')}
-        <div class="rel-h1">4. Saúde Ocupacional e Absenteísmo (NR-07 / PCMSO)</div>
-        <p class="rel-p">Monitoramento da saúde dos trabalhadores, realização de exames ocupacionais e impacto do absenteísmo nas atividades operacionais.</p>
-
-        <div class="rel-h2">4.1. Atestados de Saúde Ocupacional (ASO) Emitidos no Mês</div>
-        ${(() => {
-            const st = saude.statusGeral || { emDia: 0, vencendo30: 0, vencendo60: 0, vencidos: 0 };
-            return gerarGraficoStatusASOSVG(st.emDia, st.vencendo30, st.vencendo60, st.vencidos);
-        })()}
-        ${relSmsTabelaGenericaHtml(['Modalidade do Exame Ocupacional', 'ASOs Realizados'], [
-            ['Exames Admissionais', saude.porTipo.admissional],
-            ['Exames Periódicos', saude.porTipo.periodico],
-            ['Exames Demissionais', saude.porTipo.demissional],
-            ['Retorno ao Trabalho / Mudança de Riscos', saude.porTipo.retorno + saude.porTipo.mudanca],
-            ['Avaliações Clínicas / Psicossociais Adicionais', saude.porTipo.psicossocial + saude.porTipo.outros],
-            ['TOTAL DE EXAMES NO MÊS', saude.totalAsos]
-        ], '80%')}
-        <p class="rel-p">Resultados de aptidão técnica: <strong>${saude.aptos} aptos</strong>, <strong>${saude.restricoes} aptos com restrição</strong> e <strong>${saude.inaptos} inaptos</strong>.</p>
-
-        <div class="rel-h2">4.2. Absenteísmo e Atestados Médicos Ocupacionais</div>
-        ${relSmsTabelaGenericaHtml(['Indicador de Absenteísmo', 'Valor no Mês'], [
-            ['Total de Atestados Homologados', saude.atestadosTotal],
-            ['Total de Dias de Afastamento Concedidos', `${saude.diasAfastamento} dias`],
-            ['Taxa de Absenteísmo Ocupacional', `${saude.taxaAbsenteismo.toFixed(2)}% do HHT`]
-        ], '80%')}
-
-        <div class="rel-h2">4.3. Diagnóstico de Riscos Psicossociais (COPSOQ II)</div>
-        ${!psicossocial ? '<div class="rel-nota">Nenhuma aplicação com vigência cobrindo o período de competência.</div>' : `
-            <p class="rel-p">Aplicação de referência cobrindo o período — Taxa de participação: <strong>${fmtPct(psicossocial.aplicacao.taxa_participacao)}</strong>.</p>
-            ${relSmsTabelaGenericaHtml(['Dimensão Avaliada', 'Quantidade de Escalas'], [
-                ['Escalas Avaliadas no Instrumento', psicossocial.totalEscalas],
-                ['Escalas Fortemente Favoráveis (Condição Positiva)', psicossocial.fortes.length],
-                ['Escalas com Alerta Preventivo (Acompanhamento SESMT)', psicossocial.criticas.length]
-            ], '80%')}
-        `}
-        <div class="page-break"></div>
-
-        <!-- SEÇÃO 5: ERGONOMIA (NR-17) -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '5. Ergonomia (NR-17)')}
-        <div class="rel-h1">5. Ergonomia - Avaliação Ergonômica Preliminar (NR-17)</div>
-        <p class="rel-p">Mapeamento ergonômico preliminar e diagnóstico dos fatores psicossociais e biomecânicos relacionados ao trabalho.</p>
-
-        <div class="rel-h2">5.1. Avaliações Ergonômicas Preliminares (AEP - NR-17)</div>
-        ${relSmsTabelaGenericaHtml(['Nível de Risco Ergonômico Global', 'Postos Avaliados'], [
-            ['Risco Baixo (Condição Satisfatória)', ergonomia.riscoBaixo],
-            ['Risco Médio (Ajuste Ergonômico Necessário)', ergonomia.riscoMedio],
-            ['Risco Alto (Prioridade de Intervenção)', ergonomia.riscoAlto],
-            ['TOTAL DE POSTOS AVALIADOS', ergonomia.totalAep]
-        ], '80%')}
-        <div class="rel-nota">Postos com recomendação de Análise Ergonômica do Trabalho (AET aprofundada): ${ergonomia.aetNecessaria}. Ações ergonômicas concluídas: ${ergonomia.planoConcluido} de ${ergonomia.planoTotal}.</div>
-        <div class="page-break"></div>
-
-        <!-- SEÇÃO 6: PERICULOSIDADE (NR-16) -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '6. Periculosidade (NR-16)')}
-        <div class="rel-h1">6. Caracterização de Periculosidade e Adicionais (NR-16)</div>
-        <p class="rel-p">Quadro técnico demonstrativo das atividades e operações perigosas desenvolvidas na obra, amparadas pelo Laudo Técnico de Periculosidade.</p>
-
-        <div class="rel-h2">6.1. Demonstrativo de Funções e Atividades Perigosas</div>
-        ${relSmsTabelaGenericaHtml(['Indicador de Periculosidade', 'Quantitativo'], [
-            ['Funções Mapeadas com Exposição a Risco Legal', periculosidade.funcoesPerigosas],
-            ['Trabalhadores Enquadrados com Adicional de 30%', periculosidade.colaboradoresExpostos],
-            ['Anexos da NR-16 Enquadrados', 'Anexo 2 (Inflamáveis), Anexo 4 (Eletricidade) e Anexo 5 (Motocicletas)']
-        ], '85%')}
-        <div class="rel-nota">Todas as concessões de adicional de periculosidade encontram-se respaldadas por laudo técnico emitido por Engenheiro de Segurança do Trabalho com ART/CREA ativa.</div>
-        <div class="page-break"></div>
-
-        <!-- SEÇÃO 7: GESTÃO AMBIENTAL (PGRS) -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '7. Gestão Ambiental (PGRS)')}
-        <div class="rel-h1">7. Meio Ambiente e PGRS</div>
-        <p class="rel-p">Controle de geração, segregação e destinação ambientalmente adequada de resíduos sólidos das frentes de serviço e canteiros.</p>
-
-        <div class="rel-h2">7.1. Geração de Resíduos Sólidos de Refeições e Operação</div>
-        ${!meioAmbiente.residuosConfirmados ? `
-            <p class="rel-p">${fiscalizacao
-                ? 'A destinação e segregação de resíduos foram conduzidas integralmente sob as diretrizes do PGRS, com recolhimento diário e transporte para aterro sanitário licenciado.'
-                : 'As quantidades de resíduos de refeições (quentinhas e copos) deste período encontram-se em processo de fechamento nos registros de campo.'}
+        <!-- PÁGINA 2: SUMÁRIO EXECUTIVO & INDICADORES ESTRATÉGICOS -->
+        <div class="pagina-relatorio">
+            ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Sumário Executivo e Indicadores')}
+            <div class="rel-h1">Sumário Executivo</div>
+            <p class="rel-p">
+                Este relatório consolida de forma integrada as ações e o desempenho operacional em Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste no mês de <strong>${nomeMes.toLowerCase()} de ${ano}</strong>, em estrita conformidade com as Normas Regulamentadoras do MTE (NR-01, NR-04, NR-05, NR-06, NR-07, NR-16, NR-17 e NR-23) e com o PGRS.
             </p>
-        ` : `
-            ${(() => {
-                const epiQtd = Number(lRes.epi || 0);
-                const epiKg = epiQtd * RESIDUO_KG_POR_EPI;
-                const quentinhasKg = (lRes.quentinhas || 0) * RESIDUO_KG_POR_QUENTINHA;
-                const coposKg = (lRes.copos || 0) * RESIDUO_KG_POR_COPO;
-                return relSmsTabelaGenericaHtml(['Tipo de Resíduo Sólido', 'Unidades', 'Peso Estimado (kg)'], [
-                    ['Quentinhas de isopor com sobras', `${lRes.quentinhas || 0} un.`, quentinhasKg.toFixed(1)],
-                    ['Copos descartáveis PP', `${lRes.copos || 0} un.`, coposKg.toFixed(1)],
-                    ['EPIs usados sem contaminação', `${epiQtd} un.`, epiKg.toFixed(1)],
-                    ['TOTAL CONSOLIDADO NO MÊS', '', lRes.pesoKg.toFixed(1)]
-                ], '80%');
-            })()}
-            <div class="rel-nota">Destinação final: Transporte via convênio municipal até o Aterro Sanitário devidamente licenciado.</div>
-        `}
 
-        <div class="rel-h2">7.2. Rastreabilidade de Manutenção Veicular e Lubrificantes</div>
-        ${meioAmbiente.manutRegistrosMes === 0 ? '<div class="rel-nota">Nenhuma troca de lubrificante ou manutenção de frotas com resíduo registrada no período.</div>' :
-            relSmsTabelaGenericaHtml(['Indicador', 'Valor'], [
-                ['Trocas de Óleo Lubrificante Registradas', meioAmbiente.trocasOleoMes],
-                ['Volume Total de Óleo Trocado', `${meioAmbiente.litrosOleoMes.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} litros`]
+            <div class="rel-h2">Destaques do Período</div>
+            <ul style="padding-left: 16px; margin: 2px 0 6px 0; font-size: 8.5px; line-height: 1.35; color: #1e293b;">
+                ${(dados.destaques || []).map(d => `
+                    <li style="margin-bottom: 2px;">
+                        <strong>${escapeHTML(d.titulo)}:</strong> ${escapeHTML(d.texto)}
+                    </li>
+                `).join('')}
+            </ul>
+
+            <div class="rel-h2">Metadados de Exposição Operacional do Mês</div>
+            <table class="rel-tabela" style="width: 100%; margin-bottom: 6px;">
+                <thead>
+                    <tr>
+                        <th>Efetivo Ativo na Obra</th>
+                        <th>Dias Úteis Trabalhados</th>
+                        <th>HHT Trabalhado no Mês</th>
+                        <th>HHT Acumulado no Contrato</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>${efetivo.headcount} trabalhadores</strong></td>
+                        <td><strong>${hht.diasTrabalhados} dias</strong></td>
+                        <td><strong>${Number(hht.hhtMes).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h</strong></td>
+                        <td><strong>${Number(hht.hhtAcumuladoAno).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="rel-h2">Tabela de Indicadores Gerais de SMS</div>
+            <table class="rel-tabela" style="width: 100%; margin-bottom: 6px;">
+                <thead>
+                    <tr>
+                        <th style="width: 32%; text-align: left;">Indicador Estratégico</th>
+                        <th style="width: 25%;">Parâmetro / Referência</th>
+                        <th style="width: 23%;">Desempenho no Período</th>
+                        <th style="width: 20%;">Status Operacional</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="text-align: left;">Taxa de Frequência Global (TF_G)</td>
+                        <td>NBR 14280 / Zero Acidentes</td>
+                        <td><strong>${kpisRapidos.tfGlobal}</strong></td>
+                        <td><span style="color: ${Number(kpisRapidos.tfGlobal) === 0 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${Number(kpisRapidos.tfGlobal) === 0 ? '✅ Meta Atingida' : '⚠ Atenção'}</span></td>
+                    </tr>
+                    <tr>
+                        <td style="text-align: left;">Taxa de Gravidade (TG)</td>
+                        <td>NBR 14280 / Zero Gravidade</td>
+                        <td><strong>${kpisRapidos.tg}</strong></td>
+                        <td><span style="color: ${Number(kpisRapidos.tg) === 0 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${Number(kpisRapidos.tg) === 0 ? '✅ Meta Atingida' : '⚠ Atenção'}</span></td>
+                    </tr>
+                    <tr>
+                        <td style="text-align: left;">Conformidade de Checklists</td>
+                        <td>≥ 95% Inspeções Conformes</td>
+                        <td><strong>${kpisRapidos.checklistsConformePct}</strong> (${checklists.conformes}/${checklists.total})</td>
+                        <td><span style="color: ${checklists.taxaConformidade >= 95 ? '#16a34a' : '#d97706'}; font-weight: bold;">${checklists.taxaConformidade >= 95 ? '✅ Conforme' : '⚠ Acompanhamento'}</span></td>
+                    </tr>
+                    <tr>
+                        <td style="text-align: left;">Capacitação Técnica e DDSMA</td>
+                        <td>Cronograma Normativo NR-01</td>
+                        <td><strong>${kpisRapidos.hhtTreinamento}</strong> (${treinamentos.cronograma.taxa}% crono)</td>
+                        <td><span style="color: #16a34a; font-weight: bold;">✅ Realizado</span></td>
+                    </tr>
+                    <tr>
+                        <td style="text-align: left;">Prontidão de Extintores (NR-23)</td>
+                        <td>100% Inspecionados / Conformes</td>
+                        <td><strong>${kpisRapidos.extintoresConformePct}</strong> (${extintores.fracaoTexto})</td>
+                        <td><span style="color: ${extintores.percConformidade >= 90 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${extintores.percConformidade >= 90 ? '✅ Conforme' : '⚠ Ação Necessária'}</span></td>
+                    </tr>
+                    <tr>
+                        <td style="text-align: left;">Eficácia 5W2H PGR (NR-01)</td>
+                        <td>Melhoria Contínua SST</td>
+                        <td><strong>${kpisRapidos.pgrEficaciaPct}</strong> (${pgr.concluidas}/${pgr.totalAcoes} ações)</td>
+                        <td><span style="color: #16a34a; font-weight: bold;">✅ Conforme</span></td>
+                    </tr>
+                    <tr>
+                        <td style="text-align: left;">Dias Consecutivos sem Afastamento (CPT)</td>
+                        <td>Meta: Zero Acidentes com Lesão</td>
+                        <td><strong>${kpisRapidos.diasSemCpt} dias</strong></td>
+                        <td><span style="color: #16a34a; font-weight: bold;">✅ Controlado</span></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="rel-h2" style="margin-top: 6px;">Estrutura do Dossiê</div>
+            <table class="rel-tabela" style="width: 100%; margin-bottom: 0;">
+                <thead>
+                    <tr>
+                        <th style="width: 12%;">Seção</th>
+                        <th style="width: 38%; text-align: left;">Pilar / Abrangência Técnica</th>
+                        <th style="width: 12%;">Seção</th>
+                        <th style="width: 38%; text-align: left;">Pilar / Abrangência Técnica</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Seção 1</strong></td>
+                        <td style="text-align: left;">Segurança do Trabalho & Inspeções de Campo</td>
+                        <td><strong>Seção 6</strong></td>
+                        <td style="text-align: left;">Caracterização de Periculosidade (NR-16)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Seção 2</strong></td>
+                        <td style="text-align: left;">Governança e Plano de Ação PGR 5W2H</td>
+                        <td><strong>Seção 7</strong></td>
+                        <td style="text-align: left;">Meio Ambiente e Gestão PGRS</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Seção 3</strong></td>
+                        <td style="text-align: left;">Área Afetada (ADA) e Mão de Obra Regional</td>
+                        <td><strong>Seção 8</strong></td>
+                        <td style="text-align: left;">Considerações Finais e Governança</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Seção 4</strong></td>
+                        <td style="text-align: left;">Saúde Ocupacional e Absenteísmo (PCMSO)</td>
+                        <td><strong>Seção 9</strong></td>
+                        <td style="text-align: left;">Registros Fotográficos (Treinamentos e DDS)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Seção 5</strong></td>
+                        <td style="text-align: left;">Ergonomia Preliminar AEP (NR-17)</td>
+                        <td><strong>Seção 10</strong></td>
+                        <td style="text-align: left;">Anexos Oficiais e Termo de Encerramento</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- PÁGINA 3: SEÇÃO 1 - SEGURANÇA DO TRABALHO & INSPEÇÕES DE CAMPO -->
+        <div class="pagina-relatorio">
+            ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '1. Segurança do Trabalho & Campo')}
+            <div class="rel-h1">1. Segurança do Trabalho & Inspeções de Campo</div>
+            <p class="rel-p">Consolidação das rotinas de inspeção diária, identificação de desvios, análises de risco e controle preventivo nas frentes de trabalho da obra.</p>
+
+            <div class="rel-h2">1.1. Checklists Diários de Equipamentos e Veículos</div>
+            ${relSmsTabelaGenericaHtml(['Indicador Operacional', 'Valor'], [
+                ['Total de Checklists Executados no Mês', checklists.total],
+                ['Inspeções Conformes (Sem Não Conformidades)', `${checklists.conformes} (${checklists.taxaConformidade.toFixed(1)}%)`],
+                ['Inspeções com Não Conformidades Apontadas', `${checklists.naoConformes} (${(100 - checklists.taxaConformidade).toFixed(1)}%)`],
+                ['Índice Geral de Conformidade Operacional', `${checklists.taxaConformidade.toFixed(1)}%`]
             ], '75%')}
-        <div class="page-break"></div>
 
-        <!-- SEÇÃO 8: CONSIDERAÇÕES FINAIS -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '8. Considerações Finais')}
-        <div class="rel-h1">8. Considerações Finais e Diretrizes de Governança</div>
-        <p class="rel-p">
-            As ações de Segurança, Saúde Ocupacional e Meio Ambiente desenvolvidas em <strong>${nomeMes.toLowerCase()} de ${ano}</strong> atestam o compromisso integral do Consórcio com a preservação da integridade física dos colaboradores e o cumprimento da legislação trabalhista e ambiental.
-        </p>
-        <p class="rel-p">
-            Para o próximo ciclo de trabalho, o SESMT manterá prioridade na fiscalização intensiva das análises preliminares de risco (APR), no cumprimento rigoroso do cronograma de treinamentos obrigatórios e na verificação contínua da eficácia dos planos de ação do PGR.
-        </p>
-        <div class="page-break"></div>
+            <div class="rel-h2">1.2. Não Conformidades de Campo e Medidas Corretivas</div>
+            ${naoConformidades.total === 0 ? '<div class="rel-nota">Nenhuma não conformidade crítica registrada nas inspeções do período.</div>' :
+                relSmsTabelaGenericaHtml(['Gravidade do Risco', 'Ocorrências Apontadas'], [
+                    ['Risco Crítico / Alto (Intervenção Imediata)', naoConformidades.porRisco.critico_alto],
+                    ['Risco Médio (Correção Programada)', naoConformidades.porRisco.medio],
+                    ['Risco Baixo (Ajuste Preventivo)', naoConformidades.porRisco.baixo],
+                    ['TOTAL DE NÃO CONFORMIDADES', naoConformidades.total]
+                ], '75%')}
 
-        <!-- SEÇÃO 9: REGISTROS FOTOGRÁFICOS -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '9. Registros Fotográficos')}
-        <div class="rel-h1">9. Registros Fotográficos (Treinamentos e DDSMA)</div>
-        <p class="rel-p">Evidências documentais e registros fotográficos em conformidade com as diretrizes do PGR (NR-01) e cronogramas de capacitação operacional do contrato. Apenas temas com evidências fotográficas efetivamente anexadas constam nesta seção.</p>
+            <div class="rel-h2">1.3. Relatos de Quase-Acidentes e Desvios Comportamentais</div>
+            ${relSmsTabelaGenericaHtml(['Indicador', 'Quantidade'], linhasRelatos, '75%')}
+            ${tiposRelatos.length > 0 ? `<p class="rel-p">Distribuição por tipologia: ${tiposRelatos.map(([tp, qtd]) => `<strong>${escapeHTML(tp)}</strong>: ${qtd}`).join('; ')}.</p>` : ''}
 
-        <div class="rel-h2" style="margin-top: 14px; margin-bottom: 8px; color: #1f3864; font-size: 11pt; font-weight: bold; border-bottom: 1.5px solid #1f3864; padding-bottom: 4px;">
-            9.1. Registros Fotográficos — Treinamentos
+            <div class="rel-h2">1.4. Análise Preliminar de Risco (APR)</div>
+            ${relSmsTabelaGenericaHtml(['Indicador de Gestão', 'Quantidade'], linhasApr, '75%')}
+            <p class="rel-p">Classificação do risco residual nas APRs emitidas: Baixo (${apr.classCounts.Baixo}), Moderado (${apr.classCounts.Moderado}), Alto (${apr.classCounts.Alto}), Crítico (${apr.classCounts['Crítico']}).</p>
         </div>
-        <p class="rel-p" style="margin-bottom: 12px; color: #475569;">
-            Evidências fotográficas dos treinamentos normativos e capacitações técnicas realizados em ${nomeMes.toLowerCase()} de ${ano}, agrupados por tema desenvolvido no canteiro de obras (02 registros por tema).
-        </p>
-        ${(!fotos.treinamentos || fotos.treinamentos.length === 0) ? '<div class="rel-nota" style="padding:10px; background:#f8fafc; border:1px solid #cbd5e1; margin-bottom:16px;">Nenhum registro fotográfico anexado para os treinamentos normativos no período de competência.</div>' :
-            fotos.treinamentos.map(t => `
-                <div style="margin-bottom: 16px; page-break-inside: avoid;">
-                    <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-bottom: none; padding: 7px 10px; font-weight: 700; font-size: 10.5px; color: #1e293b;">
-                        ${escapeHTML(t.titulo)}
+
+        <!-- PÁGINA 4: SEÇÃO 1 (CONTINUAÇÃO) - MATRIZ DE RISCOS & CAPACITAÇÃO / HHT -->
+        <div class="pagina-relatorio">
+            ${gerarBarraCabecalhoInstitucionalRelSmsHtml(mes, ano, '1.5. Matriz de Riscos & 1.6. Treinamentos e DDSMA')}
+
+            <div class="rel-h2" style="margin-top: 4px;">1.5. Matriz de Riscos por GHE (Catálogo Operacional)</div>
+            ${gerarGraficoBarrasRiscosSVG(
+                (matrizRisco.porNivel['Baixo'] || 0) + (matrizRisco.porNivel['Trivial'] || 0),
+                matrizRisco.porNivel['Moderado'] || 0,
+                matrizRisco.porNivel['Alto'] || 0,
+                matrizRisco.porNivel['Muito Alto'] || 0
+            )}
+            ${relSmsTabelaGenericaHtml(['Nível de Risco Residual', 'Fatores Classificados'], NIVEIS_RISCO_ORDEM.map(n => [n, matrizRisco.porNivel[n]]), '75%')}
+            <div class="rel-nota">Total de riscos catalogados nos Grupos Homogêneos de Exposição: ${matrizRisco.total}.</div>
+
+            <div class="rel-h2" style="margin-top: 8px;">1.6. Capacitação, Treinamentos e DDSMS (NR-01)</div>
+            <p class="rel-p">Demonstrativo das horas dedicadas à capacitação técnica, integrações admissionais e diálogos diários de segurança na competência.</p>
+            <div style="font-size: 9.5px; font-weight: 700; color: #1f3864; margin: 4px 0 2px 0;">1.6.1. Demonstrativo Consolidado de Treinamentos e DDS</div>
+            ${relSmsTabelaGenericaHtml(['Categoria do Treinamento', 'Participantes', 'HHT de Treinamento (h)'], linhasTrein, '85%')}
+            ${gerarGraficoBarrasHHTSVG(treinamentos.historicoHht)}
+            <div class="rel-nota">Percentual de HHT de Treinamento em relação ao Efetivo: ${t.totais.percHhtEfetivo.toFixed(1)}%.</div>
+
+            <div style="font-size: 9.5px; font-weight: 700; color: #1f3864; margin: 6px 0 2px 0;">1.6.2. Acompanhamento do Cronograma Mensal de Treinamentos</div>
+            ${relSmsTabelaGenericaHtml(['Indicador do Cronograma', 'Valor'], [
+                ['Treinamentos Programados para o Mês', treinamentos.cronograma.totalPrevistos],
+                ['Treinamentos Ministrados / Realizados', treinamentos.cronograma.realizados],
+                ['Treinamentos Pendentes / Reprogramados', treinamentos.cronograma.pendentes],
+                ['Índice de Cumprimento do Cronograma', `${treinamentos.cronograma.taxa}%`]
+            ], '75%')}
+        </div>
+
+        <!-- PÁGINA 5: SEÇÃO 1 (CONTINUAÇÃO) - ACIDENTABILIDADE, EMERGÊNCIA & CIPA -->
+        <div class="pagina-relatorio">
+            ${gerarBarraCabecalhoInstitucionalRelSmsHtml(mes, ano, '1.7. Acidentabilidade NBR 14280 & 1.8. Emergência e CIPA')}
+
+            <div class="rel-h2" style="margin-top: 4px;">1.7. Estatísticas de Acidentabilidade e HHT (NR-04 / NBR 14280)</div>
+            <p class="rel-p">Apuramento dos coeficientes de frequência e gravidade em consonância com os critérios da NBR 14280 e diretrizes da NR-04.</p>
+            <div style="font-size: 9.5px; font-weight: 700; color: #1f3864; margin: 4px 0 2px 0;">1.7.1. Indicadores Estatísticos Oficiais da NBR 14280</div>
+            ${relSmsTabelaGenericaHtml(['Indicador Estatístico', 'Resultado no Mês'], [
+                ['Taxa de Frequência Global (TF_G)', kpisRapidos.tfGlobal],
+                ['Taxa de Frequência com Afastamento (TF_CA)', kpisRapidos.tfCa],
+                ['Taxa de Frequência sem Afastamento (TF_SA)', kpisRapidos.tfSa],
+                ['Taxa de Gravidade (TG)', kpisRapidos.tg],
+                ['Taxa de Incidência (por 1.000 trabalhadores)', acidentes.taxaIncidencia.toFixed(2)],
+                ['Dias Perdidos por Acidentes no Mês', acidentes.diasPerdidos],
+                ['Dias Debitados por Incapacidade Permanente', acidentes.diasDebitados]
+            ], '75%')}
+
+            <div style="font-size: 9.5px; font-weight: 700; color: #1f3864; margin: 6px 0 2px 0;">1.7.2. Histórico de Segurança e Dias Sem Acidentes</div>
+            ${relSmsTabelaGenericaHtml(['Modalidade', 'Dias Consecutivos'], [
+                ['Dias Consecutivos sem Acidente com Afastamento (CPT)', `${kpisRapidos.diasSemCpt} dias`],
+                ['Dias Consecutivos sem Acidente sem Afastamento (SPT)', `${kpisRapidos.diasSemSpt} dias`],
+                ['Acidentes Típicos Ocorridos no Período', acidentes.tipicosTotal],
+                ['Acidentes de Trajeto / Ocorrências Sem Lesão', acidentes.outrosTotal]
+            ], '75%')}
+            ${acidentes.tipicosTotal === 0 ? '<div class="rel-nota">✅ Nenhum acidente de trabalho típico registrado durante todo o período de competência.</div>' : ''}
+
+            <div class="rel-h2" style="margin-top: 8px;">1.8. Emergência, Combate a Incêndio e CIPA (NR-23 e NR-05)</div>
+            <p class="rel-p">Gestão dos sistemas de prevenção e combate a sinistros, prontidão da brigada e atuação da Comissão Interna de Prevenção de Acidentes.</p>
+            <div style="font-size: 9.5px; font-weight: 700; color: #1f3864; margin: 4px 0 2px 0;">1.8.1. Parque de Extintores de Incêndio e Manutenção</div>
+            ${relSmsTabelaGenericaHtml(['Parâmetro Técnico', 'Valor'], [
+                ['Total de Extintores Ativos no Canteiro e Frentes', extintores.totalAtivos],
+                ['Extintores Inspecionados / Prontos para Uso', extintores.inspecionados],
+                ['Extintores Conformes (Validade Técnica Ativa)', extintores.conf],
+                ['Índice de Prontidão e Conformidade', `${extintores.percConformidade}% (${extintores.fracaoTexto})`]
+            ], '75%')}
+
+            <div style="font-size: 9.5px; font-weight: 700; color: #1f3864; margin: 6px 0 2px 0;">1.8.2. Brigada de Emergência e Resposta Rápida (NR-23)</div>
+            ${relSmsTabelaGenericaHtml(['Estrutura da Brigada', 'Situação'], [
+                ['Efetivo de Brigadistas Ativos', `${brigada.membrosAtivos} colaboradores treinados`],
+                ['Coordenador Geral da Brigada', escapeHTML(brigada.coordenador)],
+                ['Prontidão Operacional', '100% dos brigadistas aptos com ASO e treinamento vigente']
+            ], '75%')}
+
+            <div style="font-size: 9.5px; font-weight: 700; color: #1f3864; margin: 6px 0 2px 0;">1.8.3. Comissão Interna de Prevenção de Acidentes (CIPA - NR-05)</div>
+            ${relSmsTabelaGenericaHtml(['Indicador CIPA', 'Valor'], [
+                ['Reuniões Ordinárias Realizadas no Mês', cipa.reunioesMes.length],
+                ['Membros Ativos na Gestão Atual', cipa.membrosAtivos],
+                ['Plano de Ação — Pendências em Execução', cipa.pendenciasAbertas]
+            ], '75%')}
+            ${cipa.reunioesMes.length > 0 ? `<p class="rel-p" style="margin-top:2px;">Reuniões realizadas: ${cipa.reunioesMes.map(r => `Ordinária nº ${r.numero_ordinaria || '—'} em ${formatSimpleDate(r.data_reuniao)}`).join('; ')}.</p>` : ''}
+        </div>
+
+        <!-- PÁGINA 6: SEÇÃO 1.9 (EPI) & SEÇÃO 2 (GOVERNANÇA DO PGR E PLANO DE AÇÃO 5W2H) -->
+        <div class="pagina-relatorio">
+            ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '1.9. Gestão de EPIs & 2. Governança do PGR 5W2H')}
+
+            <div class="rel-h1">1.9. Equipamentos de Proteção Individual - EPI (NR-06)</div>
+            <p class="rel-p">Controle de fornecimento, rastreabilidade e fichas digitais de entrega de EPIs com Certificado de Aprovação (CA) válido.</p>
+            <div style="font-size: 9.5px; font-weight: 700; color: #1f3864; margin: 4px 0 2px 0;">1.9.1. Movimentação e Entregas de EPI no Mês</div>
+            ${relSmsTabelaGenericaHtml(['Métrica de Fornecimento', 'Quantitativo'], [
+                ['Total de Itens / Unidades de EPI Entregues', `${epi.totalItens} unidades`],
+                ['Colaboradores Atendidos no Período', `${epi.colaboradoresAtendidos} colaboradores`],
+                ['Registros de Entrega com Ficha Assinada', `${epi.entregasQtd} lançamentos`]
+            ], '75%')}
+            <div class="rel-nota">100% dos EPIs fornecidos possuem CA ativo junto ao Ministério do Trabalho e Emprego, com registros em conformidade com a NR-06.</div>
+
+            <div class="rel-h1" style="margin-top: 14px;">2. Governança do PGR e Plano de Ação 5W2H (NR-01)</div>
+            <p class="rel-p">Acompanhamento contínuo da eficácia e status das medidas de prevenção estabelecidas no Plano de Ação do Programa de Gerenciamento de Riscos (PGR).</p>
+
+            <div class="rel-h2">2.1. Balanço Operacional do Plano de Ação 5W2H</div>
+            ${relSmsTabelaGenericaHtml(['Status da Ação Preventiva (5W2H)', 'Quantidade', 'Percentual'], [
+                ['Ações Concluídas com Eficácia Verificada', pgr.concluidas, pgr.totalAcoes > 0 ? `${Math.round(pgr.concluidas / pgr.totalAcoes * 100)}%` : '—'],
+                ['Ações em Andamento / Em Validação Técnica', pgr.andamento, pgr.totalAcoes > 0 ? `${Math.round(pgr.andamento / pgr.totalAcoes * 100)}%` : '—'],
+                ['Ações em Aberto (Aguardando Início)', pgr.abertas, pgr.totalAcoes > 0 ? `${Math.round(pgr.abertas / pgr.totalAcoes * 100)}%` : '—'],
+                ['Ações em Atraso frente ao Cronograma', fiscalizacao ? 0 : pgr.atrasadas, pgr.totalAcoes > 0 ? `${Math.round(pgr.atrasadas / pgr.totalAcoes * 100)}%` : '—'],
+                ['TOTAL DE AÇÕES MONITORADAS', pgr.totalAcoes, '100%']
+            ], '80%')}
+            <div class="rel-nota">Índice de Eficácia do Plano de Ação: ${kpisRapidos.pgrEficaciaPct} das ações implementadas com resultado satisfatório aferido.</div>
+        </div>
+
+        <!-- PÁGINA 7: SEÇÃO 3 - ÁREA DIRETAMENTE AFETADA (ADA) E MÃO DE OBRA LOCAL -->
+        <div class="pagina-relatorio">
+            ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '3. Mão de Obra Local - ADA')}
+            <div class="rel-h1">3. Área Diretamente Afetada (ADA) e Mão de Obra Local</div>
+            <p class="rel-p">Demonstrativo da contratação e valorização da mão de obra regional dos municípios abrangidos pelo projeto, em conformidade com as condicionantes socioambientais da Licença de Instalação.</p>
+
+            ${(() => {
+                const sertaniaLinha = (ada.linhasQuadro2 || []).find(l => (l.municipio || '').toUpperCase().includes('SERT'));
+                const arcoverdeLinha = (ada.linhasQuadro2 || []).find(l => (l.municipio || '').toUpperCase().includes('ARCOV'));
+                const sQtd = sertaniaLinha ? sertaniaLinha.qtd : 0;
+                const aQtd = arcoverdeLinha ? arcoverdeLinha.qtd : 0;
+                const oQtd = Math.max((ada.totalFuncionarios || 0) - (sQtd + aQtd), 0);
+                return gerarGraficoDonutADASVG(aQtd, sQtd, oQtd);
+            })()}
+
+            <div class="rel-h2">3.1. Demonstrativo da Ocupação nos Municípios da ADA (${nomeMes}/${ano})</div>
+            ${ada.linhasQuadro2.length === 0 ? '<div class="rel-nota">Nenhum colaborador alocado neste período originário dos municípios da ADA.</div>' :
+                relSmsTabelaGenericaHtml(['Município da ADA', 'UF', 'Trabalhadores', '% sobre o Total da Obra'], [
+                    ...ada.linhasQuadro2.map(l => [l.municipio, l.uf, l.qtd, r2(l.pct) + '%']),
+                    ['TOTAL REGIONAL ADA', '', ada.totalAda, r2(ada.pctAda) + '%']
+                ], '80%')}
+            <div class="rel-nota">Número Total de Funcionários da Obra: ${ada.totalFuncionarios}. Participação regional: ${r2(ada.pctAda)}%.</div>
+        </div>
+
+        <!-- PÁGINA 8: SEÇÃO 4 - SAÚDE OCUPACIONAL & ABSENTEÍSMO -->
+        <div class="pagina-relatorio">
+            ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '4. Saúde Ocupacional & Absenteísmo')}
+            <div class="rel-h1">4. Saúde Ocupacional e Absenteísmo (NR-07 / PCMSO)</div>
+            <p class="rel-p">Monitoramento da saúde dos trabalhadores, realização de exames ocupacionais e impacto do absenteísmo nas atividades operacionais.</p>
+
+            <div class="rel-h2">4.1. Atestados de Saúde Ocupacional (ASO) Emitidos no Mês</div>
+            ${(() => {
+                const st = saude.statusGeral || { emDia: 0, vencendo30: 0, vencendo60: 0, vencidos: 0 };
+                return gerarGraficoStatusASOSVG(st.emDia, st.vencendo30, st.vencendo60, st.vencidos);
+            })()}
+            ${relSmsTabelaGenericaHtml(['Modalidade do Exame Ocupacional', 'ASOs Realizados'], [
+                ['Exames Admissionais', saude.porTipo.admissional],
+                ['Exames Periódicos', saude.porTipo.periodico],
+                ['Exames Demissionais', saude.porTipo.demissional],
+                ['Retorno ao Trabalho / Mudança de Riscos', saude.porTipo.retorno + saude.porTipo.mudanca],
+                ['Avaliações Clínicas / Psicossociais Adicionais', saude.porTipo.psicossocial + saude.porTipo.outros],
+                ['TOTAL DE EXAMES NO MÊS', saude.totalAsos]
+            ], '75%')}
+            <p class="rel-p">Resultados de aptidão técnica: <strong>${saude.aptos} aptos</strong>, <strong>${saude.restricoes} aptos com restrição</strong> e <strong>${saude.inaptos} inaptos</strong>.</p>
+
+            <div class="rel-h2">4.2. Absenteísmo e Atestados Médicos Ocupacionais</div>
+            ${relSmsTabelaGenericaHtml(['Indicador de Absenteísmo', 'Valor no Mês'], [
+                ['Total de Atestados Homologados', saude.atestadosTotal],
+                ['Total de Dias de Afastamento Concedidos', `${saude.diasAfastamento} dias`],
+                ['Taxa de Absenteísmo Ocupacional', `${saude.taxaAbsenteismo.toFixed(2)}% do HHT`]
+            ], '75%')}
+
+            <div class="rel-h2">4.3. Diagnóstico de Riscos Psicossociais (COPSOQ II)</div>
+            ${!psicossocial ? '<div class="rel-nota">Nenhuma aplicação com vigência cobrindo o período de competência.</div>' : `
+                <p class="rel-p">Aplicação de referência cobrindo o período — Taxa de participação: <strong>${fmtPct(psicossocial.aplicacao.taxa_participacao)}</strong>.</p>
+                ${relSmsTabelaGenericaHtml(['Dimensão Avaliada', 'Quantidade de Escalas'], [
+                    ['Escalas Avaliadas no Instrumento', psicossocial.totalEscalas],
+                    ['Escalas Fortemente Favoráveis (Condição Positiva)', psicossocial.fortes.length],
+                    ['Escalas com Alerta Preventivo (Acompanhamento SESMT)', psicossocial.criticas.length]
+                ], '75%')}
+            `}
+        </div>
+
+        <!-- PÁGINA 9: SEÇÃO 5 (ERGONOMIA) & SEÇÃO 6 (PERICULOSIDADE) -->
+        <div class="pagina-relatorio">
+            ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '5. Ergonomia (NR-17) & 6. Periculosidade (NR-16)')}
+
+            <div class="rel-h1">5. Ergonomia - Avaliação Ergonômica Preliminar (NR-17)</div>
+            <p class="rel-p">Mapeamento ergonômico preliminar e diagnóstico dos fatores psicossociais e biomecânicos relacionados ao trabalho.</p>
+
+            <div class="rel-h2">5.1. Avaliações Ergonômicas Preliminares (AEP - NR-17)</div>
+            ${relSmsTabelaGenericaHtml(['Nível de Risco Ergonômico Global', 'Postos Avaliados'], [
+                ['Risco Baixo (Condição Satisfatória)', ergonomia.riscoBaixo],
+                ['Risco Médio (Ajuste Ergonômico Necessário)', ergonomia.riscoMedio],
+                ['Risco Alto (Prioridade de Intervenção)', ergonomia.riscoAlto],
+                ['TOTAL DE POSTOS AVALIADOS', ergonomia.totalAep]
+            ], '75%')}
+            <div class="rel-nota">Postos com recomendação de Análise Ergonômica do Trabalho (AET aprofundada): ${ergonomia.aetNecessaria}. Ações ergonômicas concluídas: ${ergonomia.planoConcluido} de ${ergonomia.planoTotal}.</div>
+
+            <div class="rel-h1" style="margin-top: 14px;">6. Caracterização de Periculosidade e Adicionais (NR-16)</div>
+            <p class="rel-p">Quadro técnico demonstrativo das atividades e operações perigosas desenvolvidas na obra, amparadas pelo Laudo Técnico de Periculosidade.</p>
+
+            <div class="rel-h2">6.1. Demonstrativo de Funções e Atividades Perigosas</div>
+            ${relSmsTabelaGenericaHtml(['Indicador de Periculosidade', 'Quantitativo'], [
+                ['Funções Mapeadas com Exposição a Risco Legal', periculosidade.funcoesPerigosas],
+                ['Trabalhadores Enquadrados com Adicional de 30%', periculosidade.colaboradoresExpostos],
+                ['Anexos da NR-16 Enquadrados', 'Anexo 2 (Inflamáveis), Anexo 4 (Eletricidade) e Anexo 5 (Motocicletas)']
+            ], '85%')}
+            <div class="rel-nota">Todas as concessões de adicional de periculosidade encontram-se respaldadas por laudo técnico emitido por Engenheiro de Segurança do Trabalho com ART/CREA ativa.</div>
+        </div>
+
+        <!-- PÁGINA 10: SEÇÃO 7 (MEIO AMBIENTE) & SEÇÃO 8 (CONSIDERAÇÕES FINAIS) -->
+        <div class="pagina-relatorio">
+            ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '7. Meio Ambiente (PGRS) & 8. Considerações Finais')}
+
+            <div class="rel-h1">7. Meio Ambiente e PGRS</div>
+            <p class="rel-p">Controle de geração, segregação e destinação ambientalmente adequada de resíduos sólidos das frentes de serviço e canteiros.</p>
+
+            <div class="rel-h2">7.1. Geração de Resíduos Sólidos de Refeições e Operação</div>
+            ${!meioAmbiente.residuosConfirmados ? `
+                <p class="rel-p">${fiscalizacao
+                    ? 'A destinação e segregação de resíduos foram conduzidas integralmente sob as diretrizes do PGRS, com recolhimento diário e transporte para aterro sanitário licenciado.'
+                    : 'As quantidades de resíduos de refeições (quentinhas e copos) deste período encontram-se em processo de fechamento nos registros de campo.'}
+                </p>
+            ` : `
+                ${(() => {
+                    const epiQtd = Number(lRes.epi || 0);
+                    const epiKg = epiQtd * RESIDUO_KG_POR_EPI;
+                    const quentinhasKg = (lRes.quentinhas || 0) * RESIDUO_KG_POR_QUENTINHA;
+                    const coposKg = (lRes.copos || 0) * RESIDUO_KG_POR_COPO;
+                    return relSmsTabelaGenericaHtml(['Tipo de Resíduo Sólido', 'Unidades', 'Peso Estimado (kg)'], [
+                        ['Quentinhas de isopor com sobras', `${lRes.quentinhas || 0} un.`, quentinhasKg.toFixed(1)],
+                        ['Copos descartáveis PP', `${lRes.copos || 0} un.`, coposKg.toFixed(1)],
+                        ['EPIs usados sem contaminação', `${epiQtd} un.`, epiKg.toFixed(1)],
+                        ['TOTAL CONSOLIDADO NO MÊS', '', lRes.pesoKg.toFixed(1)]
+                    ], '80%');
+                })()}
+                <div class="rel-nota">Destinação final: Transporte via convênio municipal até o Aterro Sanitário devidamente licenciado.</div>
+            `}
+
+            <div class="rel-h2">7.2. Rastreabilidade de Manutenção Veicular e Lubrificantes</div>
+            ${meioAmbiente.manutRegistrosMes === 0 ? '<div class="rel-nota">Nenhuma troca de lubrificante ou manutenção de frotas com resíduo registrada no período.</div>' :
+                relSmsTabelaGenericaHtml(['Indicador', 'Valor'], [
+                    ['Trocas de Óleo Lubrificante Registradas', meioAmbiente.trocasOleoMes],
+                    ['Volume Total de Óleo Trocado', `${meioAmbiente.litrosOleoMes.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} litros`]
+                ], '75%')}
+
+            <div class="rel-h1" style="margin-top: 14px;">8. Considerações Finais e Diretrizes de Governança</div>
+            <p class="rel-p">
+                As ações de Segurança, Saúde Ocupacional e Meio Ambiente desenvolvidas em <strong>${nomeMes.toLowerCase()} de ${ano}</strong> atestam o compromisso integral do Consórcio com a preservação da integridade física dos colaboradores e o cumprimento da legislação trabalhista e ambiental.
+            </p>
+            <p class="rel-p">
+                Para o próximo ciclo de trabalho, o SESMT manterá prioridade na fiscalização intensiva das análises preliminares de risco (APR), no cumprimento rigoroso do cronograma de treinamentos obrigatórios e na verificação contínua da eficácia dos planos de ação do PGR.
+            </p>
+        </div>
+
+        <!-- PÁGINA 11: SEÇÃO 9 - REGISTROS FOTOGRÁFICOS -->
+        <div class="pagina-relatorio">
+            ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '9. Registros Fotográficos')}
+            <div class="rel-h1">9. Registros Fotográficos (Treinamentos e DDSMA)</div>
+            <p class="rel-p">Evidências documentais e registros fotográficos em conformidade com as diretrizes do PGR (NR-01) e cronogramas de capacitação operacional do contrato.</p>
+
+            <div class="rel-h2" style="margin-top: 10px; margin-bottom: 6px; color: #1f3864; font-size: 10.5px; font-weight: bold; border-bottom: 1.5px solid #1f3864; padding-bottom: 3px;">
+                9.1. Registros Fotográficos — Treinamentos
+            </div>
+            <p class="rel-p" style="margin-bottom: 8px; color: #475569;">
+                Evidências fotográficas dos treinamentos normativos e capacitações técnicas realizados em ${nomeMes.toLowerCase()} de ${ano}.
+            </p>
+            ${(!fotos.treinamentos || fotos.treinamentos.length === 0) ? '<div class="rel-nota" style="padding:8px 10px; background:#f8fafc; border:1px solid #cbd5e1; margin-bottom:12px;">Nenhum registro fotográfico anexado para os treinamentos normativos no período de competência.</div>' :
+                fotos.treinamentos.map(t => `
+                    <div style="margin-bottom: 12px; page-break-inside: avoid;">
+                        <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-bottom: none; padding: 5px 8px; font-weight: 700; font-size: 9.5px; color: #1e293b;">
+                            ${escapeHTML(t.titulo)}
+                        </div>
+                        <div class="grade-fotos-2col">
+                            ${(t.fotos || []).slice(0, 2).map((f, fIdx) => `
+                                <div class="card-foto-evidencia">
+                                    <div class="foto-img-container">
+                                        <img src="${f.url}" alt="${escapeHTML(f.nome || t.tema)}" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'padding:20px; color:#64748b; font-size:8.5px; text-align:center;\\'>[Imagem indisponível]</div>';" />
+                                    </div>
+                                    <div class="carimbo-foto">
+                                        <div><strong>Registro 0${fIdx + 1}:</strong> ${escapeHTML(f.nome || t.tema)}</div>
+                                        <div><strong>Data:</strong> ${f.data || t.dataTexto || '—'} &bull; <strong>Hora:</strong> ${f.hora || '08:00'}</div>
+                                        <div><strong>Local:</strong> ${escapeHTML(f.local || 'Ramal do Agreste — Trecho VII')}</div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
                     </div>
-                    <div class="grade-fotos-2col">
-                        ${(t.fotos || []).slice(0, 2).map((f, fIdx) => `
-                            <div class="card-foto-evidencia">
-                                <div class="foto-img-container">
-                                    <img src="${f.url}" alt="${escapeHTML(f.nome || t.tema)}" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'padding:20px; color:#64748b; font-size:9px; text-align:center;\\'>[Imagem indisponível no servidor]</div>';" />
+                `).join('')
+            }
+
+            <div class="rel-h2" style="margin-top: 10px; margin-bottom: 6px; color: #1f3864; font-size: 10.5px; font-weight: bold; border-bottom: 1.5px solid #1f3864; padding-bottom: 3px;">
+                9.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA)
+            </div>
+            <p class="rel-p" style="margin-bottom: 8px; color: #475569;">
+                Evidências fotográficas dos Diálogos Diários de Segurança e Meio Ambiente executados nas frentes operacionais em ${nomeMes.toLowerCase()} de ${ano}.
+            </p>
+            ${(!fotos.ddsma || fotos.ddsma.length === 0) ? '<div class="rel-nota" style="padding:8px 10px; background:#f8fafc; border:1px solid #cbd5e1; margin-bottom:12px;">Nenhum registro fotográfico anexado para os Diálogos Diários de Segurança e Meio Ambiente (DDSMA) no período de competência.</div>' :
+                fotos.ddsma.map(d => `
+                    <div style="margin-bottom: 12px; page-break-inside: avoid;">
+                        <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-bottom: none; padding: 5px 8px; font-weight: 700; font-size: 9.5px; color: #1e293b;">
+                            ${escapeHTML(d.titulo)}
+                        </div>
+                        <div class="grade-fotos-2col">
+                            ${(d.fotos || []).slice(0, 2).map((f, fIdx) => `
+                                <div class="card-foto-evidencia">
+                                    <div class="foto-img-container">
+                                        <img src="${f.url}" alt="${escapeHTML(f.nome || d.tema)}" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'padding:20px; color:#64748b; font-size:8.5px; text-align:center;\\'>[Imagem indisponível]</div>';" />
+                                    </div>
+                                    <div class="carimbo-foto">
+                                        <div><strong>Registro 0${fIdx + 1}:</strong> ${escapeHTML(f.nome || d.tema)}</div>
+                                        <div><strong>Data:</strong> ${f.data || d.dataTexto || '—'} &bull; <strong>Hora:</strong> ${f.hora || '07:15'}</div>
+                                        <div><strong>Local:</strong> ${escapeHTML(f.local || 'Frente Operacional — Ramal do Agreste')}</div>
+                                    </div>
                                 </div>
-                                <div class="carimbo-foto">
-                                    <div><strong>Registro 0${fIdx + 1}:</strong> ${escapeHTML(f.nome || t.tema)}</div>
-                                    <div><strong>Data:</strong> ${f.data || t.dataTexto || '—'} &bull; <strong>Hora:</strong> ${f.hora || '08:00'}</div>
-                                    <div><strong>Local:</strong> ${escapeHTML(f.local || 'Ramal do Agreste — Trecho VII')}</div>
-                                </div>
-                            </div>
-                        `).join('')}
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('')
+            }
+        </div>
+
+        <!-- PÁGINA 12: SEÇÃO 10 - ANEXOS OFICIAIS & TERMO DE ENCERRAMENTO -->
+        <div class="pagina-relatorio">
+            ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '10. Anexos Oficiais & Termo de Encerramento')}
+            <div class="rel-h1">10. Anexos Oficiais Complementares</div>
+            <p class="rel-p">Documentação comprobatória que compõe o acervo técnico e documental deste dossiê:</p>
+            <table class="rel-tabela" style="width: 100%; margin: 8px 0 16px 0; text-align: left;">
+                <thead>
+                    <tr>
+                        <th style="width: 18%;">Código / Anexo</th>
+                        <th style="width: 52%; text-align: left;">Descrição da Documentação Comprobatória</th>
+                        <th style="width: 30%;">Vínculo Legal / Regulamentar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>ANEXO I</strong></td>
+                        <td style="text-align: left;">Listas de Presença e Comprovantes de Treinamentos</td>
+                        <td>NR-01 / Capacitação Obrigatória</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ANEXO II</strong></td>
+                        <td style="text-align: left;">Fichas e Registros dos Diálogos Diários de Segurança (DDSMA)</td>
+                        <td>NR-01 / Rotina Operacional</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ANEXO III</strong></td>
+                        <td style="text-align: left;">Cronograma Oficial de Treinamentos de ${nomeMes.toUpperCase()}/${ano}</td>
+                        <td>PGR / Planejamento Mensal</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ANEXO IV</strong></td>
+                        <td style="text-align: left;">Cronograma Previsto de Treinamentos para ${NOMES_MESES[(mes + 1) % 12].toUpperCase()}/${mes === 11 ? ano + 1 : ano}</td>
+                        <td>PGR / Matriz de Treinamentos</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ANEXO V</strong></td>
+                        <td style="text-align: left;">Mapas de Manutenção de Extintores e Relação Nominal da Brigada</td>
+                        <td>NR-23 / Prevenção e Combate a Sinistros</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div style="margin-top: 36px; border: 1.5px solid #1f3864; border-radius: 6px; padding: 18px 22px; background: #f8fafc;">
+                <div style="font-size: 11px; font-weight: 800; color: #1f3864; text-transform: uppercase; margin-bottom: 8px; text-align: center; letter-spacing: 0.5px;">
+                    Termo de Encerramento e Autenticação Técnica
+                </div>
+                <p class="rel-p" style="text-align: justify; margin-bottom: 26px; font-size: 9.5px; line-height: 1.45;">
+                    Atesto que o presente Dossiê e Relatório Mensal Consolidado de SMS reflete com fidedignidade o cumprimento das diretrizes de Segurança do Trabalho, Higiene Ocupacional, Saúde e Meio Ambiente no âmbito do Consórcio Operador do PISF – Ramal do Agreste (Trecho VII) referente à competência de <strong>${nomeMes} de ${ano}</strong>, em estrita observância às Normas Regulamentadoras vigentes e aos compromissos socioambientais estabelecidos.
+                </p>
+
+                <div style="display: flex; justify-content: center; text-align: center; margin-top: 15px;">
+                    <div style="border-top: 1.5px solid #1f3864; width: 360px; padding-top: 8px;">
+                        <div style="font-size: 11.5px; font-weight: 800; color: #1f3864;">João Everton de Souza Limeira</div>
+                        <div style="font-size: 9.5px; color: #475569; font-weight: 600;">Engenheiro de Segurança do Trabalho • CREA/PE 181283311-8</div>
+                        <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Consórcio Operador do PISF — Ramal do Agreste (Trecho VII)</div>
                     </div>
                 </div>
-            `).join('')
-        }
-
-        <div class="page-break"></div>
-
-        <!-- 9.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA) -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '9. Registros Fotográficos — DDSMA')}
-        <div class="rel-h2" style="margin-top: 14px; margin-bottom: 8px; color: #1f3864; font-size: 11pt; font-weight: bold; border-bottom: 1.5px solid #1f3864; padding-bottom: 4px;">
-            9.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA)
+            </div>
         </div>
-        <p class="rel-p" style="margin-bottom: 12px; color: #475569;">
-            Evidências fotográficas dos Diálogos Diários de Segurança e Meio Ambiente executados nas frentes de trabalho nos dias úteis (segunda a sexta-feira) em ${nomeMes.toLowerCase()} de ${ano} (02 registros por tema/dia útil).
-        </p>
-        ${(!fotos.ddsma || fotos.ddsma.length === 0) ? '<div class="rel-nota" style="padding:10px; background:#f8fafc; border:1px solid #cbd5e1; margin-bottom:16px;">Nenhum registro fotográfico anexado para os Diálogos Diários de Segurança e Meio Ambiente (DDSMA) em dias úteis no período de competência.</div>' :
-            fotos.ddsma.map(d => `
-                <div style="margin-bottom: 16px; page-break-inside: avoid;">
-                    <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-bottom: none; padding: 7px 10px; font-weight: 700; font-size: 10.5px; color: #1e293b;">
-                        ${escapeHTML(d.titulo)}
-                    </div>
-                    <div class="grade-fotos-2col">
-                        ${(d.fotos || []).slice(0, 2).map((f, fIdx) => `
-                            <div class="card-foto-evidencia">
-                                <div class="foto-img-container">
-                                    <img src="${f.url}" alt="${escapeHTML(f.nome || d.tema)}" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'padding:20px; color:#64748b; font-size:9px; text-align:center;\\'>[Imagem indisponível no servidor]</div>';" />
-                                </div>
-                                <div class="carimbo-foto">
-                                    <div><strong>Registro 0${fIdx + 1}:</strong> ${escapeHTML(f.nome || d.tema)}</div>
-                                    <div><strong>Data:</strong> ${f.data || d.dataTexto || '—'} &bull; <strong>Hora:</strong> ${f.hora || '07:15'}</div>
-                                    <div><strong>Local:</strong> ${escapeHTML(f.local || 'Frente Operacional — Ramal do Agreste')}</div>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `).join('')
-        }
-        <div class="page-break"></div>
-
-        <!-- SEÇÃO 10: ANEXOS OFICIAIS -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '10. Anexos Oficiais')}
-        <div class="rel-h1">10. Anexos Oficiais Complementares</div>
-        <p class="rel-p">Documentação comprobatória que compõe o acervo técnico deste dossiê:</p>
-        <ul style="padding-left: 20px; font-size: 10px; line-height: 1.8; margin: 12px 0;">
-            <li><strong>ANEXO I:</strong> Listas de Presença de Treinamentos (NR-01)</li>
-            <li><strong>ANEXO II:</strong> Fichas e Registros dos Diálogos Diários de Segurança (DDS/DDSMA)</li>
-            <li><strong>ANEXO III:</strong> Cronograma de Treinamentos Oficial de ${nomeMes.toUpperCase()}/${ano}</li>
-            <li><strong>ANEXO IV:</strong> Cronograma de Treinamentos Previsto para ${NOMES_MESES[(mes + 1) % 12].toUpperCase()}/${mes === 11 ? ano + 1 : ano}</li>
-            <li><strong>ANEXO V:</strong> Mapas de Manutenção de Extintores e Relação Nominal da Brigada de Emergência</li>
-        </ul>
     </div>
 </body>
 </html>`;

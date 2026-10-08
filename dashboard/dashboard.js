@@ -7005,33 +7005,233 @@ function labelContagemAnexos(tabela, chave) {
     return n > 0 ? ` (${n})` : '';
 }
 
-function lotesRecentesDds(limite = 20) {
+function popularFiltroSetorDds() {
+    const sel = document.getElementById('filtroSetorDDS');
+    if (!sel) return;
+    const valorAtual = sel.value;
+
+    const opcoes = new Set([
+        'Civil',
+        'Elétrica',
+        'Mecânica',
+        'Produção',
+        'Administrativo',
+        'Topografia',
+        'Segurança do Trabalho',
+        'Meio Ambiente'
+    ]);
+
+    if (Array.isArray(allDdsRealizados)) {
+        allDdsRealizados.forEach(r => {
+            if (r.setor) opcoes.add(r.setor.trim());
+            if (r.frente_responsavel) opcoes.add(r.frente_responsavel.trim());
+        });
+    }
+    if (typeof todasFrentesAtivas === 'function') {
+        todasFrentesAtivas().forEach(f => {
+            if (f) opcoes.add(f.trim());
+        });
+    }
+    if (Array.isArray(allEfetivo)) {
+        allEfetivo.forEach(c => {
+            if (c.setor) opcoes.add(c.setor.trim());
+        });
+    }
+
+    const listaOrdenada = Array.from(opcoes).filter(Boolean).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    sel.innerHTML = '<option value="">Todos os Setores</option>' +
+        listaOrdenada.map(op => `<option value="${escapeHTML(op)}"${op === valorAtual ? ' selected' : ''}>${escapeHTML(op)}</option>`).join('');
+}
+
+function limparFiltrosDdsLancamentos() {
+    const mesEl = document.getElementById('filtroMesDDS');
+    const setorEl = document.getElementById('filtroSetorDDS');
+    const buscaEl = document.getElementById('filtroBuscaDDS');
+    if (mesEl) mesEl.value = '';
+    if (setorEl) setorEl.value = '';
+    if (buscaEl) buscaEl.value = '';
+    renderDdsLancamentosRecentes();
+}
+
+let _filtrosDdsListenersAtivos = false;
+let _filtrosDdsDebounceTimer = null;
+function configurarFiltrosDdsListeners() {
+    if (_filtrosDdsListenersAtivos) return;
+    const mesEl = document.getElementById('filtroMesDDS');
+    const setorEl = document.getElementById('filtroSetorDDS');
+    const buscaEl = document.getElementById('filtroBuscaDDS');
+
+    if (!mesEl || !setorEl || !buscaEl) return;
+    _filtrosDdsListenersAtivos = true;
+
+    mesEl.addEventListener('change', () => renderDdsLancamentosRecentes());
+    setorEl.addEventListener('change', () => renderDdsLancamentosRecentes());
+
+    buscaEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            renderDdsLancamentosRecentes();
+        }
+    });
+
+    buscaEl.addEventListener('input', () => {
+        clearTimeout(_filtrosDdsDebounceTimer);
+        _filtrosDdsDebounceTimer = setTimeout(() => {
+            renderDdsLancamentosRecentes();
+        }, 400);
+    });
+}
+
+function lotesRecentesDds(linhasCustom = null, limite = 20) {
+    const fonte = Array.isArray(linhasCustom) ? linhasCustom : (Array.isArray(allDdsRealizados) ? allDdsRealizados : []);
     const mapa = new Map();
-    allDdsRealizados.forEach(r => {
+    fonte.forEach(r => {
         const key = loteKeyDds(r);
-        if (!mapa.has(key)) mapa.set(key, { key, data_dds: r.data_dds, frente_responsavel: r.frente_responsavel, tema: r.tema, ids: [], horas: 0 });
+        if (!mapa.has(key)) {
+            mapa.set(key, {
+                key,
+                data_dds: r.data_dds,
+                frente_responsavel: r.frente_responsavel,
+                tema: r.tema,
+                setor: r.setor,
+                ids: [],
+                horas: 0
+            });
+        }
         const lote = mapa.get(key);
         lote.ids.push(r.id);
         lote.horas += parseFloat(r.carga_horaria) || 0;
+        if (!lote.setor && r.setor) lote.setor = r.setor;
     });
-    // O timestamp embutido na key (ex: "dds_1787862291807") tem sempre o mesmo nº de
-    // dígitos, então ordenar a string como texto já ordena por data/hora de lançamento.
-    return Array.from(mapa.values()).sort((a, b) => b.key.localeCompare(a.key)).slice(0, limite);
+
+    const lista = Array.from(mapa.values()).sort((a, b) => {
+        const dA = a.data_dds || '';
+        const dB = b.data_dds || '';
+        if (dA !== dB) return dB.localeCompare(dA);
+        return b.key.localeCompare(a.key);
+    });
+
+    return (limite && limite > 0) ? lista.slice(0, limite) : lista;
 }
 
-function renderDdsLancamentosRecentes() {
+async function renderDdsLancamentosRecentes() {
     const el = document.getElementById('ddsLancamentosRecentesLista');
     if (!el) return;
     garantirAnexosSmsCarregados(renderDdsLancamentosRecentes);
-    const lotes = lotesRecentesDds(20);
+    popularFiltroSetorDds();
+    configurarFiltrosDdsListeners();
+
+    const mesEl = document.getElementById('filtroMesDDS');
+    const setorEl = document.getElementById('filtroSetorDDS');
+    const buscaEl = document.getElementById('filtroBuscaDDS');
+    const contadorEl = document.getElementById('filtroDdsContador');
+
+    const mesVal = (mesEl?.value || '').trim();
+    const setorVal = (setorEl?.value || '').trim();
+    const buscaVal = (buscaEl?.value || '').trim();
+
+    const temFiltro = Boolean(mesVal || setorVal || buscaVal);
+
+    if (contadorEl && temFiltro) {
+        contadorEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Pesquisando registros no Supabase...';
+    }
+
+    let linhasResultado = null;
+
+    if (temFiltro) {
+        try {
+            let q = sbAuth.from('dds_realizados').select('*');
+
+            if (mesVal) {
+                const [anoStr, mesStr] = mesVal.split('-');
+                const anoNum = parseInt(anoStr, 10);
+                const mesNum = parseInt(mesStr, 10);
+                const ultimoDia = new Date(anoNum, mesNum, 0).getDate();
+                const primeiroDiaStr = `${anoStr}-${String(mesNum).padStart(2, '0')}-01`;
+                const ultimoDiaStr = `${anoStr}-${String(mesNum).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`;
+                q = q.gte('data_dds', primeiroDiaStr).lte('data_dds', ultimoDiaStr);
+            }
+
+            if (setorVal) {
+                q = q.or(`setor.eq.${setorVal},frente_responsavel.eq.${setorVal}`);
+            }
+
+            if (buscaVal) {
+                q = q.ilike('tema', `%${buscaVal}%`);
+            }
+
+            q = q.order('data_dds', { ascending: false });
+
+            // Remove o limite rígido de 50 quando há filtro específico de mês ou setor/busca
+            // garantindo que o usuário veja todos os resultados daquele mês/filtro
+            const { data, error } = await q;
+
+            if (!error && Array.isArray(data)) {
+                linhasResultado = data;
+                // Sincroniza registros encontrados em allDdsRealizados em memória
+                if (Array.isArray(allDdsRealizados)) {
+                    const idSet = new Set(allDdsRealizados.map(r => r.id));
+                    const novos = data.filter(r => !idSet.has(r.id));
+                    if (novos.length > 0) allDdsRealizados = allDdsRealizados.concat(novos);
+                }
+            } else if (error) {
+                console.warn('Erro ao consultar Supabase com filtros DDS, recorrendo à filtragem local:', error);
+            }
+        } catch (errQuery) {
+            console.warn('Exceção ao buscar DDS no Supabase com filtros:', errQuery);
+        }
+    }
+
+    // Fallback gracioso: filtra na memória se a query remota não retornou ou se não há filtros ativos
+    if (!linhasResultado) {
+        const fonteLocal = Array.isArray(allDdsRealizados) ? allDdsRealizados : [];
+        if (temFiltro) {
+            linhasResultado = fonteLocal.filter(r => {
+                if (mesVal) {
+                    const d = r.data_dds || '';
+                    if (!d.startsWith(mesVal)) return false;
+                }
+                if (setorVal) {
+                    const s = (r.setor || '').trim().toLowerCase();
+                    const f = (r.frente_responsavel || '').trim().toLowerCase();
+                    const alvo = setorVal.trim().toLowerCase();
+                    if (s !== alvo && f !== alvo) return false;
+                }
+                if (buscaVal) {
+                    const t = (r.tema || '').toLowerCase();
+                    if (!t.includes(buscaVal.toLowerCase())) return false;
+                }
+                return true;
+            });
+        } else {
+            linhasResultado = fonteLocal;
+        }
+    }
+
+    // Se houver filtro aplicado, remove o limite rígido (exibe todos os lotes do mês/busca).
+    // Se não houver filtro, exibe os 20 mais recentes para agilidade.
+    const lotes = temFiltro ? lotesRecentesDds(linhasResultado, null) : lotesRecentesDds(linhasResultado, 20);
+
+    if (contadorEl) {
+        const totalColabs = (linhasResultado || []).length;
+        if (temFiltro) {
+            contadorEl.innerHTML = `Exibindo <strong>${lotes.length}</strong> lançamento(s) agrupado(s) (${totalColabs} participante(s)) com os filtros aplicados.`;
+        } else {
+            contadorEl.innerHTML = `Exibindo os <strong>${lotes.length}</strong> lançamentos mais recentes (${totalColabs} registros em memória). Use os filtros acima para auditar meses passados.`;
+        }
+    }
+
     if (lotes.length === 0) {
-        el.innerHTML = '<div class="db-list-empty">Nenhum lançamento de DDS ainda.</div>';
+        el.innerHTML = temFiltro
+            ? '<div class="db-list-empty">Nenhum lançamento de DDS encontrado para os filtros selecionados.</div>'
+            : '<div class="db-list-empty">Nenhum lançamento de DDS ainda.</div>';
         return;
     }
+
     el.innerHTML = lotes.map(lote => `
         <div class="db-list-item" style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
             <div>
-                <div class="db-list-item-title">${formatSimpleDate(lote.data_dds)} — ${escapeHTML(lote.frente_responsavel || '')}</div>
+                <div class="db-list-item-title">${formatSimpleDate(lote.data_dds)} — ${escapeHTML(lote.frente_responsavel || '')}${lote.setor && lote.setor !== lote.frente_responsavel ? ` <span style="font-size:11px; font-weight:normal; color:var(--text-light);">(${escapeHTML(lote.setor)})</span>` : ''}</div>
                 <div class="db-list-item-sub">${escapeHTML(lote.tema || 'Sem tema')} — ${lote.ids.length} participante(s) — ${lote.horas.toLocaleString('pt-BR')}h</div>
             </div>
             <div style="display:flex; gap:6px;">
@@ -7041,6 +7241,10 @@ function renderDdsLancamentosRecentes() {
             </div>
         </div>`).join('');
 }
+
+// Alias para padronização técnica
+const carregarLancamentosRecentesDDS = renderDdsLancamentosRecentes;
+const renderizarListaDDS = renderDdsLancamentosRecentes;
 
 async function excluirLoteDds(loteKey) {
     if (bloquearEdicaoSeNaoAutorizado('ddsma')) return;

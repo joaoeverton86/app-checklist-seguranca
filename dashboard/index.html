@@ -2234,11 +2234,35 @@
                     </div>
 
                     <div style="margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--border);">
-                        <div class="db-chart-title" style="font-size: 13px; margin-bottom: 8px;">📋 Lançamentos Recentes</div>
-                        <p style="font-size: 11px; color: var(--text-light); margin: 0 0 8px;">
-                            Últimos lançamentos (agrupados por envio) - use "✏️ Editar" pra corrigir um erro (ex: emociograma trocado) ou "🗑️ Excluir" pra remover um lançamento feito por engano, como um dia duplicado sem querer.
+                        <div class="db-chart-title" style="font-size: 13px; margin-bottom: 8px;">📋 Lançamentos Recentes & Histórico de DDS</div>
+                        <p style="font-size: 11px; color: var(--text-light); margin: 0 0 10px;">
+                            Consulte e filtre registros passados (por Mês/Ano, Setor/Frente ou Tema) para auditar, corrigir ("✏️ Editar") ou remover ("🗑️ Excluir") lançamentos retroativos.
                         </p>
-                        <div id="ddsLancamentosRecentesLista" class="db-list" style="max-height: 300px;"></div>
+
+                        <!-- Barra de Filtros Interativa de DDS (Mês/Ano, Setor e Busca Livre) -->
+                        <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px; background: var(--bg-hover, #f8fafc); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border, #e2e8f0);">
+                            <div style="display: flex; flex-direction: column; gap: 4px;">
+                                <label for="filtroMesDDS" style="font-size: 11px; font-weight: 600; color: var(--text-light, #64748b);">Mês / Ano</label>
+                                <input type="month" id="filtroMesDDS" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border, #cbd5e1); font-size: 12px; background: #fff; color: var(--text-dark, #0f172a); min-width: 140px;" />
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 4px; min-width: 180px;">
+                                <label for="filtroSetorDDS" style="font-size: 11px; font-weight: 600; color: var(--text-light, #64748b);">Setor / Frente</label>
+                                <select id="filtroSetorDDS" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border, #cbd5e1); font-size: 12px; background: #fff; color: var(--text-dark, #0f172a);">
+                                    <option value="">Todos os Setores</option>
+                                </select>
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 190px;">
+                                <label for="filtroBuscaDDS" style="font-size: 11px; font-weight: 600; color: var(--text-light, #64748b);">Buscar por tema</label>
+                                <input type="text" id="filtroBuscaDDS" placeholder="Buscar por tema..." style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border, #cbd5e1); font-size: 12px; background: #fff; color: var(--text-dark, #0f172a);" />
+                            </div>
+                            <div style="display: flex; gap: 6px; align-items: center;">
+                                <button id="btnFiltrarDDS" class="db-apply-btn" style="padding: 6px 14px; font-size: 12px; height: 32px; display: inline-flex; align-items: center; gap: 5px;" onclick="renderDdsLancamentosRecentes()">🔍 Filtrar</button>
+                                <button id="btnLimparFiltrosDDS" class="db-clear-btn" style="padding: 6px 10px; font-size: 12px; height: 32px;" onclick="limparFiltrosDdsLancamentos()">✕ Limpar</button>
+                            </div>
+                            <div id="filtroDdsContador" style="width: 100%; font-size: 11px; color: var(--text-light, #64748b); margin-top: 2px;"></div>
+                        </div>
+
+                        <div id="ddsLancamentosRecentesLista" class="db-list" style="max-height: 480px; overflow-y: auto;"></div>
                     </div>
                 </div>
 
@@ -8495,7 +8519,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=20261008_fix_paginas_branco"></script>
+    <script src="dashboard.js?v=20261008_filtros_dds"></script>
     <script src="placar_lideres.js?v=20261008_layout_a4"></script>
 <script>
 function filterMatrizEpi(q) {

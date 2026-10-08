@@ -17286,36 +17286,14 @@ function relSmsTabelaTemaFotoDocx(titulo) {
 
 function construirSecao5RelSms(dadosFotos, mes, ano) {
     const nomeMes = NOMES_MESES[mes];
+    const linkDriveMaster = 'https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
     const out = [relSmsH1('9. Registros Fotográficos (Treinamentos e DDSMA)')];
-    out.push(relSmsP(`Evidências fotográficas dos treinamentos normativos e diálogos diários de segurança (DDSMA) realizados em ${nomeMes.toLowerCase()} de ${ano}, conforme os requisitos de evidência documental do PGR (NR-01). Apenas temas com registros fotográficos efetivamente anexados constam neste documento.`));
+    out.push(relSmsP('Em atendimento às diretrizes de otimização de armazenamento e governança de dados (SST/ESG), o acervo fotográfico comprobatório das capacitações normativas e Diálogos Diários de Segurança e Meio Ambiente (DDSMA) realizados neste período de competência encontra-se digitalizado, indexado e disponível para auditoria em nosso repositório oficial em nuvem.'));
 
-    // 9.1. Registros Fotográficos — Treinamentos
-    out.push(relSmsH2('9.1. Registros Fotográficos — Treinamentos'));
-    const treins = dadosFotos.treinamentos || [];
-    if (treins.length === 0) {
-        out.push(relSmsNota('Nenhum registro fotográfico anexado para os treinamentos normativos no período de competência.'));
-    } else {
-        out.push(relSmsP(`Registros fotográficos dos treinamentos normativos realizados no período:`));
-        treins.forEach(t => {
-            out.push(relSmsTabelaTemaFotoDocx(t.titulo));
-            out.push(new docx.Paragraph({ spacing: { after: 120 }, children: [] }));
-        });
-    }
-
-    out.push(new docx.Paragraph({ spacing: { after: 180 }, children: [] }));
-
-    // 9.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA)
-    out.push(relSmsH2('9.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA)'));
-    const dds = dadosFotos.ddsma || [];
-    if (dds.length === 0) {
-        out.push(relSmsNota('Nenhum registro fotográfico anexado para os Diálogos Diários de Segurança e Meio Ambiente (DDSMA) no período de competência.'));
-    } else {
-        out.push(relSmsP(`Registros fotográficos dos Diálogos Diários de Segurança e Meio Ambiente (DDSMA) executados nas frentes de trabalho nos dias úteis (segunda a sexta-feira):`));
-        dds.forEach(d => {
-            out.push(relSmsTabelaTemaFotoDocx(d.titulo));
-            out.push(new docx.Paragraph({ spacing: { after: 120 }, children: [] }));
-        });
-    }
+    out.push(relSmsH2('Repositório de Evidências Fotográficas — Acervo Digital'));
+    out.push(relSmsP(`Link de Auditoria (Google Drive): ${linkDriveMaster}`));
+    out.push(relSmsP(`Para acessar as evidências, navegue até a pasta: SST - Registros de Campo / ${nomeMes.toUpperCase()}_${ano} / Treinamentos e DDSMA`));
+    out.push(relSmsNota('Registros georreferenciados com carimbo de data, hora e metadados arquivados integralmente no repositório de SST para consulta por auditores fiscais e fiscalização contratual.'));
 
     out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
     return out;
@@ -18985,67 +18963,28 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         <div class="pagina-relatorio">
             ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '9. Registros Fotográficos')}
             <div class="rel-h1">9. Registros Fotográficos (Treinamentos e DDSMA)</div>
-            <p class="rel-p">Evidências documentais e registros fotográficos em conformidade com as diretrizes do PGR (NR-01) e cronogramas de capacitação operacional do contrato.</p>
-
-            <div class="rel-h2" style="margin-top: 10px; margin-bottom: 6px; color: #1f3864; font-size: 10.5px; font-weight: bold; border-bottom: 1.5px solid #1f3864; padding-bottom: 3px;">
-                9.1. Registros Fotográficos — Treinamentos
-            </div>
-            <p class="rel-p" style="margin-bottom: 8px; color: #475569;">
-                Evidências fotográficas dos treinamentos normativos e capacitações técnicas realizados em ${nomeMes.toLowerCase()} de ${ano}.
+            <p class="rel-p" style="text-align: justify; line-height: 1.5; margin-bottom: 14px;">
+                Em atendimento às diretrizes de otimização de armazenamento e governança de dados (SST/ESG), o acervo fotográfico comprobatório das capacitações normativas e Diálogos Diários de Segurança e Meio Ambiente (DDSMA) realizados neste período de competência encontra-se digitalizado, indexado e disponível para auditoria em nosso repositório oficial em nuvem.
             </p>
-            ${(!fotos.treinamentos || fotos.treinamentos.length === 0) ? '<div class="rel-nota" style="padding:8px 10px; background:#f8fafc; border:1px solid #cbd5e1; margin-bottom:12px;">Nenhum registro fotográfico anexado para os treinamentos normativos no período de competência.</div>' :
-                fotos.treinamentos.map(t => `
-                    <div style="margin-bottom: 12px; page-break-inside: avoid;">
-                        <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-bottom: none; padding: 5px 8px; font-weight: 700; font-size: 9.5px; color: #1e293b;">
-                            ${escapeHTML(t.titulo)}
-                        </div>
-                        <div class="grade-fotos-2col">
-                            ${(t.fotos || []).slice(0, 2).map((f, fIdx) => `
-                                <div class="card-foto-evidencia">
-                                    <div class="foto-img-container">
-                                        <img src="${f.url}" alt="${escapeHTML(f.nome || t.tema)}" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'padding:20px; color:#64748b; font-size:8.5px; text-align:center;\\'>[Imagem indisponível]</div>';" />
-                                    </div>
-                                    <div class="carimbo-foto">
-                                        <div><strong>Registro 0${fIdx + 1}:</strong> ${escapeHTML(f.nome || t.tema)}</div>
-                                        <div><strong>Data:</strong> ${f.data || t.dataTexto || '—'} &bull; <strong>Hora:</strong> ${f.hora || '08:00'}</div>
-                                        <div><strong>Local:</strong> ${escapeHTML(f.local || 'Ramal do Agreste — Trecho VII')}</div>
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                `).join('')
-            }
 
-            <div class="rel-h2" style="margin-top: 10px; margin-bottom: 6px; color: #1f3864; font-size: 10.5px; font-weight: bold; border-bottom: 1.5px solid #1f3864; padding-bottom: 3px;">
-                9.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA)
+            <div style="background: #f8fafc; border: 1.5px solid #0284c7; border-left: 5px solid #0284c7; border-radius: 6px; padding: 14px 18px; margin: 16px 0;">
+                <div style="font-size: 11px; font-weight: 700; color: #1f3864; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                    📁 Repositório de Evidências Fotográficas — Acervo Digital
+                </div>
+                <div style="margin-bottom: 10px; font-size: 9.5px; line-height: 1.5;">
+                    <strong>Link de Auditoria (Google Drive):</strong><br/>
+                    <a href="https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms" target="_blank" rel="noopener noreferrer" style="color: #0284c7; font-weight: 600; text-decoration: underline; word-break: break-all;">
+                        https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms
+                    </a>
+                </div>
+                <div style="font-size: 9.5px; line-height: 1.5; color: #334155;">
+                    <strong>Instrução de Acesso:</strong> Para acessar as evidências, navegue até a pasta:<br/>
+                    <code style="background: #e2e8f0; color: #0f172a; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 9.5px; display: inline-block; margin-top: 5px; border: 1px solid #cbd5e1;">SST - Registros de Campo / ${nomeMes.toUpperCase()}_${ano} / Treinamentos e DDSMA</code>
+                </div>
+                <div style="margin-top: 12px; padding-top: 8px; border-top: 1px dashed #cbd5e1; font-size: 8.5px; color: #64748b; font-style: italic;">
+                    * Registros georreferenciados com carimbo de data, hora e metadados preservados na íntegra no Google Drive para auditoria técnica do SESMT e fiscalização contratual.
+                </div>
             </div>
-            <p class="rel-p" style="margin-bottom: 8px; color: #475569;">
-                Evidências fotográficas dos Diálogos Diários de Segurança e Meio Ambiente executados nas frentes operacionais em ${nomeMes.toLowerCase()} de ${ano}.
-            </p>
-            ${(!fotos.ddsma || fotos.ddsma.length === 0) ? '<div class="rel-nota" style="padding:8px 10px; background:#f8fafc; border:1px solid #cbd5e1; margin-bottom:12px;">Nenhum registro fotográfico anexado para os Diálogos Diários de Segurança e Meio Ambiente (DDSMA) no período de competência.</div>' :
-                fotos.ddsma.map(d => `
-                    <div style="margin-bottom: 12px; page-break-inside: avoid;">
-                        <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-bottom: none; padding: 5px 8px; font-weight: 700; font-size: 9.5px; color: #1e293b;">
-                            ${escapeHTML(d.titulo)}
-                        </div>
-                        <div class="grade-fotos-2col">
-                            ${(d.fotos || []).slice(0, 2).map((f, fIdx) => `
-                                <div class="card-foto-evidencia">
-                                    <div class="foto-img-container">
-                                        <img src="${f.url}" alt="${escapeHTML(f.nome || d.tema)}" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'padding:20px; color:#64748b; font-size:8.5px; text-align:center;\\'>[Imagem indisponível]</div>';" />
-                                    </div>
-                                    <div class="carimbo-foto">
-                                        <div><strong>Registro 0${fIdx + 1}:</strong> ${escapeHTML(f.nome || d.tema)}</div>
-                                        <div><strong>Data:</strong> ${f.data || d.dataTexto || '—'} &bull; <strong>Hora:</strong> ${f.hora || '07:15'}</div>
-                                        <div><strong>Local:</strong> ${escapeHTML(f.local || 'Frente Operacional — Ramal do Agreste')}</div>
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                `).join('')
-            }
         </div>
 
         <!-- PÁGINA 12: SEÇÃO 10 - ANEXOS OFICIAIS & TERMO DE ENCERRAMENTO -->
@@ -19350,13 +19289,13 @@ function renderRelSmsPainel(dados, fiscalizacao) {
         <!-- Card 9: 9. Registros Fotográficos (Treinamentos e DDSMA) -->
         <div class="rel-sms-section-box">
             <div class="rel-sms-section-header">
-                <div class="rel-sms-section-title"><i class="fa-solid fa-camera" style="color:#0284c7;"></i> 9. Registros Fotográficos (Evidências Reais)</div>
-                <span class="rel-sms-badge info">${(fotos?.treinamentos?.length || 0) + (fotos?.ddsma?.length || 0)} tema(s) c/ fotos</span>
+                <div class="rel-sms-section-title"><i class="fa-solid fa-camera" style="color:#0284c7;"></i> 9. Registros Fotográficos (Acervo Digital Drive)</div>
+                <span class="rel-sms-badge info">Repositório Oficial</span>
             </div>
             <div style="font-size: 13px; line-height: 1.6;">
-                <div>• <strong>9.1. Treinamentos Normativos:</strong> ${fotos?.treinamentos?.length || 0} tema(s) com fotos anexadas (excluída Integração)</div>
-                <div>• <strong>9.2. Diálogos DDSMA:</strong> ${fotos?.ddsma?.length || 0} dia(s) útil(eis) com fotos anexadas (segunda a sexta)</div>
-                <div>• <strong>Formato de Impressão:</strong> 2 fotos por linha com carimbos técnicos (Data, Hora, Local) e supressão de placeholders vazios</div>
+                <div>• <strong>Diretriz SST/ESG:</strong> Evidências fotográficas indexadas e disponíveis para auditoria no Google Drive</div>
+                <div>• <strong>Estrutura de Pastas:</strong> SST - Registros de Campo / ${nomeMes.toUpperCase()}_${ano} / Treinamentos e DDSMA</div>
+                <div>• <strong>Módulo Integrado:</strong> Gestão e consulta via módulo Acervo (Drive) do Painel Gerencial</div>
             </div>
         </div>
 

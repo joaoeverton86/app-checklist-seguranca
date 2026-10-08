@@ -1,0 +1,50 @@
+# ==============================================================================
+# .vercelignore — Otimização de Deploy para Vercel
+# Impede envio de artefatos desnecessários para a CDN e funções da Vercel
+# ==============================================================================
+
+# Controle de versão e IDEs
+.git/
+.github/
+.vscode/
+.claude/
+
+# Dependências e caches
+node_modules/
+.tmp/
+scratch/
+.env*
+*.pem
+*.key
+*.log
+
+# Banco de dados e migrations (Deployadas diretamente via Supabase CLI / Dashboard)
+supabase/
+supabase_schema.sql
+
+# Acervo de Documentos e Consultas de SST
+Documentos_Consultas/
+documentos-sms/
+*.pdf
+*.PDF
+*.xlsx
+*.XLSX
+*.xls
+*.csv
+*.docx
+*.zip
+
+# Scripts e arquivos auxiliares locais
+server.js
+servir.bat
+servir.ps1
+iniciar.bat
+teste-sync.html
+google-apps-script.js
+google-apps-script-pastas.js
+COPAR_PARA_APPS_SCRIPT.txt
+gerar-icone.html
+
+# Documentação interna
+*.md
+*.txt

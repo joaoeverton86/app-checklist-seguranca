@@ -1,12 +1,89 @@
+# ==============================================================================
+# .gitignore — App Checklist Segurança & Painel SST (PISF Ramal do Agreste)
+# Otimizado para manter deploys da Vercel ultraleves e proteger dados de SST
+# ==============================================================================
+
+# --- Dependências & Gerenciadores de Pacote ---
 node_modules/
 package-lock.json
+.pnpm-store/
+.npm/
+
+# --- Variáveis de Ambiente & Certificados de Segurança (CRÍTICO) ---
+.env
+.env.*
+!.env.example
 *.pem
 *.key
-.tmp/
-.vercel
-.env*
-scratch/
-Documentos_Consultas/
-*.log
+*.crt
+*.cert
 
-.env*
+# --- Logs & Depuração Local ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+
+# --- Diretórios Temporários & Rascunhos ---
+.tmp/
+tmp/
+temp/
+scratch/
+.vercel/
+supabase/.temp/
+
+# --- Sistema Operacional & Metadados ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# --- Arquivos Pesados, Documentos & Relatórios Operacionais de SST ---
+# Regra SST: Relatórios e fotos de NC residem exclusivamente no Supabase Storage / BD.
+*.pdf
+*.PDF
+*.xlsx
+*.XLSX
+*.xls
+*.XLS
+*.csv
+*.CSV
+*.docx
+*.DOCX
+*.doc
+*.DOC
+*.pptx
+*.PPTX
+*.zip
+*.ZIP
+*.rar
+*.RAR
+*.7z
+*.tar
+*.gz
+
+# --- Pastas Locais de Consulta Técnica & Normativa ---
+Documentos_Consultas/
+documentos-sms/
+
+# --- Vídeos & Mídias Pesadas ---
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# --- Scripts & Mocks Legados de Teste Local ---
+teste-sync.html
+*.test.js
+*.spec.js
+
+# --- IDEs e Editores Locais (Opcional/Temporário) ---
+.idea/
+*.swp
+*.swo

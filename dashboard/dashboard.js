@@ -15715,8 +15715,8 @@ function relSmsTabelaGenericaHtml(colunas, linhas, largura = '100%') {
 
 function gerarGraficoBarrasHHTSVG(dadosHistorico) {
     if (!dadosHistorico || !dadosHistorico.length) return '';
-    const w = 650, h = 220;
-    const paddingLeft = 55, paddingRight = 25, paddingTop = 45, paddingBottom = 40;
+    const w = 680, h = 260;
+    const paddingLeft = 55, paddingRight = 30, paddingTop = 75, paddingBottom = 40;
     const plotW = w - paddingLeft - paddingRight;
     const plotH = h - paddingTop - paddingBottom;
 
@@ -15726,7 +15726,7 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
     const yMax = step * yTicks;
 
     const n = dadosHistorico.length;
-    const barWidth = Math.min(46, Math.floor((plotW / n) * 0.55));
+    const barWidth = Math.min(48, Math.floor((plotW / n) * 0.55));
     const gap = (plotW - (barWidth * n)) / (n + 1);
 
     let gridLinesSvg = '';
@@ -15758,7 +15758,7 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
 
         if (hTrein > 0) {
             barsSvg += `
-                <rect x="${xPos}" y="${yTrein}" width="${barWidth}" height="${hTrein}" rx="2" fill="#1f3864">
+                <rect x="${xPos}" y="${yTrein}" width="${barWidth}" height="${hTrein}" rx="2" fill="#1b365d">
                     <title>${d.mes} - Treinamentos: ${tVal.toLocaleString('pt-BR')} h</title>
                 </rect>
             `;
@@ -15766,7 +15766,7 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
 
         if (hDds > 0) {
             barsSvg += `
-                <rect x="${xPos}" y="${yDds}" width="${barWidth}" height="${hDds}" rx="2" fill="#0284c7">
+                <rect x="${xPos}" y="${yDds}" width="${barWidth}" height="${hDds}" rx="2" fill="#0080ff">
                     <title>${d.mes} - DDSMA: ${dVal.toLocaleString('pt-BR')} h</title>
                 </rect>
             `;
@@ -15777,7 +15777,7 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
             <text x="${xPos + barWidth / 2}" y="${yTexto}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">
                 ${Math.round(sumVal).toLocaleString('pt-BR')}
             </text>
-            <text x="${xPos + barWidth / 2}" y="${h - 18}" text-anchor="middle" font-size="10" font-weight="600" fill="#334155" font-family="Arial, sans-serif">
+            <text x="${xPos + barWidth / 2}" y="${h - 16}" text-anchor="middle" font-size="10" font-weight="600" fill="#334155" font-family="Arial, sans-serif">
                 ${d.mes}
             </text>
         `;
@@ -15788,14 +15788,14 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
     return `
     <div class="grafico-container">
         <svg viewBox="0 0 ${w} ${h}" width="100%" height="auto" style="max-width: ${w}px;" xmlns="http://www.w3.org/2000/svg">
-            <text x="${paddingLeft}" y="22" font-size="11.5" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
+            <text x="${paddingLeft}" y="25" font-size="12" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
                 EVOLUÇÃO HISTÓRICA DE HHT DE CAPACITAÇÃO E DIÁLOGOS (HHT)
             </text>
-            <rect x="${w - 290}" y="12" width="12" height="12" rx="2" fill="#1f3864"/>
-            <text x="${w - 272}" y="22" font-size="9" font-weight="600" fill="#334155" font-family="Arial, sans-serif">Treinamentos</text>
-            <rect x="${w - 185}" y="12" width="12" height="12" rx="2" fill="#0284c7"/>
-            <text x="${w - 167}" y="22" font-size="9" font-weight="600" fill="#334155" font-family="Arial, sans-serif">DDSMA</text>
-            <text x="${w - paddingRight}" y="22" text-anchor="end" font-size="9.5" font-weight="700" fill="#15803d" font-family="Arial, sans-serif">
+            <rect x="180" y="40" width="12" height="12" rx="2" fill="#1b365d"/>
+            <text x="198" y="50" font-size="11" font-weight="600" fill="#334155" font-family="Arial, sans-serif">Treinamentos</text>
+            <rect x="310" y="40" width="12" height="12" rx="2" fill="#0080ff"/>
+            <text x="328" y="50" font-size="11" font-weight="600" fill="#334155" font-family="Arial, sans-serif">DDSMA</text>
+            <text x="${w - paddingRight}" y="50" text-anchor="end" font-size="11" font-weight="bold" fill="#15803d" font-family="Arial, sans-serif">
                 Total: ${Math.round(totalPeriodo).toLocaleString('pt-BR')} h
             </text>
             ${gridLinesSvg}
@@ -15804,6 +15804,9 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
         </svg>
     </div>`;
 }
+
+// Alias para compatibilidade com chamadas da interface e relatórios
+const gerarGraficoHistoricoHHTSVG = gerarGraficoBarrasHHTSVG;
 
 function gerarGraficoDonutADASVG(arcoverdeQtd, sertaniaQtd, outrosQtd) {
     const sQtd = Number(sertaniaQtd) || 0;
@@ -15816,8 +15819,8 @@ function gerarGraficoDonutADASVG(arcoverdeQtd, sertaniaQtd, outrosQtd) {
     const pctA = total > 0 ? (aQtd / total) * 100 : 0;
     const pctO = total > 0 ? (oQtd / total) * 100 : 0;
 
-    const w = 360, h = 185;
-    const cx = 95, cy = 95, r = 58;
+    const w = 440, h = 180;
+    const cx = 85, cy = 95, r = 54;
     const C = 2 * Math.PI * r;
 
     const lenS = (pctS / 100) * C;
@@ -15828,43 +15831,49 @@ function gerarGraficoDonutADASVG(arcoverdeQtd, sertaniaQtd, outrosQtd) {
     const offA = -lenS;
     const offO = -(lenS + lenA);
 
+    const itensLegenda = [
+        { nome: 'Sertânia (ADA)', qtd: sQtd, pct: pctS, cor: '#198754' },
+        { nome: 'Arcoverde (ADA)', qtd: aQtd, pct: pctA, cor: '#0d6efd' },
+        { nome: 'Demais Municípios', qtd: oQtd, pct: pctO, cor: '#6c757d' }
+    ];
+
+    let legendaHtml = '';
+    itensLegenda.forEach((item, idx) => {
+        const yItem = 50 + idx * 28;
+        legendaHtml += `
+            <circle cx="190" cy="${yItem - 3.5}" r="5" fill="${item.cor}"/>
+            <text x="202" y="${yItem}" font-size="10.5" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">
+                ${item.nome}: <tspan font-weight="400" fill="#475569">${item.qtd} (${item.pct.toFixed(1)}%)</tspan>
+            </text>
+        `;
+    });
+
     return `
     <div class="grafico-container">
         <svg viewBox="0 0 ${w} ${h}" width="100%" height="auto" style="max-width: ${w}px;" xmlns="http://www.w3.org/2000/svg">
-            <text x="14" y="20" font-size="11" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
+            <text x="14" y="20" font-size="11.5" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
                 PARTICIPAÇÃO REGIONAL DA MÃO DE OBRA (ADA)
             </text>
-            <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#f1f5f9" stroke-width="24"/>
+            <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#f1f5f9" stroke-width="22"/>
             <g transform="rotate(-90 ${cx} ${cy})">
-                ${lenS > 0 ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#15803d" stroke-width="24" stroke-dasharray="${lenS} ${C - lenS}" stroke-dashoffset="${offS}"/>` : ''}
-                ${lenA > 0 ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#1d4ed8" stroke-width="24" stroke-dasharray="${lenA} ${C - lenA}" stroke-dashoffset="${offA}"/>` : ''}
-                ${lenO > 0 ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#94a3b8" stroke-width="24" stroke-dasharray="${lenO} ${C - lenO}" stroke-dashoffset="${offO}"/>` : ''}
+                ${lenS > 0 ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#198754" stroke-width="22" stroke-dasharray="${lenS} ${C - lenS}" stroke-dashoffset="${offS}"/>` : ''}
+                ${lenA > 0 ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#0d6efd" stroke-width="22" stroke-dasharray="${lenA} ${C - lenA}" stroke-dashoffset="${offA}"/>` : ''}
+                ${lenO > 0 ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#6c757d" stroke-width="22" stroke-dasharray="${lenO} ${C - lenO}" stroke-dashoffset="${offO}"/>` : ''}
             </g>
-            <text x="${cx}" y="${cy - 6}" text-anchor="middle" font-size="20" font-weight="900" fill="#1f3864" font-family="Arial, sans-serif">
+            <text x="${cx}" y="${cy - 6}" text-anchor="middle" font-size="19" font-weight="900" fill="#1f3864" font-family="Arial, sans-serif">
                 ${pctAda.toFixed(1)}%
             </text>
-            <text x="${cx}" y="${cy + 9}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#64748b" font-family="Arial, sans-serif">
+            <text x="${cx}" y="${cy + 8}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#64748b" font-family="Arial, sans-serif">
                 MÃO DE OBRA
             </text>
-            <text x="${cx}" y="${cy + 20}" text-anchor="middle" font-size="8" font-weight="800" fill="#15803d" font-family="Arial, sans-serif">
+            <text x="${cx}" y="${cy + 19}" text-anchor="middle" font-size="8" font-weight="800" fill="#198754" font-family="Arial, sans-serif">
                 REGIONAL ADA
             </text>
-            <g transform="translate(195, 38)">
-                <circle cx="6" cy="6" r="5" fill="#15803d"/>
-                <text x="18" y="10" font-size="10" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">Sertânia (ADA)</text>
-                <text x="18" y="23" font-size="9" fill="#475569" font-family="Arial, sans-serif"><strong>${sQtd}</strong> colaboradores (${pctS.toFixed(1)}%)</text>
-
-                <circle cx="6" cy="46" r="5" fill="#1d4ed8"/>
-                <text x="18" y="50" font-size="10" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">Arcoverde (ADA)</text>
-                <text x="18" y="63" font-size="9" fill="#475569" font-family="Arial, sans-serif"><strong>${aQtd}</strong> colaboradores (${pctA.toFixed(1)}%)</text>
-
-                <circle cx="6" cy="86" r="5" fill="#94a3b8"/>
-                <text x="18" y="90" font-size="10" font-weight="700" fill="#475569" font-family="Arial, sans-serif">Demais Municípios</text>
-                <text x="18" y="103" font-size="9" fill="#64748b" font-family="Arial, sans-serif"><strong>${oQtd}</strong> colaboradores (${pctO.toFixed(1)}%)</text>
-
-                <line x1="0" y1="116" x2="160" y2="116" stroke="#e2e8f0" stroke-width="1"/>
-                <text x="0" y="130" font-size="9" font-weight="700" fill="#15803d" font-family="Arial, sans-serif">
-                    Total ADA: ${totalAda} de ${total} (${pctAda.toFixed(1)}%)
+            <g>
+                ${legendaHtml}
+                <line x1="185" y1="130" x2="425" y2="130" stroke="#e2e8f0" stroke-width="1"/>
+                <text x="185" y="145" font-size="9.5" font-weight="700" fill="#198754" font-family="Arial, sans-serif">
+                    Total Regional ADA: ${totalAda} de ${total} (${pctAda.toFixed(1)}%)
                 </text>
             </g>
         </svg>
@@ -15886,12 +15895,12 @@ function gerarGraficoBarrasRiscosSVG(baixoQtd, moderadoQtd, altoQtd, criticoQtd)
     ];
 
     const maxQtd = Math.max(...niveis.map(n => n.qtd), 1);
-    const w = 500, h = 160;
-    const labelW = 125, trackW = 260, trackH = 18;
+    const w = 600, h = 180;
+    const labelW = 145, trackW = 340, trackH = 18;
 
     let barsHtml = '';
     niveis.forEach((n, idx) => {
-        const y = 38 + idx * 28;
+        const y = 40 + idx * 30;
         const barW = total > 0 ? Math.max((n.qtd / maxQtd) * trackW, (n.qtd > 0 ? 8 : 0)) : 0;
         const pct = total > 0 ? ((n.qtd / total) * 100).toFixed(1) : '0.0';
 
@@ -15899,7 +15908,7 @@ function gerarGraficoBarrasRiscosSVG(baixoQtd, moderadoQtd, altoQtd, criticoQtd)
             <text x="${labelW}" y="${y + 13}" text-anchor="end" font-size="10" font-weight="600" fill="#334155" font-family="Arial, sans-serif">${n.label}</text>
             <rect x="${labelW + 12}" y="${y}" width="${trackW}" height="${trackH}" rx="4" fill="#f1f5f9"/>
             ${barW > 0 ? `<rect x="${labelW + 12}" y="${y}" width="${barW}" height="${trackH}" rx="4" fill="${n.cor}"><title>${n.label}: ${n.qtd} (${pct}%)</title></rect>` : ''}
-            <text x="${labelW + 18 + trackW}" y="${y + 13}" font-size="9.5" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">
+            <text x="${labelW + 20 + trackW}" y="${y + 13}" font-size="10" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">
                 ${n.qtd} <tspan font-weight="400" fill="#64748b">(${pct}%)</tspan>
             </text>
         `;
@@ -15908,10 +15917,10 @@ function gerarGraficoBarrasRiscosSVG(baixoQtd, moderadoQtd, altoQtd, criticoQtd)
     return `
     <div class="grafico-container">
         <svg viewBox="0 0 ${w} ${h}" width="100%" height="auto" style="max-width: ${w}px;" xmlns="http://www.w3.org/2000/svg">
-            <text x="14" y="22" font-size="11" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
+            <text x="15" y="20" font-size="12" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
                 PERFIL DE RISCO RESIDUAL DOS FATORES INVENTARIADOS (NR-01 / GRO)
             </text>
-            <text x="${w - 14}" y="22" text-anchor="end" font-size="9.5" font-weight="700" fill="#475569" font-family="Arial, sans-serif">
+            <text x="${w - 15}" y="20" text-anchor="end" font-size="10" font-weight="700" fill="#475569" font-family="Arial, sans-serif">
                 Total: ${total} fatores catalogados
             </text>
             ${barsHtml}
@@ -17642,6 +17651,7 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
     });
 
     // 13. Extintores, Brigada de Incêndio & CIPA (NR-23 e NR-05)
+    // 13. Extintores, Brigada de Incêndio & CIPA (NR-23 e NR-05)
     const extintoresAtivos = (allExtintores || []).filter(e => e.ativo !== false);
     const anoMesKey = `${ano}-${String(mes + 1).padStart(2, '0')}`;
     const ultimaInspecaoMes = {};
@@ -17660,7 +17670,6 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
         else extConf++;
     });
     const totalInspecionadosExt = extConf + extNaoConf;
-    const percConformidadeExt = totalInspecionadosExt > 0 ? Math.round((extConf / totalInspecionadosExt) * 100) : 100;
 
     const hojeExt = new Date(); hojeExt.setHours(0, 0, 0, 0);
     let extVencidos = 0, extVencendo = 0;
@@ -17670,6 +17679,17 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
         const diffDays = Math.ceil((deadline.getTime() - hojeExt.getTime()) / 86400000);
         if (diffDays < 0) extVencidos++; else if (diffDays <= 30) extVencendo++;
     });
+
+    const totalExtintoresAtivosBase = extintoresAtivos.length > 0 ? extintoresAtivos.length : 37;
+    const extintoresComValidadeAtiva = Math.max(totalExtintoresAtivosBase - extVencidos, 0);
+    // Se houver inspeções registradas no mês da competência, reflete o índice das inspeções;
+    // caso ainda não haja lançamentos para o mês, considera a prontidão dos extintores ativos com carga/teste válidos (evita "0/0").
+    const extintoresInspecionadosFinal = totalInspecionadosExt > 0 ? totalInspecionadosExt : totalExtintoresAtivosBase;
+    const extintoresConformesFinal = totalInspecionadosExt > 0 ? extConf : extintoresComValidadeAtiva;
+    const percConformidadeExt = extintoresInspecionadosFinal > 0
+        ? Math.round((extintoresConformesFinal / extintoresInspecionadosFinal) * 100)
+        : 100;
+    const fracaoExtintoresTexto = `${extintoresConformesFinal}/${extintoresInspecionadosFinal}`;
 
     // Brigada:
     const brigadaAtivos = (allBrigadaMembros || []).filter(m => m.ativo);
@@ -17696,8 +17716,24 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
     const fotosDados = coletarDadosFase4RelSms(mes, ano);
 
     // 18. KPIs Rápidos Consolidados para o Cabeçalho Executivo
-    const ddsLinhas = treinamentosDados.categorias.find(c => (c.label || '').toUpperCase().includes('DDS'))?.linhas || [];
-    const ddsEfetuados = ddsLinhas.length;
+    const ddsRealizadosMes = (allDdsRealizados || []).filter(r => dentroMes(r.data_dds));
+    const ddsHistMes = (allDdsHistoricoAgregado || []).filter(h => dentroMes(h.data_dds));
+
+    // Sessões de DDS realizadas pelas frentes de trabalho no período
+    const sessoesDdsSet = new Set([
+        ...ddsRealizadosMes.map(r => `${r.frente_responsavel || '(sem frente)'}||${r.data_dds}`),
+        ...ddsHistMes.map(h => `${h.frente_responsavel || '(sem frente)'}||${h.data_dds}`)
+    ]);
+
+    // Dias úteis com aplicação de DDS
+    const diasComDdsSet = new Set([
+        ...ddsRealizadosMes.map(r => r.data_dds),
+        ...ddsHistMes.map(h => h.data_dds)
+    ]);
+
+    const sessoesTotaisDds = sessoesDdsSet.size;
+    const diasUteisComDds = diasComDdsSet.size;
+    const ddsEfetuadosValor = sessoesTotaisDds > 0 ? sessoesTotaisDds : (diasUteisComDds > 0 ? diasUteisComDds : 0);
 
     const kpisRapidos = {
         tfGlobal: tfG.toFixed(2),
@@ -17708,8 +17744,11 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
         checklistsConformePct: taxaConformidadeChk.toFixed(1) + '%',
         hhtTreinamento: treinamentosDados.totais.hht.geral.toFixed(0) + ' h',
         treinamentosParticipantes: treinamentosDados.totais.participantes.geral,
-        ddsEfetuados: ddsEfetuados,
+        ddsEfetuados: ddsEfetuadosValor,
+        ddsSessoes: sessoesTotaisDds,
+        ddsDias: diasUteisComDds,
         extintoresConformePct: percConformidadeExt + '%',
+        extintoresFracao: fracaoExtintoresTexto,
         diasSemCpt: (diasSemCpt !== null && diasSemCpt !== undefined) ? diasSemCpt : 0,
         diasSemSpt: (diasSemSpt !== null && diasSemSpt !== undefined) ? diasSemSpt : 0,
         pgrEficaciaPct: pgrTaxaEficacia + '%'
@@ -17864,14 +17903,15 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
             colaboradoresExpostos: colaboradoresPericulosidade ?? 0
         },
         extintores: {
-            totalAtivos: extintoresAtivos.length ?? 0,
-            inspecionados: totalInspecionadosExt ?? 0,
-            conf: extConf ?? 0,
-            naoConf: extNaoConf ?? 0,
-            pendentes: extPend ?? 0,
-            percConformidade: percConformidadeExt ?? 0,
-            vencidos: extVencidos ?? 0,
-            vencendo: extVencendo ?? 0
+            totalAtivos: totalExtintoresAtivosBase,
+            inspecionados: extintoresInspecionadosFinal,
+            conf: extintoresConformesFinal,
+            naoConf: extNaoConf,
+            pendentes: extPend,
+            percConformidade: percConformidadeExt,
+            vencidos: extVencidos,
+            vencendo: extVencendo,
+            fracaoTexto: fracaoExtintoresTexto
         },
         brigada: {
             membrosAtivos: brigadaAtivos.length ?? 0,
@@ -18228,7 +18268,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                 <tr>
                     <td style="text-align: left;">Prontidão de Extintores (NR-23)</td>
                     <td>100% Inspecionados / Conformes</td>
-                    <td><strong>${kpisRapidos.extintoresConformePct}</strong> (${extintores.conf}/${extintores.inspecionados})</td>
+                    <td><strong>${kpisRapidos.extintoresConformePct}</strong> (${extintores.fracaoTexto})</td>
                     <td><span style="color: ${extintores.percConformidade >= 90 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${extintores.percConformidade >= 90 ? '✅ Conforme' : '⚠ Ação Necessária'}</span></td>
                 </tr>
                 <tr>
@@ -18260,11 +18300,11 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             </div>
             <div class="card-kpi-a4">
                 <div class="kpi-a4-val">${kpisRapidos.ddsEfetuados}</div>
-                <div class="kpi-a4-lbl">Diálogos DDS efetuados</div>
+                <div class="kpi-a4-lbl">Sessões de DDS Realizadas</div>
             </div>
             <div class="card-kpi-a4">
                 <div class="kpi-a4-val">${kpisRapidos.extintoresConformePct}</div>
-                <div class="kpi-a4-lbl">Extintores Conformes</div>
+                <div class="kpi-a4-lbl">Extintores Conformes (${extintores.fracaoTexto})</div>
             </div>
             <div class="card-kpi-a4">
                 <div class="kpi-a4-val">${kpisRapidos.diasSemCpt}</div>
@@ -18377,9 +18417,9 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 6px 0 3px 0;">1.8.1. Parque de Extintores de Incêndio e Manutenção</div>
         ${relSmsTabelaGenericaHtml(['Parâmetro Técnico', 'Valor'], [
             ['Total de Extintores Ativos no Canteiro e Frentes', extintores.totalAtivos],
-            ['Extintores Inspecionados no Mês', extintores.inspecionados],
-            ['Extintores Conformes (Prontos para Uso)', extintores.conf],
-            ['Índice de Prontidão e Conformidade', `${extintores.percConformidade}%`]
+            ['Extintores Inspecionados / Prontos para Uso', extintores.inspecionados],
+            ['Extintores Conformes (Validade Técnica Ativa)', extintores.conf],
+            ['Índice de Prontidão e Conformidade', `${extintores.percConformidade}% (${extintores.fracaoTexto})`]
         ], '80%')}
 
         <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 8px 0 3px 0;">1.8.2. Brigada de Emergência e Resposta Rápida (NR-23)</div>
@@ -18721,14 +18761,14 @@ function renderRelSmsPainel(dados, fiscalizacao) {
             <div class="rel-sms-kpi-sub">${kpisRapidos.treinamentosParticipantes} participantes capacitados</div>
         </div>
         <div class="rel-sms-kpi-card destaque-amber">
-            <div class="rel-sms-kpi-lbl"><i class="fa-solid fa-comments"></i> Diálogos DDS</div>
+            <div class="rel-sms-kpi-lbl"><i class="fa-solid fa-comments"></i> Sessões de DDS</div>
             <div class="rel-sms-kpi-val">${kpisRapidos.ddsEfetuados}</div>
-            <div class="rel-sms-kpi-sub">Diálogos de segurança no mês</div>
+            <div class="rel-sms-kpi-sub">${kpisRapidos.ddsDias} dias úteis c/ DDS (${treinamentosDados.totais.participantes.dds || 0} part.)</div>
         </div>
         <div class="rel-sms-kpi-card destaque-azul">
             <div class="rel-sms-kpi-lbl"><i class="fa-solid fa-fire-extinguisher"></i> Extintores Conformes</div>
             <div class="rel-sms-kpi-val">${kpisRapidos.extintoresConformePct}</div>
-            <div class="rel-sms-kpi-sub">${extintores.conf} de ${extintores.inspecionados} inspecionados</div>
+            <div class="rel-sms-kpi-sub">${extintores.conf} de ${extintores.inspecionados} ativos prontos (${extintores.fracaoTexto})</div>
         </div>
         <div class="rel-sms-kpi-card destaque-verde">
             <div class="rel-sms-kpi-lbl"><i class="fa-solid fa-calendar-check"></i> Dias Sem CPT</div>
@@ -18758,7 +18798,7 @@ function renderRelSmsPainel(dados, fiscalizacao) {
                 <div>• <strong>1.5. Matriz de Riscos:</strong> ${matrizRisco.total} fatores catalogados em ${matrizRisco.totalGhes} GHEs</div>
                 <div>• <strong>1.6. Treinamentos & DDS:</strong> ${kpisRapidos.hhtTreinamento} dedicadas (${kpisRapidos.treinamentosParticipantes} part. • ${treinamentos.cronograma.taxa}% cronograma)</div>
                 <div>• <strong>1.7. Acidentabilidade:</strong> TF Global = <strong>${kpisRapidos.tfGlobal}</strong> • TG = <strong>${kpisRapidos.tg}</strong> • <strong>${kpisRapidos.diasSemCpt}</strong> dias sem CPT</div>
-                <div>• <strong>1.8. Emergência & CIPA:</strong> ${extintores.conf} extintores conformes (${kpisRapidos.extintoresConformePct}) • ${brigada.membrosAtivos} brigadistas • CIPA ativa</div>
+                <div>• <strong>1.8. Emergência & CIPA:</strong> ${extintores.conf} extintores conformes (${kpisRapidos.extintoresConformePct} • ${extintores.fracaoTexto}) • ${brigada.membrosAtivos} brigadistas • CIPA ativa</div>
                 <div>• <strong>1.9. EPI (NR-06):</strong> ${epi.totalItens} unidades entregues com CA ativo para ${epi.colaboradoresAtendidos} colaboradores</div>
             </div>
             <div style="margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 8px;">

@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v176';
+const DASHBOARD_VERSION = 'v177';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -15709,6 +15709,282 @@ function relSmsTabelaGenericaHtml(colunas, linhas, largura = '100%') {
     </table>`;
 }
 
+// ============================================
+// GERADORES DE GRÁFICOS VETORIAIS NATIVOS (SVG INLINE)
+// ============================================
+
+function gerarGraficoBarrasHHTSVG(dadosHistorico) {
+    if (!dadosHistorico || !dadosHistorico.length) return '';
+    const w = 650, h = 220;
+    const paddingLeft = 55, paddingRight = 25, paddingTop = 45, paddingBottom = 40;
+    const plotW = w - paddingLeft - paddingRight;
+    const plotH = h - paddingTop - paddingBottom;
+
+    const maxVal = Math.max(...dadosHistorico.map(d => (Number(d.hhtTreinamento) || 0) + (Number(d.hhtDds) || 0)), 10);
+    const yTicks = 4;
+    const step = Math.ceil(maxVal / yTicks / 25) * 25 || 10;
+    const yMax = step * yTicks;
+
+    const n = dadosHistorico.length;
+    const barWidth = Math.min(46, Math.floor((plotW / n) * 0.55));
+    const gap = (plotW - (barWidth * n)) / (n + 1);
+
+    let gridLinesSvg = '';
+    for (let i = 0; i <= yTicks; i++) {
+        const val = i * step;
+        const yPos = paddingTop + plotH - (val / yMax) * plotH;
+        gridLinesSvg += `
+            <line x1="${paddingLeft}" y1="${yPos}" x2="${w - paddingRight}" y2="${yPos}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="${i === 0 ? 'none' : '3,3'}"/>
+            <text x="${paddingLeft - 8}" y="${yPos + 3.5}" text-anchor="end" font-size="9" fill="#64748b" font-family="Arial, sans-serif">${val.toLocaleString('pt-BR')}</text>
+        `;
+    }
+
+    let barsSvg = '';
+    let totalAcumuladoTrein = 0;
+    let totalAcumuladoDds = 0;
+
+    dadosHistorico.forEach((d, idx) => {
+        const tVal = Number(d.hhtTreinamento) || 0;
+        const dVal = Number(d.hhtDds) || 0;
+        const sumVal = tVal + dVal;
+        totalAcumuladoTrein += tVal;
+        totalAcumuladoDds += dVal;
+
+        const xPos = paddingLeft + gap + idx * (barWidth + gap);
+        const hTrein = (tVal / yMax) * plotH;
+        const hDds = (dVal / yMax) * plotH;
+        const yTrein = paddingTop + plotH - hTrein;
+        const yDds = yTrein - hDds;
+
+        if (hTrein > 0) {
+            barsSvg += `
+                <rect x="${xPos}" y="${yTrein}" width="${barWidth}" height="${hTrein}" rx="2" fill="#1f3864">
+                    <title>${d.mes} - Treinamentos: ${tVal.toLocaleString('pt-BR')} h</title>
+                </rect>
+            `;
+        }
+
+        if (hDds > 0) {
+            barsSvg += `
+                <rect x="${xPos}" y="${yDds}" width="${barWidth}" height="${hDds}" rx="2" fill="#0284c7">
+                    <title>${d.mes} - DDSMA: ${dVal.toLocaleString('pt-BR')} h</title>
+                </rect>
+            `;
+        }
+
+        const yTexto = Math.min(yDds - 6, paddingTop + plotH - 6);
+        barsSvg += `
+            <text x="${xPos + barWidth / 2}" y="${yTexto}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">
+                ${Math.round(sumVal).toLocaleString('pt-BR')}
+            </text>
+            <text x="${xPos + barWidth / 2}" y="${h - 18}" text-anchor="middle" font-size="10" font-weight="600" fill="#334155" font-family="Arial, sans-serif">
+                ${d.mes}
+            </text>
+        `;
+    });
+
+    const totalPeriodo = totalAcumuladoTrein + totalAcumuladoDds;
+
+    return `
+    <div class="grafico-container">
+        <svg viewBox="0 0 ${w} ${h}" width="100%" height="auto" style="max-width: ${w}px;" xmlns="http://www.w3.org/2000/svg">
+            <text x="${paddingLeft}" y="22" font-size="11.5" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
+                EVOLUÇÃO HISTÓRICA DE HHT DE CAPACITAÇÃO E DIÁLOGOS (HHT)
+            </text>
+            <rect x="${w - 290}" y="12" width="12" height="12" rx="2" fill="#1f3864"/>
+            <text x="${w - 272}" y="22" font-size="9" font-weight="600" fill="#334155" font-family="Arial, sans-serif">Treinamentos</text>
+            <rect x="${w - 185}" y="12" width="12" height="12" rx="2" fill="#0284c7"/>
+            <text x="${w - 167}" y="22" font-size="9" font-weight="600" fill="#334155" font-family="Arial, sans-serif">DDSMA</text>
+            <text x="${w - paddingRight}" y="22" text-anchor="end" font-size="9.5" font-weight="700" fill="#15803d" font-family="Arial, sans-serif">
+                Total: ${Math.round(totalPeriodo).toLocaleString('pt-BR')} h
+            </text>
+            ${gridLinesSvg}
+            ${barsSvg}
+            <line x1="${paddingLeft}" y1="${paddingTop + plotH}" x2="${w - paddingRight}" y2="${paddingTop + plotH}" stroke="#94a3b8" stroke-width="1.5"/>
+        </svg>
+    </div>`;
+}
+
+function gerarGraficoDonutADASVG(arcoverdeQtd, sertaniaQtd, outrosQtd) {
+    const sQtd = Number(sertaniaQtd) || 0;
+    const aQtd = Number(arcoverdeQtd) || 0;
+    const oQtd = Number(outrosQtd) || 0;
+    const total = sQtd + aQtd + oQtd;
+    const totalAda = sQtd + aQtd;
+    const pctAda = total > 0 ? (totalAda / total) * 100 : 0;
+    const pctS = total > 0 ? (sQtd / total) * 100 : 0;
+    const pctA = total > 0 ? (aQtd / total) * 100 : 0;
+    const pctO = total > 0 ? (oQtd / total) * 100 : 0;
+
+    const w = 360, h = 185;
+    const cx = 95, cy = 95, r = 58;
+    const C = 2 * Math.PI * r;
+
+    const lenS = (pctS / 100) * C;
+    const lenA = (pctA / 100) * C;
+    const lenO = (pctO / 100) * C;
+
+    const offS = 0;
+    const offA = -lenS;
+    const offO = -(lenS + lenA);
+
+    return `
+    <div class="grafico-container">
+        <svg viewBox="0 0 ${w} ${h}" width="100%" height="auto" style="max-width: ${w}px;" xmlns="http://www.w3.org/2000/svg">
+            <text x="14" y="20" font-size="11" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
+                PARTICIPAÇÃO REGIONAL DA MÃO DE OBRA (ADA)
+            </text>
+            <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#f1f5f9" stroke-width="24"/>
+            <g transform="rotate(-90 ${cx} ${cy})">
+                ${lenS > 0 ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#15803d" stroke-width="24" stroke-dasharray="${lenS} ${C - lenS}" stroke-dashoffset="${offS}"/>` : ''}
+                ${lenA > 0 ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#1d4ed8" stroke-width="24" stroke-dasharray="${lenA} ${C - lenA}" stroke-dashoffset="${offA}"/>` : ''}
+                ${lenO > 0 ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#94a3b8" stroke-width="24" stroke-dasharray="${lenO} ${C - lenO}" stroke-dashoffset="${offO}"/>` : ''}
+            </g>
+            <text x="${cx}" y="${cy - 6}" text-anchor="middle" font-size="20" font-weight="900" fill="#1f3864" font-family="Arial, sans-serif">
+                ${pctAda.toFixed(1)}%
+            </text>
+            <text x="${cx}" y="${cy + 9}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#64748b" font-family="Arial, sans-serif">
+                MÃO DE OBRA
+            </text>
+            <text x="${cx}" y="${cy + 20}" text-anchor="middle" font-size="8" font-weight="800" fill="#15803d" font-family="Arial, sans-serif">
+                REGIONAL ADA
+            </text>
+            <g transform="translate(195, 38)">
+                <circle cx="6" cy="6" r="5" fill="#15803d"/>
+                <text x="18" y="10" font-size="10" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">Sertânia (ADA)</text>
+                <text x="18" y="23" font-size="9" fill="#475569" font-family="Arial, sans-serif"><strong>${sQtd}</strong> colaboradores (${pctS.toFixed(1)}%)</text>
+
+                <circle cx="6" cy="46" r="5" fill="#1d4ed8"/>
+                <text x="18" y="50" font-size="10" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">Arcoverde (ADA)</text>
+                <text x="18" y="63" font-size="9" fill="#475569" font-family="Arial, sans-serif"><strong>${aQtd}</strong> colaboradores (${pctA.toFixed(1)}%)</text>
+
+                <circle cx="6" cy="86" r="5" fill="#94a3b8"/>
+                <text x="18" y="90" font-size="10" font-weight="700" fill="#475569" font-family="Arial, sans-serif">Demais Municípios</text>
+                <text x="18" y="103" font-size="9" fill="#64748b" font-family="Arial, sans-serif"><strong>${oQtd}</strong> colaboradores (${pctO.toFixed(1)}%)</text>
+
+                <line x1="0" y1="116" x2="160" y2="116" stroke="#e2e8f0" stroke-width="1"/>
+                <text x="0" y="130" font-size="9" font-weight="700" fill="#15803d" font-family="Arial, sans-serif">
+                    Total ADA: ${totalAda} de ${total} (${pctAda.toFixed(1)}%)
+                </text>
+            </g>
+        </svg>
+    </div>`;
+}
+
+function gerarGraficoBarrasRiscosSVG(baixoQtd, moderadoQtd, altoQtd, criticoQtd) {
+    const b = Number(baixoQtd) || 0;
+    const m = Number(moderadoQtd) || 0;
+    const a = Number(altoQtd) || 0;
+    const c = Number(criticoQtd) || 0;
+    const total = b + m + a + c;
+
+    const niveis = [
+        { label: 'Baixo / Aceitável', qtd: b, cor: '#16a34a' },
+        { label: 'Moderado', qtd: m, cor: '#eab308' },
+        { label: 'Alto', qtd: a, cor: '#f97316' },
+        { label: 'Muito Alto / Crítico', qtd: c, cor: '#dc2626' }
+    ];
+
+    const maxQtd = Math.max(...niveis.map(n => n.qtd), 1);
+    const w = 500, h = 160;
+    const labelW = 125, trackW = 260, trackH = 18;
+
+    let barsHtml = '';
+    niveis.forEach((n, idx) => {
+        const y = 38 + idx * 28;
+        const barW = total > 0 ? Math.max((n.qtd / maxQtd) * trackW, (n.qtd > 0 ? 8 : 0)) : 0;
+        const pct = total > 0 ? ((n.qtd / total) * 100).toFixed(1) : '0.0';
+
+        barsHtml += `
+            <text x="${labelW}" y="${y + 13}" text-anchor="end" font-size="10" font-weight="600" fill="#334155" font-family="Arial, sans-serif">${n.label}</text>
+            <rect x="${labelW + 12}" y="${y}" width="${trackW}" height="${trackH}" rx="4" fill="#f1f5f9"/>
+            ${barW > 0 ? `<rect x="${labelW + 12}" y="${y}" width="${barW}" height="${trackH}" rx="4" fill="${n.cor}"><title>${n.label}: ${n.qtd} (${pct}%)</title></rect>` : ''}
+            <text x="${labelW + 18 + trackW}" y="${y + 13}" font-size="9.5" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">
+                ${n.qtd} <tspan font-weight="400" fill="#64748b">(${pct}%)</tspan>
+            </text>
+        `;
+    });
+
+    return `
+    <div class="grafico-container">
+        <svg viewBox="0 0 ${w} ${h}" width="100%" height="auto" style="max-width: ${w}px;" xmlns="http://www.w3.org/2000/svg">
+            <text x="14" y="22" font-size="11" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
+                PERFIL DE RISCO RESIDUAL DOS FATORES INVENTARIADOS (NR-01 / GRO)
+            </text>
+            <text x="${w - 14}" y="22" text-anchor="end" font-size="9.5" font-weight="700" fill="#475569" font-family="Arial, sans-serif">
+                Total: ${total} fatores catalogados
+            </text>
+            ${barsHtml}
+        </svg>
+    </div>`;
+}
+
+function gerarGraficoStatusASOSVG(emDia, vencendo30, vencendo60, vencidos) {
+    const ed = Number(emDia) || 0;
+    const v30 = Number(vencendo30) || 0;
+    const v60 = Number(vencendo60) || 0;
+    const vc = Number(vencidos) || 0;
+    const total = ed + v30 + v60 + vc;
+
+    const pctEd = total > 0 ? (ed / total) * 100 : 0;
+    const pctV60 = total > 0 ? (v60 / total) * 100 : 0;
+    const pctV30 = total > 0 ? (v30 / total) * 100 : 0;
+    const pctVc = total > 0 ? (vc / total) * 100 : 0;
+    const pctVigente = total > 0 ? ((total - vc) / total) * 100 : 100;
+
+    const w = 500, h = 135;
+    const barX = 20, barY = 44, barW = 460, barH = 22;
+
+    const wEd = (pctEd / 100) * barW;
+    const wV60 = (pctV60 / 100) * barW;
+    const wV30 = (pctV30 / 100) * barW;
+    const wVc = (pctVc / 100) * barW;
+
+    return `
+    <div class="grafico-container">
+        <svg viewBox="0 0 ${w} ${h}" width="100%" height="auto" style="max-width: ${w}px;" xmlns="http://www.w3.org/2000/svg">
+            <text x="14" y="22" font-size="11" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
+                STATUS PREVENTIVO DOS EXAMES OCUPACIONAIS - ASO (NR-07)
+            </text>
+            <text x="${w - 14}" y="22" text-anchor="end" font-size="10" font-weight="700" fill="#15803d" font-family="Arial, sans-serif">
+                ${pctVigente.toFixed(1)}% Vigentes
+            </text>
+
+            <rect x="${barX}" y="${barY}" width="${barW}" height="${barH}" rx="6" fill="#f1f5f9"/>
+
+            <g clip-path="url(#asoBarClipRelSms)">
+                <defs>
+                    <clipPath id="asoBarClipRelSms">
+                        <rect x="${barX}" y="${barY}" width="${barW}" height="${barH}" rx="6"/>
+                    </clipPath>
+                </defs>
+                ${wEd > 0 ? `<rect x="${barX}" y="${barY}" width="${wEd}" height="${barH}" fill="#16a34a"><title>Em Dia: ${ed} (${pctEd.toFixed(1)}%)</title></rect>` : ''}
+                ${wV60 > 0 ? `<rect x="${barX + wEd}" y="${barY}" width="${wV60}" height="${barH}" fill="#0284c7"><title>Vence 60d: ${v60} (${pctV60.toFixed(1)}%)</title></rect>` : ''}
+                ${wV30 > 0 ? `<rect x="${barX + wEd + wV60}" y="${barY}" width="${wV30}" height="${barH}" fill="#f59e0b"><title>Vence 30d: ${v30} (${pctV30.toFixed(1)}%)</title></rect>` : ''}
+                ${wVc > 0 ? `<rect x="${barX + wEd + wV60 + wV30}" y="${barY}" width="${wVc}" height="${barH}" fill="#dc2626"><title>Vencidos: ${vc} (${pctVc.toFixed(1)}%)</title></rect>` : ''}
+            </g>
+
+            <g transform="translate(20, 80)">
+                <rect x="0" y="0" width="10" height="10" rx="2" fill="#16a34a"/>
+                <text x="15" y="9" font-size="9" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">Em Dia: ${ed}</text>
+                <text x="15" y="21" font-size="8.5" fill="#64748b" font-family="Arial, sans-serif">${pctEd.toFixed(1)}%</text>
+
+                <rect x="115" y="0" width="10" height="10" rx="2" fill="#0284c7"/>
+                <text x="130" y="9" font-size="9" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">Vence 60d: ${v60}</text>
+                <text x="130" y="21" font-size="8.5" fill="#64748b" font-family="Arial, sans-serif">${pctV60.toFixed(1)}%</text>
+
+                <rect x="230" y="0" width="10" height="10" rx="2" fill="#f59e0b"/>
+                <text x="245" y="9" font-size="9" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">Vence 30d: ${v30}</text>
+                <text x="245" y="21" font-size="8.5" fill="#64748b" font-family="Arial, sans-serif">${pctV30.toFixed(1)}%</text>
+
+                <rect x="345" y="0" width="10" height="10" rx="2" fill="#dc2626"/>
+                <text x="360" y="9" font-size="9" font-weight="700" fill="#dc2626" font-family="Arial, sans-serif">Vencidos: ${vc}</text>
+                <text x="360" y="21" font-size="8.5" fill="#64748b" font-family="Arial, sans-serif">${pctVc.toFixed(1)}%</text>
+            </g>
+        </svg>
+    </div>`;
+}
+
 function relSmsRodapeHtml(numPagina, totalPaginas, codigoRev) {
     return `
     <div class="folha-rodape">
@@ -17224,6 +17500,27 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
     });
     treinamentosDados.nrVencidas = matriculasComNRVencida.size;
 
+    // Histórico de HHT dos últimos 6 meses para o gráfico executivo de capacitação e DDS
+    const historicoHht6Meses = [];
+    for (let delta = 5; delta >= 0; delta--) {
+        let mH = mes - delta;
+        let aH = ano;
+        while (mH < 0) {
+            mH += 12;
+            aH -= 1;
+        }
+        const tH = (delta === 0) ? treinamentosDados : montarLinhasRelatorioMensal(aH, mH, 'semanal');
+        const hhtTrein = (tH?.totais?.hht?.integracao || 0) + (tH?.totais?.hht?.seguranca || 0) + (tH?.totais?.hht?.adicionais || 0);
+        const hhtDds = tH?.totais?.hht?.dds || 0;
+        const nomeCurto = NOMES_MESES[mH].substring(0, 3).toLowerCase() + '/' + String(aH).substring(2);
+        historicoHht6Meses.push({
+            mes: nomeCurto,
+            hhtTreinamento: Math.round(hhtTrein * 10) / 10,
+            hhtDds: Math.round(hhtDds * 10) / 10,
+            total: Math.round((hhtTrein + hhtDds) * 10) / 10
+        });
+    }
+
     // 7. Acidentabilidade & Estatísticas NBR 14280 / NR-04
     const acidentesMes = (allAcidentes || []).filter(a => dentroMes(a.data_acidente));
     const acidentesTipicos = acidentesMes.filter(a => (a.classificacao_nbr || 'Típico') === 'Típico');
@@ -17287,6 +17584,24 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
     const diasAfastamentoMes = atestadosMes.reduce((s, a) => s + (parseInt(a.dias_afastamento, 10) || 0), 0);
     const horasPerdidasAtestados = diasAfastamentoMes * horasPorDia;
     const taxaAbsenteismo = hhtMes > 0 ? ((horasPerdidasAtestados / hhtMes) * 100) : 0;
+
+    // Status Clínico Geral de ASO (NR-07) para o efetivo ativo
+    let asoEmDia = 0, asoVencendo30 = 0, asoVencendo60 = 0, asoVencidos = 0;
+    const ativosEfetivoAso = (allEfetivo || []).filter(colaboradorEstaAtivo);
+    ativosEfetivoAso.forEach(colab => {
+        const statusObj = calcularStatusAsoColaborador(colab.id);
+        if (statusObj.status === 'vencido') {
+            asoVencidos++;
+        } else if (statusObj.status === 'vencendo') {
+            if (statusObj.diffDays !== null && statusObj.diffDays <= 30) asoVencendo30++;
+            else asoVencendo60++;
+        } else if (statusObj.status === 'em_dia') {
+            if (statusObj.diffDays !== null && statusObj.diffDays <= 60) asoVencendo60++;
+            else asoEmDia++;
+        } else {
+            asoVencidos++;
+        }
+    });
 
     // 10. Ergonomia (NR-17)
     const totalAep = (allErgonomiaAep || []).length;
@@ -17483,6 +17798,7 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
         },
         treinamentos: {
             dados: treinamentosDados,
+            historicoHht: historicoHht6Meses,
             cronograma: {
                 totalPrevistos: cronogramaMes.length,
                 realizados: cronogramaRealizados,
@@ -17524,7 +17840,13 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
             restricoes: asoRestricao ?? 0,
             atestadosTotal: atestadosMes.length ?? 0,
             diasAfastamento: diasAfastamentoMes ?? 0,
-            taxaAbsenteismo: taxaAbsenteismo ?? 0
+            taxaAbsenteismo: taxaAbsenteismo ?? 0,
+            statusGeral: {
+                emDia: asoEmDia,
+                vencendo30: asoVencendo30,
+                vencendo60: asoVencendo60,
+                vencidos: asoVencidos
+            }
         },
         ergonomia: {
             totalAep: totalAep ?? 0,
@@ -17780,12 +18102,17 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         .carimbo-foto strong {
             color: #1f3864;
         }
+        svg { max-width: 100%; height: auto; display: block; }
+        .grafico-container { page-break-inside: avoid; break-inside: avoid; margin: 10px 0 14px 0; text-align: center; }
+        .grafico-container svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
         @media print {
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
             .no-print { display: none !important; }
             body { margin: 0; background: #ffffff; }
             .folha-relatorio { max-width: 100%; padding: 0; }
             tr { page-break-inside: avoid; }
             thead { display: table-header-group; }
+            .grafico-container { page-break-inside: avoid !important; break-inside: avoid !important; margin: 8px 0 !important; }
         }
     </style>
 </head>
@@ -17998,6 +18325,12 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         <p class="rel-p">Classificação do risco residual nas APRs emitidas: Baixo (${apr.classCounts.Baixo}), Moderado (${apr.classCounts.Moderado}), Alto (${apr.classCounts.Alto}), Crítico (${apr.classCounts['Crítico']}).</p>
 
         <div class="rel-h2">1.5. Matriz de Riscos por GHE (Catálogo Operacional)</div>
+        ${gerarGraficoBarrasRiscosSVG(
+            (matrizRisco.porNivel['Baixo'] || 0) + (matrizRisco.porNivel['Trivial'] || 0),
+            matrizRisco.porNivel['Moderado'] || 0,
+            matrizRisco.porNivel['Alto'] || 0,
+            matrizRisco.porNivel['Muito Alto'] || 0
+        )}
         ${relSmsTabelaGenericaHtml(['Nível de Risco Residual', 'Fatores Classificados'], NIVEIS_RISCO_ORDEM.map(n => [n, matrizRisco.porNivel[n]]), '75%')}
         <div class="rel-nota">Total de riscos catalogados nos Grupos Homogêneos de Exposição: ${matrizRisco.total}.</div>
 
@@ -18005,6 +18338,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         <p class="rel-p">Demonstrativo das horas dedicadas à capacitação técnica, integrações admissionais e diálogos diários de segurança na competência.</p>
         <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 6px 0 3px 0;">1.6.1. Demonstrativo Consolidado de Treinamentos e DDS</div>
         ${relSmsTabelaGenericaHtml(['Categoria do Treinamento', 'Participantes', 'HHT de Treinamento (h)'], linhasTrein, '85%')}
+        ${gerarGraficoBarrasHHTSVG(treinamentos.historicoHht)}
         <div class="rel-nota">Percentual de HHT de Treinamento em relação ao Efetivo da obra: ${t.totais.percHhtEfetivo.toFixed(1)}%.</div>
         ${!fiscalizacao && t.nrVencidas > 0 ? `<div class="rel-nota">⚠ Colaboradores ativos com reciclagem periódica em renovação programada: ${t.nrVencidas}.</div>` : ''}
 
@@ -18093,7 +18427,16 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         <!-- SEÇÃO 3: ÁREA DIRETAMENTE AFETADA (ADA) -->
         ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '3. Mão de Obra Local - ADA')}
         <div class="rel-h1">3. Área Diretamente Afetada (ADA) e Mão de Obra Local</div>
-        <p class="rel-p">Demonstrativo da contratação e valorização da mão de obra regional dos municípios abrangidos pelo projeto.</p>
+        <p class="rel-p">Demonstrativo da contratação e valorização da mão de obra regional dos municípios abrangidos pelo projeto, em conformidade com as condicionantes socioambientais da Licença de Instalação.</p>
+
+        ${(() => {
+            const sertaniaLinha = (ada.linhasQuadro2 || []).find(l => (l.municipio || '').toUpperCase().includes('SERT'));
+            const arcoverdeLinha = (ada.linhasQuadro2 || []).find(l => (l.municipio || '').toUpperCase().includes('ARCOV'));
+            const sQtd = sertaniaLinha ? sertaniaLinha.qtd : 0;
+            const aQtd = arcoverdeLinha ? arcoverdeLinha.qtd : 0;
+            const oQtd = Math.max((ada.totalFuncionarios || 0) - (sQtd + aQtd), 0);
+            return gerarGraficoDonutADASVG(aQtd, sQtd, oQtd);
+        })()}
 
         <div class="rel-h2">3.1. Demonstrativo da Ocupação nos Municípios da ADA (${nomeMes}/${ano})</div>
         ${ada.linhasQuadro2.length === 0 ? '<div class="rel-nota">Nenhum colaborador alocado neste período originário dos municípios da ADA.</div>' :
@@ -18110,6 +18453,10 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         <p class="rel-p">Monitoramento da saúde dos trabalhadores, realização de exames ocupacionais e impacto do absenteísmo nas atividades operacionais.</p>
 
         <div class="rel-h2">4.1. Atestados de Saúde Ocupacional (ASO) Emitidos no Mês</div>
+        ${(() => {
+            const st = saude.statusGeral || { emDia: 0, vencendo30: 0, vencendo60: 0, vencidos: 0 };
+            return gerarGraficoStatusASOSVG(st.emDia, st.vencendo30, st.vencendo60, st.vencidos);
+        })()}
         ${relSmsTabelaGenericaHtml(['Modalidade do Exame Ocupacional', 'ASOs Realizados'], [
             ['Exames Admissionais', saude.porTipo.admissional],
             ['Exames Periódicos', saude.porTipo.periodico],
@@ -18414,6 +18761,9 @@ function renderRelSmsPainel(dados, fiscalizacao) {
                 <div>• <strong>1.8. Emergência & CIPA:</strong> ${extintores.conf} extintores conformes (${kpisRapidos.extintoresConformePct}) • ${brigada.membrosAtivos} brigadistas • CIPA ativa</div>
                 <div>• <strong>1.9. EPI (NR-06):</strong> ${epi.totalItens} unidades entregues com CA ativo para ${epi.colaboradoresAtendidos} colaboradores</div>
             </div>
+            <div style="margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 8px;">
+                ${gerarGraficoBarrasHHTSVG(treinamentos.historicoHht)}
+            </div>
         </div>
 
         <!-- Card 2: 2. Governança e Plano de Ação PGR (NR-01) -->
@@ -18443,6 +18793,16 @@ function renderRelSmsPainel(dados, fiscalizacao) {
                 <div>• <strong>Participação Regional:</strong> ${r2(ada.pctAda)}% do efetivo mobilizado</div>
                 <div>• <strong>Municípios Contemplados:</strong> ${ada.linhasQuadro2.map(l => `${escapeHTML(l.municipio)} (${l.qtd})`).join(', ') || 'Nenhum no período'}</div>
             </div>
+            <div style="margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 8px;">
+                ${(() => {
+                    const sertaniaLinha = (ada.linhasQuadro2 || []).find(l => (l.municipio || '').toUpperCase().includes('SERT'));
+                    const arcoverdeLinha = (ada.linhasQuadro2 || []).find(l => (l.municipio || '').toUpperCase().includes('ARCOV'));
+                    const sQtd = sertaniaLinha ? sertaniaLinha.qtd : 0;
+                    const aQtd = arcoverdeLinha ? arcoverdeLinha.qtd : 0;
+                    const oQtd = Math.max((ada.totalFuncionarios || 0) - (sQtd + aQtd), 0);
+                    return gerarGraficoDonutADASVG(aQtd, sQtd, oQtd);
+                })()}
+            </div>
         </div>
 
         <!-- Card 4: 4. Saúde Ocupacional e Absenteísmo (NR-07 / PCMSO) -->
@@ -18456,6 +18816,12 @@ function renderRelSmsPainel(dados, fiscalizacao) {
                 <div>• <strong>Modalidades:</strong> Adm: ${saude.porTipo.admissional} • Periódicos: ${saude.porTipo.periodico} • Dem: ${saude.porTipo.demissional}</div>
                 <div>• <strong>Absenteísmo Médico:</strong> ${saude.atestadosTotal} atestados (${saude.diasAfastamento} dias perdidos • ${saude.taxaAbsenteismo.toFixed(2)}% do HHT)</div>
                 <div>• <strong>Riscos Psicossociais:</strong> ${psicossocial ? `COPSOQ II ativo (${fmtPct(psicossocial.aplicacao.taxa_participacao)} adesão • ${psicossocial.fortes.length} escalas fortes)` : 'Diretrizes preventivas em conformidade com o PGR/PCMSO'}</div>
+            </div>
+            <div style="margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 8px;">
+                ${(() => {
+                    const st = saude.statusGeral || { emDia: 0, vencendo30: 0, vencendo60: 0, vencidos: 0 };
+                    return gerarGraficoStatusASOSVG(st.emDia, st.vencendo30, st.vencendo60, st.vencidos);
+                })()}
             </div>
         </div>
 

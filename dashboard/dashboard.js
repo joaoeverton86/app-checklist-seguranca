@@ -2013,6 +2013,7 @@ async function carregarChecklistItemSettings() {
     try {
         allChecklistItemSettings = await supabaseFetch('checklist_item_settings');
         if (itemGerenciaTypeId) onItemGerenciaTypeChange();
+        if (typeof atualizarCardFotosDrive === 'function') atualizarCardFotosDrive();
     } catch (err) {
         console.error('Erro ao carregar configurações de itens de checklist:', err);
     }
@@ -2381,6 +2382,9 @@ function salvarConfigGoogleDrive() {
 
     if (folderFotos) {
         localStorage.setItem('drive_folder_fotos_url', folderFotos);
+        if (typeof salvarConfiguracaoFotosDrive === 'function') {
+            salvarConfiguracaoFotosDrive(folderFotos);
+        }
     }
     if (gasFotos) {
         localStorage.setItem('drive_gas_webhook_url', gasFotos);

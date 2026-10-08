@@ -17285,14 +17285,16 @@ function relSmsTabelaTemaFotoDocx(titulo) {
 }
 
 function construirSecao5RelSms(dadosFotos, mes, ano) {
-    const nomeMes = NOMES_MESES[mes];
+    const mesSelect = document.getElementById('relSmsMes');
+    const nomeMes = (typeof NOMES_MESES !== 'undefined' && mes !== undefined && NOMES_MESES[mes]) ? NOMES_MESES[mes] : (mesSelect && mesSelect.selectedIndex >= 0 ? mesSelect.options[mesSelect.selectedIndex].text : 'Mes_Nao_Definido');
+    const anoRelatorio = ano || (document.getElementById('relSmsAno') ? document.getElementById('relSmsAno').value : new Date().getFullYear());
     const linkDriveMaster = 'https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
     const out = [relSmsH1('9. Registros Fotográficos (Treinamentos e DDSMA)')];
     out.push(relSmsP('Em atendimento às diretrizes de otimização de armazenamento e governança de dados (SST/ESG), o acervo fotográfico comprobatório das capacitações normativas e Diálogos Diários de Segurança e Meio Ambiente (DDSMA) realizados neste período de competência encontra-se digitalizado, indexado e disponível para auditoria em nosso repositório oficial em nuvem.'));
 
     out.push(relSmsH2('Repositório de Evidências Fotográficas — Acervo Digital'));
     out.push(relSmsP(`Link de Auditoria (Google Drive): ${linkDriveMaster}`));
-    out.push(relSmsP(`Para acessar as evidências, navegue até a pasta: SST - Registros de Campo / ${nomeMes.toUpperCase()}_${ano} / Treinamentos e DDSMA`));
+    out.push(relSmsP(`Para acessar as evidências, navegue até a pasta: SST - Registros de Campo / ${nomeMes}_${anoRelatorio} / Treinamentos e DDSMA`));
     out.push(relSmsNota('Registros georreferenciados com carimbo de data, hora e metadados arquivados integralmente no repositório de SST para consulta por auditores fiscais e fiscalização contratual.'));
 
     out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
@@ -18179,9 +18181,11 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
 // Constrói o documento HTML completo calibrado para Impressão A4 e exportação para PDF
 function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
     const { meta, efetivo, hht, kpisRapidos, checklists, naoConformidades, relatos, apr, matrizRisco, treinamentos, acidentes, pgr, saude, ergonomia, psicossocial, periculosidade, extintores, brigada, cipa, epi, ada, meioAmbiente, fotos } = dados;
-    const nomeMes = meta.nomeMes;
-    const ano = meta.ano;
-    const mes = meta.mes;
+    const mesSelect = document.getElementById('relSmsMes');
+    const nomeMes = (meta && meta.nomeMes) ? meta.nomeMes : (mesSelect && mesSelect.selectedIndex >= 0 ? mesSelect.options[mesSelect.selectedIndex].text : 'Mes_Nao_Definido');
+    const anoRelatorio = (meta && meta.ano) ? meta.ano : (document.getElementById('relSmsAno') ? document.getElementById('relSmsAno').value : new Date().getFullYear());
+    const ano = anoRelatorio;
+    const mes = (meta && meta.mes !== undefined) ? meta.mes : (mesSelect ? parseInt(mesSelect.value, 10) : 0);
 
     // Linhas formatadas de Treinamento
     const t = treinamentos.dados;
@@ -18979,7 +18983,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                 </div>
                 <div style="font-size: 9.5px; line-height: 1.5; color: #334155;">
                     <strong>Instrução de Acesso:</strong> Para acessar as evidências, navegue até a pasta:<br/>
-                    <code style="background: #e2e8f0; color: #0f172a; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 9.5px; display: inline-block; margin-top: 5px; border: 1px solid #cbd5e1;">SST - Registros de Campo / ${nomeMes.toUpperCase()}_${ano} / Treinamentos e DDSMA</code>
+                    <code style="background: #e2e8f0; color: #0f172a; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 9.5px; display: inline-block; margin-top: 5px; border: 1px solid #cbd5e1;">SST - Registros de Campo / ${nomeMes}_${anoRelatorio} / Treinamentos e DDSMA</code>
                 </div>
                 <div style="margin-top: 12px; padding-top: 8px; border-top: 1px dashed #cbd5e1; font-size: 8.5px; color: #64748b; font-style: italic;">
                     * Registros georreferenciados com carimbo de data, hora e metadados preservados na íntegra no Google Drive para auditoria técnica do SESMT e fiscalização contratual.
@@ -19058,6 +19062,12 @@ function renderRelSmsPainel(dados, fiscalizacao) {
 
     const { meta, efetivo, hht, kpisRapidos, checklists, naoConformidades, relatos, apr, matrizRisco, treinamentos, acidentes, pgr, saude, ergonomia, psicossocial, periculosidade, extintores, brigada, cipa, epi, ada, meioAmbiente, fotos } = dados;
     const treinamentosDados = (treinamentos && treinamentos.dados) ? treinamentos.dados : { totais: { participantes: { dds: 0, geral: 0 }, hht: { dds: 0, geral: 0 } }, categorias: [] };
+
+    // Captura segura de Mês e Ano a partir dos dados consolidados ou seletores da interface
+    const mesSelect = document.getElementById('relSmsMes');
+    const nomeMes = (meta && meta.nomeMes) ? meta.nomeMes : (mesSelect && mesSelect.selectedIndex >= 0 ? mesSelect.options[mesSelect.selectedIndex].text : 'Mes_Nao_Definido');
+    const anoRelatorio = (meta && meta.ano) ? meta.ano : (document.getElementById('relSmsAno') ? document.getElementById('relSmsAno').value : new Date().getFullYear());
+    const ano = anoRelatorio;
 
     const html = `
     <!-- Topo do Dossiê -->
@@ -19294,7 +19304,7 @@ function renderRelSmsPainel(dados, fiscalizacao) {
             </div>
             <div style="font-size: 13px; line-height: 1.6;">
                 <div>• <strong>Diretriz SST/ESG:</strong> Evidências fotográficas indexadas e disponíveis para auditoria no Google Drive</div>
-                <div>• <strong>Estrutura de Pastas:</strong> SST - Registros de Campo / ${nomeMes.toUpperCase()}_${ano} / Treinamentos e DDSMA</div>
+                <div>• <strong>Estrutura de Pastas:</strong> SST - Registros de Campo / ${nomeMes}_${anoRelatorio} / Treinamentos e DDSMA</div>
                 <div>• <strong>Módulo Integrado:</strong> Gestão e consulta via módulo Acervo (Drive) do Painel Gerencial</div>
             </div>
         </div>

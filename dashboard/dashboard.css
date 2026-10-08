@@ -2087,6 +2087,73 @@ body {
     gap: 4px;
 }
 
+/* Ações e Botões do Acervo Drive (Imune a Bloqueador de Popups) */
+.acervo-drive-acoes {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
 
+.btn-abrir-drive {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: #0284c7;
+    color: #ffffff !important;
+    font-size: 11.5px;
+    font-weight: 600;
+    text-decoration: none !important;
+    transition: all 0.15s ease;
+    border: 1px solid #0284c7;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(2, 132, 199, 0.15);
+    white-space: nowrap;
+}
 
+.btn-abrir-drive:hover {
+    background: #0369a1;
+    border-color: #0369a1;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(2, 132, 199, 0.25);
+}
 
+.btn-visualizar-drive {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: rgba(2, 132, 199, 0.08);
+    color: #0284c7;
+    font-size: 11.5px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1px solid rgba(2, 132, 199, 0.25);
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.btn-visualizar-drive:hover {
+    background: #0284c7;
+    color: #ffffff;
+    border-color: #0284c7;
+}
+
+@media (max-width: 640px) {
+    .acervo-drive-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .acervo-drive-acoes {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}

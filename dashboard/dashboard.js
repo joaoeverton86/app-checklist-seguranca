@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const DASHBOARD_VERSION = 'v174';
+const DASHBOARD_VERSION = 'v176';
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + DASHBOARD_VERSION + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
 
@@ -3261,7 +3261,7 @@ async function iniciarUploadChecklistsLegados() {
                 empresa: it.empresa || 'Consórcio COP',
                 status_checklist: 'liberado',
                 origem: 'legado_importado',
-                drive_file_url: res.fileUrl,
+                drive_file_url: uploadRes.fileUrl,
                 drive_synced_at: new Date().toISOString(),
                 observacoes: `Checklist legado importado via PDF (${it.nomeArquivo})`,
                 conformes: 1,
@@ -15691,13 +15691,20 @@ function relSmsTabelaKpisHtml(kpis) {
     </table>`;
 }
 
+function sanitizarCelulaTabelaRelSms(v, isPrimeiraColuna) {
+    if (v === null || v === undefined || v === '') {
+        return isPrimeiraColuna ? '—' : '0';
+    }
+    return String(v);
+}
+
 function relSmsTabelaGenericaHtml(colunas, linhas, largura = '100%') {
     if (!linhas || linhas.length === 0) return '<p class="rel-p">Nenhum dado registrado para o período.</p>';
     return `
     <table class="rel-tabela" style="width: ${largura}; margin-bottom: 12px;">
         <thead><tr>${colunas.map(c => `<th>${escapeHTML(c)}</th>`).join('')}</tr></thead>
         <tbody>
-            ${linhas.map(l => `<tr>${l.map((v, i) => `<td${i === 0 ? ' style="text-align: left;"' : ''}>${escapeHTML(String(v ?? '—'))}</td>`).join('')}</tr>`).join('')}
+            ${linhas.map(l => `<tr>${l.map((v, i) => `<td${i === 0 ? ' style="text-align: left;"' : ''}>${escapeHTML(sanitizarCelulaTabelaRelSms(v, i === 0))}</td>`).join('')}</tr>`).join('')}
         </tbody>
     </table>`;
 }
@@ -16161,7 +16168,7 @@ function coletarDadosSecoes23RelSms(mes, ano) {
 
 function construirSecao2RelSms(dados, mes, ano) {
     const nomeMes = NOMES_MESES[mes];
-    const out = [relSmsH1('2. Área Diretamente Afetada (ADA) e Mão de Obra Local')];
+    const out = [relSmsH1('3. Área Diretamente Afetada (ADA) e Mão de Obra Local')];
     const a = dados.ada;
     if (a.linhasQuadro1.length === 0) {
         out.push(relSmsP(`Nenhum colaborador ativo encontrado em ${nomeMes.toLowerCase()} de ${ano}.`));
@@ -16194,7 +16201,7 @@ function construirSecao2RelSms(dados, mes, ano) {
 // ver memória do projeto) da versão pra Fiscalização; a versão completa mostra tudo.
 function construirSecao3RelSms(dados, mes, ano, fiscalizacao) {
     const nomeMes = NOMES_MESES[mes];
-    const out = [relSmsH1('3. Saúde Ocupacional')];
+    const out = [relSmsH1('4. Saúde Ocupacional e Absenteísmo (NR-07 / PCMSO)')];
 
     out.push(relSmsH2('3.1. Atestados de Saúde Ocupacional (ASO) e Absenteísmo'));
     out.push(dados.saudeKpis.length > 0 ? relSmsTabelaKpis(dados.saudeKpis) : relSmsP('Nenhum dado de ASO disponível para o período.'));
@@ -16256,7 +16263,7 @@ function coletarDadosMeioAmbienteRelSms(mes, ano) {
 
 function construirSecaoMeioAmbienteRelSms(dados, mes, ano, fiscalizacao) {
     const nomeMes = NOMES_MESES[mes];
-    const out = [relSmsH1('4. Meio Ambiente')];
+    const out = [relSmsH1('7. Meio Ambiente e PGRS')];
 
     out.push(relSmsH2('4.1. Geração e Destinação de Resíduos'));
     const l = dados.linhaResiduos;
@@ -16315,7 +16322,7 @@ function construirSecaoMeioAmbienteRelSms(dados, mes, ano, fiscalizacao) {
 // Ambiente) entram nas duas versões.
 function construirSecao4RelSms(dadosSecao1, dadosSecoes23, dadosMeioAmbiente, mes, ano, fiscalizacao) {
     const nomeMes = NOMES_MESES[mes];
-    const out = [relSmsH1('5. Considerações Finais e Plano de Ação')];
+    const out = [relSmsH1('8. Considerações Finais e Diretrizes de Governança')];
     out.push(relSmsP(`Síntese das ações de monitoramento e diretrizes de governança em SMS referentes a ${nomeMes.toLowerCase()} de ${ano}, a partir dos indicadores consolidados neste relatório.`));
 
     out.push(relSmsH2('Diretrizes e Ações para o Próximo Período'));
@@ -16351,10 +16358,149 @@ function construirSecao4RelSms(dadosSecao1, dadosSecoes23, dadosMeioAmbiente, me
 // ================================================================
 
 // ================================================================
-// SEÇÃO 6 (Registros Fotográficos): SEGREGAÇÃO 6.1 (Treinamentos) e 6.2 (DDSMA)
-// Agrupa treinamentos por tema distinto no mês com 02 fotos representativas.
-// Filtra DDSMA exclusivamente em dias úteis (segunda a sexta) com 02 fotos por dia útil/tema.
+// SEÇÃO 9 (Registros Fotográficos): SEGREGAÇÃO 9.1 (Treinamentos) e 9.2 (DDSMA)
+// Cruza treinamento_cod com treinamentos_catalogo.nome para exibir sempre temas descritivos.
+// Remove Integração das evidências fotográficas.
+// Suprime caixas vazias ou placeholders quando não houver fotos reais anexadas.
 // ================================================================
+
+function resolverUrlVisualizacaoFotoRelSms(anexo) {
+    if (!anexo) return null;
+    if (anexo.drive_file_id) {
+        return `https://lh3.googleusercontent.com/d/${encodeURIComponent(anexo.drive_file_id)}`;
+    }
+    if (anexo.url && (anexo.url.startsWith('http://') || anexo.url.startsWith('https://') || anexo.url.startsWith('data:image'))) {
+        return anexo.url;
+    }
+    if (anexo.drive_view_link) {
+        const match = anexo.drive_view_link.match(/\/d\/([a-zA-Z0-9_-]+)/) || anexo.drive_view_link.match(/id=([a-zA-Z0-9_-]+)/);
+        if (match && match[1]) {
+            return `https://lh3.googleusercontent.com/d/${encodeURIComponent(match[1])}`;
+        }
+        return anexo.drive_view_link;
+    }
+    return null;
+}
+
+function ehExtensaoImagemRelSms(nomeArquivo) {
+    if (!nomeArquivo) return true;
+    return /\.(jpe?g|png|webp|gif|bmp|heic|svg)$/i.test(nomeArquivo);
+}
+
+function extrairFotosDoTemaTreinamento(g, mes, ano) {
+    const fotos = [];
+    const cod = String(g.codigo || '');
+    const datasArr = Array.from(g.datas);
+    const registros = g.registros || [];
+
+    // 1. Busca em allAnexosSms
+    (allAnexosSms || []).forEach(a => {
+        if (a.tabela_origem !== 'treinamentos_realizados') return;
+        const chave = String(a.registro_chave || '');
+        let vinculou = false;
+        if (datasArr.some(d => chave === `${cod}||${d}`)) vinculou = true;
+        else if (chave === cod) vinculou = true;
+        else if (registros.some(r => r.id && chave === String(r.id))) vinculou = true;
+
+        if (vinculou && ehExtensaoImagemRelSms(a.nome_arquivo)) {
+            const url = resolverUrlVisualizacaoFotoRelSms(a);
+            if (url && !fotos.some(f => f.url === url)) {
+                fotos.push({
+                    url,
+                    nome: a.nome_arquivo || g.tema,
+                    data: (datasArr[0] || `${ano}-${String(mes + 1).padStart(2, '0')}-15`),
+                    hora: registros[0]?.hora_inicio || '08:00',
+                    local: registros[0]?.local_realizacao || 'Canteiro Central — Ramal do Agreste (Trecho VII)'
+                });
+            }
+        }
+    });
+
+    // 2. Busca em campos diretos nos registros de treinamento
+    registros.forEach(r => {
+        const u = r.foto_url || r.fotos_urls || r.url || r.foto || r.evidencia_url;
+        if (u && !fotos.some(f => f.url === u)) {
+            fotos.push({
+                url: u,
+                nome: g.tema,
+                data: r.data_treinamento || datasArr[0],
+                hora: r.hora_inicio || '08:00',
+                local: r.local_realizacao || 'Canteiro Central — Ramal do Agreste (Trecho VII)'
+            });
+        }
+        if (Array.isArray(r.fotos)) {
+            r.fotos.forEach(fu => {
+                if (fu && !fotos.some(f => f.url === fu)) {
+                    fotos.push({
+                        url: fu,
+                        nome: g.tema,
+                        data: r.data_treinamento || datasArr[0],
+                        hora: r.hora_inicio || '08:00',
+                        local: r.local_realizacao || 'Canteiro Central — Ramal do Agreste (Trecho VII)'
+                    });
+                }
+            });
+        }
+    });
+
+    return fotos;
+}
+
+function extrairFotosDoTemaDdsma(dataStr, registrosDoDia, temaNome) {
+    const fotos = [];
+    const registros = registrosDoDia || [];
+
+    // 1. Busca em allAnexosSms
+    (allAnexosSms || []).forEach(a => {
+        if (a.tabela_origem !== 'dds_realizados') return;
+        const chave = String(a.registro_chave || '');
+        let vinculou = false;
+        if (chave === dataStr || chave.includes(dataStr)) vinculou = true;
+        else if (registros.some(r => loteKeyDds(r) === chave || String(r.id) === chave)) vinculou = true;
+
+        if (vinculou && ehExtensaoImagemRelSms(a.nome_arquivo)) {
+            const url = resolverUrlVisualizacaoFotoRelSms(a);
+            if (url && !fotos.some(f => f.url === url)) {
+                fotos.push({
+                    url,
+                    nome: a.nome_arquivo || temaNome,
+                    data: dataStr,
+                    hora: '07:15',
+                    local: registros[0]?.frente_responsavel || 'Frente Operacional — Ramal do Agreste (Trecho VII)'
+                });
+            }
+        }
+    });
+
+    // 2. Busca em campos diretos nos registros de DDS
+    registros.forEach(r => {
+        const u = r.foto_url || r.fotos_urls || r.url || r.foto || r.evidencia_url;
+        if (u && !fotos.some(f => f.url === u)) {
+            fotos.push({
+                url: u,
+                nome: temaNome,
+                data: dataStr,
+                hora: '07:15',
+                local: r.frente_responsavel || 'Frente Operacional — Ramal do Agreste (Trecho VII)'
+            });
+        }
+        if (Array.isArray(r.fotos)) {
+            r.fotos.forEach(fu => {
+                if (fu && !fotos.some(f => f.url === fu)) {
+                    fotos.push({
+                        url: fu,
+                        nome: temaNome,
+                        data: dataStr,
+                        hora: '07:15',
+                        local: r.frente_responsavel || 'Frente Operacional — Ramal do Agreste (Trecho VII)'
+                    });
+                }
+            });
+        }
+    });
+
+    return fotos;
+}
 
 function coletarDadosFase4RelSms(mes, ano) {
     const inicio = new Date(ano, mes, 1, 0, 0, 0, 0);
@@ -16372,49 +16518,71 @@ function coletarDadosFase4RelSms(mes, ano) {
     };
 
     // ----------------------------------------------------
-    // 6.1. TREINAMENTOS: Agrupar por tema realizado no mês
+    // 9.1. TREINAMENTOS: Agrupar por tema realizado no mês
     // ----------------------------------------------------
     const gruposTreinamentos = new Map();
 
     (allTreinamentosRealizados || []).forEach(r => {
         if (!dentroPeriodo(r.data_treinamento)) return;
-        let temaNome = '';
-        if (r.treinamento_cod === '1' || (r.treinamento_nome || '').toUpperCase().includes('INTEGRAÇÃO')) {
-            temaNome = 'INTEGRAÇÃO DE SEGURANÇA (NR-01)';
-        } else {
-            const cat = (allTreinamentosCatalogo || []).find(c => String(c.codigo) === String(r.treinamento_cod));
-            temaNome = (cat?.nome || r.treinamento_nome || ('Treinamento ' + r.treinamento_cod)).trim();
+        
+        // Excluir qualquer tentativa de exibir fotos ou blocos para "Integração"
+        if (String(r.treinamento_cod) === '1' || (r.treinamento_nome || '').toUpperCase().includes('INTEGRA')) {
+            return;
         }
-        if (!temaNome) temaNome = 'TREINAMENTO OPERACIONAL DE SST';
 
-        const chaveTema = temaNome.toUpperCase();
+        // Cruzar treinamento_cod com treinamentos_catalogo.nome para exibir sempre o nome descritivo
+        const cat = (allTreinamentosCatalogo || []).find(c => 
+            String(c.id) === String(r.treinamento_cod) || 
+            String(c.codigo) === String(r.treinamento_cod)
+        );
+        let temaNome = (cat?.nome || r.treinamento_nome || '').trim();
+        if (!temaNome || /^\d+$/.test(temaNome)) {
+            temaNome = cat?.nome || r.treinamento_nome || 'CAPACITAÇÃO NORMATIVA SST';
+        }
+        temaNome = temaNome.toUpperCase();
+
+        const chaveTema = temaNome;
         if (!gruposTreinamentos.has(chaveTema)) {
             gruposTreinamentos.set(chaveTema, {
                 tema: temaNome,
                 datas: new Set(),
-                codigo: r.treinamento_cod
+                codigo: r.treinamento_cod,
+                registros: []
             });
         }
         if (r.data_treinamento) {
             gruposTreinamentos.get(chaveTema).datas.add(r.data_treinamento);
         }
+        gruposTreinamentos.get(chaveTema).registros.push(r);
     });
 
     // Se houver treinamentos concluídos no cronograma mas não individualizados:
     (allTreinamentosCronograma || []).forEach(c => {
         if (!dentroPeriodo(c.data_prevista)) return;
         if (c.status !== 'lancado' && c.status !== 'concluido') return;
-        const cat = (allTreinamentosCatalogo || []).find(x => String(x.codigo) === String(c.treinamento_cod));
-        const temaNome = (cat?.nome || c.treinamento_nome || ('Treinamento ' + c.treinamento_cod)).trim();
-        const chaveTema = temaNome.toUpperCase();
-        if (!gruposTreinamentos.has(chaveTema)) {
-            gruposTreinamentos.set(chaveTema, {
+        if (String(c.treinamento_cod) === '1' || (c.treinamento_nome || '').toUpperCase().includes('INTEGRA')) {
+            return;
+        }
+
+        const cat = (allTreinamentosCatalogo || []).find(x => 
+            String(x.id) === String(c.treinamento_cod) || 
+            String(x.codigo) === String(c.treinamento_cod)
+        );
+        let temaNome = (cat?.nome || c.treinamento_nome || '').trim();
+        if (!temaNome || /^\d+$/.test(temaNome)) {
+            temaNome = cat?.nome || c.treinamento_nome || 'CAPACITAÇÃO NORMATIVA SST';
+        }
+        temaNome = temaNome.toUpperCase();
+
+        if (!gruposTreinamentos.has(temaNome)) {
+            gruposTreinamentos.set(temaNome, {
                 tema: temaNome,
                 datas: new Set([c.data_prevista]),
-                codigo: c.treinamento_cod
+                codigo: c.treinamento_cod,
+                registros: []
             });
         } else if (c.data_prevista) {
-            gruposTreinamentos.get(chaveTema).datas.add(c.data_prevista);
+            gruposTreinamentos.get(temaNome).datas.add(c.data_prevista);
         }
     });
 
@@ -16431,20 +16599,23 @@ function coletarDadosFase4RelSms(mes, ano) {
         } else {
             dataTexto = `${formatSimpleDate(datasArr[0])} a ${formatSimpleDate(datasArr[datasArr.length - 1])}`;
         }
-        const tituloCompleto = `${dataTexto} — ${g.tema.toUpperCase()}`;
+        const tituloCompleto = `${dataTexto} — ${g.tema}`;
+        const fotosExtraidas = extrairFotosDoTemaTreinamento(g, mes, ano);
+
         listaTreinamentos.push({
             tipo: 'treinamento',
             codigo: g.codigo,
             tema: g.tema,
             dataTexto,
             primeiraData: datasArr[0] || '',
-            titulo: tituloCompleto
+            titulo: tituloCompleto,
+            fotos: fotosExtraidas
         });
     });
     listaTreinamentos.sort((a, b) => (a.primeiraData || '').localeCompare(b.primeiraData || ''));
 
     // ----------------------------------------------------
-    // 6.2. DDSMA: Mapear temas aplicados no mês, apenas dias úteis (Seg-Sex)
+    // 9.2. DDSMA: Mapear temas aplicados no mês, apenas dias úteis (Seg-Sex)
     // ----------------------------------------------------
     const ddsPorDataUtil = new Map();
     let fallbackFotoIdx = 0;
@@ -16453,22 +16624,24 @@ function coletarDadosFase4RelSms(mes, ano) {
         if (!dentroPeriodo(r.data_dds)) return;
         if (!ehDiaUtil(r.data_dds)) return; // descarta sábado e domingo
         if (!ddsPorDataUtil.has(r.data_dds)) {
-            ddsPorDataUtil.set(r.data_dds, { data: r.data_dds, temas: new Set() });
+            ddsPorDataUtil.set(r.data_dds, { data: r.data_dds, temas: new Set(), registros: [] });
         }
         if (r.tema && r.tema.trim()) {
             ddsPorDataUtil.get(r.data_dds).temas.add(r.tema.trim());
         }
+        ddsPorDataUtil.get(r.data_dds).registros.push(r);
     });
 
     (allDdsHistoricoAgregado || []).forEach(h => {
         if (!dentroPeriodo(h.data_dds)) return;
         if (!ehDiaUtil(h.data_dds)) return; // descarta sábado e domingo
         if (!ddsPorDataUtil.has(h.data_dds)) {
-            ddsPorDataUtil.set(h.data_dds, { data: h.data_dds, temas: new Set() });
+            ddsPorDataUtil.set(h.data_dds, { data: h.data_dds, temas: new Set(), registros: [] });
         }
         if (h.tema && h.tema.trim()) {
             ddsPorDataUtil.get(h.data_dds).temas.add(h.tema.trim());
         }
+        ddsPorDataUtil.get(h.data_dds).registros.push(h);
     });
 
     const listaDdsma = [];
@@ -16490,23 +16663,32 @@ function coletarDadosFase4RelSms(mes, ano) {
 
         const dataTexto = formatSimpleDate(dataStr);
         const tituloCompleto = `${dataTexto} — ${temaFinal.toUpperCase()}`;
+        const fotosExtraidas = extrairFotosDoTemaDdsma(dataStr, info.registros, temaFinal);
+
         listaDdsma.push({
             tipo: 'ddsma',
             data: dataStr,
             dataTexto,
             tema: temaFinal,
-            titulo: tituloCompleto
+            titulo: tituloCompleto,
+            fotos: fotosExtraidas
         });
     });
 
+    // Supressão de Placeholders Vazios: temas/dias sem foto NÃO devem gerar caixas em branco
+    const listaTreinamentosComFotos = listaTreinamentos.filter(t => t.fotos && t.fotos.length > 0);
+    const listaDdsmaComFotos = listaDdsma.filter(d => d.fotos && d.fotos.length > 0);
+
     const eventos = [
-        ...listaTreinamentos.map(t => ({ data: t.primeiraData, nome: t.tema, categoria: 'Treinamentos', titulo: t.titulo })),
-        ...listaDdsma.map(d => ({ data: d.data, nome: d.tema, categoria: 'DDSMA', titulo: d.titulo }))
+        ...listaTreinamentosComFotos.map(t => ({ data: t.primeiraData, nome: t.tema, categoria: 'Treinamentos', titulo: t.titulo })),
+        ...listaDdsmaComFotos.map(d => ({ data: d.data, nome: d.tema, categoria: 'DDSMA', titulo: d.titulo }))
     ];
 
     return {
-        treinamentos: listaTreinamentos,
-        ddsma: listaDdsma,
+        treinamentos: listaTreinamentosComFotos,
+        ddsma: listaDdsmaComFotos,
+        todosTreinamentosContados: listaTreinamentos.length,
+        todosDdsmaContados: listaDdsma.length,
         eventos
     };
 }
@@ -16572,17 +16754,16 @@ function relSmsTabelaTemaFotoDocx(titulo) {
 
 function construirSecao5RelSms(dadosFotos, mes, ano) {
     const nomeMes = NOMES_MESES[mes];
-    const out = [relSmsH1('6. Registros Fotográficos')];
-    out.push(relSmsP(`Evidências fotográficas das capacitações, treinamentos normativos e diálogos diários de segurança realizados no canteiro e frentes de serviço em ${nomeMes.toLowerCase()} de ${ano}, conforme os requisitos de evidência documental do PGR (NR-01). Espaços reservados abaixo para inserção manual das fotos após a emissão deste documento.`));
+    const out = [relSmsH1('9. Registros Fotográficos (Treinamentos e DDSMA)')];
+    out.push(relSmsP(`Evidências fotográficas dos treinamentos normativos e diálogos diários de segurança (DDSMA) realizados em ${nomeMes.toLowerCase()} de ${ano}, conforme os requisitos de evidência documental do PGR (NR-01). Apenas temas com registros fotográficos efetivamente anexados constam neste documento.`));
 
-    // 6.1. Registros Fotográficos — Treinamentos
-    out.push(relSmsH2('6.1. Registros Fotográficos — Treinamentos'));
-    out.push(relSmsP(`Registros fotográficos de treinamentos e capacitações normativas realizados em ${nomeMes.toLowerCase()} de ${ano}, agrupados por tema. Espaço reservado para exatamente 02 fotos representativas por tema:`));
-
+    // 9.1. Registros Fotográficos — Treinamentos
+    out.push(relSmsH2('9.1. Registros Fotográficos — Treinamentos'));
     const treins = dadosFotos.treinamentos || [];
     if (treins.length === 0) {
-        out.push(relSmsNota('Nenhum treinamento registrado no período para inserção fotográfica.'));
+        out.push(relSmsNota('Nenhum registro fotográfico anexado para os treinamentos normativos no período de competência.'));
     } else {
+        out.push(relSmsP(`Registros fotográficos dos treinamentos normativos realizados no período:`));
         treins.forEach(t => {
             out.push(relSmsTabelaTemaFotoDocx(t.titulo));
             out.push(new docx.Paragraph({ spacing: { after: 120 }, children: [] }));
@@ -16591,14 +16772,13 @@ function construirSecao5RelSms(dadosFotos, mes, ano) {
 
     out.push(new docx.Paragraph({ spacing: { after: 180 }, children: [] }));
 
-    // 6.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA)
-    out.push(relSmsH2('6.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA)'));
-    out.push(relSmsP(`Registros fotográficos dos Diálogos Diários de Segurança e Meio Ambiente (DDSMA) executados nas frentes de trabalho nos dias úteis (segunda a sexta-feira). Espaço reservado para exatamente 02 fotos representativas por tema/dia útil:`));
-
+    // 9.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA)
+    out.push(relSmsH2('9.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA)'));
     const dds = dadosFotos.ddsma || [];
     if (dds.length === 0) {
-        out.push(relSmsNota('Nenhum DDSMA registrado em dias úteis no período para inserção fotográfica.'));
+        out.push(relSmsNota('Nenhum registro fotográfico anexado para os Diálogos Diários de Segurança e Meio Ambiente (DDSMA) no período de competência.'));
     } else {
+        out.push(relSmsP(`Registros fotográficos dos Diálogos Diários de Segurança e Meio Ambiente (DDSMA) executados nas frentes de trabalho nos dias úteis (segunda a sexta-feira):`));
         dds.forEach(d => {
             out.push(relSmsTabelaTemaFotoDocx(d.titulo));
             out.push(new docx.Paragraph({ spacing: { after: 120 }, children: [] }));
@@ -16610,15 +16790,14 @@ function construirSecao5RelSms(dadosFotos, mes, ano) {
 }
 
 // ANEXOS - sem numeração de seção (só o título em maiúsculas), conforme convenção do
-// relatório: sempre cita os 2 rótulos fixos + o cronograma do mês do relatório e do mês
-// seguinte, como arquivos separados que João anexa manualmente fora do sistema.
+// ANEXOS - Seção 10 Oficial
 function construirAnexosRelSms(mes, ano) {
     const nomeMes = NOMES_MESES[mes];
     const mesSeguinte = (mes + 1) % 12;
     const anoSeguinte = mes === 11 ? ano + 1 : ano;
     const nomeMesSeguinte = NOMES_MESES[mesSeguinte];
 
-    const out = [relSmsH1('7. Anexos Complementares')];
+    const out = [relSmsH1('10. Anexos Oficiais Complementares')];
     out.push(relSmsP('Os documentos abaixo acompanham este relatório como arquivos separados:'));
     [
         'LISTA DE PRESENÇA TREINAMENTO - ENTREGUE EM ANEXO:',
@@ -16643,18 +16822,18 @@ function construirSecaoPgrDocx(dados, fiscalizacao) {
     const out = [relSmsH1('2. Governança e Plano de Ação PGR (NR-01)')];
     out.push(relSmsP('Acompanhamento sistemático das ações de controle e melhoria contínua do Programa de Gerenciamento de Riscos (PGR), estruturadas sob metodologia 5W2H.'));
     const linhas = [
-        ['Total de Ações Mapeadas no PGR', p.total],
-        ['Ações Concluídas / Implementadas', p.concluidas],
-        ['Ações com Eficácia Comprovada', p.eficazes],
-        ['Taxa de Eficácia das Ações', p.taxaEficacia + '%'],
+        ['Total de Ações Mapeadas no PGR', p.totalAcoes ?? 0],
+        ['Ações Concluídas / Implementadas', p.concluidas ?? 0],
+        ['Ações com Eficácia Comprovada', p.eficazes ?? 0],
+        ['Taxa de Eficácia das Ações', (p.taxaEficacia ?? 0) + '%'],
     ];
     if (!fiscalizacao) {
-        linhas.push(['Ações em Andamento', p.emAndamento]);
-        linhas.push(['Ações em Aberto', p.abertas]);
-        linhas.push(['Ações com Prazo Vencido', p.atrasadas]);
+        linhas.push(['Ações em Andamento', p.andamento ?? 0]);
+        linhas.push(['Ações em Aberto', p.abertas ?? 0]);
+        linhas.push(['Ações com Prazo Vencido', p.atrasadas ?? 0]);
     }
     out.push(relSmsTabela(['Indicador PGR (5W2H)', 'Valor'], linhas));
-    if (!fiscalizacao && p.atrasadas > 0) {
+    if (!fiscalizacao && (p.atrasadas ?? 0) > 0) {
         out.push(relSmsNota(`⚠ ${p.atrasadas} ação(ões) com prazo expirado em acompanhamento para reprogramação técnica ou alocação de recursos.`));
     }
     out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
@@ -16663,15 +16842,15 @@ function construirSecaoPgrDocx(dados, fiscalizacao) {
 
 function construirSecaoErgonomiaDocx(dados) {
     const e = dados.ergonomia;
-    const out = [relSmsH1('5. Ergonomia — Avaliação Ergonômica Preliminar (NR-17)')];
+    const out = [relSmsH1('5. Ergonomia - Avaliação Ergonômica Preliminar (NR-17)')];
     out.push(relSmsP('Diagnóstico e monitoramento contínuo das condições ergonômicas de trabalho, abrangendo fatores biomecânicos, posturais, cognitivos e organizacionais conforme a NR-17.'));
     const linhas = [
-        ['Avaliações Ergonômicas Preliminares (AEP)', e.totalAep],
-        ['Postos / Funções com Risco Baixo', e.aepRiscoBaixo],
-        ['Postos / Funções com Risco Médio', e.aepRiscoMedio],
-        ['Postos / Funções com Risco Alto', e.aepRiscoAlto],
-        ['Postos com Recomendação de AET', e.aepAetNecessaria],
-        ['Medidas Ergonômicas Concluídas', `${e.aepPlanoConcluido} de ${e.aepPlanoTotal}`]
+        ['Avaliações Ergonômicas Preliminares (AEP)', e.totalAep ?? 0],
+        ['Postos / Funções com Risco Baixo', e.riscoBaixo ?? 0],
+        ['Postos / Funções com Risco Médio', e.riscoMedio ?? 0],
+        ['Postos / Funções com Risco Alto', e.riscoAlto ?? 0],
+        ['Postos com Recomendação de AET', e.aetNecessaria ?? 0],
+        ['Medidas Ergonômicas Concluídas', `${e.planoConcluido ?? 0} de ${e.planoTotal ?? 0}`]
     ];
     out.push(relSmsTabela(['Indicador Ergonômico (NR-17)', 'Valor'], linhas));
     out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
@@ -16683,9 +16862,9 @@ function construirSecaoPericulosidadeDocx(dados) {
     const out = [relSmsH1('6. Caracterização de Periculosidade e Adicionais (NR-16)')];
     out.push(relSmsP('Avaliação técnica conclusiva quanto à exposição a inflamáveis, explosivos, segurança patrimonial ou eletricidade, de acordo com os anexos regulamentares da NR-16.'));
     const linhas = [
-        ['Laudos Técnicos e Análises Concluídas', peric.totalAnalises],
-        ['Cargos / Funções com Enquadramento Perigoso', peric.funcoesPerigosas],
-        ['Trabalhadores Enquadrados (Adicional 30%)', peric.colaboradoresExpostos]
+        ['Laudos Técnicos e Análises Concluídas', peric.totalAnalises ?? 0],
+        ['Cargos / Funções com Enquadramento Perigoso', peric.funcoesPerigosas ?? 0],
+        ['Trabalhadores Enquadrados (Adicional 30%)', peric.colaboradoresExpostos ?? 0]
     ];
     out.push(relSmsTabela(['Indicador de Periculosidade (NR-16)', 'Situação'], linhas));
     out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
@@ -16737,8 +16916,17 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
 
     const sumario = [
         relSmsH1('Sumário Executivo'),
-        relSmsP('Este relatório consolida os indicadores de Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste referentes a ' + nomeMes.toLowerCase() + ' de ' + ano + ', com base nos registros de campo consolidados pela equipe de SMS.'),
-        relSmsP('Este documento consolida os indicadores de desempenho em Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste no período, evidenciando o cumprimento dos programas legais e o monitoramento contínuo das atividades de campo.'),
+        relSmsP('Este relatório consolida de forma integrada as ações e o desempenho operacional em Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste no mês de ' + nomeMes.toLowerCase() + ' de ' + ano + ', com base nos registros de campo consolidados pela equipe de SMS e em conformidade com as Normas Regulamentadoras aplicáveis.'),
+        relSmsH2('Destaques do Período'),
+        ...(dadosCompletos.destaques || []).map(d => new docx.Paragraph({
+            spacing: { after: 100 },
+            bullet: { level: 0 },
+            children: [
+                new docx.TextRun({ text: d.titulo + ': ', bold: true, color: RELSMS_NAVY, size: 20 }),
+                new docx.TextRun({ text: d.texto, size: 20, color: '262626' })
+            ]
+        })),
+        new docx.Paragraph({ children: [new docx.PageBreak()] })
     ];
 
     await garantirDadosSecao1RelSms();
@@ -16894,6 +17082,13 @@ async function garantirDadosCompletosRelatorioMensalSms() {
     if (!periculosidadeLoaded) { periculosidadeLoaded = true; tarefas.push(loadPericulosidadeData()); }
     if (!planoAcaoPgrLoaded) { planoAcaoPgrLoaded = true; tarefas.push(loadPlanoAcaoPgrData()); }
     if (!brigadaLoaded) { brigadaLoaded = true; tarefas.push(loadBrigadaData()); }
+
+    // Garantir carregamento de anexos e evidências fotográficas
+    if (!anexosSmsCarregados) {
+        tarefas.push(new Promise((resolve) => {
+            garantirAnexosSmsCarregados(() => resolve());
+        }));
+    }
 
     // Não Conformidades geradas no campo
     if (!allNaoConformidades || allNaoConformidades.length === 0) {
@@ -17200,10 +17395,39 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
         treinamentosParticipantes: treinamentosDados.totais.participantes.geral,
         ddsEfetuados: ddsEfetuados,
         extintoresConformePct: percConformidadeExt + '%',
-        diasSemCpt: diasSemCpt === null ? '—' : diasSemCpt,
-        diasSemSpt: diasSemSpt === null ? '—' : diasSemSpt,
+        diasSemCpt: (diasSemCpt !== null && diasSemCpt !== undefined) ? diasSemCpt : 0,
+        diasSemSpt: (diasSemSpt !== null && diasSemSpt !== undefined) ? diasSemSpt : 0,
         pgrEficaciaPct: pgrTaxaEficacia + '%'
     };
+
+    // 19. Destaques do Período para o Sumário Executivo (Cálculo Dinâmico)
+    const totalGhesMapeados = new Set(riscosGhe.map(r => r.ghe_id || r.ghe_nome || r.ghe_setor || r.ghe).filter(Boolean)).size || 1;
+    const taxaAtendimentoEpi = totalFuncionarios > 0 ? Math.round((epiColaboradoresAtendidos / totalFuncionarios) * 100) : 0;
+    
+    const statusAcidentesTexto = acidentesTipicos.length === 0 
+        ? `Zero acidentes com afastamento (CPT) registrados no período de competência, totalizando ${kpisRapidos.diasSemCpt} dias consecutivos sem CPT e Taxa de Frequência zerada (TF = 0,00).`
+        : `${acidentesTipicos.length} acidente(s) típico(s) registrado(s) no mês, com controle preventivo intensificado e ${kpisRapidos.diasSemCpt} dias acumulados sem CPT.`;
+
+    const statusChecklistsTexto = `Índice de conformidade geral de ${taxaConformidadeChk.toFixed(1)}% nas inspeções pré-operacionais de campo, com ${checklistsMes.length} equipamentos e veículos verificados (${chkConformes} conformes e ${chkNaoConformes} desvios mitigados).`;
+
+    const statusCapacitacaoTexto = `Total de ${treinamentosDados.totais.hht.geral.toFixed(0)} horas-homem de treinamento (HHT) investidas em capacitação técnica e diálogos diários (DDSMA), com ${treinamentosDados.totais.participantes.geral} participações registradas e ${taxaCronograma}% de cumprimento do cronograma normativo.`;
+
+    const statusEpiTexto = `Fornecimento e rastreabilidade de ${epiTotalItens} unidades de EPI com Certificado de Aprovação (CA) vigente, contemplando ${epiColaboradoresAtendidos} colaboradores atendidos (${taxaAtendimentoEpi}% do efetivo em rotina de reposição/entrega).`;
+
+    const statusPsicoTexto = psicoDados 
+        ? `Monitoramento de riscos psicossociais (COPSOQ II) com taxa de adesão de ${fmtPct(psicoDados.aplicacao.taxa_participacao)} e ${psicoDados.fortes.length} dimensões fortemente favoráveis ao bem-estar e clima organizacional.`
+        : `Diretrizes psicossociais e de saúde mental em conformidade com o PGR/PCMSO, mantendo acompanhamento contínuo dos fatores psicossociais do trabalho.`;
+
+    const statusMatrizTexto = `Mapeamento de ${totalGhesMapeados} Grupos Homogêneos de Exposição (GHEs) consolidando ${riscosGhe.length} fatores de risco ocupacionais inventariados e controlados na Matriz de Riscos do PGR.`;
+
+    const destaquesPeriodo = [
+        { icon: 'fa-shield-heart', titulo: 'Acidentabilidade e Segurança Operacional', texto: statusAcidentesTexto },
+        { icon: 'fa-clipboard-check', titulo: 'Conformidade Pré-Operacional de Checklists', texto: statusChecklistsTexto },
+        { icon: 'fa-graduation-cap', titulo: 'Capacitações Normativas e Diálogos DDSMA', texto: statusCapacitacaoTexto },
+        { icon: 'fa-helmet-safety', titulo: 'Proteção Individual (EPI) e Rastreabilidade', texto: statusEpiTexto },
+        { icon: 'fa-brain', titulo: 'Fatores Psicossociais e Clima Organizacional (COPSOQ II)', texto: statusPsicoTexto },
+        { icon: 'fa-sitemap', titulo: 'Governança da Matriz de Riscos e GHEs', texto: statusMatrizTexto }
+    ];
 
     return {
         meta: {
@@ -17217,6 +17441,7 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
             responsavelTecnico: 'João Everton de Souza Limeira',
             crea: 'Engenheiro de Segurança do Trabalho • CREA/PE 181283311-8'
         },
+        destaques: destaquesPeriodo,
         efetivo: {
             headcount: totalFuncionarios,
             efetivoFim
@@ -17253,6 +17478,7 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
         },
         matrizRisco: {
             total: riscosGhe.length,
+            totalGhes: totalGhesMapeados,
             porNivel: matrizRiscoPorNivel
         },
         treinamentos: {
@@ -17265,80 +17491,80 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
             }
         },
         acidentes: {
-            tipicosTotal: acidentesTipicos.length,
-            acidentesCA: acidentesCA.length,
-            acidentesSA: acidentesSA.length,
-            outrosTotal: acidentesOutros.length,
-            diasPerdidos: diasPerdidosMes,
-            diasDebitados: diasDebitadosMes,
-            tfG,
-            tfCA,
-            tfSA,
-            tg,
-            taxaIncidencia,
-            diasSemCpt,
-            diasSemSpt,
+            tipicosTotal: acidentesTipicos.length ?? 0,
+            acidentesCA: acidentesCA.length ?? 0,
+            acidentesSA: acidentesSA.length ?? 0,
+            outrosTotal: acidentesOutros.length ?? 0,
+            diasPerdidos: diasPerdidosMes ?? 0,
+            diasDebitados: diasDebitadosMes ?? 0,
+            tfG: tfG ?? 0,
+            tfCA: tfCA ?? 0,
+            tfSA: tfSA ?? 0,
+            tg: tg ?? 0,
+            taxaIncidencia: taxaIncidencia ?? 0,
+            diasSemCpt: (diasSemCpt !== null && diasSemCpt !== undefined) ? diasSemCpt : 0,
+            diasSemSpt: (diasSemSpt !== null && diasSemSpt !== undefined) ? diasSemSpt : 0,
             historico: acidentesMes
         },
         pgr: {
-            totalAcoes: pgrTotal,
-            abertas: pgrAbertas,
-            andamento: pgrAndamento,
-            concluidas: pgrConcluidas,
-            atrasadas: pgrAtrasadas,
-            eficazes: pgrEficazes,
-            taxaEficacia: pgrTaxaEficacia,
-            custoTotal: pgrCustoTotal
+            totalAcoes: pgrTotal ?? 0,
+            abertas: pgrAbertas ?? 0,
+            andamento: pgrAndamento ?? 0,
+            concluidas: pgrConcluidas ?? 0,
+            atrasadas: pgrAtrasadas ?? 0,
+            eficazes: pgrEficazes ?? 0,
+            taxaEficacia: pgrTaxaEficacia ?? 0,
+            custoTotal: pgrCustoTotal ?? 0
         },
         saude: {
-            totalAsos: asoMes.length,
+            totalAsos: asoMes.length ?? 0,
             porTipo: asoPorTipo,
-            aptos: asoAptos,
-            inaptos: asoInaptos,
-            restricoes: asoRestricao,
-            atestadosTotal: atestadosMes.length,
-            diasAfastamento: diasAfastamentoMes,
-            taxaAbsenteismo
+            aptos: asoAptos ?? 0,
+            inaptos: asoInaptos ?? 0,
+            restricoes: asoRestricao ?? 0,
+            atestadosTotal: atestadosMes.length ?? 0,
+            diasAfastamento: diasAfastamentoMes ?? 0,
+            taxaAbsenteismo: taxaAbsenteismo ?? 0
         },
         ergonomia: {
-            totalAep,
-            riscoBaixo: aepRiscoBaixo,
-            riscoMedio: aepRiscoMedio,
-            riscoAlto: aepRiscoAlto,
-            aetNecessaria: aepAetNecessaria,
-            planoTotal: aepPlanoTotal,
-            planoConcluido: aepPlanoConcluido
+            totalAep: totalAep ?? 0,
+            riscoBaixo: aepRiscoBaixo ?? 0,
+            riscoMedio: aepRiscoMedio ?? 0,
+            riscoAlto: aepRiscoAlto ?? 0,
+            aetNecessaria: aepAetNecessaria ?? 0,
+            planoTotal: aepPlanoTotal ?? 0,
+            planoConcluido: aepPlanoConcluido ?? 0
         },
         psicossocial: psicoDados,
         periculosidade: {
-            totalAnalises: totalAnalisesPeric,
-            funcoesPerigosas: funcoesPerigosas.length,
-            colaboradoresExpostos: colaboradoresPericulosidade
+            totalAnalises: totalAnalisesPeric ?? 0,
+            funcoesPerigosas: funcoesPerigosas.length ?? 0,
+            colaboradoresExpostos: colaboradoresPericulosidade ?? 0
         },
         extintores: {
-            totalAtivos: extintoresAtivos.length,
-            inspecionados: totalInspecionadosExt,
-            conf: extConf,
-            naoConf: extNaoConf,
-            pendentes: extPend,
-            percConformidade: percConformidadeExt,
-            vencidos: extVencidos,
-            vencendo: extVencendo
+            totalAtivos: extintoresAtivos.length ?? 0,
+            inspecionados: totalInspecionadosExt ?? 0,
+            conf: extConf ?? 0,
+            naoConf: extNaoConf ?? 0,
+            pendentes: extPend ?? 0,
+            percConformidade: percConformidadeExt ?? 0,
+            vencidos: extVencidos ?? 0,
+            vencendo: extVencendo ?? 0
         },
         brigada: {
-            membrosAtivos: brigadaAtivos.length,
+            membrosAtivos: brigadaAtivos.length ?? 0,
             coordenador: coordenadorBrigada ? coordenadorBrigada.nome : 'Não designado'
         },
         cipa: {
             reunioesMes: cipaReunioesMes,
-            membrosAtivos: cipaMembrosAtivos,
-            pendenciasAbertas: cipaPendencias,
-            pendenciasAtrasadas: cipaPendenciasAtrasadas
+            membrosAtivos: cipaMembrosAtivos ?? 0,
+            pendenciasAbertas: cipaPendencias ?? 0,
+            pendenciasAtrasadas: cipaPendenciasAtrasadas ?? 0
         },
         epi: {
-            totalItens: epiTotalItens,
-            colaboradoresAtendidos: epiColaboradoresAtendidos,
-            entregasQtd: epiEntregasMes.length
+            totalItens: epiTotalItens ?? 0,
+            colaboradoresAtendidos: epiColaboradoresAtendidos ?? 0,
+            entregasQtd: epiEntregasMes.length ?? 0
         },
         ada: adaDados,
         meioAmbiente: ambDados,
@@ -17511,79 +17737,48 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             letter-spacing: 0.3px;
             line-height: 1.1;
         }
-        .grid-fotos {
+        .grade-fotos-2col {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin: 10px 0;
-        }
-        .card-foto {
-            border: 1px solid #cbd5e1;
-            border-radius: 4px;
-            padding: 6px;
-            text-align: center;
-            background: #ffffff;
+            gap: 12px;
+            margin: 8px 0 16px 0;
             page-break-inside: avoid;
         }
-        .espaco-foto {
-            height: 110px;
-            border: 1px dashed #94a3b8;
-            background: #f8fafc;
+        .card-foto-evidencia {
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            background: #ffffff;
+            overflow: hidden;
             display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #64748b;
-            font-size: 10px;
-            font-style: italic;
-            margin-bottom: 4px;
+            flex-direction: column;
+            page-break-inside: avoid;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
-        .legenda-foto-num {
-            font-size: 10px;
-            font-weight: 800;
-            color: #1f3864;
-        }
-        .legenda-foto-desc {
-            font-size: 9px;
-            color: #475569;
-        }
-        .tabela-registro-foto {
+        .foto-img-container {
             width: 100%;
-            margin-bottom: 16px;
-            border-collapse: collapse;
-            border: 1px solid #cbd5e1;
-            page-break-inside: avoid;
-            background: #ffffff;
-        }
-        .tabela-registro-foto thead tr {
-            background-color: #f1f5f9;
-        }
-        .tabela-registro-foto th {
-            padding: 8px 12px;
-            text-align: left;
-            font-size: 11pt;
-            font-weight: bold;
-            color: #1e293b;
-            border-bottom: 1px solid #cbd5e1;
-        }
-        .tabela-registro-foto td {
-            width: 50%;
-            text-align: center;
-            vertical-align: middle;
-            padding: 10px;
-            height: 180px;
-            background-color: #fafafa;
-        }
-        .photo-placeholder {
-            height: 130px;
-            border: 1px dashed #94a3b8;
-            background: #ffffff;
+            height: 165px;
+            background: #f1f5f9;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #64748b;
-            font-size: 9.5pt;
-            font-style: italic;
-            border-radius: 4px;
+            overflow: hidden;
+        }
+        .foto-img-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .carimbo-foto {
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+            padding: 6px 8px;
+            font-size: 8.5px;
+            color: #334155;
+            line-height: 1.35;
+        }
+        .carimbo-foto strong {
+            color: #1f3864;
         }
         @media print {
             .no-print { display: none !important; }
@@ -17639,6 +17834,15 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             Este relatório consolida de forma integrada as ações e o desempenho operacional em Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste no mês de <strong>${nomeMes.toLowerCase()} de ${ano}</strong>, em estrita conformidade com as Normas Regulamentadoras do Ministério do Trabalho e Emprego (NR-01, NR-04, NR-05, NR-06, NR-07, NR-16, NR-17 e NR-23) e com as diretrizes do Programa de Gestão de Resíduos Sólidos (PGRS).
         </p>
 
+        <div class="rel-h2">Destaques do Período</div>
+        <ul style="padding-left: 18px; margin: 4px 0 10px 0; font-size: 9.5px; line-height: 1.5; color: #1e293b;">
+            ${(dados.destaques || []).map(d => `
+                <li style="margin-bottom: 4px;">
+                    <strong>${escapeHTML(d.titulo)}:</strong> ${escapeHTML(d.texto)}
+                </li>
+            `).join('')}
+        </ul>
+
         <div class="rel-h2">Metadados de Exposição Operacional do Mês</div>
         <table class="rel-tabela" style="width: 100%; margin-bottom: 8px;">
             <thead>
@@ -17655,6 +17859,56 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                     <td><strong>${hht.diasTrabalhados} dias</strong></td>
                     <td><strong>${Number(hht.hhtMes).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h</strong></td>
                     <td><strong>${Number(hht.hhtAcumuladoAno).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h</strong></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="rel-h2">Tabela de Indicadores Gerais de SMS</div>
+        <table class="rel-tabela" style="width: 100%; margin-bottom: 10px;">
+            <thead>
+                <tr>
+                    <th style="width: 28%; text-align: left;">Indicador Estratégico</th>
+                    <th style="width: 24%;">Parâmetro / Referência</th>
+                    <th style="width: 24%;">Desempenho no Período</th>
+                    <th style="width: 24%;">Status Operacional</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="text-align: left;">Taxa de Frequência Global (TF_G)</td>
+                    <td>NBR 14280 / Zero Acidentes</td>
+                    <td><strong>${kpisRapidos.tfGlobal}</strong></td>
+                    <td><span style="color: ${Number(kpisRapidos.tfGlobal) === 0 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${Number(kpisRapidos.tfGlobal) === 0 ? '✅ Meta Atingida' : '⚠ Atenção'}</span></td>
+                </tr>
+                <tr>
+                    <td style="text-align: left;">Taxa de Gravidade (TG)</td>
+                    <td>NBR 14280 / Zero Gravidade</td>
+                    <td><strong>${kpisRapidos.tg}</strong></td>
+                    <td><span style="color: ${Number(kpisRapidos.tg) === 0 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${Number(kpisRapidos.tg) === 0 ? '✅ Meta Atingida' : '⚠ Atenção'}</span></td>
+                </tr>
+                <tr>
+                    <td style="text-align: left;">Conformidade de Checklists</td>
+                    <td>≥ 95% Inspeções Conformes</td>
+                    <td><strong>${kpisRapidos.checklistsConformePct}</strong> (${checklists.conformes}/${checklists.total})</td>
+                    <td><span style="color: ${checklists.taxaConformidade >= 95 ? '#16a34a' : '#d97706'}; font-weight: bold;">${checklists.taxaConformidade >= 95 ? '✅ Conforme' : '⚠ Acompanhamento'}</span></td>
+                </tr>
+                <tr>
+                    <td style="text-align: left;">Capacitação Técnica e DDSMA</td>
+                    <td>Cronograma Normativo NR-01</td>
+                    <td><strong>${kpisRapidos.hhtTreinamento}</strong> (${treinamentos.cronograma.taxa}% crono)</td>
+                    <td><span style="color: #16a34a; font-weight: bold;">✅ Realizado</span></td>
+                </tr>
+                <tr>
+                    <td style="text-align: left;">Prontidão de Extintores (NR-23)</td>
+                    <td>100% Inspecionados / Conformes</td>
+                    <td><strong>${kpisRapidos.extintoresConformePct}</strong> (${extintores.conf}/${extintores.inspecionados})</td>
+                    <td><span style="color: ${extintores.percConformidade >= 90 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${extintores.percConformidade >= 90 ? '✅ Conforme' : '⚠ Ação Necessária'}</span></td>
+                </tr>
+                <tr>
+                    <td style="text-align: left;">Eficácia 5W2H PGR (NR-01)</td>
+                    <td>Melhoria Contínua SST</td>
+                    <td><strong>${kpisRapidos.pgrEficaciaPct}</strong> (${pgr.concluidas}/${pgr.totalAcoes} ações)</td>
+                    <td><span style="color: #16a34a; font-weight: bold;">✅ Conforme</span></td>
                 </tr>
             </tbody>
         </table>
@@ -17695,24 +17949,20 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             </div>
         </div>
 
-        <div class="rel-h2" style="margin-top: 14px;">Estrutura do Dossiê</div>
+        <div class="rel-h2" style="margin-top: 10px;">Estrutura do Dossiê</div>
         <table class="rel-tabela" style="width: 100%; text-align: left;">
             <thead><tr><th style="width: 15%;">Seção</th><th>Pilar de Gestão</th><th style="width: 45%;">Abrangência Legal / Técnica</th></tr></thead>
             <tbody>
-                <tr><td><strong>Seção 1</strong></td><td style="text-align: left;">Segurança do Trabalho & Campo</td><td style="text-align: left;">Checklists, Não Conformidades, Relatos de Quase-Acidentes, APR e GHE</td></tr>
-                <tr><td><strong>Seção 2</strong></td><td style="text-align: left;">Capacitação e Treinamentos</td><td style="text-align: left;">Treinamentos NR, DDSMS e Cumprimento do Cronograma</td></tr>
-                <tr><td><strong>Seção 3</strong></td><td style="text-align: left;">Estatísticas de Acidentabilidade</td><td style="text-align: left;">HHT de Exposição, TF/TG NBR 14280 e Dias sem Acidente</td></tr>
-                <tr><td><strong>Seção 4</strong></td><td style="text-align: left;">Governança do PGR & 5W2H</td><td style="text-align: left;">Plano de Ação da NR-01, Status e Eficácia das Medidas</td></tr>
-                <tr><td><strong>Seção 5</strong></td><td style="text-align: left;">Saúde Ocupacional & Absenteísmo</td><td style="text-align: left;">ASOs Realizados (NR-07), Aptidão e Atestados Médicos</td></tr>
-                <tr><td><strong>Seção 6</strong></td><td style="text-align: left;">Ergonomia & Riscos Psicossociais</td><td style="text-align: left;">Avaliações Ergonômicas AEP (NR-17) e Questionário COPSOQ II</td></tr>
-                <tr><td><strong>Seção 7</strong></td><td style="text-align: left;">Periculosidade & Adicionais</td><td style="text-align: left;">Laudo Técnico de Periculosidade e Enquadramento NR-16</td></tr>
-                <tr><td><strong>Seção 8</strong></td><td style="text-align: left;">Emergência, Brigada & CIPA</td><td style="text-align: left;">Inspeções de Extintores (NR-23), Brigada e Atas CIPA (NR-05)</td></tr>
-                <tr><td><strong>Seção 9</strong></td><td style="text-align: left;">EPI & Suprimentos</td><td style="text-align: left;">Entregas de EPI (NR-06) e Fichas Digitais de Controle</td></tr>
-                <tr><td><strong>Seção 10</strong></td><td style="text-align: left;">Área Diretamente Afetada (ADA)</td><td style="text-align: left;">Demonstrativo de Mão de Obra Local por Município</td></tr>
-                <tr><td><strong>Seção 11</strong></td><td style="text-align: left;">Gestão Ambiental</td><td style="text-align: left;">PGRS (Resíduos de Refeições) e Rastreabilidade Veicular</td></tr>
-                <tr><td><strong>Seção 12</strong></td><td style="text-align: left;">Considerações Finais</td><td style="text-align: left;">Recomendações Técnicas e Diretrizes do SESMT</td></tr>
-                <tr><td><strong>Seção 13</strong></td><td style="text-align: left;">Registros Fotográficos</td><td style="text-align: left;">Evidências Visuais Cronológicas de Campo</td></tr>
-                <tr><td><strong>Anexos</strong></td><td style="text-align: left;">Documentação Complementar</td><td style="text-align: left;">Listas de Presença, Fichas de DDS e Cronogramas Oficiais</td></tr>
+                <tr><td><strong>Seção 1</strong></td><td style="text-align: left;">Segurança do Trabalho & Inspeções de Campo</td><td style="text-align: left;">Checklists, Não Conformidades, Relatos, APR, Matriz GHE, Treinamentos, Acidentabilidade NBR 14280, Emergência/Extintores/Brigada/CIPA e EPIs</td></tr>
+                <tr><td><strong>Seção 2</strong></td><td style="text-align: left;">Governança e Plano de Ação PGR (NR-01)</td><td style="text-align: left;">Plano de Ação 5W2H, Status, Monitoramento e Eficácia das Medidas</td></tr>
+                <tr><td><strong>Seção 3</strong></td><td style="text-align: left;">Área Diretamente Afetada (ADA) e Mão de Obra Local</td><td style="text-align: left;">Demonstrativo de Mão de Obra Regional por Município</td></tr>
+                <tr><td><strong>Seção 4</strong></td><td style="text-align: left;">Saúde Ocupacional e Absenteísmo (NR-07 / PCMSO)</td><td style="text-align: left;">ASOs Realizados, Aptidão Clínica, Atestados Médicos e Riscos Psicossociais (COPSOQ II)</td></tr>
+                <tr><td><strong>Seção 5</strong></td><td style="text-align: left;">Ergonomia - Avaliação Ergonômica Preliminar (NR-17)</td><td style="text-align: left;">Diagnóstico Preliminar AEP, Postos de Trabalho e Ações Ergonômicas</td></tr>
+                <tr><td><strong>Seção 6</strong></td><td style="text-align: left;">Caracterização de Periculosidade e Adicionais (NR-16)</td><td style="text-align: left;">Laudo Técnico, Funções Enquadradas e Adicional de 30%</td></tr>
+                <tr><td><strong>Seção 7</strong></td><td style="text-align: left;">Meio Ambiente e PGRS</td><td style="text-align: left;">Geração e Destinação de Resíduos Sólidos e Manutenção Veicular</td></tr>
+                <tr><td><strong>Seção 8</strong></td><td style="text-align: left;">Considerações Finais e Diretrizes de Governança</td><td style="text-align: left;">Recomendações Técnicas do SESMT e Diretrizes de Prevenção</td></tr>
+                <tr><td><strong>Seção 9</strong></td><td style="text-align: left;">Registros Fotográficos (Treinamentos e DDSMA)</td><td style="text-align: left;">Evidências Fotográficas Reais com Carimbos Técnicos (Data, Hora, Local)</td></tr>
+                <tr><td><strong>Seção 10</strong></td><td style="text-align: left;">Anexos Oficiais Complementares</td><td style="text-align: left;">Listas de Presença, Fichas de DDSMA e Cronogramas de Treinamentos</td></tr>
             </tbody>
         </table>
         <div class="page-break"></div>
@@ -17750,33 +18000,25 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         <div class="rel-h2">1.5. Matriz de Riscos por GHE (Catálogo Operacional)</div>
         ${relSmsTabelaGenericaHtml(['Nível de Risco Residual', 'Fatores Classificados'], NIVEIS_RISCO_ORDEM.map(n => [n, matrizRisco.porNivel[n]]), '75%')}
         <div class="rel-nota">Total de riscos catalogados nos Grupos Homogêneos de Exposição: ${matrizRisco.total}.</div>
-        <div class="page-break"></div>
 
-        <!-- SEÇÃO 2: CAPACITAÇÃO E TREINAMENTOS -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '2. Capacitação e Treinamentos')}
-        <div class="rel-h1">2. Capacitação, Treinamentos e DDSMS (NR-01)</div>
+        <div class="rel-h2">1.6. Capacitação, Treinamentos e DDSMS (NR-01)</div>
         <p class="rel-p">Demonstrativo das horas dedicadas à capacitação técnica, integrações admissionais e diálogos diários de segurança na competência.</p>
-
-        <div class="rel-h2">2.1. Demonstrativo Consolidado de Treinamentos e DDS</div>
+        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 6px 0 3px 0;">1.6.1. Demonstrativo Consolidado de Treinamentos e DDS</div>
         ${relSmsTabelaGenericaHtml(['Categoria do Treinamento', 'Participantes', 'HHT de Treinamento (h)'], linhasTrein, '85%')}
         <div class="rel-nota">Percentual de HHT de Treinamento em relação ao Efetivo da obra: ${t.totais.percHhtEfetivo.toFixed(1)}%.</div>
         ${!fiscalizacao && t.nrVencidas > 0 ? `<div class="rel-nota">⚠ Colaboradores ativos com reciclagem periódica em renovação programada: ${t.nrVencidas}.</div>` : ''}
 
-        <div class="rel-h2">2.2. Acompanhamento do Cronograma Mensal de Treinamentos</div>
+        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 8px 0 3px 0;">1.6.2. Acompanhamento do Cronograma Mensal de Treinamentos</div>
         ${relSmsTabelaGenericaHtml(['Indicador do Cronograma', 'Valor'], [
             ['Treinamentos Programados para o Mês', treinamentos.cronograma.totalPrevistos],
             ['Treinamentos Ministrados / Realizados', treinamentos.cronograma.realizados],
             ['Treinamentos Pendentes / Reprogramados', treinamentos.cronograma.pendentes],
             ['Índice de Cumprimento do Cronograma', `${treinamentos.cronograma.taxa}%`]
         ], '75%')}
-        <div class="page-break"></div>
 
-        <!-- SEÇÃO 3: ACIDENTABILIDADE & NBR 14280 -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '3. Estatísticas de Acidentabilidade')}
-        <div class="rel-h1">3. Estatísticas de Acidentabilidade e HHT (NR-04 / NBR 14280)</div>
+        <div class="rel-h2">1.7. Estatísticas de Acidentabilidade e HHT (NR-04 / NBR 14280)</div>
         <p class="rel-p">Apuramento dos coeficientes de frequência e gravidade em consonância com os critérios da NBR 14280 e diretrizes da NR-04.</p>
-
-        <div class="rel-h2">3.1. Indicadores Estatísticos Oficiais da NBR 14280</div>
+        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 6px 0 3px 0;">1.7.1. Indicadores Estatísticos Oficiais da NBR 14280</div>
         ${relSmsTabelaGenericaHtml(['Indicador Estatístico', 'Resultado no Mês'], [
             ['Taxa de Frequência Global (TF_G)', kpisRapidos.tfGlobal],
             ['Taxa de Frequência com Afastamento (TF_CA)', kpisRapidos.tfCa],
@@ -17787,7 +18029,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             ['Dias Debitados por Incapacidade Permanente', acidentes.diasDebitados]
         ], '80%')}
 
-        <div class="rel-h2">3.2. Histórico de Segurança e Dias Sem Acidentes</div>
+        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 8px 0 3px 0;">1.7.2. Histórico de Segurança e Dias Sem Acidentes</div>
         ${relSmsTabelaGenericaHtml(['Modalidade', 'Dias Consecutivos'], [
             ['Dias Consecutivos sem Acidente com Afastamento (CPT)', `${kpisRapidos.diasSemCpt} dias`],
             ['Dias Consecutivos sem Acidente sem Afastamento (SPT)', `${kpisRapidos.diasSemSpt} dias`],
@@ -17795,14 +18037,49 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             ['Acidentes de Trajeto / Ocorrências Sem Lesão', acidentes.outrosTotal]
         ], '80%')}
         ${acidentes.tipicosTotal === 0 ? '<div class="rel-nota">✅ Nenhum acidente de trabalho típico registrado durante todo o período de competência.</div>' : ''}
+
+        <div class="rel-h2">1.8. Emergência, Combate a Incêndio e CIPA (NR-23 e NR-05)</div>
+        <p class="rel-p">Gestão dos sistemas de prevenção e combate a sinistros, prontidão da brigada de emergência e atuação da Comissão Interna de Prevenção de Acidentes.</p>
+        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 6px 0 3px 0;">1.8.1. Parque de Extintores de Incêndio e Manutenção</div>
+        ${relSmsTabelaGenericaHtml(['Parâmetro Técnico', 'Valor'], [
+            ['Total de Extintores Ativos no Canteiro e Frentes', extintores.totalAtivos],
+            ['Extintores Inspecionados no Mês', extintores.inspecionados],
+            ['Extintores Conformes (Prontos para Uso)', extintores.conf],
+            ['Índice de Prontidão e Conformidade', `${extintores.percConformidade}%`]
+        ], '80%')}
+
+        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 8px 0 3px 0;">1.8.2. Brigada de Emergência e Resposta Rápida (NR-23)</div>
+        ${relSmsTabelaGenericaHtml(['Estrutura da Brigada', 'Situação'], [
+            ['Efetivo de Brigadistas Ativos', `${brigada.membrosAtivos} colaboradores treinados`],
+            ['Coordenador Geral da Brigada', escapeHTML(brigada.coordenador)],
+            ['Prontidão Operacional', '100% dos brigadistas aptos com ASO e treinamento vigente']
+        ], '80%')}
+
+        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 8px 0 3px 0;">1.8.3. Comissão Interna de Prevenção de Acidentes (CIPA - NR-05)</div>
+        ${relSmsTabelaGenericaHtml(['Indicador CIPA', 'Valor'], [
+            ['Reuniões Ordinárias Realizadas no Mês', cipa.reunioesMes.length],
+            ['Membros Ativos na Gestão Atual', cipa.membrosAtivos],
+            ['Plano de Ação — Pendências em Execução', cipa.pendenciasAbertas]
+        ], '80%')}
+        ${cipa.reunioesMes.length > 0 ? `<p class="rel-p">Reuniões realizadas: ${cipa.reunioesMes.map(r => `Ordinária nº ${r.numero_ordinaria || '—'} em ${formatSimpleDate(r.data_reuniao)}`).join('; ')}.</p>` : ''}
+
+        <div class="rel-h2">1.9. Equipamentos de Proteção Individual - EPI (NR-06)</div>
+        <p class="rel-p">Controle de fornecimento, rastreabilidade e fichas digitais de entrega de EPIs com Certificado de Aprovação (CA) válido.</p>
+        <div style="font-size: 10px; font-weight: 700; color: #1f3864; margin: 6px 0 3px 0;">1.9.1. Movimentação e Entregas de EPI no Mês</div>
+        ${relSmsTabelaGenericaHtml(['Métrica de Fornecimento', 'Quantitativo'], [
+            ['Total de Itens / Unidades de EPI Entregues', `${epi.totalItens} unidades`],
+            ['Colaboradores Atendidos no Período', `${epi.colaboradoresAtendidos} colaboradores`],
+            ['Registros de Entrega com Ficha Assinada', `${epi.entregasQtd} lançamentos`]
+        ], '80%')}
+        <div class="rel-nota">100% dos EPIs fornecidos possuem CA ativo junto ao Ministério do Trabalho e Emprego, com registros em conformidade com a NR-06.</div>
         <div class="page-break"></div>
 
-        <!-- SEÇÃO 4: GOVERNANÇA DO PGR & 5W2H -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '4. Governança do PGR & 5W2H')}
-        <div class="rel-h1">4. Governança do PGR e Plano de Ação 5W2H (NR-01)</div>
+        <!-- SEÇÃO 2: GOVERNANÇA DO PGR & 5W2H -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '2. Governança e Plano de Ação PGR')}
+        <div class="rel-h1">2. Governança do PGR e Plano de Ação 5W2H (NR-01)</div>
         <p class="rel-p">Acompanhamento contínuo da eficácia e status das medidas de prevenção estabelecidas no Plano de Ação do Programa de Gerenciamento de Riscos (PGR).</p>
 
-        <div class="rel-h2">4.1. Balanço Operacional do Plano de Ação 5W2H</div>
+        <div class="rel-h2">2.1. Balanço Operacional do Plano de Ação 5W2H</div>
         ${relSmsTabelaGenericaHtml(['Status da Ação Preventiva (5W2H)', 'Quantidade', 'Percentual'], [
             ['Ações Concluídas com Eficácia Verificada', pgr.concluidas, pgr.totalAcoes > 0 ? `${Math.round(pgr.concluidas / pgr.totalAcoes * 100)}%` : '—'],
             ['Ações em Andamento / Em Validação Técnica', pgr.andamento, pgr.totalAcoes > 0 ? `${Math.round(pgr.andamento / pgr.totalAcoes * 100)}%` : '—'],
@@ -17813,12 +18090,26 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         <div class="rel-nota">Índice de Eficácia do Plano de Ação: ${kpisRapidos.pgrEficaciaPct} das ações implementadas com resultado satisfatório aferido.</div>
         <div class="page-break"></div>
 
-        <!-- SEÇÃO 5: SAÚDE OCUPACIONAL & ABSENTEÍSMO -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '5. Saúde Ocupacional & Absenteísmo')}
-        <div class="rel-h1">5. Saúde Ocupacional e Absenteísmo (NR-07 / PCMSO)</div>
+        <!-- SEÇÃO 3: ÁREA DIRETAMENTE AFETADA (ADA) -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '3. Mão de Obra Local - ADA')}
+        <div class="rel-h1">3. Área Diretamente Afetada (ADA) e Mão de Obra Local</div>
+        <p class="rel-p">Demonstrativo da contratação e valorização da mão de obra regional dos municípios abrangidos pelo projeto.</p>
+
+        <div class="rel-h2">3.1. Demonstrativo da Ocupação nos Municípios da ADA (${nomeMes}/${ano})</div>
+        ${ada.linhasQuadro2.length === 0 ? '<div class="rel-nota">Nenhum colaborador alocado neste período originário dos municípios da ADA.</div>' :
+            relSmsTabelaGenericaHtml(['Município da ADA', 'UF', 'Trabalhadores', '% sobre o Total da Obra'], [
+                ...ada.linhasQuadro2.map(l => [l.municipio, l.uf, l.qtd, r2(l.pct) + '%']),
+                ['TOTAL REGIONAL ADA', '', ada.totalAda, r2(ada.pctAda) + '%']
+            ], '85%')}
+        <div class="rel-nota">Número Total de Funcionários da Obra: ${ada.totalFuncionarios}. Participação regional: ${r2(ada.pctAda)}%.</div>
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 4: SAÚDE OCUPACIONAL & ABSENTEÍSMO -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '4. Saúde Ocupacional & Absenteísmo')}
+        <div class="rel-h1">4. Saúde Ocupacional e Absenteísmo (NR-07 / PCMSO)</div>
         <p class="rel-p">Monitoramento da saúde dos trabalhadores, realização de exames ocupacionais e impacto do absenteísmo nas atividades operacionais.</p>
 
-        <div class="rel-h2">5.1. Atestados de Saúde Ocupacional (ASO) Emitidos no Mês</div>
+        <div class="rel-h2">4.1. Atestados de Saúde Ocupacional (ASO) Emitidos no Mês</div>
         ${relSmsTabelaGenericaHtml(['Modalidade do Exame Ocupacional', 'ASOs Realizados'], [
             ['Exames Admissionais', saude.porTipo.admissional],
             ['Exames Periódicos', saude.porTipo.periodico],
@@ -17829,29 +18120,14 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         ], '80%')}
         <p class="rel-p">Resultados de aptidão técnica: <strong>${saude.aptos} aptos</strong>, <strong>${saude.restricoes} aptos com restrição</strong> e <strong>${saude.inaptos} inaptos</strong>.</p>
 
-        <div class="rel-h2">5.2. Absenteísmo e Atestados Médicos Ocupacionais</div>
+        <div class="rel-h2">4.2. Absenteísmo e Atestados Médicos Ocupacionais</div>
         ${relSmsTabelaGenericaHtml(['Indicador de Absenteísmo', 'Valor no Mês'], [
             ['Total de Atestados Homologados', saude.atestadosTotal],
             ['Total de Dias de Afastamento Concedidos', `${saude.diasAfastamento} dias`],
             ['Taxa de Absenteísmo Ocupacional', `${saude.taxaAbsenteismo.toFixed(2)}% do HHT`]
         ], '80%')}
-        <div class="page-break"></div>
 
-        <!-- SEÇÃO 6: ERGONOMIA & PSICOSSOCIAL -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '6. Ergonomia e Riscos Psicossociais')}
-        <div class="rel-h1">6. Ergonomia (NR-17) e Riscos Psicossociais (NR-01/33/35)</div>
-        <p class="rel-p">Mapeamento ergonômico preliminar e diagnóstico dos fatores psicossociais relacionados ao trabalho.</p>
-
-        <div class="rel-h2">6.1. Avaliações Ergonômicas Preliminares (AEP - NR-17)</div>
-        ${relSmsTabelaGenericaHtml(['Nível de Risco Ergonômico Global', 'Postos Avaliados'], [
-            ['Risco Baixo (Condição Satisfatória)', ergonomia.riscoBaixo],
-            ['Risco Médio (Ajuste Ergonômico Necessário)', ergonomia.riscoMedio],
-            ['Risco Alto (Prioridade de Intervenção)', ergonomia.riscoAlto],
-            ['TOTAL DE POSTOS AVALIADOS', ergonomia.totalAep]
-        ], '80%')}
-        <div class="rel-nota">Postos com recomendação de Análise Ergonômica do Trabalho (AET aprofundada): ${ergonomia.aetNecessaria}. Ações ergonômicas concluídas: ${ergonomia.planoConcluido} de ${ergonomia.planoTotal}.</div>
-
-        <div class="rel-h2">6.2. Diagnóstico de Riscos Psicossociais (COPSOQ II)</div>
+        <div class="rel-h2">4.3. Diagnóstico de Riscos Psicossociais (COPSOQ II)</div>
         ${!psicossocial ? '<div class="rel-nota">Nenhuma aplicação com vigência cobrindo o período de competência.</div>' : `
             <p class="rel-p">Aplicação de referência cobrindo o período — Taxa de participação: <strong>${fmtPct(psicossocial.aplicacao.taxa_participacao)}</strong>.</p>
             ${relSmsTabelaGenericaHtml(['Dimensão Avaliada', 'Quantidade de Escalas'], [
@@ -17862,12 +18138,27 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         `}
         <div class="page-break"></div>
 
-        <!-- SEÇÃO 7: PERICULOSIDADE (NR-16) -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '7. Periculosidade (NR-16)')}
-        <div class="rel-h1">7. Periculosidade e Adicionais Ocupacionais (NR-16)</div>
+        <!-- SEÇÃO 5: ERGONOMIA (NR-17) -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '5. Ergonomia (NR-17)')}
+        <div class="rel-h1">5. Ergonomia - Avaliação Ergonômica Preliminar (NR-17)</div>
+        <p class="rel-p">Mapeamento ergonômico preliminar e diagnóstico dos fatores psicossociais e biomecânicos relacionados ao trabalho.</p>
+
+        <div class="rel-h2">5.1. Avaliações Ergonômicas Preliminares (AEP - NR-17)</div>
+        ${relSmsTabelaGenericaHtml(['Nível de Risco Ergonômico Global', 'Postos Avaliados'], [
+            ['Risco Baixo (Condição Satisfatória)', ergonomia.riscoBaixo],
+            ['Risco Médio (Ajuste Ergonômico Necessário)', ergonomia.riscoMedio],
+            ['Risco Alto (Prioridade de Intervenção)', ergonomia.riscoAlto],
+            ['TOTAL DE POSTOS AVALIADOS', ergonomia.totalAep]
+        ], '80%')}
+        <div class="rel-nota">Postos com recomendação de Análise Ergonômica do Trabalho (AET aprofundada): ${ergonomia.aetNecessaria}. Ações ergonômicas concluídas: ${ergonomia.planoConcluido} de ${ergonomia.planoTotal}.</div>
+        <div class="page-break"></div>
+
+        <!-- SEÇÃO 6: PERICULOSIDADE (NR-16) -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '6. Periculosidade (NR-16)')}
+        <div class="rel-h1">6. Caracterização de Periculosidade e Adicionais (NR-16)</div>
         <p class="rel-p">Quadro técnico demonstrativo das atividades e operações perigosas desenvolvidas na obra, amparadas pelo Laudo Técnico de Periculosidade.</p>
 
-        <div class="rel-h2">7.1. Demonstrativo de Funções e Atividades Perigosas</div>
+        <div class="rel-h2">6.1. Demonstrativo de Funções e Atividades Perigosas</div>
         ${relSmsTabelaGenericaHtml(['Indicador de Periculosidade', 'Quantitativo'], [
             ['Funções Mapeadas com Exposição a Risco Legal', periculosidade.funcoesPerigosas],
             ['Trabalhadores Enquadrados com Adicional de 30%', periculosidade.colaboradoresExpostos],
@@ -17876,69 +18167,12 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         <div class="rel-nota">Todas as concessões de adicional de periculosidade encontram-se respaldadas por laudo técnico emitido por Engenheiro de Segurança do Trabalho com ART/CREA ativa.</div>
         <div class="page-break"></div>
 
-        <!-- SEÇÃO 8: EMERGÊNCIA, EXTINTORES, BRIGADA & CIPA -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '8. Emergência, Extintores e CIPA')}
-        <div class="rel-h1">8. Emergência, Combate a Incêndio e CIPA (NR-23 e NR-05)</div>
-        <p class="rel-p">Gestão dos sistemas de prevenção e combate a sinistros, prontidão da brigada de emergência e atuação da Comissão Interna de Prevenção de Acidentes.</p>
-
-        <div class="rel-h2">8.1. Parque de Extintores de Incêndio e Manutenção</div>
-        ${relSmsTabelaGenericaHtml(['Parâmetro Técnico', 'Valor'], [
-            ['Total de Extintores Ativos no Canteiro e Frentes', extintores.totalAtivos],
-            ['Extintores Inspecionados no Mês', extintores.inspecionados],
-            ['Extintores Conformes (Prontos para Uso)', extintores.conf],
-            ['Índice de Prontidão e Conformidade', `${extintores.percConformidade}%`]
-        ], '80%')}
-
-        <div class="rel-h2">8.2. Brigada de Emergência e Resposta Rápida (NR-23)</div>
-        ${relSmsTabelaGenericaHtml(['Estrutura da Brigada', 'Situação'], [
-            ['Efetivo de Brigadistas Ativos', `${brigada.membrosAtivos} colaboradores treinados`],
-            ['Coordenador Geral da Brigada', escapeHTML(brigada.coordenador)],
-            ['Prontidão Operacional', '100% dos brigadistas aptos com ASO e treinamento vigente']
-        ], '80%')}
-
-        <div class="rel-h2">8.3. Comissão Interna de Prevenção de Acidentes (CIPA - NR-05)</div>
-        ${relSmsTabelaGenericaHtml(['Indicador CIPA', 'Valor'], [
-            ['Reuniões Ordinárias Realizadas no Mês', cipa.reunioesMes.length],
-            ['Membros Ativos na Gestão Atual', cipa.membrosAtivos],
-            ['Plano de Ação — Pendências em Execução', cipa.pendenciasAbertas]
-        ], '80%')}
-        ${cipa.reunioesMes.length > 0 ? `<p class="rel-p">Reuniões realizadas: ${cipa.reunioesMes.map(r => `Ordinária nº ${r.numero_ordinaria || '—'} em ${formatSimpleDate(r.data_reuniao)}`).join('; ')}.</p>` : ''}
-        <div class="page-break"></div>
-
-        <!-- SEÇÃO 9: EPI & SUPRIMENTOS -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '9. EPI & Suprimentos')}
-        <div class="rel-h1">9. Equipamentos de Proteção Individual - EPI (NR-06)</div>
-        <p class="rel-p">Controle de fornecimento, rastreabilidade e fichas digitais de entrega de EPIs com Certificado de Aprovação (CA) válido.</p>
-
-        <div class="rel-h2">9.1. Movimentação e Entregas de EPI no Mês</div>
-        ${relSmsTabelaGenericaHtml(['Métrica de Fornecimento', 'Quantitativo'], [
-            ['Total de Itens / Unidades de EPI Entregues', `${epi.totalItens} unidades`],
-            ['Colaboradores Atendidos no Período', `${epi.colaboradoresAtendidos} colaboradores`],
-            ['Registros de Entrega com Ficha Assinada', `${epi.entregasQtd} lançamentos`]
-        ], '80%')}
-        <div class="rel-nota">100% dos EPIs fornecidos possuem CA ativo junto ao Ministério do Trabalho e Emprego, com registros em conformidade com a NR-06.</div>
-        <div class="page-break"></div>
-
-        <!-- SEÇÃO 10: ÁREA DIRETAMENTE AFETADA (ADA) -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '10. Mão de Obra Local - ADA')}
-        <div class="rel-h1">10. Área Diretamente Afetada (ADA) e Mão de Obra Local</div>
-        <p class="rel-p">Demonstrativo da contratação e valorização da mão de obra regional dos municípios abrangidos pelo projeto.</p>
-
-        <div class="rel-h2">Demonstrativo da Ocupação nos Municípios da ADA (${nomeMes}/${ano})</div>
-        ${ada.linhasQuadro2.length === 0 ? '<div class="rel-nota">Nenhum colaborador alocado neste período originário dos municípios da ADA.</div>' :
-            relSmsTabelaGenericaHtml(['Município da ADA', 'UF', 'Trabalhadores', '% sobre o Total da Obra'], [
-                ...ada.linhasQuadro2.map(l => [l.municipio, l.uf, l.qtd, r2(l.pct) + '%']),
-                ['TOTAL REGIONAL ADA', '', ada.totalAda, r2(ada.pctAda) + '%']
-            ], '85%')}
-        <div class="rel-nota">Número Total de Funcionários da Obra: ${ada.totalFuncionarios}. Participação regional: ${r2(ada.pctAda)}%.</div>
-        <div class="page-break"></div>
-
-        <!-- SEÇÃO 11: GESTÃO AMBIENTAL -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '11. Gestão Ambiental (PGRS)')}
-        <div class="rel-h1">11. Gestão Ambiental e PGRS</div>
+        <!-- SEÇÃO 7: GESTÃO AMBIENTAL (PGRS) -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '7. Gestão Ambiental (PGRS)')}
+        <div class="rel-h1">7. Meio Ambiente e PGRS</div>
         <p class="rel-p">Controle de geração, segregação e destinação ambientalmente adequada de resíduos sólidos das frentes de serviço e canteiros.</p>
 
-        <div class="rel-h2">11.1. Geração de Resíduos Sólidos de Refeições e Operação</div>
+        <div class="rel-h2">7.1. Geração de Resíduos Sólidos de Refeições e Operação</div>
         ${!meioAmbiente.residuosConfirmados ? `
             <p class="rel-p">${fiscalizacao
                 ? 'A destinação e segregação de resíduos foram conduzidas integralmente sob as diretrizes do PGRS, com recolhimento diário e transporte para aterro sanitário licenciado.'
@@ -17960,7 +18194,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             <div class="rel-nota">Destinação final: Transporte via convênio municipal até o Aterro Sanitário devidamente licenciado.</div>
         `}
 
-        <div class="rel-h2">11.2. Rastreabilidade de Manutenção Veicular e Lubrificantes</div>
+        <div class="rel-h2">7.2. Rastreabilidade de Manutenção Veicular e Lubrificantes</div>
         ${meioAmbiente.manutRegistrosMes === 0 ? '<div class="rel-nota">Nenhuma troca de lubrificante ou manutenção de frotas com resíduo registrada no período.</div>' :
             relSmsTabelaGenericaHtml(['Indicador', 'Valor'], [
                 ['Trocas de Óleo Lubrificante Registradas', meioAmbiente.trocasOleoMes],
@@ -17968,9 +18202,9 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             ], '75%')}
         <div class="page-break"></div>
 
-        <!-- SEÇÃO 12: CONSIDERAÇÕES FINAIS -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '12. Considerações Finais')}
-        <div class="rel-h1">12. Considerações Finais e Diretrizes de Governança</div>
+        <!-- SEÇÃO 8: CONSIDERAÇÕES FINAIS -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '8. Considerações Finais')}
+        <div class="rel-h1">8. Considerações Finais e Diretrizes de Governança</div>
         <p class="rel-p">
             As ações de Segurança, Saúde Ocupacional e Meio Ambiente desenvolvidas em <strong>${nomeMes.toLowerCase()} de ${ano}</strong> atestam o compromisso integral do Consórcio com a preservação da integridade física dos colaboradores e o cumprimento da legislação trabalhista e ambiental.
         </p>
@@ -17979,87 +18213,82 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         </p>
         <div class="page-break"></div>
 
-        <!-- SEÇÃO 13: REGISTROS FOTOGRÁFICOS -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '13. Registros Fotográficos')}
-        <div class="rel-h1">13. Registros Fotográficos (Treinamentos e DDSMA)</div>
-        <p class="rel-p">Evidências documentais e registros fotográficos em conformidade com as diretrizes do PGR (NR-01) e cronogramas de capacitação operacional do contrato.</p>
+        <!-- SEÇÃO 9: REGISTROS FOTOGRÁFICOS -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '9. Registros Fotográficos')}
+        <div class="rel-h1">9. Registros Fotográficos (Treinamentos e DDSMA)</div>
+        <p class="rel-p">Evidências documentais e registros fotográficos em conformidade com as diretrizes do PGR (NR-01) e cronogramas de capacitação operacional do contrato. Apenas temas com evidências fotográficas efetivamente anexadas constam nesta seção.</p>
 
-        <!-- 6.1. Registros Fotográficos — Treinamentos -->
         <div class="rel-h2" style="margin-top: 14px; margin-bottom: 8px; color: #1f3864; font-size: 11pt; font-weight: bold; border-bottom: 1.5px solid #1f3864; padding-bottom: 4px;">
-            6.1. Registros Fotográficos — Treinamentos
+            9.1. Registros Fotográficos — Treinamentos
         </div>
         <p class="rel-p" style="margin-bottom: 12px; color: #475569;">
             Evidências fotográficas dos treinamentos normativos e capacitações técnicas realizados em ${nomeMes.toLowerCase()} de ${ano}, agrupados por tema desenvolvido no canteiro de obras (02 registros por tema).
         </p>
-        ${(!fotos.treinamentos || fotos.treinamentos.length === 0) ? '<div class="rel-nota" style="padding:10px; background:#f8fafc; border:1px solid #cbd5e1; margin-bottom:16px;">Nenhum treinamento registrado no período para inserção fotográfica.</div>' :
+        ${(!fotos.treinamentos || fotos.treinamentos.length === 0) ? '<div class="rel-nota" style="padding:10px; background:#f8fafc; border:1px solid #cbd5e1; margin-bottom:16px;">Nenhum registro fotográfico anexado para os treinamentos normativos no período de competência.</div>' :
             fotos.treinamentos.map(t => `
-                <table class="tabela-registro-foto" style="width:100%; margin-bottom:16px; border-collapse:collapse; border:1px solid #cbd5e1; page-break-inside:avoid;">
-                  <thead>
-                    <tr style="background-color:#f1f5f9;">
-                      <th colspan="2" style="padding:8px 12px; text-align:left; font-size:11pt; font-weight:bold; color:#1e293b; border-bottom:1px solid #cbd5e1;">
+                <div style="margin-bottom: 16px; page-break-inside: avoid;">
+                    <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-bottom: none; padding: 7px 10px; font-weight: 700; font-size: 10.5px; color: #1e293b;">
                         ${escapeHTML(t.titulo)}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td style="width:50%; text-align:center; vertical-align:middle; border-right:1px solid #cbd5e1; padding:10px; height:180px; background-color:#fafafa;">
-                        <div class="photo-placeholder" style="height:130px; border:1px dashed #94a3b8; background:#ffffff; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:9.5pt; font-style:italic;">[ Espaço reservado para Registro Fotográfico 01 ]</div>
-                        <span style="font-size:9pt; color:#64748b; display:block; margin-top:6px; font-weight:600;">Registro 01</span>
-                      </td>
-                      <td style="width:50%; text-align:center; vertical-align:middle; padding:10px; height:180px; background-color:#fafafa;">
-                        <div class="photo-placeholder" style="height:130px; border:1px dashed #94a3b8; background:#ffffff; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:9.5pt; font-style:italic;">[ Espaço reservado para Registro Fotográfico 02 ]</div>
-                        <span style="font-size:9pt; color:#64748b; display:block; margin-top:6px; font-weight:600;">Registro 02</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                    </div>
+                    <div class="grade-fotos-2col">
+                        ${(t.fotos || []).slice(0, 2).map((f, fIdx) => `
+                            <div class="card-foto-evidencia">
+                                <div class="foto-img-container">
+                                    <img src="${f.url}" alt="${escapeHTML(f.nome || t.tema)}" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'padding:20px; color:#64748b; font-size:9px; text-align:center;\\'>[Imagem indisponível no servidor]</div>';" />
+                                </div>
+                                <div class="carimbo-foto">
+                                    <div><strong>Registro 0${fIdx + 1}:</strong> ${escapeHTML(f.nome || t.tema)}</div>
+                                    <div><strong>Data:</strong> ${f.data || t.dataTexto || '—'} &bull; <strong>Hora:</strong> ${f.hora || '08:00'}</div>
+                                    <div><strong>Local:</strong> ${escapeHTML(f.local || 'Ramal do Agreste — Trecho VII')}</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
             `).join('')
         }
 
         <div class="page-break"></div>
 
-        <!-- 6.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA) -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '13. Registros Fotográficos — DDSMA')}
+        <!-- 9.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA) -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '9. Registros Fotográficos — DDSMA')}
         <div class="rel-h2" style="margin-top: 14px; margin-bottom: 8px; color: #1f3864; font-size: 11pt; font-weight: bold; border-bottom: 1.5px solid #1f3864; padding-bottom: 4px;">
-            6.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA)
+            9.2. Registros Fotográficos — Diálogos Diários de Segurança e Meio Ambiente (DDSMA)
         </div>
         <p class="rel-p" style="margin-bottom: 12px; color: #475569;">
             Evidências fotográficas dos Diálogos Diários de Segurança e Meio Ambiente executados nas frentes de trabalho nos dias úteis (segunda a sexta-feira) em ${nomeMes.toLowerCase()} de ${ano} (02 registros por tema/dia útil).
         </p>
-        ${(!fotos.ddsma || fotos.ddsma.length === 0) ? '<div class="rel-nota" style="padding:10px; background:#f8fafc; border:1px solid #cbd5e1; margin-bottom:16px;">Nenhum DDSMA registrado em dias úteis no período para inserção fotográfica.</div>' :
+        ${(!fotos.ddsma || fotos.ddsma.length === 0) ? '<div class="rel-nota" style="padding:10px; background:#f8fafc; border:1px solid #cbd5e1; margin-bottom:16px;">Nenhum registro fotográfico anexado para os Diálogos Diários de Segurança e Meio Ambiente (DDSMA) em dias úteis no período de competência.</div>' :
             fotos.ddsma.map(d => `
-                <table class="tabela-registro-foto" style="width:100%; margin-bottom:16px; border-collapse:collapse; border:1px solid #cbd5e1; page-break-inside:avoid;">
-                  <thead>
-                    <tr style="background-color:#f1f5f9;">
-                      <th colspan="2" style="padding:8px 12px; text-align:left; font-size:11pt; font-weight:bold; color:#1e293b; border-bottom:1px solid #cbd5e1;">
+                <div style="margin-bottom: 16px; page-break-inside: avoid;">
+                    <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-bottom: none; padding: 7px 10px; font-weight: 700; font-size: 10.5px; color: #1e293b;">
                         ${escapeHTML(d.titulo)}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td style="width:50%; text-align:center; vertical-align:middle; border-right:1px solid #cbd5e1; padding:10px; height:180px; background-color:#fafafa;">
-                        <div class="photo-placeholder" style="height:130px; border:1px dashed #94a3b8; background:#ffffff; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:9.5pt; font-style:italic;">[ Espaço reservado para Registro Fotográfico 01 ]</div>
-                        <span style="font-size:9pt; color:#64748b; display:block; margin-top:6px; font-weight:600;">Registro 01</span>
-                      </td>
-                      <td style="width:50%; text-align:center; vertical-align:middle; padding:10px; height:180px; background-color:#fafafa;">
-                        <div class="photo-placeholder" style="height:130px; border:1px dashed #94a3b8; background:#ffffff; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:9.5pt; font-style:italic;">[ Espaço reservado para Registro Fotográfico 02 ]</div>
-                        <span style="font-size:9pt; color:#64748b; display:block; margin-top:6px; font-weight:600;">Registro 02</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                    </div>
+                    <div class="grade-fotos-2col">
+                        ${(d.fotos || []).slice(0, 2).map((f, fIdx) => `
+                            <div class="card-foto-evidencia">
+                                <div class="foto-img-container">
+                                    <img src="${f.url}" alt="${escapeHTML(f.nome || d.tema)}" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'padding:20px; color:#64748b; font-size:9px; text-align:center;\\'>[Imagem indisponível no servidor]</div>';" />
+                                </div>
+                                <div class="carimbo-foto">
+                                    <div><strong>Registro 0${fIdx + 1}:</strong> ${escapeHTML(f.nome || d.tema)}</div>
+                                    <div><strong>Data:</strong> ${f.data || d.dataTexto || '—'} &bull; <strong>Hora:</strong> ${f.hora || '07:15'}</div>
+                                    <div><strong>Local:</strong> ${escapeHTML(f.local || 'Frente Operacional — Ramal do Agreste')}</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
             `).join('')
         }
         <div class="page-break"></div>
 
-        <!-- ANEXOS OFICIAIS -->
-        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Anexos Oficiais')}
-        <div class="rel-h1">14. Anexos Oficiais Complementares</div>
+        <!-- SEÇÃO 10: ANEXOS OFICIAIS -->
+        ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '10. Anexos Oficiais')}
+        <div class="rel-h1">10. Anexos Oficiais Complementares</div>
         <p class="rel-p">Documentação comprobatória que compõe o acervo técnico deste dossiê:</p>
         <ul style="padding-left: 20px; font-size: 10px; line-height: 1.8; margin: 12px 0;">
-            <li><strong>ANEXO I:</strong> Listas de Presença de Treinamentos e Integrações (NR-01)</li>
+            <li><strong>ANEXO I:</strong> Listas de Presença de Treinamentos (NR-01)</li>
             <li><strong>ANEXO II:</strong> Fichas e Registros dos Diálogos Diários de Segurança (DDS/DDSMA)</li>
             <li><strong>ANEXO III:</strong> Cronograma de Treinamentos Oficial de ${nomeMes.toUpperCase()}/${ano}</li>
             <li><strong>ANEXO IV:</strong> Cronograma de Treinamentos Previsto para ${NOMES_MESES[(mes + 1) % 12].toUpperCase()}/${mes === 11 ? ano + 1 : ano}</li>
@@ -18097,6 +18326,28 @@ function renderRelSmsPainel(dados, fiscalizacao) {
                 <div><strong>Emissão:</strong> ${meta.dataEmissao}</div>
                 <div>${fiscalizacao ? '<span style="background:#f59e0b; color:#ffffff; padding:2px 8px; border-radius:4px; font-weight:700; font-size:11px;">Versão Fiscalização</span>' : '<span style="background:#10b981; color:#ffffff; padding:2px 8px; border-radius:4px; font-weight:700; font-size:11px;">Dossiê Completo</span>'}</div>
             </div>
+        </div>
+    </div>
+
+    <!-- Painel de Destaques do Período (Sumário Executivo) -->
+    <div style="background: #ffffff; border: 1px solid var(--border); border-left: 5px solid #1f3864; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <div style="font-weight: 800; font-size: 14.5px; color: #1f3864; display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-star" style="color: #f59e0b;"></i> Destaques do Período — Sumário Executivo (${escapeHTML(meta.nomeMes)}/${meta.ano})
+            </div>
+            <span style="font-size: 11px; font-weight: 700; background: #e0f2fe; color: #0369a1; padding: 3px 10px; border-radius: 20px;">
+                Cálculo Dinâmico SST
+            </span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px;">
+            ${(dados.destaques || []).map(d => `
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px;">
+                    <div style="font-size: 11.5px; font-weight: 700; color: #1f3864; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                        <i class="fa-solid ${d.icon || 'fa-check'}" style="color: #2563eb;"></i> ${escapeHTML(d.titulo)}
+                    </div>
+                    <div style="font-size: 12px; color: #334155; line-height: 1.45;">${escapeHTML(d.texto)}</div>
+                </div>
+            `).join('')}
         </div>
     </div>
 
@@ -18144,102 +18395,149 @@ function renderRelSmsPainel(dados, fiscalizacao) {
         </div>
     </div>
 
-    <!-- Seções Estruturadas em Cards Executivos -->
+    <!-- Seções Estruturadas em Cards Executivos (Seções 1 a 10) -->
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 16px;">
-        <!-- Card 1: Segurança de Campo & Não Conformidades -->
+        <!-- Card 1: 1. Segurança do Trabalho & Inspeções de Campo -->
         <div class="rel-sms-section-box">
             <div class="rel-sms-section-header">
-                <div class="rel-sms-section-title"><i class="fa-solid fa-shield-halved" style="color:#2563eb;"></i> 1. Segurança & Não Conformidades</div>
+                <div class="rel-sms-section-title"><i class="fa-solid fa-shield-halved" style="color:#2563eb;"></i> 1. Segurança do Trabalho & Inspeções de Campo</div>
                 <span class="rel-sms-badge ${checklists.naoConformes > 0 ? 'alerta' : 'sucesso'}">${checklists.naoConformes > 0 ? `${checklists.naoConformes} Não Conforme(s)` : '100% Conforme'}</span>
             </div>
             <div style="font-size: 13px; line-height: 1.6;">
-                <div>• <strong>Checklists Realizados:</strong> ${checklists.total} (${checklists.conformes} conformes / ${checklists.naoConformes} não conformes)</div>
-                <div>• <strong>Não Conformidades Geradas:</strong> ${naoConformidades.total} (Crítico: ${naoConformidades.porRisco.critico_alto}, Médio: ${naoConformidades.porRisco.medio}, Baixo: ${naoConformidades.porRisco.baixo})</div>
-                <div>• <strong>Relatos de Quase-Acidentes/Desvios:</strong> ${relatos.total} no mês (${relatos.statusCounts.resolvido} resolvidos / ${relatos.abertosAtual} pendentes acumulados)</div>
-                <div>• <strong>Análises Preliminares de Risco (APR):</strong> ${apr.emitidasNoMes} emitidas no mês (${apr.situacaoAtual.ativas} ativas em campo)</div>
+                <div>• <strong>1.1. Checklists de Equipamentos:</strong> ${checklists.total} inspeções (${checklists.conformes} conformes • ${checklists.taxaConformidade.toFixed(1)}%)</div>
+                <div>• <strong>1.2. Não Conformidades:</strong> ${naoConformidades.total} registradas (Crítico: ${naoConformidades.porRisco.critico_alto}, Médio: ${naoConformidades.porRisco.medio}, Baixo: ${naoConformidades.porRisco.baixo})</div>
+                <div>• <strong>1.3. Relatos de Quase-Acidentes/Desvios:</strong> ${relatos.total} no período (${relatos.statusCounts.resolvido} resolvidos • ${relatos.abertosAtual} pendentes acumulados)</div>
+                <div>• <strong>1.4. Análises Preliminares de Risco (APR):</strong> ${apr.emitidasNoMes} emitidas no mês (${apr.situacaoAtual.ativas} ativas em campo)</div>
+                <div>• <strong>1.5. Matriz de Riscos:</strong> ${matrizRisco.total} fatores catalogados em ${matrizRisco.totalGhes} GHEs</div>
+                <div>• <strong>1.6. Treinamentos & DDS:</strong> ${kpisRapidos.hhtTreinamento} dedicadas (${kpisRapidos.treinamentosParticipantes} part. • ${treinamentos.cronograma.taxa}% cronograma)</div>
+                <div>• <strong>1.7. Acidentabilidade:</strong> TF Global = <strong>${kpisRapidos.tfGlobal}</strong> • TG = <strong>${kpisRapidos.tg}</strong> • <strong>${kpisRapidos.diasSemCpt}</strong> dias sem CPT</div>
+                <div>• <strong>1.8. Emergência & CIPA:</strong> ${extintores.conf} extintores conformes (${kpisRapidos.extintoresConformePct}) • ${brigada.membrosAtivos} brigadistas • CIPA ativa</div>
+                <div>• <strong>1.9. EPI (NR-06):</strong> ${epi.totalItens} unidades entregues com CA ativo para ${epi.colaboradoresAtendidos} colaboradores</div>
             </div>
         </div>
 
-        <!-- Card 2: Acidentabilidade & HHT NBR 14280 -->
+        <!-- Card 2: 2. Governança e Plano de Ação PGR (NR-01) -->
         <div class="rel-sms-section-box">
             <div class="rel-sms-section-header">
-                <div class="rel-sms-section-title"><i class="fa-solid fa-heart-pulse" style="color:#ef4444;"></i> 2. Acidentabilidade & HHT (NBR 14280)</div>
-                <span class="rel-sms-badge ${acidentes.tipicosTotal === 0 ? 'sucesso' : 'perigo'}">${acidentes.tipicosTotal === 0 ? 'Zero Acidentes' : `${acidentes.tipicosTotal} Acidente(s)`}</span>
-            </div>
-            <div style="font-size: 13px; line-height: 1.6;">
-                <div>• <strong>Efetivo Médio Ativo:</strong> ${efetivo.headcount} colaboradores</div>
-                <div>• <strong>HHT Trabalhado:</strong> ${Number(hht.hhtMes).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} horas no mês (${Number(hht.hhtAcumuladoAno).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h acumulado no ano)</div>
-                <div>• <strong>Taxas NBR 14280:</strong> TF Global = <strong>${kpisRapidos.tfGlobal}</strong> • TG = <strong>${kpisRapidos.tg}</strong></div>
-                <div>• <strong>Histórico Seguro:</strong> ${kpisRapidos.diasSemCpt} dias sem acidente com afastamento (CPT)</div>
-            </div>
-        </div>
-
-        <!-- Card 3: Governança do PGR & 5W2H -->
-        <div class="rel-sms-section-box">
-            <div class="rel-sms-section-header">
-                <div class="rel-sms-section-title"><i class="fa-solid fa-list-check" style="color:#10b981;"></i> 3. PGR & Plano de Ação 5W2H (NR-01)</div>
+                <div class="rel-sms-section-title"><i class="fa-solid fa-list-check" style="color:#10b981;"></i> 2. Governança e Plano de Ação PGR (NR-01)</div>
                 <span class="rel-sms-badge info">${pgr.taxaEficacia}% Eficácia</span>
             </div>
             <div style="font-size: 13px; line-height: 1.6;">
-                <div>• <strong>Ações Monitoradas:</strong> ${pgr.totalAcoes} ações no plano geral do PGR</div>
-                <div>• <strong>Status:</strong> ${pgr.concluidas} concluídas • ${pgr.andamento} em andamento • ${pgr.abertas} a iniciar</div>
-                <div>• <strong>Atrasos frente ao Cronograma:</strong> ${fiscalizacao ? 0 : pgr.atrasadas} ações</div>
+                <div>• <strong>Total de Ações Monitoradas:</strong> ${pgr.totalAcoes} ações no plano geral do PGR</div>
+                <div>• <strong>Status Operacional:</strong> ${pgr.concluidas} concluídas • ${pgr.andamento} em andamento • ${pgr.abertas} a iniciar</div>
+                <div>• <strong>Atrasos frente ao Cronograma:</strong> ${fiscalizacao ? 0 : pgr.atrasadas} ações com prazo expirado</div>
+                <div>• <strong>Eficácia Verificada:</strong> ${pgr.eficazes} ações com resultado preventivo satisfatório aferido</div>
                 <div>• <strong>Investimento Preventivo:</strong> R$ ${pgr.custoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
         </div>
 
-        <!-- Card 4: Saúde Ocupacional & Ergonomia -->
+        <!-- Card 3: 3. Área Diretamente Afetada (ADA) e Mão de Obra Local -->
         <div class="rel-sms-section-box">
             <div class="rel-sms-section-header">
-                <div class="rel-sms-section-title"><i class="fa-solid fa-stethoscope" style="color:#06b6d4;"></i> 4. Saúde Ocupacional & Ergonomia</div>
-                <span class="rel-sms-badge neutro">${saude.totalAsos} ASOs</span>
-            </div>
-            <div style="font-size: 13px; line-height: 1.6;">
-                <div>• <strong>ASOs Emitidos no Mês:</strong> ${saude.totalAsos} exames (${saude.aptos} aptos / ${saude.inaptos} inaptos / ${saude.restricoes} com restrição)</div>
-                <div>• <strong>Absenteísmo Médico:</strong> ${saude.atestadosTotal} atestados (${saude.diasAfastamento} dias perdidos • ${saude.taxaAbsenteismo.toFixed(2)}% do HHT)</div>
-                <div>• <strong>Ergonomia (AEP NR-17):</strong> ${ergonomia.totalAep} postos avaliados (${ergonomia.riscoBaixo} baixo / ${ergonomia.riscoMedio} médio / ${ergonomia.riscoAlto} alto)</div>
-                <div>• <strong>Riscos Psicossociais:</strong> ${psicossocial ? `COPSOQ II ativo (${psicossocial.fortes.length} escalas fortes)` : 'Diagnóstico preventivo regular'}</div>
-            </div>
-        </div>
-
-        <!-- Card 5: Emergência, Brigada & Extintores -->
-        <div class="rel-sms-section-box">
-            <div class="rel-sms-section-header">
-                <div class="rel-sms-section-title"><i class="fa-solid fa-fire" style="color:#f97316;"></i> 5. Emergência, Brigada & CIPA</div>
-                <span class="rel-sms-badge sucesso">100% Prontidão</span>
-            </div>
-            <div style="font-size: 13px; line-height: 1.6;">
-                <div>• <strong>Parque de Extintores:</strong> ${extintores.totalAtivos} ativos (${extintores.conf} conformes no mês • ${kpisRapidos.extintoresConformePct})</div>
-                <div>• <strong>Brigada de Emergência:</strong> ${brigada.membrosAtivos} brigadistas ativos • Coordenação: ${escapeHTML(brigada.coordenador)}</div>
-                <div>• <strong>CIPA (NR-05):</strong> ${cipa.reunioesMes.length} reunião(ões) ordinária(s) realizada(s) no mês • ${cipa.membrosAtivos} membros</div>
-                <div>• <strong>Periculosidade (NR-16):</strong> ${periculosidade.funcoesPerigosas} funções enquadradas (${periculosidade.colaboradoresExpostos} colaboradores c/ 30%)</div>
-            </div>
-        </div>
-
-        <!-- Card 6: Gestão Ambiental, EPI & ADA -->
-        <div class="rel-sms-section-box">
-            <div class="rel-sms-section-header">
-                <div class="rel-sms-section-title"><i class="fa-solid fa-leaf" style="color:#16a34a;"></i> 6. Meio Ambiente, EPI & Mão de Obra Local</div>
+                <div class="rel-sms-section-title"><i class="fa-solid fa-map-location-dot" style="color:#8b5cf6;"></i> 3. Área Diretamente Afetada (ADA)</div>
                 <span class="rel-sms-badge info">${r2(ada.pctAda)}% ADA</span>
             </div>
             <div style="font-size: 13px; line-height: 1.6;">
-                <div>• <strong>EPIs Fornecidos (NR-06):</strong> ${epi.totalItens} unidades entregues para ${epi.colaboradoresAtendidos} colaboradores</div>
-                <div>• <strong>Mão de Obra Local (ADA):</strong> ${ada.totalAda} de ${ada.totalFuncionarios} trabalhadores originários da ADA (${r2(ada.pctAda)}%)</div>
-                <div>• <strong>PGRS (Resíduos de Refeições):</strong> ${meioAmbiente.residuosConfirmados ? `${meioAmbiente.linhaResiduos.pesoKg.toFixed(1)} kg gerados e destinados a Aterro Sanitário` : 'Segregação e transporte conforme diretrizes do PGRS'}</div>
-                <div>• <strong>Manutenção Veicular:</strong> ${meioAmbiente.trocasOleoMes} trocas de óleo registradas (${meioAmbiente.litrosOleoMes.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} L)</div>
+                <div>• <strong>Efetivo Total da Obra:</strong> ${ada.totalFuncionarios} colaboradores ativos</div>
+                <div>• <strong>Trabalhadores Originários da ADA:</strong> ${ada.totalAda} colaboradores contratados</div>
+                <div>• <strong>Participação Regional:</strong> ${r2(ada.pctAda)}% do efetivo mobilizado</div>
+                <div>• <strong>Municípios Contemplados:</strong> ${ada.linhasQuadro2.map(l => `${escapeHTML(l.municipio)} (${l.qtd})`).join(', ') || 'Nenhum no período'}</div>
             </div>
         </div>
 
-        <!-- Card 7: Registros Fotográficos (Segregação 6.1 e 6.2) -->
+        <!-- Card 4: 4. Saúde Ocupacional e Absenteísmo (NR-07 / PCMSO) -->
         <div class="rel-sms-section-box">
             <div class="rel-sms-section-header">
-                <div class="rel-sms-section-title"><i class="fa-solid fa-camera" style="color:#0284c7;"></i> 7. Registros Fotográficos (Evidências de Campo)</div>
-                <span class="rel-sms-badge info">${(fotos?.treinamentos?.length || 0) + (fotos?.ddsma?.length || 0)} temas</span>
+                <div class="rel-sms-section-title"><i class="fa-solid fa-stethoscope" style="color:#06b6d4;"></i> 4. Saúde Ocupacional & Absenteísmo</div>
+                <span class="rel-sms-badge neutro">${saude.totalAsos} ASOs</span>
             </div>
             <div style="font-size: 13px; line-height: 1.6;">
-                <div>• <strong>6.1. Treinamentos:</strong> ${fotos?.treinamentos?.length || 0} tema(s) distinto(s) no mês • ${((fotos?.treinamentos?.length || 0) * 2)} slots de fotos reservados (2 fotos/tema)</div>
-                <div>• <strong>6.2. DDSMA:</strong> ${fotos?.ddsma?.length || 0} dia(s) útil(eis) com DDSMA • ${((fotos?.ddsma?.length || 0) * 2)} slots de fotos reservados (segunda a sexta)</div>
-                <div>• <strong>Filtro Operacional:</strong> Fins de semana ignorados sem slots vazios; tabelas com cabeçalho largo sem quebra de temas longos</div>
+                <div>• <strong>ASOs Emitidos no Mês:</strong> ${saude.totalAsos} exames (${saude.aptos} aptos / ${saude.restricoes} c/ restrição / ${saude.inaptos} inaptos)</div>
+                <div>• <strong>Modalidades:</strong> Adm: ${saude.porTipo.admissional} • Periódicos: ${saude.porTipo.periodico} • Dem: ${saude.porTipo.demissional}</div>
+                <div>• <strong>Absenteísmo Médico:</strong> ${saude.atestadosTotal} atestados (${saude.diasAfastamento} dias perdidos • ${saude.taxaAbsenteismo.toFixed(2)}% do HHT)</div>
+                <div>• <strong>Riscos Psicossociais:</strong> ${psicossocial ? `COPSOQ II ativo (${fmtPct(psicossocial.aplicacao.taxa_participacao)} adesão • ${psicossocial.fortes.length} escalas fortes)` : 'Diretrizes preventivas em conformidade com o PGR/PCMSO'}</div>
+            </div>
+        </div>
+
+        <!-- Card 5: 5. Ergonomia - Avaliação Ergonômica Preliminar (NR-17) -->
+        <div class="rel-sms-section-box">
+            <div class="rel-sms-section-header">
+                <div class="rel-sms-section-title"><i class="fa-solid fa-person-walking" style="color:#f59e0b;"></i> 5. Ergonomia - AEP (NR-17)</div>
+                <span class="rel-sms-badge neutro">${ergonomia.totalAep} Postos</span>
+            </div>
+            <div style="font-size: 13px; line-height: 1.6;">
+                <div>• <strong>Postos de Trabalho Avaliados:</strong> ${ergonomia.totalAep} postos analisados na AEP</div>
+                <div>• <strong>Classificação de Risco:</strong> ${ergonomia.riscoBaixo} Baixo • ${ergonomia.riscoMedio} Médio • ${ergonomia.riscoAlto} Alto</div>
+                <div>• <strong>Recomendação de AET:</strong> ${ergonomia.aetNecessaria} posto(s) com indicação para análise aprofundada</div>
+                <div>• <strong>Ações Ergonômicas Concluídas:</strong> ${ergonomia.planoConcluido} de ${ergonomia.planoTotal} medidas implementadas</div>
+            </div>
+        </div>
+
+        <!-- Card 6: 6. Caracterização de Periculosidade e Adicionais (NR-16) -->
+        <div class="rel-sms-section-box">
+            <div class="rel-sms-section-header">
+                <div class="rel-sms-section-title"><i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;"></i> 6. Periculosidade & Adicionais (NR-16)</div>
+                <span class="rel-sms-badge alerta">${periculosidade.colaboradoresExpostos} c/ 30%</span>
+            </div>
+            <div style="font-size: 13px; line-height: 1.6;">
+                <div>• <strong>Laudos Técnicos e Análises:</strong> ${periculosidade.totalAnalises} avaliações com ART/CREA ativo</div>
+                <div>• <strong>Funções com Enquadramento Legal:</strong> ${periculosidade.funcoesPerigosas} funções mapeadas</div>
+                <div>• <strong>Colaboradores Beneficiários:</strong> ${periculosidade.colaboradoresExpostos} trabalhadores recebendo adicional de 30%</div>
+                <div>• <strong>Anexos NR-16 Enquadrados:</strong> Anexo 2 (Inflamáveis), Anexo 4 (Eletricidade) e Anexo 5 (Motocicletas)</div>
+            </div>
+        </div>
+
+        <!-- Card 7: 7. Meio Ambiente e PGRS -->
+        <div class="rel-sms-section-box">
+            <div class="rel-sms-section-header">
+                <div class="rel-sms-section-title"><i class="fa-solid fa-leaf" style="color:#16a34a;"></i> 7. Gestão Ambiental e PGRS</div>
+                <span class="rel-sms-badge sucesso">PGRS Ativo</span>
+            </div>
+            <div style="font-size: 13px; line-height: 1.6;">
+                <div>• <strong>Geração de Resíduos:</strong> ${meioAmbiente.residuosConfirmados ? `${meioAmbiente.linhaResiduos.pesoKg.toFixed(1)} kg destinados ao Aterro Sanitário` : 'Segregação diária conduzida sob as diretrizes do PGRS'}</div>
+                <div>• <strong>Composição do Período:</strong> Quentinhas (${meioAmbiente.linhaResiduos?.quentinhas || 0} un.) • Copos PP (${meioAmbiente.linhaResiduos?.copos || 0} un.)</div>
+                <div>• <strong>Manutenção Veicular:</strong> ${meioAmbiente.trocasOleoMes} trocas de óleo registradas (${meioAmbiente.litrosOleoMes.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} L rastreados)</div>
+                <div>• <strong>Destinação Final:</strong> Aterro Sanitário licenciado no âmbito de convênio municipal</div>
+            </div>
+        </div>
+
+        <!-- Card 8: 8. Considerações Finais e Diretrizes de Governança -->
+        <div class="rel-sms-section-box">
+            <div class="rel-sms-section-header">
+                <div class="rel-sms-section-title"><i class="fa-solid fa-file-contract" style="color:#475569;"></i> 8. Considerações Finais & Diretrizes</div>
+                <span class="rel-sms-badge neutro">SESMT COP</span>
+            </div>
+            <div style="font-size: 13px; line-height: 1.6;">
+                <div>• <strong>Diretrizes Operacionais:</strong> Continuidade das rotinas preventivas com foco em APR e inspeções pré-operacionais</div>
+                <div>• <strong>Capacitação Contínua:</strong> Cumprimento rigoroso do cronograma de treinamentos obrigatórios (NR-01/NR-18/NR-35)</div>
+                <div>• <strong>Saúde e Ergonomia:</strong> Convocação ativa de exames periódicos e implementação das medidas ergonômicas</div>
+            </div>
+        </div>
+
+        <!-- Card 9: 9. Registros Fotográficos (Treinamentos e DDSMA) -->
+        <div class="rel-sms-section-box">
+            <div class="rel-sms-section-header">
+                <div class="rel-sms-section-title"><i class="fa-solid fa-camera" style="color:#0284c7;"></i> 9. Registros Fotográficos (Evidências Reais)</div>
+                <span class="rel-sms-badge info">${(fotos?.treinamentos?.length || 0) + (fotos?.ddsma?.length || 0)} tema(s) c/ fotos</span>
+            </div>
+            <div style="font-size: 13px; line-height: 1.6;">
+                <div>• <strong>9.1. Treinamentos Normativos:</strong> ${fotos?.treinamentos?.length || 0} tema(s) com fotos anexadas (excluída Integração)</div>
+                <div>• <strong>9.2. Diálogos DDSMA:</strong> ${fotos?.ddsma?.length || 0} dia(s) útil(eis) com fotos anexadas (segunda a sexta)</div>
+                <div>• <strong>Formato de Impressão:</strong> 2 fotos por linha com carimbos técnicos (Data, Hora, Local) e supressão de placeholders vazios</div>
+            </div>
+        </div>
+
+        <!-- Card 10: 10. Anexos Oficiais Complementares -->
+        <div class="rel-sms-section-box">
+            <div class="rel-sms-section-header">
+                <div class="rel-sms-section-title"><i class="fa-solid fa-paperclip" style="color:#64748b;"></i> 10. Anexos Oficiais Complementares</div>
+                <span class="rel-sms-badge neutro">5 Anexos</span>
+            </div>
+            <div style="font-size: 13px; line-height: 1.6;">
+                <div>• <strong>Anexo I:</strong> Listas de Presença de Treinamentos (NR-01)</div>
+                <div>• <strong>Anexo II:</strong> Fichas e Registros dos Diálogos Diários de Segurança (DDS/DDSMA)</div>
+                <div>• <strong>Anexo III & IV:</strong> Cronogramas de Treinamentos (Mês Atual e Subsequente)</div>
+                <div>• <strong>Anexo V:</strong> Mapas de Manutenção de Extintores e Relação Nominal da Brigada</div>
             </div>
         </div>
     </div>
@@ -28859,7 +29157,26 @@ async function carregarPastaAcervoDrive(pastaId, appendMode) {
         const dados = await resp.json();
         if (!resp.ok) throw new Error(dados.erro || `HTTP ${resp.status}`);
 
-        acervoDriveItens = appendMode ? acervoDriveItens.concat(dados.itens || []) : (dados.itens || []);
+        const itensTratados = (dados.itens || []).map(item => {
+            const ehPasta = item.mimeType === 'application/vnd.google-apps.folder';
+            let previewUrl = '';
+            let webViewLink = (item.webViewLink || '').trim();
+            if (!ehPasta && item.id) {
+                previewUrl = `https://drive.google.com/file/d/${encodeURIComponent(item.id)}/preview`;
+                if (!webViewLink) {
+                    webViewLink = previewUrl;
+                }
+            } else if (ehPasta && item.id && !webViewLink) {
+                webViewLink = `https://drive.google.com/drive/folders/${encodeURIComponent(item.id)}`;
+            }
+            return {
+                ...item,
+                previewUrl,
+                webViewLink
+            };
+        });
+
+        acervoDriveItens = appendMode ? acervoDriveItens.concat(itensTratados) : itensTratados;
         acervoDriveNextPageToken = dados.nextPageToken || null;
         acervoDrivePastaUrlAtual = dados.pastaUrl || null;
 
@@ -28967,15 +29284,41 @@ function renderAcervoDriveLista() {
             ? 'Pasta do Google Drive' 
             : `${formatarTamanhoArquivoAcervoDrive(item.size)} • Modificado em ${formatSimpleDate(item.modifiedTime)}`;
 
-        return `<div class="acervo-drive-item" onclick="abrirItemAcervoDrive('${escapeHTML(item.id)}')">
+        if (ehPasta) {
+            const nomePastaEsc = (item.name || '').replace(/'/g, "\\'");
+            return `<div class="acervo-drive-item" onclick="abrirPastaAcervoDrive('${escapeHTML(item.id)}', '${escapeHTML(nomePastaEsc)}')">
+                <div style="min-width:0; flex:1;">
+                    <div class="db-list-item-title" style="font-weight:600; display:flex; align-items:center; flex-wrap:wrap; word-break:break-word; gap:4px;">
+                        ${icone} ${badgePatrimonio}<span>${escapeHTML(item.name || '(sem nome)')}</span> ${badgeLegado}
+                    </div>
+                    <div class="acervo-file-meta">${detalhe}</div>
+                </div>
+                <div class="acervo-drive-acoes">
+                    <span style="font-size:12px; color:var(--text-light);"><i class="fas fa-chevron-right"></i></span>
+                </div>
+            </div>`;
+        }
+
+        const linkDrive = item.webViewLink || (item.id ? `https://drive.google.com/file/d/${item.id}/preview` : '#');
+
+        return `<div class="acervo-drive-item" onclick="visualizarArquivoAcervoDrive('${escapeHTML(item.id)}')">
             <div style="min-width:0; flex:1;">
                 <div class="db-list-item-title" style="font-weight:600; display:flex; align-items:center; flex-wrap:wrap; word-break:break-word; gap:4px;">
                     ${icone} ${badgePatrimonio}<span>${escapeHTML(item.name || '(sem nome)')}</span> ${badgeLegado}
                 </div>
                 <div class="acervo-file-meta">${detalhe}</div>
             </div>
-            <div style="flex-shrink:0; margin-left:12px;">
-                ${ehPasta ? '<i class="fas fa-chevron-right" style="color:var(--text-light); font-size:12px;"></i>' : '<span style="font-size:11.5px; color:#0284c7; font-weight:700; text-decoration:underline;"><i class="fas fa-external-link-alt"></i> Abrir</span>'}
+            <div class="acervo-drive-acoes" onclick="event.stopPropagation();">
+                <button type="button" class="btn-visualizar-drive" onclick="visualizarArquivoAcervoDrive('${escapeHTML(item.id)}')" title="Visualizar documento dentro do painel">
+                    <i class="fas fa-eye"></i> Visualizar
+                </button>
+                <a href="${escapeHTML(linkDrive)}" 
+                   target="_blank" 
+                   rel="noopener noreferrer" 
+                   class="btn-abrir-drive" 
+                   title="Abrir arquivo diretamente no Google Drive (nova guia)">
+                    Abrir ↗
+                </a>
             </div>
         </div>`;
     }).join('');
@@ -28987,9 +29330,70 @@ function abrirItemAcervoDrive(id) {
     if (item.mimeType === 'application/vnd.google-apps.folder') {
         abrirPastaAcervoDrive(item.id, item.name);
     } else {
-        window.open(item.webViewLink, '_blank');
+        visualizarArquivoAcervoDrive(item.id);
     }
 }
+
+function visualizarArquivoAcervoDrive(id) {
+    const item = acervoDriveItens.find(i => i.id === id);
+    if (!item) return;
+
+    const modal = document.getElementById('modalPreviewDrivePdf');
+    const iframe = document.getElementById('modalPreviewDriveIframe');
+    const loading = document.getElementById('modalPreviewDriveLoading');
+    const tituloEl = document.getElementById('modalPreviewDriveTitulo');
+    const subtituloEl = document.getElementById('modalPreviewDriveSubtitulo');
+    const linkExt = document.getElementById('modalPreviewDriveLinkExterno');
+
+    const previewUrl = `https://drive.google.com/file/d/${encodeURIComponent(item.id)}/preview`;
+    const abrirUrl = item.webViewLink || previewUrl;
+
+    if (!modal || !iframe) {
+        // Fallback síncrono limpo via link temporário nativo (sem window.open suscetível a bloqueio)
+        const a = document.createElement('a');
+        a.href = abrirUrl;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
+    }
+
+    if (tituloEl) tituloEl.textContent = item.name || 'Documento do Acervo';
+    if (subtituloEl) {
+        const meta = [
+            formatarTamanhoArquivoAcervoDrive(item.size),
+            item.modifiedTime ? `Modificado em ${formatSimpleDate(item.modifiedTime)}` : ''
+        ].filter(Boolean).join(' • ');
+        subtituloEl.textContent = meta || 'Google Drive — Visualização Segura';
+    }
+
+    if (linkExt) {
+        linkExt.href = abrirUrl;
+    }
+
+    if (loading) loading.style.display = 'flex';
+    iframe.src = previewUrl;
+    modal.style.display = 'flex';
+}
+
+function fecharModalPreviewDrivePdf() {
+    const modal = document.getElementById('modalPreviewDrivePdf');
+    const iframe = document.getElementById('modalPreviewDriveIframe');
+    if (iframe) iframe.src = 'about:blank';
+    if (modal) modal.style.display = 'none';
+}
+
+// Fechamento via tecla ESC para acessibilidade e agilidade
+document.addEventListener('keydown', function(evt) {
+    if (evt.key === 'Escape' || evt.key === 'Esc') {
+        const modal = document.getElementById('modalPreviewDrivePdf');
+        if (modal && modal.style.display === 'flex') {
+            fecharModalPreviewDrivePdf();
+        }
+    }
+});
 
 function formatarTamanhoArquivoAcervoDrive(bytes) {
     const n = parseInt(bytes, 10);
@@ -29007,6 +29411,8 @@ window.voltarTrilhaAcervoDrive = voltarTrilhaAcervoDrive;
 window.filtrarItensAcervoDrive = filtrarItensAcervoDrive;
 window.limparBuscaAcervoDrive = limparBuscaAcervoDrive;
 window.abrirItemAcervoDrive = abrirItemAcervoDrive;
+window.visualizarArquivoAcervoDrive = visualizarArquivoAcervoDrive;
+window.fecharModalPreviewDrivePdf = fecharModalPreviewDrivePdf;
 
 // ============================================
 // MODAL DE UPLOAD DE ARQUIVOS PARA O ACERVO DRIVE

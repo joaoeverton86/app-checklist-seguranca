@@ -30793,6 +30793,7 @@ function resetAcervoDrive() {
     if (listaEl) { listaEl.style.display = 'none'; listaEl.innerHTML = ''; }
     if (carregarMaisWrap) carregarMaisWrap.style.display = 'none';
     renderAcervoDriveTrilha();
+    atualizarCardFotosDrive();
 }
 
 function recarregarAcervoDrive() {
@@ -31195,23 +31196,118 @@ function getDriveGasWebhookUrl() {
 }
 
 function getDriveFolderFotosUrl() {
+    const defaultUrl = 'https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
+    
+    // 1. Busca no cache sincronizado do Supabase (checklist_item_settings)
     const fromSettings = (allChecklistItemSettings || []).find(s => 
+        s.id === 'drive_folder_fotos_url' || 
         s.id === 'drive_config' || 
         s.id === 'drive_settings' || 
-        s.key === 'drive_folder_fotos_url' ||
-        s.drive_folder_fotos_url
+        s.key === 'drive_folder_fotos_url'
     );
-    return fromSettings?.drive_folder_fotos_url || 
-           fromSettings?.value || 
-           localStorage.getItem('drive_folder_fotos_url') || 
-           'https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
+    if (fromSettings) {
+        if (Array.isArray(fromSettings.custom_items) && fromSettings.custom_items.length > 0) {
+            const item = fromSettings.custom_items[0];
+            if (item && item.url) return item.url;
+            if (item && item.drive_folder_fotos_url) return item.drive_folder_fotos_url;
+        } else if (fromSettings.custom_items && typeof fromSettings.custom_items === 'object') {
+            if (fromSettings.custom_items.url) return fromSettings.custom_items.url;
+            if (fromSettings.custom_items.drive_folder_fotos_url) return fromSettings.custom_items.drive_folder_fotos_url;
+        }
+        if (fromSettings.drive_folder_fotos_url) return fromSettings.drive_folder_fotos_url;
+        if (fromSettings.value) return fromSettings.value;
+    }
+
+    // 2. Busca no localStorage
+    const local = localStorage.getItem('drive_folder_fotos_url');
+    if (local && local.trim()) return local.trim();
+
+    // 3. Fallback oficial do PISF Ramal do Agreste
+    return defaultUrl;
 }
 
 function abrirPastaRaizFotosDrive(e) {
-    if (e && e.preventDefault) e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
     const url = getDriveFolderFotosUrl();
-    window.open(url, '_blank', 'noopener,noreferrer');
+    const linkSeguro = document.createElement('a');
+    linkSeguro.href = url;
+    linkSeguro.target = '_blank';
+    linkSeguro.rel = 'noopener noreferrer';
+    document.body.appendChild(linkSeguro);
+    linkSeguro.click();
+    document.body.removeChild(linkSeguro);
 }
+
+function tratarCliqueCardFotosDrive(e) {
+    if (e) {
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+    }
+    const urlFotos = getDriveFolderFotosUrl();
+    const linkSeguro = document.createElement('a');
+    linkSeguro.href = urlFotos;
+    linkSeguro.target = '_blank';
+    linkSeguro.rel = 'noopener noreferrer';
+    document.body.appendChild(linkSeguro);
+    linkSeguro.click();
+    document.body.removeChild(linkSeguro);
+}
+
+function abrirConfiguracaoFotosDrive(e) {
+    if (e) {
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+    }
+    abrirModalConfigGoogleDrive();
+}
+
+function atualizarCardFotosDrive() {
+    const card = document.getElementById('cardAcervoFotosDrive');
+    const url = getDriveFolderFotosUrl();
+    if (card) {
+        card.setAttribute('data-url', url);
+        card.setAttribute('title', `Abrir pasta raiz de Fotos e Evidências no Google Drive (${url})`);
+    }
+    const linkModal = document.getElementById('cfgDriveLinkPastaFotos');
+    if (linkModal) linkModal.href = url;
+    const inpFolderFotos = document.getElementById('cfgDriveFolderFotosUrl');
+    if (inpFolderFotos && !inpFolderFotos.value) inpFolderFotos.value = url;
+}
+
+async function salvarConfiguracaoFotosDrive(folderFotosUrl) {
+    const url = (folderFotosUrl || '').trim() || 'https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
+    localStorage.setItem('drive_folder_fotos_url', url);
+
+    const payload = {
+        id: 'drive_folder_fotos_url',
+        categoria: 'acervo_drive',
+        custom_items: [{ key: 'drive_folder_fotos_url', url: url }],
+        disabled_items: [],
+        updated_at: new Date().toISOString()
+    };
+
+    try {
+        await supabaseUpsert('checklist_item_settings', [payload]);
+        const idx = (allChecklistItemSettings || []).findIndex(s => s.id === 'drive_folder_fotos_url');
+        if (idx >= 0) {
+            allChecklistItemSettings[idx] = { ...allChecklistItemSettings[idx], ...payload };
+        } else {
+            allChecklistItemSettings.push(payload);
+        }
+    } catch (err) {
+        console.warn('Erro ao salvar drive_folder_fotos_url no Supabase:', err);
+    }
+
+    atualizarCardFotosDrive();
+}
+
+window.getDriveFolderFotosUrl = getDriveFolderFotosUrl;
+window.abrirPastaRaizFotosDrive = abrirPastaRaizFotosDrive;
+window.tratarCliqueCardFotosDrive = tratarCliqueCardFotosDrive;
+window.abrirConfiguracaoFotosDrive = abrirConfiguracaoFotosDrive;
+window.atualizarCardFotosDrive = atualizarCardFotosDrive;
+window.salvarConfiguracaoFotosDrive = salvarConfiguracaoFotosDrive;
 
 function extrairIdPastaDrive(urlOuId) {
     if (!urlOuId) return '';

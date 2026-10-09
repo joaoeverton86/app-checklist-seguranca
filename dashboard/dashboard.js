@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const VERSAO_PAINEL = 'v192';
+const VERSAO_PAINEL = 'v193';
 const DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
@@ -4509,6 +4509,16 @@ function getTreinamentosDateRange() {
     return { inicio, fim };
 }
 
+let renderizandoTreinamentos = false;
+let debounceTreinamentosTimer = null;
+
+function agendarRenderTreinamentosPanel() {
+    if (debounceTreinamentosTimer) clearTimeout(debounceTreinamentosTimer);
+    debounceTreinamentosTimer = setTimeout(() => {
+        renderTreinamentosPanel();
+    }, 30);
+}
+
 function setTreinamentosFilter(filter) {
     treinamentosFilter = filter;
     treinamentosFiltroAno = '';
@@ -4521,19 +4531,19 @@ function setTreinamentosFilter(filter) {
     const map = { mes: 'btnFiltroTreinMes', trimestre: 'btnFiltroTreinTrimestre', ano: 'btnFiltroTreinAno', todos: 'btnFiltroTreinTodos' };
     document.getElementById(map[filter])?.classList.add('active');
     treinColabPeriodoSelecionados = new Set();
-    renderTreinamentosPanel();
+    agendarRenderTreinamentosPanel();
 }
 
 function onTreinamentosFiltroAnoMesChange() {
-    treinamentosFiltroAno = document.getElementById('treinFiltroAno').value;
-    treinamentosFiltroMes = document.getElementById('treinFiltroMes').value;
+    treinamentosFiltroAno = document.getElementById('treinFiltroAno')?.value || '';
+    treinamentosFiltroMes = document.getElementById('treinFiltroMes')?.value || '';
     if (treinamentosFiltroAno) {
         ['btnFiltroTreinMes', 'btnFiltroTreinTrimestre', 'btnFiltroTreinAno', 'btnFiltroTreinTodos'].forEach(id => {
             document.getElementById(id)?.classList.remove('active');
         });
     }
     treinColabPeriodoSelecionados = new Set();
-    renderTreinamentosPanel();
+    agendarRenderTreinamentosPanel();
 }
 
 async function loadTreinamentosData() {
@@ -5005,184 +5015,227 @@ function renderTreinHistLista() {
 }
 
 function renderTreinamentosPanel() {
-    popularFiltroAnoTreinamentos();
-    const { inicio, fim } = getTreinamentosDateRange();
-    const periodo = allTreinamentosRealizados.filter(r => {
-        if (!r.data_treinamento) return false;
-        const d = parseLocalDate(r.data_treinamento);
-        return d >= inicio && d <= fim;
-    });
+    if (renderizandoTreinamentos) return;
+    renderizandoTreinamentos = true;
+    try {
+        popularFiltroAnoTreinamentos();
+        const { inicio, fim } = getTreinamentosDateRange();
+        const iniMs = (inicio instanceof Date && !isNaN(inicio.getTime())) ? inicio.getTime() : 0;
+        const fimMs = (fim instanceof Date && !isNaN(fim.getTime())) ? fim.getTime() : Infinity;
 
-    document.getElementById('kpiTreinSessoes').textContent = periodo.length;
-    const totalHoras = periodo.reduce((sum, r) => sum + (parseFloat(r.carga_horaria) || 0), 0);
-    document.getElementById('kpiTreinHHT').textContent = totalHoras.toLocaleString('pt-BR');
-    // O card "HHT de DDS no Período" foi removido daqui (era duplicata do card
-    // "kpiDdsHHT" que já existe na Visão Geral do módulo DDSMA) - mas o cálculo de
-    // ddsHorasPeriodo continua aqui porque o card "HHT Total" (logo abaixo) precisa dele
-    // pra somar treinamento formal + DDS. "HHT Total" é o número que corresponde ao "HHT
-    // GERAL" que a planilha oficial (QUADRO_DE_TREINAMENTOS) já soma na mão hoje.
-    const ddsHorasPeriodo = ddsHorasNoPeriodo(inicio, fim);
-    const kpiTotalEl = document.getElementById('kpiTreinHHTTotal');
-    if (kpiTotalEl) kpiTotalEl.textContent = (totalHoras + ddsHorasPeriodo).toLocaleString('pt-BR');
-    document.getElementById('kpiTreinColaboradores').textContent = new Set(periodo.map(r => r.matricula)).size;
-
-    treinColaboradoresPeriodoAtual = periodo;
-    document.getElementById('buscaTreinColabPeriodo').value = '';
-    renderListaTreinColaboradoresPeriodo();
-    renderListaTreinAderencia(periodo);
-    renderCumprimentoCronogramaEPresenca(inicio, fim);
-
-    // NRs vencidas/vencendo - baseado no status atual (não no período filtrado acima,
-    // que é só pra sessões realizadas), só colaboradores ativos, só treinamentos que
-    // reciclam de verdade (meses_validade preenchido - já vem pronto na view
-    // treinamentos_status, direto de treinamentos_realizados). Antes filtrava pelo NOME
-    // conter "NR" + número, o que deixava de fora ~9 treinamentos com validade real mas
-    // sem "NR" no nome (ex: "PTE E APR", "COMUNICAÇÃO DE ACIDENTE") - o alerta principal
-    // do módulo ficava cego pra quase metade do que devia vigiar.
-    //
-    // "Ativo" aqui usa o cadastro de efetivo (colaboradores_efetivo.dt_demissao) como
-    // fonte de verdade, não o status_colaborador de treinamentos_status - esse último é
-    // só uma foto do status no momento em que a sessão de treinamento foi lançada, então
-    // fica desatualizado assim que alguém é demitido depois do último treinamento
-    // registrado (achado real: colaborador demitido em 2026-05 continuava aparecendo
-    // como "ATIVO" nessa lista porque o treinamento dele foi lançado antes da demissão).
-    // Cai de volta pro status_colaborador só se a matrícula não existir no efetivo.
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const efetivoPorMatricula = new Map(allEfetivo.map(e => [e.id, e]));
-    const nrAlerts = [];
-    const matriculasComNRVencida = new Set();
-    allTreinamentosStatus.forEach(s => {
-        const efetivo = efetivoPorMatricula.get(s.matricula);
-        const estaAtivo = efetivo ? (!!efetivo.dt_admissao && !efetivo.dt_demissao) : (s.status_colaborador === 'ATIVO');
-        if (!estaAtivo) return;
-        if (!s.meses_validade) return;
-        if (!s.data_proxima_reciclagem) return;
-        const deadline = parseLocalDate(s.data_proxima_reciclagem);
-        deadline.setHours(0, 0, 0, 0);
-        const diffDays = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        if (diffDays <= 30) {
-            nrAlerts.push({ s, diffDays });
-            if (diffDays < 0) matriculasComNRVencida.add(s.matricula);
+        // Otimização O(N): filtra periodo, acumula horas e mapeia colaboradores em uma única passagem
+        const periodo = [];
+        let totalHoras = 0;
+        const matriculasDistintas = new Set();
+        for (let i = 0; i < allTreinamentosRealizados.length; i++) {
+            const r = allTreinamentosRealizados[i];
+            if (!r || !r.data_treinamento) continue;
+            const dMs = r._dataMs || (r._dataMs = parseLocalDate(r.data_treinamento).getTime());
+            if (isNaN(dMs) || dMs < iniMs || dMs > fimMs) continue;
+            periodo.push(r);
+            const ch = parseFloat(r.carga_horaria);
+            if (!isNaN(ch) && ch > 0) totalHoras += ch;
+            if (r.matricula) matriculasDistintas.add(r.matricula);
         }
-    });
-    document.getElementById('kpiTreinVencidos').textContent = matriculasComNRVencida.size;
 
-    nrAlerts.sort((a, b) => a.diffDays - b.diffDays);
-    const listEl = document.getElementById('listTreinVencendo');
-    if (nrAlerts.length === 0) {
-        listEl.innerHTML = '<div class="db-list-empty">✅ Nenhuma NR vencida ou vencendo nos próximos 30 dias</div>';
-    } else {
-        // Agrupado por treinamento (treinamento_cod) em vez de lista plana - dá pra
-        // programar a sessão de renovação já com todo mundo daquela NR de uma vez
-        // ("Programar Grupo"), além do botão individual por colaborador, direto no
-        // alerta - evita ter que procurar o código no catálogo e montar a equipe na mão
-        // toda vez que uma NR vence. Mantém o mesmo recorte de urgência de antes (top 30
-        // mais urgentes no total), só agrupados por tema em vez de em lista única.
-        const top = nrAlerts.slice(0, 30);
-        const grupos = new Map(); // treinamento_cod -> { nome, itens: [{s, diffDays}] }
-        top.forEach(item => {
-            const cod = item.s.treinamento_cod || '';
-            if (!grupos.has(cod)) grupos.set(cod, { nome: item.s.treinamento_nome || cod, itens: [] });
-            grupos.get(cod).itens.push(item);
-        });
-        const gruposOrdenados = Array.from(grupos.entries())
-            .sort((a, b) => Math.min(...a[1].itens.map(i => i.diffDays)) - Math.min(...b[1].itens.map(i => i.diffDays)));
+        const kpiSessoesEl = document.getElementById('kpiTreinSessoes');
+        if (kpiSessoesEl) kpiSessoesEl.textContent = periodo.length.toLocaleString('pt-BR');
 
-        listEl.innerHTML = gruposOrdenados.map(([cod, grupo]) => {
-            const matriculasGrupo = JSON.stringify(grupo.itens.map(i => i.s.matricula)).replace(/"/g, '&quot;');
-            const itensHtml = grupo.itens.map(({ s, diffDays }) => {
-                const cls = diffDays < 0 ? 'db-item-danger' : 'db-item-warning';
-                const msg = diffDays < 0 ? `Vencida há ${Math.abs(diffDays)} dia(s)` : (diffDays === 0 ? 'Vence hoje' : `Vence em ${diffDays} dia(s)`);
-                const matriculaJson = JSON.stringify([s.matricula]).replace(/"/g, '&quot;');
-                return `<div class="db-list-item ${cls}" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    <div style="flex:1; min-width:160px;">
-                        <div class="db-list-item-title">${escapeHTML(s.nome || s.matricula)}</div>
-                        <div class="db-list-item-sub">${msg}</div>
-                    </div>
-                    <button class="db-clear-btn" style="padding:4px 9px; font-size:11px;" title="Programar sessão só pra este colaborador" onclick="programarRenovacaoNR('${escapeHTML(cod)}', ${matriculaJson})">📋 Programar</button>
-                </div>`;
-            }).join('');
-            return `<div style="margin-bottom:10px; border:1px solid var(--border); border-radius:8px; padding:8px;">
-                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-                    <div style="font-weight:600; font-size:12.5px;">${escapeHTML(grupo.nome)} <span style="font-weight:400; color:var(--text-light);">(${grupo.itens.length} colaborador${grupo.itens.length > 1 ? 'es' : ''})</span></div>
-                    <button class="db-apply-btn" style="padding:5px 10px; font-size:11.5px;" title="Programar uma sessão só com todo mundo que precisa desta NR agora" onclick="programarRenovacaoNR('${escapeHTML(cod)}', ${matriculasGrupo})">📋 Programar Grupo</button>
-                </div>
-                ${itensHtml}
-            </div>`;
-        }).join('');
-    }
+        const kpiHhtEl = document.getElementById('kpiTreinHHT');
+        if (kpiHhtEl) kpiHhtEl.textContent = Math.round(totalHoras).toLocaleString('pt-BR');
 
-    if (typeof Chart === 'undefined') return;
-    if (chartInstances.treinHHTMes) chartInstances.treinHHTMes.destroy();
-    if (chartInstances.treinSetor) chartInstances.treinSetor.destroy();
-    if (chartInstances.treinTopTemas) chartInstances.treinTopTemas.destroy();
+        // Cálculo de HHT de DDS no período
+        const ddsHorasPeriodo = ddsHorasNoPeriodo(inicio, fim);
+        const kpiTotalEl = document.getElementById('kpiTreinHHTTotal');
+        if (kpiTotalEl) kpiTotalEl.textContent = Math.round(totalHoras + ddsHorasPeriodo).toLocaleString('pt-BR');
 
-    // HHT por mês - histórico completo, da primeira sessão registrada até hoje (não só
-    // os últimos 12 meses: com "Todos" selecionado o usuário espera ver 2024 também).
-    const meses = [], horasPorMes = [];
-    const now = new Date();
-    const datasTreino = allTreinamentosRealizados.filter(r => r.data_treinamento).map(r => parseLocalDate(r.data_treinamento));
-    const primeiraDataTreino = datasTreino.length > 0 ? new Date(Math.min(...datasTreino.map(d => d.getTime()))) : now;
-    let cursorMes = new Date(primeiraDataTreino.getFullYear(), primeiraDataTreino.getMonth(), 1);
-    const limiteMes = new Date(now.getFullYear(), now.getMonth(), 1);
-    while (cursorMes <= limiteMes) {
-        const ano = cursorMes.getFullYear(), mes = cursorMes.getMonth();
-        meses.push(cursorMes.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
-        const ini = new Date(ano, mes, 1);
-        const fimMes = new Date(ano, mes + 1, 0);
-        const sublist = allTreinamentosRealizados.filter(r => {
-            if (!r.data_treinamento) return false;
-            const dt = parseLocalDate(r.data_treinamento);
-            return dt >= ini && dt <= fimMes;
-        });
-        horasPorMes.push(sublist.reduce((sum, r) => sum + (parseFloat(r.carga_horaria) || 0), 0));
-        cursorMes = new Date(ano, mes + 1, 1);
-    }
-    // "Histórico completo" de propósito (ver comentário acima) - cresce um mês a cada mês,
-    // sempre dentro da mesma largura fixa do card. Sem largura própria por mês, o autoSkip
-    // padrão do Chart.js decide sozinho quais rótulos cabem numa faixa estreita, e às vezes
-    // derruba justo o mês atual (achado real: "ago. de 26" sumia do eixo com ~25 meses de
-    // histórico). Reserva ~56px por mês (dá pro rótulo "mmm. de aa" não sobrepor) e deixa o
-    // contêiner rolar - nunca mais fica espremido, só mais largo com o tempo.
-    const chartHHTInner = document.getElementById('chartTreinHHTMesInner');
-    const chartHHTWrap = chartHHTInner.parentElement;
-    chartHHTInner.style.width = Math.max(chartHHTWrap.clientWidth, meses.length * 56) + 'px';
-    chartInstances.treinHHTMes = new Chart(document.getElementById('chartTreinHHTMes'), {
-        type: 'bar',
-        data: { labels: meses, datasets: [{ label: 'HHT', data: horasPorMes, backgroundColor: '#4f46e5', borderRadius: 6 }] },
-        options: {
-            responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true }, x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 45 } } }
+        const kpiColabEl = document.getElementById('kpiTreinColaboradores');
+        if (kpiColabEl) kpiColabEl.textContent = matriculasDistintas.size.toLocaleString('pt-BR');
+
+        treinColaboradoresPeriodoAtual = periodo;
+        const buscaEl = document.getElementById('buscaTreinColabPeriodo');
+        if (buscaEl) buscaEl.value = '';
+
+        renderListaTreinColaboradoresPeriodo();
+        renderListaTreinAderencia(periodo);
+        renderCumprimentoCronogramaEPresenca(inicio, fim);
+
+        // NRs vencidas/vencendo
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayMs = today.getTime();
+        const efetivoPorMatricula = new Map(allEfetivo.map(e => [e.id, e]));
+        const nrAlerts = [];
+        const matriculasComNRVencida = new Set();
+        for (let i = 0; i < allTreinamentosStatus.length; i++) {
+            const s = allTreinamentosStatus[i];
+            if (!s || !s.meses_validade || !s.data_proxima_reciclagem) continue;
+            const efetivo = efetivoPorMatricula.get(s.matricula);
+            const estaAtivo = efetivo ? (!!efetivo.dt_admissao && !efetivo.dt_demissao) : (s.status_colaborador === 'ATIVO');
+            if (!estaAtivo) continue;
+
+            const recMs = s._recMs || (s._recMs = parseLocalDate(s.data_proxima_reciclagem).getTime());
+            if (isNaN(recMs)) continue;
+            const diffDays = Math.ceil((recMs - todayMs) / (1000 * 60 * 60 * 24));
+            if (diffDays <= 30) {
+                nrAlerts.push({ s, diffDays });
+                if (diffDays < 0 && s.matricula) matriculasComNRVencida.add(s.matricula);
+            }
         }
-    });
-    // Abre já rolado pro mês mais recente - é o que o usuário mais quer ver de cara; o
-    // histórico mais antigo (2024 em diante) fica a um scroll de distância pra quem quiser.
-    chartHHTWrap.scrollLeft = 999999;
 
-    // HHT por setor no período filtrado
-    const setorCounts = {};
-    periodo.forEach(r => { const s = r.setor || 'Sem setor'; setorCounts[s] = (setorCounts[s] || 0) + (parseFloat(r.carga_horaria) || 0); });
-    const setorSorted = Object.entries(setorCounts).sort((a, b) => b[1] - a[1]);
-    const treinSetorLabels = setorSorted.map(s => wrapChartLabel(s[0]));
-    ajustarAlturaBarrasHorizontais('chartTreinSetor', treinSetorLabels);
-    chartInstances.treinSetor = new Chart(document.getElementById('chartTreinSetor'), {
-        type: 'bar',
-        data: { labels: treinSetorLabels, datasets: [{ label: 'HHT', data: setorSorted.map(s => s[1]), backgroundColor: '#818cf8', borderRadius: 6 }] },
-        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true }, y: { ticks: { autoSkip: false } } } }
-    });
+        const kpiVencidosEl = document.getElementById('kpiTreinVencidos');
+        if (kpiVencidosEl) kpiVencidosEl.textContent = matriculasComNRVencida.size;
 
-    // Top 10 temas mais realizados no período filtrado
-    const temaCounts = {};
-    periodo.forEach(r => { const t = r.treinamento_nome || 'Desconhecido'; temaCounts[t] = (temaCounts[t] || 0) + 1; });
-    const temaSorted = Object.entries(temaCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-    const temaLabels = temaSorted.map(t => wrapChartLabel(t[0]));
-    ajustarAlturaBarrasHorizontais('chartTreinTopTemas', temaLabels);
-    chartInstances.treinTopTemas = new Chart(document.getElementById('chartTreinTopTemas'), {
-        type: 'bar',
-        data: { labels: temaLabels, datasets: [{ label: 'Sessões', data: temaSorted.map(t => t[1]), backgroundColor: '#10b981', borderRadius: 6 }] },
-        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
-    });
+        nrAlerts.sort((a, b) => a.diffDays - b.diffDays);
+        const listEl = document.getElementById('listTreinVencendo');
+        if (listEl) {
+            if (nrAlerts.length === 0) {
+                listEl.innerHTML = '<div class="db-list-empty">✅ Nenhuma NR vencida ou vencendo nos próximos 30 dias</div>';
+            } else {
+                const top = nrAlerts.slice(0, 30);
+                const grupos = new Map();
+                top.forEach(item => {
+                    const cod = item.s.treinamento_cod || '';
+                    if (!grupos.has(cod)) grupos.set(cod, { nome: item.s.treinamento_nome || cod, itens: [] });
+                    grupos.get(cod).itens.push(item);
+                });
+                const gruposOrdenados = Array.from(grupos.entries())
+                    .sort((a, b) => Math.min(...a[1].itens.map(i => i.diffDays)) - Math.min(...b[1].itens.map(i => i.diffDays)));
+
+                listEl.innerHTML = gruposOrdenados.map(([cod, grupo]) => {
+                    const matriculasGrupo = JSON.stringify(grupo.itens.map(i => i.s.matricula)).replace(/"/g, '&quot;');
+                    const itensHtml = grupo.itens.map(({ s, diffDays }) => {
+                        const cls = diffDays < 0 ? 'db-item-danger' : 'db-item-warning';
+                        const msg = diffDays < 0 ? `Vencida há ${Math.abs(diffDays)} dia(s)` : (diffDays === 0 ? 'Vence hoje' : `Vence em ${diffDays} dia(s)`);
+                        const matriculaJson = JSON.stringify([s.matricula]).replace(/"/g, '&quot;');
+                        return `<div class="db-list-item ${cls}" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <div style="flex:1; min-width:160px;">
+                                <div class="db-list-item-title">${escapeHTML(s.nome || s.matricula)}</div>
+                                <div class="db-list-item-sub">${msg}</div>
+                            </div>
+                            <button class="db-clear-btn" style="padding:4px 9px; font-size:11px;" title="Programar sessão só pra este colaborador" onclick="programarRenovacaoNR('${escapeHTML(cod)}', ${matriculaJson})">📋 Programar</button>
+                        </div>`;
+                    }).join('');
+                    return `<div style="margin-bottom:10px; border:1px solid var(--border); border-radius:8px; padding:8px;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                            <div style="font-weight:600; font-size:12.5px;">${escapeHTML(grupo.nome)} <span style="font-weight:400; color:var(--text-light);">(${grupo.itens.length} colaborador${grupo.itens.length > 1 ? 'es' : ''})</span></div>
+                            <button class="db-apply-btn" style="padding:5px 10px; font-size:11.5px;" title="Programar uma sessão só com todo mundo que precisa desta NR agora" onclick="programarRenovacaoNR('${escapeHTML(cod)}', ${matriculasGrupo})">📋 Programar Grupo</button>
+                        </div>
+                        ${itensHtml}
+                    </div>`;
+                }).join('');
+            }
+        }
+
+        if (typeof Chart === 'undefined') return;
+        if (chartInstances.treinHHTMes) chartInstances.treinHHTMes.destroy();
+        if (chartInstances.treinSetor) chartInstances.treinSetor.destroy();
+        if (chartInstances.treinTopTemas) chartInstances.treinTopTemas.destroy();
+
+        // HHT por mês - Pré-agrega carga horária por "YYYY-MM" em UMA ÚNICA PASSAGEM O(N)
+        // eliminando loop quadrático O(N*M) e prevenindo congelamento da thread
+        const horasPorMesMap = new Map();
+        for (let i = 0; i < allTreinamentosRealizados.length; i++) {
+            const r = allTreinamentosRealizados[i];
+            if (!r || !r.data_treinamento) continue;
+            const dStr = String(r.data_treinamento).trim();
+            if (dStr.length < 7) continue;
+            const anoMes = dStr.substring(0, 7);
+            const ch = parseFloat(r.carga_horaria);
+            if (!isNaN(ch) && ch > 0) {
+                horasPorMesMap.set(anoMes, (horasPorMesMap.get(anoMes) || 0) + ch);
+            }
+        }
+
+        const now = new Date();
+        const anoAtual = now.getFullYear();
+        const mesAtual = now.getMonth();
+        const limiteMes = new Date(anoAtual, mesAtual, 1);
+
+        // Limite retroativo seguro: busca primeiro ano/mês real (mínimo 2024, máx 36 meses atrás)
+        let menorAnoMes = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}`;
+        for (const k of horasPorMesMap.keys()) {
+            if (/^\d{4}-\d{2}$/.test(k) && k >= '2024-01' && k < menorAnoMes) {
+                menorAnoMes = k;
+            }
+        }
+        const partesMenor = menorAnoMes.split('-');
+        let cursorMes = new Date(parseInt(partesMenor[0], 10), parseInt(partesMenor[1], 10) - 1, 1);
+        const pisoMinimo = new Date(anoAtual - 3, mesAtual, 1);
+        if (cursorMes < pisoMinimo || isNaN(cursorMes.getTime())) {
+            cursorMes = pisoMinimo;
+        }
+
+        const meses = [], horasPorMes = [];
+        let safetyCounter = 0;
+        while (cursorMes <= limiteMes && safetyCounter < 48) {
+            safetyCounter++;
+            const a = cursorMes.getFullYear();
+            const m = cursorMes.getMonth();
+            const chave = `${a}-${String(m + 1).padStart(2, '0')}`;
+            meses.push(cursorMes.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
+            horasPorMes.push(Math.round((horasPorMesMap.get(chave) || 0) * 10) / 10);
+            cursorMes = new Date(a, m + 1, 1);
+        }
+
+        const chartHHTInner = document.getElementById('chartTreinHHTMesInner');
+        const chartHHTCanvas = document.getElementById('chartTreinHHTMes');
+        if (chartHHTInner && chartHHTCanvas) {
+            const chartHHTWrap = chartHHTInner.parentElement;
+            if (chartHHTWrap) {
+                chartHHTInner.style.width = Math.max(chartHHTWrap.clientWidth || 300, meses.length * 56) + 'px';
+            }
+            chartInstances.treinHHTMes = new Chart(chartHHTCanvas, {
+                type: 'bar',
+                data: { labels: meses, datasets: [{ label: 'HHT', data: horasPorMes, backgroundColor: '#4f46e5', borderRadius: 6 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true }, x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 45 } } }
+                }
+            });
+            if (chartHHTWrap) chartHHTWrap.scrollLeft = 999999;
+        }
+
+        // HHT por setor no período filtrado
+        const chartSetorCanvas = document.getElementById('chartTreinSetor');
+        if (chartSetorCanvas) {
+            const setorCounts = {};
+            for (let i = 0; i < periodo.length; i++) {
+                const r = periodo[i];
+                const s = r.setor || 'Sem setor';
+                setorCounts[s] = (setorCounts[s] || 0) + (parseFloat(r.carga_horaria) || 0);
+            }
+            const setorSorted = Object.entries(setorCounts).sort((a, b) => b[1] - a[1]);
+            const treinSetorLabels = setorSorted.map(s => wrapChartLabel(s[0]));
+            ajustarAlturaBarrasHorizontais('chartTreinSetor', treinSetorLabels);
+            chartInstances.treinSetor = new Chart(chartSetorCanvas, {
+                type: 'bar',
+                data: { labels: treinSetorLabels, datasets: [{ label: 'HHT', data: setorSorted.map(s => Math.round(s[1] * 10) / 10), backgroundColor: '#818cf8', borderRadius: 6 }] },
+                options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true }, y: { ticks: { autoSkip: false } } } }
+            });
+        }
+
+        // Top 10 temas mais realizados no período filtrado
+        const chartTemasCanvas = document.getElementById('chartTreinTopTemas');
+        if (chartTemasCanvas) {
+            const temaCounts = {};
+            for (let i = 0; i < periodo.length; i++) {
+                const r = periodo[i];
+                const t = r.treinamento_nome || 'Desconhecido';
+                temaCounts[t] = (temaCounts[t] || 0) + 1;
+            }
+            const temaSorted = Object.entries(temaCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+            const temaLabels = temaSorted.map(t => wrapChartLabel(t[0]));
+            ajustarAlturaBarrasHorizontais('chartTreinTopTemas', temaLabels);
+            chartInstances.treinTopTemas = new Chart(chartTemasCanvas, {
+                type: 'bar',
+                data: { labels: temaLabels, datasets: [{ label: 'Sessões', data: temaSorted.map(t => t[1]), backgroundColor: '#10b981', borderRadius: 6 }] },
+                options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { autoSkip: false } } } }
+            });
+        }
+    } finally {
+        renderizandoTreinamentos = false;
+    }
 }
 
 // Aderência por sessão = Nº de treinados na sessão ÷ Efetivo total ativo naquela data,
@@ -5344,7 +5397,9 @@ function renderListaTreinColaboradoresPeriodo() {
         el.innerHTML = '<div class="db-list-empty">Nenhum treinamento realizado nesse período.</div>';
         return;
     }
-    el.innerHTML = linhas.map(r => {
+    const LIMITE_DOM = 150;
+    const linhasExibidas = linhas.slice(0, LIMITE_DOM);
+    const itensHtml = linhasExibidas.map(r => {
         const dataFmt = r.data_treinamento ? parseLocalDate(r.data_treinamento).toLocaleDateString('pt-BR') : '—';
         const marcado = treinColabPeriodoSelecionados.has(r.id);
         return `<div class="db-list-item" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
@@ -5358,6 +5413,14 @@ function renderListaTreinColaboradoresPeriodo() {
             <button class="db-clear-btn" style="color: var(--danger); border-color: var(--danger); flex-shrink:0;" onclick="excluirTreinamentoRealizado('${escapeHTML(r.id)}')">🗑️ Excluir</button>
         </div>`;
     }).join('');
+
+    const avisoLimite = linhas.length > LIMITE_DOM
+        ? `<div style="padding:10px; text-align:center; color:var(--text-light); font-size:12px; background:rgba(0,0,0,0.02); border-radius:6px; margin-top:8px;">
+            ℹ️ Mostrando os primeiros ${LIMITE_DOM} de ${linhas.length} registros para manter o painel ágil. Use a busca acima para filtrar.
+           </div>`
+        : '';
+
+    el.innerHTML = itensHtml + avisoLimite;
 }
 
 function toggleSelecaoTreinColabPeriodo(id, checked) {
@@ -8676,20 +8739,65 @@ function renderDdsPanel() {
     if (chartInstances.ddsHHTMes) chartInstances.ddsHHTMes.destroy();
     if (chartInstances.hhtTotalMes) chartInstances.hhtTotalMes.destroy();
 
-    const meses = [], horasDdsPorMes = [], horasTreinPorMes = [];
+    const horasDdsPorMesMap = new Map();
+    for (let i = 0; i < allDdsRealizados.length; i++) {
+        const r = allDdsRealizados[i];
+        if (!r || !r.data_dds) continue;
+        const dStr = String(r.data_dds).trim();
+        if (dStr.length < 7) continue;
+        const anoMes = dStr.substring(0, 7);
+        const ch = parseFloat(r.carga_horaria);
+        if (!isNaN(ch) && ch > 0) horasDdsPorMesMap.set(anoMes, (horasDdsPorMesMap.get(anoMes) || 0) + ch);
+    }
+    for (let i = 0; i < allDdsHistoricoAgregado.length; i++) {
+        const h = allDdsHistoricoAgregado[i];
+        if (!h || !h.data_dds) continue;
+        const dStr = String(h.data_dds).trim();
+        if (dStr.length < 7) continue;
+        const anoMes = dStr.substring(0, 7);
+        const ch = parseFloat(h.carga_horaria);
+        if (!isNaN(ch) && ch > 0) horasDdsPorMesMap.set(anoMes, (horasDdsPorMesMap.get(anoMes) || 0) + ch);
+    }
+
+    const horasTreinPorMesMap = new Map();
+    for (let i = 0; i < allTreinamentosRealizados.length; i++) {
+        const r = allTreinamentosRealizados[i];
+        if (!r || !r.data_treinamento) continue;
+        const dStr = String(r.data_treinamento).trim();
+        if (dStr.length < 7) continue;
+        const anoMes = dStr.substring(0, 7);
+        const ch = parseFloat(r.carga_horaria);
+        if (!isNaN(ch) && ch > 0) horasTreinPorMesMap.set(anoMes, (horasTreinPorMesMap.get(anoMes) || 0) + ch);
+    }
+
     const now = new Date();
-    const datasTodas = allTreinamentosRealizados.filter(r => r.data_treinamento).map(r => parseLocalDate(r.data_treinamento))
-        .concat(allDdsRealizados.filter(r => r.data_dds).map(r => parseLocalDate(r.data_dds)))
-        .concat(allDdsHistoricoAgregado.filter(h => h.data_dds).map(h => parseLocalDate(h.data_dds)));
-    const primeiraData = datasTodas.length > 0 ? new Date(Math.min(...datasTodas.map(d => d.getTime()))) : now;
-    let cursorMes = new Date(primeiraData.getFullYear(), primeiraData.getMonth(), 1);
-    const limiteMes = new Date(now.getFullYear(), now.getMonth(), 1);
-    while (cursorMes <= limiteMes) {
+    const anoAtual = now.getFullYear();
+    const mesAtual = now.getMonth();
+    const limiteMes = new Date(anoAtual, mesAtual, 1);
+
+    let menorAnoMes = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}`;
+    for (const k of horasTreinPorMesMap.keys()) {
+        if (/^\d{4}-\d{2}$/.test(k) && k >= '2024-01' && k < menorAnoMes) menorAnoMes = k;
+    }
+    for (const k of horasDdsPorMesMap.keys()) {
+        if (/^\d{4}-\d{2}$/.test(k) && k >= '2024-01' && k < menorAnoMes) menorAnoMes = k;
+    }
+    const partesMenor = menorAnoMes.split('-');
+    let cursorMes = new Date(parseInt(partesMenor[0], 10), parseInt(partesMenor[1], 10) - 1, 1);
+    const pisoMinimo = new Date(anoAtual - 3, mesAtual, 1);
+    if (cursorMes < pisoMinimo || isNaN(cursorMes.getTime())) {
+        cursorMes = pisoMinimo;
+    }
+
+    const meses = [], horasDdsPorMes = [], horasTreinPorMes = [];
+    let safetyCounter = 0;
+    while (cursorMes <= limiteMes && safetyCounter < 48) {
+        safetyCounter++;
         const ano = cursorMes.getFullYear(), mes = cursorMes.getMonth();
+        const chaveAnoMes = `${ano}-${String(mes + 1).padStart(2, '0')}`;
         meses.push(cursorMes.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
-        horasDdsPorMes.push(ddsHorasDoMes(ano, mes));
-        const iniM = new Date(ano, mes, 1), fimM = new Date(ano, mes + 1, 0);
-        horasTreinPorMes.push(allTreinamentosRealizados.filter(r => r.data_treinamento && parseLocalDate(r.data_treinamento) >= iniM && parseLocalDate(r.data_treinamento) <= fimM).reduce((s, r) => s + (parseFloat(r.carga_horaria) || 0), 0));
+        horasDdsPorMes.push(Math.round((horasDdsPorMesMap.get(chaveAnoMes) || 0) * 10) / 10);
+        horasTreinPorMes.push(Math.round((horasTreinPorMesMap.get(chaveAnoMes) || 0) * 10) / 10);
         cursorMes = new Date(ano, mes + 1, 1);
     }
 
@@ -8941,17 +9049,28 @@ function restaurarConfiguracoesDdsPadrao() {
 
 // Calcula as semanas de um determinado mês (de segunda-feira a domingo)
 // Respeita a regra parametrizada em Configurações (primeira_segunda, maioria_dias ou dia_primeiro)
-function obterSemanasDoMes(ano, mes, regraOverride = null) {
+// Blindado contra loops infinitos em caso de parâmetros inválidos ou datas corrompidas
+function obterSemanasDoMes(anoParam, mesParam, regraOverride = null) {
+    const hoje = new Date();
+    let ano = parseInt(anoParam, 10);
+    let mes = parseInt(mesParam, 10);
+    if (isNaN(ano)) ano = hoje.getFullYear();
+    if (isNaN(mes) || mes < 0 || mes > 11) mes = hoje.getMonth();
+
     const regra = regraOverride || ddsConfiguracoes.regraSemana || 'primeira_segunda';
     const semanas = [];
 
     if (regra === 'primeira_segunda') {
         // Opção 1: Primeira segunda-feira dentro do mês (Ex: Outubro começa em 05/10/2026)
         let curr = new Date(ano, mes, 1);
-        while (curr.getDay() !== 1) { // 1 = Segunda-feira
+        let safetyDia = 0;
+        while (curr.getDay() !== 1 && safetyDia < 8) { // 1 = Segunda-feira
+            safetyDia++;
             curr.setDate(curr.getDate() + 1);
         }
-        while (curr.getMonth() === mes) {
+        let safetySemana = 0;
+        while (curr.getMonth() === mes && safetySemana < 6) {
+            safetySemana++;
             const segIso = toISODateLocal(curr);
             const dom = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate() + 6);
             semanas.push({
@@ -8970,7 +9089,9 @@ function obterSemanasDoMes(ano, mes, regraOverride = null) {
         if (quintaPrimeira.getMonth() !== mes) {
             curr.setDate(curr.getDate() + 7);
         }
-        while (true) {
+        let safetySemana = 0;
+        while (safetySemana < 6) {
+            safetySemana++;
             const quinta = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate() + 3);
             if (quinta.getMonth() !== mes) break;
             const segIso = toISODateLocal(curr);
@@ -8988,7 +9109,9 @@ function obterSemanasDoMes(ano, mes, regraOverride = null) {
         // Opção 3: Semana contendo o dia 1º do mês
         let curr = segundaDaSemana(new Date(ano, mes, 1));
         const segProxMes = segundaDaSemana(new Date(ano, mes + 1, 1));
-        while (curr < segProxMes) {
+        let safetySemana = 0;
+        while (curr < segProxMes && safetySemana < 6) {
+            safetySemana++;
             const segIso = toISODateLocal(curr);
             const dom = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate() + 6);
             semanas.push({
@@ -15031,13 +15154,32 @@ function construirFolhaTermoTrocaFuncao(colab, atual, novo, sugeridos, examesObs
     </div>`;
 }
 
+const _headcountMemoMap = new Map();
+
 function headcountAsOf(dateEnd) {
-    return allEfetivo.filter(e => {
-        if (!e.dt_admissao) return false;
-        if (parseLocalDate(e.dt_admissao) > dateEnd) return false;
-        if (!e.dt_demissao) return true;
-        return parseLocalDate(e.dt_demissao) > dateEnd;
-    }).length;
+    if (!dateEnd || !(dateEnd instanceof Date) || isNaN(dateEnd.getTime())) return 0;
+    const chave = dateEnd.toISOString().slice(0, 10);
+    if (_headcountMemoMap.has(chave)) {
+        return _headcountMemoMap.get(chave);
+    }
+    const endMs = dateEnd.getTime();
+    let count = 0;
+    for (let i = 0; i < allEfetivo.length; i++) {
+        const e = allEfetivo[i];
+        if (!e || !e.dt_admissao) continue;
+        const admMs = e._admMs || (e._admMs = parseLocalDate(e.dt_admissao).getTime());
+        if (isNaN(admMs) || admMs > endMs) continue;
+        if (!e.dt_demissao) {
+            count++;
+            continue;
+        }
+        const demMs = e._demMs || (e._demMs = parseLocalDate(e.dt_demissao).getTime());
+        if (isNaN(demMs) || demMs > endMs) {
+            count++;
+        }
+    }
+    _headcountMemoMap.set(chave, count);
+    return count;
 }
 
 // ================================================================

@@ -18,9 +18,9 @@
 //    - Executar como (Execute as): "Eu" (seu e-mail proprietário do Drive)
 //    - Quem pode acessar (Who has access): "Qualquer pessoa" (Anyone)
 // 7. Clique em "Implantar" (Deploy), autorize as permissões da conta Google e copie a URL do Web App:
-//    Exemplo: https://script.google.com/macros/s/AKfycb.../exec
-// 8. No Painel Gerencial de SST, abra o menu de Configurações do Google Drive (ícone da engrenagem)
-//    e cole a URL no campo "URL do Web App Apps Script (Automação Recursiva de Pastas)".
+//    URL OFICIAL IMPLANTADA:
+//    https://script.google.com/macros/s/AKfycbzdCzGE9Jm77RauUe8iuo1p8il193F7Pd7HeLLbut0zToD8zhHtv2RBSAY86bQZGLtA/exec
+// 8. No Painel Gerencial de SST, a URL acima já está configurada como padrão operacional no sistema.
 // =========================================================================================
 
 /**

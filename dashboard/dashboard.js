@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const VERSAO_PAINEL = 'v191';
+const VERSAO_PAINEL = 'v192';
 const DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
@@ -32079,19 +32079,25 @@ function montarEstruturaPastaFotos(tipoOuCategoria, dataStr, temaStr) {
     };
 }
 
+const DEFAULT_DRIVE_GAS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzdCzGE9Jm77RauUe8iuo1p8il193F7Pd7HeLLbut0zToD8zhHtv2RBSAY86bQZGLtA/exec';
+
 function getDriveGasWebhookUrl() {
     const fromSettings = (allChecklistItemSettings || []).find(s => 
+        s.id === 'drive_gas_webhook_url' ||
         s.id === 'drive_config' || 
         s.id === 'drive_settings' || 
         s.key === 'drive_gas_webhook_url' ||
         s.drive_gas_webhook_url
     );
-    return fromSettings?.drive_gas_webhook_url || 
+    let urlFromCustom = '';
+    if (fromSettings?.custom_items && Array.isArray(fromSettings.custom_items) && fromSettings.custom_items.length > 0) {
+        urlFromCustom = fromSettings.custom_items[0]?.url || fromSettings.custom_items[0]?.webhook_url || '';
+    }
+    return urlFromCustom ||
+           fromSettings?.drive_gas_webhook_url || 
            fromSettings?.value || 
            localStorage.getItem('drive_gas_webhook_url') || 
-           localStorage.getItem('checklist_drive_script_url') || 
-           localStorage.getItem('sync_script_url') || 
-           (typeof DEFAULT_CHECKLIST_DRIVE_SCRIPT_URL !== 'undefined' ? DEFAULT_CHECKLIST_DRIVE_SCRIPT_URL : '');
+           DEFAULT_DRIVE_GAS_WEBHOOK_URL;
 }
 
 const ID_DDSMA_LEGADO = '1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';

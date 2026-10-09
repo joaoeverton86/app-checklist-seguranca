@@ -16094,8 +16094,8 @@ function relSmsTabelaGenericaHtml(colunas, linhas, largura = '100%') {
 
 function gerarGraficoBarrasHHTSVG(dadosHistorico) {
     if (!dadosHistorico || !dadosHistorico.length) return '';
-    const w = 680, h = 145;
-    const paddingLeft = 50, paddingRight = 20, paddingTop = 30, paddingBottom = 26;
+    const w = 680, h = 250;
+    const paddingLeft = 50, paddingRight = 20, paddingTop = 70, paddingBottom = 32;
     const plotW = w - paddingLeft - paddingRight;
     const plotH = h - paddingTop - paddingBottom;
 
@@ -16114,7 +16114,7 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
         const yPos = paddingTop + plotH - (val / yMax) * plotH;
         gridLinesSvg += `
             <line x1="${paddingLeft}" y1="${yPos}" x2="${w - paddingRight}" y2="${yPos}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="${i === 0 ? 'none' : '3,3'}"/>
-            <text x="${paddingLeft - 6}" y="${yPos + 3}" text-anchor="end" font-size="8.5" fill="#64748b" font-family="Arial, sans-serif">${val.toLocaleString('pt-BR')}</text>
+            <text x="${paddingLeft - 8}" y="${yPos + 3.5}" text-anchor="end" font-size="8.5" fill="#64748b" font-family="Arial, sans-serif">${val.toLocaleString('pt-BR')}</text>
         `;
     }
 
@@ -16151,12 +16151,12 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
             `;
         }
 
-        const yTexto = Math.min(yDds - 4, paddingTop + plotH - 4);
+        const yTexto = Math.min(yDds - 6, paddingTop + plotH - 6);
         barsSvg += `
             <text x="${xPos + barWidth / 2}" y="${yTexto}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#1f3864" font-family="Arial, sans-serif">
                 ${Math.round(sumVal).toLocaleString('pt-BR')}
             </text>
-            <text x="${xPos + barWidth / 2}" y="${h - 10}" text-anchor="middle" font-size="9" font-weight="600" fill="#334155" font-family="Arial, sans-serif">
+            <text x="${xPos + barWidth / 2}" y="${paddingTop + plotH + 18}" text-anchor="middle" font-size="9" font-weight="600" fill="#334155" font-family="Arial, sans-serif">
                 ${d.mes}
             </text>
         `;
@@ -16167,16 +16167,19 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
     return `
     <div class="grafico-container" style="margin: 4px 0 6px 0;">
         <svg viewBox="0 0 ${w} ${h}" width="100%" height="auto" style="max-width: ${w}px;" xmlns="http://www.w3.org/2000/svg">
-            <text x="${paddingLeft}" y="16" font-size="10.5" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
-                EVOLUÇÃO HISTÓRICA DE HHT DE CAPACITAÇÃO E DIÁLOGOS (HHT)
+            <!-- Linha 1: Título Principal isolado -->
+            <text x="${paddingLeft}" y="20" font-size="11.5" font-weight="800" fill="#1f3864" font-family="Arial, sans-serif">
+                EVOLUÇÃO HISTÓRICA DE HHT DE CAPACITAÇÃO E DIÁLOGOS
             </text>
-            <rect x="${w - 280}" y="7" width="10" height="10" rx="2" fill="#1b365d"/>
-            <text x="${w - 266}" y="15" font-size="9.5" font-weight="600" fill="#334155" font-family="Arial, sans-serif">Treinamentos</text>
-            <rect x="${w - 180}" y="7" width="10" height="10" rx="2" fill="#0080ff"/>
-            <text x="${w - 166}" y="15" font-size="9.5" font-weight="600" fill="#334155" font-family="Arial, sans-serif">DDSMA</text>
-            <text x="${w - paddingRight}" y="15" text-anchor="end" font-size="9.5" font-weight="bold" fill="#15803d" font-family="Arial, sans-serif">
+            <!-- Linha 2: Legenda e Total do Período -->
+            <rect x="${paddingLeft}" y="35" width="12" height="12" rx="2" fill="#1b365d"/>
+            <text x="${paddingLeft + 16}" y="45" font-size="9.5" font-weight="600" fill="#334155" font-family="Arial, sans-serif">Treinamentos</text>
+            <rect x="${paddingLeft + 120}" y="35" width="12" height="12" rx="2" fill="#0080ff"/>
+            <text x="${paddingLeft + 136}" y="45" font-size="9.5" font-weight="600" fill="#334155" font-family="Arial, sans-serif">DDSMA</text>
+            <text x="${w - paddingRight}" y="45" text-anchor="end" font-size="10" font-weight="bold" fill="#15803d" font-family="Arial, sans-serif">
                 Total: ${Math.round(totalPeriodo).toLocaleString('pt-BR')} h
             </text>
+            <!-- Linha 3: Grade e Barras a partir de y: 70 -->
             ${gridLinesSvg}
             ${barsSvg}
             <line x1="${paddingLeft}" y1="${paddingTop + plotH}" x2="${w - paddingRight}" y2="${paddingTop + plotH}" stroke="#94a3b8" stroke-width="1.2"/>
@@ -16438,13 +16441,21 @@ async function carregarBufferLogoCop() {
     });
 }
 
-function converterSvgParaPngBuffer(svgString, w = 680, h = 160) {
+function converterSvgParaPngBuffer(svgString, w = 680, h = 250) {
     return new Promise((resolve) => {
         if (!svgString || typeof document === 'undefined') return resolve(null);
         try {
             let svgClean = svgString;
             const match = svgString.match(/<svg[\s\S]*<\/svg>/i);
             if (match) svgClean = match[0];
+
+            let renderW = w;
+            let renderH = h;
+            const matchVb = svgClean.match(/viewBox=["']\s*0\s+0\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)["']/i);
+            if (matchVb && matchVb[1] && matchVb[2]) {
+                renderW = Math.round(parseFloat(matchVb[1])) || w;
+                renderH = Math.round(parseFloat(matchVb[2])) || h;
+            }
 
             const blob = new Blob([svgClean], { type: 'image/svg+xml;charset=utf-8' });
             const url = URL.createObjectURL(blob);
@@ -16458,8 +16469,8 @@ function converterSvgParaPngBuffer(svgString, w = 680, h = 160) {
                 clearTimeout(timer);
                 try {
                     const canvas = document.createElement('canvas');
-                    canvas.width = w * 2;
-                    canvas.height = h * 2;
+                    canvas.width = renderW * 2;
+                    canvas.height = renderH * 2;
                     const ctx = canvas.getContext('2d');
                     ctx.fillStyle = '#ffffff';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -16471,8 +16482,8 @@ function converterSvgParaPngBuffer(svgString, w = 680, h = 160) {
                         reader.onloadend = () => {
                             resolve({
                                 buffer: reader.result,
-                                width: Math.min(w, 520),
-                                height: Math.min(h, Math.round(520 * (h / w)))
+                                width: Math.min(renderW, 520),
+                                height: Math.min(renderH, Math.round(520 * (renderH / renderW)))
                             });
                         };
                         reader.onerror = () => resolve(null);
@@ -17934,7 +17945,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
     // Carregamento de Recursos Visuais (Logo COP e Gráfico Canvas HHT)
     const logoCopBuffer = await carregarBufferLogoCop();
     const svgHht = gerarGraficoBarrasHHTSVG(dadosCompletos.treinamentos.historicoHht);
-    const graficoHhtBuffer = await converterSvgParaPngBuffer(svgHht, 680, 160);
+    const graficoHhtBuffer = await converterSvgParaPngBuffer(svgHht, 680, 250);
 
     const nomeMes = NOMES_MESES[mes];
     const codigoRev = (typeof codigoRevisaoDocumento === 'function' ? codigoRevisaoDocumento('relatorio_mensal_sms') : '') || 'REL.SMS.001 R00';

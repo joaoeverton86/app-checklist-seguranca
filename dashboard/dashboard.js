@@ -26813,6 +26813,27 @@ function onEpiFiltroAnoMesChange() {
     renderEpiPanel();
 }
 
+function sanitizarSetorDemandaEpi(setorRaw) {
+    if (!setorRaw) return 'NÃO INFORMADO';
+    const s = setorRaw.trim().toUpperCase();
+    const mapa = {
+        'CIVIL': 'MANUTENÇÃO CIVIL',
+        'MANUTENCAO CIVIL': 'MANUTENÇÃO CIVIL',
+        'MANUTENÇÃO CIVIL': 'MANUTENÇÃO CIVIL',
+        'ELETROMECÂNICA': 'MANUTENÇÃO MECÂNICA',
+        'ELETROMECANICA': 'MANUTENÇÃO MECÂNICA',
+        'MECÂNICA': 'MANUTENÇÃO MECÂNICA',
+        'MECANICA': 'MANUTENÇÃO MECÂNICA',
+        'MANUTENCAO MECANICA': 'MANUTENÇÃO MECÂNICA',
+        'MANUTENÇÃO MECÂNICA': 'MANUTENÇÃO MECÂNICA',
+        'ELÉTRICA': 'MANUTENÇÃO ELÉTRICA',
+        'ELETRICA': 'MANUTENÇÃO ELÉTRICA',
+        'MANUTENCAO ELETRICA': 'MANUTENÇÃO ELÉTRICA',
+        'MANUTENÇÃO ELÉTRICA': 'MANUTENÇÃO ELÉTRICA'
+    };
+    return mapa[s] || s;
+}
+
 function renderEpiPanel() {
     popularFiltroAnoEpi();
     const { inicio, fim } = getEpiDateRange();
@@ -26985,7 +27006,7 @@ function renderEpiPanel() {
     // Entregas por Setor (Período): quantidade entregue por setor - útil pra planejamento
     // de compra/estoque por frente de trabalho.
     const setorCountsEpi = {};
-    periodo.forEach(e => { const s = e.setor || 'Sem setor'; setorCountsEpi[s] = (setorCountsEpi[s] || 0) + (e.quantidade || 1); });
+    periodo.forEach(e => { const s = sanitizarSetorDemandaEpi(e.setor); setorCountsEpi[s] = (setorCountsEpi[s] || 0) + (e.quantidade || 1); });
     const setorSortedEpi = Object.entries(setorCountsEpi).sort((a, b) => b[1] - a[1]);
     const epiSetorLabels = setorSortedEpi.map(s => wrapChartLabel(s[0]));
     ajustarAlturaBarrasHorizontais('chartEpiPorSetor', epiSetorLabels);
@@ -28631,7 +28652,7 @@ async function salvarEpiEntrega() {
         matricula,
         nome: colab.nome || null,
         funcao: colab.funcao || null,
-        setor: colab.setor || null,
+        setor: colab.setor ? sanitizarSetorDemandaEpi(colab.setor) : null,
         epi_catalogo_id: catalogoId,
         quantidade: qtd,
         data_entrega: data,
@@ -29091,7 +29112,7 @@ function calcularConsumoComprasEpi() {
     // 7. Saídas por Setor
     const setorMap = new Map();
     entregasJanela.forEach(e => {
-        const s = (e.setor || 'Não informado').trim();
+        const s = sanitizarSetorDemandaEpi(e.setor);
         setorMap.set(s, (setorMap.get(s) || 0) + (Number(e.quantidade) || 1));
     });
     const setoresArray = Array.from(setorMap.entries())
@@ -30018,7 +30039,7 @@ async function salvarEdicaoColaborador() {
     const id = document.getElementById('editColabId').value;
     const nome = document.getElementById('editColabNome').value.trim();
     const funcao = document.getElementById('editColabFuncao').value.trim();
-    const setor = document.getElementById('editColabSetor').value.trim();
+    const setor = sanitizarSetorDemandaEpi(document.getElementById('editColabSetor').value.trim());
     const email = document.getElementById('editColabEmail').value.trim().toLowerCase();
     const nivel = document.getElementById('editColabNivel').value;
     const adminPass = document.getElementById('editColabAdminPass').value;
@@ -30190,7 +30211,7 @@ async function salvarNovoColaboradorInterno() {
     const matricula = document.getElementById('novoColabMatricula').value.trim().toUpperCase();
     const nome = document.getElementById('novoColabNome').value.trim();
     const funcao = document.getElementById('novoColabFuncao').value.trim();
-    const setor = document.getElementById('novoColabSetor').value.trim();
+    const setor = sanitizarSetorDemandaEpi(document.getElementById('novoColabSetor').value.trim());
     const email = document.getElementById('novoColabEmail').value.trim().toLowerCase();
     const nivel = document.getElementById('novoColabNivel').value;
     const senha = document.getElementById('novoColabSenha').value;

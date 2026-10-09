@@ -8,7 +8,7 @@
     <meta http-equiv="Expires" content="0">
     <title>Painel Gerencial - Checklist Segurança</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=190">
+    <link rel="stylesheet" href="dashboard.css?v=191">
 </head>
 <body>
 
@@ -21,7 +21,7 @@
         <div style="width:100%; max-width:380px; margin:20px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:32px 28px; box-shadow:0 8px 32px rgba(0,0,0,0.08); box-sizing:border-box;">
             <div style="text-align:center; margin-bottom:22px;">
                 <div style="font-size:34px; margin-bottom:6px;">🛡️</div>
-                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v190</span></div>
+                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v191</span></div>
                 <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; letter-spacing:.5px; margin-top:2px;">PISF Ramal do Agreste</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:12px;">
@@ -137,7 +137,7 @@
             <div class="db-brand">
                 <div class="db-brand-icon">🛡️</div>
                 <div>
-                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v190</span></div>
+                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v191</span></div>
                     <div class="db-brand-sub">PISF Ramal do Agreste</div>
                 </div>
             </div>
@@ -992,8 +992,11 @@
                             <button class="db-clear-btn" onclick="limparFiltroCronograma()">✕ Limpar</button>
                         </div>
                     </div>
-                    <div style="margin-bottom: 12px;">
+                    <div style="margin-bottom: 12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                         <button class="db-clear-btn" onclick="imprimirCronogramaFiltro()">🖨️ Imprimir este Cronograma</button>
+                        <button class="db-apply-btn" id="btnSincronizarPastasDriveCronograma" onclick="sincronizarPastasDriveCronograma()" style="background:#0284c7; border-color:#0284c7; display:inline-flex; align-items:center; gap:6px;">
+                            <i class="fas fa-folder-plus"></i> 📁 Criar/Sincronizar Pastas do Mês no Drive
+                        </button>
                     </div>
                     <div id="cronogramaLista" class="db-list"></div>
                 </div>
@@ -8153,7 +8156,10 @@
                                 Navegue pelo acervo de SST em nuvem e suba documentos, atas, digitalizações e relatórios diretamente para o Google Drive.
                             </p>
                         </div>
-                        <div style="display:flex; gap:10px; align-items:center;">
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <button class="db-clear-btn" style="padding:8px 12px; font-size:12.5px; display:inline-flex; align-items:center; gap:6px; color:#0284c7; border-color:#0284c7;" onclick="sincronizarPastasDriveCronograma()" title="Criar ou sincronizar subpastas dos temas do cronograma no Google Drive">
+                                <i class="fas fa-folder-plus"></i> 📁 Sincronizar Pastas do Mês
+                            </button>
                             <button class="db-apply-btn" id="btnUploadAcervoDrive" style="background:#0284c7; border:none; display:inline-flex; align-items:center; gap:6px; padding:8px 16px; font-weight:600; font-size:12.5px;" onclick="abrirModalUploadAcervoDrive()">
                                 <i class="fas fa-cloud-upload-alt"></i> 📤 Subir Arquivo para o Acervo
                             </button>
@@ -8698,9 +8704,9 @@
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js"></script>
-    <script src="logo_cop_base64.js?v=20261009_v190"></script>
-    <script src="dashboard.js?v=20261009_relatorio_sms_docx_v190"></script>
-    <script src="placar_lideres.js?v=20261009_v190"></script>
+    <script src="logo_cop_base64.js?v=20261009_v191"></script>
+    <script src="dashboard.js?v=20261009_relatorio_sms_docx_v191"></script>
+    <script src="placar_lideres.js?v=20261009_v191"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();
@@ -9858,6 +9864,16 @@ function filterMatrizEpi(q) {
                 </div>
             </div>
 
+            <div style="border-top:1px dashed var(--border); padding-top:10px; margin-top:2px;">
+                <label style="display:block; font-size:12px; font-weight:700; color:#10b981; margin-bottom:4px;">
+                    <i class="fas fa-graduation-cap"></i> Pasta Raiz de Treinamentos (SCAN - Google Drive)
+                </label>
+                <input type="text" id="cfgDriveFolderTreinamentosUrl" placeholder="https://drive.google.com/drive/folders/1gIjh4Cea8mU_X8hnpgOXkIe8Q1ZnOnCA" style="width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
+                <div style="font-size:11px; color:var(--text-light); margin-top:4px;">
+                    Pasta base onde a automação cria a hierarquia de Ano, Mês e subpastas de cada tema de treinamento do cronograma.
+                </div>
+            </div>
+
             <div>
                 <label style="display:block; font-size:12px; font-weight:700; color:#0284c7; margin-bottom:4px;">
                     <i class="fas fa-bolt"></i> URL do Web App Apps Script (Automação Recursiva de Pastas)
@@ -9880,6 +9896,9 @@ function filterMatrizEpi(q) {
                 </a>
                 <a href="#" id="cfgDriveLinkPastaFotos" onclick="abrirPastaRaizFotosDrive(event)" target="_blank" rel="noopener noreferrer" style="font-size:12px; color:#ec4899; text-decoration:underline; font-weight:700; display:inline-flex; align-items:center; gap:4px;">
                     <i class="fas fa-folder"></i> Abrir Pasta Fotos ↗
+                </a>
+                <a href="#" id="cfgDriveLinkPastaTreinamentos" target="_blank" rel="noopener noreferrer" style="font-size:12px; color:#10b981; text-decoration:underline; font-weight:700; display:inline-flex; align-items:center; gap:4px;">
+                    <i class="fas fa-graduation-cap"></i> Abrir Pasta Treinamentos ↗
                 </a>
                 <span id="cfgDriveTestStatus" style="font-size:12px; font-weight:600; width:100%; margin-top:2px;"></span>
             </div>

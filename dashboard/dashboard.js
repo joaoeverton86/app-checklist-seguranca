@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const VERSAO_PAINEL = 'v190';
+const VERSAO_PAINEL = 'v191';
 const DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
@@ -2342,12 +2342,40 @@ function getDriveRootFolder() {
     return localStorage.getItem('checklist_drive_root_folder') || 'Checklists SST';
 }
 
+const ID_PASTA_TREINAMENTOS_DEFAULT = '1gIjh4Cea8mU_X8hnpgOXkIe8Q1ZnOnCA';
+
+function getDriveFolderTreinamentosId() {
+    const inp = document.getElementById('cfgDriveFolderTreinamentosUrl');
+    if (inp && inp.value && inp.value.trim()) {
+        return extrairIdPastaDrive(inp.value.trim());
+    }
+    const local = localStorage.getItem('drive_folder_treinamentos_id') || localStorage.getItem('drive_folder_treinamentos_url');
+    if (local && local.trim()) {
+        return extrairIdPastaDrive(local.trim());
+    }
+    const fromSettings = (allChecklistItemSettings || []).find(s => 
+        s.id === 'drive_folder_treinamentos_id' || 
+        s.id === 'drive_treinamentos' ||
+        s.key === 'drive_folder_treinamentos_id'
+    );
+    if (fromSettings?.value || fromSettings?.drive_folder_treinamentos_id) {
+        return extrairIdPastaDrive(fromSettings.value || fromSettings.drive_folder_treinamentos_id);
+    }
+    return ID_PASTA_TREINAMENTOS_DEFAULT;
+}
+
+function getDriveFolderTreinamentosUrl() {
+    const id = getDriveFolderTreinamentosId();
+    return `https://drive.google.com/drive/folders/${id}`;
+}
+
 function abrirModalConfigGoogleDrive() {
     const modal = document.getElementById('modalConfigGoogleDrive');
     if (!modal) return;
     const inpUrl = document.getElementById('cfgDriveScriptUrl');
     const inpFolder = document.getElementById('cfgDriveRootFolder');
     const inpFolderFotos = document.getElementById('cfgDriveFolderFotosUrl');
+    const inpFolderTrein = document.getElementById('cfgDriveFolderTreinamentosUrl');
     const inpGasFotos = document.getElementById('cfgDriveGasWebhookUrl');
     const status = document.getElementById('cfgDriveTestStatus');
 
@@ -2355,6 +2383,9 @@ function abrirModalConfigGoogleDrive() {
     if (inpFolder) inpFolder.value = getDriveRootFolder();
     if (inpFolderFotos) {
         inpFolderFotos.value = getDriveFolderFotosUrl(false);
+    }
+    if (inpFolderTrein) {
+        inpFolderTrein.value = getDriveFolderTreinamentosUrl();
     }
     if (inpGasFotos) inpGasFotos.value = getDriveGasWebhookUrl();
     if (status) status.textContent = '';
@@ -2371,6 +2402,11 @@ function abrirModalConfigGoogleDrive() {
             linkPastaFotos.style.display = 'none';
         }
     }
+    const linkPastaTrein = document.getElementById('cfgDriveLinkPastaTreinamentos');
+    if (linkPastaTrein) {
+        linkPastaTrein.href = getDriveFolderTreinamentosUrl();
+        linkPastaTrein.style.display = 'inline-flex';
+    }
 
     modal.style.display = 'flex';
 }
@@ -2384,11 +2420,13 @@ function salvarConfigGoogleDrive() {
     const inpUrl = document.getElementById('cfgDriveScriptUrl');
     const inpFolder = document.getElementById('cfgDriveRootFolder');
     const inpFolderFotos = document.getElementById('cfgDriveFolderFotosUrl');
+    const inpFolderTrein = document.getElementById('cfgDriveFolderTreinamentosUrl');
     const inpGasFotos = document.getElementById('cfgDriveGasWebhookUrl');
 
     const url = (inpUrl?.value || '').trim();
     const folder = (inpFolder?.value || '').trim() || 'Checklists SST';
     const folderFotos = (inpFolderFotos?.value || '').trim();
+    const folderTrein = (inpFolderTrein?.value || '').trim();
     const gasFotos = (inpGasFotos?.value || '').trim();
 
     localStorage.setItem('checklist_drive_script_url', url);
@@ -2407,6 +2445,13 @@ function salvarConfigGoogleDrive() {
             salvarConfiguracaoFotosDrive('');
         }
     }
+
+    if (folderTrein) {
+        const idTrein = extrairIdPastaDrive(folderTrein);
+        localStorage.setItem('drive_folder_treinamentos_id', idTrein);
+        localStorage.setItem('drive_folder_treinamentos_url', normalizarUrlGoogleDriveFolder(folderTrein));
+    }
+
     if (gasFotos) {
         localStorage.setItem('drive_gas_webhook_url', gasFotos);
     }
@@ -6012,6 +6057,12 @@ function imprimirCronogramaFiltro() {
     setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
+let pastasCronogramaDriveCache = {};
+try {
+    const savedPastas = localStorage.getItem('pastas_cronograma_drive_cache');
+    if (savedPastas) pastasCronogramaDriveCache = JSON.parse(savedPastas);
+} catch (_) {}
+
 function renderCronogramaLista() {
     const container = document.getElementById('cronogramaLista');
     if (!container) return;
@@ -6042,6 +6093,17 @@ function renderCronogramaLista() {
             c.local || null,
             c.responsavel ? `Resp.: ${escapeHTML(c.responsavel)}` : null
         ].filter(Boolean).map(escapeHTML).join(' — ');
+
+        const diaPrefixo = c.data_prevista && c.data_prevista.includes('-')
+            ? `${c.data_prevista.split('-')[2]}/${c.data_prevista.split('-')[1]}`
+            : '';
+        const pastaMapeadaUrl = pastasCronogramaDriveCache[c.id] || 
+                               (diaPrefixo && c.treinamento_cod ? pastasCronogramaDriveCache[`${diaPrefixo}_${c.treinamento_cod}`] : null);
+
+        const btnPastaDrive = pastaMapeadaUrl
+            ? `<a href="${pastaMapeadaUrl}" target="_blank" rel="noopener noreferrer" class="db-clear-btn" style="color:#0284c7; border-color:#0284c7; background:#e0f2fe; display:inline-flex; align-items:center; gap:5px; text-decoration:none; font-weight:700;" title="Abrir pasta deste treinamento no Google Drive">📁 Pasta Drive ↗</a>`
+            : `<button class="db-clear-btn" style="color:#0284c7; border-color:#bae6fd; background:#f0f9ff; display:inline-flex; align-items:center; gap:5px;" onclick="abrirPastaFotosOperacional('01_Treinamentos', '${escapeHTML(c.data_prevista)}', '${escapeHTML(nome || c.treinamento_cod)}')" title="Acessar ou preparar pasta de fotos e evidências no Google Drive">📷 Pasta Drive</button>`;
+
         return `
         <div class="db-list-item" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <div style="flex:1; min-width:220px;">
@@ -6050,7 +6112,7 @@ function renderCronogramaLista() {
             </div>
             ${statusBadge}
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                <button class="db-clear-btn" style="color:#0284c7; border-color:#bae6fd; background:#f0f9ff; display:inline-flex; align-items:center; gap:5px;" onclick="abrirPastaFotosOperacional('01_Treinamentos', '${escapeHTML(c.data_prevista)}', '${escapeHTML(nome || c.treinamento_cod)}')" title="Acessar ou preparar pasta de fotos e evidências no Google Drive">📷 Pasta Drive</button>
+                ${btnPastaDrive}
                 ${!lancado ? `<button class="db-apply-btn" onclick="lancarPresencaDoCronograma('${escapeHTML(c.id)}')" title="Leva pra Lançar Treinamento já preenchido - marca este item como lançado ao salvar">✅ Lançar Presença</button>` : ''}
                 ${!lancado ? `<button class="db-clear-btn" onclick="abrirFormCronograma('${escapeHTML(c.id)}')">✏️ Editar</button>
                 <button class="db-clear-btn" onclick="abrirModalReprogramarCronograma('${escapeHTML(c.id)}')">🔄 Reprogramar Data</button>` : ''}
@@ -6059,6 +6121,289 @@ function renderCronogramaLista() {
         </div>`;
     }).join('');
 }
+
+/**
+ * Automação de sincronização recursiva da árvore de pastas do Cronograma no Google Drive
+ * Cria e mapeia: [Pasta Raiz] -> [Ano] -> [Mês (ex: 10 - Outubro)] -> [Subpastas: [DD/MM] COD - TEMA]
+ */
+async function sincronizarPastasDriveCronograma(anoParam, mesParam) {
+    let ano = anoParam || document.getElementById('cronoFiltroAno')?.value;
+    let mes = (mesParam !== undefined && mesParam !== null && mesParam !== '') ? String(mesParam) : document.getElementById('cronoFiltroMes')?.value;
+    const hoje = new Date();
+
+    if (!ano) ano = String(hoje.getFullYear());
+
+    // Se o mês estiver vazio ("Mês específico..."), abre diálogo interativo para escolha
+    if (mes === '' || mes === undefined || mes === null) {
+        if (typeof Swal !== 'undefined') {
+            const mesAtualIdx = hoje.getMonth();
+            const mesesOptions = NOMES_MESES.map((nome, i) => 
+                `<option value="${i}" ${i === mesAtualIdx ? 'selected' : ''}>${String(i + 1).padStart(2, '0')} - ${nome}</option>`
+            ).join('');
+
+            const { value: formValues } = await Swal.fire({
+                title: '📁 Sincronizar Pastas no Drive',
+                html: `
+                    <p style="font-size:13px; color:#475569; margin-bottom:14px; line-height:1.5;">
+                        Selecione o período para criar e sincronizar a árvore de pastas de treinamentos no Google Drive:
+                    </p>
+                    <div style="display:flex; flex-direction:column; gap:10px; text-align:left; font-size:12.5px;">
+                        <div>
+                            <label style="display:block; font-weight:600; color:#334155; margin-bottom:4px;">Ano:</label>
+                            <input id="swalCronoAno" type="number" class="swal2-input" value="${ano}" style="margin:0; width:100%; box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; font-weight:600; color:#334155; margin-bottom:4px;">Mês:</label>
+                            <select id="swalCronoMes" class="swal2-select" style="margin:0; width:100%; box-sizing:border-box;">
+                                ${mesesOptions}
+                            </select>
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Sincronizar no Google Drive',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#0284c7',
+                cancelButtonColor: '#64748b',
+                preConfirm: () => {
+                    const a = document.getElementById('swalCronoAno')?.value;
+                    const m = document.getElementById('swalCronoMes')?.value;
+                    if (!a || m === '') {
+                        Swal.showValidationMessage('Por favor informe o ano e o mês.');
+                        return false;
+                    }
+                    return { ano: a, mes: m };
+                }
+            });
+
+            if (!formValues) return;
+            ano = formValues.ano;
+            mes = formValues.mes;
+        } else {
+            mes = String(hoje.getMonth());
+        }
+    }
+
+    const mesNum = parseInt(mes, 10);
+    const nomeMes = NOMES_MESES[mesNum] || 'Mês';
+    const nomeMesPasta = `${String(mesNum + 1).padStart(2, '0')} - ${nomeMes}`;
+
+    // Garante que cronograma e catálogo estejam disponíveis
+    if (!allTreinamentosCronograma || allTreinamentosCronograma.length === 0) {
+        try {
+            allTreinamentosCronograma = await supabaseFetch('treinamentos_cronograma', '?select=*') || [];
+        } catch (_) {}
+    }
+    if (!allTreinamentosCatalogo || allTreinamentosCatalogo.length === 0) {
+        try {
+            allTreinamentosCatalogo = await supabaseFetch('treinamentos_catalogo', '?select=*') || [];
+        } catch (_) {}
+    }
+
+    // Filtra itens do cronograma no período
+    const itensMes = (allTreinamentosCronograma || []).filter(c => {
+        if (!c.data_prevista) return false;
+        const d = parseLocalDate(c.data_prevista);
+        return d.getFullYear() === parseInt(ano, 10) && d.getMonth() === mesNum;
+    });
+
+    if (itensMes.length === 0) {
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Nenhum Treinamento no Cronograma',
+                html: `
+                    <p style="font-size:13px; color:#475569; line-height:1.5;">
+                        Não encontramos nenhum treinamento previsto no cronograma para <strong>${nomeMes} de ${ano}</strong>.
+                    </p>
+                    <p style="font-size:12px; color:#64748b; margin-top:8px;">
+                        Cadastre os itens previstos do mês na aba <strong>🗓️ Cronograma</strong> antes de sincronizar as pastas no Drive.
+                    </p>
+                `,
+                confirmButtonText: 'Entendido',
+                confirmButtonColor: '#0284c7'
+            });
+        } else {
+            alert(`Nenhum treinamento cadastrado no cronograma para ${nomeMes}/${ano}.`);
+        }
+        return;
+    }
+
+    // Cruza itens do cronograma com o catálogo
+    const catalogoPorId = new Map((allTreinamentosCatalogo || []).map(c => [String(c.id), c]));
+    const temasPayload = itensMes.map(item => {
+        const cat = catalogoPorId.get(String(item.treinamento_cod));
+        const temaNome = cat ? cat.nome : (item.treinamento_nome || item.treinamento_cod);
+        const dStr = String(item.data_prevista || '');
+        let diaStr = '';
+        if (dStr) {
+            const partes = dStr.split('-');
+            if (partes.length === 3) {
+                diaStr = `${partes[2]}/${partes[1]}`;
+            }
+        }
+        return {
+            id: item.id,
+            dia: diaStr || `${String(mesNum + 1).padStart(2, '0')}`,
+            codigo: String(item.treinamento_cod || ''),
+            tema: temaNome
+        };
+    });
+
+    const webhookUrl = getDriveGasWebhookUrl();
+    if (!webhookUrl) {
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'error',
+                title: 'Web App não configurado',
+                html: `
+                    <p style="font-size:13px; color:#475569; line-height:1.5;">
+                        A <b>URL do Web App Apps Script</b> não está configurada no painel.
+                    </p>
+                    <p style="font-size:12px; color:#64748b; margin-top:8px;">
+                        Abra as configurações do Google Drive e configure a URL do seu aplicativo da Web implantado.
+                    </p>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '⚙️ Abrir Configurações',
+                cancelButtonText: 'Fechar',
+                confirmButtonColor: '#0284c7'
+            }).then(r => {
+                if (r.isConfirmed) abrirModalConfigGoogleDrive();
+            });
+        } else {
+            alert('URL do Web App do Google Apps Script não configurada.');
+        }
+        return;
+    }
+
+    const pastaRaizId = getDriveFolderTreinamentosId();
+
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: 'Sincronizando árvore de pastas...',
+            html: `
+                <p style="font-size:12.5px; color:#64748b; margin-bottom:10px; line-height:1.5;">
+                    Criando e verificando diretórios para <strong>${escapeHTML(nomeMesPasta)} / ${ano}</strong> no Google Drive:
+                </p>
+                <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:10px; font-size:12px; color:#0369a1; text-align:left; max-height:150px; overflow-y:auto; line-height:1.6;">
+                    ${temasPayload.map(t => `<div>📁 [${t.dia}] ${t.codigo ? t.codigo + ' - ' : ''}${escapeHTML(t.tema)}</div>`).join('')}
+                </div>
+                <div style="font-size:11.5px; color:#0284c7; font-weight:600; margin-top:10px;">
+                    Total: ${temasPayload.length} subpasta(s) de treinamentos
+                </div>
+            `,
+            allowOutsideClick: false,
+            showConfirmButton: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+    }
+
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 40000);
+
+        const resp = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+                action: 'criarEstruturaCronograma',
+                pastaRaizId: pastaRaizId,
+                ano: String(ano),
+                mes: nomeMesPasta,
+                temas: temasPayload
+            }),
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!resp.ok) {
+            throw new Error(`Servidor respondeu com código HTTP ${resp.status}`);
+        }
+
+        const resJson = await resp.json().catch(() => null);
+        if (!resJson || resJson.status === 'erro') {
+            throw new Error(resJson?.message || 'Falha ao processar criação de pastas no Apps Script');
+        }
+
+        const pastasRetornadas = Array.isArray(resJson.pastas) ? resJson.pastas : [];
+        pastasRetornadas.forEach(p => {
+            if (p.id) pastasCronogramaDriveCache[p.id] = p.folderUrl;
+            if (p.codigo && p.dia) pastasCronogramaDriveCache[`${p.dia}_${p.codigo}`] = p.folderUrl;
+        });
+
+        try {
+            localStorage.setItem('pastas_cronograma_drive_cache', JSON.stringify(pastasCronogramaDriveCache));
+        } catch (_) {}
+
+        if (typeof renderCronogramaLista === 'function') {
+            renderCronogramaLista();
+        }
+
+        if (typeof Swal !== 'undefined') {
+            const listaHtml = pastasRetornadas.map(p => `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 10px; border-bottom:1px solid #e2e8f0; font-size:11.5px;">
+                    <span style="font-weight:600; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:75%;" title="${escapeHTML(p.nomePasta)}">
+                        📁 ${escapeHTML(p.nomePasta)}
+                    </span>
+                    <a href="${p.folderUrl}" target="_blank" rel="noopener noreferrer" style="color:#0284c7; text-decoration:none; font-weight:700; font-size:11.5px; white-space:nowrap;">
+                        Abrir ↗
+                    </a>
+                </div>
+            `).join('');
+
+            const linkPastaMes = resJson.pastaMesUrl || `https://drive.google.com/drive/folders/${resJson.pastaMesId || pastaRaizId}`;
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Pastas Sincronizadas no Drive!',
+                html: `
+                    <p style="font-size:12.5px; color:#475569; margin-bottom:10px;">
+                        A árvore de pastas para <strong>${escapeHTML(nomeMesPasta)} / ${ano}</strong> foi criada e verificada no Google Drive:
+                    </p>
+                    <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; max-height:190px; overflow-y:auto; margin-bottom:14px; text-align:left;">
+                        ${listaHtml || '<div style="padding:10px; color:#64748b;">Nenhuma subpasta individual.</div>'}
+                    </div>
+                    <div style="text-align:center;">
+                        <a href="${linkPastaMes}" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:6px; background:#0284c7; color:#fff; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:700; font-size:12.5px; box-shadow:0 2px 4px rgba(2,132,199,0.25);">
+                            <i class="fab fa-google-drive"></i> Abrir Pasta do Mês no Drive ↗
+                        </a>
+                    </div>
+                `,
+                confirmButtonText: 'Fechar',
+                confirmButtonColor: '#64748b'
+            });
+        } else {
+            alert(`Sucesso! ${pastasRetornadas.length} pastas de treinamentos sincronizadas no Google Drive.`);
+        }
+
+    } catch (err) {
+        console.error('Erro na sincronização de pastas do cronograma no Drive:', err);
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'error',
+                title: 'Erro na Sincronização',
+                html: `
+                    <p style="font-size:13px; color:#dc2626; line-height:1.5;">
+                        Não foi possível completar a sincronização no Google Drive.
+                    </p>
+                    <div style="background:#fee2e2; border-left:4px solid #ef4444; padding:8px 10px; font-size:11.5px; color:#991b1b; margin-top:8px; text-align:left; border-radius:4px;">
+                        ${escapeHTML(err.message)}
+                    </div>
+                    <p style="font-size:11px; color:#64748b; margin-top:10px;">
+                        Dica: Certifique-se de que o Web App Apps Script foi implantado como "Qualquer pessoa" (Anyone) com o script atualizado.
+                    </p>
+                `,
+                confirmButtonColor: '#0284c7'
+            });
+        } else {
+            alert('Erro ao sincronizar pastas no Drive: ' + err.message);
+        }
+    }
+}
+window.sincronizarPastasDriveCronograma = sincronizarPastasDriveCronograma;
 
 function limparFormCronograma() {
     document.getElementById('cronoForm_id').value = '';

@@ -5,11 +5,14 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const VERSAO_PAINEL = 'v181';
+const VERSAO_PAINEL = 'v189';
 const DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + VERSAO_PAINEL + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
+
+// Logotipo Institucional do Consórcio COP em Base64
+var LOGO_COP_BASE64 = (typeof window !== 'undefined' && window.LOGO_COP_BASE64) ? window.LOGO_COP_BASE64 : '';
 
 const SUPABASE_URL = 'https://qqtcwxvbjmybyzubocgd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxdGN3eHZiam15Ynl6dWJvY2dkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1ODczNDUsImV4cCI6MjEwMDE2MzM0NX0.T6Nm-lUD2I_mRULsEXCDQBkJe2cEpl6_z7hUNR30yTk';
@@ -2350,14 +2353,24 @@ function abrirModalConfigGoogleDrive() {
 
     if (inpUrl) inpUrl.value = getDriveScriptUrl();
     if (inpFolder) inpFolder.value = getDriveRootFolder();
-    if (inpFolderFotos) inpFolderFotos.value = getDriveFolderFotosUrl();
+    if (inpFolderFotos) {
+        inpFolderFotos.value = getDriveFolderFotosUrl(false);
+    }
     if (inpGasFotos) inpGasFotos.value = getDriveGasWebhookUrl();
     if (status) status.textContent = '';
 
     const linkPasta = document.getElementById('cfgDriveLinkPasta');
     if (linkPasta) linkPasta.href = getDriveFolderUrl();
     const linkPastaFotos = document.getElementById('cfgDriveLinkPastaFotos');
-    if (linkPastaFotos) linkPastaFotos.href = getDriveFolderFotosUrl();
+    if (linkPastaFotos) {
+        const urlFotos = getDriveFolderFotosUrl(false);
+        if (urlFotos) {
+            linkPastaFotos.href = urlFotos;
+            linkPastaFotos.style.display = 'inline-flex';
+        } else {
+            linkPastaFotos.style.display = 'none';
+        }
+    }
 
     modal.style.display = 'flex';
 }
@@ -2382,14 +2395,24 @@ function salvarConfigGoogleDrive() {
     if (url) localStorage.setItem('sync_script_url', url);
     localStorage.setItem('checklist_drive_root_folder', folder);
 
-    if (folderFotos) {
-        localStorage.setItem('drive_folder_fotos_url', folderFotos);
+    const folderFotosNorm = normalizarUrlGoogleDriveFolder(folderFotos);
+    if (folderFotosNorm) {
+        localStorage.setItem('drive_folder_fotos_url', folderFotosNorm);
         if (typeof salvarConfiguracaoFotosDrive === 'function') {
-            salvarConfiguracaoFotosDrive(folderFotos);
+            salvarConfiguracaoFotosDrive(folderFotosNorm);
+        }
+    } else {
+        localStorage.removeItem('drive_folder_fotos_url');
+        if (typeof salvarConfiguracaoFotosDrive === 'function') {
+            salvarConfiguracaoFotosDrive('');
         }
     }
     if (gasFotos) {
         localStorage.setItem('drive_gas_webhook_url', gasFotos);
+    }
+
+    if (typeof atualizarCardFotosDrive === 'function') {
+        atualizarCardFotosDrive();
     }
 
     mostrarFeedbackToast('Configurações do Google Drive salvas com sucesso!');
@@ -7065,14 +7088,18 @@ let anexosSmsCarregados = false;
 // independente do Promise.all de loadTreinamentosData lá em cima, pra não arriscar
 // desalinhar a lista de variáveis desestruturadas daquele carregamento já existente.
 function garantirAnexosSmsCarregados(aoTerminar) {
-    if (anexosSmsCarregados) return;
+    if (anexosSmsCarregados) {
+        if (aoTerminar) aoTerminar();
+        return;
+    }
     anexosSmsCarregados = true;
     supabaseFetch('anexos_sms', '?select=*').then(dados => {
-        allAnexosSms = dados;
+        allAnexosSms = Array.isArray(dados) ? dados : [];
         if (aoTerminar) aoTerminar();
     }).catch(err => {
         console.error('Erro ao carregar anexos SMS:', err);
         anexosSmsCarregados = false;
+        if (aoTerminar) aoTerminar();
     });
 }
 
@@ -15922,6 +15949,25 @@ function sanitizarTemaDdsRelSms(temaOriginal, dataStr, fallbackIndex = 0) {
     return t;
 }
 
+function base64ToArrayBufferRelSms(base64) {
+    if (!base64 || typeof base64 !== 'string') return null;
+    try {
+        const commaIdx = base64.indexOf(',');
+        const b64Data = commaIdx >= 0 ? base64.slice(commaIdx + 1) : base64;
+        const cleanB64 = b64Data.replace(/\s+/g, '');
+        const binaryStr = atob(cleanB64);
+        const len = binaryStr.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+        }
+        return bytes.buffer;
+    } catch (e) {
+        console.warn('Erro ao decodificar base64 do logo COP:', e);
+        return null;
+    }
+}
+
 function obterLogoCopBase64RelSms() {
     try {
         if (typeof LOGO_COP_BASE64 !== 'undefined' && LOGO_COP_BASE64) return LOGO_COP_BASE64;
@@ -15938,7 +15984,7 @@ function gerarCabecalhoPadraoRelSmsHtml(mes, ano, tituloSecao = '') {
     const logoBase64 = obterLogoCopBase64RelSms();
     const logoHtml = logoBase64
         ? `<img src="${logoBase64}" alt="Consórcio Operador Ramal do Agreste" style="max-height: 48px; max-width: 100%; object-fit: contain;">`
-        : `<div style="font-weight: 800; font-size: 13px; color: #1f3864;">COP RAMAL DO AGRESTE</div>`;
+        : `<img src="logo-cop.png" onerror="this.onerror=null;this.src='/dashboard/logo-cop.png';" alt="Consórcio Operador Ramal do Agreste" style="max-height: 48px; max-width: 100%; object-fit: contain;">`;
 
     return `
     <table class="cabecalho-tabela cabecalho-tabela-rel-sms header-dossie" style="width: 100% !important; max-width: 100% !important; table-layout: fixed !important; border-collapse: collapse !important; border: 1.5px solid #1f3864; margin-bottom: 12px !important; font-family: Arial, Helvetica, sans-serif; background: #ffffff; box-sizing: border-box !important;">
@@ -15979,7 +16025,7 @@ function gerarBarraCabecalhoInstitucionalRelSmsHtml(mes, ano, subtitulo = '') {
     const logoBase64 = obterLogoCopBase64RelSms();
     const logoHtml = logoBase64
         ? `<img src="${logoBase64}" alt="Consórcio Operador Ramal do Agreste" style="max-height: 42px; max-width: 100%; object-fit: contain;">`
-        : `<div style="font-weight: 800; font-size: 11px; color: #1f3864;">COP RAMAL DO AGRESTE</div>`;
+        : `<img src="logo-cop.png" onerror="this.onerror=null;this.src='/dashboard/logo-cop.png';" alt="Consórcio Operador Ramal do Agreste" style="max-height: 42px; max-width: 100%; object-fit: contain;">`;
 
     return `
     <table class="cabecalho-tabela cabecalho-tabela-rel-sms header-dossie cabecalho-secundario-dossie" style="width: 100% !important; max-width: 100% !important; table-layout: fixed !important; border-collapse: collapse !important; border: 1.5px solid #1f3864; margin-bottom: 12px !important; font-family: Arial, Helvetica, sans-serif; background: #ffffff; box-sizing: border-box !important;">
@@ -16334,6 +16380,224 @@ function relSmsRodapeHtml(numPagina, totalPaginas, codigoRev) {
     </div>`;
 }
 
+// Helpers de Carregamento e Conversão de Imagens e Gráficos para o DOCX
+async function carregarBufferLogoCop() {
+    // 1. Tenta decodificar imediatamente a constante em memória LOGO_COP_BASE64 se existir (0ms, offline e 100% garantido)
+    const b64 = obterLogoCopBase64RelSms();
+    if (b64) {
+        const ab = base64ToArrayBufferRelSms(b64);
+        if (ab && ab.byteLength > 100) return ab;
+    }
+
+    // 2. Tenta rotas locais do arquivo logo-cop.png
+    const rotasLogo = [
+        'logo-cop.png',
+        './logo-cop.png',
+        '../dashboard/logo-cop.png',
+        '/dashboard/logo-cop.png'
+    ];
+    for (const r of rotasLogo) {
+        try {
+            const resp = await fetch(r);
+            if (resp.ok) {
+                const ab = await resp.arrayBuffer();
+                if (ab && ab.byteLength > 100) return ab;
+            }
+        } catch (_) {}
+    }
+
+    // 3. Fallback via elemento Image / Canvas
+    return new Promise((resolve) => {
+        if (typeof Image === 'undefined') return resolve(null);
+        const img = new Image();
+        let timer = setTimeout(() => resolve(null), 3000);
+        img.onload = () => {
+            clearTimeout(timer);
+            try {
+                const c = document.createElement('canvas');
+                c.width = img.naturalWidth || img.width || 544;
+                c.height = img.naturalHeight || img.height || 177;
+                const ctx = c.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                c.toBlob((b) => {
+                    if (!b) return resolve(null);
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = () => resolve(null);
+                    reader.readAsArrayBuffer(b);
+                }, 'image/png');
+            } catch (_) {
+                resolve(null);
+            }
+        };
+        img.onerror = () => {
+            clearTimeout(timer);
+            resolve(null);
+        };
+        img.src = 'logo-cop.png';
+    });
+}
+
+function converterSvgParaPngBuffer(svgString, w = 680, h = 160) {
+    return new Promise((resolve) => {
+        if (!svgString || typeof document === 'undefined') return resolve(null);
+        try {
+            let svgClean = svgString;
+            const match = svgString.match(/<svg[\s\S]*<\/svg>/i);
+            if (match) svgClean = match[0];
+
+            const blob = new Blob([svgClean], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            let timer = setTimeout(() => {
+                URL.revokeObjectURL(url);
+                resolve(null);
+            }, 6000);
+
+            img.onload = () => {
+                clearTimeout(timer);
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w * 2;
+                    canvas.height = h * 2;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    URL.revokeObjectURL(url);
+                    canvas.toBlob((b) => {
+                        if (!b) return resolve(null);
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            resolve({
+                                buffer: reader.result,
+                                width: Math.min(w, 520),
+                                height: Math.min(h, Math.round(520 * (h / w)))
+                            });
+                        };
+                        reader.onerror = () => resolve(null);
+                        reader.readAsArrayBuffer(b);
+                    }, 'image/png');
+                } catch (e) {
+                    URL.revokeObjectURL(url);
+                    resolve(null);
+                }
+            };
+            img.onerror = () => {
+                clearTimeout(timer);
+                URL.revokeObjectURL(url);
+                resolve(null);
+            };
+            img.src = url;
+        } catch (_) {
+            resolve(null);
+        }
+    });
+}
+
+function carregarImagemParaBufferDocx(url, maxW = 280, maxH = 200) {
+    return new Promise((resolve) => {
+        if (!url) return resolve(null);
+
+        // Se for Base64 direto, converte instantaneamente para ArrayBuffer
+        if (typeof url === 'string' && url.startsWith('data:image')) {
+            const bBuf = base64ToArrayBufferRelSms(url);
+            if (bBuf && bBuf.byteLength > 50) {
+                return resolve({
+                    buffer: bBuf,
+                    width: maxW,
+                    height: Math.round(maxW * 0.68)
+                });
+            }
+        }
+
+        if (typeof Image === 'undefined') return resolve(null);
+
+        // Resolve URLs de Google Drive para visualização direta segura
+        let urlFinal = url;
+        if (typeof url === 'string') {
+            if (url.includes('drive.google.com/file/d/')) {
+                const match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+                if (match && match[1]) {
+                    urlFinal = `https://lh3.googleusercontent.com/d/${encodeURIComponent(match[1])}`;
+                }
+            } else if (url.includes('drive.google.com') && (url.includes('id=') || url.includes('open?id='))) {
+                const match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+                if (match && match[1]) {
+                    urlFinal = `https://lh3.googleusercontent.com/d/${encodeURIComponent(match[1])}`;
+                }
+            }
+        }
+
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        let timer = setTimeout(() => {
+            img.src = '';
+            resolve(null);
+        }, 4000);
+
+        img.onload = () => {
+            clearTimeout(timer);
+            try {
+                const canvas = document.createElement('canvas');
+                const origW = img.naturalWidth || img.width || maxW;
+                const origH = img.naturalHeight || img.height || maxH;
+                const ratio = Math.min(maxW / origW, maxH / origH, 1);
+                const finalW = Math.max(Math.round(origW * ratio), 100);
+                const finalH = Math.max(Math.round(origH * ratio), 80);
+
+                canvas.width = finalW;
+                canvas.height = finalH;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, finalW, finalH);
+                ctx.drawImage(img, 0, 0, finalW, finalH);
+
+                canvas.toBlob((blob) => {
+                    if (!blob) return resolve(null);
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        resolve({
+                            buffer: reader.result,
+                            width: finalW,
+                            height: finalH
+                        });
+                    };
+                    reader.onerror = () => resolve(null);
+                    reader.readAsArrayBuffer(blob);
+                }, 'image/jpeg', 0.82);
+            } catch (err) {
+                tentarFetchOuProxy();
+            }
+        };
+
+        const tentarFetchOuProxy = () => {
+            fetch(urlFinal, { mode: 'cors' })
+                .then(r => r.ok ? r.arrayBuffer() : null)
+                .then(buf => {
+                    if (buf && buf.byteLength > 50) {
+                        return resolve({ buffer: buf, width: maxW, height: Math.round(maxW * 0.7) });
+                    }
+                    throw new Error('Falha no fetch direto');
+                })
+                .catch(() => {
+                    const proxyUrl = `/api/proxy-imagem?url=${encodeURIComponent(urlFinal)}`;
+                    fetch(proxyUrl)
+                        .then(r => r.ok ? r.arrayBuffer() : null)
+                        .then(buf => resolve(buf && buf.byteLength > 50 ? { buffer: buf, width: maxW, height: Math.round(maxW * 0.7) } : null))
+                        .catch(() => resolve(null));
+                });
+        };
+
+        img.onerror = () => {
+            clearTimeout(timer);
+            tentarFetchOuProxy();
+        };
+
+        img.src = urlFinal;
+    });
+}
+
 function relSmsH1(text) {
     return new docx.Paragraph({
         heading: docx.HeadingLevel.HEADING_1,
@@ -16604,7 +16868,7 @@ function coletarDadosSecao1RelSms(mes, ano) {
 // dos itens sensíveis (NR vencida, APR vencida, CA de EPI vencido/estoque baixo - ver
 // memória do projeto "não citar itens sensíveis na versão Fiscalização") - na versão
 // completa (fiscalizacao=false) nada é removido.
-function construirSecao1RelSms(dados, mes, ano, fiscalizacao) {
+function construirSecao1RelSms(dados, mes, ano, fiscalizacao, graficoHhtBuffer) {
     const nomeMes = NOMES_MESES[mes];
     const out = [relSmsH1('1. Segurança do Trabalho')];
     out.push(relSmsP(`Indicadores de Segurança do Trabalho referentes a ${nomeMes.toLowerCase()} de ${ano}, com base nos registros de campo consolidados pela equipe de SMS.`));
@@ -16628,6 +16892,58 @@ function construirSecao1RelSms(dados, mes, ano, fiscalizacao) {
     // Item sensível (integrações de NR vencidas) - fora da versão Fiscalização.
     if (!fiscalizacao) {
         out.push(relSmsNota(`Colaboradores ativos com integração/NR vencida (situação atual): ${t.nrVencidas}.`));
+    }
+
+    // Gráfico Canvas de Evolução Histórica de HHT isolado em tabela centrada sem bordas para evitar sobreposição
+    if (graficoHhtBuffer && graficoHhtBuffer.buffer && graficoHhtBuffer.buffer.byteLength > 50) {
+        out.push(new docx.Paragraph({ spacing: { before: 240, after: 120 }, children: [] }));
+        out.push(new docx.Table({
+            width: { size: 100, type: docx.WidthType.PERCENTAGE },
+            borders: {
+                top: { style: docx.BorderStyle.NONE },
+                bottom: { style: docx.BorderStyle.NONE },
+                left: { style: docx.BorderStyle.NONE },
+                right: { style: docx.BorderStyle.NONE },
+            },
+            rows: [
+                new docx.TableRow({
+                    children: [
+                        new docx.TableCell({
+                            width: { size: 100, type: docx.WidthType.PERCENTAGE },
+                            borders: {
+                                top: { style: docx.BorderStyle.NONE },
+                                bottom: { style: docx.BorderStyle.NONE },
+                                left: { style: docx.BorderStyle.NONE },
+                                right: { style: docx.BorderStyle.NONE },
+                            },
+                            children: [
+                                new docx.Paragraph({
+                                    alignment: docx.AlignmentType.CENTER,
+                                    spacing: { before: 180, after: 120 },
+                                    children: [
+                                        new docx.ImageRun({
+                                            data: graficoHhtBuffer.buffer,
+                                            transformation: {
+                                                width: 500,
+                                                height: Math.round(500 * (graficoHhtBuffer.height / graficoHhtBuffer.width))
+                                            }
+                                        })
+                                    ]
+                                }),
+                                new docx.Paragraph({
+                                    alignment: docx.AlignmentType.CENTER,
+                                    spacing: { before: 60, after: 180 },
+                                    children: [
+                                        new docx.TextRun({ text: 'Gráfico 1 — Evolução Histórica de HHT em Treinamentos e DDSMA (Últimos 6 Meses)', italics: true, size: 16, color: RELSMS_GREY })
+                                    ]
+                                })
+                            ]
+                        })
+                    ]
+                })
+            ]
+        }));
+        out.push(new docx.Paragraph({ spacing: { before: 120, after: 240 }, children: [] }));
     }
 
     // 1.3 APR
@@ -16881,7 +17197,7 @@ function construirSecaoMeioAmbienteRelSms(dados, mes, ano, fiscalizacao) {
     const nomeMes = NOMES_MESES[mes];
     const out = [relSmsH1('7. Meio Ambiente e PGRS')];
 
-    out.push(relSmsH2('4.1. Geração e Destinação de Resíduos'));
+    out.push(relSmsH2('7.1. Geração e Destinação de Resíduos'));
     const l = dados.linhaResiduos;
     if (!dados.residuosConfirmados) {
         if (fiscalizacao) {
@@ -16908,7 +17224,7 @@ function construirSecaoMeioAmbienteRelSms(dados, mes, ano, fiscalizacao) {
         out.push(relSmsP(`Transporte e destinação final: 1ª etapa por veículo próprio do Consórcio até Sertânia-PE; 2ª etapa por empresa contratada pela Prefeitura Municipal de Sertânia até o Aterro Sanitário de Arcoverde-PE, no âmbito do Acordo de Cooperação para Coleta de Resíduos firmado entre o Consórcio e a Prefeitura Municipal de Sertânia. Manifesto de Resíduos detalhado do período disponível em anexo, quando emitido.`));
     }
 
-    out.push(relSmsH2('4.2. Rastreabilidade de Manutenção Veicular (Troca de Óleo)'));
+    out.push(relSmsH2('7.2. Rastreabilidade de Manutenção Veicular (Troca de Óleo)'));
     if (dados.manutRegistrosMes === 0) {
         if (fiscalizacao) {
             out.push(relSmsP('As manutenções preventivas, inspeções de nível e trocas de fluidos da frota e equipamentos operacionais foram realizadas conforme o plano de manutenção, sem ocorrências de vazamentos ou impactos ambientais no período.'));
@@ -17309,77 +17625,215 @@ function coletarDadosFase4RelSms(mes, ano) {
     };
 }
 
-// Célula individual de foto para documento Word (.docx)
-function relSmsCelulaRegistroFoto(numero) {
-    const numFmt = String(numero).padStart(2, '0');
+// Célula estruturada para acomodar foto real com moldura e metadados no Word (.docx)
+function relSmsCelulaRegistroFotoReal(foto) {
+    const dataFmt = foto.data ? formatSimpleDate(foto.data) : '';
+    const horaFmt = foto.hora ? ` às ${foto.hora}` : '';
+    const localFmt = foto.local || 'Ramal do Agreste (Trecho VII)';
+    const legendaFmt = foto.nome || 'Evidência Fotográfica de Campo';
+
+    const celulaChildren = [];
+
+    const temBufferValido = foto.img && foto.img.buffer && (foto.img.buffer.byteLength > 50);
+    if (temBufferValido) {
+        celulaChildren.push(new docx.Paragraph({
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { before: 80, after: 60 },
+            children: [
+                new docx.ImageRun({
+                    data: foto.img.buffer,
+                    transformation: {
+                        width: Math.min(foto.img.width || 280, 280),
+                        height: Math.min(foto.img.height || 190, 190)
+                    }
+                })
+            ]
+        }));
+    } else {
+        celulaChildren.push(new docx.Paragraph({
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { before: 200, after: 80 },
+            shading: { fill: 'F8FAFC' },
+            children: [
+                new docx.TextRun({ text: '📷 [ Evidência Digital Registrada ]', bold: true, color: '64748B', size: 17 })
+            ]
+        }));
+        celulaChildren.push(new docx.Paragraph({
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { before: 0, after: 200 },
+            shading: { fill: 'F8FAFC' },
+            children: [
+                new docx.TextRun({ text: '(Arquivo preservado no repositório oficial de segurança)', italics: true, color: RELSMS_GREY, size: 14 })
+            ]
+        }));
+    }
+
+    celulaChildren.push(new docx.Paragraph({
+        alignment: docx.AlignmentType.LEFT,
+        spacing: { before: 40, after: 20 },
+        children: [
+            new docx.TextRun({ text: legendaFmt, bold: true, color: RELSMS_NAVY, size: 16 })
+        ]
+    }));
+
+    celulaChildren.push(new docx.Paragraph({
+        alignment: docx.AlignmentType.LEFT,
+        spacing: { before: 0, after: 20 },
+        children: [
+            new docx.TextRun({ text: `Setor/Frente: ${localFmt}`, color: '475569', size: 14 })
+        ]
+    }));
+
+    celulaChildren.push(new docx.Paragraph({
+        alignment: docx.AlignmentType.LEFT,
+        spacing: { before: 0, after: 40 },
+        children: [
+            new docx.TextRun({ text: `Data: ${dataFmt}${horaFmt}`, bold: true, color: '475569', size: 14 })
+        ]
+    }));
+
     return new docx.TableCell({
         width: { size: 50, type: docx.WidthType.PERCENTAGE },
-        margins: { top: 80, bottom: 80, left: 80, right: 80 },
-        borders: { top: RELSMS_BORDA_FINA, bottom: RELSMS_BORDA_FINA, left: RELSMS_BORDA_FINA, right: RELSMS_BORDA_FINA },
-        verticalAlign: docx.VerticalAlign.CENTER,
-        shading: { fill: 'FAFAFA' },
-        children: [
-            new docx.Paragraph({
-                alignment: docx.AlignmentType.CENTER,
-                spacing: { before: 450, after: 450 },
-                border: { top: RELSMS_BORDA_FINA, bottom: RELSMS_BORDA_FINA, left: RELSMS_BORDA_FINA, right: RELSMS_BORDA_FINA },
-                shading: { fill: 'FFFFFF' },
-                children: [new docx.TextRun({ text: `[ Espaço reservado para Registro Fotográfico ${numFmt} ]`, italics: true, color: RELSMS_GREY, size: 18 })],
-            }),
-            new docx.Paragraph({
-                alignment: docx.AlignmentType.CENTER,
-                spacing: { before: 50, after: 10 },
-                children: [new docx.TextRun({ text: `Registro ${numFmt}`, bold: true, size: 17, color: '64748B' })],
-            }),
-        ],
+        margins: { top: 80, bottom: 80, left: 100, right: 100 },
+        borders: {
+            top: RELSMS_BORDA_FINA,
+            bottom: RELSMS_BORDA_FINA,
+            left: RELSMS_BORDA_FINA,
+            right: RELSMS_BORDA_FINA
+        },
+        shading: { fill: 'FFFFFF' },
+        verticalAlign: docx.VerticalAlign.TOP,
+        children: celulaChildren
     });
 }
 
-// Tabela estruturada para cada Tema em Word (.docx) com cabeçalho largo e exatamente 02 fotos
-function relSmsTabelaTemaFotoDocx(titulo) {
+function relSmsCelulaFotoVazia() {
+    return new docx.TableCell({
+        width: { size: 50, type: docx.WidthType.PERCENTAGE },
+        borders: {
+            top: { style: docx.BorderStyle.NONE },
+            bottom: { style: docx.BorderStyle.NONE },
+            left: { style: docx.BorderStyle.NONE },
+            right: { style: docx.BorderStyle.NONE }
+        },
+        children: [new docx.Paragraph({ children: [] })]
+    });
+}
+
+function relSmsBarraTemaFotoDocx(titulo, subtitulo) {
+    const children = [
+        new docx.Paragraph({
+            spacing: { before: 40, after: subtitulo ? 20 : 40 },
+            children: [
+                new docx.TextRun({ text: titulo, bold: true, color: '1E293B', size: 18 })
+            ]
+        })
+    ];
+    if (subtitulo) {
+        children.push(new docx.Paragraph({
+            spacing: { before: 0, after: 40 },
+            children: [
+                new docx.TextRun({ text: subtitulo, size: 15, color: RELSMS_GREY, italics: true })
+            ]
+        }));
+    }
     return new docx.Table({
         width: { size: 100, type: docx.WidthType.PERCENTAGE },
         rows: [
             new docx.TableRow({
                 children: [
                     new docx.TableCell({
-                        columnSpan: 2,
                         shading: { fill: 'F1F5F9' },
-                        borders: { top: RELSMS_BORDA_FINA, bottom: RELSMS_BORDA_FINA, left: RELSMS_BORDA_FINA, right: RELSMS_BORDA_FINA },
-                        margins: { top: 80, bottom: 80, left: 120, right: 120 },
-                        children: [
-                            new docx.Paragraph({
-                                children: [
-                                    new docx.TextRun({ text: titulo, bold: true, color: '1E293B', size: 20 })
-                                ]
-                            })
-                        ]
+                        borders: {
+                            top: { style: docx.BorderStyle.SINGLE, size: 6, color: RELSMS_NAVY },
+                            bottom: RELSMS_BORDA_FINA,
+                            left: RELSMS_BORDA_FINA,
+                            right: RELSMS_BORDA_FINA
+                        },
+                        margins: { top: 60, bottom: 60, left: 100, right: 100 },
+                        children
                     })
-                ]
-            }),
-            new docx.TableRow({
-                height: { value: 2400, rule: docx.HeightRule.ATLEAST },
-                children: [
-                    relSmsCelulaRegistroFoto(1),
-                    relSmsCelulaRegistroFoto(2)
                 ]
             })
         ]
     });
 }
 
-function construirSecao5RelSms(dadosFotos, mes, ano) {
+async function construirSecao5RelSms(dadosFotos, mes, ano) {
     const mesSelect = document.getElementById('relSmsMes');
     const nomeMes = (typeof NOMES_MESES !== 'undefined' && mes !== undefined && NOMES_MESES[mes]) ? NOMES_MESES[mes] : (mesSelect && mesSelect.selectedIndex >= 0 ? mesSelect.options[mesSelect.selectedIndex].text : 'Mes_Nao_Definido');
     const anoRelatorio = ano || (document.getElementById('relSmsAno') ? document.getElementById('relSmsAno').value : new Date().getFullYear());
-    const linkDriveMaster = 'https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
+    const linkDriveMaster = (typeof getDriveFolderFotosUrl === 'function') ? getDriveFolderFotosUrl() : 'https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
     const out = [relSmsH1('9. Registros Fotográficos (Treinamentos e DDSMA)')];
-    out.push(relSmsP('Em atendimento às diretrizes de otimização de armazenamento e governança de dados (SST/ESG), o acervo fotográfico comprobatório das capacitações normativas e Diálogos Diários de Segurança e Meio Ambiente (DDSMA) realizados neste período de competência encontra-se digitalizado, indexado e disponível para auditoria em nosso repositório oficial em nuvem.'));
+    out.push(relSmsP('Registro fotográfico comprobatório das capacitações normativas de SST e dos Diálogos Diários de Segurança e Meio Ambiente (DDSMA) realizados durante o período de competência na obra Ramal do Agreste (Trecho VII).'));
 
-    out.push(relSmsH2('Repositório de Evidências Fotográficas — Acervo Digital'));
-    out.push(relSmsP(`Link de Auditoria (Google Drive): ${linkDriveMaster}`));
-    out.push(relSmsP(`Para acessar as evidências, navegue até a pasta: SST - Registros de Campo / ${nomeMes}_${anoRelatorio} / Treinamentos e DDSMA`));
-    out.push(relSmsNota('Registros georreferenciados com carimbo de data, hora e metadados arquivados integralmente no repositório de SST para consulta por auditores fiscais e fiscalização contratual.'));
+    const listaTreinamentos = (dadosFotos && dadosFotos.treinamentos) ? dadosFotos.treinamentos : [];
+    const listaDdsma = (dadosFotos && dadosFotos.ddsma) ? dadosFotos.ddsma : [];
+
+    // 9.1. Treinamentos Normativos
+    out.push(relSmsH2('9.1. Evidências Fotográficas de Treinamentos e Capacitações Normativas'));
+    if (listaTreinamentos.length === 0) {
+        out.push(relSmsNota('Nenhum registro fotográfico de treinamento digitalizado anexado no período. Listas de presença e certificados físicos formalizados no Anexo I.'));
+    } else {
+        for (const t of listaTreinamentos) {
+            out.push(relSmsBarraTemaFotoDocx(`Treinamento: ${t.tema}`, `Período de Realização: ${t.dataTexto}`));
+            const fotosComBuffer = await Promise.all(
+                (t.fotos || []).map(async f => {
+                    const img = await carregarImagemParaBufferDocx(f.url, 280, 200);
+                    return { ...f, img };
+                })
+            );
+
+            const linhasTabela = [];
+            for (let i = 0; i < fotosComBuffer.length; i += 2) {
+                const c1 = relSmsCelulaRegistroFotoReal(fotosComBuffer[i]);
+                const c2 = fotosComBuffer[i + 1] ? relSmsCelulaRegistroFotoReal(fotosComBuffer[i + 1]) : relSmsCelulaFotoVazia();
+                linhasTabela.push(new docx.TableRow({ children: [c1, c2] }));
+            }
+
+            if (linhasTabela.length > 0) {
+                out.push(new docx.Table({
+                    width: { size: 100, type: docx.WidthType.PERCENTAGE },
+                    rows: linhasTabela
+                }));
+            }
+            out.push(new docx.Paragraph({ spacing: { after: 160 }, children: [] }));
+        }
+    }
+
+    // 9.2. DDSMA
+    out.push(relSmsH2('9.2. Evidências Fotográficas dos Diálogos Diários de Segurança e Meio Ambiente (DDSMA)'));
+    if (listaDdsma.length === 0) {
+        out.push(relSmsNota('Nenhum registro fotográfico de DDSMA digitalizado anexado no período. Fichas diárias de assinatura formalizadas no Anexo II.'));
+    } else {
+        for (const d of listaDdsma) {
+            out.push(relSmsBarraTemaFotoDocx(`DDSMA: ${d.tema}`, `Data: ${d.dataTexto}`));
+            const fotosComBuffer = await Promise.all(
+                (d.fotos || []).map(async f => {
+                    const img = await carregarImagemParaBufferDocx(f.url, 280, 200);
+                    return { ...f, img };
+                })
+            );
+
+            const linhasTabela = [];
+            for (let i = 0; i < fotosComBuffer.length; i += 2) {
+                const c1 = relSmsCelulaRegistroFotoReal(fotosComBuffer[i]);
+                const c2 = fotosComBuffer[i + 1] ? relSmsCelulaRegistroFotoReal(fotosComBuffer[i + 1]) : relSmsCelulaFotoVazia();
+                linhasTabela.push(new docx.TableRow({ children: [c1, c2] }));
+            }
+
+            if (linhasTabela.length > 0) {
+                out.push(new docx.Table({
+                    width: { size: 100, type: docx.WidthType.PERCENTAGE },
+                    rows: linhasTabela
+                }));
+            }
+            out.push(new docx.Paragraph({ spacing: { after: 160 }, children: [] }));
+        }
+    }
+
+    // Nota suplementar de repositório em nuvem
+    out.push(relSmsNota(`Acervo integral digitalizado disponível no repositório de segurança: ${linkDriveMaster} (Pasta: SST - Registros de Campo / ${nomeMes}_${anoRelatorio} / Treinamentos e DDSMA)`));
 
     out.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
     return out;
@@ -17477,30 +17931,52 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
     await garantirDadosCompletosRelatorioMensalSms();
     const dadosCompletos = coletarDadosCompletosRelatorioMensalSms(mes, ano);
 
+    // Carregamento de Recursos Visuais (Logo COP e Gráfico Canvas HHT)
+    const logoCopBuffer = await carregarBufferLogoCop();
+    const svgHht = gerarGraficoBarrasHHTSVG(dadosCompletos.treinamentos.historicoHht);
+    const graficoHhtBuffer = await converterSvgParaPngBuffer(svgHht, 680, 160);
+
     const nomeMes = NOMES_MESES[mes];
     const codigoRev = (typeof codigoRevisaoDocumento === 'function' ? codigoRevisaoDocumento('relatorio_mensal_sms') : '') || 'REL.SMS.001 R00';
     const hoje = new Date();
     const dataEmissao = String(hoje.getDate()).padStart(2, '0') + '/' + String(hoje.getMonth() + 1).padStart(2, '0') + '/' + hoje.getFullYear();
 
-    const capa = [
-        ...Array(4).fill(0).map(() => new docx.Paragraph({ spacing: { after: 200 }, children: [] })),
+    const capa = [];
+    if (logoCopBuffer && logoCopBuffer.byteLength > 100) {
+        capa.push(new docx.Paragraph({
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { before: 160, after: 360 },
+            children: [
+                new docx.ImageRun({
+                    data: logoCopBuffer,
+                    transformation: { width: 170, height: 55 }
+                })
+            ]
+        }));
+    } else {
+        capa.push(...Array(3).fill(0).map(() => new docx.Paragraph({ spacing: { after: 200 }, children: [] })));
+    }
+
+    capa.push(
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 100 }, children: [new docx.TextRun({ text: 'CONSÓRCIO OPERADOR DO PISF – RAMAL DO AGRESTE', bold: true, color: RELSMS_NAVY, size: 26 })] }),
-        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 600 }, children: [new docx.TextRun({ text: 'Obra Ramal do Agreste — Trecho VII', color: RELSMS_GREY, size: 22 })] }),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 500 }, children: [new docx.TextRun({ text: 'Obra Ramal do Agreste — Trecho VII', color: RELSMS_GREY, size: 22 })] }),
         new docx.Paragraph({
             alignment: docx.AlignmentType.CENTER, spacing: { after: 100 },
             border: { top: { color: RELSMS_NAVY, space: 10, style: docx.BorderStyle.SINGLE, size: 12 }, bottom: { color: RELSMS_NAVY, space: 10, style: docx.BorderStyle.SINGLE, size: 12 } },
             children: [new docx.TextRun({ text: 'RELATÓRIO MENSAL CONSOLIDADO DE SMS', bold: true, color: RELSMS_NAVY, size: 36 })],
         }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 100, after: 40 }, children: [new docx.TextRun({ text: '(Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente)', color: RELSMS_GREY, size: 20, italics: true })] }),
-        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 300, after: 700 }, children: [new docx.TextRun({ text: (nomeMes + ' / ' + ano).toUpperCase(), bold: true, color: RELSMS_BLUE, size: 32 })] }),
-        ...Array(3).fill(0).map(() => new docx.Paragraph({ spacing: { after: 140 }, children: [] })),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 260, after: 600 }, children: [new docx.TextRun({ text: (nomeMes + ' / ' + ano).toUpperCase(), bold: true, color: RELSMS_BLUE, size: 32 })] }),
+        ...Array(2).fill(0).map(() => new docx.Paragraph({ spacing: { after: 140 }, children: [] })),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'Elaborado por:', color: RELSMS_GREY, size: 20 })] }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'João Everton de Souza Limeira', bold: true, color: RELSMS_NAVY, size: 22 })] }),
-        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 80 }, children: [new docx.TextRun({ text: 'Engenheiro de Segurança do Trabalho — CREA/PE 181283311-8', color: RELSMS_GREY, size: 20 })] }),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 60 }, children: [new docx.TextRun({ text: 'Engenheiro de Segurança do Trabalho — CREA/PE 181283311-8', color: RELSMS_GREY, size: 20 })] }),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'CONSÓRCIO OPERADOR RAMAL DO AGRESTE', bold: true, color: RELSMS_NAVY, size: 20 })] }),
+        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 80 }, children: [new docx.TextRun({ text: 'CNPJ: ' + (EMPRESA_INFO.cnpj || '55.623.017/0001-97') + ' — Engenharia de Segurança do Trabalho', color: RELSMS_GREY, size: 18 })] }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'Código de Controle: ' + codigoRev, bold: true, color: RELSMS_GREY, size: 18 })] }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, children: [new docx.TextRun({ text: 'Data de emissão: ' + dataEmissao, color: RELSMS_GREY, size: 18 })] }),
-        new docx.Paragraph({ children: [new docx.PageBreak()] }),
-    ];
+        new docx.Paragraph({ children: [new docx.PageBreak()] })
+    );
 
     const indice = [
         relSmsH1('Sumário / Índice'),
@@ -17527,7 +18003,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
 
     await garantirDadosSecao1RelSms();
     const dadosSecao1 = coletarDadosSecao1RelSms(mes, ano);
-    const secao1 = construirSecao1RelSms(dadosSecao1, mes, ano, fiscalizacao);
+    const secao1 = construirSecao1RelSms(dadosSecao1, mes, ano, fiscalizacao, graficoHhtBuffer);
 
     const secaoPgr = construirSecaoPgrDocx(dadosCompletos, fiscalizacao);
 
@@ -17546,17 +18022,77 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
     const secao4 = construirSecao4RelSms(dadosSecao1, dadosSecoes23, dadosMeioAmbiente, mes, ano, fiscalizacao);
 
     const dadosFase4 = coletarDadosFase4RelSms(mes, ano);
-    const secao5 = construirSecao5RelSms(dadosFase4, mes, ano);
+    const secao5 = await construirSecao5RelSms(dadosFase4, mes, ano);
     const anexos = construirAnexosRelSms(mes, ano);
 
-    const header = new docx.Header({
-        children: [new docx.Paragraph({
-            alignment: docx.AlignmentType.RIGHT,
-            border: { bottom: { color: 'BFBFBF', space: 4, style: docx.BorderStyle.SINGLE, size: 4 } },
+    // Cabeçalho institucional com Logo do COP redimensionado e identificação corporativa
+    const headerTabelaFilhos = [];
+    if (logoCopBuffer && logoCopBuffer.byteLength > 100) {
+        headerTabelaFilhos.push(new docx.TableCell({
+            width: { size: 30, type: docx.WidthType.PERCENTAGE },
+            borders: { top: { style: docx.BorderStyle.NONE }, bottom: { style: docx.BorderStyle.NONE }, left: { style: docx.BorderStyle.NONE }, right: { style: docx.BorderStyle.NONE } },
+            verticalAlign: docx.VerticalAlign.CENTER,
             children: [
-                new docx.TextRun({ text: 'Relatório Mensal Consolidado de SMS — COP Ramal do Agreste (Trecho VII) — ' + nomeMes + '/' + ano + ' — ' + codigoRev, size: 16, color: RELSMS_GREY })
-            ],
-        })],
+                new docx.Paragraph({
+                    alignment: docx.AlignmentType.LEFT,
+                    children: [
+                        new docx.ImageRun({
+                            data: logoCopBuffer,
+                            transformation: { width: 116, height: 38 }
+                        })
+                    ]
+                })
+            ]
+        }));
+    } else {
+        headerTabelaFilhos.push(new docx.TableCell({
+            width: { size: 30, type: docx.WidthType.PERCENTAGE },
+            borders: { top: { style: docx.BorderStyle.NONE }, bottom: { style: docx.BorderStyle.NONE }, left: { style: docx.BorderStyle.NONE }, right: { style: docx.BorderStyle.NONE } },
+            verticalAlign: docx.VerticalAlign.CENTER,
+            children: [
+                new docx.Paragraph({
+                    alignment: docx.AlignmentType.LEFT,
+                    children: [
+                        new docx.TextRun({ text: 'CONSÓRCIO COP', bold: true, color: RELSMS_NAVY, size: 20 })
+                    ]
+                })
+            ]
+        }));
+    }
+
+    headerTabelaFilhos.push(new docx.TableCell({
+        width: { size: 70, type: docx.WidthType.PERCENTAGE },
+        borders: { top: { style: docx.BorderStyle.NONE }, bottom: { style: docx.BorderStyle.NONE }, left: { style: docx.BorderStyle.NONE }, right: { style: docx.BorderStyle.NONE } },
+        verticalAlign: docx.VerticalAlign.CENTER,
+        children: [
+            new docx.Paragraph({
+                alignment: docx.AlignmentType.RIGHT,
+                children: [
+                    new docx.TextRun({ text: 'CONSÓRCIO OPERADOR RAMAL DO AGRESTE - SESMT / SMS', bold: true, color: RELSMS_NAVY, size: 16 })
+                ]
+            }),
+            new docx.Paragraph({
+                alignment: docx.AlignmentType.RIGHT,
+                children: [
+                    new docx.TextRun({ text: 'Relatório Mensal Consolidado de SMS — ' + nomeMes + '/' + ano, size: 14, color: RELSMS_GREY })
+                ]
+            })
+        ]
+    }));
+
+    const header = new docx.Header({
+        children: [
+            new docx.Table({
+                width: { size: 100, type: docx.WidthType.PERCENTAGE },
+                borders: {
+                    top: { style: docx.BorderStyle.NONE },
+                    bottom: { style: docx.BorderStyle.SINGLE, size: 6, color: 'BFBFBF' },
+                    left: { style: docx.BorderStyle.NONE },
+                    right: { style: docx.BorderStyle.NONE }
+                },
+                rows: [new docx.TableRow({ children: headerTabelaFilhos })]
+            })
+        ]
     });
     const footer = new docx.Footer({
         children: [new docx.Table({
@@ -18307,7 +18843,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Relatorio_Mensal_SMS_${nomeMes}_${ano}${fiscalizacao ? '_Fiscalizacao' : ''}</title>
+    <title>Relatorio_Mensal_SMS_${nomeMes}_${ano}</title>
     <style>
         @page {
             size: A4 portrait;
@@ -18600,12 +19136,14 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
     <div class="folha-relatorio">
         <!-- PÁGINA 1: CAPA INSTITUCIONAL -->
         <div class="pagina-relatorio">
-            ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Documento Oficial de SST')}
-            <div style="text-align: center; padding: 70px 20px 40px 20px;">
+            <div style="text-align: center; padding-top: 35px; margin-bottom: 25px;">
+                <img src="${obterLogoCopBase64RelSms() || 'logo-cop.png'}" onerror="this.onerror=null;this.src='/dashboard/logo-cop.png';" alt="Consórcio Operador Ramal do Agreste" style="max-height: 65px; max-width: 240px; object-fit: contain;">
+            </div>
+            <div style="text-align: center; padding: 20px 20px 40px 20px;">
                 <div style="font-size: 13px; font-weight: 800; color: #1f3864; text-transform: uppercase; letter-spacing: 1px;">
                     ${escapeHTML(meta.empresa)}
                 </div>
-                <div style="font-size: 12px; color: #475569; margin: 4px 0 26px 0;">
+                <div style="font-size: 12px; color: #475569; margin: 4px 0 30px 0;">
                     Obra: ${escapeHTML(meta.obra)}
                 </div>
                 <div style="display: inline-block; border-top: 3px solid #1f3864; border-bottom: 3px solid #1f3864; padding: 18px 34px; margin-bottom: 14px;">
@@ -18613,19 +19151,20 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                         RELATÓRIO MENSAL CONSOLIDADO DE SMS
                     </div>
                     <div style="font-size: 11px; color: #475569; font-style: italic; margin-top: 6px;">
-                        Dossiê Integrado de Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente
+                        Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente
                     </div>
                 </div>
-                <div style="font-size: 16px; font-weight: 800; color: #2e5395; margin-top: 20px; text-transform: uppercase;">
+                <div style="font-size: 16px; font-weight: 800; color: #2e5395; margin-top: 25px; text-transform: uppercase;">
                     COMPETÊNCIA: ${nomeMes} / ${ano}
                 </div>
-                ${fiscalizacao ? `<div style="display: inline-block; background: #e2e8f0; color: #334155; font-size: 10.5px; font-weight: 700; padding: 4px 14px; border-radius: 4px; margin-top: 12px;">Versão para envio à Fiscalização / Auditoria</div>` : ''}
 
                 <div style="margin-top: 85px; font-size: 10.5px; color: #475569; line-height: 1.6;">
                     <div>Elaborado por:</div>
-                    <div style="font-size: 12.5px; font-weight: 800; color: #1f3864; margin: 2px 0;">${escapeHTML(meta.responsavelTecnico)}</div>
-                    <div>${escapeHTML(meta.crea)}</div>
-                    <div style="margin-top: 10px;"><strong>Código de Controle:</strong> ${escapeHTML(meta.codigoRev)}</div>
+                    <div style="font-size: 13px; font-weight: 800; color: #1f3864; margin: 2px 0;">${escapeHTML(meta.responsavelTecnico)}</div>
+                    <div>${escapeHTML(meta.crea)} — Engenharia de Segurança do Trabalho</div>
+                    <div style="margin-top: 8px; font-weight: 700; color: #1f3864;">${escapeHTML(meta.empresa)}</div>
+                    <div>CNPJ: ${escapeHTML(EMPRESA_INFO.cnpj || '55.623.017/0001-97')}</div>
+                    <div style="margin-top: 8px;"><strong>Código de Controle:</strong> ${escapeHTML(meta.codigoRev)}</div>
                     <div><strong>Data de Emissão:</strong> ${meta.dataEmissao}</div>
                 </div>
             </div>
@@ -19061,8 +19600,8 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                 </div>
                 <div style="margin-bottom: 10px; font-size: 9.5px; line-height: 1.5;">
                     <strong>Link de Auditoria (Google Drive):</strong><br/>
-                    <a href="https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms" target="_blank" rel="noopener noreferrer" style="color: #0284c7; font-weight: 600; text-decoration: underline; word-break: break-all;">
-                        https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms
+                    <a href="${(typeof getDriveFolderFotosUrl === 'function') ? getDriveFolderFotosUrl() : 'https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms'}" target="_blank" rel="noopener noreferrer" style="color: #0284c7; font-weight: 600; text-decoration: underline; word-break: break-all;">
+                        ${(typeof getDriveFolderFotosUrl === 'function') ? getDriveFolderFotosUrl() : 'https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms'}
                     </a>
                 </div>
                 <div style="font-size: 9.5px; line-height: 1.5; color: #334155;">
@@ -19171,7 +19710,7 @@ function renderRelSmsPainel(dados, fiscalizacao) {
             <div style="text-align: right; font-size: 12px; background: rgba(255,255,255,0.12); padding: 8px 14px; border-radius: 8px; backdrop-filter: blur(4px);">
                 <div><strong>Controle:</strong> ${escapeHTML(meta.codigoRev)}</div>
                 <div><strong>Emissão:</strong> ${meta.dataEmissao}</div>
-                <div>${fiscalizacao ? '<span style="background:#f59e0b; color:#ffffff; padding:2px 8px; border-radius:4px; font-weight:700; font-size:11px;">Versão Fiscalização</span>' : '<span style="background:#10b981; color:#ffffff; padding:2px 8px; border-radius:4px; font-weight:700; font-size:11px;">Dossiê Completo</span>'}</div>
+                <div><span style="background:#1e3a8a; color:#ffffff; padding:2px 8px; border-radius:4px; font-weight:700; font-size:11px;">${fiscalizacao ? 'Relatório Executivo Oficial' : 'Dossiê Completo'}</span></div>
             </div>
         </div>
     </div>
@@ -19472,7 +20011,7 @@ async function imprimirRelatorioMensalSms() {
         const html = construirHtmlDossieOficialRelSms(dados, fiscalizacao);
 
         const nomeMes = NOMES_MESES[mes];
-        abrirDocumentoHtmlParaImpressao(html, `Relatorio_Mensal_SMS_${nomeMes}_${ano}${fiscalizacao ? '_Fiscalizacao' : ''}`);
+        abrirDocumentoHtmlParaImpressao(html, `Relatorio_Mensal_SMS_${nomeMes}_${ano}`);
 
         if (statusEl) {
             statusEl.innerHTML = `<span style="color:#10b981; font-weight:600;">✅ Dossiê gerado com sucesso (${nomeMes}/${ano}) — aberto na aba de impressão em formato A4 imune a bloqueador de popups.</span>`;
@@ -30806,6 +31345,10 @@ function recarregarAcervoDrive() {
 }
 
 function abrirCategoriaAcervoDrive(categoria) {
+    if (categoria === 'fotos' || categoria === 'fotos_evidencias') {
+        tratarCliqueCardFotosDrive();
+        return;
+    }
     acervoDriveCategoria = categoria;
     const nomes = {
         treinamentos: 'Treinamentos',
@@ -31195,10 +31738,36 @@ function getDriveGasWebhookUrl() {
            (typeof DEFAULT_CHECKLIST_DRIVE_SCRIPT_URL !== 'undefined' ? DEFAULT_CHECKLIST_DRIVE_SCRIPT_URL : '');
 }
 
-function getDriveFolderFotosUrl() {
-    const defaultUrl = 'https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
-    
-    // 1. Busca no cache sincronizado do Supabase (checklist_item_settings)
+const ID_DDSMA_LEGADO = '1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
+
+function normalizarUrlGoogleDriveFolder(urlOuId) {
+    if (!urlOuId) return '';
+    const str = String(urlOuId).trim();
+    if (!str) return '';
+    if (str.startsWith('http://') || str.startsWith('https://')) return str;
+    return `https://drive.google.com/drive/folders/${str}`;
+}
+
+function getDriveFolderFotosUrl(usarFallbackLegado = false) {
+    // 1. Campo em tempo real do modal de configuração ("Pasta Raiz de Fotos & Evidências")
+    const inpFolderFotos = document.getElementById('cfgDriveFolderFotosUrl');
+    if (inpFolderFotos && inpFolderFotos.value && inpFolderFotos.value.trim()) {
+        const val = inpFolderFotos.value.trim();
+        if (!val.includes(ID_DDSMA_LEGADO) || usarFallbackLegado) {
+            return normalizarUrlGoogleDriveFolder(val);
+        }
+    }
+
+    // 2. Busca no localStorage (preferência do usuário salva no navegador)
+    const local = localStorage.getItem('drive_folder_fotos_url') || localStorage.getItem('cfgDriveFolderFotosUrl');
+    if (local && local.trim()) {
+        const val = local.trim();
+        if (!val.includes(ID_DDSMA_LEGADO) || usarFallbackLegado) {
+            return normalizarUrlGoogleDriveFolder(val);
+        }
+    }
+
+    // 3. Busca no cache sincronizado do Supabase (checklist_item_settings)
     const fromSettings = (allChecklistItemSettings || []).find(s => 
         s.id === 'drive_folder_fotos_url' || 
         s.id === 'drive_config' || 
@@ -31206,83 +31775,174 @@ function getDriveFolderFotosUrl() {
         s.key === 'drive_folder_fotos_url'
     );
     if (fromSettings) {
+        let urlSettings = '';
         if (Array.isArray(fromSettings.custom_items) && fromSettings.custom_items.length > 0) {
             const item = fromSettings.custom_items[0];
-            if (item && item.url) return item.url;
-            if (item && item.drive_folder_fotos_url) return item.drive_folder_fotos_url;
+            urlSettings = item?.url || item?.drive_folder_fotos_url || '';
         } else if (fromSettings.custom_items && typeof fromSettings.custom_items === 'object') {
-            if (fromSettings.custom_items.url) return fromSettings.custom_items.url;
-            if (fromSettings.custom_items.drive_folder_fotos_url) return fromSettings.custom_items.drive_folder_fotos_url;
+            urlSettings = fromSettings.custom_items.url || fromSettings.custom_items.drive_folder_fotos_url || '';
         }
-        if (fromSettings.drive_folder_fotos_url) return fromSettings.drive_folder_fotos_url;
-        if (fromSettings.value) return fromSettings.value;
+        if (!urlSettings && fromSettings.drive_folder_fotos_url) urlSettings = fromSettings.drive_folder_fotos_url;
+        if (!urlSettings && fromSettings.value) urlSettings = fromSettings.value;
+        if (urlSettings && urlSettings.trim()) {
+            const val = urlSettings.trim();
+            if (!val.includes(ID_DDSMA_LEGADO) || usarFallbackLegado) {
+                return normalizarUrlGoogleDriveFolder(val);
+            }
+        }
     }
 
-    // 2. Busca no localStorage
-    const local = localStorage.getItem('drive_folder_fotos_url');
-    if (local && local.trim()) return local.trim();
+    // 4. Atributo data-url configurado no próprio card
+    const card = document.getElementById('cardAcervoFotosDrive');
+    const dataUrl = card ? card.getAttribute('data-url') : null;
+    if (dataUrl && dataUrl.trim()) {
+        const val = dataUrl.trim();
+        if (!val.includes(ID_DDSMA_LEGADO) || usarFallbackLegado) {
+            return normalizarUrlGoogleDriveFolder(val);
+        }
+    }
 
-    // 3. Fallback oficial do PISF Ramal do Agreste
-    return defaultUrl;
+    // 5. Se o usuário explicitamente pediu fallback legado, devolve o link do DDSMA; senão retorna vazio para exigir configuração da pasta exclusiva
+    return usarFallbackLegado ? `https://drive.google.com/drive/folders/${ID_DDSMA_LEGADO}` : '';
 }
 
 function abrirPastaRaizFotosDrive(e) {
-    if (e && typeof e.preventDefault === 'function') e.preventDefault();
-    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
-    const url = getDriveFolderFotosUrl();
-    const linkSeguro = document.createElement('a');
-    linkSeguro.href = url;
-    linkSeguro.target = '_blank';
-    linkSeguro.rel = 'noopener noreferrer';
-    document.body.appendChild(linkSeguro);
-    linkSeguro.click();
-    document.body.removeChild(linkSeguro);
+    if (e) {
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+    }
+    const urlFotos = getDriveFolderFotosUrl(false);
+    if (!urlFotos) {
+        if (typeof mostrarFeedbackToast === 'function') {
+            mostrarFeedbackToast('Por favor, informe a URL da pasta de Fotos e Evidências no campo abaixo.', 'info');
+        }
+        const inp = document.getElementById('cfgDriveFolderFotosUrl');
+        if (inp) inp.focus();
+        return;
+    }
+    const link = document.createElement('a');
+    link.href = urlFotos;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.click();
 }
 
 function tratarCliqueCardFotosDrive(e) {
     if (e) {
         if (typeof e.preventDefault === 'function') e.preventDefault();
         if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        // Evita disparar a navegação caso o clique tenha ocorrido na engrenagem de configuração
+        if (e.target && typeof e.target.closest === 'function' && e.target.closest('.btn-config-card-fotos')) {
+            return;
+        }
     }
-    const urlFotos = getDriveFolderFotosUrl();
-    const linkSeguro = document.createElement('a');
-    linkSeguro.href = urlFotos;
-    linkSeguro.target = '_blank';
-    linkSeguro.rel = 'noopener noreferrer';
-    document.body.appendChild(linkSeguro);
-    linkSeguro.click();
-    document.body.removeChild(linkSeguro);
+
+    const urlFotos = getDriveFolderFotosUrl(false);
+
+    // Se a pasta exclusiva ainda não foi configurada ou ainda aponta para o repositório de DDSMA
+    if (!urlFotos) {
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'info',
+                title: 'Pasta de Fotos & Evidências no Drive',
+                html: `
+                    <p style="font-size:13px; color:#475569; margin-bottom:12px; line-height:1.5;">
+                        A pasta raiz exclusiva de <b>Fotos & Evidências</b> ainda não foi vinculada no Google Drive da obra (o link anterior pertencia ao acervo de DDSMA).
+                    </p>
+                    <div style="background:#f1f5f9; border-left:4px solid #0284c7; padding:10px 14px; text-align:left; font-size:12px; color:#334155; margin-bottom:14px; border-radius:4px; line-height:1.6;">
+                        <b>Como ativar em 3 passos:</b><br/>
+                        <b>1.</b> Acesse o Google Drive e crie uma nova pasta com o nome <b>"SST - Fotos & Evidências"</b>.<br/>
+                        <b>2.</b> Copie o link dessa pasta no Drive.<br/>
+                        <b>3.</b> Cole o link na engrenagem de configurações deste card.
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '⚙️ Configurar Link Agora',
+                cancelButtonText: 'Criar no Google Drive ↗',
+                confirmButtonColor: '#0284c7',
+                cancelButtonColor: '#64748b'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    abrirModalConfigGoogleDrive();
+                    setTimeout(() => {
+                        const inp = document.getElementById('cfgDriveFolderFotosUrl');
+                        if (inp) {
+                            if (inp.value.includes(ID_DDSMA_LEGADO)) inp.value = '';
+                            inp.focus();
+                        }
+                    }, 300);
+                } else if (result.dismiss === Swal.DismissReason.cancel) {
+                    const linkDrive = document.createElement('a');
+                    linkDrive.href = 'https://drive.google.com/drive/my-drive';
+                    linkDrive.target = '_blank';
+                    linkDrive.rel = 'noopener noreferrer';
+                    linkDrive.click();
+                }
+            });
+            return;
+        } else {
+            abrirModalConfigGoogleDrive();
+            return;
+        }
+    }
+
+    const link = document.createElement('a');
+    link.href = urlFotos;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.click();
 }
 
 function abrirConfiguracaoFotosDrive(e) {
     if (e) {
         if (typeof e.preventDefault === 'function') e.preventDefault();
         if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
     }
     abrirModalConfigGoogleDrive();
 }
 
 function atualizarCardFotosDrive() {
     const card = document.getElementById('cardAcervoFotosDrive');
-    const url = getDriveFolderFotosUrl();
+    const url = getDriveFolderFotosUrl(false);
     if (card) {
-        card.setAttribute('data-url', url);
-        card.setAttribute('title', `Abrir pasta raiz de Fotos e Evidências no Google Drive (${url})`);
+        if (url) {
+            card.setAttribute('data-url', url);
+            card.setAttribute('title', `Abrir pasta raiz de Fotos e Evidências no Google Drive (${url})`);
+        } else {
+            card.removeAttribute('data-url');
+            card.setAttribute('title', 'Clique para configurar ou vincular a pasta raiz de Fotos e Evidências no Google Drive');
+        }
     }
     const linkModal = document.getElementById('cfgDriveLinkPastaFotos');
-    if (linkModal) linkModal.href = url;
+    if (linkModal) {
+        if (url) {
+            linkModal.href = url;
+            linkModal.style.display = 'inline-flex';
+        } else {
+            linkModal.href = '#';
+            linkModal.style.display = 'none';
+        }
+    }
     const inpFolderFotos = document.getElementById('cfgDriveFolderFotosUrl');
-    if (inpFolderFotos && !inpFolderFotos.value) inpFolderFotos.value = url;
+    if (inpFolderFotos && !inpFolderFotos.value && url) {
+        inpFolderFotos.value = url;
+    }
 }
 
 async function salvarConfiguracaoFotosDrive(folderFotosUrl) {
-    const url = (folderFotosUrl || '').trim() || 'https://drive.google.com/drive/folders/1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
-    localStorage.setItem('drive_folder_fotos_url', url);
+    const url = normalizarUrlGoogleDriveFolder(folderFotosUrl);
+    const urlLimpa = (url && !url.includes(ID_DDSMA_LEGADO)) ? url : '';
+    if (urlLimpa) {
+        localStorage.setItem('drive_folder_fotos_url', urlLimpa);
+    } else {
+        localStorage.removeItem('drive_folder_fotos_url');
+    }
 
     const payload = {
         id: 'drive_folder_fotos_url',
         categoria: 'acervo_drive',
-        custom_items: [{ key: 'drive_folder_fotos_url', url: url }],
+        custom_items: [{ key: 'drive_folder_fotos_url', url: urlLimpa }],
         disabled_items: [],
         updated_at: new Date().toISOString()
     };
@@ -31302,6 +31962,7 @@ async function salvarConfiguracaoFotosDrive(folderFotosUrl) {
     atualizarCardFotosDrive();
 }
 
+window.normalizarUrlGoogleDriveFolder = normalizarUrlGoogleDriveFolder;
 window.getDriveFolderFotosUrl = getDriveFolderFotosUrl;
 window.abrirPastaRaizFotosDrive = abrirPastaRaizFotosDrive;
 window.tratarCliqueCardFotosDrive = tratarCliqueCardFotosDrive;

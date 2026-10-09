@@ -2032,7 +2032,7 @@
                         </div>
                         <div>
                             <label style="display:flex; align-items:center; gap:7px; cursor:pointer; font-size:13px; font-weight:600; padding-bottom:7px;">
-                                <input type="checkbox" id="relSmsFiscalizacao" onchange="onRelSmsPeriodoChange()"> Versão para envio à Fiscalização
+                                <input type="checkbox" id="relSmsFiscalizacao" onchange="onRelSmsPeriodoChange()"> Relatório Executivo Oficial (Ocultar pendências internas)
                             </label>
                         </div>
                         <div style="margin-left:auto; display:flex; gap:10px; flex-wrap:wrap;">
@@ -8205,7 +8205,7 @@
                             </div>
                         </div>
 
-                        <div id="cardAcervoFotosDrive" class="acervo-cat-card" role="button" tabindex="0" title="Abrir pasta raiz de Fotos e Evidências no Google Drive" style="position:relative; cursor:pointer;" onclick="tratarCliqueCardFotosDrive(event)" onkeydown="if(event.key==='Enter'||event.key===' ') tratarCliqueCardFotosDrive(event)">
+                        <div id="cardAcervoFotosDrive" class="acervo-cat-card" role="button" tabindex="0" title="Abrir pasta raiz de Fotos e Evidências no Google Drive" style="position:relative; cursor:pointer;" onclick="tratarCliqueCardFotosDrive(event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();tratarCliqueCardFotosDrive(event);}">
                             <div class="acervo-cat-icon" style="background:#fce7f3; color:#ec4899;">
                                 <i class="fas fa-camera-retro"></i>
                             </div>
@@ -8213,7 +8213,7 @@
                                 <div class="acervo-cat-title">Fotos & Evidências</div>
                                 <div class="acervo-cat-desc">Árvore de registros fotográficos categorizada por ano, mês, treinamentos, DDSMA, desvios e boas práticas</div>
                             </div>
-                            <button type="button" class="btn-config-card-fotos" onclick="abrirConfiguracaoFotosDrive(event)" title="Configurar / Alterar link da pasta no Google Drive">
+                            <button type="button" class="btn-config-card-fotos" onclick="event.stopPropagation(); abrirConfiguracaoFotosDrive(event);" title="Configurar / Alterar link da pasta no Google Drive">
                                 <i class="fas fa-cog"></i>
                             </button>
                         </div>
@@ -8698,7 +8698,8 @@
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js"></script>
-    <script src="dashboard.js?v=20261008_card_fotos_drive_v184"></script>
+    <script src="logo_cop_base64.js?v=20261009_v189"></script>
+    <script src="dashboard.js?v=20261009_relatorio_sms_docx_v189"></script>
     <script src="placar_lideres.js?v=20261008_layout_a4"></script>
 <script>
 function filterMatrizEpi(q) {
@@ -9847,9 +9848,13 @@ function filterMatrizEpi(q) {
                 <label style="display:block; font-size:12px; font-weight:700; color:#0284c7; margin-bottom:4px;">
                     <i class="fas fa-camera-retro"></i> Pasta Raiz de Fotos & Evidências (Google Drive)
                 </label>
-                <input type="text" id="cfgDriveFolderFotosUrl" placeholder="https://drive.google.com/drive/folders/..." style="width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
+                <input type="text" id="cfgDriveFolderFotosUrl" placeholder="https://drive.google.com/drive/folders/..." oninput="atualizarCardFotosDrive()" style="width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
                 <div style="font-size:11px; color:var(--text-light); margin-top:4px;">
                     URL ou ID da pasta no Drive onde serão criadas as subpastas por Ano, Mês e Categoria.
+                </div>
+                <div style="font-size:11px; color:#0369a1; margin-top:4px; display:flex; align-items:center; gap:6px;">
+                    <span>💡 Crie a pasta <b>"SST - Fotos & Evidências"</b> no Drive e cole o link acima:</span>
+                    <a href="https://drive.google.com/drive/my-drive" target="_blank" rel="noopener noreferrer" style="color:#0284c7; text-decoration:underline; font-weight:600;">Abrir Meu Drive ↗</a>
                 </div>
             </div>
 

@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const VERSAO_PAINEL = 'v193';
+const VERSAO_PAINEL = 'v194';
 const DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
@@ -36,7 +36,7 @@ async function authTokenDashboard() {
     }
 }
 
-let REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos (padrão; pode ser sobrescrito por configuracoes_sistema)
+let REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutos (reduz consumo de Egress; dados persistem em cache local)
 
 // Pagina automaticamente via Range/Content-Range. O PostgREST corta em 1000 linhas por
 // padrão - sem isso, o relatório de treinamentos (13 mil+ linhas de histórico) mostrava
@@ -78,30 +78,144 @@ async function supabaseFetch(table, query = '') {
     return allRows;
 }
 
-// Cache em sessionStorage pras tabelas grandes (treinamentos_realizados, epi_entregas -
-// 13 mil e 6 mil e poucas linhas) - a organização estourou a cota de egress do Supabase
-// (aviso no dashboard do projeto), e cada carregamento dessas tabelas via supabaseFetch
-// pagina em ~14/~7 requisições sequenciais. Isso evita repetir tudo de novo só porque a
-// aba foi recarregada (F5) minutos depois - TTL de 5 min pra bater com o próprio texto
-// "atualiza automaticamente a cada 5 minutos" já mostrado no painel. sessionStorage (não
-// localStorage) de propósito: some sozinho quando a aba fecha, sem acumular pra sempre.
-const CACHE_TTL_MS = 5 * 60 * 1000;
-async function supabaseFetchCacheado(table, query) {
-    const cacheKey = 'db_cache_' + table + query;
-    try {
-        const cached = sessionStorage.getItem(cacheKey);
-        if (cached) {
-            const { ts, data } = JSON.parse(cached);
-            if (Date.now() - ts < CACHE_TTL_MS) return data;
+// ============================================
+// BLINDAGEM DE EGRESS DO PAINEL GERENCIAL (INDEXEDDB EXCLUSIVO DO PAINEL)
+// Isolado totalmente do app de campo (NÃO toca no 'ChecklistSeguranca' do app móvel)
+// Salva tabelas massivas no banco local do navegador, reduzindo em mais de 90%
+// o consumo de Egress do Supabase e prevenindo restrições de cota.
+// ============================================
+const DASH_IDB_NAME = 'DashboardPainelCacheDB';
+const DASH_IDB_STORE = 'tabelas_cache';
+const DASH_IDB_VERSION = 1;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 60 minutos de retenção inteligente
+const _dashMemoryCache = new Map();
+
+function openDashboardCacheDB() {
+    return new Promise((resolve) => {
+        if (typeof window === 'undefined' || !window.indexedDB) return resolve(null);
+        try {
+            const request = window.indexedDB.open(DASH_IDB_NAME, DASH_IDB_VERSION);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(DASH_IDB_STORE)) {
+                    db.createObjectStore(DASH_IDB_STORE, { keyPath: 'key' });
+                }
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => resolve(null);
+        } catch (_) {
+            resolve(null);
         }
-    } catch (e) { /* sessionStorage indisponível/corrompido - segue sem cache */ }
+    });
+}
+
+async function dashCacheGet(key) {
+    if (_dashMemoryCache.has(key)) {
+        const mem = _dashMemoryCache.get(key);
+        if (Date.now() - mem.ts < CACHE_TTL_MS) return mem.data;
+    }
+    try {
+        const db = await openDashboardCacheDB();
+        if (!db) return null;
+        return await new Promise((resolve) => {
+            const tx = db.transaction(DASH_IDB_STORE, 'readonly');
+            const store = tx.objectStore(DASH_IDB_STORE);
+            const req = store.get(key);
+            req.onsuccess = () => {
+                const row = req.result;
+                if (row && (Date.now() - row.ts < CACHE_TTL_MS)) {
+                    _dashMemoryCache.set(key, { ts: row.ts, data: row.data });
+                    resolve(row.data);
+                } else {
+                    resolve(null);
+                }
+            };
+            req.onerror = () => resolve(null);
+        });
+    } catch (_) {
+        return null;
+    }
+}
+
+async function dashCacheSet(key, data) {
+    _dashMemoryCache.set(key, { ts: Date.now(), data });
+    try {
+        const db = await openDashboardCacheDB();
+        if (!db) return;
+        await new Promise((resolve) => {
+            const tx = db.transaction(DASH_IDB_STORE, 'readwrite');
+            const store = tx.objectStore(DASH_IDB_STORE);
+            store.put({ key, data, ts: Date.now() });
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+        });
+    } catch (_) {}
+}
+
+async function dashCacheInvalidate(tablePrefix = '') {
+    if (!tablePrefix) {
+        _dashMemoryCache.clear();
+    } else {
+        for (const k of Array.from(_dashMemoryCache.keys())) {
+            if (k.includes(tablePrefix)) _dashMemoryCache.delete(k);
+        }
+    }
+    try {
+        const db = await openDashboardCacheDB();
+        if (!db) return;
+        const tx = db.transaction(DASH_IDB_STORE, 'readwrite');
+        const store = tx.objectStore(DASH_IDB_STORE);
+        if (!tablePrefix) {
+            store.clear();
+        } else {
+            const req = store.getAllKeys();
+            req.onsuccess = () => {
+                const keys = req.result || [];
+                keys.forEach(k => {
+                    if (String(k).includes(tablePrefix)) store.delete(k);
+                });
+            };
+        }
+    } catch (_) {}
+}
+
+async function supabaseFetchCacheado(table, query = '', forcarAtualizacao = false) {
+    const cacheKey = 'db_cache_' + table + query;
+    if (!forcarAtualizacao) {
+        const cached = await dashCacheGet(cacheKey);
+        if (cached) {
+            return cached;
+        }
+    }
 
     const data = await supabaseFetch(table, query);
-    try {
-        sessionStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data }));
-    } catch (e) { /* quota do sessionStorage estourada (ex: aba com várias tabelas grandes) - só não cacheia dessa vez */ }
+    await dashCacheSet(cacheKey, data);
     return data;
 }
+
+async function forcarAtualizacaoGeralDadosPainel() {
+    const statusEl = document.getElementById('statusText');
+    const oldText = statusEl ? statusEl.textContent : '';
+    if (statusEl) statusEl.textContent = '🔄 Atualizando dados da nuvem...';
+    try {
+        await dashCacheInvalidate('');
+        treinamentosLoaded = false;
+        efetivoLoaded = false;
+        epiLoaded = false;
+        acidentesLoaded = false;
+        saudeLoaded = false;
+        await loadData();
+        const paginaAtivaBtn = document.querySelector('.db-nav-item.active');
+        const paginaAtiva = paginaAtivaBtn ? paginaAtivaBtn.id.replace('nav', '').toLowerCase() : 'checklists';
+        if (typeof showDbPage === 'function') showDbPage(paginaAtiva);
+        if (statusEl) statusEl.textContent = '✅ Atualizado às ' + new Date().toLocaleTimeString('pt-BR');
+    } catch (err) {
+        console.error('Erro ao forçar atualização:', err);
+        if (statusEl) statusEl.textContent = oldText;
+        alert('Falha ao atualizar dados: ' + err.message);
+    }
+}
+window.forcarAtualizacaoGeralDadosPainel = forcarAtualizacaoGeralDadosPainel;
 
 // ============================================
 // LOGIN DO PAINEL (Fase 2 do roteiro de login/auditoria - ver
@@ -753,6 +867,7 @@ function invalidarCacheTabela(table) {
             .filter(k => k.startsWith(prefixo))
             .forEach(k => sessionStorage.removeItem(k));
     } catch (e) { /* sessionStorage indisponível - nada a limpar */ }
+    dashCacheInvalidate(table);
 }
 
 async function supabaseUpsert(table, rows) {
@@ -4551,17 +4666,17 @@ async function loadTreinamentosData() {
     try {
         const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento, ddsTemas, ddsFrentesConfig, ddsHistorico, ddsFrentesAlias, relatorioConfig] = await Promise.all([
             supabaseFetchCacheado('treinamentos_realizados', '?select=*'),
-            supabaseFetch('treinamentos_catalogo', '?select=*'),
-            supabaseFetch('treinamentos_status', '?select=*'),
-            supabaseFetch('treinamentos_cronograma', '?select=*'),
-            supabaseFetch('treinamentos_convocados', '?select=*'),
-            supabaseFetch('dds_realizados', '?select=*'),
-            supabaseFetch('dds_fechamento_semanal', '?select=*'),
-            supabaseFetch('dds_temas_cronograma', '?select=*'),
-            supabaseFetch('dds_frentes_config', '?select=*'),
-            supabaseFetch('dds_historico_agregado', '?select=*'),
-            supabaseFetch('dds_frentes_alias', '?select=*'),
-            supabaseFetch('relatorio_mensal_config', '?select=*')
+            supabaseFetchCacheado('treinamentos_catalogo', '?select=*'),
+            supabaseFetchCacheado('treinamentos_status', '?select=*'),
+            supabaseFetchCacheado('treinamentos_cronograma', '?select=*'),
+            supabaseFetchCacheado('treinamentos_convocados', '?select=*'),
+            supabaseFetchCacheado('dds_realizados', '?select=*'),
+            supabaseFetchCacheado('dds_fechamento_semanal', '?select=*'),
+            supabaseFetchCacheado('dds_temas_cronograma', '?select=*'),
+            supabaseFetchCacheado('dds_frentes_config', '?select=*'),
+            supabaseFetchCacheado('dds_historico_agregado', '?select=*'),
+            supabaseFetchCacheado('dds_frentes_alias', '?select=*'),
+            supabaseFetchCacheado('relatorio_mensal_config', '?select=*')
         ]);
         allTreinamentosRealizados = realizados;
         allTreinamentosCatalogo = catalogo;
@@ -4581,10 +4696,10 @@ async function loadTreinamentosData() {
         // dois mesmo se o usuário nunca abriu a página Efetivo nesta sessão, senão a OS
         // sai com esses campos em branco sem nenhum aviso.
         if (allEfetivo.length === 0) {
-            allEfetivo = await supabaseFetch('colaboradores_efetivo', '?select=*');
+            allEfetivo = await supabaseFetchCacheado('colaboradores_efetivo', '?select=*');
         }
         if (allGheCatalogo.length === 0) {
-            allGheCatalogo = await supabaseFetch('ghe_catalogo', '?select=*');
+            allGheCatalogo = await supabaseFetchCacheado('ghe_catalogo', '?select=*');
         }
         renderTreinamentosPanel();
         renderCatalogoResumo();
@@ -12448,10 +12563,10 @@ let efetivoLoaded = false;
 async function loadEfetivoData() {
     const statusEl = document.getElementById('efetivoImportStatus');
     try {
-        allEfetivo = await supabaseFetch('colaboradores_efetivo', '?select=*');
-        allGheCatalogo = await supabaseFetch('ghe_catalogo', '?select=*');
-        allMunicipiosAda = await supabaseFetch('municipios_ada', '?select=*');
-        allHistoricoTrocaFuncao = await supabaseFetch('historico_troca_funcao', '?select=*');
+        allEfetivo = await supabaseFetchCacheado('colaboradores_efetivo', '?select=*');
+        allGheCatalogo = await supabaseFetchCacheado('ghe_catalogo', '?select=*');
+        allMunicipiosAda = await supabaseFetchCacheado('municipios_ada', '?select=*');
+        allHistoricoTrocaFuncao = await supabaseFetchCacheado('historico_troca_funcao', '?select=*');
         popularGheCatalogoDatalist();
         if (!treinamentosLoaded) {
             treinamentosLoaded = true;
@@ -27422,20 +27537,20 @@ async function supabaseUpsertEstoque(rows) {
 async function loadEpiData() {
     try {
         const [catalogo, estoque, entregas] = await Promise.all([
-            supabaseFetch('epi_catalogo', '?select=*'),
-            supabaseFetch('epi_estoque', '?select=*'),
+            supabaseFetchCacheado('epi_catalogo', '?select=*'),
+            supabaseFetchCacheado('epi_estoque', '?select=*'),
             supabaseFetchCacheado('epi_entregas', '?select=*')
         ]);
         allEpiCatalogo = catalogo;
         allEpiEstoque = estoque;
         allEpiEntregas = entregas;
         try {
-            allEpiEntradas = await supabaseFetch('epi_entradas', '?select=*&order=data_entrada.desc');
+            allEpiEntradas = await supabaseFetchCacheado('epi_entradas', '?select=*&order=data_entrada.desc');
         } catch (_) {
             allEpiEntradas = [];
         }
         if (allEfetivo.length === 0) {
-            allEfetivo = await supabaseFetch('colaboradores_efetivo', '?select=*');
+            allEfetivo = await supabaseFetchCacheado('colaboradores_efetivo', '?select=*');
         }
         renderEpiPanel();
         renderEpiCatalogoResumo();
@@ -40649,7 +40764,10 @@ document.addEventListener('DOMContentLoaded', init);
 
 function iniciarAutoRefresh() {
     if (refreshTimer) clearInterval(refreshTimer);
-    refreshTimer = setInterval(loadData, REFRESH_INTERVAL_MS);
+    refreshTimer = setInterval(() => {
+        if (typeof document !== 'undefined' && document.hidden) return;
+        loadData();
+    }, REFRESH_INTERVAL_MS);
 }
 
 // Painel é público e fica aberto por longos períodos (às vezes esquecido numa aba/

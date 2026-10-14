@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const VERSAO_PAINEL = 'v194';
+const VERSAO_PAINEL = 'v195';
 const DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
@@ -90,9 +90,18 @@ const DASH_IDB_VERSION = 1;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 60 minutos de retenção inteligente
 const _dashMemoryCache = new Map();
 
+let _dashDbInstance = null;
+let _dashDbPromise = null;
+
 function openDashboardCacheDB() {
-    return new Promise((resolve) => {
-        if (typeof window === 'undefined' || !window.indexedDB) return resolve(null);
+    if (_dashDbInstance) return Promise.resolve(_dashDbInstance);
+    if (_dashDbPromise) return _dashDbPromise;
+
+    _dashDbPromise = new Promise((resolve) => {
+        if (typeof window === 'undefined' || !window.indexedDB) {
+            _dashDbPromise = null;
+            return resolve(null);
+        }
         try {
             const request = window.indexedDB.open(DASH_IDB_NAME, DASH_IDB_VERSION);
             request.onupgradeneeded = (e) => {
@@ -101,12 +110,26 @@ function openDashboardCacheDB() {
                     db.createObjectStore(DASH_IDB_STORE, { keyPath: 'key' });
                 }
             };
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => resolve(null);
+            request.onsuccess = () => {
+                _dashDbInstance = request.result;
+                _dashDbInstance.onclose = () => { _dashDbInstance = null; _dashDbPromise = null; };
+                _dashDbInstance.onerror = () => { _dashDbInstance = null; _dashDbPromise = null; };
+                resolve(_dashDbInstance);
+            };
+            request.onerror = () => {
+                _dashDbPromise = null;
+                resolve(null);
+            };
+            request.onblocked = () => {
+                _dashDbPromise = null;
+                resolve(null);
+            };
         } catch (_) {
+            _dashDbPromise = null;
             resolve(null);
         }
     });
+    return _dashDbPromise;
 }
 
 async function dashCacheGet(key) {
@@ -5072,7 +5095,9 @@ function renderTreinHistLista() {
     popularFiltroAnoTreinHist();
     const el = document.getElementById('listTreinHistorico');
     if (!el) return;
-    garantirAnexosSmsCarregados(renderTreinHistLista);
+    if (!anexosSmsCarregados) {
+        garantirAnexosSmsCarregados(renderTreinHistLista);
+    }
     const { inicio, fim } = getTreinHistDateRange();
     const periodo = allTreinamentosRealizados.filter(r => {
         if (!r.data_treinamento) return false;
@@ -7605,24 +7630,43 @@ function loteKeyDds(row) {
 
 let allAnexosSms = [];
 let anexosSmsCarregados = false;
+let _anexosSmsCarregando = false;
+let _anexosSmsCallbacks = [];
 
 // Carrega os anexos (PDFs escaneados/fotos guardados no Google Drive) sob demanda, na
 // primeira vez que a lista de DDS ou Treinamentos for desenhada - função separada e
 // independente do Promise.all de loadTreinamentosData lá em cima, pra não arriscar
 // desalinhar a lista de variáveis desestruturadas daquele carregamento já existente.
+// Blindada contra recursão infinita (Maximum call stack size exceeded) e congelamento de thread.
 function garantirAnexosSmsCarregados(aoTerminar) {
     if (anexosSmsCarregados) {
-        if (aoTerminar) aoTerminar();
+        // Se já está carregado, não re-dispara funções de render que poderiam entrar em loop
+        if (typeof aoTerminar === 'function' && aoTerminar !== renderDdsLancamentosRecentes && aoTerminar !== renderTreinHistLista) {
+            try { aoTerminar(); } catch (e) { console.error('Erro em callback de anexos SMS:', e); }
+        }
         return;
     }
-    anexosSmsCarregados = true;
-    supabaseFetch('anexos_sms', '?select=*').then(dados => {
+    if (typeof aoTerminar === 'function' && !_anexosSmsCallbacks.includes(aoTerminar)) {
+        _anexosSmsCallbacks.push(aoTerminar);
+    }
+    if (_anexosSmsCarregando) return;
+    _anexosSmsCarregando = true;
+
+    const fetcher = typeof supabaseFetchCacheado === 'function' ? supabaseFetchCacheado('anexos_sms', '?select=*') : supabaseFetch('anexos_sms', '?select=*');
+    fetcher.then(dados => {
         allAnexosSms = Array.isArray(dados) ? dados : [];
-        if (aoTerminar) aoTerminar();
+        anexosSmsCarregados = true;
+        _anexosSmsCarregando = false;
+        const cbs = _anexosSmsCallbacks.slice();
+        _anexosSmsCallbacks = [];
+        cbs.forEach(cb => {
+            try { cb(); } catch (err) { console.error('Erro ao executar callback de anexos SMS:', err); }
+        });
     }).catch(err => {
         console.error('Erro ao carregar anexos SMS:', err);
         anexosSmsCarregados = false;
-        if (aoTerminar) aoTerminar();
+        _anexosSmsCarregando = false;
+        _anexosSmsCallbacks = [];
     });
 }
 
@@ -7747,7 +7791,9 @@ function lotesRecentesDds(linhasCustom = null, limite = 20) {
 async function renderDdsLancamentosRecentes() {
     const el = document.getElementById('ddsLancamentosRecentesLista');
     if (!el) return;
-    garantirAnexosSmsCarregados(renderDdsLancamentosRecentes);
+    if (!anexosSmsCarregados) {
+        garantirAnexosSmsCarregados(renderDdsLancamentosRecentes);
+    }
     popularFiltroSetorDds();
     configurarFiltrosDdsListeners();
 

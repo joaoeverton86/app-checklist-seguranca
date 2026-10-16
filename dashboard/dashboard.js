@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const VERSAO_PAINEL = 'v195';
+const VERSAO_PAINEL = 'v196';
 const DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
@@ -1141,7 +1141,10 @@ function fecharModalCalendarioCoresChecklist() {
 // Helper único reaproveitado em todo lugar que soma "quem está ativo hoje" a partir de
 // allEfetivo, pra não reimplementar essa checagem (e esse mesmo bug) em cada um.
 function colaboradorEstaAtivo(e) {
-    return e.status === 'ATIVO' && !e.dt_demissao;
+    if (!e) return false;
+    if (e.dt_demissao) return false;
+    if (e.status && (e.status === 'DEMITIDO' || e.status === 'INATIVO' || e.status === 'Inativo' || e.status === 'Demitido')) return false;
+    return e.status === 'ATIVO' || !!e.dt_admissao;
 }
 
 function escapeHTML(str) {
@@ -14447,7 +14450,7 @@ function renderEfetivoResumo() {
     const el = document.getElementById('efetivoResumo');
     if (!el) return;
     const total = allEfetivo.length;
-    const ativos = allEfetivo.filter(e => e.dt_admissao && !e.dt_demissao).length;
+    const ativos = allEfetivo.filter(colaboradorEstaAtivo).length;
     el.textContent = total === 0 ? '' : `${total} colaborador(es) cadastrado(s) — ${ativos} ativo(s), ${total - ativos} inativo(s)`;
 }
 
@@ -14464,7 +14467,12 @@ function limparBuscaEfetivo() {
 const EFETIVO_PDF_COLUNAS = [
     { id: 'matricula', label: 'Matrícula', get: e => e.id },
     { id: 'nome', label: 'Nome', get: e => e.nome },
-    { id: 'status', label: 'Status', get: e => e.status || (colaboradorEstaAtivo(e) ? 'ATIVO' : 'DEMITIDO') },
+    { id: 'status', label: 'Status', get: e => {
+        if (!colaboradorEstaAtivo(e)) {
+            return (e.status && e.status !== 'ATIVO') ? e.status : (e.dt_demissao ? 'DEMITIDO' : 'INATIVO');
+        }
+        return 'ATIVO';
+    } },
     { id: 'funcao', label: 'Função', get: e => e.funcao },
     { id: 'setor', label: 'Setor', get: e => e.setor },
     { id: 'responsavel', label: 'Responsável/Frente', get: e => e.responsavel },
@@ -14565,7 +14573,7 @@ function gerarPdfEfetivo() {
     </table>
 </body></html>`;
 
-    abrirDocumentoBlob(html);
+    abrirDocumentoHtmlParaImpressao(html, 'Lista de Colaboradores - ' + filtroLabel);
     statusEl.textContent = `✅ PDF gerado com ${lista.length} colaborador(es).`;
     statusEl.style.color = 'var(--success)';
 }
@@ -14706,7 +14714,7 @@ function filterEfetivoColaboradores(query) {
     }
 
     container.innerHTML = matches.map(e => {
-        const ativo = e.dt_admissao && !e.dt_demissao;
+        const ativo = colaboradorEstaAtivo(e);
         const cls = ativo ? '' : 'db-item-danger';
         return `<div class="db-list-item ${cls}" style="cursor:pointer;" onclick="mostrarDetalheColaborador('${escapeHTML(e.id)}')">
             <div class="db-list-item-title">${escapeHTML(e.nome || '(sem nome)')}</div>
@@ -14779,7 +14787,7 @@ function mostrarDetalheColaborador(matricula) {
 
     const admissao = e.dt_admissao ? parseLocalDate(e.dt_admissao) : null;
     const demissao = e.dt_demissao ? parseLocalDate(e.dt_demissao) : null;
-    const ativo = admissao && !demissao;
+    const ativo = colaboradorEstaAtivo(e);
 
     const statusBadge = ativo
         ? `<span style="font-size: 11px; padding: 3px 10px; border-radius: 8px; background: #d1fae5; color: #047857; font-weight: 700;">🟢 ATIVO</span>`
@@ -14974,15 +14982,24 @@ async function salvarColaboradorEfetivo() {
     }
 
     const colabExistente = allEfetivo.find(e => e.id === matricula);
+    const dtDemissaoInput = document.getElementById('efForm_dt_demissao').value || null;
+    let statusInput = document.getElementById('efForm_status').value || 'ATIVO';
+
+    // Regra de SST: se data de demissão estiver preenchida, o status obrigatoriamente é DEMITIDO
+    if (dtDemissaoInput) {
+        statusInput = 'DEMITIDO';
+    }
+    const ehAtivo = statusInput === 'ATIVO' && !dtDemissaoInput;
+
     const row = {
         id: matricula,
-        status: document.getElementById('efForm_status').value,
+        status: statusInput,
         nome,
         funcao: document.getElementById('efForm_funcao').value.trim(),
         setor: document.getElementById('efForm_setor').value.trim(),
         responsavel: document.getElementById('efForm_responsavel').value.trim(),
         dt_admissao: document.getElementById('efForm_dt_admissao').value || null,
-        dt_demissao: document.getElementById('efForm_dt_demissao').value || null,
+        dt_demissao: dtDemissaoInput,
         dt_nascimento: document.getElementById('efForm_dt_nascimento').value || null,
         cpf: document.getElementById('efForm_cpf').value.trim(),
         cidade: document.getElementById('efForm_cidade').value.trim(),
@@ -15004,6 +15021,41 @@ async function salvarColaboradorEfetivo() {
     statusEl.style.color = 'var(--text-light)';
     try {
         await supabaseUpsert('colaboradores_efetivo', [row]);
+
+        // Sincronização automática com a tabela de usuários de campo (colaboradores_checklist)
+        try {
+            const resColab = await supabaseFetch('colaboradores_checklist', `?or=(matricula.eq.${encodeURIComponent(matricula)},id.eq.${encodeURIComponent(matricula)})`);
+            if (Array.isArray(resColab) && resColab.length > 0) {
+                for (const item of resColab) {
+                    await fetch(`${SUPABASE_URL}/rest/v1/colaboradores_checklist?id=eq.${encodeURIComponent(item.id)}`, {
+                        method: 'PATCH',
+                        headers: {
+                            apikey: SUPABASE_KEY,
+                            Authorization: `Bearer ${await authTokenDashboard()}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            ativo: ehAtivo,
+                            nome: row.nome,
+                            funcao: row.funcao,
+                            setor: row.setor
+                        })
+                    });
+                    if (Array.isArray(allColaboradoresInternos)) {
+                        const local = allColaboradoresInternos.find(c => String(c.id) === String(item.id));
+                        if (local) {
+                            local.ativo = ehAtivo;
+                            local.nome = row.nome;
+                            local.funcao = row.funcao;
+                            local.setor = row.setor;
+                        }
+                    }
+                }
+            }
+        } catch (errSync) {
+            console.warn('Aviso: falha ao sincronizar status em colaboradores_checklist:', errSync);
+        }
+
         const idx = allEfetivo.findIndex(e => e.id === matricula);
         if (idx >= 0) allEfetivo[idx] = { ...allEfetivo[idx], ...row };
         else allEfetivo.push(row);
@@ -31347,6 +31399,24 @@ async function alternarAtivoColaborador(id, ativoAtual) {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         await registrarAuditLogDashboard('update', 'colaboradores_checklist', id, `${nome} (Mat. ${id})`, `Status alterado para ${novoStatus ? 'Ativo' : 'Inativo'}`);
+
+        // Sincroniza em colaboradores_efetivo se o colaborador existir no cadastro de efetivo
+        try {
+            const efColab = (allEfetivo || []).find(e => String(e.id) === String(matricula));
+            if (efColab) {
+                const novoStatusEfetivo = novoStatus ? 'ATIVO' : (efColab.dt_demissao ? 'DEMITIDO' : 'INATIVO');
+                await supabaseUpsert('colaboradores_efetivo', [{
+                    id: efColab.id,
+                    status: novoStatusEfetivo
+                }]);
+                efColab.status = novoStatusEfetivo;
+                renderEfetivoPanel();
+                renderEfetivoResumo();
+            }
+        } catch (errEfSync) {
+            console.warn('Aviso ao sincronizar colaboradores_efetivo a partir de colaboradores_checklist:', errEfSync);
+        }
+
         await carregarColaboradoresInternos();
     } catch (e) {
         console.error('Erro ao alterar status:', e);

@@ -8,7 +8,7 @@
     <meta http-equiv="Expires" content="0">
     <title>Painel Gerencial - Checklist Segurança</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=196">
+    <link rel="stylesheet" href="dashboard.css?v=197">
 </head>
 <body>
 
@@ -21,7 +21,7 @@
         <div style="width:100%; max-width:380px; margin:20px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:32px 28px; box-shadow:0 8px 32px rgba(0,0,0,0.08); box-sizing:border-box;">
             <div style="text-align:center; margin-bottom:22px;">
                 <div style="font-size:34px; margin-bottom:6px;">🛡️</div>
-                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v196</span></div>
+                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v197</span></div>
                 <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; letter-spacing:.5px; margin-top:2px;">PISF Ramal do Agreste</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:12px;">
@@ -137,7 +137,7 @@
             <div class="db-brand">
                 <div class="db-brand-icon">🛡️</div>
                 <div>
-                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v193</span></div>
+                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v197</span></div>
                     <div class="db-brand-sub">PISF Ramal do Agreste</div>
                 </div>
             </div>
@@ -286,10 +286,80 @@
                 <div class="db-header-status">
                     <span id="statusText">Carregando...</span>
                     <button onclick="forcarAtualizacaoGeralDadosPainel()" title="Atualizar dados da nuvem agora (limpar cache local)" style="padding:4px 10px; border-radius:6px; border:1px solid var(--border); background:#fff; cursor:pointer; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:background 0.2s;">🔄 Atualizar Dados</button>
+                    
+                    <!-- Central Inteligente de Alertas e Pendências SST -->
+                    <div class="db-alertas-wrapper" id="wrapCentralAlertas">
+                        <button type="button" id="btnCentralAlertas" class="db-btn-sininho" onclick="toggleCentralAlertasDropdown(event)" title="Central de Pendências e Alertas SST">
+                            <i class="fas fa-bell"></i>
+                            <span class="db-alerta-badge" id="badgeCentralAlertasQtd" style="display:none;">0</span>
+                        </button>
+
+                        <!-- Dropdown Flutuante de Alertas -->
+                        <div class="db-alertas-dropdown" id="dropdownCentralAlertas" style="display:none;" onclick="event.stopPropagation();">
+                            <div class="db-alertas-header">
+                                <div class="db-alertas-header-info">
+                                    <div class="db-alertas-title">
+                                        <i class="fas fa-bell" style="color:var(--primary, #2563eb);"></i> Central de Pendências SST
+                                    </div>
+                                    <div class="db-alertas-subtitle" id="subtituloCentralAlertas">Carregando perfil...</div>
+                                </div>
+                                <div class="db-alertas-header-actions">
+                                    <button type="button" class="db-alertas-icon-btn" onclick="abrirModalConfigAlertasEquipe()" title="Configurar Regras de Prazos e Responsáveis">
+                                        <i class="fas fa-cog"></i>
+                                    </button>
+                                    <button type="button" class="db-alertas-icon-btn" onclick="fecharCentralAlertasDropdown()" title="Fechar janela">
+                                        ✕
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="db-alertas-tabs-bar" id="tabsBarCentralAlertas">
+                                <button type="button" class="db-alertas-tab-btn active" id="tabBtnAlertasMinhas" onclick="alternarFiltroCentralAlertas('minhas')">
+                                    🎯 Minhas Pendências (<span id="qtdAlertasMinhas">0</span>)
+                                </button>
+                                <button type="button" class="db-alertas-tab-btn" id="tabBtnAlertasEquipe" onclick="alternarFiltroCentralAlertas('equipe')">
+                                    👥 Visão Equipe (<span id="qtdAlertasEquipe">0</span>)
+                                </button>
+                            </div>
+
+                            <div class="db-alertas-list" id="listaItensCentralAlertas">
+                                <div class="db-alertas-empty">Carregando pendências...</div>
+                            </div>
+
+                            <div class="db-alertas-footer">
+                                <button type="button" class="db-alertas-footer-btn" onclick="imprimirResumoPendenciasEquipe()" title="Imprimir Relatório de Pendências da Equipe">
+                                    🖨️ Imprimir Resumo
+                                </button>
+                                <button type="button" class="db-alertas-footer-btn secondary" onclick="atualizarCentralAlertasUsuario(true)" title="Recarregar alertas">
+                                    🔄 Atualizar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                     <span style="margin-left:10px; padding-left:10px; border-left:1px solid var(--border); font-size:12px; color:var(--text-light);">
                         👤 <span id="badgeUsuarioDashboard">(não identificado)</span>
                         <button onclick="realizarLogoutDashboard()" title="Sair do painel" style="margin-left:6px; border:none; background:none; color:var(--text-light); cursor:pointer; font-size:12px; text-decoration:underline; padding:0;">Sair</button>
                     </span>
+                </div>
+            </div>
+
+            <!-- Banner Dinâmico de Pendências do Dia -->
+            <div id="bannerPendenciasDia" class="db-banner-pendencias" style="display:none;">
+                <div class="db-banner-pendencias-content">
+                    <div class="db-banner-pendencias-icon" id="bannerPendenciasIcon">⚠️</div>
+                    <div class="db-banner-pendencias-texto">
+                        <strong id="bannerPendenciasTitulo">Atenção às Pendências do Dia:</strong>
+                        <span id="bannerPendenciasDesc">Você possui pendências prioritárias aguardando resolução.</span>
+                    </div>
+                </div>
+                <div class="db-banner-pendencias-actions">
+                    <button type="button" class="db-banner-btn-resolver" id="btnBannerResolverPendencia" onclick="acaoRapidaBannerPendencias()">
+                        ⚡ Resolver agora
+                    </button>
+                    <button type="button" class="db-banner-btn-fechar" onclick="fecharBannerPendenciasDoDia()" title="Dispensar aviso nesta sessão">
+                        ✕
+                    </button>
                 </div>
             </div>
 
@@ -8704,9 +8774,9 @@
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js"></script>
-    <script src="logo_cop_base64.js?v=20261015_v196"></script>
-    <script src="dashboard.js?v=20261015_fix_efetivo_excel_v196"></script>
-    <script src="placar_lideres.js?v=20261015_v196"></script>
+    <script src="logo_cop_base64.js?v=20261015_v197"></script>
+    <script src="dashboard.js?v=20261015_central_alertas_v197"></script>
+    <script src="placar_lideres.js?v=20261015_v197"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();
@@ -10086,6 +10156,105 @@ function filterMatrizEpi(q) {
                     style="width:100%; height:100%; border:none; display:block; position:relative; z-index:2;"
                     onload="const l = document.getElementById('modalPreviewDriveLoading'); if (l) l.style.display='none';">
             </iframe>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Parametrização da Central de Alertas SST -->
+<div id="modalConfigAlertasEquipe" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:10070; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(3px);" onclick="if(event.target===this) fecharModalConfigAlertasEquipe();">
+    <div class="modal-config-alertas-content" onclick="event.stopPropagation();">
+        <!-- Header -->
+        <div style="padding:14px 18px; border-bottom:1px solid var(--border, #cbd5e1); background:#f8fafc; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+                <div style="font-size:15px; font-weight:700; color:var(--text, #1e293b); display:flex; align-items:center; gap:8px;">
+                    <i class="fas fa-sliders-h" style="color:var(--primary, #2563eb);"></i> Parametrização da Central de Alertas SST
+                </div>
+                <div style="font-size:11.5px; color:var(--text-light, #64748b); margin-top:2px;">
+                    Regras de prazos e direcionamento de pendências para a equipe (NR-01, NR-07, NR-12, NR-18, NR-23)
+                </div>
+            </div>
+            <button type="button" class="db-clear-btn" style="padding:4px 8px; font-size:14px; font-weight:700;" onclick="fecharModalConfigAlertasEquipe()">✕</button>
+        </div>
+
+        <!-- Body -->
+        <div class="modal-config-alertas-body">
+            <!-- Bloco 1: Prazos e Cortes de Normas -->
+            <div class="config-alerta-grupo">
+                <div class="config-alerta-grupo-title">
+                    <i class="fas fa-calendar-alt" style="color:#0284c7;"></i> Prazos de Vencimento e Inspeção Mensal
+                </div>
+                <div class="config-alerta-row">
+                    <div>
+                        <label style="font-size:11.5px; font-weight:600; color:var(--text, #334155); display:block; margin-bottom:4px;">
+                            Dia limite mensal p/ Checklists (NR-12/18):
+                        </label>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <span style="font-size:12px; color:var(--text-light, #64748b);">Dia</span>
+                            <input type="number" id="cfgDiaLimiteChecklist" min="1" max="28" value="10" style="width:80px; padding:6px 10px; border:1px solid var(--border, #cbd5e1); border-radius:6px; font-size:13px; font-weight:700; text-align:center;">
+                            <span style="font-size:11px; color:var(--text-light, #64748b);">(Padrão: dia 10)</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size:11.5px; font-weight:600; color:var(--text, #334155); display:block; margin-bottom:4px;">
+                            Aviso prévio de Checklists (Início do alerta):
+                        </label>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <span style="font-size:12px; color:var(--text-light, #64748b);">Dia</span>
+                            <input type="number" id="cfgDiaAvisoChecklist" min="1" max="28" value="5" style="width:80px; padding:6px 10px; border:1px solid var(--border, #cbd5e1); border-radius:6px; font-size:13px; font-weight:700; text-align:center;">
+                            <span style="font-size:11px; color:var(--text-light, #64748b);">(Padrão: dia 5)</span>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top:6px;">
+                    <label style="font-size:11.5px; font-weight:600; color:var(--text, #334155); display:block; margin-bottom:4px;">
+                        Dias de antecedência para alerta de vencimento (ASO, Treinamentos, Extintores):
+                    </label>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="number" id="cfgDiasAntecedencia" min="1" max="90" value="15" style="width:90px; padding:6px 10px; border:1px solid var(--border, #cbd5e1); border-radius:6px; font-size:13px; font-weight:700; text-align:center;">
+                        <span style="font-size:12px; color:var(--text-light, #64748b);">dias antes do vencimento (Gera alerta de <b>Atenção</b>)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bloco 2: Toggle Visão Geral Admin/Engenheiro -->
+            <div class="config-alerta-grupo" style="background:#eff6ff; border-color:#bfdbfe;">
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none;">
+                    <input type="checkbox" id="cfgModoVisaoGeralAdmin" checked style="width:18px; height:18px; cursor:pointer;">
+                    <div>
+                        <div style="font-size:12.5px; font-weight:700; color:#1e40af;">Modo Visão Geral para Engenheiro SST / Admin</div>
+                        <div style="font-size:11px; color:#3b82f6;">Permite alternar entre "Minhas Pendências" e "Visão Equipe" para ver todas as pendências agrupadas por responsável.</div>
+                    </div>
+                </label>
+            </div>
+
+            <!-- Bloco 3: Mapeamento de Responsáveis por Categoria -->
+            <div class="config-alerta-grupo">
+                <div class="config-alerta-grupo-title">
+                    <i class="fas fa-users-cog" style="color:#6366f1;"></i> Regras de Direcionamento por Responsável
+                </div>
+                <div style="font-size:11.5px; color:var(--text-light, #64748b); margin-bottom:12px;">
+                    Vincule cada categoria de risco/norma a um termo de função (ex: Técnico, Enfermagem) ou a um colaborador específico da equipe de SST:
+                </div>
+
+                <div id="wrapMapeamentoCategorias" style="display:flex; flex-direction:column; gap:12px;">
+                    <!-- Preenchido dinamicamente por renderizarMapeamentoCategoriasConfig() -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="padding:12px 18px; border-top:1px solid var(--border, #cbd5e1); background:#f8fafc; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <button type="button" class="db-clear-btn" style="font-size:12px; color:#64748b;" onclick="restaurarConfigAlertasPadrao()">
+                ↺ Restaurar Padrões
+            </button>
+            <div style="display:flex; gap:8px;">
+                <button type="button" class="db-clear-btn" style="padding:7px 14px; font-size:12.5px;" onclick="fecharModalConfigAlertasEquipe()">
+                    Cancelar
+                </button>
+                <button type="button" class="db-apply-btn" id="btnSalvarConfigAlertas" style="padding:7px 18px; font-size:12.5px;" onclick="salvarConfigAlertasEquipeForm()">
+                    💾 Salvar Regras
+                </button>
+            </div>
         </div>
     </div>
 </div>

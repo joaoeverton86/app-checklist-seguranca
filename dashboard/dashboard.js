@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const VERSAO_PAINEL = 'v196';
+const VERSAO_PAINEL = 'v197';
 const DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
@@ -307,6 +307,9 @@ function aplicarVisibilidadeLoginDashboard() {
     if (logado) {
         atualizarBadgeUsuarioDashboard();
         aplicarRestricaoModulosPainelNoMenu();
+        if (typeof atualizarCentralAlertasUsuario === 'function') {
+            atualizarCentralAlertasUsuario();
+        }
     } else {
         carregarCredenciaisSalvasLoginDashboard();
     }
@@ -1401,6 +1404,9 @@ async function loadData() {
         renderAll();
         renderExtintorPanel();
         renderRelatosPanel();
+        if (typeof atualizarCentralAlertasUsuario === 'function') {
+            atualizarCentralAlertasUsuario();
+        }
         setStatus('Atualizado às ' + new Date().toLocaleTimeString('pt-BR'));
     } catch (err) {
         console.error('Erro ao carregar dados do Supabase:', err);
@@ -49387,4 +49393,1164 @@ window.restaurarConfiguracoesDdsPadrao = restaurarConfiguracoesDdsPadrao;
 window.atualizarExemploRegraSemana = atualizarExemploRegraSemana;
 window.renderDdsConfiguracoes = renderDdsConfiguracoes;
 window.carregarConfiguracoesDdsDoSupabase = carregarConfiguracoesDdsDoSupabase;
+
+// =====================================================================
+// CENTRAL INTELIGENTE DE ALERTAS E PENDÊNCIAS SST
+// Gerenciamento de Riscos e Prazos: NR-01 (GRO/PGR), NR-07 (PCMSO/ASO),
+// NR-12/18 (Checklists Periódicos), NR-23 (Extintores)
+// Roteamento inteligente por perfil, 0 B de egress extra, 100% parametrizável.
+// =====================================================================
+
+const CONFIG_ALERTAS_SST_PADRAO = {
+    dia_limite_checklists: 10,
+    dia_aviso_previo_checklists: 5,
+    dias_antecedencia_vencimento: 15,
+    modo_visao_geral_admin: true,
+    categorias: {
+        checklists: {
+            titulo: 'Checklists de Máquinas e Equipamentos (NR-12 / NR-18)',
+            icone: '📊',
+            rota: 'checklists',
+            subtab: 'visao',
+            tipo_vinculo: 'funcao', // 'funcao' ou 'matricula'
+            funcao_termo: 'TÉC. SEG. TRABALHO',
+            matricula: '181',
+            nome_colaborador: 'MARIA GESSICA DA SILVA ROQUE'
+        },
+        extintores: {
+            titulo: 'Extintores e Emergência (NR-23)',
+            icone: '🧯',
+            rota: 'extintores',
+            subtab: 'visao',
+            tipo_vinculo: 'funcao',
+            funcao_termo: 'TÉC. SEG. TRABALHO',
+            matricula: '181',
+            nome_colaborador: 'MARIA GESSICA DA SILVA ROQUE'
+        },
+        treinamentos: {
+            titulo: 'Treinamentos e DDSMA (NRs / Capacitações)',
+            icone: '🎓',
+            rota: 'treinamentos',
+            subtab: 'visao',
+            tipo_vinculo: 'funcao',
+            funcao_termo: 'TÉC. SEG. TRABALHO',
+            matricula: '181',
+            nome_colaborador: 'MARIA GESSICA DA SILVA ROQUE'
+        },
+        saude: {
+            titulo: 'Saúde Ocupacional / ASOs (NR-07 / PCMSO)',
+            icone: '🩺',
+            rota: 'saude',
+            subtab: 'aso',
+            tipo_vinculo: 'funcao',
+            funcao_termo: 'ENFERMEIR',
+            matricula: '98',
+            nome_colaborador: 'Amanda Freire'
+        },
+        planoacao: {
+            titulo: 'Plano de Ação e Laudos (NR-01 / GRO / 5W2H)',
+            icone: '🎯',
+            rota: 'planoacao',
+            subtab: 'tabela',
+            tipo_vinculo: 'funcao',
+            funcao_termo: 'ENGENHEIR',
+            matricula: '76',
+            nome_colaborador: 'JOÃO EVERTON DE SOUZA LIMEIRA'
+        }
+    }
+};
+
+let _configAlertasEquipeAtual = null;
+let _centralAlertasFiltroAba = 'minhas'; // 'minhas' ou 'equipe'
+let _colaboradoresChecklistAlertasCache = null;
+let _ultimoResumoAlertasCalculado = { minhas: [], equipe: [] };
+let _centralAlertasCalculando = false;
+
+function obterConfigAlertasEquipe() {
+    if (_configAlertasEquipeAtual) return _configAlertasEquipeAtual;
+
+    // 1. Tenta carregar do cache de checklist_item_settings já em memória
+    if (typeof allChecklistItemSettings !== 'undefined' && Array.isArray(allChecklistItemSettings)) {
+        const row = allChecklistItemSettings.find(s => s.id === 'config_alertas_equipe' || s.categoria === 'config_alertas_equipe');
+        if (row && row.custom_items && typeof row.custom_items === 'object') {
+            _configAlertasEquipeAtual = mergeConfigAlertasEquipe(CONFIG_ALERTAS_SST_PADRAO, row.custom_items);
+            return _configAlertasEquipeAtual;
+        }
+    }
+
+    // 2. Fallback seguro em localStorage
+    try {
+        const raw = localStorage.getItem('config_alertas_equipe');
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                _configAlertasEquipeAtual = mergeConfigAlertasEquipe(CONFIG_ALERTAS_SST_PADRAO, parsed);
+                return _configAlertasEquipeAtual;
+            }
+        }
+    } catch (e) {
+        console.warn('Erro ao ler config_alertas_equipe do localStorage:', e);
+    }
+
+    // 3. Padrão inicial do projeto
+    _configAlertasEquipeAtual = JSON.parse(JSON.stringify(CONFIG_ALERTAS_SST_PADRAO));
+    return _configAlertasEquipeAtual;
+}
+
+function mergeConfigAlertasEquipe(padrao, custom) {
+    const res = JSON.parse(JSON.stringify(padrao));
+    if (!custom || typeof custom !== 'object') return res;
+
+    if (typeof custom.dia_limite_checklists === 'number') res.dia_limite_checklists = custom.dia_limite_checklists;
+    if (typeof custom.dia_aviso_previo_checklists === 'number') res.dia_aviso_previo_checklists = custom.dia_aviso_previo_checklists;
+    if (typeof custom.dias_antecedencia_vencimento === 'number') res.dias_antecedencia_vencimento = custom.dias_antecedencia_vencimento;
+    if (typeof custom.modo_visao_geral_admin === 'boolean') res.modo_visao_geral_admin = custom.modo_visao_geral_admin;
+
+    if (custom.categorias && typeof custom.categorias === 'object') {
+        for (const [k, v] of Object.entries(custom.categorias)) {
+            if (res.categorias[k]) {
+                res.categorias[k] = { ...res.categorias[k], ...v };
+            }
+        }
+    }
+    return res;
+}
+
+async function salvarConfigAlertasEquipeNoSupabase(novoConfig) {
+    _configAlertasEquipeAtual = novoConfig;
+    try {
+        localStorage.setItem('config_alertas_equipe', JSON.stringify(novoConfig));
+    } catch (e) {
+        console.warn('Erro ao salvar no localStorage:', e);
+    }
+
+    const payload = {
+        id: 'config_alertas_equipe',
+        categoria: 'config_alertas_equipe',
+        custom_items: novoConfig,
+        updated_at: new Date().toISOString()
+    };
+
+    try {
+        await supabaseUpsert('checklist_item_settings', [payload]);
+        if (typeof allChecklistItemSettings !== 'undefined' && Array.isArray(allChecklistItemSettings)) {
+            const idx = allChecklistItemSettings.findIndex(s => s.id === 'config_alertas_equipe' || s.categoria === 'config_alertas_equipe');
+            if (idx >= 0) allChecklistItemSettings[idx] = { ...allChecklistItemSettings[idx], ...payload };
+            else allChecklistItemSettings.push(payload);
+        }
+        return true;
+    } catch (err) {
+        console.error('Erro ao salvar config_alertas_equipe no Supabase:', err);
+        return false;
+    }
+}
+
+function normalizarTextoBuscaAlerta(str) {
+    if (!str) return '';
+    return String(str)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toUpperCase();
+}
+
+function verificarVinculoResponsavel(categoriaKey, session, config) {
+    if (!session) {
+        return { ehResponsavelDireto: true, labelResponsavel: 'Equipe SST' };
+    }
+
+    const matSession = String(session.matricula || '').trim().toUpperCase();
+    if (matSession === 'TESTE') {
+        return { ehResponsavelDireto: true, labelResponsavel: 'Você (Acesso Teste)' };
+    }
+
+    const regra = config.categorias[categoriaKey] || {};
+    const labelResp = regra.nome_colaborador || regra.funcao_termo || 'Responsável SST';
+
+    // 1. Vínculo explícito por matrícula
+    if (regra.tipo_vinculo === 'matricula') {
+        const matRegra = String(regra.matricula || '').trim().toUpperCase();
+        const bateuMatricula = (matSession && matSession === matRegra);
+        return {
+            ehResponsavelDireto: bateuMatricula,
+            labelResponsavel: labelResp
+        };
+    }
+
+    // 2. Vínculo por termo de função/cargo
+    const termo = normalizarTextoBuscaAlerta(regra.funcao_termo || '');
+    const funcSess = normalizarTextoBuscaAlerta(session.funcao || '');
+    const roleSess = normalizarTextoBuscaAlerta(session.role || '');
+    const nomeSess = normalizarTextoBuscaAlerta(session.nome || '');
+
+    let ehMeu = false;
+    if (termo) {
+        ehMeu = funcSess.includes(termo) || roleSess.includes(termo) || nomeSess.includes(termo);
+    }
+
+    // Regras de fallback inteligentes para a equipe real de 3 profissionais:
+    if (categoriaKey === 'saude') {
+        if (matSession === '98' || session.perfil_id === 'modulo_saude' || funcSess.includes('ENFERM')) {
+            ehMeu = true;
+        }
+    } else if (categoriaKey === 'checklists' || categoriaKey === 'extintores') {
+        if (matSession === '181' || funcSess.includes('TEC') && funcSess.includes('SEG')) {
+            ehMeu = true;
+        }
+    } else if (categoriaKey === 'planoacao') {
+        if (matSession === '76' || funcSess.includes('ENGENH')) {
+            ehMeu = true;
+        }
+    }
+
+    return {
+        ehResponsavelDireto: ehMeu,
+        labelResponsavel: labelResp
+    };
+}
+
+async function garantirDadosMinimosCentralAlertas() {
+    const session = sessaoDashboardAtual();
+    const isEnfermagem = session && (session.matricula === '98' || session.perfil_id === 'modulo_saude' || normalizarTextoBuscaAlerta(session.funcao).includes('ENFERM'));
+    const isAdmin = !session || session.role === 'Admin' || session.matricula === '76' || session.matricula === 'TESTE';
+
+    const tarefas = [];
+
+    // Se for perfil de Saúde ou Admin/Visão Geral, garante Efetivo e ASO em memória (1 consulta cacheada no IndexedDB)
+    if (isEnfermagem || isAdmin) {
+        if (typeof allEfetivo === 'undefined' || !Array.isArray(allEfetivo) || allEfetivo.length === 0) {
+            tarefas.push(supabaseFetchCacheado('colaboradores_efetivo', '?select=*').then(r => {
+                if (Array.isArray(r)) window.allEfetivo = r;
+            }).catch(e => console.warn('Alertas: aviso ao carregar efetivo:', e)));
+        }
+        if (typeof allAsoExames === 'undefined' || !Array.isArray(allAsoExames) || allAsoExames.length === 0) {
+            tarefas.push(supabaseFetchCacheado('aso_exames', '?select=*').then(r => {
+                if (Array.isArray(r)) window.allAsoExames = r;
+            }).catch(e => console.warn('Alertas: aviso ao carregar aso_exames:', e)));
+        }
+    }
+
+    // Se for Engenheiro ou Admin, garante Plano de Ação 5W2H do PGR (1 consulta cacheada)
+    if (isAdmin || (session && normalizarTextoBuscaAlerta(session.funcao).includes('ENGENH'))) {
+        if (typeof allPlanoAcaoPgr === 'undefined' || !Array.isArray(allPlanoAcaoPgr) || allPlanoAcaoPgr.length === 0) {
+            tarefas.push(supabaseFetchCacheado('pgr_plano_acao', '?select=*').then(r => {
+                if (Array.isArray(r)) window.allPlanoAcaoPgr = r;
+            }).catch(e => console.warn('Alertas: aviso ao carregar pgr_plano_acao:', e)));
+        }
+    }
+
+    if (tarefas.length > 0) {
+        await Promise.all(tarefas);
+    }
+}
+
+async function atualizarCentralAlertasUsuario(forcarRecarregar = false) {
+    if (_centralAlertasCalculando) return;
+    _centralAlertasCalculando = true;
+
+    try {
+        if (forcarRecarregar) {
+            // Invalida cache local se o usuário pediu recarregamento explícito
+            try {
+                if (typeof dashCacheInvalidate === 'function') {
+                    await dashCacheInvalidate('checklist_item_settings');
+                }
+            } catch (_) {}
+            _configAlertasEquipeAtual = null;
+        }
+
+        await garantirDadosMinimosCentralAlertas();
+
+        const config = obterConfigAlertasEquipe();
+        const session = sessaoDashboardAtual();
+
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+        const diaAtual = hoje.getDate();
+        const mesAtual = hoje.getMonth();
+        const anoAtual = hoje.getFullYear();
+
+        const todosAlertas = [];
+
+        // -------------------------------------------------------------
+        // 1. REGRA: CHECKLISTS DE MÁQUINAS E EQUIPAMENTOS (NR-12 / NR-18)
+        // -------------------------------------------------------------
+        if (typeof allCadastros !== 'undefined' && Array.isArray(allCadastros) &&
+            typeof allChecklists !== 'undefined' && Array.isArray(allChecklists)) {
+            
+            const cadastrosAtivos = allCadastros.filter(c => c.ativo !== false);
+            const checklistsDoMes = allChecklists.filter(c => {
+                if (!c.date) return false;
+                const d = parseLocalDate(c.date);
+                return d && d.getFullYear() === anoAtual && d.getMonth() === mesAtual;
+            });
+
+            const patrimoniosVerificados = new Set(checklistsDoMes.map(c => (c.patrimonio || '').toUpperCase()));
+            const equipsPendentes = cadastrosAtivos.filter(c => !patrimoniosVerificados.has((c.patrimonio || '').toUpperCase()));
+            const totalPendentes = equipsPendentes.length;
+
+            if (totalPendentes > 0) {
+                const diaLimite = config.dia_limite_checklists || 10;
+                const diaAviso = config.dia_aviso_previo_checklists || 5;
+
+                let severidade = 'info';
+                let badge = 'No Prazo';
+                let titulo = 'Checklists Periódicos do Mês (NR-12/18)';
+                let desc = `${totalPendentes} equipamento(s) aguardando inspeção mensal até o dia ${diaLimite}.`;
+
+                if (diaAtual > diaLimite) {
+                    severidade = 'critico';
+                    badge = 'Atrasado';
+                    titulo = 'Checklists Mensais em Atraso (NR-12/18)';
+                    desc = `${totalPendentes} equipamento(s) sem checklist no mês vigente! O prazo limite encerrou no dia ${diaLimite}.`;
+                } else if (diaAtual >= diaAviso) {
+                    severidade = 'atencao';
+                    badge = 'Atenção';
+                    titulo = 'Checklists Pendentes do Mês (NR-12/18)';
+                    desc = `${totalPendentes} equipamento(s) pendentes. O prazo limite encerra no dia ${diaLimite} (restam ${diaLimite - diaAtual} dias).`;
+                }
+
+                todosAlertas.push({
+                    categoria: 'checklists',
+                    severidade: severidade,
+                    badge: badge,
+                    titulo: titulo,
+                    desc: desc,
+                    rota: 'checklists',
+                    subtab: 'visao',
+                    qtd: totalPendentes,
+                    detalhes: equipsPendentes.slice(0, 6).map(e => `${e.patrimonio || 'S/P'} - ${e.nome || ''}`)
+                });
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 2. REGRA: SAÚDE OCUPACIONAL / ASOs (NR-07 / PCMSO)
+        // -------------------------------------------------------------
+        if (typeof allEfetivo !== 'undefined' && Array.isArray(allEfetivo)) {
+            const diasMargem = config.dias_antecedencia_vencimento || 15;
+            const colaboradoresAtivos = allEfetivo.filter(e => colaboradorEstaAtivo(e));
+
+            const asosVencidos = [];
+            const asosVencendo = [];
+
+            colaboradoresAtivos.forEach(colab => {
+                let diffDays = null;
+                let dataVenc = null;
+
+                // Tenta calcular via histórico de aso_exames se disponível
+                if (typeof allAsoExames !== 'undefined' && Array.isArray(allAsoExames) && allAsoExames.length > 0) {
+                    const statusAso = calcularStatusAsoColaborador(colab.id);
+                    if (statusAso && statusAso.ultimoExame && statusAso.ultimoExame.data_vencimento) {
+                        diffDays = statusAso.diffDays;
+                        dataVenc = statusAso.ultimoExame.data_vencimento;
+                    }
+                }
+
+                // Fallback para campo validade_aso direto no cadastro do efetivo
+                if (diffDays === null && colab.validade_aso) {
+                    const dv = parseLocalDate(colab.validade_aso);
+                    if (dv) {
+                        dv.setHours(0, 0, 0, 0);
+                        diffDays = Math.ceil((dv.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+                        dataVenc = colab.validade_aso;
+                    }
+                }
+
+                if (diffDays !== null) {
+                    if (diffDays < 0) {
+                        asosVencidos.push({ colab, diffDays, dataVenc });
+                    } else if (diffDays <= diasMargem) {
+                        asosVencendo.push({ colab, diffDays, dataVenc });
+                    }
+                }
+            });
+
+            if (asosVencidos.length > 0) {
+                todosAlertas.push({
+                    categoria: 'saude',
+                    severidade: 'critico',
+                    badge: 'Vencido',
+                    titulo: 'ASOs Ocupacionais Vencidos (NR-07)',
+                    desc: `${asosVencidos.length} colaborador(es) com exame ocupacional VENCIDO necessitando convocação imediata.`,
+                    rota: 'saude',
+                    subtab: 'aso',
+                    qtd: asosVencidos.length,
+                    detalhes: asosVencidos.slice(0, 6).map(a => `${a.colab.nome} (Vencido há ${Math.abs(a.diffDays)}d)`)
+                });
+            }
+
+            if (asosVencendo.length > 0) {
+                todosAlertas.push({
+                    categoria: 'saude',
+                    severidade: 'atencao',
+                    badge: 'A vencer',
+                    titulo: `ASOs a Vencer nos Próximos ${diasMargem} Dias`,
+                    desc: `${asosVencendo.length} colaborador(es) com exame periódico a expirar nos próximos ${diasMargem} dias.`,
+                    rota: 'saude',
+                    subtab: 'aso',
+                    qtd: asosVencendo.length,
+                    detalhes: asosVencendo.slice(0, 6).map(a => `${a.colab.nome} (Vence em ${a.diffDays}d)`)
+                });
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 3. REGRA: EXTINTORES E EMERGÊNCIA (NR-23)
+        // -------------------------------------------------------------
+        if (typeof allExtintores !== 'undefined' && Array.isArray(allExtintores)) {
+            const diasMargem = config.dias_antecedencia_vencimento || 15;
+            const extAtivos = allExtintores.filter(e => e.ativo !== false);
+
+            const extVencidos = [];
+            const extVencendo = [];
+
+            extAtivos.forEach(ext => {
+                const datasParaChecar = [
+                    { campo: 'proxima_recarga', rotulo: 'Recarga' },
+                    { campo: 'proximo_teste_hidrostatico', rotulo: 'Teste Hidrostático' }
+                ];
+
+                datasParaChecar.forEach(dItem => {
+                    const val = ext[dItem.campo];
+                    if (val) {
+                        const d = parseLocalDate(val);
+                        if (d) {
+                            d.setHours(0, 0, 0, 0);
+                            const diff = Math.ceil((d.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+                            if (diff < 0) {
+                                extVencidos.push({ ext, tipoData: dItem.rotulo, diff });
+                            } else if (diff <= diasMargem) {
+                                extVencendo.push({ ext, tipoData: dItem.rotulo, diff });
+                            }
+                        }
+                    }
+                });
+            });
+
+            if (extVencidos.length > 0) {
+                todosAlertas.push({
+                    categoria: 'extintores',
+                    severidade: 'critico',
+                    badge: 'Vencido',
+                    titulo: 'Extintores c/ Recarga ou Teste Vencido (NR-23)',
+                    desc: `${extVencidos.length} item(ns) de combate a incêndio com validade de recarga/teste expirada.`,
+                    rota: 'extintores',
+                    subtab: 'visao',
+                    qtd: extVencidos.length,
+                    detalhes: extVencidos.slice(0, 6).map(x => `Nº ${x.ext.numero || x.ext.id} (${x.tipoData} vencido)`)
+                });
+            }
+
+            if (extVencendo.length > 0) {
+                todosAlertas.push({
+                    categoria: 'extintores',
+                    severidade: 'atencao',
+                    badge: 'A vencer',
+                    titulo: `Extintores a Vencer em ${diasMargem} Dias`,
+                    desc: `${extVencendo.length} item(ns) de combate a incêndio com validade próxima ao vencimento.`,
+                    rota: 'extintores',
+                    subtab: 'visao',
+                    qtd: extVencendo.length,
+                    detalhes: extVencendo.slice(0, 6).map(x => `Nº ${x.ext.numero || x.ext.id} (${x.tipoData} em ${x.diff}d)`)
+                });
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 4. REGRA: TREINAMENTOS E DDSMA (NR-01 / NRs)
+        // -------------------------------------------------------------
+        if (typeof allTreinamentosRealizados !== 'undefined' && Array.isArray(allTreinamentosRealizados) && allTreinamentosRealizados.length > 0) {
+            const diasMargem = config.dias_antecedencia_vencimento || 15;
+            const treinVencidos = [];
+            const treinVencendo = [];
+
+            allTreinamentosRealizados.forEach(r => {
+                if (r.data_proxima_reciclagem) {
+                    const d = parseLocalDate(r.data_proxima_reciclagem);
+                    if (d) {
+                        d.setHours(0, 0, 0, 0);
+                        const diff = Math.ceil((d.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+                        if (diff < 0) {
+                            treinVencidos.push({ r, diff });
+                        } else if (diff <= diasMargem) {
+                            treinVencendo.push({ r, diff });
+                        }
+                    }
+                }
+            });
+
+            if (treinVencidos.length > 0) {
+                todosAlertas.push({
+                    categoria: 'treinamentos',
+                    severidade: 'critico',
+                    badge: 'Vencido',
+                    titulo: 'Treinamentos Normativos Vencidos (Reciclagem)',
+                    desc: `${treinVencidos.length} registro(s) de capacitação obrigatória com reciclagem vencida.`,
+                    rota: 'treinamentos',
+                    subtab: 'visao',
+                    qtd: treinVencidos.length,
+                    detalhes: treinVencidos.slice(0, 6).map(t => `${t.r.nome} - ${t.r.treinamento_nome || t.r.treinamento_cod}`)
+                });
+            }
+
+            if (treinVencendo.length > 0) {
+                todosAlertas.push({
+                    categoria: 'treinamentos',
+                    severidade: 'atencao',
+                    badge: 'A vencer',
+                    titulo: `Treinamentos a Vencer nos Próximos ${diasMargem} Dias`,
+                    desc: `${treinVencendo.length} capacitação(ões) normativa(s) com vencimento de reciclagem previsto.`,
+                    rota: 'treinamentos',
+                    subtab: 'visao',
+                    qtd: treinVencendo.length,
+                    detalhes: treinVencendo.slice(0, 6).map(t => `${t.r.nome} - ${t.r.treinamento_nome || t.r.treinamento_cod}`)
+                });
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 5. REGRA: PLANO DE AÇÃO (5W2H / PGR / NR-01)
+        // -------------------------------------------------------------
+        if (typeof allPlanoAcaoPgr !== 'undefined' && Array.isArray(allPlanoAcaoPgr) && allPlanoAcaoPgr.length > 0) {
+            const diasMargem = config.dias_antecedencia_vencimento || 15;
+            const acoesAbertas = allPlanoAcaoPgr.filter(a => {
+                const st = (a.status || '').toLowerCase().trim();
+                return st !== 'concluido' && st !== 'cancelado';
+            });
+
+            const acoesAtrasadas = [];
+            const acoesVencendo = [];
+
+            acoesAbertas.forEach(a => {
+                if (a.when_prazo) {
+                    const d = parseLocalDate(a.when_prazo);
+                    if (d) {
+                        d.setHours(0, 0, 0, 0);
+                        const diff = Math.ceil((d.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+                        if (diff < 0) {
+                            acoesAtrasadas.push({ a, diff });
+                        } else if (diff <= diasMargem) {
+                            acoesVencendo.push({ a, diff });
+                        }
+                    }
+                }
+            });
+
+            if (acoesAtrasadas.length > 0) {
+                todosAlertas.push({
+                    categoria: 'planoacao',
+                    severidade: 'critico',
+                    badge: 'Atrasado',
+                    titulo: 'Ações do Plano PGR em Atraso (NR-01)',
+                    desc: `${acoesAtrasadas.length} ação(ões) corretiva(s) do PGR com prazo de conclusão estourado!`,
+                    rota: 'planoacao',
+                    subtab: 'tabela',
+                    qtd: acoesAtrasadas.length,
+                    detalhes: acoesAtrasadas.slice(0, 6).map(x => `${x.a.what_acao || 'Ação'} (Resp: ${x.a.who_responsavel || 'SST'})`)
+                });
+            }
+
+            if (acoesVencendo.length > 0) {
+                todosAlertas.push({
+                    categoria: 'planoacao',
+                    severidade: 'atencao',
+                    badge: 'A vencer',
+                    titulo: `Ações do PGR a Vencer em ${diasMargem} Dias`,
+                    desc: `${acoesVencendo.length} ação(ões) do PGR com prazo limite se aproximando.`,
+                    rota: 'planoacao',
+                    subtab: 'tabela',
+                    qtd: acoesVencendo.length,
+                    detalhes: acoesVencendo.slice(0, 6).map(x => `${x.a.what_acao || 'Ação'} (em ${x.diff}d)`)
+                });
+            }
+        }
+
+        // Atribui o responsável configurado e checa pertinência
+        todosAlertas.forEach(alerta => {
+            const vinculo = verificarVinculoResponsavel(alerta.categoria, session, config);
+            alerta.ehMeu = vinculo.ehResponsavelDireto;
+            alerta.nomeResponsavel = vinculo.labelResponsavel;
+            const catCfg = config.categorias[alerta.categoria] || {};
+            alerta.icone = catCfg.icone || '🔔';
+        });
+
+        // Ordena: Críticos primeiro, depois Atenção, depois Info
+        const prioridade = { critico: 1, atencao: 2, info: 3 };
+        todosAlertas.sort((a, b) => (prioridade[a.severidade] || 99) - (prioridade[b.severidade] || 99));
+
+        const alertasMinhas = todosAlertas.filter(a => a.ehMeu);
+        const alertasEquipe = todosAlertas;
+
+        _ultimoResumoAlertasCalculado = {
+            minhas: alertasMinhas,
+            equipe: alertasEquipe
+        };
+
+        renderizarUIAlertas(_ultimoResumoAlertasCalculado, session, config);
+
+    } catch (err) {
+        console.error('Erro ao atualizar Central de Alertas:', err);
+    } finally {
+        _centralAlertasCalculando = false;
+    }
+}
+
+function renderizarUIAlertas(resumo, session, config) {
+    const btnSininho = document.getElementById('btnCentralAlertas');
+    const badgeQtd = document.getElementById('badgeCentralAlertasQtd');
+    const subtituloEl = document.getElementById('subtituloCentralAlertas');
+    const qtdMinhasEl = document.getElementById('qtdAlertasMinhas');
+    const qtdEquipeEl = document.getElementById('qtdAlertasEquipe');
+    const tabsBar = document.getElementById('tabsBarCentralAlertas');
+
+    const isAdmin = !session || session.role === 'Admin' || session.matricula === '76' || session.matricula === 'TESTE';
+    const podeVerEquipe = isAdmin && config.modo_visao_geral_admin;
+
+    // Subtítulo da Central
+    if (subtituloEl) {
+        if (!session) {
+            subtituloEl.textContent = 'Panorama Geral da Equipe SST';
+        } else if (session.matricula === 'TESTE') {
+            subtituloEl.textContent = 'Visão de Teste • Administrador SST';
+        } else {
+            subtituloEl.textContent = `Direcionado para: ${session.nome} (${session.role || session.funcao || 'SST'})`;
+        }
+    }
+
+    // Contadores das abas
+    const listaMinhas = resumo.minhas || [];
+    const listaEquipe = resumo.equipe || [];
+
+    if (qtdMinhasEl) qtdMinhasEl.textContent = listaMinhas.length;
+    if (qtdEquipeEl) qtdEquipeEl.textContent = listaEquipe.length;
+
+    if (tabsBar) {
+        tabsBar.style.display = podeVerEquipe ? 'flex' : 'none';
+    }
+
+    // Alertas que afetam o usuário logado (ou equipe se admin sem alertas próprios)
+    const alertasAlvoBadge = (podeVerEquipe && listaMinhas.length === 0) ? listaEquipe : listaMinhas;
+    const qtdUrgente = alertasAlvoBadge.filter(a => a.severidade === 'critico' || a.severidade === 'atencao').length;
+    const temCritico = alertasAlvoBadge.some(a => a.severidade === 'critico');
+
+    // Atualiza botão do sininho e badge numérico
+    if (badgeQtd) {
+        if (qtdUrgente > 0) {
+            badgeQtd.textContent = qtdUrgente > 99 ? '99+' : qtdUrgente;
+            badgeQtd.style.display = 'block';
+            badgeQtd.className = 'db-alerta-badge ' + (temCritico ? 'critico' : 'atencao');
+        } else {
+            badgeQtd.textContent = '0';
+            badgeQtd.style.display = 'none';
+        }
+    }
+
+    if (btnSininho) {
+        btnSininho.classList.toggle('tem-critico', temCritico);
+    }
+
+    // Renderiza lista atual do dropdown
+    renderizarListaDropdownCentralAlertas();
+
+    // Renderiza banner compacto de pendências do dia
+    renderizarBannerPendenciasDoDia(listaMinhas);
+}
+
+function renderizarListaDropdownCentralAlertas() {
+    const container = document.getElementById('listaItensCentralAlertas');
+    if (!container) return;
+
+    const session = sessaoDashboardAtual();
+    const config = obterConfigAlertasEquipe();
+    const isAdmin = !session || session.role === 'Admin' || session.matricula === '76' || session.matricula === 'TESTE';
+    const podeVerEquipe = isAdmin && config.modo_visao_geral_admin;
+
+    const lista = (_centralAlertasFiltroAba === 'equipe' && podeVerEquipe)
+        ? _ultimoResumoAlertasCalculado.equipe
+        : _ultimoResumoAlertasCalculado.minhas;
+
+    if (!lista || lista.length === 0) {
+        const msg = (_centralAlertasFiltroAba === 'equipe')
+            ? '✅ <b>Toda a equipe está em dia!</b><br>Nenhuma pendência crítica ou atraso identificado nos módulos de SST.'
+            : '✅ <b>Parabéns! Nenhuma pendência da sua alçada no momento.</b><br>Tudo verificado e em dia sob sua responsabilidade.';
+
+        container.innerHTML = `<div class="db-alertas-empty">${msg}</div>`;
+        return;
+    }
+
+    container.innerHTML = lista.map(alerta => {
+        const tagResp = alerta.ehMeu
+            ? `<span class="db-alerta-card-resp eu"><i class="fas fa-check-circle"></i> Sua responsabilidade</span>`
+            : `<span class="db-alerta-card-resp"><i class="fas fa-user"></i> Resp: ${escapeHTML(alerta.nomeResponsavel || 'SST')}</span>`;
+
+        return `
+            <div class="db-alerta-card ${alerta.severidade}">
+                <div class="db-alerta-card-header">
+                    <div class="db-alerta-card-title">
+                        <span>${alerta.icone || '🔔'}</span>
+                        <span>${escapeHTML(alerta.titulo)}</span>
+                    </div>
+                    <span class="db-alerta-badge-tag ${alerta.severidade}">${escapeHTML(alerta.badge)}</span>
+                </div>
+                <div class="db-alerta-card-desc">
+                    ${escapeHTML(alerta.desc)}
+                </div>
+                <div class="db-alerta-card-footer">
+                    ${tagResp}
+                    <button type="button" class="db-alerta-card-btn-action" onclick="irParaModuloAlerta('${alerta.rota}', '${alerta.subtab || ''}')">
+                        Resolver agora ➔
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderizarBannerPendenciasDoDia(alertasMinhas) {
+    const banner = document.getElementById('bannerPendenciasDia');
+    if (!banner) return;
+
+    // Se o usuário dispensou na sessão atual
+    if (sessionStorage.getItem('fechar_banner_alertas_sessao') === 'true') {
+        banner.style.display = 'none';
+        return;
+    }
+
+    const urgentes = (alertasMinhas || []).filter(a => a.severidade === 'critico' || a.severidade === 'atencao');
+    if (urgentes.length === 0) {
+        banner.style.display = 'none';
+        return;
+    }
+
+    const temCritico = urgentes.some(a => a.severidade === 'critico');
+    banner.className = 'db-banner-pendencias ' + (temCritico ? 'critico' : 'atencao');
+
+    const iconEl = document.getElementById('bannerPendenciasIcon');
+    const tituloEl = document.getElementById('bannerPendenciasTitulo');
+    const descEl = document.getElementById('bannerPendenciasDesc');
+
+    if (iconEl) iconEl.textContent = temCritico ? '🚨' : '⚠️';
+    if (tituloEl) {
+        tituloEl.textContent = temCritico
+            ? 'Pendências Críticas Sob Sua Responsabilidade:'
+            : 'Atenção às Pendências do Dia:';
+    }
+
+    if (descEl) {
+        const resumoTexto = urgentes.slice(0, 2).map(a => `${a.titulo} (${a.qtd})`).join(' e ');
+        descEl.textContent = `Você possui ${urgentes.length} pendência(s) prioritária(s) aguardando resolução: ${resumoTexto}.`;
+    }
+
+    banner.style.display = 'flex';
+}
+
+function fecharBannerPendenciasDoDia() {
+    try {
+        sessionStorage.setItem('fechar_banner_alertas_sessao', 'true');
+    } catch (_) {}
+    const banner = document.getElementById('bannerPendenciasDia');
+    if (banner) banner.style.display = 'none';
+}
+
+function acaoRapidaBannerPendencias() {
+    const lista = _ultimoResumoAlertasCalculado.minhas || [];
+    const prioridade = lista.find(a => a.severidade === 'critico') || lista.find(a => a.severidade === 'atencao') || lista[0];
+    if (prioridade) {
+        irParaModuloAlerta(prioridade.rota, prioridade.subtab || '');
+    } else {
+        toggleCentralAlertasDropdown();
+    }
+}
+
+function irParaModuloAlerta(rota, subtab) {
+    fecharCentralAlertasDropdown();
+    if (typeof showDbPage === 'function') {
+        showDbPage(rota);
+    }
+
+    // Se houver subtab específica
+    if (subtab) {
+        setTimeout(() => {
+            if (rota === 'checklists' && typeof showChecklistsSubtab === 'function') {
+                showChecklistsSubtab(subtab);
+            } else if (rota === 'saude' && typeof showSaudeSubtab === 'function') {
+                showSaudeSubtab(subtab);
+            } else if (rota === 'extintores' && typeof showExtintoresSubtab === 'function') {
+                showExtintoresSubtab(subtab);
+            } else if (rota === 'treinamentos' && typeof showTreinSubtab === 'function') {
+                showTreinSubtab(subtab);
+            } else if (rota === 'planoacao' && typeof showPlanoAcaoSubtab === 'function') {
+                showPlanoAcaoSubtab(subtab);
+            }
+        }, 80);
+    }
+}
+
+function toggleCentralAlertasDropdown(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('dropdownCentralAlertas');
+    if (!dropdown) return;
+
+    const estaAberto = dropdown.style.display !== 'none';
+    if (estaAberto) {
+        dropdown.style.display = 'none';
+    } else {
+        renderizarListaDropdownCentralAlertas();
+        dropdown.style.display = 'flex';
+    }
+}
+
+function fecharCentralAlertasDropdown() {
+    const dropdown = document.getElementById('dropdownCentralAlertas');
+    if (dropdown) dropdown.style.display = 'none';
+}
+
+function alternarFiltroCentralAlertas(filtro) {
+    _centralAlertasFiltroAba = filtro;
+    const btnMinhas = document.getElementById('tabBtnAlertasMinhas');
+    const btnEquipe = document.getElementById('tabBtnAlertasEquipe');
+
+    if (btnMinhas) btnMinhas.classList.toggle('active', filtro === 'minhas');
+    if (btnEquipe) btnEquipe.classList.toggle('active', filtro === 'equipe');
+
+    renderizarListaDropdownCentralAlertas();
+}
+
+// Fechamento ao clicar fora do dropdown
+document.addEventListener('click', (e) => {
+    const wrap = document.getElementById('wrapCentralAlertas');
+    const dropdown = document.getElementById('dropdownCentralAlertas');
+    if (dropdown && dropdown.style.display !== 'none') {
+        if (wrap && !wrap.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    }
+});
+
+// =====================================================================
+// MODAL DE PARAMETRIZAÇÃO DAS REGRAS DE ALERTAS (100% DINÂMICO)
+// =====================================================================
+
+async function abrirModalConfigAlertasEquipe() {
+    fecharCentralAlertasDropdown();
+    const modal = document.getElementById('modalConfigAlertasEquipe');
+    if (!modal) return;
+
+    const config = obterConfigAlertasEquipe();
+
+    const inpLimite = document.getElementById('cfgDiaLimiteChecklist');
+    const inpAviso = document.getElementById('cfgDiaAvisoChecklist');
+    const inpDiasAnt = document.getElementById('cfgDiasAntecedencia');
+    const cbVisaoGeral = document.getElementById('cfgModoVisaoGeralAdmin');
+
+    if (inpLimite) inpLimite.value = config.dia_limite_checklists || 10;
+    if (inpAviso) inpAviso.value = config.dia_aviso_previo_checklists || 5;
+    if (inpDiasAnt) inpDiasAnt.value = config.dias_antecedencia_vencimento || 15;
+    if (cbVisaoGeral) cbVisaoGeral.checked = config.modo_visao_geral_admin !== false;
+
+    // Carrega colaboradores da equipe em cache se ainda não tiver
+    if (!_colaboradoresChecklistAlertasCache) {
+        try {
+            _colaboradoresChecklistAlertasCache = await supabaseFetchCacheado('colaboradores_checklist', '?select=id,matricula,nome,funcao,nivel_acesso,ativo&ativo=eq.true&order=nome.asc');
+        } catch (_) {
+            _colaboradoresChecklistAlertasCache = [];
+        }
+    }
+
+    renderizarMapeamentoCategoriasConfig(config, _colaboradoresChecklistAlertasCache || []);
+    modal.style.display = 'flex';
+}
+
+function fecharModalConfigAlertasEquipe() {
+    const modal = document.getElementById('modalConfigAlertasEquipe');
+    if (modal) modal.style.display = 'none';
+}
+
+function renderizarMapeamentoCategoriasConfig(config, colaboradores) {
+    const container = document.getElementById('wrapMapeamentoCategorias');
+    if (!container) return;
+
+    const categoriasInfo = [
+        { key: 'checklists', label: '1. Checklists de Máquinas e Equipamentos (NR-12/18)', icone: '📊' },
+        { key: 'extintores', label: '2. Extintores e Equipamentos de Emergência (NR-23)', icone: '🧯' },
+        { key: 'treinamentos', label: '3. Treinamentos Obrigatórios e DDSMA (NRs)', icone: '🎓' },
+        { key: 'saude', label: '4. Saúde Ocupacional e ASOs (NR-07 / PCMSO)', icone: '🩺' },
+        { key: 'planoacao', label: '5. Plano de Ação 5W2H e Laudos PGR (NR-01)', icone: '🎯' }
+    ];
+
+    container.innerHTML = categoriasInfo.map(cat => {
+        const cfgCat = (config.categorias && config.categorias[cat.key]) ? config.categorias[cat.key] : {};
+        const tipoVinculo = cfgCat.tipo_vinculo || 'funcao';
+
+        const optionsColabs = (colaboradores || []).map(c => {
+            const mat = c.matricula || c.id;
+            const sel = (String(cfgCat.matricula) === String(mat)) ? 'selected' : '';
+            return `<option value="${mat}" data-nome="${escapeHTML(c.nome)}" data-funcao="${escapeHTML(c.funcao || '')}" ${sel}>${escapeHTML(c.nome)} (Mat: ${mat} - ${escapeHTML(c.funcao || 'SST')})</option>`;
+        }).join('');
+
+        return `
+            <div style="background:#ffffff; border:1px solid var(--border, #cbd5e1); border-radius:8px; padding:10px 12px;">
+                <div style="font-size:12.5px; font-weight:700; color:var(--text, #1e293b); margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                    <span>${cat.icone}</span> <span>${cat.label}</span>
+                </div>
+                <div style="display:grid; grid-template-columns: 140px 1fr; gap:10px; align-items:center;">
+                    <div>
+                        <label style="font-size:11px; font-weight:600; color:var(--text-light, #64748b); display:block; margin-bottom:2px;">Tipo de Vínculo:</label>
+                        <select id="cfgCatTipo_${cat.key}" onchange="alternarTipoVinculoCategoria('${cat.key}')" style="width:100%; padding:6px; border:1px solid var(--border, #cbd5e1); border-radius:6px; font-size:12px; font-weight:600;">
+                            <option value="funcao" ${tipoVinculo === 'funcao' ? 'selected' : ''}>Por Função</option>
+                            <option value="matricula" ${tipoVinculo === 'matricula' ? 'selected' : ''}>Por Colaborador</option>
+                        </select>
+                    </div>
+
+                    <div id="wrapVinculoFuncao_${cat.key}" style="display:${tipoVinculo === 'funcao' ? 'block' : 'none'};">
+                        <label style="font-size:11px; font-weight:600; color:var(--text-light, #64748b); display:block; margin-bottom:2px;">Termo de Função/Cargo vinculado:</label>
+                        <input type="text" id="cfgCatFuncao_${cat.key}" value="${escapeHTML(cfgCat.funcao_termo || '')}" placeholder="Ex: TÉC. SEG. TRABALHO, ENFERMEIR, ENGENHEIR..." style="width:100%; padding:6px 10px; border:1px solid var(--border, #cbd5e1); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                    </div>
+
+                    <div id="wrapVinculoColab_${cat.key}" style="display:${tipoVinculo === 'matricula' ? 'block' : 'none'};">
+                        <label style="font-size:11px; font-weight:600; color:var(--text-light, #64748b); display:block; margin-bottom:2px;">Colaborador Responsável:</label>
+                        <select id="cfgCatColab_${cat.key}" style="width:100%; padding:6px; border:1px solid var(--border, #cbd5e1); border-radius:6px; font-size:12px; box-sizing:border-box;">
+                            <option value="">Selecione o colaborador...</option>
+                            ${optionsColabs}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function alternarTipoVinculoCategoria(catKey) {
+    const select = document.getElementById(`cfgCatTipo_${catKey}`);
+    const wrapFuncao = document.getElementById(`wrapVinculoFuncao_${catKey}`);
+    const wrapColab = document.getElementById(`wrapVinculoColab_${catKey}`);
+
+    if (select && wrapFuncao && wrapColab) {
+        const isFuncao = select.value === 'funcao';
+        wrapFuncao.style.display = isFuncao ? 'block' : 'none';
+        wrapColab.style.display = isFuncao ? 'none' : 'block';
+    }
+}
+
+async function salvarConfigAlertasEquipeForm() {
+    const btn = document.getElementById('btnSalvarConfigAlertas');
+    const oldText = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Gravando...'; }
+
+    try {
+        const diaLimite = parseInt(document.getElementById('cfgDiaLimiteChecklist')?.value || '10', 10);
+        const diaAviso = parseInt(document.getElementById('cfgDiaAvisoChecklist')?.value || '5', 10);
+        const diasAnt = parseInt(document.getElementById('cfgDiasAntecedencia')?.value || '15', 10);
+        const visaoGeral = document.getElementById('cfgModoVisaoGeralAdmin')?.checked !== false;
+
+        if (isNaN(diaLimite) || diaLimite < 1 || diaLimite > 28) {
+            alert('Por favor, informe um dia limite mensal válido entre 1 e 28.');
+            return;
+        }
+
+        const configAtual = obterConfigAlertasEquipe();
+        const novoConfig = JSON.parse(JSON.stringify(configAtual));
+
+        novoConfig.dia_limite_checklists = diaLimite;
+        novoConfig.dia_aviso_previo_checklists = diaAviso;
+        novoConfig.dias_antecedencia_vencimento = diasAnt;
+        novoConfig.modo_visao_geral_admin = visaoGeral;
+
+        const categoriasChaves = ['checklists', 'extintores', 'treinamentos', 'saude', 'planoacao'];
+
+        categoriasChaves.forEach(k => {
+            const tipo = document.getElementById(`cfgCatTipo_${k}`)?.value || 'funcao';
+            novoConfig.categorias[k] = novoConfig.categorias[k] || {};
+            novoConfig.categorias[k].tipo_vinculo = tipo;
+
+            if (tipo === 'funcao') {
+                novoConfig.categorias[k].funcao_termo = document.getElementById(`cfgCatFuncao_${k}`)?.value?.trim() || '';
+            } else {
+                const selColab = document.getElementById(`cfgCatColab_${k}`);
+                if (selColab) {
+                    novoConfig.categorias[k].matricula = selColab.value;
+                    const optSelected = selColab.options[selColab.selectedIndex];
+                    if (optSelected && optSelected.dataset) {
+                        novoConfig.categorias[k].nome_colaborador = optSelected.dataset.nome || '';
+                    }
+                }
+            }
+        });
+
+        const ok = await salvarConfigAlertasEquipeNoSupabase(novoConfig);
+
+        fecharModalConfigAlertasEquipe();
+        await atualizarCentralAlertasUsuario();
+
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: ok ? 'success' : 'warning',
+                title: ok ? 'Parâmetros Salvos!' : 'Salvo Localmente',
+                text: ok ? 'Regras da Central de Alertas atualizadas no Supabase com sucesso.' : 'Parâmetros salvos localmente. Sincronização em nuvem ocorrerá em breve.',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        } else {
+            alert('Configurações da Central de Alertas salvas com sucesso!');
+        }
+
+    } catch (err) {
+        console.error('Erro ao salvar parametrização:', err);
+        alert('Falha ao gravar parâmetros: ' + err.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = oldText; }
+    }
+}
+
+async function restaurarConfigAlertasPadrao() {
+    if (!confirm('Deseja restaurar as regras da Central de Alertas para os padrões de fábrica do projeto?')) return;
+    const configPadrao = JSON.parse(JSON.stringify(CONFIG_ALERTAS_SST_PADRAO));
+    await salvarConfigAlertasEquipeNoSupabase(configPadrao);
+    abrirModalConfigAlertasEquipe();
+    await atualizarCentralAlertasUsuario();
+}
+
+// =====================================================================
+// IMPRESSÃO FORMAL DE RESUMO DE PENDÊNCIAS (IMUNE A BLOQUEADOR DE POPUPS)
+// =====================================================================
+
+function imprimirResumoPendenciasEquipe() {
+    fecharCentralAlertasDropdown();
+    const config = obterConfigAlertasEquipe();
+    const session = sessaoDashboardAtual();
+    const emissorNome = session ? session.nome : 'Gestão de Segurança';
+    const emissorFuncao = session ? (session.role || session.funcao || 'SST') : 'Engenharia de Segurança';
+    const dataHoraEmissao = new Date().toLocaleString('pt-BR');
+
+    const listaEquipe = _ultimoResumoAlertasCalculado.equipe || [];
+
+    const logoHtml = (typeof LOGO_COP_BASE64 !== 'undefined' && LOGO_COP_BASE64)
+        ? `<img src="${LOGO_COP_BASE64}" style="max-height:55px; max-width:140px; object-fit:contain;" alt="Logo Consórcio COP">`
+        : `<div style="font-size:22px; font-weight:800; color:#1e3a8a;">CONSÓRCIO COP</div>`;
+
+    const linhasHtml = listaEquipe.map((alerta, idx) => {
+        const corSeveridade = alerta.severidade === 'critico' ? '#ef4444' : (alerta.severidade === 'atencao' ? '#f59e0b' : '#3b82f6');
+        const bgSeveridade = alerta.severidade === 'critico' ? '#fee2e2' : (alerta.severidade === 'atencao' ? '#fef3c7' : '#dbeafe');
+        const detalhesItens = (alerta.detalhes && alerta.detalhes.length > 0)
+            ? `<div style="margin-top:4px; font-size:10.5px; color:#475569;"><b>Exemplos:</b> ${alerta.detalhes.join('; ')}</div>`
+            : '';
+
+        return `
+            <tr style="background:${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; border-bottom:1px solid #e2e8f0;">
+                <td style="padding:10px 8px; text-align:center; font-weight:700;">${idx + 1}</td>
+                <td style="padding:10px 8px;">
+                    <span style="display:inline-block; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:700; text-transform:uppercase; background:${bgSeveridade}; color:${corSeveridade};">
+                        ${escapeHTML(alerta.badge)}
+                    </span>
+                </td>
+                <td style="padding:10px 8px; font-weight:700; color:#0f172a;">
+                    ${alerta.icone || '🔔'} ${escapeHTML(alerta.titulo)}
+                </td>
+                <td style="padding:10px 8px; color:#334155; font-size:11.5px; line-height:1.4;">
+                    ${escapeHTML(alerta.desc)}
+                    ${detalhesItens}
+                </td>
+                <td style="padding:10px 8px; text-align:center; font-weight:800; font-size:13px; color:#1e293b;">
+                    ${alerta.qtd}
+                </td>
+                <td style="padding:10px 8px; font-size:11px; font-weight:600; color:#1e40af;">
+                    ${escapeHTML(alerta.nomeResponsavel || 'Equipe SST')}
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Dossiê de Alertas e Pendências SST • Consórcio COP</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 20px; color: #1e293b; background: #fff; font-size: 12px; }
+        .cabecalho-dossie { border: 2px solid #1e3a8a; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
+        .titulo-bloco { flex: 1; text-align: center; padding: 0 16px; }
+        .titulo-principal { font-size: 16px; font-weight: 800; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.5px; }
+        .subtitulo { font-size: 11px; color: #64748b; margin-top: 3px; }
+        .meta-bloco { font-size: 10.5px; color: #334155; text-align: right; line-height: 1.4; border-left: 1px solid #cbd5e1; padding-left: 14px; }
+        .tabela-alertas { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 11.5px; }
+        .tabela-alertas th { background: #1e3a8a; color: #ffffff; padding: 10px 8px; font-weight: 700; text-align: left; font-size: 11px; text-transform: uppercase; }
+        .rodape-dossie { margin-top: 30px; padding-top: 12px; border-top: 1px dashed #94a3b8; display: flex; justify-content: space-between; font-size: 10px; color: #64748b; }
+        @media print {
+            body { margin: 10mm; }
+            .cabecalho-dossie { border-color: #000; }
+            .tabela-alertas th { background: #1e293b !important; color: #fff !important; -webkit-print-color-adjust: exact; }
+        }
+    </style>
+</head>
+<body>
+    <div class="cabecalho-dossie">
+        <div>${logoHtml}</div>
+        <div class="titulo-bloco">
+            <div class="titulo-principal">Relatório Gerencial de Pendências e Alertas SST</div>
+            <div class="subtitulo">Consórcio Ramal do Agreste • Gestão de Riscos e Prazos (NR-01, NR-07, NR-12, NR-18, NR-23)</div>
+        </div>
+        <div class="meta-bloco">
+            <div><b>Emissão:</b> ${dataHoraEmissao}</div>
+            <div><b>Emissor:</b> ${escapeHTML(emissorNome)}</div>
+            <div><b>Cargo:</b> ${escapeHTML(emissorFuncao)}</div>
+            <div><b>Corte Checklists:</b> Todo dia ${config.dia_limite_checklists || 10}</div>
+        </div>
+    </div>
+
+    <div style="margin-bottom:12px; font-size:12px; color:#334155;">
+        <b>Resumo do Levantamento:</b> Este documento consolida os itens com prazo expirado ou em período de tolerância normativa na obra, direcionados aos respectivos responsáveis técnicos.
+    </div>
+
+    <table class="tabela-alertas">
+        <thead>
+            <tr>
+                <th style="width:30px; text-align:center;">#</th>
+                <th style="width:90px;">Nível</th>
+                <th style="width:230px;">Item Normativo / Módulo</th>
+                <th>Descrição da Pendência</th>
+                <th style="width:50px; text-align:center;">Qtd</th>
+                <th style="width:140px;">Responsável</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${linhasHtml || '<tr><td colspan="6" style="padding:20px; text-align:center; color:#10b981; font-weight:700;">✅ Nenhuma pendência identificada no momento.</td></tr>'}
+        </tbody>
+    </table>
+
+    <div class="rodape-dossie">
+        <div>Documento gerado automaticamente pelo Painel Gerencial SST • Consórcio Ramal do Agreste</div>
+        <div>Página 1 de 1</div>
+    </div>
+</body>
+</html>`;
+
+    if (typeof abrirDocumentoHtmlParaImpressao === 'function') {
+        abrirDocumentoHtmlParaImpressao(html, 'Resumo_Pendencias_SST_Equipe');
+    } else {
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const win = window.open(url, '_blank');
+        if (win) win.focus();
+    }
+}
+
+// Expõe globalmente para botões do DOM e listeners
+window.CONFIG_ALERTAS_SST_PADRAO = CONFIG_ALERTAS_SST_PADRAO;
+window.obterConfigAlertasEquipe = obterConfigAlertasEquipe;
+window.salvarConfigAlertasEquipeNoSupabase = salvarConfigAlertasEquipeNoSupabase;
+window.atualizarCentralAlertasUsuario = atualizarCentralAlertasUsuario;
+window.toggleCentralAlertasDropdown = toggleCentralAlertasDropdown;
+window.fecharCentralAlertasDropdown = fecharCentralAlertasDropdown;
+window.alternarFiltroCentralAlertas = alternarFiltroCentralAlertas;
+window.acaoRapidaBannerPendencias = acaoRapidaBannerPendencias;
+window.irParaModuloAlerta = irParaModuloAlerta;
+window.fecharBannerPendenciasDoDia = fecharBannerPendenciasDoDia;
+window.abrirModalConfigAlertasEquipe = abrirModalConfigAlertasEquipe;
+window.fecharModalConfigAlertasEquipe = fecharModalConfigAlertasEquipe;
+window.alternarTipoVinculoCategoria = alternarTipoVinculoCategoria;
+window.salvarConfigAlertasEquipeForm = salvarConfigAlertasEquipeForm;
+window.restaurarConfigAlertasPadrao = restaurarConfigAlertasPadrao;
+window.imprimirResumoPendenciasEquipe = imprimirResumoPendenciasEquipe;
+
 

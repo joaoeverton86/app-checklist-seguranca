@@ -8,7 +8,7 @@
     <meta http-equiv="Expires" content="0">
     <title>Painel Gerencial - Checklist Segurança</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=20261020_efetivo_v3">
+    <link rel="stylesheet" href="dashboard.css?v=20261020_psico_fix">
 </head>
 <body>
 
@@ -4948,12 +4948,41 @@
                         </div>
                     </div>
 
+                    <!-- Barra de Convocação Seletiva e Limite Operacional (18 a 20 vagas) -->
+                    <div id="barraConvocacaoSeletivaPsico" style="background: var(--bg); border: 1px solid var(--border); border-left: 4px solid #7c3aed; border-radius: 8px; padding: 10px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <span style="font-size: 13px; font-weight: 700; color: var(--text);">
+                                📋 Selecionados para Convocação: <span id="contadorSelecionadosPsicoMain" style="color: #6d28d9; font-size: 14px; font-weight: 800;">0</span> de <span id="metaVagasPsicoMain">20</span> vagas sugeridas
+                            </span>
+                            <span id="badgeCapacidadePsicoMain" style="font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe;">
+                                Capacidade da psicóloga: 18 a 20 atendimentos/dia
+                            </span>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <button type="button" class="db-clear-btn" style="padding: 5px 12px; font-size: 11.5px; font-weight: 700; color: #6d28d9; border-color: #c084fc; background: #faf5ff;" onclick="selecionarPrimeirosPendentesPsico(20)" title="Selecionar os 20 colaboradores prioritários respeitando a capacidade da psicóloga">
+                                🎯 Selecionar Próximos 20 Pendentes
+                            </button>
+                            <button type="button" class="db-clear-btn" style="padding: 5px 10px; font-size: 11.5px;" onclick="limparSelecaoConvocacaoPsicoMain()" title="Limpar todas as caixas de seleção">
+                                ⬜ Limpar Seleção
+                            </button>
+                            <button type="button" class="db-apply-btn" style="background: #2563eb; font-size: 11.5px; padding: 5px 12px; font-weight: 700;" onclick="imprimirConvocacaoSelecionados()" title="Imprimir lista oficial contendo apenas os colaboradores selecionados">
+                                🖨️ Imprimir Selecionados
+                            </button>
+                            <button type="button" class="db-apply-btn" style="background: #128c7e; font-size: 11.5px; padding: 5px 12px; font-weight: 700;" onclick="copiarConvocacaoSelecionadosWhatsApp()" title="Copiar mensagem para envio aos encarregados via WhatsApp">
+                                📲 WhatsApp Selecionados
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Tabela de Colaboradores e Datas -->
                     <div class="db-chart-card" style="padding: 0; overflow: hidden; margin-bottom: 20px;">
                         <div style="overflow-x: auto;">
                             <table style="width: 100%; border-collapse: collapse; font-size: 12.5px; text-align: left;">
                                 <thead>
                                     <tr style="background: var(--bg); border-bottom: 2px solid var(--border); color: var(--text-light); font-size: 11.5px; text-transform: uppercase;">
+                                        <th style="padding: 12px 10px; width: 36px; text-align: center;">
+                                            <input type="checkbox" id="chkTodosRecomendacaoPsico" onchange="alternarSelecaoTodosRecomendacao(this.checked)" title="Selecionar / Desmarcar Todos" style="cursor: pointer; width: 16px; height: 16px; accent-color: #6d28d9;">
+                                        </th>
                                         <th style="padding: 12px 14px;">Matrícula</th>
                                         <th style="padding: 12px 14px;">Colaborador</th>
                                         <th style="padding: 12px 14px;">GHE / Frente</th>
@@ -8819,7 +8848,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js"></script>
     <script src="logo_cop_base64.js?v=20261015_v197"></script>
-    <script src="dashboard.js?v=20261020_efetivo_v3"></script>
+    <script src="dashboard.js?v=20261020_psico_fix"></script>
     <script src="placar_lideres.js?v=20261015_v197"></script>
 <script>
 function filterMatrizEpi(q) {
@@ -9345,8 +9374,8 @@ function filterMatrizEpi(q) {
     <div class="placar-modal-card" style="max-width: 480px;" onclick="event.stopPropagation()">
         <div class="placar-modal-header" style="background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);">
             <div>
-                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #fff;">📅 Reprogramar Data do Mutirão</h3>
-                <p style="margin: 3px 0 0; font-size: 12px; color: #ddd6fe;">Agendamento de visita da psicóloga na obra</p>
+                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #fff;">📅 Agendar / Reprogramar Atendimento</h3>
+                <p style="margin: 3px 0 0; font-size: 12px; color: #ddd6fe;">Agendamento de visita da psicóloga na obra (NR-33, NR-35 e NR-10)</p>
             </div>
             <button type="button" class="placar-modal-close" onclick="fecharModalReprogramarDataMutirao()">&times;</button>
         </div>
@@ -9355,6 +9384,11 @@ function filterMatrizEpi(q) {
                 <label style="display:block; margin-bottom: 5px; font-size: 12.5px; font-weight: 700; color: var(--text);">Data do Atendimento / Mutirão *</label>
                 <input type="date" id="reprogPsico_data" style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
                 <span style="font-size: 11px; color: var(--text-light); margin-top: 4px; display: block;">Esta data será aplicada no banner, na lista impressa oficial e na mensagem de WhatsApp para os encarregados.</span>
+            </div>
+            <div style="margin-bottom: 14px;">
+                <label style="display:block; margin-bottom: 5px; font-size: 12.5px; font-weight: 700; color: var(--text);">Capacidade de Vagas no Dia *</label>
+                <input type="number" id="reprogPsico_vagas" value="20" min="5" max="50" style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                <span style="font-size: 11px; color: var(--text-light); margin-top: 4px; display: block;">Recomendado: 18 a 20 vagas/dia para manter a qualidade da avaliação clínica individual com a psicóloga.</span>
             </div>
             <div style="margin-bottom: 14px;">
                 <label style="display:block; margin-bottom: 5px; font-size: 12.5px; font-weight: 700; color: var(--text);">Local do Atendimento</label>
@@ -9367,7 +9401,7 @@ function filterMatrizEpi(q) {
         </div>
         <div class="placar-modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 8px;">
             <button type="button" class="db-clear-btn" onclick="fecharModalReprogramarDataMutirao()">Cancelar</button>
-            <button type="button" class="db-apply-btn" style="background: #7c3aed;" onclick="salvarReprogramacaoDataMutirao()">💾 Salvar Data</button>
+            <button type="button" class="db-apply-btn" style="background: #7c3aed;" onclick="salvarReprogramacaoDataMutirao()">💾 Salvar Agendamento</button>
         </div>
     </div>
 </div>
@@ -9633,6 +9667,9 @@ function filterMatrizEpi(q) {
             <!-- Barra de Ações Rápidas & Contador Dinâmico -->
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="db-clear-btn" style="padding: 6px 12px; font-size: 12px; font-weight: 700; color: #6d28d9; border-color: #c084fc; background: #faf5ff;" onclick="selecionarLimiteVagasConvocacaoPsico(20)" title="Selecionar os 20 colaboradores prioritários (capacidade diária da psicóloga)">
+                        🎯 Selecionar 20 Sugeridos
+                    </button>
                     <button type="button" class="db-clear-btn" style="padding: 6px 12px; font-size: 12px; font-weight: 700;" onclick="marcarTodosConvocacaoPsico(true)">
                         ☑️ Selecionar Todos
                     </button>
@@ -9672,7 +9709,7 @@ function filterMatrizEpi(q) {
                     <thead>
                         <tr style="background: var(--bg); border-bottom: 2px solid var(--border); color: var(--text-light); font-size: 11px; text-transform: uppercase; position: sticky; top: 0; z-index: 2;">
                             <th style="padding: 10px 12px; width: 36px; text-align: center;">
-                                <input type="checkbox" id="convocPsico_thCheckAll" onchange="toggleHeaderCheckboxConvocacao(this.checked)" style="cursor: pointer;" title="Marcar/Desmarcar Todos">
+                                <input type="checkbox" id="convocPsico_thCheckAll" onchange="marcarTodosConvocacaoPsico(this.checked)" style="cursor: pointer;" title="Marcar/Desmarcar Todos">
                             </th>
                             <th style="padding: 10px 12px; width: 65px; text-align: center;">Matr.</th>
                             <th style="padding: 10px 12px;">Colaborador</th>
@@ -9698,9 +9735,12 @@ function filterMatrizEpi(q) {
             <div style="font-size: 11.5px; color: var(--text-light); line-height: 1.4;">
                 💡 A lista impressa conterá o cabeçalho institucional do <strong>Consórcio COP</strong> com prancheta de assinaturas, parecer <strong>Apto/Inapto</strong> e rubrica do <strong>CRP</strong>.
             </div>
-            <div style="display: flex; gap: 10px; align-items: center;">
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 <button type="button" class="db-clear-btn" onclick="fecharModalConvocacaoPsicossocial()">
                     Cancelar
+                </button>
+                <button type="button" class="db-apply-btn" style="background: #128c7e; font-weight: 700; font-size: 13px; padding: 9px 16px; display: inline-flex; align-items: center; gap: 6px;" onclick="copiarConvocacaoPsicoWhatsAppModal()" title="Copiar mensagem para envio às lideranças via WhatsApp">
+                    📲 WhatsApp
                 </button>
                 <button type="button" class="db-apply-btn" id="btnGerarListaOficialConvocacao" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); font-weight: 700; font-size: 13px; padding: 9px 18px; box-shadow: 0 2px 6px rgba(5,150,105,0.3); display: inline-flex; align-items: center; gap: 6px;" onclick="gerarListaOficialConvocacaoPsicossocial()">
                     🖨️ Gerar Lista Oficial

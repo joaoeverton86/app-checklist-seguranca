@@ -1017,14 +1017,74 @@ function showToast(msg, tipo = 'sucesso') {
     mostrarFeedbackToast(msg, tipo);
 }
 
+// Utilitários de Data e Sexo/Gênero sem deslocamento de Fuso Horário (Regras SST)
 function formatSimpleDate(dateStr) {
     if (!dateStr) return '—';
-    if (dateStr.includes('T')) {
-        try { return new Date(dateStr).toLocaleDateString('pt-BR'); }
-        catch (e) { dateStr = dateStr.split('T')[0]; }
+    const s = String(dateStr).trim();
+    if (!s) return '—';
+    // Se for formato ISO ou tiver T ou espaço com hora, isola apenas a parte da data YYYY-MM-DD
+    const datePart = s.split('T')[0].split(' ')[0];
+    if (datePart.includes('-')) {
+        const parts = datePart.split('-');
+        if (parts.length === 3) {
+            // YYYY-MM-DD -> DD/MM/YYYY
+            const ano = parts[0].padStart(4, '0');
+            const mes = parts[1].padStart(2, '0');
+            const dia = parts[2].padStart(2, '0');
+            return `${dia}/${mes}/${ano}`;
+        }
     }
-    const parts = dateStr.split('-');
-    return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
+    if (datePart.includes('/')) {
+        const parts = datePart.split('/');
+        if (parts.length === 3) {
+            if (parts[0].length <= 2 && parts[2].length === 4) {
+                return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
+            }
+            if (parts[0].length === 4) {
+                return `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
+            }
+        }
+    }
+    return datePart;
+}
+
+function formatInputDate(dateStr) {
+    if (!dateStr) return '';
+    const s = String(dateStr).trim();
+    if (!s) return '';
+    const datePart = s.split('T')[0].split(' ')[0];
+    if (datePart.includes('-')) {
+        const parts = datePart.split('-');
+        if (parts.length === 3) {
+            // YYYY-MM-DD
+            return `${parts[0].padStart(4, '0')}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        }
+    }
+    if (datePart.includes('/')) {
+        const parts = datePart.split('/');
+        if (parts.length === 3) {
+            // DD/MM/YYYY -> YYYY-MM-DD
+            if (parts[2].length === 4) {
+                return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+        }
+    }
+    return datePart;
+}
+
+function normalizarSexo(val) {
+    if (!val) return '';
+    const s = String(val).trim().toUpperCase();
+    if (s === 'M' || s.startsWith('MASC')) return 'M';
+    if (s === 'F' || s.startsWith('FEM')) return 'F';
+    return s;
+}
+
+function formatarSexoExibicao(val) {
+    const s = normalizarSexo(val);
+    if (s === 'M') return 'Masculino (M)';
+    if (s === 'F') return 'Feminino (F)';
+    return val || '—';
 }
 
 // ============================================
@@ -1253,22 +1313,33 @@ function parseLocalDate(dateStr) {
         return isNaN(d.getTime()) ? new Date() : d;
     }
     const str = dateStr.trim();
-    if (str.includes('T')) {
-        const d = new Date(str);
-        if (!isNaN(d.getTime())) return d;
-    }
-    if (str.includes('/')) {
-        const parts = str.split(' ')[0].split('/');
+    // Isola data pura se vier com T ou hora para evitar regressão UTC -> Local
+    const cleanDateStr = str.split('T')[0].split(' ')[0];
+    if (cleanDateStr.includes('-')) {
+        const parts = cleanDateStr.split('-');
         if (parts.length === 3) {
-            const d = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
-            if (!isNaN(d.getTime())) return d;
+            const ano = parseInt(parts[0], 10);
+            const mes = parseInt(parts[1], 10);
+            const dia = parseInt(parts[2], 10);
+            if (!isNaN(ano) && !isNaN(mes) && !isNaN(dia)) {
+                return new Date(ano, mes - 1, dia, 12, 0, 0);
+            }
         }
     }
-    if (str.includes('-')) {
-        const parts = str.split('T')[0].split('-');
+    if (cleanDateStr.includes('/')) {
+        const parts = cleanDateStr.split('/');
         if (parts.length === 3) {
-            const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-            if (!isNaN(d.getTime())) return d;
+            const p0 = parseInt(parts[0], 10);
+            const p1 = parseInt(parts[1], 10);
+            const p2 = parseInt(parts[2], 10);
+            if (parts[2].length === 4) {
+                // DD/MM/YYYY
+                return new Date(p2, p1 - 1, p0, 12, 0, 0);
+            }
+            if (parts[0].length === 4) {
+                // YYYY/MM/DD
+                return new Date(p0, p1 - 1, p2, 12, 0, 0);
+            }
         }
     }
     const d = new Date(str);
@@ -12646,6 +12717,10 @@ function showEfetivoSubtab(tab) {
         if (btn) btn.classList.toggle('active', t === tab);
     });
     if (tab === 'visao') renderEfetivoPanel();
+    if (tab === 'colaboradores') {
+        renderEfetivoResumo();
+        filterEfetivoColaboradores(document.getElementById('efetivoSearchInput')?.value || '');
+    }
     if (tab === 'os') renderControleOrdensServico();
     if (tab === 'setores') { fecharGerenciarSetor(); renderSetoresLista(); }
     if (tab === 'ghe') { fecharGerenciarGhe(); renderGheLista(); }
@@ -14450,21 +14525,84 @@ async function salvarMatrizRiscos() {
 // aniversário e situação de treinamentos), a pedido do cliente.
 // ============================================
 
-// Resumo geral da lista de colaboradores (visão geral rápida, mesmo espírito do
-// catalogoResumo): total, quantos ativos x inativos.
+// Retorna a lista de colaboradores aplicando o seletor de Situação (Ativos / Demitidos / Todos)
+function obterEfetivoFiltrado() {
+    const situacaoEl = document.getElementById('filtroEfetivoSituacao');
+    const situacaoFiltro = situacaoEl ? situacaoEl.value : 'ativos';
+    let lista = (allEfetivo || []).slice();
+    if (situacaoFiltro === 'ativos') {
+        lista = lista.filter(colaboradorEstaAtivo);
+    } else if (situacaoFiltro === 'demitidos') {
+        lista = lista.filter(e => !colaboradorEstaAtivo(e));
+    }
+    return lista;
+}
+
+// Resumo geral e Cards de Contagem Rápida da lista de colaboradores
 function renderEfetivoResumo() {
+    const listaFiltrada = obterEfetivoFiltrado();
+    const totalGeral = (allEfetivo || []).length;
+    const totalAtivosGeral = (allEfetivo || []).filter(colaboradorEstaAtivo).length;
+    const situacaoEl = document.getElementById('filtroEfetivoSituacao');
+    const situacaoFiltro = situacaoEl ? situacaoEl.value : 'ativos';
+
+    let homens = 0;
+    let mulheres = 0;
+    listaFiltrada.forEach(e => {
+        const sNorm = normalizarSexo(e.sexo);
+        if (sNorm === 'M') homens++;
+        else if (sNorm === 'F') mulheres++;
+    });
+
+    const totalFiltro = listaFiltrada.length;
+    const pctMulheres = totalFiltro > 0 ? ((mulheres / totalFiltro) * 100).toFixed(1) + '%' : '0%';
+
+    // Atualiza cards de contagem rápida
+    const kpiTotal = document.getElementById('kpiEfetivoFiltroTotal');
+    const kpiHomens = document.getElementById('kpiEfetivoFiltroHomens');
+    const kpiMulheres = document.getElementById('kpiEfetivoFiltroMulheres');
+    const kpiProporcao = document.getElementById('kpiEfetivoFiltroProporcao');
+    const kpiTotalLbl = document.getElementById('kpiEfetivoFiltroTotalLbl');
+
+    if (kpiTotal) kpiTotal.textContent = totalFiltro;
+    if (kpiHomens) kpiHomens.textContent = homens;
+    if (kpiMulheres) kpiMulheres.textContent = mulheres;
+    if (kpiProporcao) kpiProporcao.textContent = pctMulheres;
+    if (kpiTotalLbl) {
+        if (situacaoFiltro === 'ativos') kpiTotalLbl.textContent = 'Colaboradores Ativos';
+        else if (situacaoFiltro === 'demitidos') kpiTotalLbl.textContent = 'Demitidos / Inativos';
+        else kpiTotalLbl.textContent = 'Total Geral (Todos)';
+    }
+
+    // Texto descritivo de rodapé do card de busca
     const el = document.getElementById('efetivoResumo');
-    if (!el) return;
-    const total = allEfetivo.length;
-    const ativos = allEfetivo.filter(colaboradorEstaAtivo).length;
-    el.textContent = total === 0 ? '' : `${total} colaborador(es) cadastrado(s) — ${ativos} ativo(s), ${total - ativos} inativo(s)`;
+    if (el) {
+        if (totalGeral === 0) {
+            el.textContent = '';
+        } else {
+            let labelFiltro = 'ativos';
+            if (situacaoFiltro === 'demitidos') labelFiltro = 'demitidos/inativos';
+            else if (situacaoFiltro === 'todos') labelFiltro = 'todos no histórico';
+            el.innerHTML = `Exibindo <strong>${totalFiltro}</strong> colaborador(es) [<em>${labelFiltro}</em>]: <strong>${homens}</strong> homens (M) e <strong>${mulheres}</strong> mulheres (F) — <em>Base total cadastrada: ${totalGeral} (${totalAtivosGeral} ativos, ${totalGeral - totalAtivosGeral} demitidos/inativos)</em>`;
+        }
+    }
+}
+
+// Disparado ao trocar o filtro de situação (Ativos / Demitidos / Todos)
+function onFiltroEfetivoSituacaoChange() {
+    const situacaoEl = document.getElementById('filtroEfetivoSituacao');
+    const situacao = situacaoEl ? situacaoEl.value : 'ativos';
+    setEfetivoPdfStatus(situacao === 'todos' ? 'completo' : situacao);
+    renderEfetivoResumo();
+    const query = document.getElementById('efetivoSearchInput')?.value || '';
+    filterEfetivoColaboradores(query);
 }
 
 function limparBuscaEfetivo() {
     const input = document.getElementById('efetivoSearchInput');
-    input.value = '';
+    if (input) input.value = '';
     filterEfetivoColaboradores('');
-    input.focus();
+    if (input) input.focus();
 }
 
 // ---- Gerar PDF de Colaboradores (Ativos/Demitidos/Completo, colunas escolhidas) ----
@@ -14485,9 +14623,9 @@ const EFETIVO_PDF_COLUNAS = [
     { id: 'ghe', label: 'GHE', get: e => e.ghe },
     { id: 'cpf', label: 'CPF', get: e => e.cpf },
     { id: 'rg', label: 'RG', get: e => e.rg },
-    { id: 'dt_admissao', label: 'Admissão', get: e => formatSimpleDate(e.dt_admissao) },
-    { id: 'dt_demissao', label: 'Demissão', get: e => formatSimpleDate(e.dt_demissao) },
-    { id: 'dt_nascimento', label: 'Nascimento', get: e => formatSimpleDate(e.dt_nascimento) },
+    { id: 'dt_admissao', label: 'Admissão', get: e => formatSimpleDate(e.dt_admissao || e.data_admissao) },
+    { id: 'dt_demissao', label: 'Demissão', get: e => formatSimpleDate(e.dt_demissao || e.data_demissao) },
+    { id: 'dt_nascimento', label: 'Nascimento', get: e => formatSimpleDate(e.dt_nascimento || e.data_nascimento) },
     { id: 'cidade', label: 'Cidade', get: e => e.cidade },
     { id: 'estado', label: 'UF', get: e => e.estado },
     { id: 'ada', label: 'Mão de Obra ADA', get: e => {
@@ -14498,7 +14636,7 @@ const EFETIVO_PDF_COLUNAS = [
         return '';
     }},
     { id: 'estabilidade', label: 'Estabilidade', get: e => e.estabilidade },
-    { id: 'sexo', label: 'Sexo', get: e => e.sexo },
+    { id: 'sexo', label: 'Sexo', get: e => formatarSexoExibicao(e.sexo) },
     { id: 'calca', label: 'Calça', get: e => e.calca },
     { id: 'camisa', label: 'Camisa', get: e => e.camisa },
     { id: 'bota', label: 'Bota', get: e => e.bota }
@@ -14532,12 +14670,16 @@ function gerarPdfEfetivo() {
         statusEl.style.color = 'var(--danger)';
         return;
     }
-    const colunas = EFETIVO_PDF_COLUNAS.filter(c => colunasMarcadas.includes(c.id));
+    let colunas = EFETIVO_PDF_COLUNAS.filter(c => colunasMarcadas.includes(c.id));
+    if (colunas.length === 0) {
+        colunas = EFETIVO_PDF_COLUNAS.filter(c => EFETIVO_PDF_COLUNAS_PADRAO.has(c.id));
+    }
 
     let lista = allEfetivo.slice();
     let filtroLabel = 'Completo (Ativos + Demitidos)';
-    if (efetivoPdfStatusFiltro === 'ativos') { lista = lista.filter(colaboradorEstaAtivo); filtroLabel = 'Ativos'; }
-    else if (efetivoPdfStatusFiltro === 'demitidos') { lista = lista.filter(e => !colaboradorEstaAtivo(e)); filtroLabel = 'Demitidos/Inativos'; }
+    const situacaoAtual = efetivoPdfStatusFiltro || document.getElementById('filtroEfetivoSituacao')?.value || 'ativos';
+    if (situacaoAtual === 'ativos') { lista = lista.filter(colaboradorEstaAtivo); filtroLabel = 'Ativos'; }
+    else if (situacaoAtual === 'demitidos') { lista = lista.filter(e => !colaboradorEstaAtivo(e)); filtroLabel = 'Demitidos/Inativos'; }
     lista.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
     if (lista.length === 0) {
@@ -14617,13 +14759,22 @@ function gerarExcelEfetivo() {
             filtroLabel = 'Completo';
         }
     } else {
-        // Se o card estiver fechado:
-        // Se houver texto digitado na busca da tela, exporta os filtrados da busca
-        if (buscaAtual.length >= 2) {
-            lista = lista.filter(e => (e.nome && e.nome.toLowerCase().includes(buscaAtual)) || (e.id && e.id.toLowerCase().includes(buscaAtual)));
-            filtroLabel = 'Filtrados_Busca';
+        // Se o card estiver fechado, respeita estritamente o filtro de situação ativo em tela
+        const situacaoFiltro = document.getElementById('filtroEfetivoSituacao')?.value || 'ativos';
+        if (situacaoFiltro === 'ativos') {
+            lista = lista.filter(colaboradorEstaAtivo);
+            filtroLabel = 'Ativos';
+        } else if (situacaoFiltro === 'demitidos') {
+            lista = lista.filter(e => !colaboradorEstaAtivo(e));
+            filtroLabel = 'Demitidos';
         } else {
             filtroLabel = 'Completo';
+        }
+
+        // Se houver texto digitado na busca da tela, refina ainda mais com a busca
+        if (buscaAtual.length >= 2) {
+            lista = lista.filter(e => (e.nome && e.nome.toLowerCase().includes(buscaAtual)) || (e.id && String(e.id).toLowerCase().includes(buscaAtual)) || (e.funcao && e.funcao.toLowerCase().includes(buscaAtual)));
+            filtroLabel += '_Filtrados_Busca';
         }
         // Exporta com todas as colunas disponíveis para máxima riqueza no Excel
         colunas = EFETIVO_PDF_COLUNAS.slice();
@@ -14632,7 +14783,7 @@ function gerarExcelEfetivo() {
     lista.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
     if (lista.length === 0) {
-        const aviso = 'Nenhum colaborador encontrado para exportar.';
+        const aviso = 'Nenhum colaborador encontrado para exportar com o filtro selecionado.';
         if (statusEl) { statusEl.textContent = aviso; statusEl.style.color = 'var(--text-light)'; }
         alert(aviso);
         return;
@@ -14702,19 +14853,21 @@ function gerarExcelEfetivo() {
 
 function filterEfetivoColaboradores(query) {
     const container = document.getElementById('efetivoSearchResults');
-    const detail = document.getElementById('efetivoColabDetail');
+    if (!container) return;
     const q = (query || '').toLowerCase().trim();
 
-    // Sem busca, mostra todo mundo (visão geral) em vez de ficar vazio - a busca só
-    // entra pra estreitar a lista, mesmo padrão já usado no Catálogo de Treinamentos.
-    const base = q.length < 2
-        ? allEfetivo
-        : allEfetivo.filter(e => (e.nome && e.nome.toLowerCase().includes(q)) || (e.id && e.id.toLowerCase().includes(q)));
-    const matches = base.slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    // Aplica o filtro de situação selecionado (Ativos / Demitidos / Todos)
+    const baseFiltrada = obterEfetivoFiltrado();
+    const matches = (q.length < 2
+        ? baseFiltrada
+        : baseFiltrada.filter(e => (e.nome && e.nome.toLowerCase().includes(q)) || (e.id && String(e.id).toLowerCase().includes(q)) || (e.funcao && e.funcao.toLowerCase().includes(q)))
+    ).slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+
+    renderEfetivoResumo();
 
     if (matches.length === 0) {
         container.innerHTML = q.length < 2
-            ? '<div class="db-list-empty">Nenhum colaborador cadastrado ainda</div>'
+            ? '<div class="db-list-empty">Nenhum colaborador encontrado com esta situação</div>'
             : `<div class="db-list-empty">Nenhum colaborador encontrado para "${escapeHTML(query)}"</div>`;
         return;
     }
@@ -14722,9 +14875,11 @@ function filterEfetivoColaboradores(query) {
     container.innerHTML = matches.map(e => {
         const ativo = colaboradorEstaAtivo(e);
         const cls = ativo ? '' : 'db-item-danger';
+        const sNorm = normalizarSexo(e.sexo);
+        const sexoTag = sNorm === 'F' ? '<span style="color:#ec4899; font-weight:700; margin-left:4px;" title="Feminino (F)">♀</span>' : '<span style="color:#4f46e5; font-weight:700; margin-left:4px;" title="Masculino (M)">♂</span>';
         return `<div class="db-list-item ${cls}" style="cursor:pointer;" onclick="mostrarDetalheColaborador('${escapeHTML(e.id)}')">
-            <div class="db-list-item-title">${escapeHTML(e.nome || '(sem nome)')}</div>
-            <div class="db-list-item-sub">Matrícula ${escapeHTML(e.id)} — ${escapeHTML(e.funcao || '')}${ativo ? '' : ' (Inativo)'}</div>
+            <div class="db-list-item-title">${escapeHTML(e.nome || '(sem nome)')}${sexoTag}</div>
+            <div class="db-list-item-sub">Matrícula ${escapeHTML(e.id)} — ${escapeHTML(e.funcao || '')}${ativo ? '' : ' (Demitido/Inativo)'}</div>
         </div>`;
     }).join('');
 }
@@ -14874,8 +15029,8 @@ function mostrarDetalheColaborador(matricula) {
         </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 14px; font-size: 12.5px;">
             <div><strong>Matrícula:</strong> ${escapeHTML(e.id)}</div>
-            <div><strong>Admissão:</strong> ${admissao ? formatSimpleDate(e.dt_admissao) : '—'}</div>
-            <div><strong>Demissão:</strong> ${demissao ? formatSimpleDate(e.dt_demissao) : '—'}</div>
+            <div><strong>Admissão:</strong> ${admissao ? formatSimpleDate(e.dt_admissao || e.data_admissao) : '—'}</div>
+            <div><strong>Demissão:</strong> ${demissao ? formatSimpleDate(e.dt_demissao || e.data_demissao) : '—'}</div>
             <div><strong>Tempo de casa:</strong> ${tempoCasaTxt}</div>
             <div><strong>Aniversário:</strong> ${aniversarioTxt}</div>
             <div><strong>Responsável:</strong> ${escapeHTML(e.responsavel || '—')}</div>
@@ -14884,7 +15039,7 @@ function mostrarDetalheColaborador(matricula) {
             <div><strong>GHE:</strong> ${escapeHTML(e.ghe || '—')}</div>
             <div><strong>CPF:</strong> ${escapeHTML(e.cpf || '—')}</div>
             <div><strong>Uniforme:</strong> Calça ${escapeHTML(e.calca || '—')} / Camisa ${escapeHTML(e.camisa || '—')} / Bota ${escapeHTML(e.bota || '—')}</div>
-            <div><strong>Sexo:</strong> ${escapeHTML(e.sexo || '—')}</div>
+            <div><strong>Sexo:</strong> ${formatarSexoExibicao(e.sexo)}</div>
             <div><strong>Ordem de Serviço:</strong> ${e.os_status === 'entregue' ? `<span style="color:#059669; font-weight:700;">✅ Assinada (${e.os_data_entrega ? formatSimpleDate(e.os_data_entrega) : '—'} - ${escapeHTML(e.os_versao || 'Rev. 00')})</span>` : '<span style="color:#d97706; font-weight:700;">⚠️ Pendente</span>'}</div>
         </div>
         ${treinHtml}
@@ -14930,15 +15085,15 @@ function abrirFormEfetivo(matricula) {
         document.getElementById('efForm_funcao').value = e.funcao || '';
         document.getElementById('efForm_setor').value = e.setor || '';
         document.getElementById('efForm_responsavel').value = e.responsavel || '';
-        document.getElementById('efForm_dt_admissao').value = e.dt_admissao || '';
-        document.getElementById('efForm_dt_demissao').value = e.dt_demissao || '';
-        document.getElementById('efForm_dt_nascimento').value = e.dt_nascimento || '';
+        document.getElementById('efForm_dt_admissao').value = formatInputDate(e.dt_admissao || e.data_admissao);
+        document.getElementById('efForm_dt_demissao').value = formatInputDate(e.dt_demissao || e.data_demissao);
+        document.getElementById('efForm_dt_nascimento').value = formatInputDate(e.dt_nascimento || e.data_nascimento);
         document.getElementById('efForm_cpf').value = e.cpf || '';
         document.getElementById('efForm_cidade').value = e.cidade || '';
         document.getElementById('efForm_estado').value = e.estado || '';
         document.getElementById('efForm_estabilidade').value = e.estabilidade || 'NÃO';
         document.getElementById('efForm_ghe').value = e.ghe || '';
-        document.getElementById('efForm_sexo').value = e.sexo || 'MASCULINO';
+        document.getElementById('efForm_sexo').value = normalizarSexo(e.sexo) === 'F' ? 'F' : 'M';
         document.getElementById('efForm_calca').value = e.calca || '';
         document.getElementById('efForm_camisa').value = e.camisa || '';
         document.getElementById('efForm_bota').value = e.bota || '';
@@ -14948,7 +15103,7 @@ function abrirFormEfetivo(matricula) {
             .forEach(f => { const el = document.getElementById('efForm_' + f); if (el) el.value = ''; });
         document.getElementById('efForm_status').value = 'ATIVO';
         document.getElementById('efForm_estabilidade').value = 'NÃO';
-        document.getElementById('efForm_sexo').value = 'MASCULINO';
+        document.getElementById('efForm_sexo').value = 'M';
         matriculaInput.readOnly = false;
         matriculaInput.style.background = '';
         matriculaInput.value = sugerirProximaMatricula();
@@ -14988,14 +15143,25 @@ async function salvarColaboradorEfetivo() {
     }
 
     const colabExistente = allEfetivo.find(e => e.id === matricula);
-    const dtDemissaoInput = document.getElementById('efForm_dt_demissao').value || null;
-    let statusInput = document.getElementById('efForm_status').value || 'ATIVO';
+    const sexoVal = document.getElementById('efForm_sexo')?.value;
+    if (!sexoVal || (sexoVal !== 'M' && sexoVal !== 'F' && sexoVal !== 'MASCULINO' && sexoVal !== 'FEMININO')) {
+        statusEl.textContent = '❌ Selecione o sexo/gênero do colaborador (Masculino ou Feminino).';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    const sexoNormalizado = normalizarSexo(sexoVal);
+
+    const dtDemissaoInput = formatInputDate(document.getElementById('efForm_dt_demissao')?.value) || null;
+    let statusInput = document.getElementById('efForm_status')?.value || 'ATIVO';
 
     // Regra de SST: se data de demissão estiver preenchida, o status obrigatoriamente é DEMITIDO
     if (dtDemissaoInput) {
         statusInput = 'DEMITIDO';
     }
     const ehAtivo = statusInput === 'ATIVO' && !dtDemissaoInput;
+
+    const dtAdmissaoInput = formatInputDate(document.getElementById('efForm_dt_admissao')?.value) || null;
+    const dtNascimentoInput = formatInputDate(document.getElementById('efForm_dt_nascimento')?.value) || null;
 
     const row = {
         id: matricula,
@@ -15004,15 +15170,15 @@ async function salvarColaboradorEfetivo() {
         funcao: document.getElementById('efForm_funcao').value.trim(),
         setor: document.getElementById('efForm_setor').value.trim(),
         responsavel: document.getElementById('efForm_responsavel').value.trim(),
-        dt_admissao: document.getElementById('efForm_dt_admissao').value || null,
+        dt_admissao: dtAdmissaoInput,
         dt_demissao: dtDemissaoInput,
-        dt_nascimento: document.getElementById('efForm_dt_nascimento').value || null,
+        dt_nascimento: dtNascimentoInput,
         cpf: document.getElementById('efForm_cpf').value.trim(),
         cidade: document.getElementById('efForm_cidade').value.trim(),
         estado: document.getElementById('efForm_estado').value.trim(),
         estabilidade: document.getElementById('efForm_estabilidade').value,
         ghe: document.getElementById('efForm_ghe').value.trim(),
-        sexo: document.getElementById('efForm_sexo').value,
+        sexo: sexoNormalizado,
         calca: document.getElementById('efForm_calca').value.trim(),
         camisa: document.getElementById('efForm_camisa').value.trim(),
         bota: document.getElementById('efForm_bota').value.trim(),
@@ -15060,6 +15226,11 @@ async function salvarColaboradorEfetivo() {
             }
         } catch (errSync) {
             console.warn('Aviso: falha ao sincronizar status em colaboradores_checklist:', errSync);
+        }
+
+        // Limpa cache memoizado de headcount para refletir imediatamente as novas contagens
+        if (typeof _headcountMemoMap !== 'undefined' && _headcountMemoMap && typeof _headcountMemoMap.clear === 'function') {
+            _headcountMemoMap.clear();
         }
 
         const idx = allEfetivo.findIndex(e => e.id === matricula);
@@ -21427,8 +21598,9 @@ function renderEfetivoPanel() {
 
     const sexoCounts = { MASCULINO: 0, FEMININO: 0 };
     ativosNaData.forEach(e => {
-        const s = (e.sexo || '').toUpperCase().trim();
-        if (sexoCounts[s] !== undefined) sexoCounts[s]++;
+        const sNorm = normalizarSexo(e.sexo);
+        if (sNorm === 'M') sexoCounts.MASCULINO++;
+        else if (sNorm === 'F') sexoCounts.FEMININO++;
     });
     chartInstances.efetivoSexo = new Chart(document.getElementById('chartEfetivoSexo'), {
         type: 'doughnut',

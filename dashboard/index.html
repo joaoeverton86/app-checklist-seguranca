@@ -8,7 +8,7 @@
     <meta http-equiv="Expires" content="0">
     <title>Painel Gerencial - Checklist Segurança</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=20261020_efetivo_v2">
+    <link rel="stylesheet" href="dashboard.css?v=20261020_efetivo_v3">
 </head>
 <body>
 
@@ -2928,16 +2928,29 @@
                             <div class="db-kpi-label" id="kpiEfetivoFiltroTotalLbl">Colaboradores Ativos</div>
                         </div>
                         <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #4f46e5;">
-                            <div class="db-kpi-value" id="kpiEfetivoFiltroHomens" style="font-size: 22px; color: #4f46e5;">0</div>
+                            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                                <div class="db-kpi-value" id="kpiEfetivoFiltroHomens" style="font-size: 22px; color: #4f46e5;">0</div>
+                                <div id="kpiEfetivoFiltroHomensPct" style="font-size: 12px; font-weight: 700; color: #4f46e5; background: #eef2ff; padding: 2px 7px; border-radius: 6px;" title="Proporção Masculina">0%</div>
+                            </div>
                             <div class="db-kpi-label">👨 Homens (M)</div>
                         </div>
                         <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #ec4899;">
-                            <div class="db-kpi-value" id="kpiEfetivoFiltroMulheres" style="font-size: 22px; color: #ec4899;">0</div>
+                            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                                <div class="db-kpi-value" id="kpiEfetivoFiltroMulheres" style="font-size: 22px; color: #ec4899;">0</div>
+                                <div id="kpiEfetivoFiltroMulheresPct" style="font-size: 12px; font-weight: 700; color: #ec4899; background: #fdf2f8; padding: 2px 7px; border-radius: 6px;" title="Proporção Feminina">0%</div>
+                            </div>
                             <div class="db-kpi-label">👩 Mulheres (F)</div>
                         </div>
-                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #10b981;">
-                            <div class="db-kpi-value" id="kpiEfetivoFiltroProporcao" style="font-size: 22px; color: #059669;">0%</div>
-                            <div class="db-kpi-label">Proporção Feminina</div>
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #059669;">
+                            <div class="db-kpi-value" id="kpiEfetivoFiltroProporcao" style="font-size: 15.5px; color: #111827; font-weight: 800; white-space: nowrap;">0% ♂ · 0% ♀</div>
+                            <div style="width: 100%; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; display: flex; margin-top: 6px; margin-bottom: 5px;">
+                                <div id="kpiEfetivoBarraM" style="width: 50%; height: 100%; background: #4f46e5; transition: width 0.3s ease;"></div>
+                                <div id="kpiEfetivoBarraF" style="width: 50%; height: 100%; background: #ec4899; transition: width 0.3s ease;"></div>
+                            </div>
+                            <div class="db-kpi-label" style="display: flex; justify-content: space-between; font-size: 11px;">
+                                <span>Distribuição Geral</span>
+                                <span style="font-size: 10px; color: var(--text-light);">♂ Azul / ♀ Rosa</span>
+                            </div>
                         </div>
                     </div>
 
@@ -8806,7 +8819,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js"></script>
     <script src="logo_cop_base64.js?v=20261015_v197"></script>
-    <script src="dashboard.js?v=20261020_efetivo_v2"></script>
+    <script src="dashboard.js?v=20261020_efetivo_v3"></script>
     <script src="placar_lideres.js?v=20261015_v197"></script>
 <script>
 function filterMatrizEpi(q) {

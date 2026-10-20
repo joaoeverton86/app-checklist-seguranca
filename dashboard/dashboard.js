@@ -14555,19 +14555,30 @@ function renderEfetivoResumo() {
     });
 
     const totalFiltro = listaFiltrada.length;
-    const pctMulheres = totalFiltro > 0 ? ((mulheres / totalFiltro) * 100).toFixed(1) + '%' : '0%';
+    const pctHomensNum = totalFiltro > 0 ? (homens / totalFiltro) * 100 : 0;
+    const pctMulheresNum = totalFiltro > 0 ? (mulheres / totalFiltro) * 100 : 0;
+    const pctHomensStr = pctHomensNum.toFixed(1) + '%';
+    const pctMulheresStr = pctMulheresNum.toFixed(1) + '%';
 
     // Atualiza cards de contagem rápida
     const kpiTotal = document.getElementById('kpiEfetivoFiltroTotal');
     const kpiHomens = document.getElementById('kpiEfetivoFiltroHomens');
     const kpiMulheres = document.getElementById('kpiEfetivoFiltroMulheres');
+    const kpiHomensPct = document.getElementById('kpiEfetivoFiltroHomensPct');
+    const kpiMulheresPct = document.getElementById('kpiEfetivoFiltroMulheresPct');
     const kpiProporcao = document.getElementById('kpiEfetivoFiltroProporcao');
+    const kpiBarraM = document.getElementById('kpiEfetivoBarraM');
+    const kpiBarraF = document.getElementById('kpiEfetivoBarraF');
     const kpiTotalLbl = document.getElementById('kpiEfetivoFiltroTotalLbl');
 
     if (kpiTotal) kpiTotal.textContent = totalFiltro;
     if (kpiHomens) kpiHomens.textContent = homens;
     if (kpiMulheres) kpiMulheres.textContent = mulheres;
-    if (kpiProporcao) kpiProporcao.textContent = pctMulheres;
+    if (kpiHomensPct) kpiHomensPct.textContent = pctHomensStr;
+    if (kpiMulheresPct) kpiMulheresPct.textContent = pctMulheresStr;
+    if (kpiProporcao) kpiProporcao.textContent = `${pctHomensStr} ♂ · ${pctMulheresStr} ♀`;
+    if (kpiBarraM) kpiBarraM.style.width = pctHomensNum + '%';
+    if (kpiBarraF) kpiBarraF.style.width = pctMulheresNum + '%';
     if (kpiTotalLbl) {
         if (situacaoFiltro === 'ativos') kpiTotalLbl.textContent = 'Colaboradores Ativos';
         else if (situacaoFiltro === 'demitidos') kpiTotalLbl.textContent = 'Demitidos / Inativos';

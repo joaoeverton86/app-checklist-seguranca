@@ -1,5 +1,5 @@
 # Diretrizes Permanentes de Governança — App Checklist Segurança
-# PISF Ramal do Agreste | Antigravity AI Rules
+# PISF Ramal do Agreste | Cursor & Antigravity AI Rules
 
 ## 1. Autonomia Responsável e Resolução de Causa-Raiz (Zero Preguiça)
 - O assistente possui total autonomia técnica para editar código, criar rotinas, otimizar consultas e ajustar o banco de dados.
@@ -26,7 +26,7 @@
   - **Prazos e Normas**: Carregar valores padrão inteligentes do PCMSO/PGR/NR, mas permitir ajuste operacional.
 
 ## 4. Cache-Buster Obrigatório
-- Toda alteração funcional ou visual em `dashboard/dashboard.js` ou `dashboard/dashboard.css` exige incremento imediato do parâmetro de versão `?v=...` em `dashboard/index.html` (e no respectivo arquivo se aplicável).
+- Toda alteração funcional ou visual em `dashboard/dashboard.js`, `dashboard/modules/*.js` ou `dashboard/dashboard.css` exige incremento imediato do parâmetro de versão `?v=...` em `dashboard/index.html`.
 - Isso garante que técnicos e gestores em campo e na diretoria recebam as atualizações imediatamente sem ficarem presos no cache do navegador.
 
 ## 5. Sincronização Dupla de Efetivo
@@ -37,7 +37,7 @@
 
 ## 6. Separação Estrita de Rotas e Ambientes
 - **App Mobile / PWA de Campo (Offline-First)**: Localizado na raiz (`/`, `index.html`, `app.js`, `sw.js`). Destinado à operação offline pelos técnicos e operadores em campo. **NÃO alterar** arquivos da raiz em demandas exclusivas do painel.
-- **Painel Gerencial de Gestão SST (Dashboard Web)**: Localizado estritamente no subdiretório `/dashboard/` (`dashboard/index.html`, `dashboard/dashboard.js`, `dashboard/placar_lideres.js`, `dashboard/dashboard.css`).
+- **Painel Gerencial de Gestão SST (Dashboard Web)**: Localizado estritamente no subdiretório `/dashboard/` (`dashboard/index.html`, `dashboard/dashboard.js`, `dashboard/modules/`, `dashboard/placar_lideres.js`, `dashboard/dashboard.css`).
   - **URL Oficial de Produção**: `https://app-checklist-seguranca.vercel.app/dashboard/`
   - Qualquer validação visual, link de teste ou entrega de módulos gerenciais deve apontar obrigatoriamente para `/dashboard/`.
 
@@ -45,3 +45,20 @@
 - **SGG**: A empresa utiliza o software SGG como sistema de SST corporativo. Sempre que relatórios, ASOs ou demandas forem originados do SGG, o objetivo é replicar suas funcionalidades de forma substancialmente melhorada, mais moderna e intuitiva no nosso sistema.
 - **Clínica Engmed**: É apenas a clínica prestadora cadastrada no SGG pela contratante e deve ser totalmente desconsiderada em qualquer menção ou escopo do projeto (a responsabilidade técnica e autoria no projeto é exclusiva da Engenharia de Segurança interna).
 - **Idioma Obrigatório**: Toda a comunicação, documentação, comentários e interfaces devem ser em **Português do Brasil (pt-BR)**.
+
+## 8. Arquitetura Modular e Leitura Cirúrgica (Anti-Lentidão)
+- **CONSULTA OBRIGATÓRIA**: Antes de inspecionar qualquer código no painel gerencial, consulte SEMPRE o arquivo `dashboard/MAPA_MODULOS.md`.
+- **PROIBIDO LER O ARQUIVO COMPLETO**: Nunca execute `view_file` sem passar `StartLine` e `EndLine`. Limite a leitura a no máximo 150 linhas por vez.
+- **EDITAR DIRETAMENTE NO MÓDULO EM `dashboard/modules/`**:
+  - `modules/treinamentos_ddsma.js` -> Treinamentos NR, Matriz, Lançamento em Lote e DDS/DDSMA.
+  - `modules/efetivo_ferias.js` -> Efetivo, Headcount, Gestão de Férias CLT (Art. 130/134) e Mão de Obra Local.
+  - `modules/ghe_os.js` -> Catálogo GHE, Matriz de Risco AIHA, Matriz NR-6 e Ordens de Serviço (OS NR-01).
+  - `modules/relatorio_sms_nc.js` -> Relatório Mensal SMS (.docx), Gráficos SVG e Não Conformidades (NC).
+  - `modules/saude_psicossocial.js` -> PCMSO (NR-07), ASOs, Acidentes, Triagem e Convocação Psicossocial.
+  - `modules/epi_estoque.js` -> EPIs (NR-06), Estoque, Entregas, Inteligência de Consumo e Perfis de Acesso.
+  - `modules/ambiental_compras_hht.js` -> Acervo Drive, Calendário HHT, Resíduos e Requisições de Compras.
+  - `modules/apr_cipa.js` -> Motor Técnico APR 5x5, Modelos APR, CIPA Reuniões/Atas e Assistente Eleitoral.
+  - `modules/documentos_brigada.js` -> Controle Documental, Revisões e Brigada de Incêndio.
+  - `modules/ergonomia_periculosidade_pgr.js` -> Ergonomia AEP (NR-17), Periculosidade (NR-16), PGR e Alertas SST.
+  - `placar_lideres.js` -> Gamificação e Ranking de Segurança.
+  - `dashboard.js` -> Exclusivo para o Núcleo (Login, IDB Cache, Checklists e Extintores).

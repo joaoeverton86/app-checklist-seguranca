@@ -7,8 +7,20 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Painel Gerencial - Checklist Segurança</title>
+    <!-- Script Anti-FOUC: Aplica Dark Mode antes da renderização para conforto visual imediato (NR-17) -->
+    <script>
+        (function() {
+            try {
+                var tema = localStorage.getItem('sst_dashboard_theme');
+                if (tema === 'dark') {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                    document.documentElement.classList.add('dark-mode');
+                }
+            } catch (e) {}
+        })();
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=20261020_ferias_clt">
+    <link rel="stylesheet" href="dashboard.css?v=200">
 </head>
 <body>
 
@@ -286,6 +298,11 @@
                 <div class="db-header-status">
                     <span id="statusText">Carregando...</span>
                     <button onclick="forcarAtualizacaoGeralDadosPainel()" title="Atualizar dados da nuvem agora (limpar cache local)" style="padding:4px 10px; border-radius:6px; border:1px solid var(--border); background:#fff; cursor:pointer; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:background 0.2s;">🔄 Atualizar Dados</button>
+                    
+                    <!-- Alternância Modo Noturno / Modo Claro (NR-17 Ergonomia Visual) -->
+                    <button type="button" id="btnToggleDarkMode" onclick="alternarModoEscuro()" title="Alternar entre modo claro e modo escuro (NR-17 Ergonomia Visual)" class="db-theme-toggle-btn" style="padding:4px 10px; border-radius:6px; border:1px solid var(--border); background:var(--card, #fff); color:var(--text, #0f172a); cursor:pointer; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:5px; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:all 0.2s;">
+                        <span id="themeToggleIcon">🌙</span> <span id="themeToggleText">Modo Noturno</span>
+                    </button>
                     
                     <!-- Central Inteligente de Alertas e Pendências SST -->
                     <div class="db-alertas-wrapper" id="wrapCentralAlertas">
@@ -8967,8 +8984,18 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js"></script>
     <script src="logo_cop_base64.js?v=20261015_v197"></script>
-    <script src="dashboard.js?v=20261020_ferias_clt"></script>
-    <script src="placar_lideres.js?v=20261015_v197"></script>
+    <script src="dashboard.js?v=200"></script>
+    <script src="modules/treinamentos_ddsma.js?v=200"></script>
+    <script src="modules/efetivo_ferias.js?v=200"></script>
+    <script src="modules/ghe_os.js?v=200"></script>
+    <script src="modules/relatorio_sms_nc.js?v=200"></script>
+    <script src="modules/saude_psicossocial.js?v=200"></script>
+    <script src="modules/epi_estoque.js?v=200"></script>
+    <script src="modules/ambiental_compras_hht.js?v=200"></script>
+    <script src="modules/apr_cipa.js?v=200"></script>
+    <script src="modules/documentos_brigada.js?v=200"></script>
+    <script src="modules/ergonomia_periculosidade_pgr.js?v=200"></script>
+    <script src="placar_lideres.js?v=200"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();

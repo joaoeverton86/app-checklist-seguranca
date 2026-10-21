@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const VERSAO_PAINEL = 'v197';
+const VERSAO_PAINEL = 'v200';
 const DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
@@ -42337,8 +42337,78 @@ function forcarAtualizacaoCacheDashboard() {
     window.location.reload(true);
 }
 
+// ============================================
+// GESTÃO DE TEMA: MODO ESCURO / TEMA NOTURNO (NR-17 ERGONOMIA VISUAL)
+// ============================================
+function obterTemaSalvo() {
+    try {
+        return localStorage.getItem('sst_dashboard_theme') || 'light';
+    } catch (e) {
+        return 'light';
+    }
+}
+
+function aplicarTema(tema) {
+    const isDark = (tema === 'dark');
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    document.documentElement.classList.toggle('dark-mode', isDark);
+    if (document.body) {
+        document.body.classList.toggle('dark-mode', isDark);
+    }
+
+    const icon = document.getElementById('themeToggleIcon');
+    const text = document.getElementById('themeToggleText');
+    const btn = document.getElementById('btnToggleDarkMode');
+
+    if (icon) icon.textContent = isDark ? '☀️' : '🌙';
+    if (text) text.textContent = isDark ? 'Modo Claro' : 'Modo Noturno';
+    if (btn) btn.title = isDark ? 'Mudar para Modo Claro (Diurno)' : 'Mudar para Modo Escuro (Noturno / NR-17)';
+
+    // Ajustar defaults globais do Chart.js para legibilidade no tema escolhido
+    if (typeof Chart !== 'undefined') {
+        try {
+            Chart.defaults.color = isDark ? '#cbd5e1' : '#64748b';
+            if (Chart.defaults.scale && Chart.defaults.scale.grid) {
+                Chart.defaults.scale.grid.color = isDark ? '#334155' : '#e2e8f0';
+            }
+        } catch (e) {}
+    }
+
+    try {
+        localStorage.setItem('sst_dashboard_theme', isDark ? 'dark' : 'light');
+    } catch (e) {}
+}
+
+function alternarModoEscuro() {
+    const isCurrentlyDark = document.documentElement.getAttribute('data-theme') === 'dark' ||
+                           (document.body && document.body.classList.contains('dark-mode'));
+    const novoTema = isCurrentlyDark ? 'light' : 'dark';
+    aplicarTema(novoTema);
+
+    // Re-renderizar gráficos da tela ativa para atualizar eixos e textos
+    if (typeof rerenderGraficosDaPaginaAtiva === 'function') {
+        try {
+            rerenderGraficosDaPaginaAtiva();
+        } catch (e) {}
+    }
+}
+
+function inicializarModoEscuro() {
+    const tema = obterTemaSalvo();
+    aplicarTema(tema);
+}
+
+window.obterTemaSalvo = obterTemaSalvo;
+window.aplicarTema = aplicarTema;
+window.alternarModoEscuro = alternarModoEscuro;
+window.inicializarModoEscuro = inicializarModoEscuro;
+
+// Executa imediatamente para garantir aplicação antecipada
+inicializarModoEscuro();
+
 function init() {
     renderizarVersaoDashboard();
+    inicializarModoEscuro();
     // Sem sessão ativa (ninguém logado neste navegador, nem pelo painel nem pelo app de
     // celular) - mostra só a tela de login e para por aqui. init() é chamado de novo
     // pelo próprio realizarLoginDashboard() assim que o login for bem-sucedido.

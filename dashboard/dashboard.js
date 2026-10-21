@@ -5562,9 +5562,15 @@ function renderCumprimentoCronogramaEPresenca(inicio, fim) {
         const d = parseLocalDate(c.data_treinamento);
         return d >= inicio && d <= fim;
     });
-    kpiPresencaEl.textContent = convocadosPeriodo.length === 0
+    // Isenção Operacional de SST: colaboradores com status "Em Gozo" na data do treinamento
+    // não são apontados como faltosos (não rebaixam a taxa de presença da obra).
+    const convocadosSemIsencao = convocadosPeriodo.filter(c => {
+        const emGozo = typeof colaboradorEstaEmFerias === 'function' && colaboradorEstaEmFerias(c.matricula, c.data_treinamento);
+        return !emGozo;
+    });
+    kpiPresencaEl.textContent = convocadosSemIsencao.length === 0
         ? '—'
-        : `${Math.round(convocadosPeriodo.filter(c => c.presente === true).length / convocadosPeriodo.length * 100)}%`;
+        : `${Math.round(convocadosSemIsencao.filter(c => c.presente === true).length / convocadosSemIsencao.length * 100)}%`;
 
     const semCumprimento = itensCronogramaPeriodo.filter(c => {
         if (c.status === 'lancado') return c.realizado_no_prazo === false;
@@ -8172,7 +8178,8 @@ function onLancDdsSemanaFrenteOuDataChange() {
             const porDia = {};
             lancDdsSemanaDias.forEach(d => {
                 const diaSemana = d.getDay();
-                porDia[toISODateLocal(d)] = (diaSemana === 0 || diaSemana === 6) ? 'ausente' : 'bom';
+                const emFerias = typeof colaboradorEstaEmFerias === 'function' && colaboradorEstaEmFerias(e.id, d);
+                porDia[toISODateLocal(d)] = (diaSemana === 0 || diaSemana === 6 || emFerias) ? 'ausente' : 'bom';
             });
             lancDdsSemanaEstados[e.id] = porDia;
         });
@@ -8226,10 +8233,15 @@ function renderLancDdsSemanaGrade() {
     const linhas = entries.map(([matricula, c]) => {
         const cels = lancDdsSemanaDias.map(d => {
             const iso = toISODateLocal(d);
+            const emFerias = typeof colaboradorEstaEmFerias === 'function' && colaboradorEstaEmFerias(matricula, d);
             const estado = (lancDdsSemanaEstados[matricula] || {})[iso] || 'ausente';
             const v = DDS_SEMANA_ESTADO_VISUAL[estado];
+            const titleTxt = emFerias ? `Férias / Afastado (Isenção SST) — ${estado}` : estado;
             return `<td style="text-align:center; padding:2px;">
-                <button type="button" onclick="cicloEstadoDdsSemana('${escapeHTML(matricula)}', '${iso}')" title="${estado}" style="border:2px solid ${v.cor}; background:${v.bg}; border-radius:8px; cursor:pointer; font-size:15px; padding:3px 8px; line-height:1;">${v.emoji}</button>
+                <button type="button" onclick="cicloEstadoDdsSemana('${escapeHTML(matricula)}', '${iso}')" title="${titleTxt}" style="border:2px solid ${v.cor}; background:${v.bg}; border-radius:8px; cursor:pointer; font-size:15px; padding:3px 8px; line-height:1; position:relative;">
+                    ${v.emoji}
+                    ${emFerias ? '<span style="position:absolute; bottom:-1px; right:-1px; font-size:8.5px;" title="Em Férias">🏖️</span>' : ''}
+                </button>
             </td>`;
         }).join('');
         return `<tr><td style="padding:4px 8px; white-space:nowrap;">${escapeHTML(c.nome || '')}<div style="font-size:10.5px; color:var(--text-light);">${escapeHTML(c.funcao || '')} — Mat. ${escapeHTML(matricula)}</div></td>${cels}</tr>`;
@@ -12684,6 +12696,9 @@ async function salvarCatalogoTreinamento() {
 let allEfetivo = [];
 let allGheCatalogo = [];
 let allMunicipiosAda = [];
+let allColaboradoresFerias = [];
+let dadosFeriasCltCache = [];
+let valFeriasFiltroAtual = 'todos'; // 'todos' | 'critico' | 'atencao' | 'normal' | 'emGozo' | 'programadas' | 'concluidas'
 let efetivoLoaded = false;
 
 async function loadEfetivoData() {
@@ -12693,6 +12708,12 @@ async function loadEfetivoData() {
         allGheCatalogo = await supabaseFetchCacheado('ghe_catalogo', '?select=*');
         allMunicipiosAda = await supabaseFetchCacheado('municipios_ada', '?select=*');
         allHistoricoTrocaFuncao = await supabaseFetchCacheado('historico_troca_funcao', '?select=*');
+        try {
+            allColaboradoresFerias = await supabaseFetch('colaboradores_ferias', '?select=*&order=limite_concessivo_fatal.asc');
+        } catch (errF) {
+            console.warn('Aviso ao buscar colaboradores_ferias no Supabase:', errF);
+            allColaboradoresFerias = [];
+        }
         popularGheCatalogoDatalist();
         if (!treinamentosLoaded) {
             treinamentosLoaded = true;
@@ -12707,10 +12728,9 @@ async function loadEfetivoData() {
     }
 }
 
-// Abas da página Efetivo (Visão Geral / Colaboradores) - mesmo raciocínio de
-// self-heal do showTreinSubtab: sempre re-renderiza a Visão Geral ao entrar nela.
+// Abas da página Efetivo (Visão Geral / Colaboradores / Férias / etc.)
 function showEfetivoSubtab(tab) {
-    ['visao', 'colaboradores', 'os', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].forEach(t => {
+    ['visao', 'colaboradores', 'ferias', 'os', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].forEach(t => {
         const content = document.getElementById('efetivoSubtab-' + t);
         const btn = document.getElementById('efetivoSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -12721,16 +12741,772 @@ function showEfetivoSubtab(tab) {
         renderEfetivoResumo();
         filterEfetivoColaboradores(document.getElementById('efetivoSearchInput')?.value || '');
     }
+    if (tab === 'ferias') {
+        renderFeriasPanel();
+    }
     if (tab === 'os') renderControleOrdensServico();
     if (tab === 'setores') { fecharGerenciarSetor(); renderSetoresLista(); }
     if (tab === 'ghe') { fecharGerenciarGhe(); renderGheLista(); }
     if (tab === 'recomendacoes') renderRecomendacoesGheLista();
     if (tab === 'maoobra') { popularMaoDeObraDefaults(); renderMunicipiosAdaLista(); }
-    // A aba de Relatório usa os números da Visão Geral (window.efetivoReportData) e os
-    // campos de Mês/Ano da Mão de Obra Local (maoObraMes/maoObraAno) - por isso, ao abrir
-    // ela, força um recálculo da Visão Geral e garante que os campos de Mês/Ano já estejam
-    // inicializados, mesmo que o usuário nunca tenha aberto essas outras sub-abas antes.
     if (tab === 'relatorio') { renderEfetivoPanel(); popularMaoDeObraDefaults(); renderEfetivoRelatorioChecklist(); }
+}
+
+// ==========================================================================
+// SUBMÓDULO: GESTÃO DE FÉRIAS E AFASTAMENTOS (CLT ART. 130 E 134)
+// Régua Concessiva de 24 Meses, Prevenção de Férias Dobradas e Isenções SST
+// ==========================================================================
+
+async function garantirColaboradoresFeriasCarregados() {
+    if (!allEfetivo || allEfetivo.length === 0) {
+        allEfetivo = await supabaseFetchCacheado('colaboradores_efetivo', '?select=*');
+    }
+    try {
+        allColaboradoresFerias = await supabaseFetch('colaboradores_ferias', '?select=*&order=limite_concessivo_fatal.asc');
+    } catch (e) {
+        console.warn('Erro ao carregar tabela colaboradores_ferias:', e);
+        if (!allColaboradoresFerias) allColaboradoresFerias = [];
+    }
+}
+
+// Helper de verificação rápida: retorna se o colaborador está em gozo de férias/afastamento na data
+function colaboradorEstaEmFerias(matricula, dataRef) {
+    if (!matricula || !allColaboradoresFerias || allColaboradoresFerias.length === 0) return false;
+    const refDate = dataRef ? (typeof dataRef === 'string' ? parseLocalDate(dataRef) : new Date(dataRef)) : new Date();
+    refDate.setHours(0, 0, 0, 0);
+    const refIso = toISODateLocal(refDate);
+
+    return allColaboradoresFerias.some(f => {
+        if (String(f.matricula) !== String(matricula)) return false;
+        if (f.status === 'cancelada') return false;
+        if (f.data_inicio && f.data_fim) {
+            return refIso >= f.data_inicio && refIso <= f.data_fim;
+        }
+        if (f.status === 'em_gozo') return true;
+        return false;
+    });
+}
+
+// Helper: retorna o registro de férias ativo do colaborador (se houver)
+function obterRegistroFeriasAtivo(matricula, dataRef) {
+    if (!matricula || !allColaboradoresFerias || allColaboradoresFerias.length === 0) return null;
+    const refDate = dataRef ? (typeof dataRef === 'string' ? parseLocalDate(dataRef) : new Date(dataRef)) : new Date();
+    refDate.setHours(0, 0, 0, 0);
+    const refIso = toISODateLocal(refDate);
+
+    return allColaboradoresFerias.find(f => {
+        if (String(f.matricula) !== String(matricula)) return false;
+        if (f.status === 'cancelada') return false;
+        if (f.data_inicio && f.data_fim) {
+            return refIso >= f.data_inicio && refIso <= f.data_fim;
+        }
+        if (f.status === 'em_gozo') return true;
+        return false;
+    }) || null;
+}
+
+// Helper para exibir badge resumido do colaborador na ficha de detalhe
+function renderDetalheFeriasColabBadge(matricula) {
+    const colab = (allEfetivo || []).find(x => String(x.id) === String(matricula));
+    if (!colab) return '—';
+    const reg = calcularReguaFeriasClt(colab);
+    const prazoTxt = reg.limiteConcessivoFatal ? formatSimpleDate(reg.limiteConcessivoFatal) : '—';
+    return `<span class="${reg.badgeClass}">${escapeHTML(reg.label)} • Limite 24m: ${prazoTxt}</span>`;
+}
+
+// Cálculo central da régua de vencimento concessivo da CLT (Artigos 130 e 134)
+function calcularReguaFeriasClt(colab) {
+    const matricula = colab.id;
+    const dataAdmStr = colab.dt_admissao || colab.data_admissao || '';
+    
+    if (!dataAdmStr) {
+        return {
+            colaborador: colab,
+            matricula: matricula,
+            nome: colab.nome || '(sem nome)',
+            funcao: colab.funcao || '',
+            setor: colab.setor || '',
+            cpf: colab.cpf || '',
+            dataAdmissao: null,
+            limiteConcessivoFatal: null,
+            mesesTotal: 0,
+            diasParaDobra: null,
+            statusClt: 'normal',
+            label: 'Sem data de admissão',
+            badgeClass: 'badge-ferias-normal',
+            registroFerias: null,
+            emGozo: false,
+            programada: false,
+            concluida: false
+        };
+    }
+
+    const adm = parseLocalDate(dataAdmStr);
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const hojeIso = toISODateLocal(hoje);
+
+    // Limite Concessivo Fatal: admissão + 24 meses (CLT Art. 134)
+    const limiteFatalStr = addMeses(dataAdmStr, 24);
+    const limiteFatalDate = parseLocalDate(limiteFatalStr);
+    limiteFatalDate.setHours(0, 0, 0, 0);
+
+    const diasParaDobra = Math.ceil((limiteFatalDate.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+    const totalMeses = Math.max(0, (hoje.getTime() - adm.getTime()) / (1000 * 60 * 60 * 24 * 30.4375));
+
+    // Busca registros cadastrados para a matrícula
+    const feriasRegs = (allColaboradoresFerias || []).filter(f => String(f.matricula) === String(matricula));
+    
+    const regEmGozo = feriasRegs.find(f => f.status === 'em_gozo' || (f.status !== 'cancelada' && f.data_inicio && f.data_fim && hojeIso >= f.data_inicio && hojeIso <= f.data_fim));
+    const regProgramada = feriasRegs.find(f => f.status === 'programada' && f.data_inicio && hojeIso < f.data_inicio);
+    const regConcluida = feriasRegs.find(f => f.status === 'concluida' || (f.data_fim && hojeIso > f.data_fim && f.status !== 'cancelada' && f.status !== 'pendente'));
+    const regPendente = feriasRegs.find(f => f.status === 'pendente');
+    const ultimoRegistro = regEmGozo || regProgramada || regConcluida || regPendente || feriasRegs[0] || null;
+
+    let statusClt = 'normal';
+    let label = '🟢 Normal (<18m)';
+    let badgeClass = 'badge-ferias-normal';
+
+    if (regEmGozo) {
+        statusClt = 'em_gozo';
+        label = '✈️ Em Gozo';
+        badgeClass = 'badge-ferias-em-gozo';
+    } else if (regProgramada) {
+        statusClt = 'programada';
+        label = `📅 Programada (${formatSimpleDate(regProgramada.data_inicio)})`;
+        badgeClass = 'badge-ferias-programada';
+    } else if (regConcluida) {
+        statusClt = 'concluida';
+        label = '✅ Férias Quitadas';
+        badgeClass = 'badge-ferias-concluida';
+    } else {
+        // Régua do Semáforo CLT para colaboradores sem gozo registrado:
+        // Vermelho: tempo de admissão >= 23 meses sem férias concluídas
+        // Amarelo: tempo de admissão entre 19 e 22 meses sem gozo
+        // Verde: tempo de admissão < 18 meses
+        if (totalMeses >= 23) {
+            statusClt = 'critico';
+            label = '🔴 Risco Dobra CLT (≥23m)';
+            badgeClass = 'badge-ferias-critico';
+        } else if (totalMeses >= 18.5) {
+            statusClt = 'atencao';
+            label = '🟡 Atenção / Programar (19-22m)';
+            badgeClass = 'badge-ferias-atencao';
+        } else {
+            statusClt = 'normal';
+            label = '🟢 Normal (<18m)';
+            badgeClass = 'badge-ferias-normal';
+        }
+    }
+
+    return {
+        colaborador: colab,
+        matricula: matricula,
+        nome: colab.nome || '(sem nome)',
+        funcao: colab.funcao || '',
+        setor: colab.setor || '',
+        cpf: colab.cpf || '',
+        dataAdmissao: dataAdmStr,
+        limiteConcessivoFatal: limiteFatalStr,
+        mesesTotal: totalMeses,
+        diasParaDobra: diasParaDobra,
+        statusClt: statusClt,
+        label: label,
+        badgeClass: badgeClass,
+        registroFerias: ultimoRegistro,
+        emGozo: !!regEmGozo,
+        programada: !!regProgramada,
+        concluida: !!regConcluida
+    };
+}
+
+// Renderização geral do painel e tabela de Férias e Régua CLT
+async function renderFeriasPanel() {
+    await garantirColaboradoresFeriasCarregados();
+    const ativos = (allEfetivo || []).filter(colaboradorEstaAtivo);
+    dadosFeriasCltCache = ativos.map(calcularReguaFeriasClt);
+
+    // Ordenação de prioridade: 1º Crítico (Dobra CLT), 2º Atenção, 3º Em Gozo, 4º Programada, 5º Normal, 6º Concluída
+    const prioridade = { 'critico': 1, 'atencao': 2, 'em_gozo': 3, 'programada': 4, 'normal': 5, 'concluida': 6 };
+    dadosFeriasCltCache.sort((a, b) => {
+        const pA = prioridade[a.statusClt] || 9;
+        const pB = prioridade[b.statusClt] || 9;
+        if (pA !== pB) return pA - pB;
+        if (a.diasParaDobra !== null && b.diasParaDobra !== null) return a.diasParaDobra - b.diasParaDobra;
+        return a.nome.localeCompare(b.nome);
+    });
+
+    // Contadores KPIs
+    const criticos = dadosFeriasCltCache.filter(d => d.statusClt === 'critico').length;
+    const atencao = dadosFeriasCltCache.filter(d => d.statusClt === 'atencao').length;
+    const normal = dadosFeriasCltCache.filter(d => d.statusClt === 'normal' || d.statusClt === 'concluida').length;
+    const emGozo = dadosFeriasCltCache.filter(d => d.emGozo).length;
+    const programadas = dadosFeriasCltCache.filter(d => d.programada).length;
+    const concluidas = dadosFeriasCltCache.filter(d => d.concluida).length;
+
+    const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setTxt('kpiFeriasCritico', criticos);
+    setTxt('kpiFeriasAtencao', atencao);
+    setTxt('kpiFeriasNormal', normal);
+    setTxt('kpiFeriasEmGozo', emGozo);
+    setTxt('kpiFeriasProgramadas', programadas);
+    setTxt('kpiFeriasConcluidas', concluidas);
+
+    setTxt('countFeriasTodos', dadosFeriasCltCache.length);
+    setTxt('countFeriasCritico', criticos);
+    setTxt('countFeriasAtencao', atencao);
+    setTxt('countFeriasNormal', normal);
+    setTxt('countFeriasEmGozo', emGozo);
+    setTxt('countFeriasProgramadas', programadas);
+    setTxt('countFeriasConcluidas', concluidas);
+
+    // Popula dropdown de setores
+    const selSetor = document.getElementById('feriasFiltroSetor');
+    if (selSetor) {
+        const valorAtual = selSetor.value;
+        const setores = Array.from(new Set(dadosFeriasCltCache.map(d => d.setor).filter(Boolean))).sort();
+        selSetor.innerHTML = '<option value="">🏢 Todos os Setores</option>' +
+            setores.map(s => `<option value="${escapeHTML(s)}">${escapeHTML(s)}</option>`).join('');
+        selSetor.value = valorAtual;
+    }
+
+    renderTabelaFerias();
+}
+
+function filtrarTabelaFerias(filtro, btn) {
+    valFeriasFiltroAtual = filtro;
+    document.querySelectorAll('#filtroFeriasPills .sector-pill').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderTabelaFerias();
+}
+
+function renderTabelaFerias() {
+    const tbody = document.getElementById('tabelaFeriasCorpo');
+    if (!tbody) return;
+
+    const busca = (document.getElementById('feriasSearchInput')?.value || '').toLowerCase().trim();
+    const setorFiltro = document.getElementById('feriasFiltroSetor')?.value || '';
+
+    const filtrados = dadosFeriasCltCache.filter(d => {
+        if (valFeriasFiltroAtual === 'critico' && d.statusClt !== 'critico') return false;
+        if (valFeriasFiltroAtual === 'atencao' && d.statusClt !== 'atencao') return false;
+        if (valFeriasFiltroAtual === 'normal' && d.statusClt !== 'normal') return false;
+        if (valFeriasFiltroAtual === 'emGozo' && !d.emGozo) return false;
+        if (valFeriasFiltroAtual === 'programadas' && !d.programada) return false;
+        if (valFeriasFiltroAtual === 'concluidas' && !d.concluida) return false;
+
+        if (setorFiltro && d.setor !== setorFiltro) return false;
+
+        if (busca) {
+            const txt = `${d.matricula} ${d.nome} ${d.cpf} ${d.funcao} ${d.setor}`.toLowerCase();
+            if (!txt.includes(busca)) return false;
+        }
+        return true;
+    });
+
+    if (filtrados.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" style="padding: 28px; text-align: center; color: var(--text-light); font-size: 13px;">Nenhum colaborador encontrado para os filtros selecionados.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtrados.map(d => {
+        const mesesInt = Math.floor(d.mesesTotal);
+        const pct24 = Math.min(100, Math.max(0, Math.round((d.mesesTotal / 24) * 100)));
+        
+        let fillClass = 'ferias-regua-fill-aquisitivo';
+        if (pct24 >= 95) fillClass = 'ferias-regua-fill-concessivo-alerta';
+        else if (pct24 >= 78) fillClass = 'ferias-regua-fill-concessivo-ok';
+
+        let prazoBadge = '—';
+        if (d.diasParaDobra !== null) {
+            if (d.diasParaDobra < 0) {
+                prazoBadge = `<span style="color:#b91c1c; font-weight:700;">Venceu há ${Math.abs(d.diasParaDobra)}d (Dobra CLT)</span>`;
+            } else if (d.diasParaDobra <= 60) {
+                prazoBadge = `<span style="color:#ea580c; font-weight:700;">Em ${d.diasParaDobra}d</span>`;
+            } else {
+                prazoBadge = `<span style="color:#16a34a; font-weight:600;">Em ${d.diasParaDobra}d</span>`;
+            }
+        }
+
+        const anos = Math.floor(d.mesesTotal / 12);
+        const mesesResto = Math.floor(d.mesesTotal % 12);
+        const tempoCasaTxt = anos > 0 ? `${anos}a ${mesesResto}m` : `${mesesResto}m`;
+
+        let periodoGozoTxt = '<span style="color:var(--text-light); font-size:11px;">Pendente</span>';
+        if (d.registroFerias && d.registroFerias.data_inicio && d.registroFerias.data_fim) {
+            const dtIniFmt = formatSimpleDate(d.registroFerias.data_inicio);
+            const dtFimFmt = formatSimpleDate(d.registroFerias.data_fim);
+            periodoGozoTxt = `<div style="font-weight:700; color:var(--text); font-size:11.5px;">${dtIniFmt} a ${dtFimFmt}</div>
+                <div style="font-size:10px; color:var(--text-light);">${d.registroFerias.dias_gozo || 30} dias • ${escapeHTML(d.registroFerias.status).toUpperCase()}</div>`;
+        }
+
+        let isencaoTag = '<span style="color:var(--text-light);">—</span>';
+        if (d.emGozo) {
+            isencaoTag = `<span class="badge-isencao-sst" title="Colaborador em gozo: ausência justificada em DDSMA/Treinamentos e ASO regulariza no retorno.">🛡️ Isento DDS/Trein.</span>`;
+        }
+
+        const feriasId = d.registroFerias ? d.registroFerias.id : '';
+        let btnAcoes = `
+            <button class="db-clear-btn" style="padding:4px 8px; font-size:11px;" onclick="abrirModalLancamentoFerias('${escapeHTML(d.matricula)}', '${escapeHTML(feriasId)}')" title="Programar ou editar férias">
+                ✏️ Programar
+            </button>
+        `;
+        if (d.programada && feriasId) {
+            btnAcoes += `
+                <button class="db-clear-btn" style="padding:4px 8px; font-size:11px; color:#0284c7; border-color:#7dd3fc; background:#f0f9ff;" onclick="iniciarGozoFeriasRapido('${escapeHTML(feriasId)}', '${escapeHTML(d.matricula)}')" title="Iniciar gozo de férias hoje">
+                    ✈️ Iniciar
+                </button>
+            `;
+        }
+        if (d.emGozo && feriasId) {
+            btnAcoes += `
+                <button class="db-clear-btn" style="padding:4px 8px; font-size:11px; color:#059669; border-color:#a7f3d0; background:#f0fdf4;" onclick="concluirFeriasRapido('${escapeHTML(feriasId)}', '${escapeHTML(d.matricula)}')" title="Concluir período de férias">
+                    ✅ Concluir
+                </button>
+            `;
+        }
+
+        return `
+            <tr style="border-bottom: 1px solid var(--border); font-size: 11.5px; transition: background 0.15s ease;" onmouseover="this.style.background='rgba(2,132,199,0.03)'" onmouseout="this.style.background=''">
+                <td style="padding: 8px 12px; font-weight: 700; color: var(--primary);">${escapeHTML(d.matricula)}</td>
+                <td style="padding: 8px 12px;">
+                    <div style="font-weight: 700; color: var(--text); cursor:pointer;" onclick="mostrarDetalheColaborador('${escapeHTML(d.matricula)}')" title="Ver prontuário">${escapeHTML(d.nome)}</div>
+                    ${d.cpf ? `<div style="font-size: 10.5px; color: var(--text-light);">CPF: ${escapeHTML(d.cpf)}</div>` : ''}
+                </td>
+                <td style="padding: 8px 12px;">
+                    <div style="font-weight:600; color:var(--text);">${escapeHTML(d.funcao)}</div>
+                    <div style="font-size:10.5px; color:var(--text-light);">${escapeHTML(d.setor || '—')}</div>
+                </td>
+                <td style="padding: 8px 12px; color: var(--text-light);">${d.dataAdmissao ? formatSimpleDate(d.dataAdmissao) : '—'}</td>
+                <td style="padding: 8px 12px; font-weight:600; color:var(--text);">${tempoCasaTxt} <span style="font-size:10px; color:var(--text-light);">(${mesesInt}m)</span></td>
+                <td style="padding: 8px 12px;">
+                    <div style="font-weight:700; color:var(--text);">${d.limiteConcessivoFatal ? formatSimpleDate(d.limiteConcessivoFatal) : '—'}</div>
+                    <div style="font-size:10.5px;">${prazoBadge}</div>
+                </td>
+                <td style="padding: 8px 12px; min-width: 170px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
+                        <span class="${d.badgeClass}">${escapeHTML(d.label)}</span>
+                        <span style="font-size:10px; font-weight:700; color:var(--text-light);">${pct24}%</span>
+                    </div>
+                    <div class="ferias-regua-track" title="${mesesInt} meses de contrato (Limite fatal: 24 meses)">
+                        <div class="${fillClass}" style="width: ${pct24}%;"></div>
+                    </div>
+                    <div class="ferias-regua-marcos">
+                        <span>0m</span>
+                        <span>12m (Aquisitivo)</span>
+                        <span>24m (Limite Fatal)</span>
+                    </div>
+                </td>
+                <td style="padding: 8px 12px; text-align: center;">${periodoGozoTxt}</td>
+                <td style="padding: 8px 12px; text-align: center;">${isencaoTag}</td>
+                <td style="padding: 8px 12px; text-align: center; white-space:nowrap;">
+                    <div style="display:flex; gap:4px; justify-content:center; flex-wrap:wrap;">${btnAcoes}</div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Modal de Lançamento e Edição de Férias
+function abrirModalLancamentoFerias(matriculaAlvo, feriasIdAlvo) {
+    const modal = document.getElementById('modalLancamentoFerias');
+    if (!modal) return;
+
+    // Popula select de colaboradores ativos ordenados por nome
+    const selColab = document.getElementById('feriasForm_matricula');
+    if (selColab) {
+        const ativos = (allEfetivo || []).filter(colaboradorEstaAtivo).slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+        selColab.innerHTML = '<option value="">Selecione o colaborador...</option>' +
+            ativos.map(c => `<option value="${escapeHTML(c.id)}">${escapeHTML(c.nome)} (Mat. ${escapeHTML(c.id)} — ${escapeHTML(c.funcao || '')})</option>`).join('');
+    }
+
+    document.getElementById('feriasForm_id').value = feriasIdAlvo || '';
+    document.getElementById('feriasForm_statusMsg').textContent = '';
+    document.getElementById('btnExcluirFeriasModal').style.display = feriasIdAlvo ? 'inline-block' : 'none';
+
+    // Se passou matrícula, seleciona e preenche dados
+    if (matriculaAlvo) {
+        selColab.value = matriculaAlvo;
+    }
+
+    // Se passou ID de férias, carrega os dados já cadastrados
+    if (feriasIdAlvo) {
+        const reg = (allColaboradoresFerias || []).find(f => String(f.id) === String(feriasIdAlvo));
+        if (reg) {
+            selColab.value = reg.matricula;
+            document.getElementById('feriasForm_tipoAfastamento').value = reg.tipo_afastamento || 'ferias';
+            document.getElementById('feriasForm_status').value = reg.status || 'programada';
+            document.getElementById('feriasForm_dataInicio').value = reg.data_inicio || '';
+            document.getElementById('feriasForm_dataFim').value = reg.data_fim || '';
+            document.getElementById('feriasForm_diasGozo').value = reg.dias_gozo || 30;
+            document.getElementById('feriasForm_obs').value = reg.observacoes || '';
+        }
+    } else {
+        // Defaults para novo lançamento
+        document.getElementById('feriasForm_tipoAfastamento').value = 'ferias';
+        document.getElementById('feriasForm_status').value = 'programada';
+        document.getElementById('feriasForm_dataInicio').value = '';
+        document.getElementById('feriasForm_dataFim').value = '';
+        document.getElementById('feriasForm_diasGozo').value = 30;
+        document.getElementById('feriasForm_obs').value = '';
+    }
+
+    onColabFeriasSelectChange();
+    modal.style.display = 'flex';
+}
+
+function fecharModalLancamentoFerias() {
+    const modal = document.getElementById('modalLancamentoFerias');
+    if (modal) modal.style.display = 'none';
+}
+
+function onColabFeriasSelectChange() {
+    const mat = document.getElementById('feriasForm_matricula')?.value;
+    const card = document.getElementById('feriasForm_resumoColabCard');
+    if (!mat || !card) {
+        if (card) card.style.display = 'none';
+        return;
+    }
+
+    const colab = (allEfetivo || []).find(c => String(c.id) === String(mat));
+    if (!colab) {
+        card.style.display = 'none';
+        return;
+    }
+
+    const reg = calcularReguaFeriasClt(colab);
+    const anos = Math.floor(reg.mesesTotal / 12);
+    const mesesResto = Math.floor(reg.mesesTotal % 12);
+    const tempoCasaTxt = anos > 0 ? `${anos} ano(s) e ${mesesResto} mês(es)` : `${mesesResto} mês(es)`;
+
+    document.getElementById('feriasForm_lblNome').textContent = colab.nome || '—';
+    document.getElementById('feriasForm_lblMatricula').textContent = colab.id;
+    document.getElementById('feriasForm_lblSetor').textContent = colab.setor || '—';
+    document.getElementById('feriasForm_lblAdmissao').textContent = reg.dataAdmissao ? formatSimpleDate(reg.dataAdmissao) : '—';
+    document.getElementById('feriasForm_lblTempoCasa').textContent = `${tempoCasaTxt} (${Math.floor(reg.mesesTotal)} meses)`;
+    document.getElementById('feriasForm_lblLimiteFatal').textContent = reg.limiteConcessivoFatal ? formatSimpleDate(reg.limiteConcessivoFatal) : '—';
+    
+    let diasDobraTxt = '—';
+    if (reg.diasParaDobra !== null) {
+        diasDobraTxt = reg.diasParaDobra < 0 
+            ? `⚠️ VENCIDO há ${Math.abs(reg.diasParaDobra)} dias` 
+            : `${reg.diasParaDobra} dias restantes`;
+    }
+    document.getElementById('feriasForm_lblDiasDobra').textContent = diasDobraTxt;
+
+    const badgeEl = document.getElementById('feriasForm_badgeStatusClt');
+    if (badgeEl) {
+        badgeEl.className = reg.badgeClass;
+        badgeEl.textContent = reg.label;
+    }
+
+    card.style.display = 'block';
+}
+
+function onDatasFeriasChange() {
+    const dtIni = document.getElementById('feriasForm_dataInicio')?.value;
+    const dtFim = document.getElementById('feriasForm_dataFim')?.value;
+    const elDias = document.getElementById('feriasForm_diasGozo');
+
+    if (dtIni && dtFim) {
+        const d1 = parseLocalDate(dtIni);
+        const d2 = parseLocalDate(dtFim);
+        if (d2 >= d1) {
+            const diff = Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            if (elDias) elDias.value = diff;
+        }
+    } else if (dtIni && !dtFim) {
+        const dias = parseInt(elDias?.value || '30', 10);
+        if (dias > 0) {
+            const dFimCalculada = addDias(dtIni, dias - 1);
+            const inputFim = document.getElementById('feriasForm_dataFim');
+            if (inputFim) inputFim.value = dFimCalculada;
+        }
+    }
+}
+
+async function salvarLancamentoFerias() {
+    const statusMsg = document.getElementById('feriasForm_statusMsg');
+    const btnSalvar = document.getElementById('btnSalvarFeriasModal');
+    const feriasId = document.getElementById('feriasForm_id')?.value;
+    const matricula = document.getElementById('feriasForm_matricula')?.value;
+
+    if (!matricula) {
+        statusMsg.textContent = '❌ Selecione um colaborador obrigatório.';
+        statusMsg.style.color = 'var(--danger)';
+        return;
+    }
+
+    const colab = (allEfetivo || []).find(c => String(c.id) === String(matricula));
+    if (!colab) {
+        statusMsg.textContent = '❌ Colaborador não encontrado.';
+        statusMsg.style.color = 'var(--danger)';
+        return;
+    }
+
+    const dataAdmissao = colab.dt_admissao || colab.data_admissao;
+    if (!dataAdmissao) {
+        statusMsg.textContent = '❌ Colaborador selecionado não possui data de admissão no cadastro de efetivo.';
+        statusMsg.style.color = 'var(--danger)';
+        return;
+    }
+
+    const limiteFatal = addMeses(dataAdmissao, 24);
+    const tipoAfastamento = document.getElementById('feriasForm_tipoAfastamento')?.value || 'ferias';
+    const status = document.getElementById('feriasForm_status')?.value || 'programada';
+    const dataInicio = document.getElementById('feriasForm_dataInicio')?.value || null;
+    const dataFim = document.getElementById('feriasForm_dataFim')?.value || null;
+    const diasGozo = parseInt(document.getElementById('feriasForm_diasGozo')?.value || '30', 10);
+    const obs = document.getElementById('feriasForm_obs')?.value || '';
+
+    const payload = {
+        matricula: String(colab.id),
+        nome_colaborador: colab.nome || '',
+        funcao: colab.funcao || '',
+        setor: colab.setor || '',
+        data_admissao: dataAdmissao,
+        limite_concessivo_fatal: limiteFatal,
+        tipo_afastamento: tipoAfastamento,
+        data_inicio: dataInicio,
+        data_fim: dataFim,
+        dias_gozo: isNaN(diasGozo) ? 30 : diasGozo,
+        status: status,
+        observacoes: obs,
+        updated_at: new Date().toISOString()
+    };
+
+    if (feriasId) {
+        payload.id = feriasId;
+    }
+
+    try {
+        btnSalvar.disabled = true;
+        btnSalvar.textContent = '⏳ Gravando...';
+        statusMsg.textContent = 'Gravando no Supabase...';
+        statusMsg.style.color = 'var(--text-light)';
+
+        await supabaseUpsert('colaboradores_ferias', [payload]);
+
+        statusMsg.textContent = '✅ Programação de férias salva com sucesso!';
+        statusMsg.style.color = '#059669';
+
+        await garantirColaboradoresFeriasCarregados();
+        renderFeriasPanel();
+
+        setTimeout(() => {
+            fecharModalLancamentoFerias();
+            btnSalvar.disabled = false;
+            btnSalvar.textContent = '💾 Salvar Programação';
+        }, 600);
+    } catch (err) {
+        console.error('Erro ao salvar programação de férias:', err);
+        statusMsg.textContent = '❌ Falha ao gravar: ' + (err.message || err);
+        statusMsg.style.color = 'var(--danger)';
+        btnSalvar.disabled = false;
+        btnSalvar.textContent = '💾 Salvar Programação';
+    }
+}
+
+async function iniciarGozoFeriasRapido(feriasId, matricula) {
+    if (!confirm(`Confirma o início do gozo de férias hoje para o colaborador de matrícula ${matricula}?`)) return;
+    try {
+        const hojeIso = toISODateLocal(new Date());
+        const payload = { id: feriasId, status: 'em_gozo', data_inicio: hojeIso, updated_at: new Date().toISOString() };
+        await supabaseUpsert('colaboradores_ferias', [payload]);
+        await garantirColaboradoresFeriasCarregados();
+        renderFeriasPanel();
+    } catch (err) {
+        alert('Falha ao iniciar gozo de férias: ' + (err.message || err));
+    }
+}
+
+async function concluirFeriasRapido(feriasId, matricula) {
+    if (!confirm(`Confirma a conclusão do período de férias do colaborador de matrícula ${matricula}?`)) return;
+    try {
+        const payload = { id: feriasId, status: 'concluida', updated_at: new Date().toISOString() };
+        await supabaseUpsert('colaboradores_ferias', [payload]);
+        await garantirColaboradoresFeriasCarregados();
+        renderFeriasPanel();
+    } catch (err) {
+        alert('Falha ao concluir férias: ' + (err.message || err));
+    }
+}
+
+async function excluirLancamentoFeriasAtual() {
+    const feriasId = document.getElementById('feriasForm_id')?.value;
+    if (!feriasId) return;
+    if (!confirm('Tem certeza de que deseja remover este lançamento de férias?')) return;
+
+    try {
+        await supabaseDelete('colaboradores_ferias', 'id=eq.' + feriasId);
+        await garantirColaboradoresFeriasCarregados();
+        renderFeriasPanel();
+        fecharModalLancamentoFerias();
+    } catch (err) {
+        alert('Erro ao excluir férias: ' + (err.message || err));
+    }
+}
+
+async function sincronizarFeriasCltComEfetivo() {
+    const btn = event?.target;
+    const oldText = btn ? btn.textContent : '';
+    if (btn) btn.textContent = '🔄 Sincronizando...';
+    try {
+        await dashCacheInvalidate('colaboradores_ferias');
+        await garantirColaboradoresFeriasCarregados();
+        await renderFeriasPanel();
+        if (typeof atualizarCentralAlertasUsuario === 'function') {
+            atualizarCentralAlertasUsuario();
+        }
+        alert('✅ Base CLT sincronizada com sucesso! Todos os prazos e semáforos recalculados.');
+    } catch (err) {
+        alert('Falha ao sincronizar: ' + (err.message || err));
+    } finally {
+        if (btn) btn.textContent = oldText;
+    }
+}
+
+// Exportação Excel via SheetJS
+function gerarExcelFerias() {
+    if (!dadosFeriasCltCache || dadosFeriasCltCache.length === 0) {
+        alert('Nenhum dado de férias disponível para exportação.');
+        return;
+    }
+
+    const agora = new Date();
+    const dataFmt = agora.toLocaleDateString('pt-BR');
+    const horaFmt = agora.toLocaleTimeString('pt-BR');
+
+    const aoa = [
+        ['MAPA DE GESTÃO DE FÉRIAS E RÉGUA CONCESSIVA CLT — PISF RAMAL DO AGRESTE'],
+        [`Gerado em: ${dataFmt} às ${horaFmt} | Total: ${dadosFeriasCltCache.length} colaboradores analisados`],
+        [],
+        [
+            'MATRÍCULA', 'COLABORADOR', 'CPF', 'FUNÇÃO', 'SETOR', 'ADMISSÃO',
+            'TEMPO DE CASA (MESES)', 'LIMITE FATAL CLT (24M)', 'DIAS RESTANTES P/ DOBRA',
+            'SEMÁFORO CLT', 'STATUS FÉRIAS', 'INÍCIO GOZO', 'FIM GOZO', 'DIAS DE GOZO',
+            'ISENÇÃO SST', 'OBSERVAÇÕES'
+        ]
+    ];
+
+    dadosFeriasCltCache.forEach(d => {
+        const reg = d.registroFerias;
+        aoa.push([
+            d.matricula,
+            d.nome,
+            d.cpf || '',
+            d.funcao || '',
+            d.setor || '',
+            d.dataAdmissao ? formatSimpleDate(d.dataAdmissao) : '',
+            Math.floor(d.mesesTotal),
+            d.limiteConcessivoFatal ? formatSimpleDate(d.limiteConcessivoFatal) : '',
+            d.diasParaDobra !== null ? d.diasParaDobra : '',
+            d.label,
+            reg ? reg.status.toUpperCase() : 'PENDENTE',
+            reg && reg.data_inicio ? formatSimpleDate(reg.data_inicio) : '',
+            reg && reg.data_fim ? formatSimpleDate(reg.data_fim) : '',
+            reg ? (reg.dias_gozo || 30) : '',
+            d.emGozo ? 'SIM (Isento DDS/Treinamento - ASO no Retorno)' : 'NÃO',
+            reg ? (reg.observacoes || '') : ''
+        ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const headerRow = 3;
+    const startCell = XLSX.utils.encode_cell({ r: headerRow, c: 0 });
+    const endCell = XLSX.utils.encode_cell({ r: aoa.length - 1, c: 15 });
+    ws['!autofilter'] = { ref: `${startCell}:${endCell}` };
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Férias_CLT');
+    XLSX.writeFile(wb, `Gestao_Ferias_Régua_CLT_${agora.toISOString().slice(0, 10)}.xlsx`);
+}
+
+// Impressão padronizada (Blob URL seguro livre de bloqueador de popups)
+function imprimirMapaFeriasClt() {
+    if (!dadosFeriasCltCache || dadosFeriasCltCache.length === 0) {
+        alert('Nenhum dado de férias disponível para impressão.');
+        return;
+    }
+
+    const agora = new Date();
+    const dataFmt = agora.toLocaleDateString('pt-BR');
+    const horaFmt = agora.toLocaleTimeString('pt-BR');
+
+    const criticos = dadosFeriasCltCache.filter(d => d.statusClt === 'critico');
+    const atencao = dadosFeriasCltCache.filter(d => d.statusClt === 'atencao');
+    const emGozo = dadosFeriasCltCache.filter(d => d.emGozo);
+
+    const linhas = dadosFeriasCltCache.map(d => {
+        const reg = d.registroFerias;
+        const periodo = reg && reg.data_inicio && reg.data_fim 
+            ? `${formatSimpleDate(reg.data_inicio)} a ${formatSimpleDate(reg.data_fim)} (${reg.dias_gozo || 30}d)` 
+            : '—';
+        const diasTxt = d.diasParaDobra !== null ? (d.diasParaDobra < 0 ? `Vencido há ${Math.abs(d.diasParaDobra)}d` : `${d.diasParaDobra}d restantes`) : '—';
+        return `
+            <tr>
+                <td style="padding:6px; font-weight:bold; border-bottom:1px solid #ddd;">${escapeHTML(d.matricula)}</td>
+                <td style="padding:6px; border-bottom:1px solid #ddd;">${escapeHTML(d.nome)}</td>
+                <td style="padding:6px; border-bottom:1px solid #ddd;">${escapeHTML(d.funcao)} / ${escapeHTML(d.setor)}</td>
+                <td style="padding:6px; border-bottom:1px solid #ddd;">${d.dataAdmissao ? formatSimpleDate(d.dataAdmissao) : '—'}</td>
+                <td style="padding:6px; font-weight:bold; border-bottom:1px solid #ddd;">${d.limiteConcessivoFatal ? formatSimpleDate(d.limiteConcessivoFatal) : '—'}</td>
+                <td style="padding:6px; border-bottom:1px solid #ddd;">${diasTxt}</td>
+                <td style="padding:6px; border-bottom:1px solid #ddd;">${escapeHTML(d.label)}</td>
+                <td style="padding:6px; border-bottom:1px solid #ddd;">${periodo}</td>
+            </tr>
+        `;
+    }).join('');
+
+    const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Mapa de Férias e Régua Concessiva CLT</title>
+            <style>
+                body { font-family: Arial, sans-serif; font-size: 11px; margin: 20px; color: #1e293b; }
+                h2 { margin: 0 0 4px; font-size: 16px; color: #0284c7; }
+                .sub { color: #64748b; font-size: 11px; margin-bottom: 14px; }
+                .resumo-box { display: flex; gap: 14px; margin-bottom: 14px; background: #f8fafc; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; }
+                .resumo-item { flex: 1; }
+                .resumo-item b { font-size: 14px; display: block; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th { background: #f1f5f9; padding: 8px 6px; font-size: 10px; text-align: left; border-bottom: 2px solid #cbd5e1; text-transform: uppercase; }
+            </style>
+        </head>
+        <body>
+            <h2>🏖️ Mapa de Gestão de Férias e Régua Concessiva CLT (Art. 130 e 134)</h2>
+            <div class="sub">PISF Ramal do Agreste • Gerado em: ${dataFmt} às ${horaFmt}</div>
+            
+            <div class="resumo-box">
+                <div class="resumo-item" style="color:#b91c1c;"><b>${criticos.length}</b> Risco Dobra CLT (≥23m)</div>
+                <div class="resumo-item" style="color:#d97706;"><b>${atencao.length}</b> Atenção / Programar (19-22m)</div>
+                <div class="resumo-item" style="color:#0284c7;"><b>${emGozo.length}</b> Em Gozo Ativo Hoje</div>
+                <div class="resumo-item" style="color:#059669;"><b>${dadosFeriasCltCache.length}</b> Efetivo Ativo Analisado</div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mat.</th>
+                        <th>Colaborador</th>
+                        <th>Função / Setor</th>
+                        <th>Admissão</th>
+                        <th>Limite 24m</th>
+                        <th>Prazo</th>
+                        <th>Semáforo CLT</th>
+                        <th>Período Gozo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${linhas}
+                </tbody>
+            </table>
+        </body>
+        </html>
+    `;
+
+    abrirDocumentoHtmlParaImpressao(html, 'Mapa de Férias e Régua Concessiva CLT');
 }
 
 // ============================================
@@ -15030,8 +15806,9 @@ function mostrarDetalheColaborador(matricula) {
                 <div style="font-size: 16px; font-weight: 700;">${escapeHTML(e.nome || '')}</div>
                 <div style="font-size: 12px; color: var(--text-light); margin-top: 2px;">${escapeHTML(e.funcao || '')}${e.setor ? ' — ' + escapeHTML(e.setor) : ''}</div>
             </div>
-            <div style="display:flex; gap:8px; align-items:center;">
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 ${statusBadge}
+                <button class="db-clear-btn" onclick="abrirModalLancamentoFerias('${escapeHTML(matricula)}')">🏖️ Férias</button>
                 <button class="db-clear-btn" onclick="abrirFormEfetivo('${escapeHTML(matricula)}')">✏️ Editar</button>
                 <button class="db-clear-btn" onclick="abrirTrocaFuncao('${escapeHTML(matricula)}')">🔄 Troca de Função</button>
                 <button class="db-clear-btn" onclick="imprimirOsIndividualEfetivo('${escapeHTML(matricula)}')">🖨️ OS</button>
@@ -15043,6 +15820,7 @@ function mostrarDetalheColaborador(matricula) {
             <div><strong>Admissão:</strong> ${admissao ? formatSimpleDate(e.dt_admissao || e.data_admissao) : '—'}</div>
             <div><strong>Demissão:</strong> ${demissao ? formatSimpleDate(e.dt_demissao || e.data_demissao) : '—'}</div>
             <div><strong>Tempo de casa:</strong> ${tempoCasaTxt}</div>
+            <div><strong>Férias (CLT):</strong> ${renderDetalheFeriasColabBadge(matricula)}</div>
             <div><strong>Aniversário:</strong> ${aniversarioTxt}</div>
             <div><strong>Responsável:</strong> ${escapeHTML(e.responsavel || '—')}</div>
             <div><strong>Cidade/UF:</strong> ${escapeHTML(e.cidade || '—')}${e.estado ? '/' + escapeHTML(e.estado) : ''}</div>
@@ -24475,7 +25253,26 @@ function calcularValidadeAsoPcmso(colaborador) {
     else if (diffDays <= 30) status = 'vencendo30';
     else if (diffDays <= 60) status = 'vencendo60';
 
-    return { status, ultimoExame: ultimo, diffDays, dataVencimento, periodicidadeMeses, motivo: ultimo.tipo_aso ? `ASO ${ultimo.tipo_aso.toUpperCase()}` : 'ASO' };
+    // Isenção Operacional de SST: colaboradores com ASO com vencimento durante o afastamento
+    // recebem a tag "Regularizar no Retorno de Férias" sem rebaixar a taxa de conformidade geral da obra
+    const emFeriasHoje = typeof colaboradorEstaEmFerias === 'function' && colaboradorEstaEmFerias(matricula, hoje);
+    const regFerias = typeof obterRegistroFeriasAtivo === 'function' ? obterRegistroFeriasAtivo(matricula, dataVencimento || hoje) : null;
+    const isencaoFerias = (status === 'vencido' || status === 'vencendo30') && (emFeriasHoje || regFerias);
+
+    let motivo = ultimo.tipo_aso ? `ASO ${ultimo.tipo_aso.toUpperCase()}` : 'ASO';
+    if (isencaoFerias) {
+        motivo = 'Regularizar no Retorno de Férias';
+    }
+
+    return { 
+        status, 
+        ultimoExame: ultimo, 
+        diffDays, 
+        dataVencimento, 
+        periodicidadeMeses, 
+        isencaoFerias: !!isencaoFerias, 
+        motivo 
+    };
 }
 
 // ============================================
@@ -24531,6 +25328,7 @@ function calcularEAtualizarValidadeAsos() {
             dataVencimento: r.dataVencimento,
             diffDays: r.diffDays,
             statusKey: r.status,
+            isencaoFerias: r.isencaoFerias || false,
             motivo: r.motivo
         };
     });
@@ -24597,7 +25395,10 @@ function renderTabelaValidadeAsos() {
     tbody.innerHTML = filtrados.map(d => {
         let badgeStatus = '';
         let badgePrazo = '—';
-        if (d.statusKey === 'vencido') {
+        if (d.isencaoFerias) {
+            badgeStatus = '<span style="background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;" title="Em gozo de férias. Regularizar no retorno sem rebaixar conformidade geral.">🏖️ RETORNO FÉRIAS</span>';
+            badgePrazo = `<span style="color:#0284c7; font-weight:700;">Regularizar no Retorno</span>`;
+        } else if (d.statusKey === 'vencido') {
             badgeStatus = '<span style="background:#fee2e2; color:#991b1b; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">🔴 VENCIDO</span>';
             badgePrazo = `<span style="color:#b91c1c; font-weight:700;">Há ${Math.abs(d.diffDays)} dia(s)</span>`;
         } else if (d.statusKey === 'vencendo30') {
@@ -32612,8 +33413,15 @@ function showDbPage(pageId) {
         else if (document.getElementById('ddsmaSubtabBtn-visao')?.classList.contains('active')) renderDdsPanel();
     }
     if (pageId === 'efetivo') {
-        if (!efetivoLoaded) { efetivoLoaded = true; loadEfetivoData(); }
-        else renderEfetivoPanel();
+        if (!efetivoLoaded) { 
+            efetivoLoaded = true; 
+            loadEfetivoData().then(() => {
+                if (document.getElementById('efetivoSubtabBtn-ferias')?.classList.contains('active')) renderFeriasPanel();
+            }); 
+        } else {
+            if (document.getElementById('efetivoSubtabBtn-ferias')?.classList.contains('active')) renderFeriasPanel();
+            else renderEfetivoPanel();
+        }
     }
     if (pageId === 'matrizrisco') {
         if (!matrizRiscoLoaded) {
@@ -50460,6 +51268,35 @@ async function atualizarCentralAlertasUsuario(forcarRecarregar = false) {
                     subtab: 'aso',
                     qtd: asosVencendo.length,
                     detalhes: asosVencendo.slice(0, 6).map(a => `${a.colab.nome} (Vence em ${a.diffDays}d)`)
+                });
+            }
+        }
+
+        // -------------------------------------------------------------
+        // REGRA: FÉRIAS E RÉGUA CONCESSIVA CLT (Art. 130 e 134)
+        // -------------------------------------------------------------
+        if (typeof allEfetivo !== 'undefined' && Array.isArray(allEfetivo) && allEfetivo.length > 0) {
+            const ativos = allEfetivo.filter(e => colaboradorEstaAtivo(e));
+            const feriasCriticas = [];
+
+            ativos.forEach(colab => {
+                const reg = typeof calcularReguaFeriasClt === 'function' ? calcularReguaFeriasClt(colab) : null;
+                if (reg && reg.statusClt === 'critico') {
+                    feriasCriticas.push(reg);
+                }
+            });
+
+            if (feriasCriticas.length > 0) {
+                todosAlertas.push({
+                    categoria: 'pessoas',
+                    severidade: 'critico',
+                    badge: 'Dobra CLT',
+                    titulo: 'Risco de Férias Dobradas (CLT Art. 134)',
+                    desc: `${feriasCriticas.length} colaborador(es) com ≥23 meses de admissão sem férias registradas. Risco iminente de dobra.`,
+                    rota: 'efetivo',
+                    subtab: 'ferias',
+                    qtd: feriasCriticas.length,
+                    detalhes: feriasCriticas.slice(0, 6).map(f => `${f.nome} (Admissão: ${formatSimpleDate(f.dataAdmissao)} • Limite 24m: ${formatSimpleDate(f.limiteConcessivoFatal)})`)
                 });
             }
         }

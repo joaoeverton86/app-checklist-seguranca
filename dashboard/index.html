@@ -8,7 +8,7 @@
     <meta http-equiv="Expires" content="0">
     <title>Painel Gerencial - Checklist Segurança</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=20261020_psico_fix">
+    <link rel="stylesheet" href="dashboard.css?v=20261020_ferias_clt">
 </head>
 <body>
 
@@ -2728,12 +2728,131 @@
                     <div class="db-filter-buttons">
                         <button id="efetivoSubtabBtn-visao" class="db-filter-btn active" onclick="showEfetivoSubtab('visao')">📊 Visão Geral</button>
                         <button id="efetivoSubtabBtn-colaboradores" class="db-filter-btn" onclick="showEfetivoSubtab('colaboradores')">👥 Colaboradores</button>
+                        <button id="efetivoSubtabBtn-ferias" class="db-filter-btn" onclick="showEfetivoSubtab('ferias')">🏖️ Férias & Afastamentos</button>
                         <button id="efetivoSubtabBtn-os" class="db-filter-btn" onclick="showEfetivoSubtab('os')">📄 Ordens de Serviço (NR-01)</button>
                         <button id="efetivoSubtabBtn-setores" class="db-filter-btn" onclick="showEfetivoSubtab('setores')">🏢 Setores</button>
                         <button id="efetivoSubtabBtn-ghe" class="db-filter-btn" onclick="showEfetivoSubtab('ghe')">🧪 GHE</button>
                         <button id="efetivoSubtabBtn-recomendacoes" class="db-filter-btn" onclick="showEfetivoSubtab('recomendacoes')">📋 Recomendações</button>
                         <button id="efetivoSubtabBtn-maoobra" class="db-filter-btn" onclick="showEfetivoSubtab('maoobra')">🗺️ Mão de Obra Local</button>
                         <button id="efetivoSubtabBtn-relatorio" class="db-filter-btn" onclick="showEfetivoSubtab('relatorio')">📄 Relatório</button>
+                    </div>
+                </div>
+
+                <!-- Subaba: Férias e Afastamentos (CLT Art. 130 / 134) -->
+                <div id="efetivoSubtab-ferias" style="display:none;">
+                    <div class="db-card" style="margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap;">
+                            <div>
+                                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                                    🏖️ Gestão de Férias e Afastamentos — Régua Concessiva CLT (Art. 130 &amp; 134)
+                                </h3>
+                                <p style="font-size: 12px; color: var(--text-light); margin: 4px 0 0; line-height: 1.4;">
+                                    Acompanhamento preventivo do período aquisitivo (12 meses) e limite concessivo fatal (24 meses da admissão). Evite multas trabalhistas e pagamento de férias em dobro, com isenção operacional automática em DDSMA, Treinamentos e ASOs no retorno.
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <button type="button" class="db-clear-btn" onclick="gerarExcelFerias()" title="Exportar planilha Excel de Férias e Régua CLT" style="border-color: #10b981; color: #047857; background: #ecfdf5; font-weight: 700; display: inline-flex; align-items: center; gap: 5px;">
+                                    📊 Gerar Excel
+                                </button>
+                                <button type="button" class="db-clear-btn" onclick="imprimirMapaFeriasClt()" title="Imprimir Mapa Operacional de Férias CLT">
+                                    🖨️ Imprimir Mapa
+                                </button>
+                                <button type="button" class="db-clear-btn" onclick="sincronizarFeriasCltComEfetivo()" title="Recalcular e sincronizar dados com base no efetivo ativo">
+                                    🔄 Sincronizar Base
+                                </button>
+                                <button type="button" class="db-apply-btn" onclick="abrirModalLancamentoFerias()" style="background: #0284c7; font-weight: 700;">
+                                    + Programar Férias
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Banner Didático de Regras Legais & Obra 2024-2026 -->
+                        <div style="margin-top: 14px; padding: 10px 14px; background: rgba(2, 132, 199, 0.05); border: 1px solid rgba(2, 132, 199, 0.2); border-left: 4px solid #0284c7; border-radius: 8px; font-size: 12px; line-height: 1.5; color: var(--text);">
+                            <strong>⚖️ Marco Regulatório CLT &amp; Isenções SST:</strong>
+                            <div style="margin-top: 3px; color: var(--text-light);">
+                                • <strong>Art. 130/134 CLT</strong>: Contratos iniciados em Julho/2024 atingem o prazo concessivo fatal de 24 meses em <strong>Julho/2026</strong>. Todo gozo deve ser concluído antes dessa data limite para evitar dobra.<br>
+                                • <strong>Semáforo CLT</strong>: 🟢 Normal (&lt;18m ou quitadas) | 🟡 Atenção / Programar (19 a 22m) | 🔴 Risco Crítico / Dobra CLT (≥23m sem gozo).<br>
+                                • <strong>Isenção Operacional de SST</strong>: Colaboradores em gozo têm ausência justificada em DDSMA/Treinamentos e recebem a tag de ASO <em>"Regularizar no Retorno de Férias"</em> sem rebaixar a taxa de conformidade da obra.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cards de Contadores e Semáforo CLT -->
+                    <div class="db-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px;">
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #dc2626; background: #fff5f5;">
+                            <div class="db-kpi-value" id="kpiFeriasCritico" style="font-size: 22px; color: #dc2626;">0</div>
+                            <div class="db-kpi-label" style="color: #991b1b; font-weight: 700;">🔴 Risco Dobra CLT (≥23m)</div>
+                        </div>
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #d97706; background: #fffbeb;">
+                            <div class="db-kpi-value" id="kpiFeriasAtencao" style="font-size: 22px; color: #d97706;">0</div>
+                            <div class="db-kpi-label" style="color: #92400e; font-weight: 700;">🟡 Atenção (19 a 22m)</div>
+                        </div>
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #059669; background: #f0fdf4;">
+                            <div class="db-kpi-value" id="kpiFeriasNormal" style="font-size: 22px; color: #059669;">0</div>
+                            <div class="db-kpi-label" style="color: #065f46; font-weight: 700;">🟢 Normal / Quitadas</div>
+                        </div>
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #0284c7; background: #f0f9ff;">
+                            <div class="db-kpi-value" id="kpiFeriasEmGozo" style="font-size: 22px; color: #0284c7;">0</div>
+                            <div class="db-kpi-label" style="color: #0369a1; font-weight: 700;">✈️ Em Gozo Hoje</div>
+                        </div>
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #7c3aed; background: #faf5ff;">
+                            <div class="db-kpi-value" id="kpiFeriasProgramadas" style="font-size: 22px; color: #7c3aed;">0</div>
+                            <div class="db-kpi-label" style="color: #5b21b6; font-weight: 700;">📅 Férias Programadas</div>
+                        </div>
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #475569; background: #f8fafc;">
+                            <div class="db-kpi-value" id="kpiFeriasConcluidas" style="font-size: 22px; color: #475569;">0</div>
+                            <div class="db-kpi-label" style="color: #334155; font-weight: 700;">✅ Férias Concluídas</div>
+                        </div>
+                    </div>
+
+                    <!-- Card da Tabela de Controle Operacional de Férias -->
+                    <div class="db-chart-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
+                            <!-- Pílulas de Filtro Rápido -->
+                            <div id="filtroFeriasPills" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                <button type="button" class="sector-pill active" onclick="filtrarTabelaFerias('todos', this)">Todos (<span id="countFeriasTodos">0</span>)</button>
+                                <button type="button" class="sector-pill" style="border-color:#fca5a5; color:#dc2626;" onclick="filtrarTabelaFerias('critico', this)">🔴 Risco Dobra (<span id="countFeriasCritico">0</span>)</button>
+                                <button type="button" class="sector-pill" style="border-color:#fde68a; color:#d97706;" onclick="filtrarTabelaFerias('atencao', this)">🟡 Atenção (<span id="countFeriasAtencao">0</span>)</button>
+                                <button type="button" class="sector-pill" style="border-color:#a7f3d0; color:#059669;" onclick="filtrarTabelaFerias('normal', this)">🟢 Normal (<span id="countFeriasNormal">0</span>)</button>
+                                <button type="button" class="sector-pill" style="border-color:#7dd3fc; color:#0284c7;" onclick="filtrarTabelaFerias('emGozo', this)">✈️ Em Gozo (<span id="countFeriasEmGozo">0</span>)</button>
+                                <button type="button" class="sector-pill" style="border-color:#c4b5fd; color:#7c3aed;" onclick="filtrarTabelaFerias('programadas', this)">📅 Programadas (<span id="countFeriasProgramadas">0</span>)</button>
+                                <button type="button" class="sector-pill" style="border-color:#cbd5e1; color:#475569;" onclick="filtrarTabelaFerias('concluidas', this)">✅ Concluídas (<span id="countFeriasConcluidas">0</span>)</button>
+                            </div>
+                            <!-- Busca e Filtro de Setor -->
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <select id="feriasFiltroSetor" onchange="renderTabelaFerias()" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text);">
+                                    <option value="">🏢 Todos os Setores</option>
+                                </select>
+                                <input type="text" id="feriasSearchInput" placeholder="Buscar colaborador, matrícula ou função..." oninput="renderTabelaFerias()" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; width: 230px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                            </div>
+                        </div>
+
+                        <!-- Tabela Responsiva de Férias e Régua CLT -->
+                        <div style="overflow-x: auto; max-height: 580px;">
+                            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
+                                <thead>
+                                    <tr style="background: var(--bg); border-bottom: 2px solid var(--border); color: var(--text-light); text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;">
+                                        <th style="padding: 9px 12px;">Matrícula</th>
+                                        <th style="padding: 9px 12px;">Colaborador</th>
+                                        <th style="padding: 9px 12px;">Função / Setor</th>
+                                        <th style="padding: 9px 12px;">Admissão</th>
+                                        <th style="padding: 9px 12px;">Tempo de Casa</th>
+                                        <th style="padding: 9px 12px;">Limite Fatal 24m</th>
+                                        <th style="padding: 9px 12px; min-width: 170px;">Régua Concessiva CLT</th>
+                                        <th style="padding: 9px 12px; text-align: center;">Status Gozo</th>
+                                        <th style="padding: 9px 12px; text-align: center;">Isenção SST</th>
+                                        <th style="padding: 9px 12px; text-align: center;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaFeriasCorpo">
+                                    <tr>
+                                        <td colspan="10" style="padding: 24px; text-align: center; color: var(--text-light);">
+                                            Carregando dados de férias e régua CLT...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
@@ -8848,7 +8967,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js"></script>
     <script src="logo_cop_base64.js?v=20261015_v197"></script>
-    <script src="dashboard.js?v=20261020_psico_fix"></script>
+    <script src="dashboard.js?v=20261020_ferias_clt"></script>
     <script src="placar_lideres.js?v=20261015_v197"></script>
 <script>
 function filterMatrizEpi(q) {
@@ -9821,6 +9940,101 @@ function filterMatrizEpi(q) {
             <button type="button" class="db-apply-btn" id="sinPsico_btnConfirmar" style="background: #059669; font-weight: 700; padding: 8px 16px;" onclick="confirmarSinalizarPsicoEmDia()">
                 💾 Confirmar &amp; Regularizar
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Programar / Registrar Férias e Afastamentos (CLT) -->
+<div id="modalLancamentoFerias" class="placar-modal-overlay" style="display:none;" onclick="if(event.target===this) fecharModalLancamentoFerias()">
+    <div class="placar-modal-card" style="max-width: 580px;" onclick="event.stopPropagation()">
+        <div class="placar-modal-header" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);">
+            <div>
+                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #fff;">🏖️ Programar / Registrar Férias (CLT)</h3>
+                <p style="margin: 3px 0 0; font-size: 12px; color: #bae6fd;">Régua Concessiva de 24 Meses &amp; Afastamentos Operacionais</p>
+            </div>
+            <button type="button" class="placar-modal-close" onclick="fecharModalLancamentoFerias()">&times;</button>
+        </div>
+        <div class="placar-modal-body" style="padding: 18px 20px;">
+            <input type="hidden" id="feriasForm_id">
+            
+            <!-- Seleção do Colaborador -->
+            <div style="margin-bottom: 12px;">
+                <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Colaborador *</label>
+                <select id="feriasForm_matricula" onchange="onColabFeriasSelectChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                    <option value="">Selecione o colaborador...</option>
+                </select>
+            </div>
+
+            <!-- Card de Resumo da Régua CLT do Colaborador Selecionado -->
+            <div id="feriasForm_resumoColabCard" style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 14px; font-size: 12px; display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+                    <div><strong id="feriasForm_lblNome" style="font-size: 13.5px; color: var(--text);">—</strong></div>
+                    <span id="feriasForm_badgeStatusClt" class="badge-ferias-normal">—</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; color: var(--text-light); font-size: 11.5px;">
+                    <div>Matrícula: <b id="feriasForm_lblMatricula" style="color:var(--primary);">—</b></div>
+                    <div>Setor: <b id="feriasForm_lblSetor">—</b></div>
+                    <div>Admissão: <b id="feriasForm_lblAdmissao">—</b></div>
+                    <div>Tempo de Casa: <b id="feriasForm_lblTempoCasa">—</b></div>
+                    <div>Limite Fatal (24m): <b id="feriasForm_lblLimiteFatal" style="color:#b91c1c;">—</b></div>
+                    <div>Dias até a Dobra CLT: <b id="feriasForm_lblDiasDobra">—</b></div>
+                </div>
+            </div>
+
+            <!-- Tipo de Afastamento & Status -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Tipo de Afastamento *</label>
+                    <select id="feriasForm_tipoAfastamento" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                        <option value="ferias" selected>🏖️ Férias Regulamentares</option>
+                        <option value="licenca_medica">🤒 Licença Médica / INSS</option>
+                        <option value="licenca_maternidade">👶 Licença Maternidade</option>
+                        <option value="outros">📋 Outro Afastamento Legal</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Status da Operação *</label>
+                    <select id="feriasForm_status" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                        <option value="programada" selected>📅 Programada (Agendada)</option>
+                        <option value="em_gozo">✈️ Em Gozo (Ativo no Momento)</option>
+                        <option value="concluida">✅ Concluída (Período Gozado)</option>
+                        <option value="pendente">⏳ Pendente (Aguardando Escala)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Datas de Início, Fim e Dias -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Data de Início *</label>
+                    <input type="date" id="feriasForm_dataInicio" onchange="onDatasFeriasChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Data de Fim *</label>
+                    <input type="date" id="feriasForm_dataFim" onchange="onDatasFeriasChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Dias de Gozo</label>
+                    <input type="number" id="feriasForm_diasGozo" min="1" max="60" value="30" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                </div>
+            </div>
+
+            <!-- Observações & Abono Pecuniário -->
+            <div style="margin-bottom: 14px;">
+                <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Observações / Período Aquisitivo</label>
+                <textarea id="feriasForm_obs" rows="2" placeholder="Ex: 1º Período Aquisitivo 2024/2025. Venda de 10 dias de abono pecuniário conforme CLT..." style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; font-family: inherit; resize: vertical; background: var(--card); color: var(--text);"></textarea>
+            </div>
+
+            <div id="feriasForm_statusMsg" style="font-size: 12px; min-height: 18px; text-align: center;"></div>
+        </div>
+        <div class="placar-modal-footer" style="padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; background: var(--bg);">
+            <button type="button" class="db-clear-btn" id="btnExcluirFeriasModal" style="color: #dc2626; border-color: #fca5a5; display: none;" onclick="excluirLancamentoFeriasAtual()">
+                🗑️ Excluir
+            </button>
+            <div style="display: flex; gap: 8px; margin-left: auto;">
+                <button type="button" class="db-clear-btn" onclick="fecharModalLancamentoFerias()">Cancelar</button>
+                <button type="button" class="db-apply-btn" id="btnSalvarFeriasModal" style="background: #0284c7; font-weight: 700;" onclick="salvarLancamentoFerias()">💾 Salvar Programação</button>
+            </div>
         </div>
     </div>
 </div>

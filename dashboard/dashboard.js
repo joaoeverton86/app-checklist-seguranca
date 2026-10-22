@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const VERSAO_PAINEL = 'v208';
+const VERSAO_PAINEL = 'v210';
 const DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
@@ -4767,7 +4767,7 @@ function onTreinamentosFiltroAnoMesChange() {
 async function loadTreinamentosData() {
     const statusEl = document.getElementById('treinamentosImportStatus');
     try {
-        const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento, ddsTemas, ddsFrentesConfig, ddsHistorico, ddsFrentesAlias, relatorioConfig] = await Promise.all([
+        const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento, ddsTemas, ddsFrentesConfig, ddsHistorico, ddsFrentesAlias, relatorioConfig, regras] = await Promise.all([
             supabaseFetchCacheado('treinamentos_realizados', '?select=*'),
             supabaseFetchCacheado('treinamentos_catalogo', '?select=*'),
             supabaseFetchCacheado('treinamentos_status', '?select=*'),
@@ -4779,7 +4779,8 @@ async function loadTreinamentosData() {
             supabaseFetchCacheado('dds_frentes_config', '?select=*'),
             supabaseFetchCacheado('dds_historico_agregado', '?select=*'),
             supabaseFetchCacheado('dds_frentes_alias', '?select=*'),
-            supabaseFetchCacheado('relatorio_mensal_config', '?select=*')
+            supabaseFetchCacheado('relatorio_mensal_config', '?select=*'),
+            supabaseFetchCacheado('treinamentos_regras_recomendacao', '?select=*&order=created_at.desc').catch(() => [])
         ]);
         allTreinamentosRealizados = realizados;
         allTreinamentosCatalogo = catalogo;
@@ -4793,6 +4794,7 @@ async function loadTreinamentosData() {
         allDdsHistoricoAgregado = ddsHistorico;
         allDdsFrentesAlias = ddsFrentesAlias;
         allRelatorioMensalConfig = relatorioConfig;
+        allTreinamentosRegras = regras || [];
         // Precisa do efetivo pra saber quem realmente está ativo hoje (ver comentário
         // em renderTreinamentosPanel), e do catálogo de GHE pra preencher Setor/Cargo/
         // Agentes/EPIs/EPCs na Ordem de Serviço (construirFolhaOrdemServico) - carrega os
@@ -4830,6 +4832,12 @@ async function loadTreinamentosData() {
         renderDdsFechamentoSemanal();
         renderDdsCalendarioTemas();
         renderDdsLancamentosRecentes();
+        if (typeof renderTreinamentoRegrasTab === 'function' && document.getElementById('treinSubtab-regras')?.style.display === 'block') {
+            renderTreinamentoRegrasTab();
+        }
+        if (typeof renderTreinamentoGapsTab === 'function' && document.getElementById('treinSubtab-gaps')?.style.display === 'block') {
+            renderTreinamentoGapsTab();
+        }
     } catch (err) {
         console.error('Erro ao carregar dados de treinamentos:', err);
         if (statusEl) statusEl.textContent = '❌ Falha ao carregar dados de treinamentos.';
@@ -4841,7 +4849,7 @@ async function loadTreinamentosData() {
 // showDbPage - se o gráfico foi criado com o canvas escondido em outra aba, sem isso
 // ficaria em branco pra sempre).
 function showTreinSubtab(tab) {
-    ['visao', 'lancar', 'cronograma', 'equipes', 'registro', 'kits', 'historico', 'catalogo', 'relatorio', 'pat'].forEach(t => {
+    ['visao', 'lancar', 'cronograma', 'equipes', 'registro', 'kits', 'historico', 'catalogo', 'relatorio', 'pat', 'regras', 'gaps'].forEach(t => {
         const content = document.getElementById('treinSubtab-' + t);
         const btn = document.getElementById('treinSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -4853,13 +4861,20 @@ function showTreinSubtab(tab) {
     if (tab === 'equipes') { popularEquipesResponsavelDatalist(); renderEquipeAtual(); }
     if (tab === 'relatorio') popularRelatorioMensalDefaults();
     if (tab === 'pat') renderPlanoAnualTreinamento();
-    // A sub-aba "dds" saiu daqui - agora é a página própria "DDSMA" (ver
-    // showDdsmaSubtab, showDbPage e o menu lateral).
-    // Não força registroDetalheCard a esconder aqui - a busca/lista que carrega uma
-    // sessão agora mora em Histórico, então trocar pra Registro deve preservar o que já
-    // foi carregado (a visibilidade do card é controlada por quem carrega a sessão:
-    // carregarSessaoRegistro/carregarSessaoNovaRegistro), não pelo simples ato de trocar
-    // de aba.
+    if (tab === 'regras' && typeof renderTreinamentoRegrasTab === 'function') {
+        if (typeof recarregarRegrasRecomendacao === 'function' && (!allTreinamentosRegras || allTreinamentosRegras.length === 0)) {
+            recarregarRegrasRecomendacao();
+        } else {
+            renderTreinamentoRegrasTab();
+        }
+    }
+    if (tab === 'gaps' && typeof renderTreinamentoGapsTab === 'function') {
+        if (typeof recarregarRegrasRecomendacao === 'function' && (!allTreinamentosRegras || allTreinamentosRegras.length === 0)) {
+            recarregarRegrasRecomendacao().then(() => renderTreinamentoGapsTab());
+        } else {
+            renderTreinamentoGapsTab();
+        }
+    }
     if (tab === 'registro') { popularFiltroAnoRegistroLote(); }
     if (tab === 'kits') { inicializarKitsTab(); }
 }

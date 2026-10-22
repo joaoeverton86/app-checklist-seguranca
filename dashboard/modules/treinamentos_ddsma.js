@@ -1,4 +1,10 @@
 // ==============================================================================
+// MODULO: TREINAMENTOS NR, CRONOGRAMA, MATRIZ, DDS E DDSMA (v210)
+// Encapsulado em IIFE para isolamento de escopo lexical e imunidade a colisões
+// ==============================================================================
+(function(window) {
+
+// ==============================================================================
 // MODULO: TREINAMENTOS NR, CRONOGRAMA, MATRIZ, DDS E DDSMA
 // Extraido de dashboard.js para arquitetura modular de alta performance
 // ==============================================================================
@@ -18,6 +24,14 @@ let allTreinamentosCatalogo = [];
 let allTreinamentosStatus = [];
 let allTreinamentosCronograma = [];
 let allTreinamentosConvocados = [];
+let allTreinamentosRegras = [];
+let gapFiltroGhe = '';
+let gapFiltroFuncao = '';
+let gapFiltroStatus = 'todas_pendencias';
+let gapFiltroBusca = '';
+let gapSelecionados = new Set();
+let regraFiltroTipoAtual = 'todas';
+let regraEmEdicaoId = null;
 // DDS (Diálogo de Saúde, Segurança e Meio Ambiente) - mesmo padrão dessas tabelas de cima:
 // carregado sob demanda junto com o resto de Treinamentos (loadTreinamentosData), tabela
 // denormalizada de propósito (1 linha por participante por dia, igual
@@ -234,7 +248,7 @@ function onTreinamentosFiltroAnoMesChange() {
 async function loadTreinamentosData() {
     const statusEl = document.getElementById('treinamentosImportStatus');
     try {
-        const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento, ddsTemas, ddsFrentesConfig, ddsHistorico, ddsFrentesAlias, relatorioConfig] = await Promise.all([
+        const [realizados, catalogo, status, cronograma, convocados, ddsRealizados, ddsFechamento, ddsTemas, ddsFrentesConfig, ddsHistorico, ddsFrentesAlias, relatorioConfig, regras] = await Promise.all([
             supabaseFetchCacheado('treinamentos_realizados', '?select=*'),
             supabaseFetchCacheado('treinamentos_catalogo', '?select=*'),
             supabaseFetchCacheado('treinamentos_status', '?select=*'),
@@ -246,7 +260,8 @@ async function loadTreinamentosData() {
             supabaseFetchCacheado('dds_frentes_config', '?select=*'),
             supabaseFetchCacheado('dds_historico_agregado', '?select=*'),
             supabaseFetchCacheado('dds_frentes_alias', '?select=*'),
-            supabaseFetchCacheado('relatorio_mensal_config', '?select=*')
+            supabaseFetchCacheado('relatorio_mensal_config', '?select=*'),
+            supabaseFetchCacheado('treinamentos_regras_recomendacao', '?select=*&order=created_at.desc').catch(() => [])
         ]);
         allTreinamentosRealizados = realizados;
         allTreinamentosCatalogo = catalogo;
@@ -260,6 +275,7 @@ async function loadTreinamentosData() {
         allDdsHistoricoAgregado = ddsHistorico;
         allDdsFrentesAlias = ddsFrentesAlias;
         allRelatorioMensalConfig = relatorioConfig;
+        allTreinamentosRegras = regras || [];
         // Precisa do efetivo pra saber quem realmente está ativo hoje (ver comentário
         // em renderTreinamentosPanel), e do catálogo de GHE pra preencher Setor/Cargo/
         // Agentes/EPIs/EPCs na Ordem de Serviço (construirFolhaOrdemServico) - carrega os
@@ -297,6 +313,13 @@ async function loadTreinamentosData() {
         renderDdsFechamentoSemanal();
         renderDdsCalendarioTemas();
         renderDdsLancamentosRecentes();
+        // Self-heal: se o usuário já estiver na subaba de regras ou gaps, renderiza imediatamente agora que os dados chegaram
+        if (document.getElementById('treinSubtab-regras')?.style.display === 'block') {
+            renderTreinamentoRegrasTab();
+        }
+        if (document.getElementById('treinSubtab-gaps')?.style.display === 'block') {
+            renderTreinamentoGapsTab();
+        }
     } catch (err) {
         console.error('Erro ao carregar dados de treinamentos:', err);
         if (statusEl) statusEl.textContent = '❌ Falha ao carregar dados de treinamentos.';
@@ -308,7 +331,7 @@ async function loadTreinamentosData() {
 // showDbPage - se o gráfico foi criado com o canvas escondido em outra aba, sem isso
 // ficaria em branco pra sempre).
 function showTreinSubtab(tab) {
-    ['visao', 'lancar', 'cronograma', 'equipes', 'registro', 'kits', 'historico', 'catalogo', 'relatorio', 'pat'].forEach(t => {
+    ['visao', 'lancar', 'cronograma', 'equipes', 'registro', 'kits', 'historico', 'catalogo', 'relatorio', 'pat', 'regras', 'gaps'].forEach(t => {
         const content = document.getElementById('treinSubtab-' + t);
         const btn = document.getElementById('treinSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -320,6 +343,20 @@ function showTreinSubtab(tab) {
     if (tab === 'equipes') { popularEquipesResponsavelDatalist(); renderEquipeAtual(); }
     if (tab === 'relatorio') popularRelatorioMensalDefaults();
     if (tab === 'pat') renderPlanoAnualTreinamento();
+    if (tab === 'regras') {
+        if (!allTreinamentosRegras || allTreinamentosRegras.length === 0) {
+            recarregarRegrasRecomendacao();
+        } else {
+            renderTreinamentoRegrasTab();
+        }
+    }
+    if (tab === 'gaps') {
+        if (!allTreinamentosRegras || allTreinamentosRegras.length === 0 || !allEfetivo || allEfetivo.length === 0) {
+            recarregarRegrasRecomendacao().then(() => renderTreinamentoGapsTab());
+        } else {
+            renderTreinamentoGapsTab();
+        }
+    }
     // A sub-aba "dds" saiu daqui - agora é a página própria "DDSMA" (ver
     // showDdsmaSubtab, showDbPage e o menu lateral).
     // Não força registroDetalheCard a esconder aqui - a busca/lista que carrega uma
@@ -9082,3 +9119,1464 @@ async function salvarCatalogoTreinamento() {
         statusEl.style.color = 'var(--danger)';
     }
 }
+
+// ==============================================================================
+// MÓDULO INTELIGENTE DE RECOMENDAÇÃO E ANÁLISE DE GAPS DE TREINAMENTOS (NR-01)
+// Fase 1: Parametrização dinâmica por Regra Geral, GHE, Função ou Colaborador,
+// cruzamento relacional com o efetivo ativo e diagnóstico de conformidade.
+// ==============================================================================
+
+// Helpers utilitários de data e formatação
+function formatarDataIsoBR(isoStr) {
+    if (!isoStr) return '-';
+    const partes = String(isoStr).slice(0, 10).split('-');
+    if (partes.length !== 3) return isoStr;
+    return `${partes[2]}/${partes[1]}/${partes[0]}`;
+}
+
+function somarMesesDataIso(isoStr, meses) {
+    if (!isoStr || !meses) return null;
+    const partes = String(isoStr).slice(0, 10).split('-');
+    if (partes.length !== 3) return null;
+    const ano = parseInt(partes[0], 10);
+    const mes = parseInt(partes[1], 10) - 1;
+    const dia = parseInt(partes[2], 10);
+
+    const d = new Date(ano, mes + parseInt(meses, 10), dia);
+    const a = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const diaStr = String(d.getDate()).padStart(2, '0');
+    return `${a}-${m}-${diaStr}`;
+}
+
+function calcularDiferencaDiasDatas(isoA, isoB) {
+    if (!isoA || !isoB) return 0;
+    const dA = new Date(isoA.slice(0, 10) + 'T00:00:00');
+    const dB = new Date(isoB.slice(0, 10) + 'T00:00:00');
+    return Math.round((dB - dA) / (1000 * 60 * 60 * 24));
+}
+
+function obterNomeCursoCatalogo(cod) {
+    if (!cod) return 'Treinamento não identificado';
+    const curso = allTreinamentosCatalogo.find(c => String(c.id) === String(cod));
+    return curso ? curso.nome : `Treinamento Cód. ${cod}`;
+}
+
+function obterPeriodicidadeCursoCatalogo(cod) {
+    if (!cod) return null;
+    const curso = allTreinamentosCatalogo.find(c => String(c.id) === String(cod));
+    return curso && curso.meses_validade ? parseInt(curso.meses_validade, 10) : null;
+}
+
+function obterNomeGhePorCodigo(gheCod) {
+    if (!gheCod) return 'GHE Não Informado';
+    const item = allGheCatalogo.find(g => String(g.id).trim() === String(gheCod).trim() || String(g.nome).trim() === String(gheCod).trim());
+    if (item) return item.nome ? `${item.id} — ${item.nome}` : item.id;
+    return `GHE ${gheCod}`;
+}
+
+// ------------------------------------------------------------------------------
+// SUB-ABA: REGRAS DE RECOMENDAÇÃO (GERENCIAMENTO / CRUD)
+// ------------------------------------------------------------------------------
+async function recarregarRegrasRecomendacao() {
+    try {
+        invalidarCacheTabela('treinamentos_regras_recomendacao');
+        allTreinamentosRegras = await supabaseFetch('treinamentos_regras_recomendacao', '?select=*&order=created_at.desc') || [];
+        if (typeof allEfetivo === 'undefined' || !allEfetivo || allEfetivo.length === 0) {
+            allEfetivo = await supabaseFetchCacheado('colaboradores_efetivo', '?select=*').catch(() => []) || [];
+        }
+        if (typeof allGheCatalogo === 'undefined' || !allGheCatalogo || allGheCatalogo.length === 0) {
+            allGheCatalogo = await supabaseFetchCacheado('ghe_catalogo', '?select=*').catch(() => []) || [];
+        }
+        if (typeof allTreinamentosCatalogo === 'undefined' || !allTreinamentosCatalogo || allTreinamentosCatalogo.length === 0) {
+            allTreinamentosCatalogo = await supabaseFetchCacheado('treinamentos_catalogo', '?select=*').catch(() => []) || [];
+        }
+        renderTreinamentoRegrasTab();
+        if (document.getElementById('treinSubtab-gaps')?.style.display === 'block') {
+            renderTreinamentoGapsTab();
+        }
+    } catch (err) {
+        console.error('Erro ao recarregar regras de recomendação:', err);
+    }
+}
+
+function filtrarTipoRegraTab(tipo) {
+    regraFiltroTipoAtual = tipo;
+    ['todas', 'TODOS', 'GHE', 'FUNCAO', 'COLABORADOR'].forEach(t => {
+        document.getElementById('btnFiltroRegra-' + t)?.classList.toggle('active', t === tipo);
+    });
+    renderTreinamentoRegrasTab();
+}
+
+function renderTreinamentoRegrasTab() {
+    const tbody = document.getElementById('tabelaRegrasRecomendacaoCorpo');
+    const contadorEl = document.getElementById('regrasContador');
+    if (!tbody) return;
+
+    const termoBusca = (document.getElementById('filtroRegraBusca')?.value || '').trim().toLowerCase();
+
+    // Filtra regras
+    const regrasFiltradas = allTreinamentosRegras.filter(r => {
+        if (regraFiltroTipoAtual !== 'todas' && r.tipo_regra !== regraFiltroTipoAtual) {
+            return false;
+        }
+        if (termoBusca) {
+            const nomeCurso = obterNomeCursoCatalogo(r.treinamento_cod).toLowerCase();
+            const alvo = String(r.alvo_valor || '').toLowerCase();
+            const cod = String(r.treinamento_cod || '').toLowerCase();
+            if (!nomeCurso.includes(termoBusca) && !alvo.includes(termoBusca) && !cod.includes(termoBusca)) {
+                return false;
+            }
+        }
+        return true;
+    });
+
+    if (contadorEl) contadorEl.textContent = String(regrasFiltradas.length);
+
+    if (regrasFiltradas.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align:center; padding:32px 16px; color:var(--text-light);">
+                    <div style="font-size:28px; margin-bottom:8px;">📋</div>
+                    <div style="font-weight:700; font-size:14px; color:var(--text);">Nenhuma regra encontrada</div>
+                    <div style="font-size:12px; margin-top:4px;">
+                        ${allTreinamentosRegras.length === 0 ? 'Cadastre a primeira regra de recomendação no botão <b>➕ Nova Regra</b> acima.' : 'Nenhuma regra corresponde aos filtros aplicados.'}
+                    </div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = regrasFiltradas.map(r => {
+        // Label do Tipo com badge estilizado
+        let tipoBadge = '';
+        let alvoLabel = '';
+
+        if (r.tipo_regra === 'TODOS') {
+            tipoBadge = `<span class="badge-regra-tipo badge-regra-todos">🌐 Geral</span>`;
+            alvoLabel = `<strong>Todo o Efetivo Ativo</strong> <span style="font-size:11px; color:var(--text-light);">(Todos os colaboradores)</span>`;
+        } else if (r.tipo_regra === 'GHE') {
+            tipoBadge = `<span class="badge-regra-tipo badge-regra-ghe">👥 GHE</span>`;
+            alvoLabel = `<strong>${escapeHTML(obterNomeGhePorCodigo(r.alvo_valor))}</strong>`;
+        } else if (r.tipo_regra === 'FUNCAO') {
+            tipoBadge = `<span class="badge-regra-tipo badge-regra-funcao">💼 Cargo</span>`;
+            alvoLabel = `<strong>${escapeHTML(r.alvo_valor)}</strong>`;
+        } else if (r.tipo_regra === 'COLABORADOR') {
+            tipoBadge = `<span class="badge-regra-tipo badge-regra-colaborador">👤 Individual</span>`;
+            const cAtivo = allEfetivo.find(e => String(e.id) === String(r.alvo_valor));
+            alvoLabel = `<strong>Matrícula ${escapeHTML(r.alvo_valor)}</strong> ${cAtivo ? `— ${escapeHTML(cAtivo.nome)}` : ''}`;
+        }
+
+        const nomeCurso = obterNomeCursoCatalogo(r.treinamento_cod);
+        const perPadrao = obterPeriodicidadeCursoCatalogo(r.treinamento_cod);
+        const perExibida = r.periodicidade_customizada_meses
+            ? `<span style="font-weight:700; color:#4f46e5;">${r.periodicidade_customizada_meses} meses</span> <span style="font-size:10px; color:var(--text-light);">(customizada)</span>`
+            : (perPadrao ? `${perPadrao} meses <span style="font-size:10px; color:var(--text-light);">(catálogo)</span>` : '<span style="color:var(--text-light);">Único / Sem prazo</span>');
+
+        const admissaoBadge = r.obrigatorio_admissao !== false
+            ? `<span style="display:inline-block; padding:2px 7px; border-radius:999px; font-size:11px; font-weight:700; background:#ecfdf5; color:#047857; border:1px solid #a7f3d0;">Sim</span>`
+            : `<span style="display:inline-block; padding:2px 7px; border-radius:999px; font-size:11px; font-weight:600; background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0;">Não</span>`;
+
+        const isAtivo = r.ativo !== false;
+        const statusBadge = isAtivo
+            ? `<button onclick="alternarStatusRegraRecomendacao('${r.id}', false)" title="Clique para desativar" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; cursor:pointer;">● Ativa</button>`
+            : `<button onclick="alternarStatusRegraRecomendacao('${r.id}', true)" title="Clique para ativar" style="background:#f1f5f9; color:#94a3b8; border:1px solid #cbd5e1; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; cursor:pointer;">○ Inativa</button>`;
+
+        return `
+            <tr style="border-bottom:1px solid var(--border); ${!isAtivo ? 'opacity:0.6;' : ''}">
+                <td style="padding:10px 12px;">${tipoBadge}</td>
+                <td style="padding:10px 12px;">${alvoLabel}</td>
+                <td style="padding:10px 12px;">
+                    <div style="font-weight:600; color:var(--text);">${escapeHTML(nomeCurso)}</div>
+                    <div style="font-size:11px; color:var(--text-light);">Cód: ${escapeHTML(r.treinamento_cod)}</div>
+                </td>
+                <td style="padding:10px 12px; text-align:center;">${perExibida}</td>
+                <td style="padding:10px 12px; text-align:center;">${admissaoBadge}</td>
+                <td style="padding:10px 12px; text-align:center;">${statusBadge}</td>
+                <td style="padding:10px 12px; text-align:center; white-space:nowrap;">
+                    <button class="db-clear-btn" onclick="abrirModalNovaRegra('${r.id}')" style="padding:4px 8px; font-size:11.5px; margin-right:4px;" title="Editar regra">
+                        ✏️ Editar
+                    </button>
+                    <button class="db-clear-btn" onclick="excluirRegraRecomendacao('${r.id}')" style="padding:4px 8px; font-size:11.5px; color:var(--danger); border-color:var(--danger);" title="Excluir regra">
+                        🗑️
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function abrirModalNovaRegra(regraId = null) {
+    regraEmEdicaoId = regraId ? String(regraId) : null;
+    const modal = document.getElementById('modalTreinamentoRegra');
+    const titulo = document.getElementById('modalTreinamentoRegraTitulo');
+    const btnExcluir = document.getElementById('formRegra_btnExcluir');
+    const statusMsg = document.getElementById('formRegra_statusMsg');
+    if (statusMsg) statusMsg.textContent = '';
+
+    // Assegura catálogos carregados para os selects
+    if (!allTreinamentosCatalogo || allTreinamentosCatalogo.length === 0) {
+        allTreinamentosCatalogo = await supabaseFetchCacheado('treinamentos_catalogo', '?select=*').catch(() => []) || [];
+    }
+    if (!allGheCatalogo || allGheCatalogo.length === 0) {
+        allGheCatalogo = await supabaseFetchCacheado('ghe_catalogo', '?select=*').catch(() => []) || [];
+    }
+    if (!allEfetivo || allEfetivo.length === 0) {
+        allEfetivo = await supabaseFetchCacheado('colaboradores_efetivo', '?select=*').catch(() => []) || [];
+    }
+
+    // Popula dropdown de GHE
+    const selGhe = document.getElementById('formRegra_alvoGhe');
+    if (selGhe) {
+        selGhe.innerHTML = '<option value="">Selecione o GHE...</option>';
+        const ghesSet = new Map();
+        allGheCatalogo.forEach(g => {
+            const cod = String(g.id).trim();
+            if (cod) ghesSet.set(cod, g.nome ? `${cod} — ${g.nome}` : `GHE ${cod}`);
+        });
+        // Complementa com GHEs de colaboradores_efetivo caso haja algum não cadastrado no catálogo
+        allEfetivo.forEach(e => {
+            if (colaboradorEstaAtivo(e) && e.ghe) {
+                const cod = String(e.ghe).trim();
+                if (cod && !ghesSet.has(cod)) ghesSet.set(cod, `GHE ${cod}`);
+            }
+        });
+        Array.from(ghesSet.entries()).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true })).forEach(([cod, label]) => {
+            const opt = document.createElement('option');
+            opt.value = cod;
+            opt.textContent = label;
+            selGhe.appendChild(opt);
+        });
+    }
+
+    // Popula dropdown de Funções/Cargos únicos
+    const selFuncao = document.getElementById('formRegra_alvoFuncao');
+    if (selFuncao) {
+        selFuncao.innerHTML = '<option value="">Selecione o Cargo / Função...</option>';
+        const funcoesSet = new Set();
+        allEfetivo.forEach(e => {
+            if (colaboradorEstaAtivo(e) && e.funcao) {
+                const f = e.funcao.trim();
+                if (f) funcoesSet.add(f);
+            }
+        });
+        Array.from(funcoesSet).sort().forEach(func => {
+            const opt = document.createElement('option');
+            opt.value = func;
+            opt.textContent = func;
+            selFuncao.appendChild(opt);
+        });
+    }
+
+    // Popula dropdown de Colaboradores Ativos
+    const selColab = document.getElementById('formRegra_alvoColaborador');
+    if (selColab) {
+        selColab.innerHTML = '<option value="">Selecione o Colaborador...</option>';
+        const ativos = allEfetivo.filter(e => colaboradorEstaAtivo(e))
+            .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+        ativos.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = String(c.id);
+            opt.textContent = `[${c.id}] ${c.nome} (${c.funcao || 'Sem cargo'})`;
+            selColab.appendChild(opt);
+        });
+    }
+
+    // Popula dropdown de Treinamentos do Catálogo
+    const selTrein = document.getElementById('formRegra_treinamentoCod');
+    if (selTrein) {
+        selTrein.innerHTML = '<option value="">Selecione o Treinamento...</option>';
+        const cursosOrdenados = [...allTreinamentosCatalogo].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+        cursosOrdenados.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = String(c.id);
+            const valLabel = c.meses_validade ? ` | Validade: ${c.meses_validade}m` : ' | Sem validade';
+            opt.textContent = `[${c.id}] ${c.nome}${valLabel}`;
+            selTrein.appendChild(opt);
+        });
+    }
+
+    if (regraEmEdicaoId) {
+        const regra = allTreinamentosRegras.find(r => String(r.id) === regraEmEdicaoId);
+        if (!regra) return;
+        if (titulo) titulo.textContent = '✏️ Editar Regra de Recomendação';
+        if (btnExcluir) btnExcluir.style.display = 'inline-block';
+        document.getElementById('formRegra_id').value = regra.id;
+        document.getElementById('formRegra_tipo').value = regra.tipo_regra || 'TODOS';
+        onTipoRegraChange();
+
+        if (regra.tipo_regra === 'GHE' && selGhe) selGhe.value = regra.alvo_valor || '';
+        if (regra.tipo_regra === 'FUNCAO' && selFuncao) selFuncao.value = regra.alvo_valor || '';
+        if (regra.tipo_regra === 'COLABORADOR' && selColab) selColab.value = regra.alvo_valor || '';
+
+        if (selTrein) selTrein.value = String(regra.treinamento_cod || '');
+        document.getElementById('formRegra_periodicidade').value = regra.periodicidade_customizada_meses || '';
+        document.getElementById('formRegra_obrigatorioAdmissao').checked = regra.obrigatorio_admissao !== false;
+        document.getElementById('formRegra_ativo').checked = regra.ativo !== false;
+    } else {
+        if (titulo) titulo.textContent = '➕ Nova Regra de Recomendação';
+        if (btnExcluir) btnExcluir.style.display = 'none';
+        document.getElementById('formRegra_id').value = '';
+        document.getElementById('formRegra_tipo').value = 'TODOS';
+        onTipoRegraChange();
+        if (selGhe) selGhe.value = '';
+        if (selFuncao) selFuncao.value = '';
+        if (selColab) selColab.value = '';
+        if (selTrein) selTrein.value = '';
+        document.getElementById('formRegra_periodicidade').value = '';
+        document.getElementById('formRegra_obrigatorioAdmissao').checked = true;
+        document.getElementById('formRegra_ativo').checked = true;
+    }
+
+    onRegraTreinamentoChange();
+    if (modal) modal.style.display = 'flex';
+}
+
+function fecharModalRegra() {
+    const modal = document.getElementById('modalTreinamentoRegra');
+    if (modal) modal.style.display = 'none';
+}
+
+function onTipoRegraChange() {
+    const tipo = document.getElementById('formRegra_tipo')?.value || 'TODOS';
+    const noticeTodos = document.getElementById('formRegra_alvoTodosNotice');
+    const selGhe = document.getElementById('formRegra_alvoGhe');
+    const selFuncao = document.getElementById('formRegra_alvoFuncao');
+    const selColab = document.getElementById('formRegra_alvoColaborador');
+    const label = document.getElementById('formRegra_alvoLabel');
+
+    if (noticeTodos) noticeTodos.style.display = (tipo === 'TODOS') ? 'block' : 'none';
+    if (selGhe) selGhe.style.display = (tipo === 'GHE') ? 'block' : 'none';
+    if (selFuncao) selFuncao.style.display = (tipo === 'FUNCAO') ? 'block' : 'none';
+    if (selColab) selColab.style.display = (tipo === 'COLABORADOR') ? 'block' : 'none';
+
+    if (label) {
+        if (tipo === 'TODOS') label.textContent = 'Alvo da Exigência (Geral)';
+        else if (tipo === 'GHE') label.textContent = 'Selecione o GHE Exposto *';
+        else if (tipo === 'FUNCAO') label.textContent = 'Selecione o Cargo Obrigatório *';
+        else if (tipo === 'COLABORADOR') label.textContent = 'Selecione o Colaborador Alvo *';
+    }
+}
+
+function onRegraTreinamentoChange() {
+    const cod = document.getElementById('formRegra_treinamentoCod')?.value;
+    const infoEl = document.getElementById('formRegra_treinamentoInfo');
+    if (!infoEl) return;
+    if (!cod) {
+        infoEl.textContent = '';
+        return;
+    }
+    const c = allTreinamentosCatalogo.find(x => String(x.id) === String(cod));
+    if (c) {
+        const val = c.meses_validade ? `${c.meses_validade} meses` : 'Sem validade (curso único)';
+        const carga = c.carga_horaria ? `${c.carga_horaria} horas` : 'Carga horária livre';
+        infoEl.textContent = `📋 Detalhes no catálogo: ${carga} | Validade padrão: ${val}`;
+    }
+}
+
+async function salvarRegraRecomendacao() {
+    const statusMsg = document.getElementById('formRegra_statusMsg');
+    const btnSalvar = document.getElementById('formRegra_btnSalvar');
+    const tipo = document.getElementById('formRegra_tipo')?.value;
+    const treinamentoCod = document.getElementById('formRegra_treinamentoCod')?.value;
+    const periodicidadeStr = document.getElementById('formRegra_periodicidade')?.value.trim();
+    const obrigatorioAdmissao = document.getElementById('formRegra_obrigatorioAdmissao')?.checked;
+    const ativo = document.getElementById('formRegra_ativo')?.checked;
+    const regraId = document.getElementById('formRegra_id')?.value;
+
+    let alvoValor = 'TODOS';
+    if (tipo === 'GHE') {
+        alvoValor = document.getElementById('formRegra_alvoGhe')?.value;
+        if (!alvoValor) {
+            alert('Por favor, selecione um GHE válido para esta regra.');
+            return;
+        }
+    } else if (tipo === 'FUNCAO') {
+        alvoValor = document.getElementById('formRegra_alvoFuncao')?.value;
+        if (!alvoValor) {
+            alert('Por favor, selecione um Cargo/Função para esta regra.');
+            return;
+        }
+    } else if (tipo === 'COLABORADOR') {
+        alvoValor = document.getElementById('formRegra_alvoColaborador')?.value;
+        if (!alvoValor) {
+            alert('Por favor, selecione um Colaborador para esta regra individual.');
+            return;
+        }
+    }
+
+    if (!treinamentoCod) {
+        alert('Por favor, selecione o Treinamento do Catálogo exigido pela regra.');
+        return;
+    }
+
+    const payload = {
+        tipo_regra: tipo,
+        alvo_valor: alvoValor,
+        treinamento_cod: treinamentoCod,
+        obrigatorio_admissao: !!obrigatorioAdmissao,
+        periodicidade_customizada_meses: periodicidadeStr ? parseInt(periodicidadeStr, 10) : null,
+        ativo: !!ativo
+    };
+
+    if (regraId) {
+        payload.id = parseInt(regraId, 10);
+    }
+
+    if (statusMsg) {
+        statusMsg.textContent = 'Gravando regra no banco...';
+        statusMsg.style.color = 'var(--text-light)';
+    }
+    if (btnSalvar) btnSalvar.disabled = true;
+
+    try {
+        if (regraId) {
+            await supabaseUpsert('treinamentos_regras_recomendacao', [payload]);
+            const idx = allTreinamentosRegras.findIndex(r => String(r.id) === String(regraId));
+            if (idx >= 0) allTreinamentosRegras[idx] = { ...allTreinamentosRegras[idx], ...payload };
+        } else {
+            await supabaseInsert('treinamentos_regras_recomendacao', [payload]);
+            invalidarCacheTabela('treinamentos_regras_recomendacao');
+            allTreinamentosRegras = await supabaseFetch('treinamentos_regras_recomendacao', '?select=*&order=created_at.desc') || [];
+        }
+
+        renderTreinamentoRegrasTab();
+        fecharModalRegra();
+        if (document.getElementById('treinSubtab-gaps')?.style.display === 'block') {
+            renderTreinamentoGapsTab();
+        }
+    } catch (err) {
+        console.error('Erro ao salvar regra de recomendação:', err);
+        if (statusMsg) {
+            statusMsg.textContent = '❌ Erro ao salvar: ' + err.message;
+            statusMsg.style.color = 'var(--danger)';
+        }
+        alert('Falha ao salvar regra: ' + err.message);
+    } finally {
+        if (btnSalvar) btnSalvar.disabled = false;
+    }
+}
+
+async function excluirRegraRecomendacao(id) {
+    if (!confirm('Deseja realmente excluir esta regra de recomendação? Os diagnósticos de gaps serão recalculados.')) return;
+    try {
+        await supabaseDelete('treinamentos_regras_recomendacao', id);
+        allTreinamentosRegras = allTreinamentosRegras.filter(r => String(r.id) !== String(id));
+        renderTreinamentoRegrasTab();
+        if (document.getElementById('treinSubtab-gaps')?.style.display === 'block') {
+            renderTreinamentoGapsTab();
+        }
+    } catch (err) {
+        console.error('Erro ao excluir regra:', err);
+        alert('Falha ao excluir regra: ' + err.message);
+    }
+}
+
+async function excluirRegraRecomendacaoAtual() {
+    const regraId = document.getElementById('formRegra_id')?.value;
+    if (regraId) {
+        await excluirRegraRecomendacao(regraId);
+        fecharModalRegra();
+    }
+}
+
+async function alternarStatusRegraRecomendacao(id, novoStatus) {
+    try {
+        await supabasePatch('treinamentos_regras_recomendacao', `id=eq.${encodeURIComponent(id)}`, { ativo: novoStatus });
+        const regra = allTreinamentosRegras.find(r => String(r.id) === String(id));
+        if (regra) regra.ativo = novoStatus;
+        renderTreinamentoRegrasTab();
+        if (document.getElementById('treinSubtab-gaps')?.style.display === 'block') {
+            renderTreinamentoGapsTab();
+        }
+    } catch (err) {
+        console.error('Erro ao alternar status da regra:', err);
+        alert('Falha ao alterar status da regra: ' + err.message);
+    }
+}
+
+// ------------------------------------------------------------------------------
+// SUB-ABA: DIAGNÓSTICO DE GAPS E CONFORMIDADE DE TREINAMENTOS (NR-01)
+// ------------------------------------------------------------------------------
+function calcularDiagnosticoGapsTreinamentos() {
+    const regrasAtivas = allTreinamentosRegras.filter(r => r.ativo !== false);
+    const colaboradoresAtivos = allEfetivo.filter(e => colaboradorEstaAtivo(e));
+
+    // Pré-processa as realizações mais recentes de cada colaborador
+    const realizacoesMap = new Map();
+    allTreinamentosRealizados.forEach(tr => {
+        const mat = String(tr.matricula || '').trim();
+        const cod = String(tr.treinamento_cod || '').trim();
+        if (!mat || !cod) return;
+        if (!realizacoesMap.has(mat)) realizacoesMap.set(mat, new Map());
+        const porCurso = realizacoesMap.get(mat);
+        const dataTr = tr.data_treinamento || '1970-01-01';
+        if (!porCurso.has(cod) || dataTr > (porCurso.get(cod).data_treinamento || '1970-01-01')) {
+            porCurso.set(cod, tr);
+        }
+    });
+
+    const hojeStr = new Date().toISOString().slice(0, 10);
+    const diagnosticos = [];
+
+    colaboradoresAtivos.forEach(colab => {
+        const mat = String(colab.id || '').trim();
+        const nome = colab.nome || 'Colaborador sem nome';
+        const funcao = (colab.funcao || '').trim();
+        const funcaoNorm = funcao.toUpperCase();
+        const ghe = String(colab.ghe || '').trim();
+        const gheNorm = ghe.toUpperCase();
+
+        const exigenciasMap = new Map();
+
+        regrasAtivas.forEach(r => {
+            let aplica = false;
+            let origemLabel = '';
+
+            if (r.tipo_regra === 'TODOS') {
+                aplica = true;
+                origemLabel = 'Geral (Todos)';
+            } else if (r.tipo_regra === 'GHE') {
+                const alvoGhe = String(r.alvo_valor || '').trim().toUpperCase();
+                if (gheNorm && (gheNorm === alvoGhe || gheNorm === `GRUPO ${alvoGhe}` || gheNorm.startsWith(alvoGhe))) {
+                    aplica = true;
+                    origemLabel = `GHE ${r.alvo_valor}`;
+                }
+            } else if (r.tipo_regra === 'FUNCAO') {
+                const alvoFunc = String(r.alvo_valor || '').trim().toUpperCase();
+                if (funcaoNorm && funcaoNorm === alvoFunc) {
+                    aplica = true;
+                    origemLabel = `Cargo (${r.alvo_valor})`;
+                }
+            } else if (r.tipo_regra === 'COLABORADOR') {
+                if (mat === String(r.alvo_valor || '').trim()) {
+                    aplica = true;
+                    origemLabel = 'Individual';
+                }
+            }
+
+            if (aplica) {
+                const cod = String(r.treinamento_cod);
+                if (!exigenciasMap.has(cod)) {
+                    exigenciasMap.set(cod, {
+                        treinamento_cod: cod,
+                        origens: [origemLabel],
+                        obrigatorio_admissao: r.obrigatorio_admissao !== false,
+                        periodicidade_customizada: r.periodicidade_customizada_meses || null
+                    });
+                } else {
+                    const existente = exigenciasMap.get(cod);
+                    if (!existente.origens.includes(origemLabel)) existente.origens.push(origemLabel);
+                    if (r.obrigatorio_admissao) existente.obrigatorio_admissao = true;
+                    if (r.periodicidade_customizada_meses && (!existente.periodicidade_customizada || r.periodicidade_customizada_meses < existente.periodicidade_customizada)) {
+                        existente.periodicidade_customizada = r.periodicidade_customizada_meses;
+                    }
+                }
+            }
+        });
+
+        // Avalia cada exigência
+        exigenciasMap.forEach(exig => {
+            const cod = exig.treinamento_cod;
+            const nomeTreinamento = obterNomeCursoCatalogo(cod);
+            const realizacao = realizacoesMap.get(mat)?.get(cod);
+
+            let status = 'pendente';
+            let statusLabel = 'Pendente / Admissão';
+            let badgeClass = 'badge-gap-pendente';
+            let situacaoTexto = exig.obrigatorio_admissao ? 'Nunca realizado (Exigido na Admissão)' : 'Nunca realizado';
+            let dataTreinamento = null;
+            let dataVencimento = null;
+            let diasAtraso = 0;
+            let diasRestantes = 0;
+
+            if (realizacao && realizacao.data_treinamento) {
+                dataTreinamento = realizacao.data_treinamento;
+                const perMeses = exig.periodicidade_customizada || realizacao.meses_validade || obterPeriodicidadeCursoCatalogo(cod);
+
+                if (!perMeses || perMeses <= 0) {
+                    status = 'conforme';
+                    statusLabel = 'Conforme';
+                    badgeClass = 'badge-gap-conforme';
+                    situacaoTexto = `Realizado em ${formatarDataIsoBR(dataTreinamento)} (Sem validade periódica)`;
+                } else {
+                    if (realizacao.data_proxima_reciclagem) {
+                        dataVencimento = realizacao.data_proxima_reciclagem;
+                    } else {
+                        dataVencimento = somarMesesDataIso(dataTreinamento, perMeses);
+                    }
+
+                    if (dataVencimento < hojeStr) {
+                        status = 'vencido';
+                        statusLabel = 'Vencido / Reciclagem';
+                        badgeClass = 'badge-gap-vencido';
+                        diasAtraso = Math.abs(calcularDiferencaDiasDatas(dataVencimento, hojeStr));
+                        situacaoTexto = `Vencido em ${formatarDataIsoBR(dataVencimento)} (há ${diasAtraso} dias)`;
+                    } else {
+                        status = 'conforme';
+                        statusLabel = 'Conforme';
+                        badgeClass = 'badge-gap-conforme';
+                        diasRestantes = calcularDiferencaDiasDatas(hojeStr, dataVencimento);
+                        situacaoTexto = `Válido até ${formatarDataIsoBR(dataVencimento)} (expira em ${diasRestantes} dias)`;
+                    }
+                }
+            }
+
+            diagnosticos.push({
+                idUnico: `${mat}_${cod}`,
+                matricula: mat,
+                nome,
+                funcao,
+                ghe: ghe || 'N/I',
+                gheLabel: obterNomeGhePorCodigo(ghe),
+                setor: colab.setor || '',
+                treinamentoCod: cod,
+                treinamentoNome: nomeTreinamento,
+                origens: exig.origens.join(', '),
+                obrigatorioAdmissao: exig.obrigatorio_admissao,
+                status,
+                statusLabel,
+                badgeClass,
+                dataTreinamento,
+                dataVencimento,
+                situacaoTexto,
+                diasAtraso,
+                diasRestantes
+            });
+        });
+    });
+
+    return diagnosticos;
+}
+
+function popularFiltrosDiagnosticoGaps(todosDiagnosticos) {
+    const selGhe = document.getElementById('gapFiltroGheSelect');
+    const selFuncao = document.getElementById('gapFiltroFuncaoSelect');
+
+    if (selGhe && selGhe.options.length <= 1) {
+        const ghesPresentes = new Set();
+        todosDiagnosticos.forEach(d => { if (d.ghe && d.ghe !== 'N/I') ghesPresentes.add(d.ghe); });
+        Array.from(ghesPresentes).sort().forEach(g => {
+            const opt = document.createElement('option');
+            opt.value = g;
+            opt.textContent = obterNomeGhePorCodigo(g);
+            selGhe.appendChild(opt);
+        });
+    }
+
+    if (selFuncao && selFuncao.options.length <= 1) {
+        const funcoesPresentes = new Set();
+        todosDiagnosticos.forEach(d => { if (d.funcao) funcoesPresentes.add(d.funcao); });
+        Array.from(funcoesPresentes).sort().forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = f;
+            opt.textContent = f;
+            selFuncao.appendChild(opt);
+        });
+    }
+}
+
+function onGapFiltroChange() {
+    renderTreinamentoGapsTab();
+}
+
+function limparFiltrosDiagnosticoGaps() {
+    const selGhe = document.getElementById('gapFiltroGheSelect');
+    const selFunc = document.getElementById('gapFiltroFuncaoSelect');
+    const selStatus = document.getElementById('gapFiltroStatusSelect');
+    const inputBusca = document.getElementById('gapFiltroBuscaInput');
+
+    if (selGhe) selGhe.value = '';
+    if (selFunc) selFunc.value = '';
+    if (selStatus) selStatus.value = 'todas_pendencias';
+    if (inputBusca) inputBusca.value = '';
+
+    renderTreinamentoGapsTab();
+}
+
+function alternarMarcarTodosGaps(marcar) {
+    document.querySelectorAll('.chk-gap-item').forEach(chk => {
+        chk.checked = marcar;
+        const id = chk.dataset.idUnico;
+        if (id) {
+            if (marcar) gapSelecionados.add(id);
+            else gapSelecionados.delete(id);
+        }
+    });
+    atualizarContadorGapsSelecionados();
+}
+
+function alternarSelecaoGapItem(idUnico, marcar) {
+    if (marcar) gapSelecionados.add(idUnico);
+    else gapSelecionados.delete(idUnico);
+    atualizarContadorGapsSelecionados();
+}
+
+function atualizarContadorGapsSelecionados() {
+    const count = gapSelecionados.size;
+    const countEl = document.getElementById('countGapsSelecionados');
+    const btnConvocar = document.getElementById('btnConvocarLoteGaps');
+    if (countEl) countEl.textContent = String(count);
+    if (btnConvocar) btnConvocar.disabled = count === 0;
+}
+
+function renderTreinamentoGapsTab() {
+    const tbody = document.getElementById('tabelaDiagnosticoGapsCorpo');
+    const totalContadorEl = document.getElementById('gapTotalFiltradoContador');
+    if (!tbody) return;
+
+    if ((!allTreinamentosRegras || allTreinamentosRegras.length === 0) || (!allEfetivo || allEfetivo.length === 0)) {
+        if (typeof recarregarRegrasRecomendacao === 'function') {
+            recarregarRegrasRecomendacao().then(() => {
+                if (document.getElementById('treinSubtab-gaps')?.style.display === 'block') {
+                    renderTreinamentoGapsTab();
+                }
+            });
+        }
+    }
+
+    const todosDiagnosticos = calcularDiagnosticoGapsTreinamentos();
+    popularFiltrosDiagnosticoGaps(todosDiagnosticos);
+
+    // Indicadores globais (KPIs)
+    const totalExigencias = todosDiagnosticos.length;
+    const conformesCount = todosDiagnosticos.filter(d => d.status === 'conforme').length;
+    const pendentesCount = todosDiagnosticos.filter(d => d.status === 'pendente').length;
+    const vencidosCount = todosDiagnosticos.filter(d => d.status === 'vencido').length;
+    const taxaConformidade = totalExigencias > 0 ? Math.round((conformesCount / totalExigencias) * 100) : 0;
+
+    const kpiTotal = document.getElementById('kpiGapTotalExigencias');
+    const kpiConf = document.getElementById('kpiGapConformes');
+    const kpiPend = document.getElementById('kpiGapPendentes');
+    const kpiVenc = document.getElementById('kpiGapVencidos');
+
+    if (kpiTotal) kpiTotal.textContent = String(totalExigencias);
+    if (kpiConf) kpiConf.textContent = `${conformesCount} (${taxaConformidade}%)`;
+    if (kpiPend) kpiPend.textContent = String(pendentesCount);
+    if (kpiVenc) kpiVenc.textContent = String(vencidosCount);
+
+    const filtroGhe = document.getElementById('gapFiltroGheSelect')?.value || '';
+    const filtroFuncao = document.getElementById('gapFiltroFuncaoSelect')?.value || '';
+    const filtroStatus = document.getElementById('gapFiltroStatusSelect')?.value || 'todas_pendencias';
+    const termoBusca = (document.getElementById('gapFiltroBuscaInput')?.value || '').trim().toLowerCase();
+
+    const filtrados = todosDiagnosticos.filter(d => {
+        if (filtroGhe && d.ghe !== filtroGhe) return false;
+        if (filtroFuncao && d.funcao !== filtroFuncao) return false;
+
+        if (filtroStatus === 'todas_pendencias' && d.status === 'conforme') return false;
+        if (filtroStatus === 'pendente' && d.status !== 'pendente') return false;
+        if (filtroStatus === 'vencido' && d.status !== 'vencido') return false;
+        if (filtroStatus === 'conforme' && d.status !== 'conforme') return false;
+
+        if (termoBusca) {
+            const nomeL = d.nome.toLowerCase();
+            const matL = d.matricula.toLowerCase();
+            const funcL = d.funcao.toLowerCase();
+            const cursoL = d.treinamentoNome.toLowerCase();
+            if (!nomeL.includes(termoBusca) && !matL.includes(termoBusca) && !funcL.includes(termoBusca) && !cursoL.includes(termoBusca)) {
+                return false;
+            }
+        }
+        return true;
+    });
+
+    if (totalContadorEl) totalContadorEl.textContent = String(filtrados.length);
+
+    if (filtrados.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="10" style="text-align:center; padding:36px 16px; color:var(--text-light);">
+                    <div style="font-size:28px; margin-bottom:8px;">🎯</div>
+                    <div style="font-weight:700; font-size:14px; color:var(--text);">Nenhuma pendência ou registro encontrado</div>
+                    <div style="font-size:12px; margin-top:4px;">
+                        ${allTreinamentosRegras.length === 0 ? 'Nenhuma regra de recomendação cadastrada ainda. Configure na aba <b>Regras de Recomendação</b>.' : 'Todos os colaboradores atendem aos critérios filtrados!'}
+                    </div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = filtrados.map(d => {
+        const isChecked = gapSelecionados.has(d.idUnico);
+        const podeConvocar = d.status !== 'conforme';
+
+        return `
+            <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:10px 12px; text-align:center;">
+                    ${podeConvocar ? `<input type="checkbox" class="chk-gap-item" data-id-unico="${escapeHTML(d.idUnico)}" ${isChecked ? 'checked' : ''} onchange="alternarSelecaoGapItem('${escapeHTML(d.idUnico)}', this.checked)">` : '—'}
+                </td>
+                <td style="padding:10px 12px; font-weight:700; color:var(--text-light); font-family:monospace;">${escapeHTML(d.matricula)}</td>
+                <td style="padding:10px 12px;">
+                    <div style="font-weight:700; color:var(--text);">${escapeHTML(d.nome)}</div>
+                </td>
+                <td style="padding:10px 12px; color:var(--text-light);">${escapeHTML(d.funcao || '—')}</td>
+                <td style="padding:10px 12px;">
+                    <span style="font-size:11px; padding:2px 6px; border-radius:4px; background:var(--bg); border:1px solid var(--border);">${escapeHTML(d.ghe)}</span>
+                </td>
+                <td style="padding:10px 12px;">
+                    <div style="font-weight:600; color:var(--text);">${escapeHTML(d.treinamentoNome)}</div>
+                    <div style="font-size:11px; color:var(--text-light);">Cód: ${escapeHTML(d.treinamentoCod)}</div>
+                </td>
+                <td style="padding:10px 12px; font-size:11.5px; color:var(--text-light);">${escapeHTML(d.origens)}</td>
+                <td style="padding:10px 12px; text-align:center;">
+                    <span class="${d.badgeClass}">${d.status === 'conforme' ? '🟢' : (d.status === 'vencido' ? '🔴' : '🟡')} ${d.statusLabel}</span>
+                </td>
+                <td style="padding:10px 12px; font-size:12px;">
+                    ${escapeHTML(d.situacaoTexto)}
+                </td>
+                <td style="padding:10px 12px; text-align:center; white-space:nowrap;">
+                    ${podeConvocar ? `
+                        <button class="db-apply-btn" onclick="convocarColaboradorGapIndividual('${escapeHTML(d.matricula)}', '${escapeHTML(d.treinamentoCod)}')" style="padding:4px 9px; font-size:11.5px; font-weight:700;" title="Convocar este colaborador">
+                            ➕ Convocar
+                        </button>
+                    ` : `
+                        <span style="font-size:11px; color:var(--success); font-weight:700;">Em dia</span>
+                    `}
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    atualizarContadorGapsSelecionados();
+}
+
+// ------------------------------------------------------------------------------
+// CONVOCAÇÃO RÁPIDA E EM LOTE PARA TREINAMENTOS
+// ------------------------------------------------------------------------------
+async function convocarColaboradorGapIndividual(matricula, codTreinamento) {
+    const colab = allEfetivo.find(e => String(e.id) === String(matricula));
+    if (!colab) {
+        alert('Colaborador não localizado no cadastro.');
+        return;
+    }
+    const nomeCurso = obterNomeCursoCatalogo(codTreinamento);
+
+    const dataPadrao = new Date().toISOString().slice(0, 10);
+    const dataTurma = prompt(`Informe a data programada para a turma de "${nomeCurso}":`, dataPadrao);
+    if (!dataTurma) return;
+
+    const row = {
+        id: `${matricula}_${codTreinamento}_${dataTurma}`,
+        matricula: String(matricula),
+        nome: colab.nome,
+        funcao: colab.funcao,
+        setor: colab.setor,
+        treinamento_cod: String(codTreinamento),
+        treinamento_nome: nomeCurso,
+        data_treinamento: dataTurma,
+        presente: false
+    };
+
+    try {
+        await supabaseUpsert('treinamentos_convocados', [row]);
+        invalidarCacheTabela('treinamentos_convocados');
+        alert(`✅ Convocação realizada com sucesso para ${colab.nome} no treinamento ${nomeCurso} em ${formatarDataIsoBR(dataTurma)}!`);
+    } catch (err) {
+        console.error('Erro ao convocar colaborador:', err);
+        alert('Falha ao registrar convocação: ' + err.message);
+    }
+}
+
+function abrirModalConvocacaoLoteGaps() {
+    if (gapSelecionados.size === 0) {
+        alert('Selecione ao menos um colaborador com pendência para convocar em lote.');
+        return;
+    }
+    const modal = document.getElementById('modalConvocacaoLoteGaps');
+    const totalEl = document.getElementById('modalLoteTotalSelecionados');
+    const dataInput = document.getElementById('modalLoteDataPrevista');
+    const statusEl = document.getElementById('modalLote_statusMsg');
+
+    if (totalEl) totalEl.textContent = String(gapSelecionados.size);
+    if (dataInput && !dataInput.value) {
+        dataInput.value = new Date().toISOString().slice(0, 10);
+    }
+    if (statusEl) statusEl.textContent = '';
+    if (modal) modal.style.display = 'flex';
+}
+
+function fecharModalConvocacaoLoteGaps() {
+    const modal = document.getElementById('modalConvocacaoLoteGaps');
+    if (modal) modal.style.display = 'none';
+}
+
+async function confirmarConvocacaoLoteGaps() {
+    const dataInput = document.getElementById('modalLoteDataPrevista');
+    const statusEl = document.getElementById('modalLote_statusMsg');
+    const btnConfirmar = document.getElementById('btnConfirmarConvocacaoLote');
+    const dataTurma = dataInput?.value;
+
+    if (!dataTurma) {
+        alert('Por favor, informe a data programada para o treinamento.');
+        return;
+    }
+
+    if (gapSelecionados.size === 0) {
+        alert('Nenhum item selecionado.');
+        return;
+    }
+
+    const todosDiagnosticos = calcularDiagnosticoGapsTreinamentos();
+    const rows = [];
+
+    gapSelecionados.forEach(idUnico => {
+        const item = todosDiagnosticos.find(d => d.idUnico === idUnico);
+        if (item) {
+            rows.push({
+                id: `${item.matricula}_${item.treinamentoCod}_${dataTurma}`,
+                matricula: item.matricula,
+                nome: item.nome,
+                funcao: item.funcao,
+                setor: item.setor,
+                treinamento_cod: item.treinamentoCod,
+                treinamento_nome: item.treinamentoNome,
+                data_treinamento: dataTurma,
+                presente: false
+            });
+        }
+    });
+
+    if (statusEl) {
+        statusEl.textContent = `Enviando ${rows.length} convocação(ões) ao banco...`;
+        statusEl.style.color = 'var(--text-light)';
+    }
+    if (btnConfirmar) btnConfirmar.disabled = true;
+
+    try {
+        await supabaseUpsert('treinamentos_convocados', rows);
+        invalidarCacheTabela('treinamentos_convocados');
+        alert(`✅ ${rows.length} convocação(ões) registradas com sucesso para a data ${formatarDataIsoBR(dataTurma)}!`);
+        gapSelecionados.clear();
+        fecharModalConvocacaoLoteGaps();
+        renderTreinamentoGapsTab();
+    } catch (err) {
+        console.error('Erro ao convocar em lote:', err);
+        if (statusEl) {
+            statusEl.textContent = '❌ Falha: ' + err.message;
+            statusEl.style.color = 'var(--danger)';
+        }
+        alert('Falha ao gravar convocações: ' + err.message);
+    } finally {
+        if (btnConfirmar) btnConfirmar.disabled = false;
+    }
+}
+
+// ------------------------------------------------------------------------------
+// IMPRESSÃO / EXPORTAÇÃO OFICIAL DO DIAGNÓSTICO DE GAPS (NR-01)
+// ------------------------------------------------------------------------------
+function imprimirDiagnosticoGaps() {
+    const todosDiagnosticos = calcularDiagnosticoGapsTreinamentos();
+
+    const filtroGhe = document.getElementById('gapFiltroGheSelect')?.value || '';
+    const filtroFuncao = document.getElementById('gapFiltroFuncaoSelect')?.value || '';
+    const filtroStatus = document.getElementById('gapFiltroStatusSelect')?.value || 'todas_pendencias';
+    const termoBusca = (document.getElementById('gapFiltroBuscaInput')?.value || '').trim().toLowerCase();
+
+    const filtrados = todosDiagnosticos.filter(d => {
+        if (filtroGhe && d.ghe !== filtroGhe) return false;
+        if (filtroFuncao && d.funcao !== filtroFuncao) return false;
+        if (filtroStatus === 'todas_pendencias' && d.status === 'conforme') return false;
+        if (filtroStatus === 'pendente' && d.status !== 'pendente') return false;
+        if (filtroStatus === 'vencido' && d.status !== 'vencido') return false;
+        if (filtroStatus === 'conforme' && d.status !== 'conforme') return false;
+        if (termoBusca) {
+            const nomeL = d.nome.toLowerCase();
+            const matL = d.matricula.toLowerCase();
+            const funcL = d.funcao.toLowerCase();
+            const cursoL = d.treinamentoNome.toLowerCase();
+            if (!nomeL.includes(termoBusca) && !matL.includes(termoBusca) && !funcL.includes(termoBusca) && !cursoL.includes(termoBusca)) return false;
+        }
+        return true;
+    });
+
+    const totalGeral = todosDiagnosticos.length;
+    const conformesGeral = todosDiagnosticos.filter(d => d.status === 'conforme').length;
+    const pendentesGeral = todosDiagnosticos.filter(d => d.status === 'pendente').length;
+    const vencidosGeral = todosDiagnosticos.filter(d => d.status === 'vencido').length;
+    const taxaGeral = totalGeral > 0 ? Math.round((conformesGeral / totalGeral) * 100) : 0;
+
+    const dataHoraEmissao = new Date().toLocaleString('pt-BR');
+
+    const html = `
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+            <meta charset="UTF-8">
+            <title>Diagnóstico de Conformidade e Gaps de Treinamentos - NR-01</title>
+            <style>
+                @page { size: A4 landscape; margin: 12mm 15mm; }
+                body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #1e293b; margin: 0; padding: 0; line-height: 1.4; }
+                .rel-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px; }
+                .rel-title { font-size: 16px; font-weight: 800; color: #0f172a; margin: 0; text-transform: uppercase; }
+                .rel-sub { font-size: 10px; color: #64748b; margin-top: 2px; }
+                .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+                .kpi-card { border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; background: #f8fafc; }
+                .kpi-card b { display: block; font-size: 18px; color: #0f172a; margin-top: 2px; }
+                .rel-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+                .rel-table th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; font-weight: 700; color: #334155; }
+                .rel-table td { border: 1px solid #e2e8f0; padding: 5px 8px; }
+                .badge-conf { color: #047857; font-weight: 700; }
+                .badge-pend { color: #b45309; font-weight: 700; }
+                .badge-venc { color: #b91c1c; font-weight: 700; }
+                .footer { margin-top: 16px; display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 6px; }
+            </style>
+        </head>
+        <body>
+            <div class="rel-header">
+                <div>
+                    <h1 class="rel-title">DIAGNÓSTICO DE CONFORMIDADE E GAPS DE TREINAMENTOS (NR-01)</h1>
+                    <div class="rel-sub">Consórcio Operador Ramal | Sistema de Gestão de Segurança do Trabalho e Prevenção</div>
+                </div>
+                <div style="text-align: right; font-size: 10px; color: #64748b;">
+                    Emissão: <strong>${dataHoraEmissao}</strong><br>
+                    Filtro: <strong>${escapeHTML(filtroStatus)}</strong>
+                </div>
+            </div>
+
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <span style="font-size: 9px; color:#64748b; text-transform:uppercase;">Total de Exigências</span>
+                    <b>${totalGeral}</b>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid #10b981;">
+                    <span style="font-size: 9px; color:#047857; text-transform:uppercase;">Conformidade</span>
+                    <b style="color:#047857;">${conformesGeral} (${taxaGeral}%)</b>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid #f59e0b;">
+                    <span style="font-size: 9px; color:#b45309; text-transform:uppercase;">Pendentes (Admissão)</span>
+                    <b style="color:#b45309;">${pendentesGeral}</b>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid #ef4444;">
+                    <span style="font-size: 9px; color:#b91c1c; text-transform:uppercase;">Vencidos (Reciclagem)</span>
+                    <b style="color:#b91c1c;">${vencidosGeral}</b>
+                </div>
+            </div>
+
+            <table class="rel-table">
+                <thead>
+                    <tr>
+                        <th style="width: 55px;">Matrícula</th>
+                        <th>Colaborador</th>
+                        <th>Cargo / Função</th>
+                        <th>GHE</th>
+                        <th>Treinamento Exigido</th>
+                        <th>Origem</th>
+                        <th style="text-align: center; width: 85px;">Situação</th>
+                        <th>Diagnóstico / Prazo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${filtrados.map(d => `
+                        <tr>
+                            <td>${escapeHTML(d.matricula)}</td>
+                            <td><strong>${escapeHTML(d.nome)}</strong></td>
+                            <td>${escapeHTML(d.funcao)}</td>
+                            <td>${escapeHTML(d.ghe)}</td>
+                            <td>${escapeHTML(d.treinamentoNome)}</td>
+                            <td>${escapeHTML(d.origens)}</td>
+                            <td style="text-align: center;">
+                                <span class="${d.status === 'conforme' ? 'badge-conf' : (d.status === 'vencido' ? 'badge-venc' : 'badge-pend')}">
+                                    ${d.statusLabel}
+                                </span>
+                            </td>
+                            <td>${escapeHTML(d.situacaoTexto)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+
+            <div class="footer">
+                <div>Documento gerado pelo Módulo de Inteligência de Treinamentos SST — Atendimento à NR-01 e PGR</div>
+                <div>Página 1 / 1</div>
+            </div>
+        </body>
+        </html>
+    `;
+
+    abrirDocumentoHtmlParaImpressao(html, 'Diagnóstico de Treinamentos - Gaps e Conformidade NR-01');
+}
+
+// ==============================================================================
+// EXPOSIÇÃO GLOBAL NO ESCOPO WINDOW COM TRATAMENTO SEGURO CONTRA EXCEÇÕES (NR-01)
+// ==============================================================================
+
+// Aliases para máxima compatibilidade com convenções e rotinas de UI
+const carregarRegrasTreinamentoRecomendado = recarregarRegrasRecomendacao;
+const renderizarTabelaRegrasTrein = renderTreinamentoRegrasTab;
+const filtrarRegrasTreinamentoUI = filtrarTipoRegraTab;
+const abrirModalNovaRegraTrein = abrirModalNovaRegra;
+const fecharModalRegraTrein = fecharModalRegra;
+const aoMudarTipoRegraModal = onTipoRegraChange;
+const salvarRegraTreinamentoRecomendado = salvarRegraRecomendacao;
+const alternarStatusRegraTrein = alternarStatusRegraRecomendacao;
+const excluirRegraTrein = excluirRegraRecomendacao;
+
+    // ==============================================================================
+    // EXPORTACAO EXPLICITA NO ESCOPO GLOBAL (WINDOW)
+    // Garante disponibilidade para eventos inline do index.html e outros modulos
+    // ==============================================================================
+    if (typeof window !== 'undefined') {
+        if (typeof calcularMesAnoPadraoDds === 'function') window.calcularMesAnoPadraoDds = calcularMesAnoPadraoDds;
+        if (typeof popularSelectAnos === 'function') window.popularSelectAnos = popularSelectAnos;
+        if (typeof popularFiltroAnoTreinamentos === 'function') window.popularFiltroAnoTreinamentos = popularFiltroAnoTreinamentos;
+        if (typeof getTreinamentosDateRange === 'function') window.getTreinamentosDateRange = getTreinamentosDateRange;
+        if (typeof agendarRenderTreinamentosPanel === 'function') window.agendarRenderTreinamentosPanel = agendarRenderTreinamentosPanel;
+        if (typeof setTreinamentosFilter === 'function') window.setTreinamentosFilter = setTreinamentosFilter;
+        if (typeof onTreinamentosFiltroAnoMesChange === 'function') window.onTreinamentosFiltroAnoMesChange = onTreinamentosFiltroAnoMesChange;
+        if (typeof loadTreinamentosData === 'function') window.loadTreinamentosData = loadTreinamentosData;
+        if (typeof showTreinSubtab === 'function') window.showTreinSubtab = showTreinSubtab;
+        if (typeof showDdsmaSubtab === 'function') window.showDdsmaSubtab = showDdsmaSubtab;
+        if (typeof renderDdsmaRelatorioChecklist === 'function') window.renderDdsmaRelatorioChecklist = renderDdsmaRelatorioChecklist;
+        if (typeof marcarTodosRelatorioDdsma === 'function') window.marcarTodosRelatorioDdsma = marcarTodosRelatorioDdsma;
+        if (typeof lerSelecaoRelatorioDdsma === 'function') window.lerSelecaoRelatorioDdsma = lerSelecaoRelatorioDdsma;
+        if (typeof gerarExcelDdsma === 'function') window.gerarExcelDdsma = gerarExcelDdsma;
+        if (typeof gerarPdfDdsma === 'function') window.gerarPdfDdsma = gerarPdfDdsma;
+        if (typeof popularFiltroAnoTreinHist === 'function') window.popularFiltroAnoTreinHist = popularFiltroAnoTreinHist;
+        if (typeof getTreinHistDateRange === 'function') window.getTreinHistDateRange = getTreinHistDateRange;
+        if (typeof setTreinHistFilter === 'function') window.setTreinHistFilter = setTreinHistFilter;
+        if (typeof onTreinHistFiltroAnoMesChange === 'function') window.onTreinHistFiltroAnoMesChange = onTreinHistFiltroAnoMesChange;
+        if (typeof toggleTreinHistDetalhe === 'function') window.toggleTreinHistDetalhe = toggleTreinHistDetalhe;
+        if (typeof abrirSessaoNoRegistro === 'function') window.abrirSessaoNoRegistro = abrirSessaoNoRegistro;
+        if (typeof renderTreinHistLista === 'function') window.renderTreinHistLista = renderTreinHistLista;
+        if (typeof renderTreinamentosPanel === 'function') window.renderTreinamentosPanel = renderTreinamentosPanel;
+        if (typeof renderListaTreinAderencia === 'function') window.renderListaTreinAderencia = renderListaTreinAderencia;
+        if (typeof renderCumprimentoCronogramaEPresenca === 'function') window.renderCumprimentoCronogramaEPresenca = renderCumprimentoCronogramaEPresenca;
+        if (typeof renderListaTreinColaboradoresPeriodo === 'function') window.renderListaTreinColaboradoresPeriodo = renderListaTreinColaboradoresPeriodo;
+        if (typeof toggleSelecaoTreinColabPeriodo === 'function') window.toggleSelecaoTreinColabPeriodo = toggleSelecaoTreinColabPeriodo;
+        if (typeof toggleSelecionarTodosTreinColabPeriodo === 'function') window.toggleSelecionarTodosTreinColabPeriodo = toggleSelecionarTodosTreinColabPeriodo;
+        if (typeof atualizarBarraSelecaoTreinColabPeriodo === 'function') window.atualizarBarraSelecaoTreinColabPeriodo = atualizarBarraSelecaoTreinColabPeriodo;
+        if (typeof excluirSelecionadosTreinColabPeriodo === 'function') window.excluirSelecionadosTreinColabPeriodo = excluirSelecionadosTreinColabPeriodo;
+        if (typeof limparBuscaTreinColabPeriodo === 'function') window.limparBuscaTreinColabPeriodo = limparBuscaTreinColabPeriodo;
+        if (typeof excluirTreinamentoRealizado === 'function') window.excluirTreinamentoRealizado = excluirTreinamentoRealizado;
+        if (typeof excluirTreinamentoRealizadoHist === 'function') window.excluirTreinamentoRealizadoHist = excluirTreinamentoRealizadoHist;
+        if (typeof abrirModalEditarSessaoTreinamento === 'function') window.abrirModalEditarSessaoTreinamento = abrirModalEditarSessaoTreinamento;
+        if (typeof fecharModalEditarSessaoTreinamento === 'function') window.fecharModalEditarSessaoTreinamento = fecharModalEditarSessaoTreinamento;
+        if (typeof aoMudarNovaDataSessao === 'function') window.aoMudarNovaDataSessao = aoMudarNovaDataSessao;
+        if (typeof confirmarAlteracaoDataSessao === 'function') window.confirmarAlteracaoDataSessao = confirmarAlteracaoDataSessao;
+        if (typeof parseDataBR === 'function') window.parseDataBR = parseDataBR;
+        if (typeof baixarCSV === 'function') window.baixarCSV = baixarCSV;
+        if (typeof exportarTreinamentosCSV === 'function') window.exportarTreinamentosCSV = exportarTreinamentosCSV;
+        if (typeof exportarEfetivoCSV === 'function') window.exportarEfetivoCSV = exportarEfetivoCSV;
+        if (typeof importarTreinamentosCSV === 'function') window.importarTreinamentosCSV = importarTreinamentosCSV;
+        if (typeof diaDaSemana === 'function') window.diaDaSemana = diaDaSemana;
+        if (typeof popularFiltroAnoCronograma === 'function') window.popularFiltroAnoCronograma = popularFiltroAnoCronograma;
+        if (typeof onCronogramaFiltroChange === 'function') window.onCronogramaFiltroChange = onCronogramaFiltroChange;
+        if (typeof setCronogramaFiltroStatus === 'function') window.setCronogramaFiltroStatus = setCronogramaFiltroStatus;
+        if (typeof limparFiltroCronograma === 'function') window.limparFiltroCronograma = limparFiltroCronograma;
+        if (typeof cronogramaItensFiltrados === 'function') window.cronogramaItensFiltrados = cronogramaItensFiltrados;
+        if (typeof imprimirCronogramaFiltro === 'function') window.imprimirCronogramaFiltro = imprimirCronogramaFiltro;
+        if (typeof renderCronogramaLista === 'function') window.renderCronogramaLista = renderCronogramaLista;
+        if (typeof sincronizarPastasDriveCronograma === 'function') window.sincronizarPastasDriveCronograma = sincronizarPastasDriveCronograma;
+        if (typeof limparFormCronograma === 'function') window.limparFormCronograma = limparFormCronograma;
+        if (typeof abrirFormCronograma === 'function') window.abrirFormCronograma = abrirFormCronograma;
+        if (typeof fecharFormCronograma === 'function') window.fecharFormCronograma = fecharFormCronograma;
+        if (typeof salvarItemCronograma === 'function') window.salvarItemCronograma = salvarItemCronograma;
+        if (typeof excluirItemCronograma === 'function') window.excluirItemCronograma = excluirItemCronograma;
+        if (typeof equipeDaFrente === 'function') window.equipeDaFrente = equipeDaFrente;
+        if (typeof todasFrentesAtivas === 'function') window.todasFrentesAtivas = todasFrentesAtivas;
+        if (typeof resolverFrenteDds === 'function') window.resolverFrenteDds = resolverFrenteDds;
+        if (typeof frentesAtivasDds === 'function') window.frentesAtivasDds = frentesAtivasDds;
+        if (typeof lancarPresencaDoCronograma === 'function') window.lancarPresencaDoCronograma = lancarPresencaDoCronograma;
+        if (typeof gerarListasCronogramaMes === 'function') window.gerarListasCronogramaMes = gerarListasCronogramaMes;
+        if (typeof abrirFormLancarTreinamento === 'function') window.abrirFormLancarTreinamento = abrirFormLancarTreinamento;
+        if (typeof fecharFormLancarTreinamento === 'function') window.fecharFormLancarTreinamento = fecharFormLancarTreinamento;
+        if (typeof refreshCatalogoDatalist === 'function') window.refreshCatalogoDatalist = refreshCatalogoDatalist;
+        if (typeof popularCatalogoDatalist === 'function') window.popularCatalogoDatalist = popularCatalogoDatalist;
+        if (typeof popularResponsavelSelect === 'function') window.popularResponsavelSelect = popularResponsavelSelect;
+        if (typeof extrairCodigoTreinamento === 'function') window.extrairCodigoTreinamento = extrairCodigoTreinamento;
+        if (typeof onLancTreinCodigoChange === 'function') window.onLancTreinCodigoChange = onLancTreinCodigoChange;
+        if (typeof programarRenovacaoNR === 'function') window.programarRenovacaoNR = programarRenovacaoNR;
+        if (typeof carregarEquipeResponsavel === 'function') window.carregarEquipeResponsavel = carregarEquipeResponsavel;
+        if (typeof filterAddColabLista === 'function') window.filterAddColabLista = filterAddColabLista;
+        if (typeof adicionarColabAvulso === 'function') window.adicionarColabAvulso = adicionarColabAvulso;
+        if (typeof removerColabLista === 'function') window.removerColabLista = removerColabLista;
+        if (typeof toggleColabPresenca === 'function') window.toggleColabPresenca = toggleColabPresenca;
+        if (typeof atualizarContagemPresenca === 'function') window.atualizarContagemPresenca = atualizarContagemPresenca;
+        if (typeof renderListaPresencaEquipe === 'function') window.renderListaPresencaEquipe = renderListaPresencaEquipe;
+        if (typeof salvarLancamentoTreinamento === 'function') window.salvarLancamentoTreinamento = salvarLancamentoTreinamento;
+        if (typeof popularDdsFrenteSelect === 'function') window.popularDdsFrenteSelect = popularDdsFrenteSelect;
+        if (typeof popularDdsTemaDatalist === 'function') window.popularDdsTemaDatalist = popularDdsTemaDatalist;
+        if (typeof onLancDdsDataChange === 'function') window.onLancDdsDataChange = onLancDdsDataChange;
+        if (typeof abrirFormLancarDds === 'function') window.abrirFormLancarDds = abrirFormLancarDds;
+        if (typeof carregarEquipeFrenteDds === 'function') window.carregarEquipeFrenteDds = carregarEquipeFrenteDds;
+        if (typeof filterDdsAddColabLista === 'function') window.filterDdsAddColabLista = filterDdsAddColabLista;
+        if (typeof adicionarDdsColabAvulso === 'function') window.adicionarDdsColabAvulso = adicionarDdsColabAvulso;
+        if (typeof removerDdsColabLista === 'function') window.removerDdsColabLista = removerDdsColabLista;
+        if (typeof toggleDdsColabPresenca === 'function') window.toggleDdsColabPresenca = toggleDdsColabPresenca;
+        if (typeof atualizarContagemPresencaDds === 'function') window.atualizarContagemPresencaDds = atualizarContagemPresencaDds;
+        if (typeof selecionarEmociogramaDds === 'function') window.selecionarEmociogramaDds = selecionarEmociogramaDds;
+        if (typeof renderListaPresencaDds === 'function') window.renderListaPresencaDds = renderListaPresencaDds;
+        if (typeof salvarLancamentoDds === 'function') window.salvarLancamentoDds = salvarLancamentoDds;
+        if (typeof loteKeyDds === 'function') window.loteKeyDds = loteKeyDds;
+        if (typeof garantirAnexosSmsCarregados === 'function') window.garantirAnexosSmsCarregados = garantirAnexosSmsCarregados;
+        if (typeof anexosDoRegistro === 'function') window.anexosDoRegistro = anexosDoRegistro;
+        if (typeof labelContagemAnexos === 'function') window.labelContagemAnexos = labelContagemAnexos;
+        if (typeof popularFiltroSetorDds === 'function') window.popularFiltroSetorDds = popularFiltroSetorDds;
+        if (typeof limparFiltrosDdsLancamentos === 'function') window.limparFiltrosDdsLancamentos = limparFiltrosDdsLancamentos;
+        if (typeof configurarFiltrosDdsListeners === 'function') window.configurarFiltrosDdsListeners = configurarFiltrosDdsListeners;
+        if (typeof lotesRecentesDds === 'function') window.lotesRecentesDds = lotesRecentesDds;
+        if (typeof renderDdsLancamentosRecentes === 'function') window.renderDdsLancamentosRecentes = renderDdsLancamentosRecentes;
+        if (typeof excluirLoteDds === 'function') window.excluirLoteDds = excluirLoteDds;
+        if (typeof editarLoteDds === 'function') window.editarLoteDds = editarLoteDds;
+        if (typeof toggleLancarDdsSemana === 'function') window.toggleLancarDdsSemana = toggleLancarDdsSemana;
+        if (typeof popularDdsSemanaFrenteSelect === 'function') window.popularDdsSemanaFrenteSelect = popularDdsSemanaFrenteSelect;
+        if (typeof abrirFormLancarDdsSemana === 'function') window.abrirFormLancarDdsSemana = abrirFormLancarDdsSemana;
+        if (typeof onLancDdsSemanaFrenteOuDataChange === 'function') window.onLancDdsSemanaFrenteOuDataChange = onLancDdsSemanaFrenteOuDataChange;
+        if (typeof onLancDdsSemanaTemaChange === 'function') window.onLancDdsSemanaTemaChange = onLancDdsSemanaTemaChange;
+        if (typeof renderLancDdsSemanaTemas === 'function') window.renderLancDdsSemanaTemas = renderLancDdsSemanaTemas;
+        if (typeof cicloEstadoDdsSemana === 'function') window.cicloEstadoDdsSemana = cicloEstadoDdsSemana;
+        if (typeof renderLancDdsSemanaGrade === 'function') window.renderLancDdsSemanaGrade = renderLancDdsSemanaGrade;
+        if (typeof onLancDdsSemanaAcaoChange === 'function') window.onLancDdsSemanaAcaoChange = onLancDdsSemanaAcaoChange;
+        if (typeof renderLancDdsSemanaAcoes === 'function') window.renderLancDdsSemanaAcoes = renderLancDdsSemanaAcoes;
+        if (typeof salvarLancamentoDdsSemana === 'function') window.salvarLancamentoDdsSemana = salvarLancamentoDdsSemana;
+        if (typeof diasUteisDoMes === 'function') window.diasUteisDoMes = diasUteisDoMes;
+        if (typeof popularFiltroDdsCalendario === 'function') window.popularFiltroDdsCalendario = popularFiltroDdsCalendario;
+        if (typeof onDdsCalendarioFiltroChange === 'function') window.onDdsCalendarioFiltroChange = onDdsCalendarioFiltroChange;
+        if (typeof editarDdsTemaDia === 'function') window.editarDdsTemaDia = editarDdsTemaDia;
+        if (typeof cancelarEdicaoDdsTemaDia === 'function') window.cancelarEdicaoDdsTemaDia = cancelarEdicaoDdsTemaDia;
+        if (typeof sincronizarLancDdsTemaSeMesmaData === 'function') window.sincronizarLancDdsTemaSeMesmaData = sincronizarLancDdsTemaSeMesmaData;
+        if (typeof salvarDdsTemaDia === 'function') window.salvarDdsTemaDia = salvarDdsTemaDia;
+        if (typeof renderDdsCalendarioTemas === 'function') window.renderDdsCalendarioTemas = renderDdsCalendarioTemas;
+        if (typeof abrirAdicionarDdsTemaDia === 'function') window.abrirAdicionarDdsTemaDia = abrirAdicionarDdsTemaDia;
+        if (typeof fecharAdicionarDdsTemaDia === 'function') window.fecharAdicionarDdsTemaDia = fecharAdicionarDdsTemaDia;
+        if (typeof salvarNovoDdsTemaDia === 'function') window.salvarNovoDdsTemaDia = salvarNovoDdsTemaDia;
+        if (typeof toISODateLocal === 'function') window.toISODateLocal = toISODateLocal;
+        if (typeof segundaDaSemana === 'function') window.segundaDaSemana = segundaDaSemana;
+        if (typeof proximaSemanaParaFecharDds === 'function') window.proximaSemanaParaFecharDds = proximaSemanaParaFecharDds;
+        if (typeof diasComDdsNaSemana === 'function') window.diasComDdsNaSemana = diasComDdsNaSemana;
+        if (typeof onDdsFechamentoFrenteChange === 'function') window.onDdsFechamentoFrenteChange = onDdsFechamentoFrenteChange;
+        if (typeof renderDdsFechamentoSemanal === 'function') window.renderDdsFechamentoSemanal = renderDdsFechamentoSemanal;
+        if (typeof confirmarFechamentoDds === 'function') window.confirmarFechamentoDds = confirmarFechamentoDds;
+        if (typeof renderDdsFechamentosLista === 'function') window.renderDdsFechamentosLista = renderDdsFechamentosLista;
+        if (typeof popularFiltroAnoDds === 'function') window.popularFiltroAnoDds = popularFiltroAnoDds;
+        if (typeof getDdsDateRange === 'function') window.getDdsDateRange = getDdsDateRange;
+        if (typeof setDdsFilter === 'function') window.setDdsFilter = setDdsFilter;
+        if (typeof onDdsFiltroAnoMesChange === 'function') window.onDdsFiltroAnoMesChange = onDdsFiltroAnoMesChange;
+        if (typeof diasDoIntervaloDds === 'function') window.diasDoIntervaloDds = diasDoIntervaloDds;
+        if (typeof tabelaControleDds === 'function') window.tabelaControleDds = tabelaControleDds;
+        if (typeof renderDdsTabelaControle === 'function') window.renderDdsTabelaControle = renderDdsTabelaControle;
+        if (typeof renderAcoesTratativasPendentesDds === 'function') window.renderAcoesTratativasPendentesDds = renderAcoesTratativasPendentesDds;
+        if (typeof renderDdsGerenciarFrentes === 'function') window.renderDdsGerenciarFrentes = renderDdsGerenciarFrentes;
+        if (typeof toggleFrenteDdsAtiva === 'function') window.toggleFrenteDdsAtiva = toggleFrenteDdsAtiva;
+        if (typeof adicionarFrenteDdsManual === 'function') window.adicionarFrenteDdsManual = adicionarFrenteDdsManual;
+        if (typeof renderDdsAliasFrentes === 'function') window.renderDdsAliasFrentes = renderDdsAliasFrentes;
+        if (typeof mesclarFrenteDds === 'function') window.mesclarFrenteDds = mesclarFrenteDds;
+        if (typeof desfazerMesclarFrenteDds === 'function') window.desfazerMesclarFrenteDds = desfazerMesclarFrenteDds;
+        if (typeof renderDdsPanel === 'function') window.renderDdsPanel = renderDdsPanel;
+        if (typeof carregarConfiguracoesDdsDoSupabase === 'function') window.carregarConfiguracoesDdsDoSupabase = carregarConfiguracoesDdsDoSupabase;
+        if (typeof salvarConfiguracoesDdsNoSupabase === 'function') window.salvarConfiguracoesDdsNoSupabase = salvarConfiguracoesDdsNoSupabase;
+        if (typeof preencherCamposConfiguracoesDds === 'function') window.preencherCamposConfiguracoesDds = preencherCamposConfiguracoesDds;
+        if (typeof atualizarExemploRegraSemana === 'function') window.atualizarExemploRegraSemana = atualizarExemploRegraSemana;
+        if (typeof renderDdsConfiguracoes === 'function') window.renderDdsConfiguracoes = renderDdsConfiguracoes;
+        if (typeof salvarConfiguracoesDds === 'function') window.salvarConfiguracoesDds = salvarConfiguracoesDds;
+        if (typeof restaurarConfiguracoesDdsPadrao === 'function') window.restaurarConfiguracoesDdsPadrao = restaurarConfiguracoesDdsPadrao;
+        if (typeof obterSemanasDoMes === 'function') window.obterSemanasDoMes = obterSemanasDoMes;
+        if (typeof inicializarDdsLote === 'function') window.inicializarDdsLote = inicializarDdsLote;
+        if (typeof popularSelectSemanasDdsLote === 'function') window.popularSelectSemanasDdsLote = popularSelectSemanasDdsLote;
+        if (typeof popularSelectTemasDdsLote === 'function') window.popularSelectTemasDdsLote = popularSelectTemasDdsLote;
+        if (typeof renderDdsLoteFrentesCheckboxes === 'function') window.renderDdsLoteFrentesCheckboxes = renderDdsLoteFrentesCheckboxes;
+        if (typeof atualizarResumoFrentesDdsLote === 'function') window.atualizarResumoFrentesDdsLote = atualizarResumoFrentesDdsLote;
+        if (typeof onDdsLoteFrenteCheckboxChange === 'function') window.onDdsLoteFrenteCheckboxChange = onDdsLoteFrenteCheckboxChange;
+        if (typeof marcarTodasFrentesDdsLote === 'function') window.marcarTodasFrentesDdsLote = marcarTodasFrentesDdsLote;
+        if (typeof onDdsLoteFiltroMesAnoChange === 'function') window.onDdsLoteFiltroMesAnoChange = onDdsLoteFiltroMesAnoChange;
+        if (typeof onDdsLoteFiltroSemanaChange === 'function') window.onDdsLoteFiltroSemanaChange = onDdsLoteFiltroSemanaChange;
+        if (typeof onDdsLoteFiltroTemaChange === 'function') window.onDdsLoteFiltroTemaChange = onDdsLoteFiltroTemaChange;
+        if (typeof limparFiltrosDdsLote === 'function') window.limparFiltrosDdsLote = limparFiltrosDdsLote;
+        if (typeof itensDdsLoteFiltrados === 'function') window.itensDdsLoteFiltrados = itensDdsLoteFiltrados;
+        if (typeof renderDdsLotePreview === 'function') window.renderDdsLotePreview = renderDdsLotePreview;
+        if (typeof atualizarResumoDdsLote === 'function') window.atualizarResumoDdsLote = atualizarResumoDdsLote;
+        if (typeof onDdsLoteItemCheckboxChange === 'function') window.onDdsLoteItemCheckboxChange = onDdsLoteItemCheckboxChange;
+        if (typeof marcarTodosDdsLote === 'function') window.marcarTodosDdsLote = marcarTodosDdsLote;
+        if (typeof construirFolhaFichaDds === 'function') window.construirFolhaFichaDds = construirFolhaFichaDds;
+        if (typeof montarDocumentoImpressaoFichasDds === 'function') window.montarDocumentoImpressaoFichasDds = montarDocumentoImpressaoFichasDds;
+        if (typeof imprimirFormulariosDdsLote === 'function') window.imprimirFormulariosDdsLote = imprimirFormulariosDdsLote;
+        if (typeof imprimirFichaDdsEmBranco === 'function') window.imprimirFichaDdsEmBranco = imprimirFichaDdsEmBranco;
+        if (typeof montarHtmlRelatorioDds === 'function') window.montarHtmlRelatorioDds = montarHtmlRelatorioDds;
+        if (typeof imprimirRelatorioMensalDds === 'function') window.imprimirRelatorioMensalDds = imprimirRelatorioMensalDds;
+        if (typeof imprimirRelatorioSemanalDds === 'function') window.imprimirRelatorioSemanalDds = imprimirRelatorioSemanalDds;
+        if (typeof popularRegistroResponsavelNovaSelect === 'function') window.popularRegistroResponsavelNovaSelect = popularRegistroResponsavelNovaSelect;
+        if (typeof limparBuscaRegistro === 'function') window.limparBuscaRegistro = limparBuscaRegistro;
+        if (typeof onRegistroCodigoChange === 'function') window.onRegistroCodigoChange = onRegistroCodigoChange;
+        if (typeof onRegistroDataChange === 'function') window.onRegistroDataChange = onRegistroDataChange;
+        if (typeof carregarSessaoRegistro === 'function') window.carregarSessaoRegistro = carregarSessaoRegistro;
+        if (typeof carregarSessaoNovaRegistro === 'function') window.carregarSessaoNovaRegistro = carregarSessaoNovaRegistro;
+        if (typeof filterRegistroNovaEquipeAddColab === 'function') window.filterRegistroNovaEquipeAddColab = filterRegistroNovaEquipeAddColab;
+        if (typeof adicionarRegistroNovaEquipeAvulso === 'function') window.adicionarRegistroNovaEquipeAvulso = adicionarRegistroNovaEquipeAvulso;
+        if (typeof removerRegistroNovaEquipeColab === 'function') window.removerRegistroNovaEquipeColab = removerRegistroNovaEquipeColab;
+        if (typeof toggleRegistroNovaEquipeColab === 'function') window.toggleRegistroNovaEquipeColab = toggleRegistroNovaEquipeColab;
+        if (typeof renderRegistroNovaEquipeList === 'function') window.renderRegistroNovaEquipeList = renderRegistroNovaEquipeList;
+        if (typeof popularKitsResponsavelSelect === 'function') window.popularKitsResponsavelSelect = popularKitsResponsavelSelect;
+        if (typeof inicializarKitsTab === 'function') window.inicializarKitsTab = inicializarKitsTab;
+        if (typeof aplicarDefaultsSessaoKits === 'function') window.aplicarDefaultsSessaoKits = aplicarDefaultsSessaoKits;
+        if (typeof kitsMarcarCampoEditado === 'function') window.kitsMarcarCampoEditado = kitsMarcarCampoEditado;
+        if (typeof onKitsCodigoChange === 'function') window.onKitsCodigoChange = onKitsCodigoChange;
+        if (typeof onKitsDataChange === 'function') window.onKitsDataChange = onKitsDataChange;
+        if (typeof carregarKitsEquipeResponsavel === 'function') window.carregarKitsEquipeResponsavel = carregarKitsEquipeResponsavel;
+        if (typeof filterKitsAddColab === 'function') window.filterKitsAddColab = filterKitsAddColab;
+        if (typeof adicionarKitsColabAvulso === 'function') window.adicionarKitsColabAvulso = adicionarKitsColabAvulso;
+        if (typeof removerKitsColabLista === 'function') window.removerKitsColabLista = removerKitsColabLista;
+        if (typeof toggleKitsColabPresenca === 'function') window.toggleKitsColabPresenca = toggleKitsColabPresenca;
+        if (typeof renderKitsEquipeList === 'function') window.renderKitsEquipeList = renderKitsEquipeList;
+        if (typeof contextoKits === 'function') window.contextoKits = contextoKits;
+        if (typeof renderKitsDocsIndividuaisList === 'function') window.renderKitsDocsIndividuaisList = renderKitsDocsIndividuaisList;
+        if (typeof popularFiltroAnoRegistroLote === 'function') window.popularFiltroAnoRegistroLote = popularFiltroAnoRegistroLote;
+        if (typeof renderRegistroLoteFrentesCheckboxes === 'function') window.renderRegistroLoteFrentesCheckboxes = renderRegistroLoteFrentesCheckboxes;
+        if (typeof atualizarResumoFrentesLote === 'function') window.atualizarResumoFrentesLote = atualizarResumoFrentesLote;
+        if (typeof atualizarResumoLoteCronograma === 'function') window.atualizarResumoLoteCronograma = atualizarResumoLoteCronograma;
+        if (typeof onRegistroLoteFrenteCheckboxChange === 'function') window.onRegistroLoteFrenteCheckboxChange = onRegistroLoteFrenteCheckboxChange;
+        if (typeof marcarTodasFrentesLote === 'function') window.marcarTodasFrentesLote = marcarTodasFrentesLote;
+        if (typeof onRegistroLoteFiltroChange === 'function') window.onRegistroLoteFiltroChange = onRegistroLoteFiltroChange;
+        if (typeof limparFiltroRegistroLote === 'function') window.limparFiltroRegistroLote = limparFiltroRegistroLote;
+        if (typeof itensLoteCronogramaFiltrados === 'function') window.itensLoteCronogramaFiltrados = itensLoteCronogramaFiltrados;
+        if (typeof renderRegistroLotePreview === 'function') window.renderRegistroLotePreview = renderRegistroLotePreview;
+        if (typeof toggleRegistroLoteSelecionado === 'function') window.toggleRegistroLoteSelecionado = toggleRegistroLoteSelecionado;
+        if (typeof marcarTodosLoteCronograma === 'function') window.marcarTodosLoteCronograma = marcarTodosLoteCronograma;
+        if (typeof lerCamposSessaoForm === 'function') window.lerCamposSessaoForm = lerCamposSessaoForm;
+        if (typeof salvarDetalhesSessao === 'function') window.salvarDetalhesSessao = salvarDetalhesSessao;
+        if (typeof construirFolhaRegistroTreinamento === 'function') window.construirFolhaRegistroTreinamento = construirFolhaRegistroTreinamento;
+        if (typeof gerarRegistroTreinamento === 'function') window.gerarRegistroTreinamento = gerarRegistroTreinamento;
+        if (typeof gerarListaPorFrenteRegistro === 'function') window.gerarListaPorFrenteRegistro = gerarListaPorFrenteRegistro;
+        if (typeof renderRegistroDocsIndividuaisList === 'function') window.renderRegistroDocsIndividuaisList = renderRegistroDocsIndividuaisList;
+        if (typeof blocoAssinatura === 'function') window.blocoAssinatura = blocoAssinatura;
+        if (typeof construirFolhaCertificado === 'function') window.construirFolhaCertificado = construirFolhaCertificado;
+        if (typeof construirFolhaDeclaracaoIntegracao === 'function') window.construirFolhaDeclaracaoIntegracao = construirFolhaDeclaracaoIntegracao;
+        if (typeof construirFolhaTermoRecusa === 'function') window.construirFolhaTermoRecusa = construirFolhaTermoRecusa;
+        if (typeof contextoRegistroPadrao === 'function') window.contextoRegistroPadrao = contextoRegistroPadrao;
+        if (typeof gerarCertificadoIndividual === 'function') window.gerarCertificadoIndividual = gerarCertificadoIndividual;
+        if (typeof gerarCertificadosTurma === 'function') window.gerarCertificadosTurma = gerarCertificadosTurma;
+        if (typeof abrirModalEmissaoCertificado === 'function') window.abrirModalEmissaoCertificado = abrirModalEmissaoCertificado;
+        if (typeof abrirModalEmissaoCertificadoLote === 'function') window.abrirModalEmissaoCertificadoLote = abrirModalEmissaoCertificadoLote;
+        if (typeof fecharModalEmissaoCertificado === 'function') window.fecharModalEmissaoCertificado = fecharModalEmissaoCertificado;
+        if (typeof certModalAoMudarAlvo === 'function') window.certModalAoMudarAlvo = certModalAoMudarAlvo;
+        if (typeof certModalAtualizarBotaoTexto === 'function') window.certModalAtualizarBotaoTexto = certModalAtualizarBotaoTexto;
+        if (typeof certModalCarregarPadraoNr18 === 'function') window.certModalCarregarPadraoNr18 = certModalCarregarPadraoNr18;
+        if (typeof certModalRestaurarCatalogo === 'function') window.certModalRestaurarCatalogo = certModalRestaurarCatalogo;
+        if (typeof executarEmissaoCertificadoModal === 'function') window.executarEmissaoCertificadoModal = executarEmissaoCertificadoModal;
+        if (typeof gerarOrdemServicoIndividual === 'function') window.gerarOrdemServicoIndividual = gerarOrdemServicoIndividual;
+        if (typeof gerarDeclaracaoIntegracaoIndividual === 'function') window.gerarDeclaracaoIntegracaoIndividual = gerarDeclaracaoIntegracaoIndividual;
+        if (typeof gerarTermoRecusaIndividual === 'function') window.gerarTermoRecusaIndividual = gerarTermoRecusaIndividual;
+        if (typeof gerarKitCompletoIntegracao === 'function') window.gerarKitCompletoIntegracao = gerarKitCompletoIntegracao;
+        if (typeof atualizarVisibilidadeProvaWrap === 'function') window.atualizarVisibilidadeProvaWrap = atualizarVisibilidadeProvaWrap;
+        if (typeof colaboradoresDaSessaoAtual === 'function') window.colaboradoresDaSessaoAtual = colaboradoresDaSessaoAtual;
+        if (typeof gerarProvaTurma === 'function') window.gerarProvaTurma = gerarProvaTurma;
+        if (typeof gerarGabaritoProva === 'function') window.gerarGabaritoProva = gerarGabaritoProva;
+        if (typeof normalizarTextoCargoBasico === 'function') window.normalizarTextoCargoBasico = normalizarTextoCargoBasico;
+        if (typeof normalizarTextoCargo === 'function') window.normalizarTextoCargo = normalizarTextoCargo;
+        if (typeof resolverCargoInfoDoColaborador === 'function') window.resolverCargoInfoDoColaborador = resolverCargoInfoDoColaborador;
+        if (typeof avaliarCorrespondenciaCargoOs === 'function') window.avaliarCorrespondenciaCargoOs = avaliarCorrespondenciaCargoOs;
+        if (typeof textoAvisoCargoOs === 'function') window.textoAvisoCargoOs = textoAvisoCargoOs;
+        if (typeof construirFolhaOrdemServico === 'function') window.construirFolhaOrdemServico = construirFolhaOrdemServico;
+        if (typeof abrirDocumentoBlob === 'function') window.abrirDocumentoBlob = abrirDocumentoBlob;
+        if (typeof popularEquipesResponsavelDatalist === 'function') window.popularEquipesResponsavelDatalist = popularEquipesResponsavelDatalist;
+        if (typeof limparBuscaEquipes === 'function') window.limparBuscaEquipes = limparBuscaEquipes;
+        if (typeof renderEquipeAtual === 'function') window.renderEquipeAtual = renderEquipeAtual;
+        if (typeof toggleRenomearEquipe === 'function') window.toggleRenomearEquipe = toggleRenomearEquipe;
+        if (typeof renomearEquipeAtual === 'function') window.renomearEquipeAtual = renomearEquipeAtual;
+        if (typeof editarColaboradorDaEquipe === 'function') window.editarColaboradorDaEquipe = editarColaboradorDaEquipe;
+        if (typeof filterEquipesAddColab === 'function') window.filterEquipesAddColab = filterEquipesAddColab;
+        if (typeof salvarResponsavelColaborador === 'function') window.salvarResponsavelColaborador = salvarResponsavelColaborador;
+        if (typeof adicionarAEquipe === 'function') window.adicionarAEquipe = adicionarAEquipe;
+        if (typeof removerDaEquipe === 'function') window.removerDaEquipe = removerDaEquipe;
+        if (typeof renderCatalogoResumo === 'function') window.renderCatalogoResumo = renderCatalogoResumo;
+        if (typeof setCatalogoFiltroValidade === 'function') window.setCatalogoFiltroValidade = setCatalogoFiltroValidade;
+        if (typeof filterCatalogoTreinamentos === 'function') window.filterCatalogoTreinamentos = filterCatalogoTreinamentos;
+        if (typeof questaoVazia === 'function') window.questaoVazia = questaoVazia;
+        if (typeof adicionarQuestaoCatalogoForm === 'function') window.adicionarQuestaoCatalogoForm = adicionarQuestaoCatalogoForm;
+        if (typeof removerQuestaoCatalogoForm === 'function') window.removerQuestaoCatalogoForm = removerQuestaoCatalogoForm;
+        if (typeof renderQuestoesCatalogoForm === 'function') window.renderQuestoesCatalogoForm = renderQuestoesCatalogoForm;
+        if (typeof obterProximoCodigoCatalogo === 'function') window.obterProximoCodigoCatalogo = obterProximoCodigoCatalogo;
+        if (typeof catFormPreencherProximoCodigo === 'function') window.catFormPreencherProximoCodigo = catFormPreencherProximoCodigo;
+        if (typeof gerarDadosSstPorTema === 'function') window.gerarDadosSstPorTema = gerarDadosSstPorTema;
+        if (typeof catFormGerarIaObjetivoEConteudo === 'function') window.catFormGerarIaObjetivoEConteudo = catFormGerarIaObjetivoEConteudo;
+        if (typeof abrirFormCatalogoTreinamento === 'function') window.abrirFormCatalogoTreinamento = abrirFormCatalogoTreinamento;
+        if (typeof fecharFormCatalogoTreinamento === 'function') window.fecharFormCatalogoTreinamento = fecharFormCatalogoTreinamento;
+        if (typeof toggleExpandirCatalogo === 'function') window.toggleExpandirCatalogo = toggleExpandirCatalogo;
+        if (typeof limparBuscaCatalogo === 'function') window.limparBuscaCatalogo = limparBuscaCatalogo;
+        if (typeof iniciarExclusaoCatalogo === 'function') window.iniciarExclusaoCatalogo = iniciarExclusaoCatalogo;
+        if (typeof excluirCatalogoDireto === 'function') window.excluirCatalogoDireto = excluirCatalogoDireto;
+        if (typeof confirmarMesclarExcluir === 'function') window.confirmarMesclarExcluir = confirmarMesclarExcluir;
+        if (typeof salvarCatalogoTreinamento === 'function') window.salvarCatalogoTreinamento = salvarCatalogoTreinamento;
+        if (typeof formatarDataIsoBR === 'function') window.formatarDataIsoBR = formatarDataIsoBR;
+        if (typeof somarMesesDataIso === 'function') window.somarMesesDataIso = somarMesesDataIso;
+        if (typeof calcularDiferencaDiasDatas === 'function') window.calcularDiferencaDiasDatas = calcularDiferencaDiasDatas;
+        if (typeof obterNomeCursoCatalogo === 'function') window.obterNomeCursoCatalogo = obterNomeCursoCatalogo;
+        if (typeof obterPeriodicidadeCursoCatalogo === 'function') window.obterPeriodicidadeCursoCatalogo = obterPeriodicidadeCursoCatalogo;
+        if (typeof obterNomeGhePorCodigo === 'function') window.obterNomeGhePorCodigo = obterNomeGhePorCodigo;
+        if (typeof recarregarRegrasRecomendacao === 'function') window.recarregarRegrasRecomendacao = recarregarRegrasRecomendacao;
+        if (typeof filtrarTipoRegraTab === 'function') window.filtrarTipoRegraTab = filtrarTipoRegraTab;
+        if (typeof renderTreinamentoRegrasTab === 'function') window.renderTreinamentoRegrasTab = renderTreinamentoRegrasTab;
+        if (typeof abrirModalNovaRegra === 'function') window.abrirModalNovaRegra = abrirModalNovaRegra;
+        if (typeof fecharModalRegra === 'function') window.fecharModalRegra = fecharModalRegra;
+        if (typeof onTipoRegraChange === 'function') window.onTipoRegraChange = onTipoRegraChange;
+        if (typeof onRegraTreinamentoChange === 'function') window.onRegraTreinamentoChange = onRegraTreinamentoChange;
+        if (typeof salvarRegraRecomendacao === 'function') window.salvarRegraRecomendacao = salvarRegraRecomendacao;
+        if (typeof excluirRegraRecomendacao === 'function') window.excluirRegraRecomendacao = excluirRegraRecomendacao;
+        if (typeof excluirRegraRecomendacaoAtual === 'function') window.excluirRegraRecomendacaoAtual = excluirRegraRecomendacaoAtual;
+        if (typeof alternarStatusRegraRecomendacao === 'function') window.alternarStatusRegraRecomendacao = alternarStatusRegraRecomendacao;
+        if (typeof calcularDiagnosticoGapsTreinamentos === 'function') window.calcularDiagnosticoGapsTreinamentos = calcularDiagnosticoGapsTreinamentos;
+        if (typeof popularFiltrosDiagnosticoGaps === 'function') window.popularFiltrosDiagnosticoGaps = popularFiltrosDiagnosticoGaps;
+        if (typeof onGapFiltroChange === 'function') window.onGapFiltroChange = onGapFiltroChange;
+        if (typeof limparFiltrosDiagnosticoGaps === 'function') window.limparFiltrosDiagnosticoGaps = limparFiltrosDiagnosticoGaps;
+        if (typeof alternarMarcarTodosGaps === 'function') window.alternarMarcarTodosGaps = alternarMarcarTodosGaps;
+        if (typeof alternarSelecaoGapItem === 'function') window.alternarSelecaoGapItem = alternarSelecaoGapItem;
+        if (typeof atualizarContadorGapsSelecionados === 'function') window.atualizarContadorGapsSelecionados = atualizarContadorGapsSelecionados;
+        if (typeof renderTreinamentoGapsTab === 'function') window.renderTreinamentoGapsTab = renderTreinamentoGapsTab;
+        if (typeof convocarColaboradorGapIndividual === 'function') window.convocarColaboradorGapIndividual = convocarColaboradorGapIndividual;
+        if (typeof abrirModalConvocacaoLoteGaps === 'function') window.abrirModalConvocacaoLoteGaps = abrirModalConvocacaoLoteGaps;
+        if (typeof fecharModalConvocacaoLoteGaps === 'function') window.fecharModalConvocacaoLoteGaps = fecharModalConvocacaoLoteGaps;
+        if (typeof confirmarConvocacaoLoteGaps === 'function') window.confirmarConvocacaoLoteGaps = confirmarConvocacaoLoteGaps;
+        if (typeof imprimirDiagnosticoGaps === 'function') window.imprimirDiagnosticoGaps = imprimirDiagnosticoGaps;
+        if (typeof showTreinSubtab === 'function') window.showTreinSubtab = showTreinSubtab;
+        if (typeof recarregarRegrasRecomendacao === 'function') window.carregarRegrasTreinamentoRecomendado = recarregarRegrasRecomendacao;
+        if (typeof recarregarRegrasRecomendacao === 'function') window.recarregarRegrasRecomendacao = recarregarRegrasRecomendacao;
+        if (typeof renderTreinamentoRegrasTab === 'function') window.renderizarTabelaRegrasTrein = renderTreinamentoRegrasTab;
+        if (typeof renderTreinamentoRegrasTab === 'function') window.renderTreinamentoRegrasTab = renderTreinamentoRegrasTab;
+        if (typeof filtrarTipoRegraTab === 'function') window.filtrarRegrasTreinamentoUI = filtrarTipoRegraTab;
+        if (typeof filtrarTipoRegraTab === 'function') window.filtrarTipoRegraTab = filtrarTipoRegraTab;
+        if (typeof abrirModalNovaRegra === 'function') window.abrirModalNovaRegraTrein = abrirModalNovaRegra;
+        if (typeof abrirModalNovaRegra === 'function') window.abrirModalNovaRegra = abrirModalNovaRegra;
+        if (typeof fecharModalRegra === 'function') window.fecharModalRegraTrein = fecharModalRegra;
+        if (typeof fecharModalRegra === 'function') window.fecharModalRegra = fecharModalRegra;
+        if (typeof aoMudarTipoRegraModal === 'function') window.aoMudarTipoRegraModal = aoMudarTipoRegraModal;
+        if (typeof aoMudarTipoRegraModal === 'function') window.onTipoRegraChange = aoMudarTipoRegraModal;
+        if (typeof onRegraTreinamentoChange === 'function') window.onRegraTreinamentoChange = onRegraTreinamentoChange;
+        if (typeof salvarRegraRecomendacao === 'function') window.salvarRegraTreinamentoRecomendado = salvarRegraRecomendacao;
+        if (typeof salvarRegraRecomendacao === 'function') window.salvarRegraRecomendacao = salvarRegraRecomendacao;
+        if (typeof alternarStatusRegraRecomendacao === 'function') window.alternarStatusRegraTrein = alternarStatusRegraRecomendacao;
+        if (typeof alternarStatusRegraRecomendacao === 'function') window.alternarStatusRegraRecomendacao = alternarStatusRegraRecomendacao;
+        if (typeof excluirRegraRecomendacao === 'function') window.excluirRegraTrein = excluirRegraRecomendacao;
+        if (typeof excluirRegraRecomendacao === 'function') window.excluirRegraRecomendacao = excluirRegraRecomendacao;
+        if (typeof excluirRegraRecomendacaoAtual === 'function') window.excluirRegraRecomendacaoAtual = excluirRegraRecomendacaoAtual;
+        if (typeof calcularDiagnosticoGapsTreinamentos === 'function') window.carregarDiagnosticoGapsTreinamentos = calcularDiagnosticoGapsTreinamentos;
+        if (typeof calcularDiagnosticoGapsTreinamentos === 'function') window.calcularDiagnosticoGapsTreinamentos = calcularDiagnosticoGapsTreinamentos;
+        if (typeof renderTreinamentoGapsTab === 'function') window.renderizarDiagnosticoGapsTreinamentos = renderTreinamentoGapsTab;
+        if (typeof renderTreinamentoGapsTab === 'function') window.renderTreinamentoGapsTab = renderTreinamentoGapsTab;
+        if (typeof popularFiltrosDiagnosticoGaps === 'function') window.popularFiltrosDiagnosticoGaps = popularFiltrosDiagnosticoGaps;
+        if (typeof onGapFiltroChange === 'function') window.filtrarDiagnosticoGapsUI = onGapFiltroChange;
+        if (typeof onGapFiltroChange === 'function') window.onGapFiltroChange = onGapFiltroChange;
+        if (typeof limparFiltrosDiagnosticoGaps === 'function') window.limparFiltrosDiagnosticoGaps = limparFiltrosDiagnosticoGaps;
+        if (typeof convocarColaboradorGapIndividual === 'function') window.convocarColaboradorGapIndividual = convocarColaboradorGapIndividual;
+        if (typeof alternarMarcarTodosGaps === 'function') window.alternarSelecaoTodosGaps = alternarMarcarTodosGaps;
+        if (typeof alternarMarcarTodosGaps === 'function') window.alternarMarcarTodosGaps = alternarMarcarTodosGaps;
+        if (typeof alternarSelecaoGapItem === 'function') window.alternarSelecaoGapItem = alternarSelecaoGapItem;
+        if (typeof atualizarContadorGapsSelecionados === 'function') window.atualizarContadorGapsSelecionados = atualizarContadorGapsSelecionados;
+        if (typeof abrirModalConvocacaoLoteGaps === 'function') window.abrirModalConvocacaoLoteGaps = abrirModalConvocacaoLoteGaps;
+        if (typeof abrirModalConvocacaoLoteGaps === 'function') window.convocarGapsLoteModal = abrirModalConvocacaoLoteGaps;
+        if (typeof fecharModalConvocacaoLoteGaps === 'function') window.fecharModalConvocacaoLoteGaps = fecharModalConvocacaoLoteGaps;
+        if (typeof confirmarConvocacaoLoteGaps === 'function') window.confirmarConvocacaoLoteGaps = confirmarConvocacaoLoteGaps;
+        if (typeof imprimirDiagnosticoGaps === 'function') window.imprimirDiagnosticoGaps = imprimirDiagnosticoGaps;
+        if (typeof loadTreinamentosData === 'function') window.loadTreinamentosData = loadTreinamentosData;
+
+        // Sincronização de arrays de estado com window
+        window.allTreinamentosRealizados = allTreinamentosRealizados;
+        window.allTreinamentosCatalogo = allTreinamentosCatalogo;
+        window.allTreinamentosStatus = allTreinamentosStatus;
+        window.allTreinamentosCronograma = allTreinamentosCronograma;
+        window.allTreinamentosConvocados = allTreinamentosConvocados;
+        window.allTreinamentosRegras = allTreinamentosRegras;
+    }
+
+})(typeof window !== 'undefined' ? window : this);

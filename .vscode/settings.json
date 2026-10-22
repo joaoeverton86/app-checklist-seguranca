@@ -42,5 +42,20 @@
   },
   "[plaintext]": {
     "editor.wordWrap": "on"
+  },
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/Documentos_Consultas/**": true,
+    "**/scratch/**": true,
+    "**/.gemini/**": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/bower_components": true,
+    "**/*.code-search": true,
+    "**/Documentos_Consultas": true,
+    "**/scratch": true
   }
 }

@@ -20,7 +20,7 @@
         })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=210">
+    <link rel="stylesheet" href="dashboard.css?v=211">
 </head>
 <body>
 
@@ -33,7 +33,7 @@
         <div style="width:100%; max-width:380px; margin:20px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:32px 28px; box-shadow:0 8px 32px rgba(0,0,0,0.08); box-sizing:border-box;">
             <div style="text-align:center; margin-bottom:22px;">
                 <div style="font-size:34px; margin-bottom:6px;">🛡️</div>
-                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v210</span></div>
+                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v211</span></div>
                 <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; letter-spacing:.5px; margin-top:2px;">PISF Ramal do Agreste</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:12px;">
@@ -149,7 +149,7 @@
             <div class="db-brand">
                 <div class="db-brand-icon">🛡️</div>
                 <div>
-                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v210</span></div>
+                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v211</span></div>
                     <div class="db-brand-sub">PISF Ramal do Agreste</div>
                 </div>
             </div>
@@ -1033,7 +1033,7 @@
                         <button id="treinSubtabBtn-visao" class="db-filter-btn active" onclick="showTreinSubtab('visao')">📊 Visão Geral</button>
                         <button id="treinSubtabBtn-lancar" class="db-filter-btn" onclick="showTreinSubtab('lancar')">📝 Lançar Treinamento</button>
                         <button id="treinSubtabBtn-cronograma" class="db-filter-btn" onclick="showTreinSubtab('cronograma')">🗓️ Cronograma</button>
-                        <button id="treinSubtabBtn-equipes" class="db-filter-btn" onclick="showTreinSubtab('equipes')">👥 Equipes</button>
+                        <button id="treinSubtabBtn-equipes" class="db-filter-btn" onclick="showTreinSubtab('equipes')">👥 Prontidão de Equipes &amp; Dossiê</button>
                         <button id="treinSubtabBtn-registro" class="db-filter-btn" onclick="showTreinSubtab('registro')">🖨️ Registro</button>
                         <button id="treinSubtabBtn-kits" class="db-filter-btn" onclick="showTreinSubtab('kits')">🪪 Kits e Documentos</button>
                         <button id="treinSubtabBtn-historico" class="db-filter-btn" onclick="showTreinSubtab('historico')">📜 Histórico</button>
@@ -1458,21 +1458,150 @@
                 </div>
 
                 <div id="treinSubtab-equipes" style="display:none;">
-                <div class="db-chart-card" style="margin-bottom: 16px;">
-                    <div class="db-chart-title">👥 Gestão de Equipes</div>
-                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 12px;">
-                        Corrija aqui quando um colaborador mudou de equipe e "Carregar equipe do Responsável" não está trazendo ele certo - isso edita o campo Responsável do colaborador, o mesmo que alimenta aquele carregamento em Lançar Treinamento.
-                    </p>
-                    <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600; font-size: 12.5px;">Encarregado/Responsável</label>
-                    <div style="display: flex; gap: 8px; margin-bottom: 16px;">
-                        <input type="text" id="equipesResponsavelInput" list="equipesResponsavelList" oninput="renderEquipeAtual()" placeholder="Digite ou selecione o nome do encarregado..."
-                               style="flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
-                        <button class="db-clear-btn" onclick="limparBuscaEquipes()">✕ Limpar</button>
+                    <!-- Banner de Prontidão de Equipes -->
+                    <div class="db-chart-card" style="margin-bottom: 16px; background: linear-gradient(135deg, rgba(37,99,235,0.06), rgba(16,185,129,0.06)); border-left: 4px solid var(--primary, #2563eb);">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+                            <div>
+                                <h3 style="margin: 0 0 6px 0; font-size: 16px; font-weight: 700; color: var(--text, #1e293b); display: flex; align-items: center; gap: 8px;">
+                                    <span>👥</span> Prontidão Operacional por Equipe &amp; Dossiê do Colaborador (NR-01)
+                                </h3>
+                                <p style="font-size: 12.5px; color: var(--text-light, #64748b); margin: 0; line-height: 1.5; max-width: 900px;">
+                                    Consulta instantânea da capacitação e aptidão técnica de cada trabalhador por Setor, GHE ou Cargo. Resposta imediata para líderes e encarregados liberarem Ordens de Serviço (OS) e Permissões de Trabalho (PT/APR) com conformidade e segurança jurídica.
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button class="db-apply-btn" onclick="imprimirProntidaoEquipe()" style="font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+                                    🖨️ Imprimir Prontidão da Equipe
+                                </button>
+                                <button class="db-clear-btn" onclick="renderProntidaoEquipeTab(true)" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
+                                    🔄 Atualizar
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <datalist id="equipesResponsavelList"></datalist>
 
-                    <div id="equipesConteudo"></div>
-                </div>
+                    <!-- Indicadores de Prontidão da Equipe Filtrada (KPIs) -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 16px;">
+                        <div class="db-card" style="padding: 14px 18px; border-left: 4px solid #6366f1;">
+                            <div style="font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase;">Total na Equipe / Filtro</div>
+                            <div id="kpiProntidaoTotal" style="font-size: 26px; font-weight: 800; color: #4338ca; margin-top: 4px;">0</div>
+                            <div style="font-size: 11px; color: var(--text-light); margin-top: 4px;">Colaboradores ativos avaliados</div>
+                        </div>
+                        <div class="db-card" style="padding: 14px 18px; border-left: 4px solid var(--success, #10b981);">
+                            <div style="font-size: 11px; font-weight: 700; color: #047857; text-transform: uppercase;">🟢 100% em Dia (Aptos)</div>
+                            <div id="kpiProntidaoAptos" style="font-size: 26px; font-weight: 800; color: #047857; margin-top: 4px;">0 (0%)</div>
+                            <div style="font-size: 11px; color: var(--text-light); margin-top: 4px;">Todas as NRs em dia na validade legal</div>
+                        </div>
+                        <div class="db-card" style="padding: 14px 18px; border-left: 4px solid var(--warning, #f59e0b);">
+                            <div style="font-size: 11px; font-weight: 700; color: #b45309; text-transform: uppercase;">🟡 A Vencer (≤ 30 dias)</div>
+                            <div id="kpiProntidaoAVencer" style="font-size: 26px; font-weight: 800; color: #b45309; margin-top: 4px;">0</div>
+                            <div style="font-size: 11px; color: var(--text-light); margin-top: 4px;">Programar reciclagem imediata</div>
+                        </div>
+                        <div class="db-card" style="padding: 14px 18px; border-left: 4px solid var(--danger, #ef4444);">
+                            <div style="font-size: 11px; font-weight: 700; color: #b91c1c; text-transform: uppercase;">🔴 Com Pendência / Vencido</div>
+                            <div id="kpiProntidaoPendentes" style="font-size: 26px; font-weight: 800; color: #b91c1c; margin-top: 4px;">0</div>
+                            <div style="font-size: 11px; color: var(--text-light); margin-top: 4px;">Exigência não realizada ou vencida</div>
+                        </div>
+                    </div>
+
+                    <!-- Barra de Consulta Multi-Critério -->
+                    <div class="db-chart-card" style="margin-bottom: 16px; padding: 14px 18px;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: end;">
+                            <div>
+                                <label style="display:block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">Buscar Colaborador:</label>
+                                <input type="text" id="prontidaoBuscaInput" placeholder="Nome ou matrícula..." oninput="filtrarProntidaoEquipeUI()" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">Setor / Equipe:</label>
+                                <select id="prontidaoFiltroSetorSelect" onchange="filtrarProntidaoEquipeUI()" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
+                                    <option value="">Todos os Setores</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">GHE (Grupo de Risco):</label>
+                                <select id="prontidaoFiltroGheSelect" onchange="filtrarProntidaoEquipeUI()" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
+                                    <option value="">Todos os GHEs</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">Cargo / Função:</label>
+                                <select id="prontidaoFiltroFuncaoSelect" onchange="filtrarProntidaoEquipeUI()" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
+                                    <option value="">Todas as Funções</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">Status de Aptidão:</label>
+                                <select id="prontidaoFiltroStatusSelect" onchange="filtrarProntidaoEquipeUI()" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
+                                    <option value="todos">Todos os Status</option>
+                                    <option value="apto">🟢 100% em Dia (Aptos)</option>
+                                    <option value="avencer">🟡 A Vencer (≤ 30 dias)</option>
+                                    <option value="pendente">🔴 Com Pendência / Vencido</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">Habilitados na NR / Curso:</label>
+                                <select id="prontidaoFiltroCursoSelect" onchange="filtrarProntidaoEquipeUI()" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
+                                    <option value="">Qualquer Capacitação</option>
+                                </select>
+                            </div>
+                            <div style="display:flex; gap:6px;">
+                                <button class="db-clear-btn" onclick="limparFiltrosProntidaoEquipe()" style="width: 100%; padding: 8px 12px; font-size: 12px;">✕ Limpar Filtros</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabela de Prontidão da Equipe -->
+                    <div class="db-chart-card" style="margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                            <div style="font-size: 14px; font-weight: 700; color: var(--text);">
+                                Prontidão dos Colaboradores da Equipe (<span id="prontidaoTotalContador">0</span> colaboradores)
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-light);">
+                                Clique no colaborador ou no botão para abrir o Dossiê Individual e imprimir o prontuário.
+                            </div>
+                        </div>
+                        <div style="overflow-x: auto;">
+                            <table class="db-table" style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
+                                <thead>
+                                    <tr style="border-bottom: 2px solid var(--border); text-align: left; background: var(--bg);">
+                                        <th style="padding: 10px 12px; width: 65px;">Matrícula</th>
+                                        <th style="padding: 10px 12px;">Colaborador</th>
+                                        <th style="padding: 10px 12px;">Função / Cargo</th>
+                                        <th style="padding: 10px 12px;">Setor / GHE</th>
+                                        <th style="padding: 10px 12px; text-align: center; width: 130px;">Status Geral</th>
+                                        <th style="padding: 10px 12px;">Resumo de Treinamentos (Capacitações)</th>
+                                        <th style="padding: 10px 12px; text-align: center; width: 110px;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaProntidaoEquipeCorpo">
+                                    <!-- Renderizado dinamicamente via renderProntidaoEquipeTab() -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Seção Recolhível Auxiliar: Gerenciamento Legado de Encarregados -->
+                    <div class="db-chart-card" style="margin-bottom: 16px; border: 1px dashed var(--border);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="toggleSecaoGerenciarEncarregados()">
+                            <div style="font-size: 13px; font-weight: 700; color: var(--text-light); display:flex; align-items:center; gap:8px;">
+                                <span>⚙️</span> Ferramenta Auxiliar: Ajustar Vínculo de Encarregado / Frente
+                            </div>
+                            <span id="iconeToggleSecaoEncarregados" style="font-size: 14px; color: var(--text-light); font-weight: 700;">▾ Expandir</span>
+                        </div>
+                        <div id="wrapSecaoGerenciarEncarregados" style="display:none; margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+                            <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 12px;">
+                                Corrija aqui quando um colaborador mudou de encarregado e "Carregar equipe do Responsável" em Lançar Treinamento não estiver trazendo ele corretamente.
+                            </p>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600; font-size: 12.5px;">Encarregado / Responsável:</label>
+                            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                                <input type="text" id="equipesResponsavelInput" list="equipesResponsavelList" oninput="renderEquipeAtual()" placeholder="Digite ou selecione o nome do encarregado..."
+                                       style="flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                                <button class="db-clear-btn" onclick="limparBuscaEquipes()">✕ Limpar</button>
+                            </div>
+                            <datalist id="equipesResponsavelList"></datalist>
+                            <div id="equipesConteudo"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <div id="treinSubtab-lancar" style="display:none;">
@@ -2417,6 +2546,73 @@
             <button class="db-clear-btn" onclick="fecharModalConvocacaoLoteGaps()">Cancelar</button>
             <button class="db-apply-btn" id="btnConfirmarConvocacaoLote" onclick="confirmarConvocacaoLoteGaps()" style="font-weight: 700;">
                 ⚡ Confirmar Convocação em Lote
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Dossiê / Prontuário Individual de Treinamentos do Colaborador (NR-01) -->
+<div id="modalDossieColaborador" style="display:none; position: fixed; inset: 0; background: rgba(15,23,42,0.65); z-index: 10085; justify-content: center; align-items: center; padding: 16px; overflow-y: auto;" onclick="if(event.target===this) fecharModalDossieColaborador();">
+    <div style="background: var(--card, #fff); border-radius: 14px; max-width: 860px; width: 100%; max-height: 92vh; overflow-y: auto; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 1px solid var(--border); box-sizing: border-box;">
+        <!-- Cabeçalho -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px; gap: 12px;">
+            <div>
+                <div style="font-size: 17px; font-weight: 800; color: var(--primary, #2563eb); display: flex; align-items: center; gap: 8px;">
+                    <span>📑</span> Dossiê e Prontuário de Capacitação do Trabalhador
+                </div>
+                <div style="font-size: 12px; color: var(--text-light); margin-top: 3px;">
+                    Comprovação de capacitação profissional em atendimento à NR-01, PGR e Normas Regulamentadoras
+                </div>
+            </div>
+            <button onclick="fecharModalDossieColaborador()" style="background: transparent; border: none; font-size: 22px; cursor: pointer; color: var(--text-light); font-weight: 700; padding: 0 4px;">✕</button>
+        </div>
+
+        <!-- Ficha de Dados do Colaborador -->
+        <div id="dossieColaboradorInfoCard" style="margin-bottom: 16px;"></div>
+
+        <!-- Indicadores Rápidos do Trabalhador -->
+        <div id="dossieColaboradorKpis" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px;"></div>
+
+        <!-- Bloco 1: Treinamentos Exigidos Pendentes (Gaps NR-01) -->
+        <div style="margin-bottom: 16px;">
+            <div style="font-size: 13.5px; font-weight: 700; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                <span>⚠️</span> Capacitações Obrigatórias Pendentes (Exigências NR-01 / PGR)
+            </div>
+            <div id="dossieColaboradorPendencias"></div>
+        </div>
+
+        <!-- Bloco 2: Histórico Completo de Treinamentos Concluídos -->
+        <div style="margin-bottom: 18px;">
+            <div style="font-size: 13.5px; font-weight: 700; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                <span>🎓</span> Histórico Completo de Treinamentos Realizados
+            </div>
+            <div style="overflow-x: auto; border: 1px solid var(--border); border-radius: 8px;">
+                <table class="db-table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--border); text-align: left; background: var(--bg);">
+                            <th style="padding: 8px 10px; width: 65px;">Código</th>
+                            <th style="padding: 8px 10px;">Treinamento</th>
+                            <th style="padding: 8px 10px; text-align: center;">Data Realização</th>
+                            <th style="padding: 8px 10px; text-align: center;">Validade / Reciclagem</th>
+                            <th style="padding: 8px 10px; text-align: center;">Carga Horária</th>
+                            <th style="padding: 8px 10px;">Instrutor / Entidade</th>
+                            <th style="padding: 8px 10px; text-align: center;">Situação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dossieColaboradorHistoricoCorpo">
+                        <!-- Preenchido dinamicamente -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Rodapé do Modal com Ações -->
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 14px; flex-wrap: wrap; gap: 10px;">
+            <button type="button" class="db-clear-btn" onclick="fecharModalDossieColaborador()">
+                Fechar
+            </button>
+            <button type="button" class="db-apply-btn" id="btnImprimirProntuarioDossie" onclick="" style="font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+                🖨️ Imprimir Prontuário Individual
             </button>
         </div>
     </div>
@@ -9314,8 +9510,8 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js"></script>
     <script src="logo_cop_base64.js?v=20261015_v197"></script>
-    <script src="dashboard.js?v=210"></script>
-    <script src="modules/treinamentos_ddsma.js?v=210"></script>
+    <script src="dashboard.js?v=211"></script>
+    <script src="modules/treinamentos_ddsma.js?v=211"></script>
     <script src="modules/efetivo_ferias.js?v=205"></script>
     <script src="modules/ghe_os.js?v=207"></script>
     <script src="modules/relatorio_sms_nc.js?v=203"></script>

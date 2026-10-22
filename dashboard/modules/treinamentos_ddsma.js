@@ -32,6 +32,15 @@ let gapFiltroBusca = '';
 let gapSelecionados = new Set();
 let regraFiltroTipoAtual = 'todas';
 let regraEmEdicaoId = null;
+
+// Central de Prontidão por Equipe e Dossiê do Colaborador (NR-01)
+let prontidaoFiltroBusca = '';
+let prontidaoFiltroSetor = '';
+let prontidaoFiltroGhe = '';
+let prontidaoFiltroFuncao = '';
+let prontidaoFiltroStatus = 'todos';
+let prontidaoFiltroCurso = '';
+let prontidaoDadosCalculadosCache = null;
 // DDS (Diálogo de Saúde, Segurança e Meio Ambiente) - mesmo padrão dessas tabelas de cima:
 // carregado sob demanda junto com o resto de Treinamentos (loadTreinamentosData), tabela
 // denormalizada de propósito (1 linha por participante por dia, igual
@@ -340,7 +349,19 @@ function showTreinSubtab(tab) {
     if (tab === 'visao') renderTreinamentosPanel();
     if (tab === 'historico') renderTreinHistLista();
     if (tab === 'cronograma') renderCronogramaLista();
-    if (tab === 'equipes') { popularEquipesResponsavelDatalist(); renderEquipeAtual(); }
+    if (tab === 'equipes') {
+        if (!allTreinamentosRealizados || allTreinamentosRealizados.length === 0 || !allEfetivo || allEfetivo.length === 0) {
+            loadTreinamentosData().then(() => {
+                popularFiltrosProntidaoEquipes();
+                renderProntidaoEquipeTab();
+            });
+        } else {
+            popularFiltrosProntidaoEquipes();
+            renderProntidaoEquipeTab();
+        }
+        popularEquipesResponsavelDatalist();
+        renderEquipeAtual();
+    }
     if (tab === 'relatorio') popularRelatorioMensalDefaults();
     if (tab === 'pat') renderPlanoAnualTreinamento();
     if (tab === 'regras') {
@@ -8260,6 +8281,1029 @@ function abrirDocumentoBlob(html, titulo = 'Documento_SST') {
 // dele ainda aponta pro encarregado antigo.
 // ============================================
 
+// ==============================================================================
+// CENTRAL DE PRONTIDÃO POR EQUIPE E DOSSIÊ DO COLABORADOR (NR-01 / GRO)
+// Consulta instantânea de aptidão técnica por Setor, GHE, Cargo e Colaborador
+// ==============================================================================
+
+function popularFiltrosProntidaoEquipes() {
+    const selSetor = document.getElementById('prontidaoFiltroSetorSelect');
+    const selGhe = document.getElementById('prontidaoFiltroGheSelect');
+    const selFuncao = document.getElementById('prontidaoFiltroFuncaoSelect');
+    const selCurso = document.getElementById('prontidaoFiltroCursoSelect');
+
+    const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
+
+    // Popula Setores dinamicamente (sem hardcode)
+    if (selSetor) {
+        const valAtual = selSetor.value;
+        const setoresSet = new Set();
+        ativos.forEach(e => {
+            const s = (e.setor || '').trim();
+            if (s) setoresSet.add(s);
+        });
+        const setores = Array.from(setoresSet).sort((a, b) => a.localeCompare(b));
+        selSetor.innerHTML = `<option value="">Todos os Setores (${setores.length})</option>` +
+            setores.map(s => `<option value="${escapeHTML(s)}">${escapeHTML(s)}</option>`).join('');
+        if (valAtual && setoresSet.has(valAtual)) selSetor.value = valAtual;
+    }
+
+    // Popula GHEs dinamicamente (sem hardcode)
+    if (selGhe) {
+        const valAtual = selGhe.value;
+        const ghesMap = new Map();
+        ativos.forEach(e => {
+            const g = (e.ghe || '').trim();
+            if (g && !ghesMap.has(g)) ghesMap.set(g, g.toUpperCase().startsWith('GHE') ? g : `GHE ${g}`);
+        });
+        (allGheCatalogo || []).forEach(g => {
+            const cod = String(g.codigo || g.id || '').trim();
+            const nome = (g.nome || cod).trim();
+            if (cod && !ghesMap.has(cod)) ghesMap.set(cod, nome.toUpperCase().startsWith('GHE') ? nome : `GHE ${cod} - ${nome}`);
+        });
+        const ghes = Array.from(ghesMap.entries()).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+        selGhe.innerHTML = `<option value="">Todos os GHEs (${ghes.length})</option>` +
+            ghes.map(([cod, label]) => `<option value="${escapeHTML(cod)}">${escapeHTML(label)}</option>`).join('');
+        if (valAtual && ghesMap.has(valAtual)) selGhe.value = valAtual;
+    }
+
+    // Popula Funções / Cargos dinamicamente (sem hardcode)
+    if (selFuncao) {
+        const valAtual = selFuncao.value;
+        const funcoesSet = new Set();
+        ativos.forEach(e => {
+            const f = (e.funcao || '').trim();
+            if (f) funcoesSet.add(f);
+        });
+        const funcoes = Array.from(funcoesSet).sort((a, b) => a.localeCompare(b));
+        selFuncao.innerHTML = `<option value="">Todas as Funções (${funcoes.length})</option>` +
+            funcoes.map(f => `<option value="${escapeHTML(f)}">${escapeHTML(f)}</option>`).join('');
+        if (valAtual && funcoesSet.has(valAtual)) selFuncao.value = valAtual;
+    }
+
+    // Popula Treinamentos / Cursos dinamicamente (sem hardcode)
+    if (selCurso) {
+        const valAtual = selCurso.value;
+        const cursos = [...(allTreinamentosCatalogo || [])].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+        selCurso.innerHTML = '<option value="">Qualquer Capacitação (Não filtrar por curso)</option>' +
+            cursos.map(c => {
+                const cod = String(c.id || '').trim();
+                const nome = c.nome || cod;
+                return `<option value="${escapeHTML(cod)}">[${escapeHTML(cod)}] ${escapeHTML(nome)}</option>`;
+            }).join('');
+        if (valAtual) selCurso.value = valAtual;
+    }
+}
+
+function calcularProntidaoEquipes() {
+    const regrasAtivas = (allTreinamentosRegras || []).filter(r => r.ativo !== false);
+    const colaboradoresAtivos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
+
+    // Mapeia todas as realizações de cada colaborador por matrícula
+    const realizacoesMaisRecentes = new Map(); // mat -> Map(cod -> tr)
+    const todasRealizacoesPorColab = new Map(); // mat -> Array(tr)
+
+    (allTreinamentosRealizados || []).forEach(tr => {
+        const mat = String(tr.matricula || '').trim();
+        const cod = String(tr.treinamento_cod || '').trim();
+        if (!mat) return;
+
+        if (!todasRealizacoesPorColab.has(mat)) todasRealizacoesPorColab.set(mat, []);
+        todasRealizacoesPorColab.get(mat).push(tr);
+
+        if (!cod) return;
+        if (!realizacoesMaisRecentes.has(mat)) realizacoesMaisRecentes.set(mat, new Map());
+        const porCurso = realizacoesMaisRecentes.get(mat);
+        const dataTr = tr.data_treinamento || '1970-01-01';
+        if (!porCurso.has(cod) || dataTr > (porCurso.get(cod).data_treinamento || '1970-01-01')) {
+            porCurso.set(cod, tr);
+        }
+    });
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const hojeStr = hoje.toISOString().slice(0, 10);
+    const em30Dias = new Date(hoje.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const em30DiasStr = em30Dias.toISOString().slice(0, 10);
+
+    const prontidaoLista = [];
+
+    colaboradoresAtivos.forEach(colab => {
+        const mat = String(colab.id || '').trim();
+        const nome = colab.nome || 'Colaborador sem nome';
+        const funcao = (colab.funcao || '').trim();
+        const funcaoNorm = funcao.toUpperCase();
+        const setor = (colab.setor || '').trim();
+        const ghe = String(colab.ghe || '').trim();
+        const gheNorm = ghe.toUpperCase();
+
+        // 1. Identifica exigências de regras ativas aplicáveis a este colaborador
+        const exigenciasMap = new Map(); // cod -> { cod, origens: [], obrigatorio_admissao, periodicidade }
+
+        regrasAtivas.forEach(r => {
+            let aplica = false;
+            let origemLabel = '';
+
+            if (r.tipo_regra === 'TODOS') {
+                aplica = true;
+                origemLabel = 'Geral (Todos)';
+            } else if (r.tipo_regra === 'GHE') {
+                const alvoGhe = String(r.alvo_valor || '').trim().toUpperCase();
+                if (gheNorm && (gheNorm === alvoGhe || gheNorm === `GRUPO ${alvoGhe}` || gheNorm.startsWith(alvoGhe))) {
+                    aplica = true;
+                    origemLabel = `GHE ${r.alvo_valor}`;
+                }
+            } else if (r.tipo_regra === 'FUNCAO') {
+                const alvoFunc = String(r.alvo_valor || '').trim().toUpperCase();
+                if (funcaoNorm && funcaoNorm === alvoFunc) {
+                    aplica = true;
+                    origemLabel = `Cargo (${r.alvo_valor})`;
+                }
+            } else if (r.tipo_regra === 'COLABORADOR') {
+                if (mat === String(r.alvo_valor || '').trim()) {
+                    aplica = true;
+                    origemLabel = 'Individual';
+                }
+            }
+
+            if (aplica) {
+                const cod = String(r.treinamento_cod || '').trim();
+                if (!cod) return;
+                if (!exigenciasMap.has(cod)) {
+                    exigenciasMap.set(cod, {
+                        treinamento_cod: cod,
+                        origens: [origemLabel],
+                        obrigatorio_admissao: r.obrigatorio_admissao !== false,
+                        periodicidade_customizada: r.periodicidade_customizada_meses || null
+                    });
+                } else {
+                    const existente = exigenciasMap.get(cod);
+                    if (!existente.origens.includes(origemLabel)) existente.origens.push(origemLabel);
+                    if (r.obrigatorio_admissao) existente.obrigatorio_admissao = true;
+                }
+            }
+        });
+
+        // 2. Consolida todos os cursos que o colaborador possui registrados
+        const realizadosMap = realizacoesMaisRecentes.get(mat) || new Map();
+        const cursosConsolidados = [];
+        const codigosRealizados = new Set();
+
+        realizadosMap.forEach((tr, cod) => {
+            codigosRealizados.add(cod);
+            const nomeCurso = tr.treinamento_nome || obterNomeCursoCatalogo(cod);
+            const dataTrein = tr.data_treinamento || null;
+
+            // Define validade / reciclagem
+            const perMeses = tr.meses_validade || exigenciasMap.get(cod)?.periodicidade_customizada || obterPeriodicidadeCursoCatalogo(cod);
+            let dataVenc = null;
+            if (tr.data_proxima_reciclagem) {
+                dataVenc = tr.data_proxima_reciclagem;
+            } else if (dataTrein && perMeses && perMeses > 0) {
+                dataVenc = somarMesesDataIso(dataTrein, perMeses);
+            }
+
+            let status = 'valido';
+            let labelBadge = '';
+            let badgeClass = 'valido';
+            let diasTexto = '';
+
+            if (!dataVenc) {
+                // Treinamento sem periodicidade de reciclagem (perene)
+                status = 'valido';
+                labelBadge = `🟢 ${cod} (Válido)`;
+                badgeClass = 'valido';
+                diasTexto = 'Validade permanente (Sem reciclagem periódica)';
+            } else if (dataVenc < hojeStr) {
+                const diasAtraso = Math.abs(calcularDiferencaDiasDatas(dataVenc, hojeStr));
+                status = 'vencido';
+                labelBadge = `🔴 ${cod} (Vencido)`;
+                badgeClass = 'vencido';
+                diasTexto = `Vencido em ${formatarDataIsoBR(dataVenc)} (há ${diasAtraso} dias)`;
+            } else if (dataVenc <= em30DiasStr) {
+                const diasRestantes = calcularDiferencaDiasDatas(hojeStr, dataVenc);
+                status = 'avencer';
+                labelBadge = `🟡 ${cod} (Vence em ${diasRestantes}d)`;
+                badgeClass = 'avencer';
+                diasTexto = `Vence em ${formatarDataIsoBR(dataVenc)} (em ${diasRestantes} dias)`;
+            } else {
+                const diasRestantes = calcularDiferencaDiasDatas(hojeStr, dataVenc);
+                status = 'valido';
+                labelBadge = `🟢 ${cod} (Válido)`;
+                badgeClass = 'valido';
+                diasTexto = `Válido até ${formatarDataIsoBR(dataVenc)} (restam ${diasRestantes} dias)`;
+            }
+
+            cursosConsolidados.push({
+                cod,
+                nome: nomeCurso,
+                data_treinamento: dataTrein,
+                data_vencimento: dataVenc,
+                status,
+                badgeClass,
+                labelBadge,
+                diasTexto,
+                isExigencia: exigenciasMap.has(cod),
+                realizacaoObj: tr
+            });
+        });
+
+        // 3. Adiciona exigências normativas que o colaborador NUNCA realizou (Gaps NR-01)
+        const pendenciasExigidas = [];
+        exigenciasMap.forEach((exig, cod) => {
+            if (!codigosRealizados.has(cod)) {
+                const nomeCurso = obterNomeCursoCatalogo(cod);
+                const itemPendente = {
+                    cod,
+                    nome: nomeCurso,
+                    data_treinamento: null,
+                    data_vencimento: null,
+                    status: 'pendente',
+                    badgeClass: 'pendente',
+                    labelBadge: `🔴 ${cod} (Pendente)`,
+                    diasTexto: exig.obrigatorio_admissao ? 'Capacitação obrigatória não realizada (Admissão)' : 'Capacitação obrigatória não realizada',
+                    isExigencia: true,
+                    origens: exig.origens,
+                    obrigatorio_admissao: exig.obrigatorio_admissao,
+                    realizacaoObj: null
+                };
+                cursosConsolidados.push(itemPendente);
+                pendenciasExigidas.push(itemPendente);
+            }
+        });
+
+        // Ordena pílulas: pendentes/vencidos primeiro, depois a vencer, depois válidos
+        cursosConsolidados.sort((a, b) => {
+            const peso = { 'pendente': 1, 'vencido': 2, 'avencer': 3, 'valido': 4 };
+            return (peso[a.status] || 5) - (peso[b.status] || 5);
+        });
+
+        // 4. Determina o Status Geral de Aptidão Técnica do Colaborador
+        let statusGeral = 'apto';
+        const temPendenciaOuVencido = cursosConsolidados.some(c => c.status === 'pendente' || c.status === 'vencido');
+        const temAVencer = cursosConsolidados.some(c => c.status === 'avencer');
+
+        if (temPendenciaOuVencido) {
+            statusGeral = 'pendente';
+        } else if (temAVencer) {
+            statusGeral = 'avencer';
+        } else {
+            statusGeral = 'apto';
+        }
+
+        // Avaliação do ASO (Saúde)
+        let asoStatus = 'sem_data';
+        let asoTexto = 'ASO não informado';
+        let asoBadgeClass = 'badge-aso-cinza';
+        if (colab.validade_aso) {
+            const asoData = colab.validade_aso;
+            if (asoData < hojeStr) {
+                asoStatus = 'vencido';
+                asoTexto = `ASO Vencido (${formatarDataIsoBR(asoData)})`;
+                asoBadgeClass = 'badge-aso-vencido';
+            } else if (asoData <= em30DiasStr) {
+                const diasAso = calcularDiferencaDiasDatas(hojeStr, asoData);
+                asoStatus = 'avencer';
+                asoTexto = `ASO vence em ${diasAso}d (${formatarDataIsoBR(asoData)})`;
+                asoBadgeClass = 'badge-aso-avencer';
+            } else {
+                asoStatus = 'valido';
+                asoTexto = `ASO Válido (${formatarDataIsoBR(asoData)})`;
+                asoBadgeClass = 'badge-aso-valido';
+            }
+        }
+
+        // Histórico completo ordenado cronologicamente (decrescente)
+        const histCompleto = (todasRealizacoesPorColab.get(mat) || []).slice().sort((a, b) => {
+            const da = a.data_treinamento || '1970-01-01';
+            const db = b.data_treinamento || '1970-01-01';
+            return db.localeCompare(da);
+        });
+
+        prontidaoLista.push({
+            matricula: mat,
+            nome,
+            funcao,
+            setor,
+            ghe,
+            dt_admissao: colab.dt_admissao,
+            validade_aso: colab.validade_aso,
+            asoStatus,
+            asoTexto,
+            asoBadgeClass,
+            statusGeral,
+            treinamentos: cursosConsolidados,
+            pendenciasExigidas,
+            historicoCompleto: histCompleto,
+            rawColab: colab
+        });
+    });
+
+    // Ordena colaboradores por nome
+    prontidaoLista.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    prontidaoDadosCalculadosCache = prontidaoLista;
+    return prontidaoLista;
+}
+
+function filtrarProntidaoEquipeUI() {
+    prontidaoFiltroBusca = (document.getElementById('prontidaoBuscaInput')?.value || '').trim().toLowerCase();
+    prontidaoFiltroSetor = document.getElementById('prontidaoFiltroSetorSelect')?.value || '';
+    prontidaoFiltroGhe = document.getElementById('prontidaoFiltroGheSelect')?.value || '';
+    prontidaoFiltroFuncao = document.getElementById('prontidaoFiltroFuncaoSelect')?.value || '';
+    prontidaoFiltroStatus = document.getElementById('prontidaoFiltroStatusSelect')?.value || 'todos';
+    prontidaoFiltroCurso = document.getElementById('prontidaoFiltroCursoSelect')?.value || '';
+
+    renderProntidaoEquipeTab(false);
+}
+
+function limparFiltrosProntidaoEquipe() {
+    if (document.getElementById('prontidaoBuscaInput')) document.getElementById('prontidaoBuscaInput').value = '';
+    if (document.getElementById('prontidaoFiltroSetorSelect')) document.getElementById('prontidaoFiltroSetorSelect').value = '';
+    if (document.getElementById('prontidaoFiltroGheSelect')) document.getElementById('prontidaoFiltroGheSelect').value = '';
+    if (document.getElementById('prontidaoFiltroFuncaoSelect')) document.getElementById('prontidaoFiltroFuncaoSelect').value = '';
+    if (document.getElementById('prontidaoFiltroStatusSelect')) document.getElementById('prontidaoFiltroStatusSelect').value = 'todos';
+    if (document.getElementById('prontidaoFiltroCursoSelect')) document.getElementById('prontidaoFiltroCursoSelect').value = '';
+
+    prontidaoFiltroBusca = '';
+    prontidaoFiltroSetor = '';
+    prontidaoFiltroGhe = '';
+    prontidaoFiltroFuncao = '';
+    prontidaoFiltroStatus = 'todos';
+    prontidaoFiltroCurso = '';
+
+    renderProntidaoEquipeTab(false);
+}
+
+async function renderProntidaoEquipeTab(forcarRecarregar = false) {
+    if (forcarRecarregar || !prontidaoDadosCalculadosCache) {
+        if (!allTreinamentosRealizados || allTreinamentosRealizados.length === 0 || !allEfetivo || allEfetivo.length === 0) {
+            await loadTreinamentosData();
+        }
+        popularFiltrosProntidaoEquipes();
+        calcularProntidaoEquipes();
+    }
+
+    const todosColabs = prontidaoDadosCalculadosCache || calcularProntidaoEquipes();
+
+    // Aplica os filtros selecionados
+    const filtrados = todosColabs.filter(c => {
+        if (prontidaoFiltroSetor && c.setor !== prontidaoFiltroSetor) return false;
+        if (prontidaoFiltroGhe && c.ghe !== prontidaoFiltroGhe) {
+            const gheNorm = (c.ghe || '').toUpperCase();
+            const filtroNorm = prontidaoFiltroGhe.toUpperCase();
+            if (gheNorm !== filtroNorm && gheNorm !== `GRUPO ${filtroNorm}` && !gheNorm.startsWith(filtroNorm)) return false;
+        }
+        if (prontidaoFiltroFuncao && c.funcao !== prontidaoFiltroFuncao) return false;
+        if (prontidaoFiltroStatus !== 'todos' && c.statusGeral !== prontidaoFiltroStatus) return false;
+
+        // Filtro por habilitação em curso específico (válido ou a vencer)
+        if (prontidaoFiltroCurso) {
+            const temCursoValido = c.treinamentos.some(t => t.cod === prontidaoFiltroCurso && (t.status === 'valido' || t.status === 'avencer'));
+            if (!temCursoValido) return false;
+        }
+
+        // Filtro de busca textual
+        if (prontidaoFiltroBusca) {
+            const b = prontidaoFiltroBusca;
+            const nomeL = (c.nome || '').toLowerCase();
+            const matL = (c.matricula || '').toLowerCase();
+            const funcL = (c.funcao || '').toLowerCase();
+            const setorL = (c.setor || '').toLowerCase();
+            const gheL = (c.ghe || '').toLowerCase();
+            if (!nomeL.includes(b) && !matL.includes(b) && !funcL.includes(b) && !setorL.includes(b) && !gheL.includes(b)) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+
+    // Atualiza KPIs da Equipe Filtrada
+    const total = filtrados.length;
+    const aptos = filtrados.filter(c => c.statusGeral === 'apto').length;
+    const avencer = filtrados.filter(c => c.statusGeral === 'avencer').length;
+    const pendentes = filtrados.filter(c => c.statusGeral === 'pendente').length;
+    const pctApto = total > 0 ? Math.round((aptos / total) * 100) : 0;
+
+    const elTotal = document.getElementById('kpiProntidaoTotal');
+    const elAptos = document.getElementById('kpiProntidaoAptos');
+    const elAVencer = document.getElementById('kpiProntidaoAVencer');
+    const elPendentes = document.getElementById('kpiProntidaoPendentes');
+    const elContador = document.getElementById('prontidaoTotalContador');
+
+    if (elTotal) elTotal.textContent = total;
+    if (elAptos) elAptos.textContent = `${aptos} (${pctApto}%)`;
+    if (elAVencer) elAVencer.textContent = avencer;
+    if (elPendentes) elPendentes.textContent = pendentes;
+    if (elContador) elContador.textContent = total;
+
+    // Renderiza a Tabela de Prontidão
+    const tbody = document.getElementById('tabelaProntidaoEquipeCorpo');
+    if (!tbody) return;
+
+    if (filtrados.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; padding: 36px 16px; color: var(--text-light);">
+                    <div style="font-size: 32px; margin-bottom: 8px;">🔍</div>
+                    <div style="font-size: 14px; font-weight: 700; color: var(--text);">Nenhum colaborador encontrado para os filtros selecionados</div>
+                    <div style="font-size: 12px; margin-top: 4px;">Tente limpar a busca ou selecionar outro setor/GHE/função.</div>
+                    <button class="db-clear-btn" onclick="limparFiltrosProntidaoEquipe()" style="margin-top: 12px;">Limpar Filtros</button>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = filtrados.map(c => {
+        // Badges de Status Geral
+        let statusBadgeHtml = '';
+        if (c.statusGeral === 'apto') {
+            statusBadgeHtml = `<span class="badge-aptidao-apto" title="Todas as capacitações e exigências em dia">🟢 100% Apto</span>`;
+        } else if (c.statusGeral === 'avencer') {
+            statusBadgeHtml = `<span class="badge-aptidao-avencer" title="Possui treinamento(s) vencendo em até 30 dias">🟡 A Vencer (≤30d)</span>`;
+        } else {
+            statusBadgeHtml = `<span class="badge-aptidao-pendente" title="Possui capacitação obrigatória pendente ou vencida">🔴 Com Pendência</span>`;
+        }
+
+        // Pílulas de Treinamento
+        let pillsHtml = '';
+        if (c.treinamentos.length === 0) {
+            pillsHtml = '<span style="font-size: 11px; color: var(--text-light); font-style: italic;">Nenhum treinamento registrado</span>';
+        } else {
+            pillsHtml = `<div class="wrap-trein-pills">` +
+                c.treinamentos.map(t => {
+                    return `<span class="badge-trein-pill ${t.badgeClass}" title="${escapeHTML(t.nome)} - ${escapeHTML(t.diasTexto)}">
+                        ${escapeHTML(t.labelBadge)}
+                    </span>`;
+                }).join('') +
+            `</div>`;
+        }
+
+        // Badge ASO compacto
+        let asoBadgeInline = '';
+        if (c.validade_aso) {
+            if (c.asoStatus === 'vencido') {
+                asoBadgeInline = `<span style="font-size: 10px; color: #b91c1c; font-weight: 700; margin-left: 4px;" title="${escapeHTML(c.asoTexto)}">⚠️ ASO Vencido</span>`;
+            }
+        }
+
+        return `
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 10px 12px; font-weight: 700; font-family: monospace; color: var(--text-light);">
+                    ${escapeHTML(c.matricula)}
+                </td>
+                <td style="padding: 10px 12px;">
+                    <a href="javascript:void(0)" onclick="abrirDossieColaborador('${escapeHTML(c.matricula)}')" style="font-weight: 700; color: var(--primary, #2563eb); text-decoration: underline; display: inline-flex; align-items: center;" title="Clique para abrir o Dossiê Completo">
+                        ${escapeHTML(c.nome)}
+                    </a>
+                    ${asoBadgeInline}
+                </td>
+                <td style="padding: 10px 12px; color: var(--text);">
+                    ${escapeHTML(c.funcao || 'Não informada')}
+                </td>
+                <td style="padding: 10px 12px; color: var(--text-light);">
+                    ${escapeHTML(c.setor || '-')}${c.ghe ? ` / GHE ${escapeHTML(c.ghe)}` : ''}
+                </td>
+                <td style="padding: 10px 12px; text-align: center;">
+                    ${statusBadgeHtml}
+                </td>
+                <td style="padding: 10px 12px;">
+                    ${pillsHtml}
+                </td>
+                <td style="padding: 10px 12px; text-align: center;">
+                    <button class="db-clear-btn" onclick="abrirDossieColaborador('${escapeHTML(c.matricula)}')" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;" title="Ver histórico completo e emitir prontuário">
+                        🔍 Dossiê
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function abrirDossieColaborador(matricula) {
+    const todos = prontidaoDadosCalculadosCache || calcularProntidaoEquipes();
+    const c = todos.find(x => String(x.matricula) === String(matricula));
+    if (!c) {
+        alert('Colaborador não encontrado na base de dados ativa.');
+        return;
+    }
+    dossieColaboradorAtual = c;
+
+    // 1. Preenche Ficha de Dados do Colaborador
+    const infoCard = document.getElementById('dossieColaboradorInfoCard');
+    if (infoCard) {
+        let asoTag = '';
+        if (c.validade_aso) {
+            const cor = c.asoStatus === 'vencido' ? '#ef4444' : (c.asoStatus === 'avencer' ? '#f59e0b' : '#10b981');
+            asoTag = `<span style="display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; background: ${cor}15; color: ${cor}; border: 1px solid ${cor}40;">${escapeHTML(c.asoTexto)}</span>`;
+        } else {
+            asoTag = `<span style="display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; background: #e2e8f0; color: #64748b;">ASO Não Informado</span>`;
+        }
+
+        let aptTag = '';
+        if (c.statusGeral === 'apto') {
+            aptTag = `<span class="badge-aptidao-apto">🟢 Apto p/ Atividades (100% em Dia)</span>`;
+        } else if (c.statusGeral === 'avencer') {
+            aptTag = `<span class="badge-aptidao-avencer">🟡 A Vencer nos Próximos 30 Dias</span>`;
+        } else {
+            aptTag = `<span class="badge-aptidao-pendente">🔴 Inapto p/ Atividades Específicas (Com Pendência)</span>`;
+        }
+
+        infoCard.innerHTML = `
+            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <div style="font-size: 17px; font-weight: 800; color: var(--text);">${escapeHTML(c.nome)}</div>
+                        <div style="font-size: 12.5px; color: var(--text-light); margin-top: 2px;">
+                            Matrícula: <strong>${escapeHTML(c.matricula)}</strong> | Função: <strong>${escapeHTML(c.funcao || 'Não informada')}</strong>
+                        </div>
+                    </div>
+                    <div>
+                        ${aptTag}
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; font-size: 12px; border-top: 1px solid var(--border); padding-top: 10px;">
+                    <div><span style="color:var(--text-light);">Setor:</span> <strong>${escapeHTML(c.setor || '-')}</strong></div>
+                    <div><span style="color:var(--text-light);">GHE (PGR):</span> <strong>${escapeHTML(c.ghe ? `GHE ${c.ghe}` : '-')}</strong></div>
+                    <div><span style="color:var(--text-light);">Admissão:</span> <strong>${formatarDataIsoBR(c.dt_admissao)}</strong></div>
+                    <div><span style="color:var(--text-light);">Saúde Ocupacional:</span> ${asoTag}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    // 2. Indicadores Rápidos do Trabalhador
+    const kpisWrap = document.getElementById('dossieColaboradorKpis');
+    if (kpisWrap) {
+        const totalTrein = c.treinamentos.length;
+        const validos = c.treinamentos.filter(t => t.status === 'valido').length;
+        const avencer = c.treinamentos.filter(t => t.status === 'avencer').length;
+        const vencidos = c.treinamentos.filter(t => t.status === 'vencido').length;
+        const pendentes = c.treinamentos.filter(t => t.status === 'pendente').length;
+
+        kpisWrap.innerHTML = `
+            <div class="db-card" style="padding: 10px 14px; border-left: 3px solid #6366f1;">
+                <div style="font-size: 10px; font-weight: 700; color: var(--text-light); text-transform: uppercase;">Total de Cursos</div>
+                <div style="font-size: 20px; font-weight: 800; color: #4338ca; margin-top: 2px;">${totalTrein}</div>
+            </div>
+            <div class="db-card" style="padding: 10px 14px; border-left: 3px solid var(--success);">
+                <div style="font-size: 10px; font-weight: 700; color: #047857; text-transform: uppercase;">Válidos</div>
+                <div style="font-size: 20px; font-weight: 800; color: #047857; margin-top: 2px;">${validos}</div>
+            </div>
+            <div class="db-card" style="padding: 10px 14px; border-left: 3px solid var(--warning);">
+                <div style="font-size: 10px; font-weight: 700; color: #b45309; text-transform: uppercase;">A Vencer (≤30d)</div>
+                <div style="font-size: 20px; font-weight: 800; color: #b45309; margin-top: 2px;">${avencer}</div>
+            </div>
+            <div class="db-card" style="padding: 10px 14px; border-left: 3px solid var(--danger);">
+                <div style="font-size: 10px; font-weight: 700; color: #b91c1c; text-transform: uppercase;">Vencidos</div>
+                <div style="font-size: 20px; font-weight: 800; color: #b91c1c; margin-top: 2px;">${vencidos}</div>
+            </div>
+            <div class="db-card" style="padding: 10px 14px; border-left: 3px solid #ec4899;">
+                <div style="font-size: 10px; font-weight: 700; color: #be185d; text-transform: uppercase;">Pendentes (Gaps)</div>
+                <div style="font-size: 20px; font-weight: 800; color: #be185d; margin-top: 2px;">${pendentes}</div>
+            </div>
+        `;
+    }
+
+    // 3. Bloco de Treinamentos Exigidos Pendentes (Gaps NR-01)
+    const pendWrap = document.getElementById('dossieColaboradorPendencias');
+    if (pendWrap) {
+        const itensGaps = c.treinamentos.filter(t => t.status === 'pendente' || t.status === 'vencido');
+        if (itensGaps.length === 0) {
+            pendWrap.innerHTML = `
+                <div style="padding: 12px 16px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; color: #047857; font-size: 12.5px; display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 18px;">🟢</span>
+                    <div>
+                        <strong>Situação Regular:</strong> Todas as capacitações obrigatórias para este cargo/GHE foram concluídas e estão na validade legal.
+                    </div>
+                </div>
+            `;
+        } else {
+            pendWrap.innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    ${itensGaps.map(g => `
+                        <div style="padding: 10px 14px; background: ${g.status === 'vencido' ? '#fef2f2' : '#fdf2f8'}; border: 1px solid ${g.status === 'vencido' ? '#fecaca' : '#fbcfe8'}; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <div>
+                                <span style="font-weight: 800; color: ${g.status === 'vencido' ? '#b91c1c' : '#be185d'}; font-size: 13px;">[${escapeHTML(g.cod)}] ${escapeHTML(g.nome)}</span>
+                                <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">
+                                    ${escapeHTML(g.diasTexto)}${g.origens ? ' • Origem: ' + escapeHTML(g.origens.join(', ')) : ''}
+                                </div>
+                            </div>
+                            <span class="badge-trein-pill ${g.badgeClass}">
+                                ${escapeHTML(g.labelBadge)}
+                            </span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+    }
+
+    // 4. Bloco de Histórico Completo de Treinamentos Concluídos
+    const histCorpo = document.getElementById('dossieColaboradorHistoricoCorpo');
+    if (histCorpo) {
+        const concluidos = c.historicoCompleto || [];
+        if (concluidos.length === 0) {
+            histCorpo.innerHTML = `
+                <tr>
+                    <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-light);">
+                        Nenhum registro de treinamento concluído arquivado para este trabalhador.
+                    </td>
+                </tr>
+            `;
+        } else {
+            const hojeStrLocal = new Date().toISOString().slice(0, 10);
+            const em30DiasStrLocal = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+            histCorpo.innerHTML = concluidos.map(tr => {
+                const cod = tr.treinamento_cod || '-';
+                const nomeCurso = tr.treinamento_nome || obterNomeCursoCatalogo(cod);
+                const dataTr = tr.data_treinamento || '-';
+                let dataVenc = tr.data_proxima_reciclagem || null;
+                if (!dataVenc && tr.data_treinamento && tr.meses_validade) {
+                    dataVenc = somarMesesDataIso(tr.data_treinamento, tr.meses_validade);
+                }
+
+                let badgeHtml = '';
+                if (!dataVenc) {
+                    badgeHtml = `<span class="badge-trein-pill valido">🟢 Válido (Perene)</span>`;
+                } else if (dataVenc < hojeStrLocal) {
+                    badgeHtml = `<span class="badge-trein-pill vencido">🔴 Vencido</span>`;
+                } else if (dataVenc <= em30DiasStrLocal) {
+                    badgeHtml = `<span class="badge-trein-pill avencer">🟡 A Vencer</span>`;
+                } else {
+                    badgeHtml = `<span class="badge-trein-pill valido">🟢 Válido</span>`;
+                }
+
+                const instrutor = tr.instrutor_nome || '-';
+                const ch = tr.carga_horaria ? `${tr.carga_horaria}h` : '-';
+
+                return `
+                    <tr style="border-bottom: 1px solid var(--border);">
+                        <td style="padding: 7px 10px; font-weight: 700; font-family: monospace;">${escapeHTML(cod)}</td>
+                        <td style="padding: 7px 10px; font-weight: 600;">${escapeHTML(nomeCurso)}</td>
+                        <td style="padding: 7px 10px; text-align: center;">${formatarDataIsoBR(dataTr)}</td>
+                        <td style="padding: 7px 10px; text-align: center;">${dataVenc ? formatarDataIsoBR(dataVenc) : 'Perene'}</td>
+                        <td style="padding: 7px 10px; text-align: center;">${escapeHTML(ch)}</td>
+                        <td style="padding: 7px 10px; font-size: 11px; color: var(--text-light);">${escapeHTML(instrutor)}</td>
+                        <td style="padding: 7px 10px; text-align: center;">${badgeHtml}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    }
+
+    // Configura botão de impressão
+    const btnImp = document.getElementById('btnImprimirProntuarioDossie');
+    if (btnImp) {
+        btnImp.onclick = () => imprimirProntuarioIndividual(c.matricula);
+    }
+
+    const modal = document.getElementById('modalDossieColaborador');
+    if (modal) modal.style.display = 'flex';
+}
+
+function fecharModalDossieColaborador() {
+    const modal = document.getElementById('modalDossieColaborador');
+    if (modal) modal.style.display = 'none';
+    dossieColaboradorAtual = null;
+}
+
+function imprimirProntidaoEquipe() {
+    const todos = prontidaoDadosCalculadosCache || calcularProntidaoEquipes();
+    // Filtra conforme a tela atual
+    const filtrados = todos.filter(c => {
+        if (prontidaoFiltroSetor && c.setor !== prontidaoFiltroSetor) return false;
+        if (prontidaoFiltroGhe && c.ghe !== prontidaoFiltroGhe) return false;
+        if (prontidaoFiltroFuncao && c.funcao !== prontidaoFiltroFuncao) return false;
+        if (prontidaoFiltroStatus !== 'todos' && c.statusGeral !== prontidaoFiltroStatus) return false;
+        if (prontidaoFiltroCurso) {
+            const ok = c.treinamentos.some(t => t.cod === prontidaoFiltroCurso && (t.status === 'valido' || t.status === 'avencer'));
+            if (!ok) return false;
+        }
+        if (prontidaoFiltroBusca) {
+            const b = prontidaoFiltroBusca;
+            const nomeL = (c.nome || '').toLowerCase();
+            const matL = (c.matricula || '').toLowerCase();
+            const funcL = (c.funcao || '').toLowerCase();
+            if (!nomeL.includes(b) && !matL.includes(b) && !funcL.includes(b)) return false;
+        }
+        return true;
+    });
+
+    const total = filtrados.length;
+    const aptos = filtrados.filter(c => c.statusGeral === 'apto').length;
+    const avencer = filtrados.filter(c => c.statusGeral === 'avencer').length;
+    const pendentes = filtrados.filter(c => c.statusGeral === 'pendente').length;
+    const dataHoraEmissao = new Date().toLocaleString('pt-BR');
+
+    const filtroDesc = [
+        prontidaoFiltroSetor ? `Setor: ${prontidaoFiltroSetor}` : null,
+        prontidaoFiltroGhe ? `GHE: ${prontidaoFiltroGhe}` : null,
+        prontidaoFiltroFuncao ? `Cargo: ${prontidaoFiltroFuncao}` : null,
+        prontidaoFiltroStatus !== 'todos' ? `Status: ${prontidaoFiltroStatus.toUpperCase()}` : null,
+        prontidaoFiltroCurso ? `Habilitados no Curso: ${prontidaoFiltroCurso}` : null
+    ].filter(Boolean).join(' | ') || 'Todos os Colaboradores Ativos';
+
+    const html = `
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+            <meta charset="UTF-8">
+            <title>Relatório de Prontidão da Equipe - NR-01</title>
+            <style>
+                @page { size: A4 landscape; margin: 10mm 12mm; }
+                body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10.5px; color: #0f172a; margin: 0; padding: 0; line-height: 1.35; }
+                .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px; }
+                .title { font-size: 15px; font-weight: 800; color: #0f172a; margin: 0; text-transform: uppercase; }
+                .sub { font-size: 10px; color: #475569; margin-top: 2px; }
+                .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+                .kpi-card { border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 10px; background: #f8fafc; }
+                .kpi-card b { display: block; font-size: 17px; margin-top: 2px; }
+                table { width: 100%; border-collapse: collapse; font-size: 10px; }
+                th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; font-weight: 700; color: #1e293b; }
+                td { border: 1px solid #e2e8f0; padding: 5px 8px; vertical-align: top; }
+                .badge-apto { color: #047857; font-weight: 800; }
+                .badge-avencer { color: #b45309; font-weight: 800; }
+                .badge-pendente { color: #b91c1c; font-weight: 800; }
+                .pill { display: inline-block; padding: 1px 5px; border-radius: 4px; font-size: 9px; font-weight: 700; margin: 1px 2px; }
+                .pill-valido { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+                .pill-avencer { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+                .pill-vencido { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+                .pill-pendente { background: #fdf2f8; color: #be185d; border: 1px solid #fbcfe8; }
+                .assinaturas { margin-top: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+                .linha-assinatura { border-top: 1px solid #0f172a; text-align: center; padding-top: 5px; font-size: 10px; }
+                .footer { margin-top: 14px; display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 4px; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <div>
+                    <h1 class="title">RELATÓRIO DE PRONTIDÃO OPERACIONAL E CAPACITAÇÃO DA EQUIPE</h1>
+                    <div class="sub">Consórcio Operador Ramal | PISF Ramal do Agreste • Gestão de Segurança do Trabalho (NR-01)</div>
+                </div>
+                <div style="text-align: right; font-size: 9.5px; color: #475569;">
+                    Emissão: <strong>${dataHoraEmissao}</strong><br>
+                    Filtro: <strong>${escapeHTML(filtroDesc)}</strong>
+                </div>
+            </div>
+
+            <div class="kpis">
+                <div class="kpi-card" style="border-left: 4px solid #6366f1;">
+                    <span style="font-size: 9px; color: #64748b; text-transform: uppercase;">Total da Equipe</span>
+                    <b style="color: #4338ca;">${total}</b>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid #10b981;">
+                    <span style="font-size: 9px; color: #047857; text-transform: uppercase;">100% Aptos em Dia</span>
+                    <b style="color: #047857;">${aptos} (${total > 0 ? Math.round((aptos / total) * 100) : 0}%)</b>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid #f59e0b;">
+                    <span style="font-size: 9px; color: #b45309; text-transform: uppercase;">Com NRs a Vencer (≤30d)</span>
+                    <b style="color: #b45309;">${avencer}</b>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid #ef4444;">
+                    <span style="font-size: 9px; color: #b91c1c; text-transform: uppercase;">Com Pendência / Vencido</span>
+                    <b style="color: #b91c1c;">${pendentes}</b>
+                </div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">Matr.</th>
+                        <th>Colaborador</th>
+                        <th>Função / Cargo</th>
+                        <th>Setor / GHE</th>
+                        <th style="text-align: center; width: 80px;">Status Geral</th>
+                        <th>Capacitações Válidas</th>
+                        <th>Pendências / Reciclagens</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${filtrados.map(c => {
+                        const validosPills = c.treinamentos.filter(t => t.status === 'valido' || t.status === 'avencer')
+                            .map(t => `<span class="pill ${t.status === 'avencer' ? 'pill-avencer' : 'pill-valido'}">${escapeHTML(t.labelBadge)}</span>`).join('');
+                        const gapsPills = c.treinamentos.filter(t => t.status === 'pendente' || t.status === 'vencido')
+                            .map(t => `<span class="pill ${t.status === 'vencido' ? 'pill-vencido' : 'pill-pendente'}">${escapeHTML(t.labelBadge)}</span>`).join('');
+
+                        return `
+                            <tr>
+                                <td>${escapeHTML(c.matricula)}</td>
+                                <td><strong>${escapeHTML(c.nome)}</strong></td>
+                                <td>${escapeHTML(c.funcao || '-')}</td>
+                                <td>${escapeHTML(c.setor || '-')}${c.ghe ? ' / GHE ' + escapeHTML(c.ghe) : ''}</td>
+                                <td style="text-align: center;">
+                                    <span class="${c.statusGeral === 'apto' ? 'badge-apto' : (c.statusGeral === 'avencer' ? 'badge-avencer' : 'badge-pendente')}">
+                                        ${c.statusGeral === 'apto' ? 'APTO' : (c.statusGeral === 'avencer' ? 'A VENCER' : 'INAPTO')}
+                                    </span>
+                                </td>
+                                <td>${validosPills || '<span style="color:#94a3b8;">Nenhum</span>'}</td>
+                                <td>${gapsPills || '<span style="color:#047857; font-weight:700;">Nenhuma pendência</span>'}</td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+
+            <div class="assinaturas">
+                <div class="linha-assinatura">
+                    <strong>Responsável Técnico SST (Engenharia / SESMT)</strong><br>
+                    <span>Visto e Liberação Técnica da Equipe</span>
+                </div>
+                <div class="linha-assinatura">
+                    <strong>Encarregado / Líder da Frente de Serviço</strong><br>
+                    <span>Ciência da Composição e Aptidão da Equipe</span>
+                </div>
+            </div>
+
+            <div class="footer">
+                <div>Documento Oficial de Comprovação de Capacitação Operacional — NR-01 / GRO / PGR</div>
+                <div>Emissão automatizada via Painel Gerencial SST COP</div>
+            </div>
+        </body>
+        </html>
+    `;
+
+    abrirDocumentoHtmlParaImpressao(html, 'Relatório de Prontidão da Equipe - NR-01');
+}
+
+function imprimirProntuarioIndividual(matricula) {
+    const todos = prontidaoDadosCalculadosCache || calcularProntidaoEquipes();
+    const c = todos.find(x => String(x.matricula) === String(matricula));
+    if (!c) {
+        alert('Colaborador não encontrado para impressão do prontuário.');
+        return;
+    }
+
+    const dataHoraEmissao = new Date().toLocaleString('pt-BR');
+    const concluidos = c.historicoCompleto || [];
+    const pendencias = c.pendenciasExigidas || [];
+
+    const html = `
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+            <meta charset="UTF-8">
+            <title>Prontuário de Capacitação - ${escapeHTML(c.nome)}</title>
+            <style>
+                @page { size: A4 portrait; margin: 12mm 15mm; }
+                body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #0f172a; margin: 0; padding: 0; line-height: 1.4; }
+                .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 14px; }
+                .title { font-size: 15px; font-weight: 800; color: #0f172a; margin: 0; text-transform: uppercase; }
+                .sub { font-size: 10px; color: #475569; margin-top: 2px; }
+                .box-dados { border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 14px; background: #f8fafc; margin-bottom: 14px; }
+                .grid-dados { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; font-size: 11px; }
+                .secao-titulo { font-size: 12px; font-weight: 800; color: #1e293b; text-transform: uppercase; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 4px; margin: 14px 0 8px 0; }
+                table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 12px; }
+                th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; font-weight: 700; color: #1e293b; }
+                td { border: 1px solid #e2e8f0; padding: 5px 8px; }
+                .badge-ok { color: #047857; font-weight: 700; }
+                .badge-alert { color: #b45309; font-weight: 700; }
+                .badge-venc { color: #b91c1c; font-weight: 700; }
+                .termo { font-size: 9.5px; color: #334155; line-height: 1.5; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; background: #fafafa; margin-top: 14px; text-align: justify; }
+                .assinaturas { margin-top: 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+                .linha-assinatura { border-top: 1px solid #0f172a; text-align: center; padding-top: 5px; font-size: 10px; }
+                .footer { margin-top: 20px; display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 4px; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <div>
+                    <h1 class="title">FICHA DE QUALIFICAÇÃO E PRONTUÁRIO DE TREINAMENTOS</h1>
+                    <div class="sub">Consórcio Operador Ramal | PISF Ramal do Agreste • Gestão de Segurança do Trabalho</div>
+                </div>
+                <div style="text-align: right; font-size: 9.5px; color: #475569;">
+                    Emissão: <strong>${dataHoraEmissao}</strong><br>
+                    Matrícula: <strong>${escapeHTML(c.matricula)}</strong>
+                </div>
+            </div>
+
+            <div class="box-dados">
+                <div class="grid-dados" style="margin-bottom: 8px;">
+                    <div>Nome do Trabalhador: <strong style="font-size: 12px;">${escapeHTML(c.nome)}</strong></div>
+                    <div>Matrícula: <strong>${escapeHTML(c.matricula)}</strong></div>
+                    <div>Status: <strong>${c.statusGeral === 'apto' ? '🟢 APTO' : (c.statusGeral === 'avencer' ? '🟡 A VENCER' : '🔴 PENDENTE')}</strong></div>
+                </div>
+                <div class="grid-dados">
+                    <div>Cargo / Função: <strong>${escapeHTML(c.funcao || 'Não informado')}</strong></div>
+                    <div>Setor / GHE: <strong>${escapeHTML(c.setor || '-')}${c.ghe ? ' / GHE ' + escapeHTML(c.ghe) : ''}</strong></div>
+                    <div>ASO: <strong>${formatarDataIsoBR(c.validade_aso)}</strong></div>
+                </div>
+            </div>
+
+            <div class="secao-titulo">1. Histórico de Treinamentos e Capacitações Concluídas</div>
+            ${concluidos.length === 0 ? '<p style="font-size:10.5px; color:#64748b; font-style:italic;">Nenhum registro de treinamento realizado encontrado.</p>' : `
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;">Código</th>
+                            <th>Treinamento Concluído</th>
+                            <th style="text-align: center; width: 65px;">C.H.</th>
+                            <th style="text-align: center; width: 75px;">Realização</th>
+                            <th style="text-align: center; width: 75px;">Reciclagem</th>
+                            <th>Instrutor / Entidade</th>
+                            <th style="text-align: center; width: 65px;">Situação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${concluidos.map(tr => {
+                            const cod = tr.treinamento_cod || '-';
+                            const nomeCurso = tr.treinamento_nome || obterNomeCursoCatalogo(cod);
+                            const ch = tr.carga_horaria ? `${tr.carga_horaria}h` : '-';
+                            const dataTr = tr.data_treinamento || '-';
+                            let dataVenc = tr.data_proxima_reciclagem || null;
+                            if (!dataVenc && tr.data_treinamento && tr.meses_validade) {
+                                dataVenc = somarMesesDataIso(tr.data_treinamento, tr.meses_validade);
+                            }
+                            const hojeStrLocal = new Date().toISOString().slice(0, 10);
+                            let sitClass = 'badge-ok';
+                            let sitTexto = 'Válido';
+                            if (dataVenc && dataVenc < hojeStrLocal) {
+                                sitClass = 'badge-venc';
+                                sitTexto = 'Vencido';
+                            } else if (!dataVenc) {
+                                sitTexto = 'Perene';
+                            }
+
+                            return `
+                                <tr>
+                                    <td><strong>${escapeHTML(cod)}</strong></td>
+                                    <td>${escapeHTML(nomeCurso)}</td>
+                                    <td style="text-align: center;">${escapeHTML(ch)}</td>
+                                    <td style="text-align: center;">${formatarDataIsoBR(dataTr)}</td>
+                                    <td style="text-align: center;">${dataVenc ? formatarDataIsoBR(dataVenc) : 'Perene'}</td>
+                                    <td>${escapeHTML(tr.instrutor_nome || tr.entidade_treinamento || '-')}</td>
+                                    <td style="text-align: center;"><span class="${sitClass}">${sitTexto}</span></td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `}
+
+            <div class="secao-titulo">2. Exigências Normativas Obrigatórias e Reciclagens Futuras</div>
+            ${pendencias.length === 0 ? '<p style="font-size:10.5px; color:#047857; font-weight:700;">🟢 Não há pendências normativas para o colaborador no presente momento.</p>' : `
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;">Código</th>
+                            <th>Capacitação Exigida</th>
+                            <th>Origem da Exigência</th>
+                            <th>Obrigatoriedade</th>
+                            <th style="text-align: center; width: 85px;">Situação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${pendencias.map(p => `
+                            <tr>
+                                <td><strong>${escapeHTML(p.cod)}</strong></td>
+                                <td>${escapeHTML(p.nome)}</td>
+                                <td>${escapeHTML((p.origens || []).join(', ') || 'Regra SST')}</td>
+                                <td>${p.obrigatorio_admissao ? 'Obrigatório na Admissão' : 'Capacitação Periódica'}</td>
+                                <td style="text-align: center;"><span class="badge-venc">PENDENTE</span></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `}
+
+            <div class="termo">
+                <strong>TERMO DE CIÊNCIA E DECLARAÇÃO DE CAPACITAÇÃO PROFISSIONAL (NR-01):</strong><br>
+                Declaro, para os devidos fins de comprovação perante a fiscalização do Ministério do Trabalho e Emprego (MTE) e normas vigentes de Segurança e Saúde no Trabalho, que participei com assiduidade e aproveitamento das capacitações descritas neste prontuário, recebendo instrução teórica e prática conforme a ementa de cada treinamento, comprometendo-me a cumprir todas as diretrizes de prevenção no exercício de minhas atividades.
+            </div>
+
+            <div class="assinaturas">
+                <div class="linha-assinatura">
+                    <strong>${escapeHTML(c.nome)}</strong><br>
+                    <span>Trabalhador(a) — Matrícula ${escapeHTML(c.matricula)}</span>
+                </div>
+                <div class="linha-assinatura">
+                    <strong>Engenharia de Segurança do Trabalho / SESMT</strong><br>
+                    <span>Consórcio Operador Ramal</span>
+                </div>
+            </div>
+
+            <div class="footer">
+                <div>Ficha Oficial de Prontuário Individual de Capacitação — Atendimento à NR-01, NR-18 e PGR</div>
+                <div>Emissão via Sistema Integrado de Gestão SST</div>
+            </div>
+        </body>
+        </html>
+    `;
+
+    abrirDocumentoHtmlParaImpressao(html, `Prontuário de Treinamentos - ${c.nome}`);
+}
+
+function toggleSecaoGerenciarEncarregados() {
+    const wrap = document.getElementById('wrapSecaoGerenciarEncarregados');
+    const icone = document.getElementById('iconeToggleSecaoEncarregados');
+    if (!wrap) return;
+    const estaVisivel = wrap.style.display !== 'none';
+    wrap.style.display = estaVisivel ? 'none' : 'block';
+    if (icone) icone.textContent = estaVisivel ? '▾ Expandir' : '▴ Recolher';
+}
+
 function popularEquipesResponsavelDatalist() {
     const dl = document.getElementById('equipesResponsavelList');
     if (!dl) return;
@@ -10569,6 +11613,18 @@ const excluirRegraTrein = excluirRegraRecomendacao;
         if (typeof confirmarConvocacaoLoteGaps === 'function') window.confirmarConvocacaoLoteGaps = confirmarConvocacaoLoteGaps;
         if (typeof imprimirDiagnosticoGaps === 'function') window.imprimirDiagnosticoGaps = imprimirDiagnosticoGaps;
         if (typeof loadTreinamentosData === 'function') window.loadTreinamentosData = loadTreinamentosData;
+
+        // Sub-aba Prontidão de Equipes & Dossiê do Colaborador
+        if (typeof popularFiltrosProntidaoEquipes === 'function') window.popularFiltrosProntidaoEquipes = popularFiltrosProntidaoEquipes;
+        if (typeof calcularProntidaoEquipes === 'function') window.calcularProntidaoEquipes = calcularProntidaoEquipes;
+        if (typeof filtrarProntidaoEquipeUI === 'function') window.filtrarProntidaoEquipeUI = filtrarProntidaoEquipeUI;
+        if (typeof limparFiltrosProntidaoEquipe === 'function') window.limparFiltrosProntidaoEquipe = limparFiltrosProntidaoEquipe;
+        if (typeof renderProntidaoEquipeTab === 'function') window.renderProntidaoEquipeTab = renderProntidaoEquipeTab;
+        if (typeof abrirDossieColaborador === 'function') window.abrirDossieColaborador = abrirDossieColaborador;
+        if (typeof fecharModalDossieColaborador === 'function') window.fecharModalDossieColaborador = fecharModalDossieColaborador;
+        if (typeof imprimirProntidaoEquipe === 'function') window.imprimirProntidaoEquipe = imprimirProntidaoEquipe;
+        if (typeof imprimirProntuarioIndividual === 'function') window.imprimirProntuarioIndividual = imprimirProntuarioIndividual;
+        if (typeof toggleSecaoGerenciarEncarregados === 'function') window.toggleSecaoGerenciarEncarregados = toggleSecaoGerenciarEncarregados;
 
         // Sincronização de arrays de estado com window
         window.allTreinamentosRealizados = allTreinamentosRealizados;

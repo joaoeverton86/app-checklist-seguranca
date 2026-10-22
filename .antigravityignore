@@ -1,0 +1,35 @@
+# ==============================================================================
+# .antigravityignore — Otimização de Indexação e Velocidade da IA Antigravity
+# Evita carregamento de binários pesados, relatórios e árvores gigantescas
+# ==============================================================================
+
+# Pastas de Documentos Pesados e Mídias
+Documentos_Consultas/**
+documentos-sms/**
+scratch/**
+
+# Dependências e Builds
+node_modules/**
+.vercel/**
+.git/**
+
+# Arquivos Binários e Pesados
+*.pdf
+*.PDF
+*.docx
+*.DOCX
+*.doc
+*.DOC
+*.xlsx
+*.XLSX
+*.xls
+*.XLS
+*.csv
+*.CSV
+*.zip
+*.tar.gz
+*.png
+*.jpg
+*.jpeg
+*.pem
+*.key

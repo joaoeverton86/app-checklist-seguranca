@@ -1,0 +1,29 @@
+# ==============================================================================
+# .cursorignore — Otimização de Indexação e Velocidade da IA Cursor / Antigravity
+# ==============================================================================
+
+Documentos_Consultas/**
+documentos-sms/**
+scratch/**
+node_modules/**
+.vercel/**
+.git/**
+*.pdf
+*.PDF
+*.docx
+*.DOCX
+*.doc
+*.DOC
+*.xlsx
+*.XLSX
+*.xls
+*.XLS
+*.csv
+*.CSV
+*.zip
+*.tar.gz
+*.png
+*.jpg
+*.jpeg
+*.pem
+*.key

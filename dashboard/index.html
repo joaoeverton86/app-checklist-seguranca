@@ -20,7 +20,7 @@
         })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=200">
+    <link rel="stylesheet" href="dashboard.css?v=207">
 </head>
 <body>
 
@@ -33,7 +33,7 @@
         <div style="width:100%; max-width:380px; margin:20px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:32px 28px; box-shadow:0 8px 32px rgba(0,0,0,0.08); box-sizing:border-box;">
             <div style="text-align:center; margin-bottom:22px;">
                 <div style="font-size:34px; margin-bottom:6px;">🛡️</div>
-                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v197</span></div>
+                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v208</span></div>
                 <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; letter-spacing:.5px; margin-top:2px;">PISF Ramal do Agreste</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:12px;">
@@ -149,7 +149,7 @@
             <div class="db-brand">
                 <div class="db-brand-icon">🛡️</div>
                 <div>
-                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v197</span></div>
+                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v208</span></div>
                     <div class="db-brand-sub">PISF Ramal do Agreste</div>
                 </div>
             </div>
@@ -1359,7 +1359,10 @@
                     </div>
 
                     <div style="margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--border);">
-                        <div class="db-chart-title" style="font-size: 13px; margin-bottom: 6px;">🪪 Documentos Individuais por Colaborador</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px; flex-wrap:wrap; gap:8px;">
+                            <div class="db-chart-title" style="font-size: 13px; margin-bottom: 0;">🪪 Documentos Individuais por Colaborador</div>
+                            <button type="button" class="db-clear-btn" style="padding:5px 12px; font-size:11.5px; font-weight:600; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;" onclick="abrirModalEmissaoCertificadoLote()">🖨️ Emitir Certificados da Turma (Lote)</button>
+                        </div>
                         <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">
                             Kit Completo: gera de uma vez OS + Lista de Presença + Certificado + Declaração de Integração + Termo de Recusa (use pra Integração/admissão). Os 4 botões menores geram só um documento por vez - use quando precisar reimprimir apenas um (ex: colaborador errou uma assinatura). Declaração/Termo dependem dos campos preenchidos no Catálogo.
                         </p>
@@ -1441,7 +1444,10 @@
                 </div>
 
                 <div class="db-chart-card">
-                    <div class="db-chart-title" style="font-size: 13px; margin-bottom: 6px;">🪪 Documentos Individuais por Colaborador</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px; flex-wrap:wrap; gap:8px;">
+                        <div class="db-chart-title" style="font-size: 13px; margin-bottom: 0;">🪪 Documentos Individuais por Colaborador</div>
+                        <button type="button" class="db-clear-btn" style="padding:5px 12px; font-size:11.5px; font-weight:600; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;" onclick="abrirModalEmissaoCertificadoLote(contextoKits())">🖨️ Emitir Certificados da Turma (Lote)</button>
+                    </div>
                     <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">
                         Kit Completo: gera de uma vez OS + Lista de Presença + Certificado + Declaração de Integração + Termo de Recusa (use pra Integração/admissão). Os 4 botões menores geram só um documento por vez - use quando precisar reimprimir apenas um (ex: colaborador errou uma assinatura). Declaração/Termo dependem dos campos preenchidos no Catálogo.
                     </p>
@@ -8984,18 +8990,18 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js"></script>
     <script src="logo_cop_base64.js?v=20261015_v197"></script>
-    <script src="dashboard.js?v=200"></script>
-    <script src="modules/treinamentos_ddsma.js?v=200"></script>
-    <script src="modules/efetivo_ferias.js?v=200"></script>
-    <script src="modules/ghe_os.js?v=200"></script>
-    <script src="modules/relatorio_sms_nc.js?v=200"></script>
-    <script src="modules/saude_psicossocial.js?v=200"></script>
-    <script src="modules/epi_estoque.js?v=200"></script>
-    <script src="modules/ambiental_compras_hht.js?v=200"></script>
-    <script src="modules/apr_cipa.js?v=200"></script>
-    <script src="modules/documentos_brigada.js?v=200"></script>
-    <script src="modules/ergonomia_periculosidade_pgr.js?v=200"></script>
-    <script src="placar_lideres.js?v=200"></script>
+    <script src="dashboard.js?v=208"></script>
+    <script src="modules/treinamentos_ddsma.js?v=208"></script>
+    <script src="modules/efetivo_ferias.js?v=205"></script>
+    <script src="modules/ghe_os.js?v=207"></script>
+    <script src="modules/relatorio_sms_nc.js?v=203"></script>
+    <script src="modules/saude_psicossocial.js?v=203"></script>
+    <script src="modules/epi_estoque.js?v=203"></script>
+    <script src="modules/ambiental_compras_hht.js?v=203"></script>
+    <script src="modules/apr_cipa.js?v=203"></script>
+    <script src="modules/documentos_brigada.js?v=203"></script>
+    <script src="modules/ergonomia_periculosidade_pgr.js?v=203"></script>
+    <script src="placar_lideres.js?v=203"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();
@@ -9030,6 +9036,156 @@ function filterMatrizEpi(q) {
             <input type="file" id="anexoArquivoInput" accept=".pdf,image/*" style="margin-bottom: 10px; width: 100%;">
             <button class="db-clear-btn" onclick="enviarAnexoSelecionado()">⬆️ Enviar Anexo</button>
             <div id="anexoModalStatus" style="margin-top: 8px; font-size: 12px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Emissão de Certificado de Treinamento (NR-01 / NR-18) -->
+<div id="modalEmissaoCertificado" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:10060; align-items:center; justify-content:center; padding:16px;" onclick="if (event.target === this) fecharModalEmissaoCertificado();">
+    <div style="background:var(--card); border-radius:14px; max-width:680px; width:100%; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1); border:1px solid var(--border); overflow:hidden;">
+        
+        <!-- Header -->
+        <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:linear-gradient(to right, rgba(79,70,229,0.06), transparent);">
+            <div>
+                <div style="font-size:16px; font-weight:700; color:var(--text); display:flex; align-items:center; gap:8px;">
+                    <span>🎓</span> Emissão de Certificado de Treinamento
+                </div>
+                <div style="font-size:11.5px; color:var(--text-light); margin-top:2px;">
+                    Conformidade com NR-01 (Item 1.7.1.1), Lei 14.457/2022 e NR-18 Anexo I
+                </div>
+            </div>
+            <button type="button" class="db-clear-btn" style="padding:4px 8px; font-size:14px;" onclick="fecharModalEmissaoCertificado()">✕</button>
+        </div>
+
+        <!-- Body com Scroll -->
+        <div style="padding:18px 20px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:14px; font-size:12.5px;">
+            
+            <!-- Card de Identificação do Treinamento e Alvo -->
+            <div style="background:rgba(79,70,229,0.04); border:1px solid rgba(79,70,229,0.18); border-radius:10px; padding:12px 14px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                    <div>
+                        <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#4f46e5; font-weight:700;">Treinamento</div>
+                        <div id="certModalTreinamentoNome" style="font-weight:700; font-size:14px; color:var(--text); margin-top:2px;">-</div>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <span id="certModalCargaHorariaBadge" style="background:#e0e7ff; color:#3730a3; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700;">- horas</span>
+                        <span id="certModalDataBadge" style="background:#f1f5f9; color:#475569; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600;">-</span>
+                    </div>
+                </div>
+                
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px; margin-top:10px; padding-top:10px; border-top:1px dashed rgba(79,70,229,0.2);">
+                    <div>
+                        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-light); margin-bottom:3px;">Escopo de Emissão</label>
+                        <select id="certModalAlvoSelect" onchange="certModalAoMudarAlvo()" style="width:100%; padding:7px 9px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px; font-weight:600;">
+                            <option value="individual">Apenas Colaborador Selecionado</option>
+                            <option value="turma">Toda a Turma desta Sessão (Lote)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-light); margin-bottom:3px;">Colaborador</label>
+                        <div id="certModalColaboradorNome" style="font-weight:600; font-size:12.5px; padding:6px 0; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Aproveitamento e Modalidade -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div>
+                    <label style="display:block; font-weight:600; color:var(--text-light); margin-bottom:4px; font-size:12px;">
+                        Aproveitamento Satisfatório (Item 1.7.1.1 NR-01) <span style="color:#ef4444;">*</span>
+                    </label>
+                    <input type="text" id="certModalAproveitamento" list="certModalAproveitamentoList" placeholder="Ex: Apto, Apto (100%), Nota 10..." value="Apto" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; font-weight:600; background:var(--card); color:var(--text);">
+                    <datalist id="certModalAproveitamentoList">
+                        <option value="Apto"></option>
+                        <option value="Apto (100%)"></option>
+                        <option value="Apto (95%)"></option>
+                        <option value="Apto (90%)"></option>
+                        <option value="Apto (85%)"></option>
+                        <option value="Satisfatório"></option>
+                        <option value="Nota 10,0"></option>
+                        <option value="Nota 9,0"></option>
+                    </datalist>
+                    <div style="font-size:10.5px; color:var(--text-light); margin-top:3px;">Preenchimento dinâmico impresso: "...com aproveitamento satisfatório: <b>Apto</b>...".</div>
+                </div>
+                <div>
+                    <label style="display:block; font-weight:600; color:var(--text-light); margin-bottom:4px; font-size:12px;">
+                        Modalidade do Treinamento
+                    </label>
+                    <select id="certModalModalidade" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:13px; background:var(--card); color:var(--text);">
+                        <option value="Presencial" selected>Presencial</option>
+                        <option value="Semipresencial">Semipresencial</option>
+                        <option value="EaD (Ensino a Distância)">EaD (Ensino a Distância)</option>
+                    </select>
+                    <div style="font-size:10.5px; color:var(--text-light); margin-top:3px;">Em canteiros de obra (NR-18), a capacitação básica é presencial.</div>
+                </div>
+            </div>
+
+            <!-- Conteúdo Programático -->
+            <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; flex-wrap:wrap; gap:6px;">
+                    <label style="font-weight:600; color:var(--text-light); font-size:12px;">
+                        Conteúdo Programático Impresso no Certificado:
+                    </label>
+                    <div style="display:flex; gap:6px;">
+                        <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#4f46e5; font-weight:600;" onclick="certModalCarregarPadraoNr18()" title="Insere os tópicos atualizados conforme NR-18 Anexo I, NR-01 Portaria 1.419/2024 e Lei 14.457/2022">
+                            ✨ Padrão NR-18 / NR-01
+                        </button>
+                        <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px;" onclick="certModalRestaurarCatalogo()" title="Recarrega o conteúdo programático original do catálogo">
+                            ↺ Do Catálogo
+                        </button>
+                    </div>
+                </div>
+                <textarea id="certModalConteudoProgramatico" rows="6" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-family:inherit; font-size:12px; line-height:1.5; resize:vertical; background:var(--card); color:var(--text);"></textarea>
+                
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+                    <span style="font-size:10.5px; color:var(--text-light);">Um tópico por linha ou parágrafo numerado.</span>
+                    <label style="font-size:11.5px; color:var(--text); display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+                        <input type="checkbox" id="certModalSalvarCatalogo" style="cursor:pointer;">
+                        <span>Salvar este conteúdo no Catálogo para futuros certificados</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Base Legal e Responsabilidade Técnica -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div>
+                    <label style="display:block; font-weight:600; color:var(--text-light); margin-bottom:4px; font-size:12px;">Base Legal (Rodapé do Certificado)</label>
+                    <input type="text" id="certModalBaseLegal" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:12px; background:var(--card); color:var(--text);">
+                </div>
+                <div>
+                    <label style="display:block; font-weight:600; color:var(--text-light); margin-bottom:4px; font-size:12px;">Local de Realização</label>
+                    <input type="text" id="certModalLocalRealizacao" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:12px; background:var(--card); color:var(--text);">
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; padding-top:10px; border-top:1px dashed var(--border);">
+                <div>
+                    <label style="display:block; font-weight:600; color:var(--text-light); margin-bottom:4px; font-size:11.5px;">Instrutor Teórico</label>
+                    <input type="text" id="certModalInstrutorNome" placeholder="Nome do Instrutor" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; margin-bottom:4px; font-size:11.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
+                    <input type="text" id="certModalInstrutorQualificacao" placeholder="Qualificação (ex: Técnico de Seg. do Trabalho)" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; margin-bottom:4px; font-size:11.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
+                    <input type="text" id="certModalInstrutorRegistro" placeholder="Registro (ex: MTE 0015760/PE)" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:11.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
+                </div>
+                <div>
+                    <label style="display:block; font-weight:600; color:var(--text-light); margin-bottom:4px; font-size:11.5px;">Responsável Técnico</label>
+                    <input type="text" id="certModalRespTecnicoNome" placeholder="Nome do Resp. Técnico" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; margin-bottom:4px; font-size:11.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
+                    <input type="text" id="certModalRespTecnicoQualificacao" placeholder="Qualificação (ex: Engenheiro de Seg. do Trabalho)" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; margin-bottom:4px; font-size:11.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
+                    <input type="text" id="certModalRespTecnicoRegistro" placeholder="Registro (ex: CREA 0522078320/PE)" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:11.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
+                </div>
+            </div>
+
+            <div id="certModalStatusMsg" style="display:none; font-size:12px; padding:8px 12px; border-radius:6px;"></div>
+        </div>
+
+        <!-- Footer -->
+        <div style="padding:14px 20px; border-top:1px solid var(--border); background:var(--card); display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <button type="button" class="db-clear-btn" style="padding:8px 14px; font-size:12.5px;" onclick="fecharModalEmissaoCertificado()">
+                Cancelar
+            </button>
+            <div style="display:flex; gap:8px;">
+                <button type="button" class="db-apply-btn" id="btnDispararImpressaoCertificado" style="padding:9px 20px; font-size:13px; font-weight:700; display:inline-flex; align-items:center; gap:6px;" onclick="executarEmissaoCertificadoModal()">
+                    <span>🖨️</span> Imprimir Certificado
+                </button>
+            </div>
         </div>
     </div>
 </div>

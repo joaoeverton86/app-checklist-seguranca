@@ -1,0 +1,9 @@
+Documentos_Consultas/**
+documentos-sms/**
+scratch/**
+node_modules/**
+.vercel/**
+.git/**
+*.pdf
+*.docx
+*.xlsx

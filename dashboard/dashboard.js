@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const VERSAO_PAINEL = 'v200';
+const VERSAO_PAINEL = 'v208';
 const DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
@@ -10722,7 +10722,7 @@ function renderKitsDocsIndividuaisList() {
             <div style="flex:1; min-width:180px; font-size:12.5px;">${escapeHTML(r.nome)} <span style="color:var(--text-light);">— ${escapeHTML(r.funcao || '')}</span></div>
             <button class="db-apply-btn" style="padding:5px 10px; font-size:11.5px;" title="OS + Lista de Presença + Certificado + Declaração de Integração + Termo de Recusa" onclick="gerarKitCompletoIntegracao('${escapeHTML(r.matricula)}', contextoKits())">🖨️ Kit Completo</button>
             <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarOrdemServicoIndividual('${escapeHTML(r.matricula)}', contextoKits())">🖨️ OS</button>${avisoOsIcon}
-            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarCertificadoIndividual('${escapeHTML(r.matricula)}', contextoKits())">🖨️ Certificado</button>
+            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="abrirModalEmissaoCertificado('${escapeHTML(r.matricula)}', contextoKits())">🖨️ Certificado</button>
             <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarDeclaracaoIntegracaoIndividual('${escapeHTML(r.matricula)}', contextoKits())">🖨️ Declaração</button>
             <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarTermoRecusaIndividual('${escapeHTML(r.matricula)}', contextoKits())">🖨️ Termo de Recusa</button>
         </div>`;
@@ -11228,7 +11228,7 @@ function renderRegistroDocsIndividuaisList() {
             <div style="flex:1; min-width:180px; font-size:12.5px;">${escapeHTML(r.nome)} <span style="color:var(--text-light);">— ${escapeHTML(r.funcao || '')}</span></div>
             <button class="db-apply-btn" style="padding:5px 10px; font-size:11.5px;" title="OS + Lista de Presença + Certificado + Declaração de Integração + Termo de Recusa" onclick="gerarKitCompletoIntegracao('${escapeHTML(r.matricula)}')">🖨️ Kit Completo</button>
             <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarOrdemServicoIndividual('${escapeHTML(r.matricula)}')">🖨️ OS</button>${avisoOsIcon}
-            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarCertificadoIndividual('${escapeHTML(r.matricula)}')">🖨️ Certificado</button>
+            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="abrirModalEmissaoCertificado('${escapeHTML(r.matricula)}')">🖨️ Certificado</button>
             <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarDeclaracaoIntegracaoIndividual('${escapeHTML(r.matricula)}')">🖨️ Declaração</button>
             <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarTermoRecusaIndividual('${escapeHTML(r.matricula)}')">🖨️ Termo de Recusa</button>
         </div>`;
@@ -11236,94 +11236,632 @@ function renderRegistroDocsIndividuaisList() {
 }
 
 const DOC_INDIVIDUAL_CSS = `
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111; margin: 20px; }
+    @page { size: A4 portrait; margin: 12mm; }
+    @page os_portrait { size: A4 portrait; margin: 12mm; }
+    @page registro_portrait { size: A4 portrait; margin: 6mm 8mm; }
+    @page cert_landscape { size: A4 landscape; margin: 8mm; }
+    @page decl_portrait { size: A4 portrait; margin: 8mm 10mm; }
+    @page recusa_landscape { size: A4 landscape; margin: 15mm; }
+
+    @media print {
+        .no-print { display: none !important; }
+        html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+        }
+        .print-os-portrait {
+            page: os_portrait;
+            page-break-after: always !important;
+            break-after: page !important;
+        }
+        .print-registro-portrait {
+            page: registro_portrait;
+            page-break-after: always !important;
+            break-after: page !important;
+        }
+        .print-certificado-landscape {
+            page: cert_landscape;
+            page-break-after: always !important;
+            break-after: page !important;
+        }
+        .print-declaracao-portrait {
+            page: decl_portrait;
+            page-break-after: always !important;
+            break-after: page !important;
+        }
+        .print-termo-recusa {
+            page: recusa_landscape;
+            page-break-after: auto !important;
+            break-after: auto !important;
+        }
+        .folha-certificado {
+            height: 194mm !important;
+            max-height: 194mm !important;
+            min-height: 185mm !important;
+            box-sizing: border-box !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+        }
+        .moldura-certificado {
+            height: 100% !important;
+            min-height: 185mm !important;
+            max-height: 194mm !important;
+            box-sizing: border-box !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+            padding: 18px 24px !important;
+        }
+        .folha-declaracao, .declaracao-container {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            box-sizing: border-box !important;
+        }
+        .assinaturas, .assinaturas-os, .assinaturas-cert, .assinaturas-recusa, .assinaturas-declaracao, .assinatura-item {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+        }
+    }
+
+    body {
+        font-family: Arial, Helvetica, sans-serif;
+        color: #111;
+        margin: 0;
+        padding: 0;
+    }
+
+    /* ---- 1. ORDEM DE SERVIÇO (OS - NR-01) - FOLHA A4 RETRATO ---- */
+    .folha-os {
+        box-sizing: border-box !important;
+        padding: 0 !important;
+        max-width: 820px;
+        margin: 0 auto;
+        font-family: Arial, Helvetica, sans-serif !important;
+        color: #111 !important;
+        font-size: 10pt !important;
+        line-height: 1.28 !important;
+    }
+    .folha-os .titulo-os {
+        text-align: center;
+        font-weight: 700;
+        font-size: 12pt;
+        letter-spacing: 0.3px;
+        line-height: 1.2;
+        margin-top: 2px;
+        margin-bottom: 2px;
+        color: #0f172a;
+    }
+    .folha-os .subtitulo-os {
+        text-align: center;
+        font-size: 9pt;
+        color: #475569;
+        margin-top: 0;
+        margin-bottom: 4px;
+        font-weight: 600;
+    }
+    .folha-os .tabela-os-identificacao {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 9.5pt;
+        margin-bottom: 4px;
+    }
+    .folha-os .tabela-os-identificacao td {
+        border: 1px solid #334155;
+        padding: 3px 5px;
+        line-height: 1.22;
+    }
+    .folha-os .bloco-os {
+        margin-top: 4px;
+    }
+    .folha-os .bloco-titulo-os {
+        font-weight: 700;
+        font-size: 10.5pt;
+        margin-top: 4px;
+        margin-bottom: 2px;
+        color: #0f172a;
+        text-transform: uppercase;
+        line-height: 1.2;
+    }
+    .folha-os .texto-os {
+        font-size: 10pt;
+        line-height: 1.28;
+        text-align: justify;
+    }
+    .folha-os .tabela-os-agentes {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 9pt;
+        margin-top: 2px;
+    }
+    .folha-os .tabela-os-agentes th {
+        background: #f1f5f9;
+        border: 1px solid #334155;
+        padding: 2px 4px;
+        font-weight: 700;
+        text-align: center;
+        font-size: 9pt;
+        line-height: 1.2;
+    }
+    .folha-os .tabela-os-agentes td {
+        border: 1px solid #334155;
+        padding: 3px 4px;
+        line-height: 1.22;
+        font-size: 9pt;
+        vertical-align: top;
+    }
+    .folha-os .grid-epis-epcs-os {
+        display: flex;
+        gap: 10px;
+        margin-top: 4px;
+    }
+    .folha-os .lista-itens-os {
+        columns: 2;
+        column-gap: 8px;
+        font-size: 9.5pt;
+        line-height: 1.22;
+    }
+    .folha-os .lista-itens-os > div {
+        break-inside: avoid;
+    }
+    .folha-os .declaracao-os {
+        margin-top: 6px;
+        padding-top: 4px;
+        border-top: 1px solid #94a3b8;
+        font-size: 9pt;
+        line-height: 1.25;
+        text-align: justify;
+    }
+    .folha-os .assinaturas-os {
+        display: flex;
+        justify-content: space-around;
+        margin-top: 10px;
+        margin-bottom: 0;
+        gap: 16px;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .folha-os .assinaturas-os .assinatura-item {
+        text-align: center;
+        font-size: 9pt;
+        width: 46%;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .folha-os .assinaturas-os .assinatura-item .linha-assinatura {
+        margin-top: 10px;
+        font-size: 10pt;
+        letter-spacing: 0.5px;
+        line-height: 1;
+    }
+    .folha-os .assinaturas-os .assinatura-item .linha-nome {
+        margin-top: 2px;
+        line-height: 1.18;
+        font-size: 9pt;
+    }
+
+    /* ---- 2. CERTIFICADO DE CAPACITAÇÃO (A4 PAISAGEM / LANDSCAPE) ---- */
+    .folha-certificado {
+        box-sizing: border-box;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        width: 100%;
+        margin: 0 auto;
+        height: 100%;
+        min-height: 185mm;
+    }
+    .moldura-certificado {
+        border: 3px double #0f172a;
+        padding: 18px 24px;
+        box-sizing: border-box;
+        border-radius: 4px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 185mm;
+        height: 100%;
+    }
+    @media screen {
+        .moldura-certificado {
+            min-height: calc(100vh - 16mm);
+            height: calc(100vh - 16mm);
+        }
+    }
+    .cabecalho-cert {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 2px solid #0f172a;
+        padding-bottom: 8px;
+        margin-bottom: 8px;
+        flex-shrink: 0;
+    }
+    .titulo-cert {
+        font-size: 22pt;
+        letter-spacing: 2px;
+        font-weight: 800;
+        text-align: center;
+        color: #0f172a;
+        margin: 4px 0 2px;
+    }
+    .subtitulo-cert {
+        text-align: center;
+        font-size: 10pt;
+        font-weight: 600;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        margin-bottom: 10px;
+    }
+    .texto-cert {
+        font-size: 11.5pt;
+        line-height: 1.5;
+        text-align: justify;
+        color: #1e293b;
+        margin-bottom: 8px;
+    }
+    .bloco-conteudo-cert {
+        background: #f8fafc;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        padding: 8px 14px;
+        margin-bottom: 8px;
+    }
+    .bloco-conteudo-titulo-cert {
+        font-size: 10pt;
+        font-weight: 700;
+        color: #0f172a;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 3px;
+    }
+    .bloco-conteudo-texto-cert {
+        font-size: 9.5pt;
+        line-height: 1.4;
+        white-space: pre-line;
+        color: #334155;
+    }
+    .meta-cert {
+        display: flex;
+        justify-content: space-between;
+        font-size: 9.5pt;
+        color: #334155;
+        margin-bottom: 6px;
+    }
+    .rodape-legal-cert {
+        font-size: 8.5pt;
+        color: #64748b;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 4px;
+        margin-bottom: 8px;
+    }
+    .assinaturas-cert {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-top: auto;
+        padding-top: 10px;
+        gap: 12px;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .assinaturas-cert .assinatura-item {
+        text-align: center;
+        font-size: 9.5pt;
+        width: 31%;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .assinaturas-cert .assinatura-item .linha-assinatura {
+        font-size: 11pt;
+        letter-spacing: 0.5px;
+        margin-bottom: 3px;
+    }
+
+    /* ---- 3. TERMO DE DIREITO DE RECUSA (A4 PAISAGEM / LANDSCAPE) ---- */
+    .folha-termo-recusa {
+        box-sizing: border-box;
+    }
+    .moldura-recusa {
+        border: 2px solid #0f172a;
+        padding: 20px 28px;
+        box-sizing: border-box;
+        border-radius: 4px;
+    }
+    .cabecalho-recusa {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 2px solid #0f172a;
+        padding-bottom: 8px;
+        margin-bottom: 14px;
+    }
+    .titulo-recusa {
+        text-align: center;
+        font-weight: 800;
+        font-size: 18pt;
+        letter-spacing: 1px;
+        color: #0f172a;
+        margin-bottom: 2px;
+    }
+    .subtitulo-recusa {
+        text-align: center;
+        font-size: 10.5pt;
+        font-weight: 600;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 18px;
+    }
+    .bloco-texto-recusa {
+        max-width: 900px;
+        margin: 0 auto;
+        font-size: 12.5pt;
+        line-height: 1.7;
+        text-align: justify;
+        color: #1e293b;
+    }
+    .bloco-texto-recusa p {
+        margin: 0 0 10px;
+    }
+    .data-local-recusa {
+        font-size: 11pt;
+        color: #334155;
+        margin-top: 18px;
+        text-align: right;
+    }
+    .rodape-legal-recusa {
+        font-size: 9pt;
+        color: #64748b;
+        border-top: 1px solid #cbd5e1;
+        padding-top: 6px;
+        margin-top: 10px;
+    }
+    .assinaturas-recusa {
+        display: flex;
+        justify-content: space-around;
+        align-items: flex-end;
+        margin-top: 26px;
+        gap: 30px;
+    }
+    .assinaturas-recusa .assinatura-item {
+        text-align: center;
+        font-size: 10pt;
+        width: 42%;
+    }
+    .assinaturas-recusa .assinatura-item .linha-assinatura {
+        font-size: 11pt;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+    }
+
+    /* ---- 4. DECLARAÇÃO DE INTEGRAÇÃO (A4 RETRATO / PORTRAIT) ---- */
+    .folha-declaracao,
+    .declaracao-container {
+        border: 2px solid #000;
+        padding: 10px 14px;
+        box-sizing: border-box;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        max-width: 820px;
+        margin: 0 auto;
+        font-family: Arial, Helvetica, sans-serif;
+        color: #111;
+    }
+    .titulo-decl {
+        text-align: center;
+        font-weight: 700;
+        font-size: 13pt;
+        letter-spacing: 0.5px;
+        margin-top: 2px;
+        margin-bottom: 2px;
+        color: #0f172a;
+    }
+    .subtitulo-decl {
+        text-align: center;
+        font-size: 8.5pt;
+        color: #475569;
+        margin-top: 0;
+        margin-bottom: 5px;
+        font-weight: 600;
+    }
+    .identificacao-decl {
+        margin-bottom: 4px;
+    }
+    .texto-decl {
+        font-size: 8.5pt;
+        line-height: 1.25;
+        text-align: justify;
+        color: #1e293b;
+    }
+    .texto-intro-decl {
+        margin-top: 3px;
+        margin-bottom: 4px;
+    }
+    .bloco-decl {
+        margin-top: 3px;
+        margin-bottom: 4px;
+    }
+    .bloco-titulo-decl {
+        font-weight: 700;
+        font-size: 8.5pt;
+        margin-bottom: 2px;
+        color: #0f172a;
+        text-transform: uppercase;
+        line-height: 1.2;
+    }
+    .lista-obrigacoes-decl {
+        font-size: 8.5pt;
+        line-height: 1.22;
+        padding-left: 18px;
+        margin: 2px 0 3px;
+        color: #334155;
+    }
+    .lista-obrigacoes-decl li {
+        margin-bottom: 1.5px;
+    }
+    .grade-topicos-decl {
+        columns: 3;
+        column-gap: 10px;
+        font-size: 8pt;
+        line-height: 1.2;
+        margin-top: 2px;
+        margin-bottom: 4px;
+        color: #334155;
+    }
+    .grade-topicos-decl > div {
+        break-inside: avoid;
+        padding: 1px 3px;
+    }
+    .assinaturas-declaracao {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        margin-top: 10px;
+        margin-bottom: 0;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .assinaturas-declaracao .assinatura-decl-item {
+        flex: 1;
+        box-sizing: border-box;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .assinaturas-declaracao .linha-ass-decl {
+        font-size: 8.5pt;
+        letter-spacing: 0.5px;
+        margin-top: 3px;
+        margin-bottom: 2px;
+    }
+
+    /* ---- COMPATIBILIDADE GERAL (folha-compacta) ---- */
     .folha { max-width: 900px; margin: 0 auto 24px; border: 2px solid #000; padding: 24px; }
-    .titulo { text-align:center; font-weight:700; font-size:18px; letter-spacing:1px; margin-bottom: 14px; }
-    .subtitulo { text-align:center; font-size: 11px; color:#444; margin-top:-10px; margin-bottom: 16px; }
-    .texto { font-size: 12.5px; line-height: 1.7; text-align: justify; }
-    .bloco { margin-top: 14px; }
-    .bloco-titulo { font-weight:700; margin-bottom:6px; font-size: 12.5px; }
-    .rodape-legal { margin-top: 18px; font-size: 10.5px; color: #444; border-top: 1px solid #ccc; padding-top: 8px; }
-    .lista-obrigacoes { font-size: 11.5px; line-height: 1.6; padding-left: 18px; margin: 4px 0; }
-    .grade-topicos { columns: 3; column-gap: 16px; font-size: 11px; line-height: 1.7; margin-top: 6px; }
-    .assinaturas { display:flex; justify-content:space-around; margin-top: 40px; margin-bottom: 20px; gap: 20px; flex-wrap: wrap; }
-    .assinatura-item { text-align:center; font-size: 11px; width: 260px; }
-    /* Linha de assinatura como texto (underscores), não mais border-top: o usuário via
-       consistentemente uma "segunda linha" logo abaixo do nome mesmo com bastante espaço
-       livre até a borda da folha, em vários testes seguidos (inclusive aba anônima,
-       descartando cache) - suspeita de artefato do motor de impressão do Chrome ao
-       rasterizar uma border fina pra PDF. Declaração/Termo já usam texto sublinhado
-       ("ASSINATURA: ____") pro mesmo propósito e nunca tiveram esse problema reportado -
-       trocando pra essa técnica comprovada em vez de insistir em ajustar a border. */
-    .assinatura-item .linha-assinatura { margin-top: 40px; font-size: 13px; letter-spacing: 1px; }
-    .assinatura-item .linha-nome { margin-top: 4px; }
-    /* Layout em 2 colunas pra listas "» item" (EPIs/EPCs da OS) - evita que 6-7 itens, um
-       por linha, empurrem o resto do documento pra uma 2ª página à toa. */
-    .lista-itens { columns: 2; column-gap: 16px; }
-    .lista-itens > div { break-inside: avoid; }
-    /* Compacta OS e Declaração de Integração pra caber numa folha só mesmo com as seções
-       de Agentes/EPIs/Recomendações preenchidas (antes vinham vazias, então nunca estourava;
-       o import de dados reais do PGR encheu essas seções e passou a estourar pra 2ª página).
-       Redução leve de propósito - só o suficiente pra caber numa página, sem encolher a
-       ponto de sobrar bastante página em branco embaixo com o texto perto do tamanho normal. */
-    .folha-compacta { padding: 22px; }
-    .folha-compacta .titulo { font-size: 15px; margin-bottom: 10px; }
-    .folha-compacta .texto { font-size: 11.5px; line-height: 1.55; }
-    .folha-compacta .bloco { margin-top: 11px; }
-    .folha-compacta .bloco-titulo { font-size: 12px; margin-bottom: 5px; }
-    .folha-compacta .lista-obrigacoes { font-size: 10.5px; line-height: 1.45; margin: 3px 0; }
-    .folha-compacta .grade-topicos { font-size: 10px; line-height: 1.45; margin-top: 4px; }
-    .folha-compacta .rodape-legal { margin-top: 12px; padding-top: 6px; font-size: 10px; }
-    .folha-compacta table th, .folha-compacta table td { font-size: 10.5px; padding: 4px 6px; }
-    .folha-compacta .assinaturas { margin-top: 28px; margin-bottom: 30px; }
-    .folha-compacta .assinatura-item .linha-assinatura { margin-top: 30px; }
+    .folha-compacta { padding: 10px 14px !important; }
+    .folha-compacta .titulo { font-size: 13pt; margin-top: 2px; margin-bottom: 2px; text-align: center; font-weight: 700; color: #0f172a; }
+    .folha-compacta .subtitulo { text-align: center; font-size: 8.5pt; color: #475569; margin-top: 0; margin-bottom: 5px; font-weight: 600; }
+    .folha-compacta .texto { font-size: 8.5pt; line-height: 1.25; text-align: justify; color: #1e293b; }
+    .folha-compacta .bloco { margin-top: 3px; margin-bottom: 4px; }
+    .folha-compacta .bloco-titulo { font-size: 8.5pt; margin-bottom: 2px; font-weight: 700; color: #0f172a; text-transform: uppercase; }
+    .folha-compacta .lista-obrigacoes { font-size: 8.5pt; line-height: 1.22; margin: 2px 0 3px; padding-left: 18px; color: #334155; }
+    .folha-compacta .lista-obrigacoes li { margin-bottom: 1.5px; }
+    .folha-compacta .grade-topicos { font-size: 8pt; line-height: 1.2; margin-top: 2px; margin-bottom: 4px; columns: 3; column-gap: 10px; color: #334155; }
+    .folha-compacta .grade-topicos > div { padding: 1px 3px; break-inside: avoid; }
+    .assinatura-item .linha-assinatura { font-size: 11pt; letter-spacing: 0.5px; }
+    .assinatura-item .linha-nome { margin-top: 2px; }
     .no-print { text-align: center; margin: 16px 0; }
     .no-print button { padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; border: none; background: #4f46e5; color: #fff; }
-    /* Página nomeada (CSS Paged Media) - todo o documento sai em retrato por padrão; só a
-       folha marcada .folha-landscape (Certificado) usa a página "landscape" definida
-       abaixo. Suportado por Chrome/Edge no "Salvar como PDF" (motor usado por este botão). */
-    @page { size: portrait; }
-    @page landscape { size: landscape; }
-    .folha-landscape { page: landscape; }
-    @media print {
-        .no-print { display: none; }
-        body { margin: 0; }
-        .folha { border: 2px solid #000; page-break-after: always; }
-        .folha:last-child { page-break-after: auto; }
-        .assinaturas, .assinatura-item { page-break-inside: avoid; }
-    }
 `;
 
-// ---- Folhas individuais (só o <div class="folha">, sem shell <html>) - mesmo padrão
-// de construirFolhaOrdemServico/construirFolhaRegistroTreinamento, pra reaproveitar
-// tanto nos botões standalone quanto concatenadas no Kit Completo. ----
-
-// Linha de assinatura como texto (underscores), não border-top - ver comentário de
-// .linha-assinatura em DOC_INDIVIDUAL_CSS. conteudoHTML já deve vir com escapeHTML aplicado.
+// Linha de assinatura como texto (underscores), não border-top
 function blocoAssinatura(conteudoHTML) {
     return `<div class="assinatura-item"><div class="linha-assinatura">______________________________</div><div class="linha-nome">${conteudoHTML}</div></div>`;
 }
 
-function construirFolhaCertificado(r, colab, cat, codigo, campos, data) {
-    const codigoDoc = codigoRevisaoDocumento('certificado_individual');
-    return `<div class="folha folha-landscape">
-        <div style="text-align:center; margin-bottom: 10px;"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:56px; object-fit:contain;"></div>
-        <div class="titulo" style="font-size: 30px; letter-spacing: 2px; margin-bottom: 4px;">CERTIFICADO</div>
-        ${codigoDoc ? `<div class="subtitulo">${escapeHTML(codigoDoc)}</div>` : ''}
-        <div class="texto" style="margin-top: 14px;">
-            Certificamos que <b>${escapeHTML(r.nome)}</b>, portador do CPF de número: <b>${escapeHTML(colab?.cpf || '')}</b>,
-            colaborador(a) da empresa <b>${escapeHTML(EMPRESA_INFO.razaoSocial)}</b>, CNPJ: <b>${escapeHTML(EMPRESA_INFO.cnpj)}</b>,
-            participou do treinamento <b>${escapeHTML(cat ? cat.nome : codigo)}</b> em <b>${formatSimpleDate(data)}</b>,
-            com aproveitamento satisfatório de ______, e com carga horária de <b>${cat && cat.carga_horaria ? cat.carga_horaria : ''} horas</b>.
-        </div>
-        ${cat?.conteudo_programatico ? `<div class="bloco"><div class="bloco-titulo">Conteúdo Programático:</div><div class="texto" style="white-space:pre-line;">${escapeHTML(cat.conteudo_programatico)}</div></div>` : ''}
-        <div class="texto" style="margin-top:14px;"><b>Local de realização do curso:</b> ${escapeHTML(campos.local_realizacao || '')}</div>
-        ${cat?.meses_validade ? `<div class="texto"><b>Periodicidade:</b> Reciclagem a cada ${cat.meses_validade} meses</div>` : ''}
-        ${cat?.certificado_base_legal ? `<div class="rodape-legal">${escapeHTML(cat.certificado_base_legal)}</div>` : ''}
-        <div class="assinaturas">
-            ${blocoAssinatura(`${escapeHTML(campos.instrutor_nome || '')}<br>${escapeHTML(campos.instrutor_qualificacao || '')}${campos.instrutor_registro ? '<br>' + escapeHTML(campos.instrutor_registro) : ''}<br>Instrutor teórico`)}
-            ${blocoAssinatura(`${escapeHTML(campos.responsavel_tecnico_nome || '')}<br>${escapeHTML(campos.responsavel_tecnico_qualificacao || '')}${campos.responsavel_tecnico_registro ? '<br>' + escapeHTML(campos.responsavel_tecnico_registro) : ''}<br>Resp. Técnico`)}
-            ${blocoAssinatura(`${escapeHTML(r.nome)}<br>Colaborador Treinado`)}
+const CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01 = 
+`1. As condições e meio ambiente de trabalho;
+2. Os riscos inerentes às atividades (físicos, químicos, biológicos, ergonômicos e fatores psicossociais);
+3. Prevenção e combate ao assédio no ambiente de trabalho (Lei 14.457/22);
+4. Equipamentos de proteção coletiva (EPC) e individual (EPI);
+5. Diretrizes do PGR da obra, plano de emergência e direito de recusa.`;
+
+function construirFolhaCertificado(r, colab, cat, codigo, campos, data, customParams = {}) {
+    const codigoDoc = codigoRevisaoDocumento('certificado_individual') || 'CERT.SMS.001';
+    
+    // Aproveitamento Satisfatório (NR-01 Item 1.7.1.1 Alínea "f")
+    // Preenchimento dinâmico: exibe 'Apto', nota ou percentual informado (evita linha vazia)
+    let aproveitamentoVal = (customParams.aproveitamento !== undefined && customParams.aproveitamento !== null)
+        ? String(customParams.aproveitamento).trim()
+        : (r && r.aproveitamento ? String(r.aproveitamento).trim() : 'Apto');
+
+    let aproveitamentoHtml = '';
+    if (!aproveitamentoVal) {
+        aproveitamentoHtml = '<u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u>';
+    } else {
+        let displayVal = aproveitamentoVal;
+        // Se for puramente numérico (ex: "100" ou "95"), adiciona o símbolo de porcentagem
+        if (/^\d+(\s*,\s*\d+)?$/.test(displayVal)) {
+            displayVal = `${displayVal}%`;
+        }
+        aproveitamentoHtml = `<u>&nbsp;${escapeHTML(displayVal)}&nbsp;</u>`;
+    }
+    
+    // Conteúdo programático (prioridade: customParams -> cat.conteudo_programatico -> padrão NR-18/NR-01)
+    let conteudo = customParams.conteudoProgramatico;
+    if (conteudo === undefined || conteudo === null) {
+        conteudo = cat?.conteudo_programatico || '';
+    }
+    const nomeTreinamento = cat ? cat.nome : (codigo || 'Treinamento de Segurança do Trabalho');
+    const nomeNorm = (nomeTreinamento || '').toLowerCase();
+    if (!conteudo.trim() && (codigo === '1' || nomeNorm.includes('integra') || nomeNorm.includes('18') || nomeNorm.includes('capacita'))) {
+        conteudo = CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01;
+    }
+    
+    // Base legal
+    const baseLegal = customParams.certificadoBaseLegal || cat?.certificado_base_legal || 'Portaria MTE nº 1.419/2024, NR-01 Item 1.7.1.1, Lei nº 14.457/2022 e NR-18 Anexo I (Capacitação Básica em Canteiro de Obras).';
+    
+    // Modalidade
+    const modalidade = customParams.modalidade || 'Presencial';
+    
+    // Local e horários
+    const localRealizacao = customParams.localRealizacao || campos.local_realizacao || 'Canteiro de Obras — PISF Ramal do Agreste';
+    const instrutorNome = customParams.instrutorNome || campos.instrutor_nome || '';
+    const instrutorQualificacao = customParams.instrutorQualificacao || campos.instrutor_qualificacao || '';
+    const instrutorRegistro = customParams.instrutorRegistro || campos.instrutor_registro || '';
+    const respTecnicoNome = customParams.respTecnicoNome || campos.responsavel_tecnico_nome || '';
+    const respTecnicoQualificacao = customParams.respTecnicoQualificacao || campos.responsavel_tecnico_qualificacao || '';
+    const respTecnicoRegistro = customParams.respTecnicoRegistro || campos.responsavel_tecnico_registro || '';
+    
+    const cargaHorariaStr = (cat && cat.carga_horaria) ? `${cat.carga_horaria} horas` : 'Carga horária regulamentar';
+    const horarioStr = (campos.hora_inicio && campos.hora_termino) ? ` (das ${campos.hora_inicio} às ${campos.hora_termino})` : '';
+    const turmaStr = campos.numero_turma ? ` | Turma: ${escapeHTML(campos.numero_turma)}` : '';
+    
+    const tituloTreinamento = cat ? cat.nome : (codigo || 'Treinamento de Segurança do Trabalho');
+
+    return `<div class="folha-certificado print-certificado-landscape">
+        <div class="moldura-certificado">
+            <div class="cabecalho-cert">
+                <img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:46px; object-fit:contain;">
+                <div style="text-align:right;">
+                    <div style="font-size:11pt; font-weight:700; color:#0f172a; text-transform:uppercase; letter-spacing:0.5px;">${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
+                    <div style="font-size:9.5pt; color:#475569;">CNPJ: ${escapeHTML(EMPRESA_INFO.cnpj)} | PISF Ramal do Agreste</div>
+                </div>
+            </div>
+            
+            <div class="titulo-cert">CERTIFICADO DE CAPACITAÇÃO</div>
+            <div class="subtitulo-cert">
+                Segurança e Saúde no Trabalho — Requisitos da NR-01 (Item 1.7.1.1) • ${escapeHTML(codigoDoc)}
+            </div>
+
+            <div class="texto-cert">
+                Certificamos que <b>${escapeHTML(r.nome)}</b>, portador(a) do CPF nº <b>${escapeHTML(colab?.cpf || 'Não informado')}</b>, 
+                função: <b>${escapeHTML(r.funcao || colab?.funcao || 'Operacional')}</b>, colaborador(a) da empresa <b>${escapeHTML(EMPRESA_INFO.razaoSocial)}</b>, 
+                CNPJ: <b>${escapeHTML(EMPRESA_INFO.cnpj)}</b>, participou do treinamento de <b>${escapeHTML(tituloTreinamento)}</b>, realizado em <b>${formatSimpleDate(data)}</b>, 
+                com carga horária total de <b>${escapeHTML(cargaHorariaStr)}</b>${horarioStr}${turmaStr}, ministrado na modalidade <b>${escapeHTML(modalidade)}</b>, 
+                e <b>concluiu com aproveitamento satisfatório: ${aproveitamentoHtml}</b>.
+            </div>
+
+            ${conteudo.trim() ? `
+            <div class="bloco-conteudo-cert">
+                <div class="bloco-conteudo-titulo-cert">Conteúdo Programático Ministrado:</div>
+                <div class="bloco-conteudo-texto-cert">${escapeHTML(conteudo.trim())}</div>
+            </div>` : ''}
+
+            <div class="meta-cert">
+                <div><b>Local de realização:</b> ${escapeHTML(localRealizacao)}</div>
+                ${cat?.meses_validade ? `<div><b>Validade / Periodicidade:</b> Reciclagem a cada ${cat.meses_validade} meses</div>` : ''}
+                <div><b>Data de Emissão:</b> ${formatSimpleDate(data)}</div>
+            </div>
+
+            ${baseLegal ? `<div class="rodape-legal-cert">${escapeHTML(baseLegal)}</div>` : ''}
+
+            <div class="assinaturas-cert">
+                ${blocoAssinatura(`${escapeHTML(instrutorNome || 'Instrutor Autorizado')}<br>${escapeHTML(instrutorQualificacao || 'Qualificação Técnica')}${instrutorRegistro ? '<br>' + escapeHTML(instrutorRegistro) : ''}<br><span style="font-size:8.5pt; color:#64748b;">Instrutor / Capacitação</span>`)}
+                ${blocoAssinatura(`${escapeHTML(r.nome)}<br>CPF: ${escapeHTML(colab?.cpf || '')}<br><span style="font-size:8.5pt; color:#64748b;">Colaborador(a) Capacitado(a)</span>`)}
+                ${blocoAssinatura(`${escapeHTML(respTecnicoNome || 'Responsável Técnico SST')}<br>${escapeHTML(respTecnicoQualificacao || 'Engenharia de Segurança')}${respTecnicoRegistro ? '<br>' + escapeHTML(respTecnicoRegistro) : ''}<br><span style="font-size:8.5pt; color:#64748b;">Responsável Técnico</span>`)}
+            </div>
         </div>
     </div>`;
 }
@@ -11333,63 +11871,84 @@ function construirFolhaDeclaracaoIntegracao(r, cat, campos, data) {
     const obrigacoesEmpresa = (cat?.integracao_obrigacoes_empresa || '').split('\n').filter(l => l.trim()).map(l => `<li>${escapeHTML(l.replace(/^\d+\.\s*/, ''))}</li>`).join('');
     const obrigacoesEmpregado = (cat?.integracao_obrigacoes_empregado || '').split('\n').filter(l => l.trim()).map(l => `<li>${escapeHTML(l.replace(/^\d+\.\s*/, ''))}</li>`).join('');
     const topicos = (cat?.integracao_programa || '').split('\n').filter(l => l.trim()).map(l => `<div>${escapeHTML(l.trim())}</div>`).join('');
-    return `<div class="folha folha-compacta">
-        <div style="text-align:center; margin-bottom: 10px;"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:56px; object-fit:contain;"></div>
-        <div class="titulo">DECLARAÇÃO DE INTEGRAÇÃO</div>
-        <div class="subtitulo">${escapeHTML(codigoIntegracao)}</div>
-        <div class="texto"><b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
-        <div class="texto"><b>NOME:</b> ${escapeHTML(r.nome)} &nbsp; <b>FUNÇÃO:</b> ${escapeHTML(r.funcao || '')} &nbsp; <b>DATA:</b> ${formatSimpleDate(data)}</div>
-        <div class="texto" style="margin-top:10px;">
+    return `<div class="folha-declaracao declaracao-container folha-compacta print-declaracao-portrait">
+        <div style="text-align:center; margin-bottom: 4px;"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:42px; object-fit:contain;"></div>
+        <div class="titulo-decl titulo">DECLARAÇÃO DE INTEGRAÇÃO</div>
+        <div class="subtitulo-decl subtitulo">${escapeHTML(codigoIntegracao)}</div>
+        <div class="identificacao-decl">
+            <div class="texto-decl texto"><b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
+            <div class="texto-decl texto"><b>NOME:</b> ${escapeHTML(r.nome)} &nbsp; <b>FUNÇÃO:</b> ${escapeHTML(r.funcao || '')} &nbsp; <b>DATA:</b> ${formatSimpleDate(data)}</div>
+        </div>
+        <div class="texto-decl texto-intro-decl texto">
             Pela presente Declaração de Integração objetivamos informar os trabalhadores que executam suas atividades laborais nesse setor${cat?.integracao_base_legal ? `, conforme estabelece a ${escapeHTML(cat.integracao_base_legal)}` : ''}.
             Declaro ter recebido treinamento sobre segurança do trabalho, com carga horária de ${cat && cat.carga_horaria ? cat.carga_horaria : ''}h e concordo em acatar as Normas da Empresa, descritas abaixo e as específicas com relação a minha atividade.
             Declaro também ter recebido cópia deste documento.
         </div>
-        <div class="bloco">
-            <div class="bloco-titulo">OBRIGAÇÕES DA EMPRESA:</div>
-            <ol class="lista-obrigacoes">${obrigacoesEmpresa || '<li style="color:#888;">Nenhuma obrigação cadastrada no catálogo</li>'}</ol>
+        <div class="bloco-decl bloco">
+            <div class="bloco-titulo-decl bloco-titulo">OBRIGAÇÕES DA EMPRESA:</div>
+            <ol class="lista-obrigacoes-decl lista-obrigacoes">${obrigacoesEmpresa || '<li style="color:#888;">Nenhuma obrigação cadastrada no catálogo</li>'}</ol>
         </div>
-        <div class="bloco">
-            <div class="bloco-titulo">OBRIGAÇÕES DO EMPREGADO:</div>
-            <ol class="lista-obrigacoes">${obrigacoesEmpregado || '<li style="color:#888;">Nenhuma obrigação cadastrada no catálogo</li>'}</ol>
+        <div class="bloco-decl bloco">
+            <div class="bloco-titulo-decl bloco-titulo">OBRIGAÇÕES DO EMPREGADO:</div>
+            <ol class="lista-obrigacoes-decl lista-obrigacoes">${obrigacoesEmpregado || '<li style="color:#888;">Nenhuma obrigação cadastrada no catálogo</li>'}</ol>
         </div>
-        <div class="bloco">
-            <div class="bloco-titulo">PROGRAMA DO TREINAMENTO DE INTEGRAÇÃO:</div>
-            <div class="grade-topicos">${topicos || '<div style="color:#888;">Nenhum tópico cadastrado no catálogo</div>'}</div>
+        <div class="bloco-decl bloco">
+            <div class="bloco-titulo-decl bloco-titulo">PROGRAMA DO TREINAMENTO DE INTEGRAÇÃO:</div>
+            <div class="grade-topicos-decl grade-topicos">${topicos || '<div style="color:#888;">Nenhum tópico cadastrado no catálogo</div>'}</div>
         </div>
-        <div class="bloco" style="margin-top:24px;">
-            <div class="bloco-titulo">RESPONSÁVEL PELA INTEGRAÇÃO</div>
-            <div class="texto">NOME: ${escapeHTML(campos.instrutor_nome || '')}</div>
-            <div class="texto">ASSINATURA: __________________________________________</div>
-        </div>
-        <div class="bloco">
-            <div class="bloco-titulo">COLABORADOR</div>
-            <div class="texto">ASSINATURA: __________________________________________</div>
-            <div class="texto">DATA: __________________________________________</div>
+        <div class="assinaturas-declaracao">
+            <div class="assinatura-decl-item bloco">
+                <div class="bloco-titulo-decl bloco-titulo">RESPONSÁVEL PELA INTEGRAÇÃO</div>
+                <div class="texto-decl texto">NOME: ${escapeHTML(campos.instrutor_nome || '')}</div>
+                <div class="linha-ass-decl texto">ASSINATURA: __________________________________________</div>
+            </div>
+            <div class="assinatura-decl-item bloco">
+                <div class="bloco-titulo-decl bloco-titulo">COLABORADOR</div>
+                <div class="linha-ass-decl texto">ASSINATURA: __________________________________________</div>
+                <div class="texto-decl texto">DATA: ____/____/________</div>
+            </div>
         </div>
     </div>`;
 }
 
 function construirFolhaTermoRecusa(r, cat, campos, data) {
     const codigoRecusa = codigoRevisaoDocumento('termo_recusa') || 'FORM.SMS.002';
-    return `<div class="folha">
-        <div style="text-align:center; margin-bottom: 10px;"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:56px; object-fit:contain;"></div>
-        <div class="titulo">TERMO DE CONHECIMENTO — DIREITO DE RECUSA</div>
-        <div class="subtitulo">${escapeHTML(codigoRecusa)}</div>
-        <div class="texto" style="margin-top:10px;">
-            Após treinamento realizado no setor de segurança do trabalho, da empresa ${escapeHTML(EMPRESA_INFO.razaoSocial)},
-            Eu <b>${escapeHTML(r.nome)}</b>, função <b>${escapeHTML(r.funcao || '')}</b>, declaro estar ciente que durante as minhas atividades de trabalho,
-            se houver justificativa razoável para crer que minha vida e/ou integridade física minha e/ou de meus colegas de trabalho se encontre em risco grave e iminente,
-            poderei suspender a realização dessas atividades, comunicando imediatamente tal fato ao meu superior hierárquico, que após avaliar a situação e constatando a
-            existência da condição de risco grave e iminente manterá a suspensão das atividades, até que venha ser normalizada a referida situação.
-        </div>
-        <div class="texto" style="margin-top:10px;">
-            A empresa garante que o Direito de Recusa nos termos acima não implicará em sanção disciplinar.
-        </div>
-        ${cat?.recusa_base_legal ? `<div class="rodape-legal">${escapeHTML(cat.recusa_base_legal)}</div>` : ''}
-        <div class="texto" style="margin-top:24px;">${escapeHTML(campos.local_realizacao || '_____________________')}, ${formatSimpleDate(data)}.</div>
-        <div style="height:90mm;"></div>
-        <div class="assinaturas">
-            ${blocoAssinatura(`${escapeHTML(r.nome)}<br>Assinatura do Colaborador`)}
+    return `<div class="folha-termo-recusa print-termo-recusa">
+        <div class="moldura-recusa">
+            <div class="cabecalho-recusa">
+                <img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:46px; object-fit:contain;">
+                <div style="text-align:right;">
+                    <div style="font-size:11pt; font-weight:700; color:#0f172a; text-transform:uppercase; letter-spacing:0.5px;">${escapeHTML(EMPRESA_INFO.razaoSocial)}</div>
+                    <div style="font-size:9.5pt; color:#475569;">CNPJ: ${escapeHTML(EMPRESA_INFO.cnpj)} | PISF Ramal do Agreste</div>
+                </div>
+            </div>
+
+            <div class="titulo-recusa">TERMO DE CONHECIMENTO — DIREITO DE RECUSA</div>
+            <div class="subtitulo-recusa">${escapeHTML(codigoRecusa)} — Disposições Gerais da NR-01 (Item 1.4.3)</div>
+
+            <div class="bloco-texto-recusa">
+                <p>
+                    Após treinamento e capacitação em Segurança e Saúde no Trabalho realizados no âmbito da empresa <b>${escapeHTML(EMPRESA_INFO.razaoSocial)}</b>,
+                    eu, <b>${escapeHTML(r.nome)}</b>, função <b>${escapeHTML(r.funcao || 'Operacional')}</b>, declaro estar ciente de que, durante as minhas atividades de trabalho,
+                    se houver justificativa razoável para crer que minha vida e/ou integridade física minha e/ou de meus colegas de trabalho se encontre em risco grave e iminente,
+                    poderei <b>suspender a realização dessas atividades (exercer o Direito de Recusa)</b>, comunicando imediatamente tal fato ao meu superior hierárquico, que após avaliar a situação e constatando a
+                    existência da condição de risco grave e iminente manterá a suspensão das atividades, até que venha ser normalizada a referida situação.
+                </p>
+                <p style="margin-top:14px; font-weight:600; color:#0f172a;">
+                    Em cumprimento estrito ao subitem 1.4.3 da NR-01, a empresa assegura e garante expressamente que o Direito de Recusa nos termos acima não implicará em qualquer sanção disciplinar, penalidade ou prejuízo ao colaborador.
+                </p>
+            </div>
+
+            <div class="data-local-recusa">
+                ${escapeHTML(campos.local_realizacao || 'Canteiro de Obras — PISF Ramal do Agreste')}, ${formatSimpleDate(data)}.
+            </div>
+
+            ${cat?.recusa_base_legal ? `<div class="rodape-legal-recusa">${escapeHTML(cat.recusa_base_legal)}</div>` : ''}
+
+            <div class="assinaturas-recusa">
+                ${blocoAssinatura(`${escapeHTML(r.nome)}<br><span style="font-size:9pt; color:#475569;">Assinatura do Colaborador</span>`)}
+                ${blocoAssinatura(`${escapeHTML(campos.responsavel_tecnico_nome || 'Engenharia de Segurança do Trabalho')}<br><span style="font-size:9pt; color:#475569;">Responsável Técnico SST</span>`)}
+            </div>
         </div>
     </div>`;
 }
@@ -11411,7 +11970,7 @@ function contextoRegistroPadrao() {
     };
 }
 
-async function gerarCertificadoIndividual(matricula, ctx = contextoRegistroPadrao()) {
+async function gerarCertificadoIndividual(matricula, ctx = contextoRegistroPadrao(), customParams = {}) {
     const { colaboradores, codigo, data, campos } = ctx;
     const r = colaboradores.find(x => x.matricula === matricula);
     if (!r) return;
@@ -11422,14 +11981,318 @@ async function gerarCertificadoIndividual(matricula, ctx = contextoRegistroPadra
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Certificado - ${escapeHTML(r.nome)} - ${formatSimpleDate(data)}</title>
-<style>${DOC_INDIVIDUAL_CSS}</style></head>
+<style>
+    ${DOC_INDIVIDUAL_CSS}
+    @page { size: A4 landscape; margin: 8mm; }
+</style>
+<script>
+    window.addEventListener('load', function() {
+        setTimeout(function() { window.print(); }, 400);
+    });
+</script>
+</head>
 <body>
     <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
-    ${construirFolhaCertificado(r, colab, cat, codigo, campos, data)}
+    ${construirFolhaCertificado(r, colab, cat, codigo, campos, data, customParams)}
 </body></html>`;
 
-    abrirDocumentoBlob(html);
+    abrirDocumentoHtmlParaImpressao(html, `Certificado_${(r.nome || 'Colaborador').replace(/[^a-zA-Z0-9]/g, '_')}_${formatSimpleDate(data).replace(/\//g, '-')}`);
     registrarEmissaoDocumento('certificado_individual', `${r.nome} — ${cat ? cat.nome : codigo}`);
+}
+
+async function gerarCertificadosTurma(ctx = contextoRegistroPadrao(), customParams = {}) {
+    const { colaboradores, codigo, data, campos } = ctx;
+    if (!colaboradores || colaboradores.length === 0) {
+        alert('Nenhum colaborador na turma atual.');
+        return;
+    }
+    await garantirDocumentosControleCarregados();
+    const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+
+    const folhas = colaboradores.map(r => {
+        const colab = allEfetivo.find(e => e.id === r.matricula);
+        return construirFolhaCertificado(r, colab, cat, codigo, campos, data, customParams);
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Certificados - Turma ${escapeHTML(cat ? cat.nome : codigo)} - ${formatSimpleDate(data)}</title>
+<style>
+    ${DOC_INDIVIDUAL_CSS}
+    @page { size: A4 landscape; margin: 8mm; }
+</style>
+<script>
+    window.addEventListener('load', function() {
+        setTimeout(function() { window.print(); }, 400);
+    });
+</script>
+</head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF (${colaboradores.length} Certificados)</button></div>
+    ${folhas}
+</body></html>`;
+
+    abrirDocumentoHtmlParaImpressao(html, `Certificados_Turma_${(cat ? cat.nome : codigo).replace(/[^a-zA-Z0-9]/g, '_')}_${formatSimpleDate(data).replace(/\//g, '-')}`);
+    colaboradores.forEach(r => {
+        registrarEmissaoDocumento('certificado_individual', `${r.nome} — ${cat ? cat.nome : codigo}`);
+    });
+}
+
+// ---- Modal de Emissão de Certificado de Treinamento (NR-01 / NR-18) ----
+let certModalCtxAtual = null;
+let certModalMatriculaAtual = null;
+
+function abrirModalEmissaoCertificado(matricula, ctx = contextoRegistroPadrao()) {
+    certModalCtxAtual = ctx;
+    certModalMatriculaAtual = matricula;
+
+    const modal = document.getElementById('modalEmissaoCertificado');
+    if (!modal) {
+        gerarCertificadoIndividual(matricula, ctx);
+        return;
+    }
+
+    const { colaboradores, codigo, data, campos } = ctx;
+    const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+    const r = colaboradores.find(x => x.matricula === matricula);
+    const colab = allEfetivo.find(e => e.id === matricula);
+
+    // Treinamento, data e carga horária
+    const nomeTreinamento = cat ? cat.nome : (codigo || 'Treinamento de Segurança');
+    const nomeEl = document.getElementById('certModalTreinamentoNome');
+    if (nomeEl) nomeEl.textContent = nomeTreinamento;
+    const cargaBadge = document.getElementById('certModalCargaHorariaBadge');
+    if (cargaBadge) cargaBadge.textContent = (cat && cat.carga_horaria) ? `${cat.carga_horaria} horas` : 'Carga regulamentar';
+    const dataBadge = document.getElementById('certModalDataBadge');
+    if (dataBadge) dataBadge.textContent = formatSimpleDate(data) || 'Data não definida';
+
+    // Alvo e Colaborador
+    const alvoSelect = document.getElementById('certModalAlvoSelect');
+    if (alvoSelect) alvoSelect.value = 'individual';
+    const colabNomeEl = document.getElementById('certModalColaboradorNome');
+    if (colabNomeEl) colabNomeEl.textContent = r ? `${r.nome} (${colab?.funcao || r.funcao || 'Operacional'})` : 'Todos da Turma';
+
+    // Aproveitamento
+    const inputAprov = document.getElementById('certModalAproveitamento');
+    if (inputAprov) {
+        inputAprov.value = (r && r.aproveitamento) ? r.aproveitamento : 'Apto';
+    }
+
+    // Modalidade
+    const selMod = document.getElementById('certModalModalidade');
+    if (selMod) selMod.value = 'Presencial';
+
+    // Conteúdo programático (do catálogo ou padrão NR-18/NR-01)
+    const textareaConteudo = document.getElementById('certModalConteudoProgramatico');
+    if (textareaConteudo) {
+        let conteudo = (cat?.conteudo_programatico || '').trim();
+        const nomeNorm = (nomeTreinamento || '').toLowerCase();
+        if (!conteudo && (codigo === '1' || nomeNorm.includes('integra') || nomeNorm.includes('18') || nomeNorm.includes('capacita'))) {
+            conteudo = CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01;
+        }
+        textareaConteudo.value = conteudo;
+    }
+
+    // Base Legal
+    const inputBaseLegal = document.getElementById('certModalBaseLegal');
+    if (inputBaseLegal) {
+        inputBaseLegal.value = cat?.certificado_base_legal || 'Portaria MTE nº 1.419/2024, NR-01 Item 1.7.1.1, Lei nº 14.457/2022 e NR-18 Anexo I (Capacitação Básica em Canteiro de Obras).';
+    }
+
+    // Local de realização
+    const inputLocal = document.getElementById('certModalLocalRealizacao');
+    if (inputLocal) {
+        inputLocal.value = campos.local_realizacao || 'Canteiro de Obras — PISF Ramal do Agreste';
+    }
+
+    // Instrutor e Responsável Técnico
+    const instNome = document.getElementById('certModalInstrutorNome');
+    if (instNome) instNome.value = campos.instrutor_nome || '';
+    const instQual = document.getElementById('certModalInstrutorQualificacao');
+    if (instQual) instQual.value = campos.instrutor_qualificacao || '';
+    const instReg = document.getElementById('certModalInstrutorRegistro');
+    if (instReg) instReg.value = campos.instrutor_registro || '';
+    const respNome = document.getElementById('certModalRespTecnicoNome');
+    if (respNome) respNome.value = campos.responsavel_tecnico_nome || '';
+    const respQual = document.getElementById('certModalRespTecnicoQualificacao');
+    if (respQual) respQual.value = campos.responsavel_tecnico_qualificacao || '';
+    const respReg = document.getElementById('certModalRespTecnicoRegistro');
+    if (respReg) respReg.value = campos.responsavel_tecnico_registro || '';
+
+    // Checkbox salvar catálogo
+    const chkSalvar = document.getElementById('certModalSalvarCatalogo');
+    if (chkSalvar) chkSalvar.checked = false;
+
+    // Reset status
+    const statusMsg = document.getElementById('certModalStatusMsg');
+    if (statusMsg) statusMsg.style.display = 'none';
+
+    certModalAtualizarBotaoTexto();
+    modal.style.display = 'flex';
+}
+
+function abrirModalEmissaoCertificadoLote(ctx = contextoRegistroPadrao()) {
+    certModalCtxAtual = ctx;
+    const { colaboradores } = ctx;
+    if (!colaboradores || colaboradores.length === 0) {
+        alert('Nenhum colaborador na sessão atual para emitir certificados.');
+        return;
+    }
+    abrirModalEmissaoCertificado(colaboradores[0].matricula, ctx);
+    const alvoSelect = document.getElementById('certModalAlvoSelect');
+    if (alvoSelect) {
+        alvoSelect.value = 'turma';
+        certModalAoMudarAlvo();
+    }
+}
+
+function fecharModalEmissaoCertificado() {
+    const modal = document.getElementById('modalEmissaoCertificado');
+    if (modal) modal.style.display = 'none';
+    certModalCtxAtual = null;
+    certModalMatriculaAtual = null;
+}
+
+function certModalAoMudarAlvo() {
+    const alvoSelect = document.getElementById('certModalAlvoSelect');
+    const colabNomeEl = document.getElementById('certModalColaboradorNome');
+    if (!alvoSelect || !certModalCtxAtual) return;
+
+    if (alvoSelect.value === 'turma') {
+        const total = (certModalCtxAtual.colaboradores || []).length;
+        if (colabNomeEl) colabNomeEl.textContent = `Toda a Turma (${total} colaboradores selecionados)`;
+    } else {
+        const r = (certModalCtxAtual.colaboradores || []).find(x => x.matricula === certModalMatriculaAtual);
+        const colab = allEfetivo.find(e => e.id === certModalMatriculaAtual);
+        if (colabNomeEl) colabNomeEl.textContent = r ? `${r.nome} (${colab?.funcao || r.funcao || 'Operacional'})` : 'Colaborador selecionado';
+    }
+    certModalAtualizarBotaoTexto();
+}
+
+function certModalAtualizarBotaoTexto() {
+    const btn = document.getElementById('btnDispararImpressaoCertificado');
+    const alvoSelect = document.getElementById('certModalAlvoSelect');
+    if (!btn) return;
+    if (alvoSelect && alvoSelect.value === 'turma') {
+        const total = (certModalCtxAtual?.colaboradores || []).length;
+        btn.innerHTML = `<span>🖨️</span> Imprimir para Toda a Turma (${total})`;
+    } else {
+        btn.innerHTML = `<span>🖨️</span> Imprimir Certificado`;
+    }
+}
+
+function certModalCarregarPadraoNr18() {
+    const textarea = document.getElementById('certModalConteudoProgramatico');
+    if (textarea) textarea.value = CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01;
+    const baseLegal = document.getElementById('certModalBaseLegal');
+    if (baseLegal) baseLegal.value = 'Portaria MTE nº 1.419/2024, NR-01 Item 1.7.1.1, Lei nº 14.457/2022 e NR-18 Anexo I (Capacitação Básica em Canteiro de Obras).';
+}
+
+function certModalRestaurarCatalogo() {
+    if (!certModalCtxAtual) return;
+    const cat = allTreinamentosCatalogo.find(c => c.id === certModalCtxAtual.codigo);
+    const textarea = document.getElementById('certModalConteudoProgramatico');
+    if (textarea) textarea.value = cat?.conteudo_programatico || '';
+    const baseLegal = document.getElementById('certModalBaseLegal');
+    if (baseLegal) baseLegal.value = cat?.certificado_base_legal || 'Portaria MTE nº 1.419/2024, NR-01 Item 1.7.1.1, Lei nº 14.457/2022 e NR-18 Anexo I (Capacitação Básica em Canteiro de Obras).';
+}
+
+async function executarEmissaoCertificadoModal() {
+    if (!certModalCtxAtual) return;
+    const statusMsg = document.getElementById('certModalStatusMsg');
+
+    const aproveitamento = document.getElementById('certModalAproveitamento')?.value.trim() || 'Apto';
+    const modalidade = document.getElementById('certModalModalidade')?.value || 'Presencial';
+    const conteudoProgramatico = document.getElementById('certModalConteudoProgramatico')?.value || '';
+    const certificadoBaseLegal = document.getElementById('certModalBaseLegal')?.value.trim() || '';
+    const localRealizacao = document.getElementById('certModalLocalRealizacao')?.value.trim() || '';
+    const instrutorNome = document.getElementById('certModalInstrutorNome')?.value.trim() || '';
+    const instrutorQualificacao = document.getElementById('certModalInstrutorQualificacao')?.value.trim() || '';
+    const instrutorRegistro = document.getElementById('certModalInstrutorRegistro')?.value.trim() || '';
+    const respTecnicoNome = document.getElementById('certModalRespTecnicoNome')?.value.trim() || '';
+    const respTecnicoQualificacao = document.getElementById('certModalRespTecnicoQualificacao')?.value.trim() || '';
+    const respTecnicoRegistro = document.getElementById('certModalRespTecnicoRegistro')?.value.trim() || '';
+    const salvarNoCatalogo = document.getElementById('certModalSalvarCatalogo')?.checked;
+    const alvo = document.getElementById('certModalAlvoSelect')?.value || 'individual';
+
+    const customParams = {
+        aproveitamento,
+        modalidade,
+        conteudoProgramatico,
+        certificadoBaseLegal,
+        localRealizacao,
+        instrutorNome,
+        instrutorQualificacao,
+        instrutorRegistro,
+        respTecnicoNome,
+        respTecnicoQualificacao,
+        respTecnicoRegistro
+    };
+
+    // Salvar no catálogo se solicitado
+    if (salvarNoCatalogo && certModalCtxAtual.codigo) {
+        try {
+            if (statusMsg) {
+                statusMsg.style.display = 'block';
+                statusMsg.style.background = '#eef2ff';
+                statusMsg.style.color = '#3730a3';
+                statusMsg.textContent = '💾 Atualizando catálogo de treinamentos...';
+            }
+            await supabasePatch('treinamentos_catalogo', `id=eq.${encodeURIComponent(certModalCtxAtual.codigo)}`, {
+                conteudo_programatico: conteudoProgramatico,
+                certificado_base_legal: certificadoBaseLegal
+            });
+            const cat = allTreinamentosCatalogo.find(c => c.id === certModalCtxAtual.codigo);
+            if (cat) {
+                cat.conteudo_programatico = conteudoProgramatico;
+                cat.certificado_base_legal = certificadoBaseLegal;
+            }
+        } catch (errSalvarCat) {
+            console.warn('Erro ao salvar no catálogo:', errSalvarCat);
+        }
+    }
+
+    // Atualizar no banco treinamentos_realizados o aproveitamento informado
+    try {
+        const cod = certModalCtxAtual.codigo;
+        const dataTrein = certModalCtxAtual.data;
+        if (cod && dataTrein) {
+            if (alvo === 'turma') {
+                await supabasePatch('treinamentos_realizados', `treinamento_cod=eq.${encodeURIComponent(cod)}&data_treinamento=eq.${encodeURIComponent(dataTrein)}`, {
+                    aproveitamento
+                });
+                (certModalCtxAtual.colaboradores || []).forEach(c => { c.aproveitamento = aproveitamento; });
+                if (typeof allTreinamentosRealizados !== 'undefined' && Array.isArray(allTreinamentosRealizados)) {
+                    allTreinamentosRealizados.forEach(tr => {
+                        if (String(tr.treinamento_cod) === String(cod) && String(tr.data_treinamento) === String(dataTrein)) {
+                            tr.aproveitamento = aproveitamento;
+                        }
+                    });
+                }
+            } else if (certModalMatriculaAtual) {
+                await supabasePatch('treinamentos_realizados', `matricula=eq.${encodeURIComponent(certModalMatriculaAtual)}&treinamento_cod=eq.${encodeURIComponent(cod)}&data_treinamento=eq.${encodeURIComponent(dataTrein)}`, {
+                    aproveitamento
+                });
+                const colabAlvo = (certModalCtxAtual.colaboradores || []).find(c => c.matricula === certModalMatriculaAtual);
+                if (colabAlvo) colabAlvo.aproveitamento = aproveitamento;
+                if (typeof allTreinamentosRealizados !== 'undefined' && Array.isArray(allTreinamentosRealizados)) {
+                    const tr = allTreinamentosRealizados.find(x => String(x.matricula) === String(certModalMatriculaAtual) && String(x.treinamento_cod) === String(cod) && String(x.data_treinamento) === String(dataTrein));
+                    if (tr) tr.aproveitamento = aproveitamento;
+                }
+            }
+        }
+    } catch (errAprov) {
+        console.warn('Aviso ao sincronizar aproveitamento no banco:', errAprov);
+    }
+
+    // Disparar emissão
+    if (alvo === 'turma') {
+        await gerarCertificadosTurma(certModalCtxAtual, customParams);
+    } else {
+        await gerarCertificadoIndividual(certModalMatriculaAtual, certModalCtxAtual, customParams);
+    }
+
+    fecharModalEmissaoCertificado();
 }
 
 async function gerarOrdemServicoIndividual(matricula, ctx = contextoRegistroPadrao()) {
@@ -11441,13 +12304,22 @@ async function gerarOrdemServicoIndividual(matricula, ctx = contextoRegistroPadr
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Ordem de Serviço - ${escapeHTML(r.nome)} - ${formatSimpleDate(data)}</title>
-<style>${DOC_INDIVIDUAL_CSS}</style></head>
+<style>
+    ${DOC_INDIVIDUAL_CSS}
+    @page { size: A4 portrait; margin: 12mm; }
+</style>
+<script>
+    window.addEventListener('load', function() {
+        setTimeout(function() { window.print(); }, 400);
+    });
+</script>
+</head>
 <body>
     <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
     ${construirFolhaOrdemServico(matricula, r, campos, data)}
 </body></html>`;
 
-    abrirDocumentoBlob(html);
+    abrirDocumentoHtmlParaImpressao(html, `Ordem_de_Servico_${(r.nome || 'Colaborador').replace(/[^a-zA-Z0-9]/g, '_')}_${formatSimpleDate(data).replace(/\//g, '-')}`);
     registrarEmissaoDocumento('ordem_servico', r.nome);
 }
 
@@ -11461,13 +12333,22 @@ async function gerarDeclaracaoIntegracaoIndividual(matricula, ctx = contextoRegi
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Declaração de Integração - ${escapeHTML(r.nome)} - ${formatSimpleDate(data)}</title>
-<style>${DOC_INDIVIDUAL_CSS}</style></head>
+<style>
+    ${DOC_INDIVIDUAL_CSS}
+    @page { size: A4 portrait; margin: 8mm 10mm; }
+</style>
+<script>
+    window.addEventListener('load', function() {
+        setTimeout(function() { window.print(); }, 400);
+    });
+</script>
+</head>
 <body>
     <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
     ${construirFolhaDeclaracaoIntegracao(r, cat, campos, data)}
 </body></html>`;
 
-    abrirDocumentoBlob(html);
+    abrirDocumentoHtmlParaImpressao(html, `Declaracao_Integracao_${(r.nome || 'Colaborador').replace(/[^a-zA-Z0-9]/g, '_')}_${formatSimpleDate(data).replace(/\//g, '-')}`);
     registrarEmissaoDocumento('declaracao_integracao', `${r.nome} — ${cat ? cat.nome : codigo}`);
 }
 
@@ -11481,13 +12362,22 @@ async function gerarTermoRecusaIndividual(matricula, ctx = contextoRegistroPadra
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Termo de Recusa - ${escapeHTML(r.nome)} - ${formatSimpleDate(data)}</title>
-<style>${DOC_INDIVIDUAL_CSS}</style></head>
+<style>
+    ${DOC_INDIVIDUAL_CSS}
+    @page { size: A4 landscape; margin: 15mm; }
+</style>
+<script>
+    window.addEventListener('load', function() {
+        setTimeout(function() { window.print(); }, 400);
+    });
+</script>
+</head>
 <body>
     <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
     ${construirFolhaTermoRecusa(r, cat, campos, data)}
 </body></html>`;
 
-    abrirDocumentoBlob(html);
+    abrirDocumentoHtmlParaImpressao(html, `Termo_Recusa_${(r.nome || 'Colaborador').replace(/[^a-zA-Z0-9]/g, '_')}_${formatSimpleDate(data).replace(/\//g, '-')}`);
     registrarEmissaoDocumento('termo_recusa', r.nome);
 }
 
@@ -11512,13 +12402,22 @@ async function gerarKitCompletoIntegracao(matricula, ctx = contextoRegistroPadra
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Kit Completo - ${escapeHTML(r.nome)} - ${formatSimpleDate(data)}</title>
-<style>${REGISTRO_TREINAMENTO_CSS}${DOC_INDIVIDUAL_CSS}</style></head>
+<style>
+    ${REGISTRO_TREINAMENTO_CSS}
+    ${DOC_INDIVIDUAL_CSS}
+</style>
+<script>
+    window.addEventListener('load', function() {
+        setTimeout(function() { window.print(); }, 400);
+    });
+</script>
+</head>
 <body>
     <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
     ${folhas}
 </body></html>`;
 
-    abrirDocumentoBlob(html);
+    abrirDocumentoHtmlParaImpressao(html, `Kit_Integracao_${(r.nome || 'Colaborador').replace(/[^a-zA-Z0-9]/g, '_')}_${formatSimpleDate(data).replace(/\//g, '-')}`);
     registrarEmissaoDocumento('ordem_servico', r.nome);
     registrarEmissaoDocumento('registro_treinamento', `${cat ? cat.nome : codigo} — ${formatSimpleDate(data)}`);
     registrarEmissaoDocumento('certificado_individual', `${r.nome} — ${cat ? cat.nome : codigo}`);
@@ -11745,77 +12644,93 @@ function construirFolhaOrdemServico(matricula, r, campos, data) {
     // em vez de criar uma tela nova só pra esse texto.
     const responsabilidadesEmpregado = allDocumentosControle.find(d => d.id === 'ordem_servico')?.observacoes || '';
 
-    return `<div class="folha folha-compacta">
-        <div style="text-align:center; margin-bottom: 10px;"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:56px; object-fit:contain;"></div>
-        <div class="titulo" style="font-size:16px;">ORDEM DE SERVIÇO DE SEGURANÇA E SAÚDE NO TRABALHO</div>
-        ${codigoOs ? `<div class="subtitulo">${escapeHTML(codigoOs)}</div>` : ''}
-        ${avisoCargo ? `<div style="background:#fff3cd; border:1px solid #f0ad4e; color:#7a5b00; border-radius:6px; padding:8px 10px; font-size:11px; font-weight:600; margin-bottom:10px;">${escapeHTML(avisoCargo)}</div>` : ''}
-        <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:10px;">
-            <tr><td style="border:1px solid #ccc; padding:4px 6px;"><b>Emissão:</b> ${formatSimpleDate(data)}</td>
-                <td style="border:1px solid #ccc; padding:4px 6px;"><b>Empresa:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</td>
-                <td style="border:1px solid #ccc; padding:4px 6px;"><b>CNPJ:</b> ${escapeHTML(EMPRESA_INFO.cnpj)}</td></tr>
-            <tr><td style="border:1px solid #ccc; padding:4px 6px;" colspan="2"><b>Funcionário:</b> ${escapeHTML(r.nome)} &nbsp; <b>(Matrícula:</b> ${escapeHTML(matricula)})</td>
-                <td style="border:1px solid #ccc; padding:4px 6px;"><b>CPF:</b> ${escapeHTML(colab?.cpf || '—')}</td></tr>
-            <tr><td style="border:1px solid #ccc; padding:4px 6px;"><b>Setor / GHE:</b> ${escapeHTML(ghe ? `${ghe.id} - ${ghe.nome}` : '—')}</td>
-                <td style="border:1px solid #ccc; padding:4px 6px;"><b>Função Contratual:</b> ${escapeHTML(r.funcao || '—')}</td>
-                <td style="border:1px solid #ccc; padding:4px 6px;"><b>Cargo Oficial / CBO:</b> ${escapeHTML(cargoInfo?.cargo || r.funcao || '—')}${cargoInfo?.cbo ? ` &nbsp; <b>(CBO: ${escapeHTML(cargoInfo.cbo)})</b>` : ''}</td></tr>
+    return `<div class="folha folha-compacta folha-os">
+        <div style="text-align:center; margin-bottom: 2px;"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:34px; object-fit:contain;"></div>
+        <div class="titulo-os">ORDEM DE SERVIÇO DE SEGURANÇA E SAÚDE NO TRABALHO</div>
+        ${codigoOs ? `<div class="subtitulo-os">${escapeHTML(codigoOs)}</div>` : ''}
+        ${avisoCargo ? `<div style="background:#fff3cd; border:1px solid #f0ad4e; color:#7a5b00; border-radius:4px; padding:3px 6px; font-size:7.5px; font-weight:600; margin-bottom:3px;">${escapeHTML(avisoCargo)}</div>` : ''}
+        <table class="tabela-os-identificacao">
+            <tr><td style="width:25%;"><b>Emissão:</b> ${formatSimpleDate(data)}</td>
+                <td style="width:45%;"><b>Empresa:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</td>
+                <td style="width:30%;"><b>CNPJ:</b> ${escapeHTML(EMPRESA_INFO.cnpj)}</td></tr>
+            <tr><td colspan="2"><b>Funcionário:</b> ${escapeHTML(r.nome)} &nbsp; <b>(Matrícula:</b> ${escapeHTML(matricula)})</td>
+                <td><b>CPF:</b> ${escapeHTML(colab?.cpf || '—')}</td></tr>
+            <tr><td><b>Setor / GHE:</b> ${escapeHTML(ghe ? `${ghe.id} - ${ghe.nome}` : '—')}</td>
+                <td><b>Função Contratual:</b> ${escapeHTML(r.funcao || '—')}</td>
+                <td><b>Cargo Oficial / CBO:</b> ${escapeHTML(cargoInfo?.cargo || r.funcao || '—')}${cargoInfo?.cbo ? ` &nbsp; <b>(CBO: ${escapeHTML(cargoInfo.cbo)})</b>` : ''}</td></tr>
         </table>
 
-        <div class="bloco-titulo">1. Descrição das Atividades:</div>
-        <div class="texto">${escapeHTML(cargoInfo?.descricao_atividade || '')}</div>
+        <div class="bloco-os">
+            <div class="bloco-titulo-os">1. Descrição das Atividades:</div>
+            <div class="texto-os">${escapeHTML(cargoInfo?.descricao_atividade || '')}</div>
+        </div>
 
-        <div class="bloco"><div class="bloco-titulo">2. Agentes associados às atividades:</div>
-            <table style="width:100%; border-collapse:collapse; font-size:11px;">
-                <thead><tr style="background:#f2f2f2;">
-                    <th style="border:1px solid #ccc; padding:4px 6px;">Físico</th><th style="border:1px solid #ccc; padding:4px 6px;">Químico</th>
-                    <th style="border:1px solid #ccc; padding:4px 6px;">Biológico</th><th style="border:1px solid #ccc; padding:4px 6px;">Ergonômico</th>
-                    <th style="border:1px solid #ccc; padding:4px 6px;">Acidentes</th>
+        <div class="bloco-os">
+            <div class="bloco-titulo-os">2. Agentes associados às atividades:</div>
+            <table class="tabela-os-agentes">
+                <thead><tr>
+                    <th style="width:20%;">Físico</th><th style="width:20%;">Químico</th>
+                    <th style="width:20%;">Biológico</th><th style="width:20%;">Ergonômico</th>
+                    <th style="width:20%;">Acidentes</th>
                 </tr></thead>
                 <tbody><tr>
-                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(ag.fisico || '')}</td>
-                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(ag.quimico || '')}</td>
-                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(ag.biologico || '')}</td>
-                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(ag.ergonomico || '')}</td>
-                    <td style="border:1px solid #ccc; padding:4px 6px;">${escapeHTML(ag.acidentes || '')}</td>
+                    <td>${escapeHTML(ag.fisico || '')}</td>
+                    <td>${escapeHTML(ag.quimico || '')}</td>
+                    <td>${escapeHTML(ag.biologico || '')}</td>
+                    <td>${escapeHTML(ag.ergonomico || '')}</td>
+                    <td>${escapeHTML(ag.acidentes || '')}</td>
                 </tr></tbody>
             </table>
         </div>
 
-        <div class="bloco"><div class="bloco-titulo">3. EPIs Necessários para a Função:</div>
-            <div class="lista-itens">${epis.length ? epis.map(e => `<div>» ${escapeHTML(e)}</div>`).join('') : '<div style="color:#888;">—</div>'}</div>
+        <div class="grid-epis-epcs-os">
+            <div class="bloco-os" style="flex:1;">
+                <div class="bloco-titulo-os">3. EPIs Necessários para a Função:</div>
+                <div class="lista-itens-os">${epis.length ? epis.map(e => `<div>» ${escapeHTML(e)}</div>`).join('') : '<div style="color:#777;">—</div>'}</div>
+            </div>
+            <div class="bloco-os" style="flex:1;">
+                <div class="bloco-titulo-os">4. EPCs Necessários para a Função:</div>
+                <div class="lista-itens-os">${epcs.length ? epcs.map(e => `<div>» ${escapeHTML(e)}</div>`).join('') : '<div style="color:#777;">—</div>'}</div>
+            </div>
         </div>
-        <div class="bloco"><div class="bloco-titulo">4. EPCs Necessários para a Função:</div>
-            <div class="lista-itens">${epcs.length ? epcs.map(e => `<div>» ${escapeHTML(e)}</div>`).join('') : '<div style="color:#888;">—</div>'}</div>
-        </div>
-        <div class="bloco"><div class="bloco-titulo">5. Recomendações:</div><div class="texto">${escapeHTML(cargoInfo?.recomendacoes || '')}</div></div>
-        <div class="bloco"><div class="bloco-titulo">6. Procedimentos em caso de acidentes:</div><div class="texto">${escapeHTML(cargoInfo?.procedimentos_acidentes || '')}</div></div>
-        <div class="bloco"><div class="bloco-titulo">7. Responsabilidades do Empregado (NR-01 do Ministério do Trabalho e Previdência):</div><div class="texto">${escapeHTML(responsabilidadesEmpregado)}</div></div>
-        <div class="bloco"><div class="bloco-titulo">8. Observações:</div><div class="texto">${escapeHTML(cargoInfo?.observacoes || '')}</div></div>
 
-        <div class="texto" style="margin-top:16px;">
+        <div class="bloco-os"><div class="bloco-titulo-os">5. Recomendações:</div><div class="texto-os">${escapeHTML(cargoInfo?.recomendacoes || '')}</div></div>
+        <div class="bloco-os"><div class="bloco-titulo-os">6. Procedimentos em caso de acidentes:</div><div class="texto-os">${escapeHTML(cargoInfo?.procedimentos_acidentes || '')}</div></div>
+        <div class="bloco-os"><div class="bloco-titulo-os">7. Responsabilidades do Empregado (NR-01 do Ministério do Trabalho e Previdência):</div><div class="texto-os">${escapeHTML(responsabilidadesEmpregado)}</div></div>
+        <div class="bloco-os"><div class="bloco-titulo-os">8. Observações:</div><div class="texto-os">${escapeHTML(cargoInfo?.observacoes || '')}</div></div>
+
+        <div class="declaracao-os">
             Declaro que recebi da <b>${escapeHTML(EMPRESA_INFO.razaoSocial)}</b> as orientações que fazem parte deste documento, bem como cópia
             do mesmo, comprometendo-me a seguir as orientações nele contidas e reconhecendo serem elas indispensáveis à minha segurança e à
             de meus colegas de trabalho. Também afirmo ter recebido os EPIs de utilização obrigatória na minha função e comprometo-me a
             utilizá-los durante toda a minha jornada de trabalho, solicitando sua substituição sempre que necessário.
         </div>
-        <div class="assinaturas">
+        <div class="assinaturas-os">
             ${blocoAssinatura(`${escapeHTML(r.nome)}<br>Colaborador`)}
             ${blocoAssinatura(`${escapeHTML(campos.responsavel_tecnico_nome || '')}<br>${escapeHTML(campos.responsavel_tecnico_qualificacao || '')}${campos.responsavel_tecnico_registro ? '<br>' + escapeHTML(campos.responsavel_tecnico_registro) : ''}`)}
         </div>
     </div>`;
 }
 
-function abrirDocumentoBlob(html) {
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
+function abrirDocumentoBlob(html, titulo = 'Documento_SST') {
+    if (typeof abrirDocumentoHtmlParaImpressao === 'function') {
+        abrirDocumentoHtmlParaImpressao(html, titulo);
+        return;
+    }
+    try {
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+        console.warn('Erro ao abrir documento via Blob:', err);
+    }
 }
 
 // ============================================
@@ -16645,9 +17560,14 @@ async function imprimirOsIndividualEfetivo(matricula) {
 <body>
     <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
     ${folhaHtml}
+    <script>
+        window.onload = function() {
+            setTimeout(function() { window.print(); }, 400);
+        };
+    </script>
 </body></html>`;
 
-    abrirDocumentoBlob(html);
+    abrirDocumentoBlob(html, `Ordem_de_Servico_${(colab.nome || 'Colaborador').replace(/[^a-zA-Z0-9]/g, '_')}`);
     if (typeof registrarEmissaoDocumento === 'function') {
         registrarEmissaoDocumento('ordem_servico', colab.nome);
     }
@@ -16699,11 +17619,23 @@ async function imprimirOsEmLotePendentes() {
     }).join('');
 
     const cssLote = `
-        @page { size: portrait; margin: 10mm; }
+        @page { size: A4 portrait; margin: 7mm 8mm 7mm 8mm; }
         @media print {
             body { margin: 0; background: #fff !important; }
             .no-print { display: none !important; }
             .folha { page-break-after: always !important; box-shadow: none !important; margin: 0 auto !important; }
+            .folha-os {
+                page-break-after: always !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                max-height: 280mm !important;
+                box-sizing: border-box !important;
+                padding: 4mm 6mm !important;
+            }
+            .assinaturas, .assinaturas-os, .assinatura-item {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
         }
         .no-print { text-align: center; padding: 16px; background: #f8fafc; border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; z-index: 999; }
         .no-print button { background: #2563eb; color: #fff; border: none; padding: 10px 22px; font-size: 14px; font-weight: 700; border-radius: 8px; cursor: pointer; }
@@ -16721,7 +17653,7 @@ async function imprimirOsEmLotePendentes() {
     ${folhas}
 </body></html>`;
 
-    abrirDocumentoBlob(html);
+    abrirDocumentoBlob(html, `Ordens_de_Servico_Lote_${pendentes.length}_Colaboradores`);
 }
 
 // Modal de Registro e Edição da Entrega de OS

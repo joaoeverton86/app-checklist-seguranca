@@ -3592,4 +3592,366 @@ body.dark-mode .rel-tabela th {
     color: #ffffff !important;
 }
 
+/* ================================================================ */
+/* MODELOS DE IMPRESSÃO ESCOPADOS - KIT DE INTEGRAÇÃO & SST (NR-01) */
+/* ================================================================ */
+
+@page os_portrait { size: A4 portrait; margin: 12mm; }
+@page registro_portrait { size: A4 portrait; margin: 6mm 8mm; }
+@page cert_landscape { size: A4 landscape; margin: 8mm; }
+@page decl_portrait { size: A4 portrait; margin: 8mm 10mm; }
+@page recusa_landscape { size: A4 landscape; margin: 15mm; }
+
+.print-os-portrait {
+    page: os_portrait;
+    font-size: 10pt;
+    line-height: 1.35;
+    color: #0f172a;
+}
+.print-os-portrait .os-titulo {
+    font-size: 12pt;
+    font-weight: 800;
+}
+.print-os-portrait .os-bloco-titulo {
+    font-size: 10.5pt;
+    font-weight: 700;
+}
+
+.print-registro-portrait {
+    page: registro_portrait;
+    font-size: 8.5pt;
+    line-height: 1.25;
+}
+.print-registro-portrait .linha-assinatura-reg {
+    height: 28px !important;
+    min-height: 28px !important;
+}
+
+/* ---- Kit de Integração SST - Classes de Impressão e Páginas Nomeadas ---- */
+@page os_portrait { size: A4 portrait; margin: 12mm; }
+@page registro_portrait { size: A4 portrait; margin: 6mm 8mm; }
+@page cert_landscape { size: A4 landscape; margin: 8mm; }
+@page decl_portrait { size: A4 portrait; margin: 8mm 10mm; }
+@page recusa_landscape { size: A4 landscape; margin: 15mm; }
+
+.print-os-portrait {
+    page: os_portrait;
+    page-break-after: always !important;
+    break-after: page !important;
+}
+
+.print-registro-portrait {
+    page: registro_portrait;
+    page-break-after: always !important;
+    break-after: page !important;
+}
+
+.print-certificado-landscape {
+    page: cert_landscape;
+    page-break-after: always !important;
+    break-after: page !important;
+}
+
+.print-declaracao-portrait {
+    page: decl_portrait;
+    page-break-after: always !important;
+    break-after: page !important;
+}
+
+.print-termo-recusa {
+    page: recusa_landscape;
+    page-break-after: auto !important;
+    break-after: auto !important;
+}
+
+/* 1. Certificado de Capacitação - Estrutura Vertical Preenchida (A4 Paisagem) */
+.folha-certificado {
+    box-sizing: border-box;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    width: 100%;
+    margin: 0 auto;
+    height: 100%;
+    min-height: 185mm;
+}
+.moldura-certificado {
+    border: 3px double #0f172a;
+    padding: 18px 24px;
+    box-sizing: border-box;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 185mm;
+    height: 100%;
+}
+@media screen {
+    .moldura-certificado {
+        min-height: calc(100vh - 16mm);
+        height: calc(100vh - 16mm);
+    }
+}
+.cabecalho-cert {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid #0f172a;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+}
+.titulo-cert {
+    font-size: 22pt;
+    letter-spacing: 2px;
+    font-weight: 800;
+    text-align: center;
+    color: #0f172a;
+    margin: 4px 0 2px;
+    flex-shrink: 0;
+}
+.subtitulo-cert {
+    text-align: center;
+    font-size: 10pt;
+    font-weight: 600;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 10px;
+    flex-shrink: 0;
+}
+.texto-cert {
+    font-size: 11.5pt;
+    line-height: 1.5;
+    text-align: justify;
+    color: #1e293b;
+    margin-bottom: 8px;
+}
+.bloco-conteudo-cert {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 8px 14px;
+    margin-bottom: 8px;
+}
+.bloco-conteudo-titulo-cert {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #0f172a;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+}
+.bloco-conteudo-texto-cert {
+    font-size: 9.5pt;
+    line-height: 1.4;
+    white-space: pre-line;
+    color: #334155;
+}
+.meta-cert {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9.5pt;
+    color: #334155;
+    margin-bottom: 6px;
+    flex-shrink: 0;
+}
+.rodape-legal-cert {
+    font-size: 8.5pt;
+    color: #64748b;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 4px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+}
+.assinaturas-cert {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-top: auto;
+    padding-top: 10px;
+    gap: 12px;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    flex-shrink: 0;
+}
+.assinaturas-cert .assinatura-item {
+    text-align: center;
+    font-size: 9.5pt;
+    width: 31%;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+}
+.assinaturas-cert .assinatura-item .linha-assinatura {
+    font-size: 11pt;
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+}
+
+/* 2. Declaração de Integração - Container Compacto Página Única (A4 Retrato) */
+.folha-declaracao,
+.declaracao-container {
+    border: 2px solid #000;
+    padding: 10px 14px;
+    box-sizing: border-box;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    max-width: 820px;
+    margin: 0 auto;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #111;
+}
+.titulo-decl {
+    text-align: center;
+    font-weight: 700;
+    font-size: 13pt;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+    margin-bottom: 2px;
+    color: #0f172a;
+}
+.subtitulo-decl {
+    text-align: center;
+    font-size: 8.5pt;
+    color: #475569;
+    margin-top: 0;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+.identificacao-decl {
+    margin-bottom: 4px;
+}
+.texto-decl {
+    font-size: 8.5pt;
+    line-height: 1.25;
+    text-align: justify;
+    color: #1e293b;
+}
+.texto-intro-decl {
+    margin-top: 3px;
+    margin-bottom: 4px;
+}
+.bloco-decl {
+    margin-top: 3px;
+    margin-bottom: 4px;
+}
+.bloco-titulo-decl {
+    font-weight: 700;
+    font-size: 8.5pt;
+    margin-bottom: 2px;
+    color: #0f172a;
+    text-transform: uppercase;
+    line-height: 1.2;
+}
+.lista-obrigacoes-decl {
+    font-size: 8.5pt;
+    line-height: 1.22;
+    padding-left: 18px;
+    margin: 2px 0 3px;
+    color: #334155;
+}
+.lista-obrigacoes-decl li {
+    margin-bottom: 1.5px;
+}
+.grade-topicos-decl {
+    columns: 3;
+    column-gap: 10px;
+    font-size: 8pt;
+    line-height: 1.2;
+    margin-top: 2px;
+    margin-bottom: 4px;
+    color: #334155;
+}
+.grade-topicos-decl > div {
+    break-inside: avoid;
+    padding: 1px 3px;
+}
+.assinaturas-declaracao {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 10px;
+    margin-bottom: 0;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+}
+.assinaturas-declaracao .assinatura-decl-item {
+    flex: 1;
+    box-sizing: border-box;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+}
+.assinaturas-declaracao .linha-ass-decl {
+    font-size: 8.5pt;
+    letter-spacing: 0.5px;
+    margin-top: 3px;
+    margin-bottom: 2px;
+}
+
+/* Regras Estritas de @media print */
+@media print {
+    .print-os-portrait {
+        page: os_portrait;
+        page-break-after: always !important;
+        break-after: page !important;
+    }
+    .print-registro-portrait {
+        page: registro_portrait;
+        page-break-after: always !important;
+        break-after: page !important;
+    }
+    .print-certificado-landscape {
+        page: cert_landscape;
+        page-break-after: always !important;
+        break-after: page !important;
+    }
+    .print-declaracao-portrait {
+        page: decl_portrait;
+        page-break-after: always !important;
+        break-after: page !important;
+    }
+    .print-termo-recusa {
+        page: recusa_landscape;
+        page-break-after: auto !important;
+        break-after: auto !important;
+    }
+    .folha-certificado {
+        height: 194mm !important;
+        max-height: 194mm !important;
+        min-height: 185mm !important;
+        box-sizing: border-box !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .moldura-certificado {
+        height: 100% !important;
+        min-height: 185mm !important;
+        max-height: 194mm !important;
+        box-sizing: border-box !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        padding: 18px 24px !important;
+    }
+    .folha-declaracao,
+    .declaracao-container {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        box-sizing: border-box !important;
+    }
+    .assinaturas-declaracao {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .folha:last-child,
+    .folha-os:last-child,
+    .folha-termo-recusa:last-child {
+        page-break-after: auto !important;
+        break-after: auto !important;
+    }
+}
+
+
+
 

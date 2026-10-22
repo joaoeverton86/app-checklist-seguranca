@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const VERSAO_PAINEL = 'v210';
+const VERSAO_PAINEL = 'v211';
 const DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;

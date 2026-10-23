@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cache-v215';
+const CACHE_NAME = 'cache-v217';
 const SHELL_URLS = [
     './',
     './index.html',

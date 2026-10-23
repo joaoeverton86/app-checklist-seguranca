@@ -20,7 +20,7 @@
         })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=216">
+    <link rel="stylesheet" href="dashboard.css?v=217">
 </head>
 <body>
 
@@ -33,7 +33,7 @@
         <div style="width:100%; max-width:380px; margin:20px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:32px 28px; box-shadow:0 8px 32px rgba(0,0,0,0.08); box-sizing:border-box;">
             <div style="text-align:center; margin-bottom:22px;">
                 <div style="font-size:34px; margin-bottom:6px;">🛡️</div>
-                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v216</span></div>
+                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v217</span></div>
                 <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; letter-spacing:.5px; margin-top:2px;">PISF Ramal do Agreste</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:12px;">
@@ -149,7 +149,7 @@
             <div class="db-brand">
                 <div class="db-brand-icon">🛡️</div>
                 <div>
-                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v216</span></div>
+                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v217</span></div>
                     <div class="db-brand-sub">PISF Ramal do Agreste</div>
                 </div>
             </div>
@@ -1505,47 +1505,80 @@
                     </div>
 
                     <!-- Barra de Consulta Multi-Critério -->
-                    <div class="db-chart-card" style="margin-bottom: 16px; padding: 14px 18px;">
+                    <div class="db-chart-card" style="margin-bottom: 16px; padding: 14px 18px; overflow: visible; position: relative; z-index: 20;">
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: end;">
                             <div>
                                 <label style="display:block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">Buscar Colaborador:</label>
-                                <input type="text" id="prontidaoBuscaInput" placeholder="Nome ou matrícula..." oninput="filtrarProntidaoEquipeUI()" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box;">
+                                <input type="text" id="prontidaoBuscaInput" placeholder="Nome ou matrícula..." oninput="filtrarProntidaoEquipeUI()" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; height: 35px;">
                             </div>
-                            <div>
+
+                            <!-- Dropdown Multi-Select: Setor / Equipe -->
+                            <div style="position: relative;" id="prontidaoSetorDropdownWrap">
                                 <label style="display:block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">Setor / Equipe:</label>
-                                <select id="prontidaoFiltroSetorSelect" onchange="filtrarProntidaoEquipeUI()" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
-                                    <option value="">Todos os Setores</option>
-                                </select>
+                                <button type="button" id="prontidaoSetorDropdownBtn" onclick="toggleProntidaoSetorDropdown(event)" style="width: 100%; height: 35px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); cursor: pointer; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; text-align: left;">
+                                    <span id="prontidaoSetorBtnLabel" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: calc(100% - 16px);">Todos os Setores</span>
+                                    <span style="font-size: 10px; color: var(--text-light); margin-left: 4px;">▾</span>
+                                </button>
+                                <!-- Painel Flutuante do Multi-Select de Setores -->
+                                <div id="prontidaoSetorDropdownPanel" style="display: none; position: absolute; left: 0; top: 100%; z-index: 1050; margin-top: 4px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px; box-shadow: 0 10px 28px rgba(0,0,0,0.18); min-width: 260px; width: 100%; max-width: 340px; box-sizing: border-box;" onclick="event.stopPropagation()">
+                                    <input type="text" id="prontidaoSetorSearchInput" placeholder="🔍 Buscar setor..." oninput="filtrarListaSetoresDropdown()" style="width: 100%; padding: 6px 9px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; margin-bottom: 8px; box-sizing: border-box; background: var(--bg); color: var(--text);">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); font-size: 11.5px;">
+                                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 700; color: var(--text); user-select: none;">
+                                            <input type="checkbox" id="prontidaoSetorCheckTodos" onchange="toggleTodosSetoresProntidao(this)" checked>
+                                            <span>Todos os Setores</span>
+                                        </label>
+                                        <button type="button" class="db-clear-btn" onclick="limparSelecaoSetoresProntidao()" style="padding: 2px 6px; font-size: 10.5px;">Limpar</button>
+                                    </div>
+                                    <div id="prontidaoSetorCheckboxesList" style="max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;">
+                                        <!-- Populado dinamicamente -->
+                                    </div>
+                                </div>
                             </div>
+
                             <div>
                                 <label style="display:block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">GHE (Grupo de Risco):</label>
-                                <select id="prontidaoFiltroGheSelect" onchange="filtrarProntidaoEquipeUI()" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
+                                <select id="prontidaoFiltroGheSelect" onchange="filtrarProntidaoEquipeUI()" style="width: 100%; height: 35px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
                                     <option value="">Todos os GHEs</option>
                                 </select>
                             </div>
                             <div>
                                 <label style="display:block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">Cargo / Função:</label>
-                                <select id="prontidaoFiltroFuncaoSelect" onchange="filtrarProntidaoEquipeUI()" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
+                                <select id="prontidaoFiltroFuncaoSelect" onchange="filtrarProntidaoEquipeUI()" style="width: 100%; height: 35px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
                                     <option value="">Todas as Funções</option>
                                 </select>
                             </div>
                             <div>
                                 <label style="display:block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">Status de Aptidão:</label>
-                                <select id="prontidaoFiltroStatusSelect" onchange="filtrarProntidaoEquipeUI()" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
+                                <select id="prontidaoFiltroStatusSelect" onchange="filtrarProntidaoEquipeUI()" style="width: 100%; height: 35px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
                                     <option value="todos">Todos os Status</option>
                                     <option value="apto">🟢 100% em Dia (Aptos)</option>
                                     <option value="avencer">🟡 A Vencer (≤ 30 dias)</option>
                                     <option value="pendente">🔴 Com Pendência / Vencido</option>
                                 </select>
                             </div>
-                            <div>
-                                <label style="display:block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">Habilitados na NR / Curso:</label>
-                                <select id="prontidaoFiltroCursoSelect" onchange="filtrarProntidaoEquipeUI()" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
-                                    <option value="">Qualquer Capacitação</option>
-                                </select>
+
+                            <!-- Dropdown Pesquisável: Filtrar por NR / Curso -->
+                            <div style="position: relative;" id="prontidaoCursoDropdownWrap">
+                                <label style="display:block; font-size: 11px; font-weight: 700; color: var(--text-light); margin-bottom: 4px;">Filtrar por NR / Curso:</label>
+                                <button type="button" id="prontidaoCursoDropdownBtn" onclick="toggleProntidaoCursoDropdown(event)" style="width: 100%; height: 35px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); cursor: pointer; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; text-align: left;">
+                                    <span id="prontidaoCursoBtnLabel" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: calc(100% - 16px);">Qualquer Capacitação</span>
+                                    <span style="font-size: 10px; color: var(--text-light); margin-left: 4px;">▾</span>
+                                </button>
+                                <!-- Painel Flutuante do Dropdown de Cursos -->
+                                <div id="prontidaoCursoDropdownPanel" style="display: none; position: absolute; left: 0; top: 100%; z-index: 1050; margin-top: 4px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px; box-shadow: 0 10px 28px rgba(0,0,0,0.18); min-width: 320px; width: 100%; max-width: 420px; box-sizing: border-box;" onclick="event.stopPropagation()">
+                                    <input type="text" id="prontidaoCursoSearchInput" placeholder="🔍 Buscar por código, nome ou carga (ex: 40h)..." oninput="filtrarListaCursosDropdown()" style="width: 100%; padding: 6px 9px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; margin-bottom: 8px; box-sizing: border-box; background: var(--bg); color: var(--text);">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text-light);">
+                                        <span>Opções cadastradas:</span>
+                                        <button type="button" class="db-clear-btn" onclick="selecionarCursoProntidao('')" style="padding: 2px 6px; font-size: 10.5px;">✕ Limpar seleção</button>
+                                    </div>
+                                    <div id="prontidaoCursoOptionsList" style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;">
+                                        <!-- Populado dinamicamente -->
+                                    </div>
+                                </div>
                             </div>
+
                             <div style="display:flex; gap:6px;">
-                                <button class="db-clear-btn" onclick="limparFiltrosProntidaoEquipe()" style="width: 100%; padding: 8px 12px; font-size: 12px;">✕ Limpar Filtros</button>
+                                <button class="db-clear-btn" onclick="limparFiltrosProntidaoEquipe()" style="width: 100%; height: 35px; padding: 8px 12px; font-size: 12px;">✕ Limpar Filtros</button>
                             </div>
                         </div>
                     </div>
@@ -9794,20 +9827,20 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="../data.js?v=216"></script>
-    <script src="logo_cop_base64.js?v=216"></script>
-    <script src="dashboard.js?v=216"></script>
-    <script src="modules/treinamentos_ddsma.js?v=216"></script>
-    <script src="modules/efetivo_ferias.js?v=216"></script>
-    <script src="modules/ghe_os.js?v=216"></script>
-    <script src="modules/relatorio_sms_nc.js?v=216"></script>
-    <script src="modules/saude_psicossocial.js?v=216"></script>
-    <script src="modules/epi_estoque.js?v=216"></script>
-    <script src="modules/ambiental_compras_hht.js?v=216"></script>
-    <script src="modules/apr_cipa.js?v=216"></script>
-    <script src="modules/documentos_brigada.js?v=216"></script>
-    <script src="modules/ergonomia_periculosidade_pgr.js?v=216"></script>
-    <script src="placar_lideres.js?v=216"></script>
+    <script src="../data.js?v=217"></script>
+    <script src="logo_cop_base64.js?v=217"></script>
+    <script src="dashboard.js?v=217"></script>
+    <script src="modules/treinamentos_ddsma.js?v=217"></script>
+    <script src="modules/efetivo_ferias.js?v=217"></script>
+    <script src="modules/ghe_os.js?v=217"></script>
+    <script src="modules/relatorio_sms_nc.js?v=217"></script>
+    <script src="modules/saude_psicossocial.js?v=217"></script>
+    <script src="modules/epi_estoque.js?v=217"></script>
+    <script src="modules/ambiental_compras_hht.js?v=217"></script>
+    <script src="modules/apr_cipa.js?v=217"></script>
+    <script src="modules/documentos_brigada.js?v=217"></script>
+    <script src="modules/ergonomia_periculosidade_pgr.js?v=217"></script>
+    <script src="placar_lideres.js?v=217"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();

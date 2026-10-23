@@ -35,6 +35,7 @@ let regraEmEdicaoId = null;
 
 // Central de Prontidão por Equipe e Dossiê do Colaborador (NR-01)
 let prontidaoFiltroBusca = '';
+let prontidaoFiltroSetores = [];
 let prontidaoFiltroSetor = '';
 let prontidaoFiltroGhe = '';
 let prontidaoFiltroFuncao = '';
@@ -8286,15 +8287,311 @@ function abrirDocumentoBlob(html, titulo = 'Documento_SST') {
 // Consulta instantânea de aptidão técnica por Setor, GHE, Cargo e Colaborador
 // ==============================================================================
 
-function popularFiltrosProntidaoEquipes() {
-    const selSetor = document.getElementById('prontidaoFiltroSetorSelect');
-    const selGhe = document.getElementById('prontidaoFiltroGheSelect');
-    const selFuncao = document.getElementById('prontidaoFiltroFuncaoSelect');
-    const selCurso = document.getElementById('prontidaoFiltroCursoSelect');
+// ==============================================================================
+// HELPERS DO FILTRO DE SETOR (MULTI-SELECT COM CHECKBOXES E BUSCA)
+// ==============================================================================
 
+function renderizarOpcoesSetorDropdown(termoBusca = '') {
+    const container = document.getElementById('prontidaoSetorCheckboxesList');
+    if (!container) return;
+
+    const termo = (termoBusca || '').trim().toLowerCase();
+    const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
+    const setoresMap = new Map();
+    ativos.forEach(e => {
+        const s = (e.setor || '').trim();
+        if (s) setoresMap.set(s, (setoresMap.get(s) || 0) + 1);
+    });
+    const setores = Array.from(setoresMap.keys()).sort((a, b) => a.localeCompare(b));
+
+    let encontrados = 0;
+    let html = '';
+
+    setores.forEach(s => {
+        if (termo && !s.toLowerCase().includes(termo)) return;
+        encontrados++;
+        const isChecked = prontidaoFiltroSetores.includes(s);
+        const qtd = setoresMap.get(s) || 0;
+        html += `
+            <label class="prontidao-dropdown-item ${isChecked ? 'selecionado' : ''}" style="user-select: none;">
+                <div style="display: flex; align-items: center; gap: 7px; overflow: hidden; max-width: 85%;">
+                    <input type="checkbox" class="chk-setor-prontidao" value="${escapeHTML(s)}" ${isChecked ? 'checked' : ''} onchange="onToggleSetorProntidao(this)" style="cursor: pointer;">
+                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHTML(s)}</span>
+                </div>
+                <span style="font-size: 11px; color: var(--text-light); font-weight: 600;">(${qtd})</span>
+            </label>
+        `;
+    });
+
+    if (encontrados === 0 && termo) {
+        html = `
+            <div style="padding: 12px; text-align: center; font-size: 11.5px; color: var(--text-light);">
+                Nenhum setor encontrado para "${escapeHTML(termoBusca)}"
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+    atualizarLabelBotaoSetores(setores.length);
+}
+
+function onToggleSetorProntidao(chk) {
+    const val = chk.value;
+    if (chk.checked) {
+        if (!prontidaoFiltroSetores.includes(val)) {
+            prontidaoFiltroSetores.push(val);
+        }
+    } else {
+        prontidaoFiltroSetores = prontidaoFiltroSetores.filter(s => s !== val);
+    }
+    const checkTodos = document.getElementById('prontidaoSetorCheckTodos');
+    if (checkTodos) checkTodos.checked = (prontidaoFiltroSetores.length === 0);
+    atualizarLabelBotaoSetores();
+    filtrarProntidaoEquipeUI();
+}
+
+function toggleTodosSetoresProntidao(chkTodos) {
+    prontidaoFiltroSetores = [];
+    document.querySelectorAll('.chk-setor-prontidao').forEach(c => c.checked = false);
+    if (chkTodos) chkTodos.checked = true;
+    atualizarLabelBotaoSetores();
+    filtrarProntidaoEquipeUI();
+}
+
+function limparSelecaoSetoresProntidao() {
+    toggleTodosSetoresProntidao(document.getElementById('prontidaoSetorCheckTodos'));
+}
+
+function atualizarLabelBotaoSetores(totalSetoresQtd = null) {
+    const lbl = document.getElementById('prontidaoSetorBtnLabel');
+    const btn = document.getElementById('prontidaoSetorDropdownBtn');
+    if (!lbl || !btn) return;
+
+    if (prontidaoFiltroSetores.length === 0) {
+        const countTxt = totalSetoresQtd ? ` (${totalSetoresQtd})` : '';
+        lbl.textContent = `Todos os Setores${countTxt}`;
+        lbl.title = 'Todos os Setores';
+        btn.style.borderColor = 'var(--border)';
+        btn.style.background = 'var(--card)';
+    } else if (prontidaoFiltroSetores.length === 1) {
+        lbl.textContent = prontidaoFiltroSetores[0];
+        lbl.title = prontidaoFiltroSetores[0];
+        btn.style.borderColor = '#2563eb';
+        btn.style.background = 'rgba(37, 99, 235, 0.05)';
+    } else {
+        lbl.textContent = `${prontidaoFiltroSetores.length} Setores selecionados`;
+        lbl.title = prontidaoFiltroSetores.join(', ');
+        btn.style.borderColor = '#2563eb';
+        btn.style.background = 'rgba(37, 99, 235, 0.05)';
+    }
+}
+
+function toggleProntidaoSetorDropdown(event) {
+    if (event) event.stopPropagation();
+    const panel = document.getElementById('prontidaoSetorDropdownPanel');
+    if (!panel) return;
+    const isAberto = panel.style.display !== 'none';
+    fecharTodosDropdownsProntidao();
+    if (!isAberto) {
+        panel.style.display = 'block';
+        const inp = document.getElementById('prontidaoSetorSearchInput');
+        if (inp) {
+            inp.value = '';
+            renderizarOpcoesSetorDropdown('');
+            setTimeout(() => inp.focus(), 60);
+        }
+    }
+}
+
+function fecharProntidaoSetorDropdown() {
+    const panel = document.getElementById('prontidaoSetorDropdownPanel');
+    if (panel) panel.style.display = 'none';
+}
+
+function filtrarListaSetoresDropdown() {
+    const q = document.getElementById('prontidaoSetorSearchInput')?.value || '';
+    renderizarOpcoesSetorDropdown(q);
+}
+
+// ==============================================================================
+// HELPERS DO FILTRO DE CURSO / NR (PESQUISÁVEL COM CARGA HORÁRIA)
+// ==============================================================================
+
+function formatarLabelCursoCatalogo(c) {
+    const cod = String(c.id || c.codigo || '').trim();
+    const nome = (c.nome || cod).trim();
+    const ch = c.carga_horaria ? `${c.carga_horaria}h` : '';
+    const perMeses = c.meses_validade ? parseInt(c.meses_validade, 10) : null;
+    const isPerene = !perMeses || perMeses <= 0;
+
+    let tagCH = '';
+    if (ch && isPerene) {
+        tagCH = `(${ch} - Perene)`;
+    } else if (ch) {
+        tagCH = `(${ch})`;
+    } else if (isPerene) {
+        tagCH = `(Perene)`;
+    } else {
+        tagCH = `(${perMeses}m)`;
+    }
+
+    return `[${cod}] ${nome} ${tagCH}`.trim();
+}
+
+function renderizarOpcoesCursoDropdown(termoBusca = '') {
+    const container = document.getElementById('prontidaoCursoOptionsList');
+    if (!container) return;
+
+    const termo = (termoBusca || '').trim().toLowerCase();
+    const cursos = [...(allTreinamentosCatalogo || [])].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+
+    let html = `
+        <div class="prontidao-dropdown-item ${!prontidaoFiltroCurso ? 'selecionado' : ''}" onclick="selecionarCursoProntidao('')">
+            <span style="font-style: italic;">Qualquer Capacitação (Não filtrar por curso)</span>
+            ${!prontidaoFiltroCurso ? '<span>✓</span>' : ''}
+        </div>
+    `;
+
+    let encontrados = 0;
+    cursos.forEach(c => {
+        const cod = String(c.id || c.codigo || '').trim();
+        const nome = (c.nome || cod).trim();
+        const ch = c.carga_horaria ? `${c.carga_horaria}h` : '';
+        const perMeses = c.meses_validade ? parseInt(c.meses_validade, 10) : null;
+        const isPerene = !perMeses || perMeses <= 0;
+
+        let tagCH = '';
+        if (ch && isPerene) {
+            tagCH = `(${ch} - Perene)`;
+        } else if (ch) {
+            tagCH = `(${ch})`;
+        } else if (isPerene) {
+            tagCH = `(Perene)`;
+        } else {
+            tagCH = `(${perMeses}m)`;
+        }
+
+        const textoBusca = `${cod} ${nome} ${ch} ${isPerene ? 'perene' : ''} ${tagCH}`.toLowerCase();
+
+        if (termo && !textoBusca.includes(termo)) {
+            return;
+        }
+
+        encontrados++;
+        const isSelected = String(prontidaoFiltroCurso) === cod;
+        html += `
+            <div class="prontidao-dropdown-item ${isSelected ? 'selecionado' : ''}" onclick="selecionarCursoProntidao('${escapeHTML(cod)}')">
+                <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90%;">
+                    <strong style="font-family: monospace; color: var(--primary, #2563eb); margin-right: 4px;">[${escapeHTML(cod)}]</strong>
+                    <span>${escapeHTML(nome)}</span>
+                    <span style="font-size: 11px; color: var(--text-light); margin-left: 4px; font-weight: 600;">${escapeHTML(tagCH)}</span>
+                </div>
+                ${isSelected ? '<span>✓</span>' : ''}
+            </div>
+        `;
+    });
+
+    if (encontrados === 0 && termo) {
+        html += `
+            <div style="padding: 12px; text-align: center; font-size: 11.5px; color: var(--text-light);">
+                Nenhum curso encontrado para "${escapeHTML(termoBusca)}"
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+function selecionarCursoProntidao(cod) {
+    prontidaoFiltroCurso = cod ? String(cod) : '';
+    atualizarLabelBotaoCurso();
+    fecharProntidaoCursoDropdown();
+    filtrarProntidaoEquipeUI();
+}
+
+function atualizarLabelBotaoCurso() {
+    const lbl = document.getElementById('prontidaoCursoBtnLabel');
+    const btn = document.getElementById('prontidaoCursoDropdownBtn');
+    if (!lbl || !btn) return;
+
+    if (!prontidaoFiltroCurso) {
+        lbl.textContent = 'Qualquer Capacitação';
+        lbl.title = 'Qualquer Capacitação (Sem filtro de curso específico)';
+        btn.style.borderColor = 'var(--border)';
+        btn.style.background = 'var(--card)';
+    } else {
+        const c = (allTreinamentosCatalogo || []).find(x => String(x.id || x.codigo) === String(prontidaoFiltroCurso));
+        if (c) {
+            const txt = formatarLabelCursoCatalogo(c);
+            lbl.textContent = txt;
+            lbl.title = txt;
+        } else {
+            lbl.textContent = `Curso [${prontidaoFiltroCurso}]`;
+            lbl.title = `Curso [${prontidaoFiltroCurso}]`;
+        }
+        btn.style.borderColor = '#2563eb';
+        btn.style.background = 'rgba(37, 99, 235, 0.05)';
+    }
+}
+
+function toggleProntidaoCursoDropdown(event) {
+    if (event) event.stopPropagation();
+    const panel = document.getElementById('prontidaoCursoDropdownPanel');
+    if (!panel) return;
+    const isAberto = panel.style.display !== 'none';
+    fecharTodosDropdownsProntidao();
+    if (!isAberto) {
+        panel.style.display = 'block';
+        const inp = document.getElementById('prontidaoCursoSearchInput');
+        if (inp) {
+            inp.value = '';
+            renderizarOpcoesCursoDropdown('');
+            setTimeout(() => inp.focus(), 60);
+        }
+    }
+}
+
+function fecharProntidaoCursoDropdown() {
+    const panel = document.getElementById('prontidaoCursoDropdownPanel');
+    if (panel) panel.style.display = 'none';
+}
+
+function fecharTodosDropdownsProntidao() {
+    fecharProntidaoSetorDropdown();
+    fecharProntidaoCursoDropdown();
+}
+
+function filtrarListaCursosDropdown() {
+    const q = document.getElementById('prontidaoCursoSearchInput')?.value || '';
+    renderizarOpcoesCursoDropdown(q);
+}
+
+// Fechamento ao clicar fora dos dropdowns de prontidão
+if (typeof document !== 'undefined') {
+    document.addEventListener('click', function(e) {
+        const wrapSetor = document.getElementById('prontidaoSetorDropdownWrap');
+        const wrapCurso = document.getElementById('prontidaoCursoDropdownWrap');
+        if (wrapSetor && !wrapSetor.contains(e.target)) {
+            fecharProntidaoSetorDropdown();
+        }
+        if (wrapCurso && !wrapCurso.contains(e.target)) {
+            fecharProntidaoCursoDropdown();
+        }
+    });
+}
+
+function popularFiltrosProntidaoEquipes() {
     const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
 
-    // Popula Setores dinamicamente (sem hardcode)
+    // Popula Multi-Select de Setores
+    renderizarOpcoesSetorDropdown('');
+
+    // Popula Dropdown Pesquisável de Cursos com Carga Horária
+    renderizarOpcoesCursoDropdown('');
+    atualizarLabelBotaoCurso();
+
+    // Compatibilidade com elementos legados de Setor / Curso (caso existam em outros modais)
+    const selSetor = document.getElementById('prontidaoFiltroSetorSelect');
     if (selSetor) {
         const valAtual = selSetor.value;
         const setoresSet = new Set();
@@ -8308,7 +8605,21 @@ function popularFiltrosProntidaoEquipes() {
         if (valAtual && setoresSet.has(valAtual)) selSetor.value = valAtual;
     }
 
+    const selCurso = document.getElementById('prontidaoFiltroCursoSelect');
+    if (selCurso) {
+        const valAtual = selCurso.value;
+        const cursos = [...(allTreinamentosCatalogo || [])].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+        selCurso.innerHTML = '<option value="">Qualquer Capacitação (Não filtrar por curso)</option>' +
+            cursos.map(c => {
+                const cod = String(c.id || '').trim();
+                const nome = c.nome || cod;
+                return `<option value="${escapeHTML(cod)}">[${escapeHTML(cod)}] ${escapeHTML(nome)}</option>`;
+            }).join('');
+        if (valAtual) selCurso.value = valAtual;
+    }
+
     // Popula GHEs dinamicamente (sem hardcode)
+    const selGhe = document.getElementById('prontidaoFiltroGheSelect');
     if (selGhe) {
         const valAtual = selGhe.value;
         const ghesMap = new Map();
@@ -8328,6 +8639,7 @@ function popularFiltrosProntidaoEquipes() {
     }
 
     // Popula Funções / Cargos dinamicamente (sem hardcode)
+    const selFuncao = document.getElementById('prontidaoFiltroFuncaoSelect');
     if (selFuncao) {
         const valAtual = selFuncao.value;
         const funcoesSet = new Set();
@@ -8339,19 +8651,6 @@ function popularFiltrosProntidaoEquipes() {
         selFuncao.innerHTML = `<option value="">Todas as Funções (${funcoes.length})</option>` +
             funcoes.map(f => `<option value="${escapeHTML(f)}">${escapeHTML(f)}</option>`).join('');
         if (valAtual && funcoesSet.has(valAtual)) selFuncao.value = valAtual;
-    }
-
-    // Popula Treinamentos / Cursos dinamicamente (sem hardcode)
-    if (selCurso) {
-        const valAtual = selCurso.value;
-        const cursos = [...(allTreinamentosCatalogo || [])].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
-        selCurso.innerHTML = '<option value="">Qualquer Capacitação (Não filtrar por curso)</option>' +
-            cursos.map(c => {
-                const cod = String(c.id || '').trim();
-                const nome = c.nome || cod;
-                return `<option value="${escapeHTML(cod)}">[${escapeHTML(cod)}] ${escapeHTML(nome)}</option>`;
-            }).join('');
-        if (valAtual) selCurso.value = valAtual;
     }
 }
 
@@ -8607,29 +8906,45 @@ function calcularProntidaoEquipes() {
 
 function filtrarProntidaoEquipeUI() {
     prontidaoFiltroBusca = (document.getElementById('prontidaoBuscaInput')?.value || '').trim().toLowerCase();
-    prontidaoFiltroSetor = document.getElementById('prontidaoFiltroSetorSelect')?.value || '';
     prontidaoFiltroGhe = document.getElementById('prontidaoFiltroGheSelect')?.value || '';
     prontidaoFiltroFuncao = document.getElementById('prontidaoFiltroFuncaoSelect')?.value || '';
     prontidaoFiltroStatus = document.getElementById('prontidaoFiltroStatusSelect')?.value || 'todos';
-    prontidaoFiltroCurso = document.getElementById('prontidaoFiltroCursoSelect')?.value || '';
+
+    // Suporte a compatibilidade se os selects simples ainda estiverem no DOM
+    const selSetor = document.getElementById('prontidaoFiltroSetorSelect');
+    if (selSetor && selSetor.value) {
+        prontidaoFiltroSetor = selSetor.value;
+    }
 
     renderProntidaoEquipeTab(false);
 }
 
 function limparFiltrosProntidaoEquipe() {
     if (document.getElementById('prontidaoBuscaInput')) document.getElementById('prontidaoBuscaInput').value = '';
-    if (document.getElementById('prontidaoFiltroSetorSelect')) document.getElementById('prontidaoFiltroSetorSelect').value = '';
+    if (document.getElementById('prontidaoSetorSearchInput')) document.getElementById('prontidaoSetorSearchInput').value = '';
+    if (document.getElementById('prontidaoCursoSearchInput')) document.getElementById('prontidaoCursoSearchInput').value = '';
     if (document.getElementById('prontidaoFiltroGheSelect')) document.getElementById('prontidaoFiltroGheSelect').value = '';
     if (document.getElementById('prontidaoFiltroFuncaoSelect')) document.getElementById('prontidaoFiltroFuncaoSelect').value = '';
     if (document.getElementById('prontidaoFiltroStatusSelect')) document.getElementById('prontidaoFiltroStatusSelect').value = 'todos';
+    if (document.getElementById('prontidaoFiltroSetorSelect')) document.getElementById('prontidaoFiltroSetorSelect').value = '';
     if (document.getElementById('prontidaoFiltroCursoSelect')) document.getElementById('prontidaoFiltroCursoSelect').value = '';
 
     prontidaoFiltroBusca = '';
+    prontidaoFiltroSetores = [];
     prontidaoFiltroSetor = '';
     prontidaoFiltroGhe = '';
     prontidaoFiltroFuncao = '';
     prontidaoFiltroStatus = 'todos';
     prontidaoFiltroCurso = '';
+
+    // Desmarca checkboxes de setores e marca "Todos"
+    document.querySelectorAll('.chk-setor-prontidao').forEach(c => c.checked = false);
+    const chkTodos = document.getElementById('prontidaoSetorCheckTodos');
+    if (chkTodos) chkTodos.checked = true;
+
+    atualizarLabelBotaoSetores();
+    atualizarLabelBotaoCurso();
+    fecharTodosDropdownsProntidao();
 
     renderProntidaoEquipeTab(false);
 }
@@ -8647,22 +8962,49 @@ async function renderProntidaoEquipeTab(forcarRecarregar = false) {
 
     // Aplica os filtros selecionados
     const filtrados = todosColabs.filter(c => {
-        if (prontidaoFiltroSetor && c.setor !== prontidaoFiltroSetor) return false;
+        // 1. Filtro de Múltiplos Setores (Multi-Select)
+        if (prontidaoFiltroSetores && prontidaoFiltroSetores.length > 0) {
+            if (!c.setor || !prontidaoFiltroSetores.includes(c.setor)) return false;
+        } else if (prontidaoFiltroSetor && c.setor !== prontidaoFiltroSetor) {
+            return false;
+        }
+
+        // 2. Filtro de GHE
         if (prontidaoFiltroGhe && c.ghe !== prontidaoFiltroGhe) {
             const gheNorm = (c.ghe || '').toUpperCase();
             const filtroNorm = prontidaoFiltroGhe.toUpperCase();
             if (gheNorm !== filtroNorm && gheNorm !== `GRUPO ${filtroNorm}` && !gheNorm.startsWith(filtroNorm)) return false;
         }
-        if (prontidaoFiltroFuncao && c.funcao !== prontidaoFiltroFuncao) return false;
-        if (prontidaoFiltroStatus !== 'todos' && c.statusGeral !== prontidaoFiltroStatus) return false;
 
-        // Filtro por habilitação em curso específico (válido ou a vencer)
+        // 3. Filtro de Função
+        if (prontidaoFiltroFuncao && c.funcao !== prontidaoFiltroFuncao) return false;
+
+        // 4. Filtro por Curso Específico (Válido, A Vencer, Vencido ou Pendente)
+        let cursoAlvoNoColab = null;
         if (prontidaoFiltroCurso) {
-            const temCursoValido = c.treinamentos.some(t => t.cod === prontidaoFiltroCurso && (t.status === 'valido' || t.status === 'avencer'));
-            if (!temCursoValido) return false;
+            cursoAlvoNoColab = c.treinamentos.find(t => String(t.cod) === String(prontidaoFiltroCurso));
+            // Deve possuir o curso cadastrado (realizado) ou exigido como pendência
+            if (!cursoAlvoNoColab) return false;
         }
 
-        // Filtro de busca textual
+        // 5. Filtro de Status de Aptidão
+        if (prontidaoFiltroStatus !== 'todos') {
+            if (prontidaoFiltroCurso && cursoAlvoNoColab) {
+                // Aplica o status ESPECIFICAMENTE sobre o curso filtrado (ex: NR-10 Vencida)
+                if (prontidaoFiltroStatus === 'apto') {
+                    if (cursoAlvoNoColab.status !== 'valido') return false;
+                } else if (prontidaoFiltroStatus === 'avencer') {
+                    if (cursoAlvoNoColab.status !== 'avencer') return false;
+                } else if (prontidaoFiltroStatus === 'pendente') {
+                    if (cursoAlvoNoColab.status !== 'vencido' && cursoAlvoNoColab.status !== 'pendente') return false;
+                }
+            } else {
+                // Aplica o status geral do colaborador
+                if (c.statusGeral !== prontidaoFiltroStatus) return false;
+            }
+        }
+
+        // 6. Filtro de busca textual
         if (prontidaoFiltroBusca) {
             const b = prontidaoFiltroBusca;
             const nomeL = (c.nome || '').toLowerCase();
@@ -8680,9 +9022,27 @@ async function renderProntidaoEquipeTab(forcarRecarregar = false) {
 
     // Atualiza KPIs da Equipe Filtrada
     const total = filtrados.length;
-    const aptos = filtrados.filter(c => c.statusGeral === 'apto').length;
-    const avencer = filtrados.filter(c => c.statusGeral === 'avencer').length;
-    const pendentes = filtrados.filter(c => c.statusGeral === 'pendente').length;
+    let aptos = 0;
+    let avencer = 0;
+    let pendentes = 0;
+
+    if (prontidaoFiltroCurso) {
+        // Recalcula KPIs especificamente para o curso auditado
+        filtrados.forEach(c => {
+            const t = c.treinamentos.find(x => String(x.cod) === String(prontidaoFiltroCurso));
+            if (t) {
+                if (t.status === 'valido') aptos++;
+                else if (t.status === 'avencer') avencer++;
+                else if (t.status === 'vencido' || t.status === 'pendente') pendentes++;
+            }
+        });
+    } else {
+        // Recalcula KPIs pelo status geral da equipe
+        aptos = filtrados.filter(c => c.statusGeral === 'apto').length;
+        avencer = filtrados.filter(c => c.statusGeral === 'avencer').length;
+        pendentes = filtrados.filter(c => c.statusGeral === 'pendente').length;
+    }
+
     const pctApto = total > 0 ? Math.round((aptos / total) * 100) : 0;
 
     const elTotal = document.getElementById('kpiProntidaoTotal');
@@ -8726,18 +9086,71 @@ async function renderProntidaoEquipeTab(forcarRecarregar = false) {
             statusBadgeHtml = `<span class="badge-aptidao-pendente" title="Possui capacitação obrigatória pendente ou vencida">🔴 Com Pendência</span>`;
         }
 
-        // Pílulas de Treinamento
+        // Pílulas de Treinamento com Agrupamento Expansível dos Válidos
         let pillsHtml = '';
         if (c.treinamentos.length === 0) {
             pillsHtml = '<span style="font-size: 11px; color: var(--text-light); font-style: italic;">Nenhum treinamento registrado</span>';
         } else {
-            pillsHtml = `<div class="wrap-trein-pills">` +
-                c.treinamentos.map(t => {
+            const codCursoFiltrado = prontidaoFiltroCurso ? String(prontidaoFiltroCurso) : '';
+            let itemFiltrado = null;
+            const listaRestante = [];
+
+            c.treinamentos.forEach(t => {
+                if (codCursoFiltrado && String(t.cod) === codCursoFiltrado) {
+                    itemFiltrado = t;
+                } else {
+                    listaRestante.push(t);
+                }
+            });
+
+            // Críticos da lista restante (Vencidos, Pendentes, A Vencer)
+            const criticos = listaRestante.filter(t => t.status === 'vencido' || t.status === 'pendente' || t.status === 'avencer');
+            // Válidos da lista restante
+            const validos = listaRestante.filter(t => t.status === 'valido');
+
+            // Lista visível imediata
+            const visiveisImediatos = [];
+            if (itemFiltrado) {
+                visiveisImediatos.push({
+                    ...itemFiltrado,
+                    destaque: true
+                });
+            }
+            criticos.forEach(t => visiveisImediatos.push(t));
+
+            const visiveisPillsHtml = visiveisImediatos.map(t => {
+                const classeDestaque = t.destaque ? 'filtrado-destaque' : '';
+                const pinIcon = t.destaque ? '🎯 ' : '';
+                return `<span class="badge-trein-pill ${t.badgeClass} ${classeDestaque}" title="${t.destaque ? '[Curso Filtrado] ' : ''}${escapeHTML(t.nome)} - ${escapeHTML(t.diasTexto)}">
+                    ${pinIcon}${escapeHTML(t.labelBadge)}
+                </span>`;
+            }).join('');
+
+            let validosSecaoHtml = '';
+            if (validos.length > 0) {
+                const matSafe = escapeHTML(String(c.matricula).replace(/[^a-zA-Z0-9_-]/g, '_'));
+                const validosPills = validos.map(t => {
                     return `<span class="badge-trein-pill ${t.badgeClass}" title="${escapeHTML(t.nome)} - ${escapeHTML(t.diasTexto)}">
                         ${escapeHTML(t.labelBadge)}
                     </span>`;
-                }).join('') +
-            `</div>`;
+                }).join('');
+
+                validosSecaoHtml = `
+                    <button type="button" class="btn-toggle-validos" id="btn-validos-${matSafe}" onclick="toggleValidosColaborador('${matSafe}', event)" title="Clique para expandir/ocultar os ${validos.length} treinamentos válidos deste colaborador">
+                        ➕ Ver ${validos.length} Válidos ▾
+                    </button>
+                    <div id="validos-container-${matSafe}" data-qtd="${validos.length}" class="wrap-validos-expansivel" style="display: none;" onclick="event.stopPropagation()">
+                        ${validosPills}
+                    </div>
+                `;
+            } else if (visiveisImediatos.length === 0) {
+                validosSecaoHtml = '<span style="font-size: 11px; color: var(--text-light); font-style: italic;">Nenhum treinamento registrado</span>';
+            }
+
+            pillsHtml = `<div class="wrap-trein-pills">
+                ${visiveisPillsHtml}
+                ${validosSecaoHtml}
+            </div>`;
         }
 
         // Badge ASO compacto
@@ -8779,6 +9192,27 @@ async function renderProntidaoEquipeTab(forcarRecarregar = false) {
             </tr>
         `;
     }).join('');
+}
+
+function toggleValidosColaborador(matSafe, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    const container = document.getElementById(`validos-container-${matSafe}`);
+    const btn = document.getElementById(`btn-validos-${matSafe}`);
+    if (!container || !btn) return;
+    const isHidden = container.style.display === 'none';
+    if (isHidden) {
+        container.style.display = 'flex';
+        btn.innerHTML = `➖ Ocultar Válidos ▴`;
+        btn.classList.add('expandido');
+    } else {
+        container.style.display = 'none';
+        const qtd = container.getAttribute('data-qtd') || '0';
+        btn.innerHTML = `➕ Ver ${qtd} Válidos ▾`;
+        btn.classList.remove('expandido');
+    }
 }
 
 function abrirDossieColaborador(matricula) {
@@ -8974,36 +9408,90 @@ function imprimirProntidaoEquipe() {
     const todos = prontidaoDadosCalculadosCache || calcularProntidaoEquipes();
     // Filtra conforme a tela atual
     const filtrados = todos.filter(c => {
-        if (prontidaoFiltroSetor && c.setor !== prontidaoFiltroSetor) return false;
-        if (prontidaoFiltroGhe && c.ghe !== prontidaoFiltroGhe) return false;
-        if (prontidaoFiltroFuncao && c.funcao !== prontidaoFiltroFuncao) return false;
-        if (prontidaoFiltroStatus !== 'todos' && c.statusGeral !== prontidaoFiltroStatus) return false;
-        if (prontidaoFiltroCurso) {
-            const ok = c.treinamentos.some(t => t.cod === prontidaoFiltroCurso && (t.status === 'valido' || t.status === 'avencer'));
-            if (!ok) return false;
+        // 1. Filtro de Múltiplos Setores
+        if (prontidaoFiltroSetores && prontidaoFiltroSetores.length > 0) {
+            if (!c.setor || !prontidaoFiltroSetores.includes(c.setor)) return false;
+        } else if (prontidaoFiltroSetor && c.setor !== prontidaoFiltroSetor) {
+            return false;
         }
+
+        // 2. Filtro de GHE
+        if (prontidaoFiltroGhe && c.ghe !== prontidaoFiltroGhe) {
+            const gheNorm = (c.ghe || '').toUpperCase();
+            const filtroNorm = prontidaoFiltroGhe.toUpperCase();
+            if (gheNorm !== filtroNorm && gheNorm !== `GRUPO ${filtroNorm}` && !gheNorm.startsWith(filtroNorm)) return false;
+        }
+
+        // 3. Filtro de Função
+        if (prontidaoFiltroFuncao && c.funcao !== prontidaoFiltroFuncao) return false;
+
+        // 4. Filtro por Curso Específico
+        let cursoAlvoNoColab = null;
+        if (prontidaoFiltroCurso) {
+            cursoAlvoNoColab = c.treinamentos.find(t => String(t.cod) === String(prontidaoFiltroCurso));
+            if (!cursoAlvoNoColab) return false;
+        }
+
+        // 5. Filtro de Status de Aptidão
+        if (prontidaoFiltroStatus !== 'todos') {
+            if (prontidaoFiltroCurso && cursoAlvoNoColab) {
+                if (prontidaoFiltroStatus === 'apto' && cursoAlvoNoColab.status !== 'valido') return false;
+                if (prontidaoFiltroStatus === 'avencer' && cursoAlvoNoColab.status !== 'avencer') return false;
+                if (prontidaoFiltroStatus === 'pendente' && cursoAlvoNoColab.status !== 'vencido' && cursoAlvoNoColab.status !== 'pendente') return false;
+            } else {
+                if (c.statusGeral !== prontidaoFiltroStatus) return false;
+            }
+        }
+
+        // 6. Busca textual
         if (prontidaoFiltroBusca) {
             const b = prontidaoFiltroBusca;
             const nomeL = (c.nome || '').toLowerCase();
             const matL = (c.matricula || '').toLowerCase();
             const funcL = (c.funcao || '').toLowerCase();
-            if (!nomeL.includes(b) && !matL.includes(b) && !funcL.includes(b)) return false;
+            const setorL = (c.setor || '').toLowerCase();
+            const gheL = (c.ghe || '').toLowerCase();
+            if (!nomeL.includes(b) && !matL.includes(b) && !funcL.includes(b) && !setorL.includes(b) && !gheL.includes(b)) {
+                return false;
+            }
         }
         return true;
     });
 
     const total = filtrados.length;
-    const aptos = filtrados.filter(c => c.statusGeral === 'apto').length;
-    const avencer = filtrados.filter(c => c.statusGeral === 'avencer').length;
-    const pendentes = filtrados.filter(c => c.statusGeral === 'pendente').length;
+    let aptos = 0;
+    let avencer = 0;
+    let pendentes = 0;
+
+    if (prontidaoFiltroCurso) {
+        filtrados.forEach(c => {
+            const t = c.treinamentos.find(x => String(x.cod) === String(prontidaoFiltroCurso));
+            if (t) {
+                if (t.status === 'valido') aptos++;
+                else if (t.status === 'avencer') avencer++;
+                else if (t.status === 'vencido' || t.status === 'pendente') pendentes++;
+            }
+        });
+    } else {
+        aptos = filtrados.filter(c => c.statusGeral === 'apto').length;
+        avencer = filtrados.filter(c => c.statusGeral === 'avencer').length;
+        pendentes = filtrados.filter(c => c.statusGeral === 'pendente').length;
+    }
+
     const dataHoraEmissao = new Date().toLocaleString('pt-BR');
 
+    let nomeCursoFiltradoDesc = '';
+    if (prontidaoFiltroCurso) {
+        const cCat = (allTreinamentosCatalogo || []).find(x => String(x.id || x.codigo) === String(prontidaoFiltroCurso));
+        nomeCursoFiltradoDesc = cCat ? formatarLabelCursoCatalogo(cCat) : `Curso [${prontidaoFiltroCurso}]`;
+    }
+
     const filtroDesc = [
-        prontidaoFiltroSetor ? `Setor: ${prontidaoFiltroSetor}` : null,
+        (prontidaoFiltroSetores && prontidaoFiltroSetores.length > 0) ? `Setores: ${prontidaoFiltroSetores.join(', ')}` : (prontidaoFiltroSetor ? `Setor: ${prontidaoFiltroSetor}` : null),
         prontidaoFiltroGhe ? `GHE: ${prontidaoFiltroGhe}` : null,
         prontidaoFiltroFuncao ? `Cargo: ${prontidaoFiltroFuncao}` : null,
         prontidaoFiltroStatus !== 'todos' ? `Status: ${prontidaoFiltroStatus.toUpperCase()}` : null,
-        prontidaoFiltroCurso ? `Habilitados no Curso: ${prontidaoFiltroCurso}` : null
+        prontidaoFiltroCurso ? `Curso: ${nomeCursoFiltradoDesc}` : null
     ].filter(Boolean).join(' | ') || 'Todos os Colaboradores Ativos';
 
     const html = `
@@ -12264,6 +12752,17 @@ const excluirRegraTrein = excluirRegraRecomendacao;
         if (typeof imprimirProntidaoEquipe === 'function') window.imprimirProntidaoEquipe = imprimirProntidaoEquipe;
         if (typeof imprimirProntuarioIndividual === 'function') window.imprimirProntuarioIndividual = imprimirProntuarioIndividual;
         if (typeof toggleSecaoGerenciarEncarregados === 'function') window.toggleSecaoGerenciarEncarregados = toggleSecaoGerenciarEncarregados;
+        if (typeof toggleProntidaoSetorDropdown === 'function') window.toggleProntidaoSetorDropdown = toggleProntidaoSetorDropdown;
+        if (typeof fecharProntidaoSetorDropdown === 'function') window.fecharProntidaoSetorDropdown = fecharProntidaoSetorDropdown;
+        if (typeof filtrarListaSetoresDropdown === 'function') window.filtrarListaSetoresDropdown = filtrarListaSetoresDropdown;
+        if (typeof onToggleSetorProntidao === 'function') window.onToggleSetorProntidao = onToggleSetorProntidao;
+        if (typeof toggleTodosSetoresProntidao === 'function') window.toggleTodosSetoresProntidao = toggleTodosSetoresProntidao;
+        if (typeof limparSelecaoSetoresProntidao === 'function') window.limparSelecaoSetoresProntidao = limparSelecaoSetoresProntidao;
+        if (typeof toggleProntidaoCursoDropdown === 'function') window.toggleProntidaoCursoDropdown = toggleProntidaoCursoDropdown;
+        if (typeof fecharProntidaoCursoDropdown === 'function') window.fecharProntidaoCursoDropdown = fecharProntidaoCursoDropdown;
+        if (typeof filtrarListaCursosDropdown === 'function') window.filtrarListaCursosDropdown = filtrarListaCursosDropdown;
+        if (typeof selecionarCursoProntidao === 'function') window.selecionarCursoProntidao = selecionarCursoProntidao;
+        if (typeof toggleValidosColaborador === 'function') window.toggleValidosColaborador = toggleValidosColaborador;
 
         // Sub-aba Regras de Recomendação (Acordeão por Grupos & Inclusão em Lote NR-01)
         if (typeof alternarVisualizacaoRegras === 'function') window.alternarVisualizacaoRegras = alternarVisualizacaoRegras;

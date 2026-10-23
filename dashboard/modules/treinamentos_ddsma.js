@@ -10244,6 +10244,52 @@ async function recarregarRegrasRecomendacao() {
     }
 }
 
+// Estado do Acordeão e Inclusão em Lote das Regras
+let regraModoVisualizacao = 'acordeon';
+const regrasAcordeonsAbertos = new Set();
+let loteContextoAtual = null;
+let listaCursosModalLoteCache = [];
+
+function alternarVisualizacaoRegras(modo) {
+    regraModoVisualizacao = modo;
+    const btnAcordeon = document.getElementById('btnVisaoAcordeon');
+    const btnTabela = document.getElementById('btnVisaoTabela');
+    const wrapAcordeon = document.getElementById('regrasAccordionContainer');
+    const wrapTabela = document.getElementById('regrasTabelaContainer');
+
+    if (btnAcordeon) btnAcordeon.classList.toggle('active', modo === 'acordeon');
+    if (btnTabela) btnTabela.classList.toggle('active', modo === 'tabela');
+    if (wrapAcordeon) wrapAcordeon.style.display = (modo === 'acordeon') ? 'flex' : 'none';
+    if (wrapTabela) wrapTabela.style.display = (modo === 'tabela') ? 'block' : 'none';
+}
+
+function toggleAcordeonGrupoRegra(grupoKey) {
+    if (regrasAcordeonsAbertos.has(grupoKey)) {
+        regrasAcordeonsAbertos.delete(grupoKey);
+    } else {
+        regrasAcordeonsAbertos.add(grupoKey);
+    }
+    const itemEl = document.getElementById('accordion-grupo-' + grupoKey);
+    if (itemEl) {
+        itemEl.classList.toggle('expanded', regrasAcordeonsAbertos.has(grupoKey));
+    }
+}
+
+function expandirTodosAcordeonsRegras() {
+    document.querySelectorAll('.regras-accordion-item').forEach(el => {
+        const key = el.getAttribute('data-grupokey');
+        if (key) regrasAcordeonsAbertos.add(key);
+        el.classList.add('expanded');
+    });
+}
+
+function recolherTodosAcordeonsRegras() {
+    regrasAcordeonsAbertos.clear();
+    document.querySelectorAll('.regras-accordion-item').forEach(el => {
+        el.classList.remove('expanded');
+    });
+}
+
 function filtrarTipoRegraTab(tipo) {
     regraFiltroTipoAtual = tipo;
     ['todas', 'TODOS', 'GHE', 'FUNCAO', 'COLABORADOR'].forEach(t => {
@@ -10252,14 +10298,330 @@ function filtrarTipoRegraTab(tipo) {
     renderTreinamentoRegrasTab();
 }
 
+function construirListaGruposRegras(termoBusca = '') {
+    const grupos = [];
+
+    // 1. Grupo Geral (TODOS)
+    if (regraFiltroTipoAtual === 'todas' || regraFiltroTipoAtual === 'TODOS') {
+        const regrasGerais = allTreinamentosRegras.filter(r => r.tipo_regra === 'TODOS');
+        const totalAtivos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e)).length;
+        grupos.push({
+            key: 'TODOS',
+            tipo: 'TODOS',
+            alvo_valor: 'TODOS',
+            icone: '🌐',
+            titulo: 'Regras Gerais para Todo o Efetivo Ativo',
+            tituloCurto: 'Todo o Efetivo (Geral)',
+            subtitulo: 'Capacitações mandatórias universais da NR-01 para admissão e reciclagem geral',
+            regras: regrasGerais,
+            totalColaboradores: totalAtivos
+        });
+    }
+
+    // 2. Grupos de GHE (se aplicável ao filtro)
+    if (regraFiltroTipoAtual === 'todas' || regraFiltroTipoAtual === 'GHE') {
+        const ghesMap = new Map();
+        (allGheCatalogo || []).forEach(g => {
+            const cod = String(g.id).trim();
+            if (cod) {
+                ghesMap.set(cod, {
+                    cod: cod,
+                    nome: g.nome ? String(g.nome).trim() : `GHE ${cod}`
+                });
+            }
+        });
+
+        (allEfetivo || []).forEach(e => {
+            if (colaboradorEstaAtivo(e) && e.ghe) {
+                const cod = String(e.ghe).trim();
+                if (cod && !ghesMap.has(cod)) {
+                    ghesMap.set(cod, { cod: cod, nome: `GHE ${cod}` });
+                }
+            }
+        });
+
+        allTreinamentosRegras.forEach(r => {
+            if (r.tipo_regra === 'GHE' && r.alvo_valor) {
+                const cod = String(r.alvo_valor).trim();
+                if (cod && !ghesMap.has(cod)) {
+                    ghesMap.set(cod, { cod: cod, nome: `GHE ${cod}` });
+                }
+            }
+        });
+
+        const ghesOrdenados = Array.from(ghesMap.values()).sort((a, b) => 
+            a.cod.localeCompare(b.cod, undefined, { numeric: true })
+        );
+
+        ghesOrdenados.forEach(g => {
+            const cod = g.cod;
+            const regrasGhe = allTreinamentosRegras.filter(r => 
+                r.tipo_regra === 'GHE' && (
+                    String(r.alvo_valor).trim() === cod || 
+                    String(r.alvo_valor).trim().toLowerCase() === g.nome.toLowerCase()
+                )
+            );
+            const totalColabs = (allEfetivo || []).filter(e => 
+                colaboradorEstaAtivo(e) && String(e.ghe || '').trim() === cod
+            ).length;
+
+            grupos.push({
+                key: 'GHE_' + cod,
+                tipo: 'GHE',
+                alvo_valor: cod,
+                icone: '👥',
+                titulo: g.nome.startsWith(cod) ? g.nome : `${cod} — ${g.nome}`,
+                tituloCurto: g.nome.startsWith(cod) ? g.nome : `${cod} — ${g.nome}`,
+                subtitulo: `Grupo Homogêneo de Exposição (NR-01 / PGR)`,
+                regras: regrasGhe,
+                totalColaboradores: totalColabs
+            });
+        });
+    }
+
+    // 3. Grupos por Função / Cargo
+    if (regraFiltroTipoAtual === 'todas' || regraFiltroTipoAtual === 'FUNCAO') {
+        const funcoesComRegras = new Set();
+        allTreinamentosRegras.forEach(r => {
+            if (r.tipo_regra === 'FUNCAO' && r.alvo_valor) {
+                funcoesComRegras.add(String(r.alvo_valor).trim());
+            }
+        });
+
+        if (regraFiltroTipoAtual === 'FUNCAO') {
+            (allEfetivo || []).forEach(e => {
+                if (colaboradorEstaAtivo(e) && e.funcao) {
+                    funcoesComRegras.add(String(e.funcao).trim());
+                }
+            });
+        }
+
+        const funcoesOrdenadas = Array.from(funcoesComRegras).sort((a, b) => a.localeCompare(b));
+        funcoesOrdenadas.forEach(f => {
+            const regrasFunc = allTreinamentosRegras.filter(r => 
+                r.tipo_regra === 'FUNCAO' && 
+                String(r.alvo_valor).trim().toLowerCase() === f.toLowerCase()
+            );
+            const totalColabs = (allEfetivo || []).filter(e => 
+                colaboradorEstaAtivo(e) && String(e.funcao || '').trim().toLowerCase() === f.toLowerCase()
+            ).length;
+
+            grupos.push({
+                key: 'FUNCAO_' + encodeURIComponent(f),
+                tipo: 'FUNCAO',
+                alvo_valor: f,
+                icone: '💼',
+                titulo: `Cargo: ${f}`,
+                tituloCurto: `Cargo ${f}`,
+                subtitulo: `Capacitações específicas para a função`,
+                regras: regrasFunc,
+                totalColaboradores: totalColabs
+            });
+        });
+    }
+
+    // 4. Grupos por Colaborador Individual
+    if (regraFiltroTipoAtual === 'todas' || regraFiltroTipoAtual === 'COLABORADOR') {
+        const colabsComRegras = new Set();
+        allTreinamentosRegras.forEach(r => {
+            if (r.tipo_regra === 'COLABORADOR' && r.alvo_valor) {
+                colabsComRegras.add(String(r.alvo_valor).trim());
+            }
+        });
+
+        if (colabsComRegras.size > 0 || regraFiltroTipoAtual === 'COLABORADOR') {
+            const colabsList = Array.from(colabsComRegras).map(mat => {
+                const c = (allEfetivo || []).find(e => String(e.id) === mat);
+                return {
+                    matricula: mat,
+                    nome: c ? c.nome : `Matrícula ${mat}`,
+                    funcao: c ? c.funcao : ''
+                };
+            }).sort((a, b) => a.nome.localeCompare(b.nome));
+
+            colabsList.forEach(c => {
+                const regrasColab = allTreinamentosRegras.filter(r => 
+                    r.tipo_regra === 'COLABORADOR' && String(r.alvo_valor).trim() === c.matricula
+                );
+                grupos.push({
+                    key: 'COLABORADOR_' + c.matricula,
+                    tipo: 'COLABORADOR',
+                    alvo_valor: c.matricula,
+                    icone: '👤',
+                    titulo: `${c.nome} (Matrícula ${c.matricula})`,
+                    tituloCurto: `${c.nome} [${c.matricula}]`,
+                    subtitulo: c.funcao ? `Função: ${c.funcao}` : 'Regra individual específica',
+                    regras: regrasColab,
+                    totalColaboradores: 1
+                });
+            });
+        }
+    }
+
+    // Filtragem por termo de busca
+    if (termoBusca) {
+        return grupos.filter(g => {
+            const matchGrupo = g.titulo.toLowerCase().includes(termoBusca) || 
+                               g.alvo_valor.toLowerCase().includes(termoBusca);
+            if (matchGrupo) return true;
+            const matchCurso = g.regras.some(r => {
+                const nomeCurso = obterNomeCursoCatalogo(r.treinamento_cod).toLowerCase();
+                const cod = String(r.treinamento_cod || '').toLowerCase();
+                return nomeCurso.includes(termoBusca) || cod.includes(termoBusca);
+            });
+            return matchCurso;
+        });
+    }
+
+    return grupos;
+}
+
+function renderizarCorpoGrupoRegras(grupo) {
+    if (!grupo.regras || grupo.regras.length === 0) {
+        return `
+            <div class="empty-grupo-regras">
+                <div style="font-size: 24px; margin-bottom: 6px;">📂</div>
+                <div style="font-weight: 700; color: var(--text); font-size: 13.5px;">Nenhum treinamento vinculado a este grupo</div>
+                <div style="font-size: 12px; color: var(--text-light); margin-top: 4px; max-width: 480px; margin-left: auto; margin-right: auto;">
+                    Defina a matriz de capacitação obrigatória exigida pela NR-01 para habilitar o diagnóstico automático de gaps e conformidade deste grupo.
+                </div>
+                <button type="button" class="db-apply-btn btn-incluir-treinamentos" style="margin-top: 12px;" onclick="abrirModalLoteTreinamentos('${grupo.tipo}', '${escapeHTML(grupo.alvo_valor)}', '${escapeHTML(grupo.tituloCurto)}')">
+                    ➕ Incluir Treinamentos em Lote
+                </button>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="regras-cursos-grid">
+            ${grupo.regras.map(r => {
+                const nomeCurso = obterNomeCursoCatalogo(r.treinamento_cod);
+                const cursoCat = (allTreinamentosCatalogo || []).find(c => String(c.id) === String(r.treinamento_cod));
+                const perPadrao = cursoCat && cursoCat.meses_validade ? parseInt(cursoCat.meses_validade, 10) : null;
+                const cargaHoraria = cursoCat && cursoCat.carga_horaria ? `${cursoCat.carga_horaria}h` : 'Livre';
+                const perLabel = r.periodicidade_customizada_meses
+                    ? `🔄 ${r.periodicidade_customizada_meses}m (custom)`
+                    : (perPadrao ? `🔄 ${perPadrao}m (catálogo)` : '🔄 Único / Sem validade');
+                const isAtivo = r.ativo !== false;
+
+                return `
+                    <div class="regra-curso-card ${!isAtivo ? 'inativa' : ''}" id="regra-card-${r.id}">
+                        <div class="regra-curso-header">
+                            <span class="badge-curso-cod">Cód. ${escapeHTML(r.treinamento_cod)}</span>
+                            <div class="regra-curso-nome">${escapeHTML(nomeCurso)}</div>
+                        </div>
+                        <div class="regra-curso-meta">
+                            <span>⏱️ ${cargaHoraria}</span>
+                            <span>${perLabel}</span>
+                            ${r.obrigatorio_admissao !== false ? '<span class="badge-regra-admissao">Admissão</span>' : ''}
+                            <button type="button" onclick="alternarStatusRegraRecomendacao('${r.id}', ${!isAtivo})" class="badge-status-toggle ${isAtivo ? 'ativo' : 'inativo'}" title="Clique para ativar/desativar">
+                                ${isAtivo ? '● Ativa' : '○ Inativa'}
+                            </button>
+                        </div>
+                        <div class="regra-curso-footer">
+                            <button type="button" class="db-clear-btn" onclick="abrirModalNovaRegra('${r.id}')" style="padding: 4px 8px; font-size: 11px;" title="Editar periodicidade ou regras finas">
+                                ✏️ Ajustar
+                            </button>
+                            <button type="button" class="btn-excluir-vinculo-direto" onclick="excluirVinculoRegraRapido('${r.id}', '${grupo.key}', '${escapeHTML(nomeCurso)}')" title="Remover este treinamento do grupo">
+                                🗑️ Remover Vínculo
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function renderizarAcordeonGrupoItem(grupo, estaAberto) {
+    const qtdCursos = grupo.regras.length;
+    const badgeCursosClass = qtdCursos > 0 ? 'tem-cursos' : 'sem-cursos';
+    const badgeCursosTexto = `${qtdCursos} ${qtdCursos === 1 ? 'Treinamento' : 'Treinamentos'}`;
+
+    return `
+        <div class="regras-accordion-item ${estaAberto ? 'expanded' : ''}" id="accordion-grupo-${grupo.key}" data-grupokey="${grupo.key}">
+            <div class="regras-accordion-header" onclick="toggleAcordeonGrupoRegra('${grupo.key}')">
+                <div class="regras-accordion-info">
+                    <span class="regras-accordion-chevron">▼</span>
+                    <span style="font-size: 16px;">${grupo.icone}</span>
+                    <div style="min-width: 0;">
+                        <div class="regras-grupo-titulo" title="${escapeHTML(grupo.titulo)}">
+                            ${escapeHTML(grupo.titulo)}
+                        </div>
+                        <div style="font-size: 11px; color: var(--text-light); margin-top: 1px;">
+                            ${escapeHTML(grupo.subtitulo)}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="regras-accordion-actions" onclick="event.stopPropagation()">
+                    <div class="regras-badges-wrap">
+                        <span class="badge-acordeon-count ${badgeCursosClass}">
+                            ${badgeCursosTexto}
+                        </span>
+                        ${grupo.totalColaboradores !== undefined ? `
+                            <span class="badge-acordeon-efetivo" title="Colaboradores ativos vinculados a este grupo">
+                                👥 ${grupo.totalColaboradores} ativos
+                            </span>
+                        ` : ''}
+                    </div>
+                    <button type="button" class="db-apply-btn btn-incluir-treinamentos" onclick="abrirModalLoteTreinamentos('${grupo.tipo}', '${escapeHTML(grupo.alvo_valor)}', '${escapeHTML(grupo.tituloCurto)}')">
+                        ➕ Incluir Treinamentos
+                    </button>
+                </div>
+            </div>
+
+            <div class="regras-accordion-body">
+                ${renderizarCorpoGrupoRegras(grupo)}
+            </div>
+        </div>
+    `;
+}
+
 function renderTreinamentoRegrasTab() {
+    const accordionContainer = document.getElementById('regrasAccordionContainer');
     const tbody = document.getElementById('tabelaRegrasRecomendacaoCorpo');
     const contadorEl = document.getElementById('regrasContador');
-    if (!tbody) return;
-
     const termoBusca = (document.getElementById('filtroRegraBusca')?.value || '').trim().toLowerCase();
 
-    // Filtra regras
+    // 1. Constroi a lista de grupos para o Acordeão
+    const grupos = construirListaGruposRegras(termoBusca);
+
+    // Se houver busca digitada, abre automaticamente os grupos retornados
+    if (termoBusca) {
+        grupos.forEach(g => regrasAcordeonsAbertos.add(g.key));
+    } else if (regrasAcordeonsAbertos.size === 0 && grupos.length > 0) {
+        // Na primeira abertura sem busca, abre os grupos que possuem regras
+        grupos.forEach(g => {
+            if (g.regras && g.regras.length > 0) {
+                regrasAcordeonsAbertos.add(g.key);
+            }
+        });
+        if (regrasAcordeonsAbertos.size === 0) {
+            regrasAcordeonsAbertos.add(grupos[0].key);
+        }
+    }
+
+    // Renderiza o Acordeão
+    if (accordionContainer) {
+        if (grupos.length === 0) {
+            accordionContainer.innerHTML = `
+                <div class="empty-grupo-regras" style="background:var(--card); border:1px solid var(--border); padding:36px 16px;">
+                    <div style="font-size:32px; margin-bottom:8px;">🔍</div>
+                    <div style="font-weight:700; font-size:15px; color:var(--text);">Nenhum grupo ou treinamento encontrado</div>
+                    <div style="font-size:12px; color:var(--text-light); margin-top:4px;">
+                        Tente ajustar o termo de pesquisa ou trocar o filtro de tipo de grupo.
+                    </div>
+                </div>
+            `;
+        } else {
+            accordionContainer.innerHTML = grupos.map(g => 
+                renderizarAcordeonGrupoItem(g, regrasAcordeonsAbertos.has(g.key))
+            ).join('');
+        }
+    }
+
+    // 2. Renderiza também a visualização em tabela (para quando alternar modo ou auditoria geral)
     const regrasFiltradas = allTreinamentosRegras.filter(r => {
         if (regraFiltroTipoAtual !== 'todas' && r.tipo_regra !== regraFiltroTipoAtual) {
             return false;
@@ -10277,78 +10639,323 @@ function renderTreinamentoRegrasTab() {
 
     if (contadorEl) contadorEl.textContent = String(regrasFiltradas.length);
 
-    if (regrasFiltradas.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="7" style="text-align:center; padding:32px 16px; color:var(--text-light);">
-                    <div style="font-size:28px; margin-bottom:8px;">📋</div>
-                    <div style="font-weight:700; font-size:14px; color:var(--text);">Nenhuma regra encontrada</div>
-                    <div style="font-size:12px; margin-top:4px;">
-                        ${allTreinamentosRegras.length === 0 ? 'Cadastre a primeira regra de recomendação no botão <b>➕ Nova Regra</b> acima.' : 'Nenhuma regra corresponde aos filtros aplicados.'}
-                    </div>
-                </td>
-            </tr>
+    if (tbody) {
+        if (regrasFiltradas.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" style="text-align:center; padding:32px 16px; color:var(--text-light);">
+                        <div style="font-size:28px; margin-bottom:8px;">📋</div>
+                        <div style="font-weight:700; font-size:14px; color:var(--text);">Nenhuma regra encontrada</div>
+                        <div style="font-size:12px; margin-top:4px;">
+                            ${allTreinamentosRegras.length === 0 ? 'Cadastre a primeira regra de recomendação no botão <b>➕ Nova Regra</b> acima.' : 'Nenhuma regra corresponde aos filtros aplicados.'}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        } else {
+            tbody.innerHTML = regrasFiltradas.map(r => {
+                let tipoBadge = '';
+                let alvoLabel = '';
+
+                if (r.tipo_regra === 'TODOS') {
+                    tipoBadge = `<span class="badge-regra-tipo badge-regra-todos">🌐 Geral</span>`;
+                    alvoLabel = `<strong>Todo o Efetivo Ativo</strong> <span style="font-size:11px; color:var(--text-light);">(Todos os colaboradores)</span>`;
+                } else if (r.tipo_regra === 'GHE') {
+                    tipoBadge = `<span class="badge-regra-tipo badge-regra-ghe">👥 GHE</span>`;
+                    alvoLabel = `<strong>${escapeHTML(obterNomeGhePorCodigo(r.alvo_valor))}</strong>`;
+                } else if (r.tipo_regra === 'FUNCAO') {
+                    tipoBadge = `<span class="badge-regra-tipo badge-regra-funcao">💼 Cargo</span>`;
+                    alvoLabel = `<strong>${escapeHTML(r.alvo_valor)}</strong>`;
+                } else if (r.tipo_regra === 'COLABORADOR') {
+                    tipoBadge = `<span class="badge-regra-tipo badge-regra-colaborador">👤 Individual</span>`;
+                    const cAtivo = (allEfetivo || []).find(e => String(e.id) === String(r.alvo_valor));
+                    alvoLabel = `<strong>Matrícula ${escapeHTML(r.alvo_valor)}</strong> ${cAtivo ? `— ${escapeHTML(cAtivo.nome)}` : ''}`;
+                }
+
+                const nomeCurso = obterNomeCursoCatalogo(r.treinamento_cod);
+                const perPadrao = obterPeriodicidadeCursoCatalogo(r.treinamento_cod);
+                const perExibida = r.periodicidade_customizada_meses
+                    ? `<span style="font-weight:700; color:#4f46e5;">${r.periodicidade_customizada_meses} meses</span> <span style="font-size:10px; color:var(--text-light);">(customizada)</span>`
+                    : (perPadrao ? `${perPadrao} meses <span style="font-size:10px; color:var(--text-light);">(catálogo)</span>` : '<span style="color:var(--text-light);">Único / Sem prazo</span>');
+
+                const admissaoBadge = r.obrigatorio_admissao !== false
+                    ? `<span style="display:inline-block; padding:2px 7px; border-radius:999px; font-size:11px; font-weight:700; background:#ecfdf5; color:#047857; border:1px solid #a7f3d0;">Sim</span>`
+                    : `<span style="display:inline-block; padding:2px 7px; border-radius:999px; font-size:11px; font-weight:600; background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0;">Não</span>`;
+
+                const isAtivo = r.ativo !== false;
+                const statusBadge = isAtivo
+                    ? `<button type="button" onclick="alternarStatusRegraRecomendacao('${r.id}', false)" title="Clique para desativar" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; cursor:pointer;">● Ativa</button>`
+                    : `<button type="button" onclick="alternarStatusRegraRecomendacao('${r.id}', true)" title="Clique para ativar" style="background:#f1f5f9; color:#94a3b8; border:1px solid #cbd5e1; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; cursor:pointer;">○ Inativa</button>`;
+
+                return `
+                    <tr style="border-bottom:1px solid var(--border); ${!isAtivo ? 'opacity:0.6;' : ''}">
+                        <td style="padding:10px 12px;">${tipoBadge}</td>
+                        <td style="padding:10px 12px;">${alvoLabel}</td>
+                        <td style="padding:10px 12px;">
+                            <div style="font-weight:600; color:var(--text);">${escapeHTML(nomeCurso)}</div>
+                            <div style="font-size:11px; color:var(--text-light);">Cód: ${escapeHTML(r.treinamento_cod)}</div>
+                        </td>
+                        <td style="padding:10px 12px; text-align:center;">${perExibida}</td>
+                        <td style="padding:10px 12px; text-align:center;">${admissaoBadge}</td>
+                        <td style="padding:10px 12px; text-align:center;">${statusBadge}</td>
+                        <td style="padding:10px 12px; text-align:center; white-space:nowrap;">
+                            <button type="button" class="db-clear-btn" onclick="abrirModalNovaRegra('${r.id}')" style="padding:4px 8px; font-size:11.5px; margin-right:4px;" title="Editar regra">
+                                ✏️ Editar
+                            </button>
+                            <button type="button" class="db-clear-btn" onclick="excluirRegraRecomendacao('${r.id}')" style="padding:4px 8px; font-size:11.5px; color:var(--danger); border-color:var(--danger);" title="Excluir regra">
+                                🗑️
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    }
+}
+
+// ==============================================================================
+// MODAL DE INCLUSÃO EM LOTE COM LIVE SEARCH (NR-01)
+// ==============================================================================
+async function abrirModalLoteTreinamentos(tipo, alvoValor, tituloGrupo) {
+    loteContextoAtual = {
+        tipo: tipo,
+        alvo_valor: alvoValor,
+        tituloGrupo: tituloGrupo
+    };
+
+    const modal = document.getElementById('modalTreinamentoLote');
+    const labelGrupo = document.getElementById('modalLoteGrupoNome');
+    const buscaInput = document.getElementById('loteBuscaTreinamento');
+    const statusMsg = document.getElementById('loteStatusMsg');
+
+    if (labelGrupo) {
+        labelGrupo.textContent = tituloGrupo || `${tipo}: ${alvoValor}`;
+    }
+    if (buscaInput) buscaInput.value = '';
+    if (statusMsg) statusMsg.textContent = '';
+
+    if (!allTreinamentosCatalogo || allTreinamentosCatalogo.length === 0) {
+        allTreinamentosCatalogo = await supabaseFetchCacheado('treinamentos_catalogo', '?select=*').catch(() => []) || [];
+    }
+
+    // Identifica quais cursos já estão vinculados a este grupo
+    const cursosJaVinculados = new Set();
+    allTreinamentosRegras.forEach(r => {
+        if (r.tipo_regra === tipo && String(r.alvo_valor).trim().toLowerCase() === String(alvoValor).trim().toLowerCase()) {
+            cursosJaVinculados.add(String(r.treinamento_cod).trim());
+        }
+    });
+
+    listaCursosModalLoteCache = (allTreinamentosCatalogo || []).map(c => {
+        const idStr = String(c.id).trim();
+        const jaVinculado = cursosJaVinculados.has(idStr);
+        return {
+            id: idStr,
+            nome: c.nome || `Treinamento ${idStr}`,
+            meses_validade: c.meses_validade,
+            carga_horaria: c.carga_horaria,
+            jaVinculado: jaVinculado,
+            selecionado: false
+        };
+    }).sort((a, b) => {
+        if (a.jaVinculado !== b.jaVinculado) return a.jaVinculado ? 1 : -1;
+        return a.nome.localeCompare(b.nome);
+    });
+
+    renderizarListaCursosModalLote('');
+    atualizarContadorSelecaoLote();
+
+    if (modal) modal.style.display = 'flex';
+    if (buscaInput) setTimeout(() => buscaInput.focus(), 150);
+}
+
+function fecharModalLoteTreinamentos() {
+    const modal = document.getElementById('modalTreinamentoLote');
+    if (modal) modal.style.display = 'none';
+    loteContextoAtual = null;
+}
+
+function renderizarListaCursosModalLote(termo = '') {
+    const container = document.getElementById('loteListaTreinamentosContainer');
+    if (!container) return;
+
+    const termoNorm = (termo || '').trim().toLowerCase();
+    const filtrados = listaCursosModalLoteCache.filter(c => {
+        if (!termoNorm) return true;
+        return c.id.toLowerCase().includes(termoNorm) || c.nome.toLowerCase().includes(termoNorm);
+    });
+
+    if (filtrados.length === 0) {
+        container.innerHTML = `
+            <div style="padding: 24px 16px; text-align: center; color: var(--text-light); font-size: 13px;">
+                🔍 Nenhum treinamento encontrado para "${escapeHTML(termo)}"
+            </div>
         `;
         return;
     }
 
-    tbody.innerHTML = regrasFiltradas.map(r => {
-        // Label do Tipo com badge estilizado
-        let tipoBadge = '';
-        let alvoLabel = '';
+    container.innerHTML = filtrados.map(c => {
+        const valLabel = c.meses_validade ? `${c.meses_validade}m` : 'Sem validade';
+        const chLabel = c.carga_horaria ? `${c.carga_horaria}h` : '';
+        const metaStr = [chLabel, valLabel].filter(Boolean).join(' • ');
 
-        if (r.tipo_regra === 'TODOS') {
-            tipoBadge = `<span class="badge-regra-tipo badge-regra-todos">🌐 Geral</span>`;
-            alvoLabel = `<strong>Todo o Efetivo Ativo</strong> <span style="font-size:11px; color:var(--text-light);">(Todos os colaboradores)</span>`;
-        } else if (r.tipo_regra === 'GHE') {
-            tipoBadge = `<span class="badge-regra-tipo badge-regra-ghe">👥 GHE</span>`;
-            alvoLabel = `<strong>${escapeHTML(obterNomeGhePorCodigo(r.alvo_valor))}</strong>`;
-        } else if (r.tipo_regra === 'FUNCAO') {
-            tipoBadge = `<span class="badge-regra-tipo badge-regra-funcao">💼 Cargo</span>`;
-            alvoLabel = `<strong>${escapeHTML(r.alvo_valor)}</strong>`;
-        } else if (r.tipo_regra === 'COLABORADOR') {
-            tipoBadge = `<span class="badge-regra-tipo badge-regra-colaborador">👤 Individual</span>`;
-            const cAtivo = allEfetivo.find(e => String(e.id) === String(r.alvo_valor));
-            alvoLabel = `<strong>Matrícula ${escapeHTML(r.alvo_valor)}</strong> ${cAtivo ? `— ${escapeHTML(cAtivo.nome)}` : ''}`;
+        if (c.jaVinculado) {
+            return `
+                <div class="lote-curso-item ja-vinculado" title="Este treinamento já está vinculado a este grupo">
+                    <div class="lote-curso-item-info">
+                        <input type="checkbox" checked disabled style="width: 16px; height: 16px; accent-color: var(--primary);">
+                        <span class="badge-curso-cod">Cód. ${escapeHTML(c.id)}</span>
+                        <span style="font-size: 13px; font-weight: 600; color: var(--text-light);">${escapeHTML(c.nome)}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 11px; color: var(--text-light);">${metaStr}</span>
+                        <span class="badge-ja-vinculado">✓ Já Vinculado</span>
+                    </div>
+                </div>
+            `;
         }
 
-        const nomeCurso = obterNomeCursoCatalogo(r.treinamento_cod);
-        const perPadrao = obterPeriodicidadeCursoCatalogo(r.treinamento_cod);
-        const perExibida = r.periodicidade_customizada_meses
-            ? `<span style="font-weight:700; color:#4f46e5;">${r.periodicidade_customizada_meses} meses</span> <span style="font-size:10px; color:var(--text-light);">(customizada)</span>`
-            : (perPadrao ? `${perPadrao} meses <span style="font-size:10px; color:var(--text-light);">(catálogo)</span>` : '<span style="color:var(--text-light);">Único / Sem prazo</span>');
-
-        const admissaoBadge = r.obrigatorio_admissao !== false
-            ? `<span style="display:inline-block; padding:2px 7px; border-radius:999px; font-size:11px; font-weight:700; background:#ecfdf5; color:#047857; border:1px solid #a7f3d0;">Sim</span>`
-            : `<span style="display:inline-block; padding:2px 7px; border-radius:999px; font-size:11px; font-weight:600; background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0;">Não</span>`;
-
-        const isAtivo = r.ativo !== false;
-        const statusBadge = isAtivo
-            ? `<button onclick="alternarStatusRegraRecomendacao('${r.id}', false)" title="Clique para desativar" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; cursor:pointer;">● Ativa</button>`
-            : `<button onclick="alternarStatusRegraRecomendacao('${r.id}', true)" title="Clique para ativar" style="background:#f1f5f9; color:#94a3b8; border:1px solid #cbd5e1; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; cursor:pointer;">○ Inativa</button>`;
-
         return `
-            <tr style="border-bottom:1px solid var(--border); ${!isAtivo ? 'opacity:0.6;' : ''}">
-                <td style="padding:10px 12px;">${tipoBadge}</td>
-                <td style="padding:10px 12px;">${alvoLabel}</td>
-                <td style="padding:10px 12px;">
-                    <div style="font-weight:600; color:var(--text);">${escapeHTML(nomeCurso)}</div>
-                    <div style="font-size:11px; color:var(--text-light);">Cód: ${escapeHTML(r.treinamento_cod)}</div>
-                </td>
-                <td style="padding:10px 12px; text-align:center;">${perExibida}</td>
-                <td style="padding:10px 12px; text-align:center;">${admissaoBadge}</td>
-                <td style="padding:10px 12px; text-align:center;">${statusBadge}</td>
-                <td style="padding:10px 12px; text-align:center; white-space:nowrap;">
-                    <button class="db-clear-btn" onclick="abrirModalNovaRegra('${r.id}')" style="padding:4px 8px; font-size:11.5px; margin-right:4px;" title="Editar regra">
-                        ✏️ Editar
-                    </button>
-                    <button class="db-clear-btn" onclick="excluirRegraRecomendacao('${r.id}')" style="padding:4px 8px; font-size:11.5px; color:var(--danger); border-color:var(--danger);" title="Excluir regra">
-                        🗑️
-                    </button>
-                </td>
-            </tr>
+            <label class="lote-curso-item" for="chkLoteCurso_${c.id}">
+                <div class="lote-curso-item-info">
+                    <input type="checkbox" id="chkLoteCurso_${c.id}" class="lote-chk-curso" value="${c.id}" 
+                        ${c.selecionado ? 'checked' : ''} 
+                        onchange="aoAlterarCheckboxLote('${c.id}', this.checked)"
+                        style="width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer;">
+                    <span class="badge-curso-cod">Cód. ${escapeHTML(c.id)}</span>
+                    <span style="font-size: 13px; font-weight: 700; color: var(--text);">${escapeHTML(c.nome)}</span>
+                </div>
+                <div style="font-size: 11.5px; color: var(--text-light); white-space: nowrap;">
+                    ${metaStr}
+                </div>
+            </label>
         `;
     }).join('');
+}
+
+function filtrarListaTreinamentosLote(termo) {
+    renderizarListaCursosModalLote(termo);
+}
+
+function aoAlterarCheckboxLote(id, checked) {
+    const item = listaCursosModalLoteCache.find(c => c.id === id);
+    if (item && !item.jaVinculado) {
+        item.selecionado = !!checked;
+    }
+    atualizarContadorSelecaoLote();
+}
+
+function marcarTodosCursosLote(marcar) {
+    const termo = (document.getElementById('loteBuscaTreinamento')?.value || '').trim().toLowerCase();
+    listaCursosModalLoteCache.forEach(c => {
+        if (!c.jaVinculado) {
+            const bateFiltro = !termo || c.id.toLowerCase().includes(termo) || c.nome.toLowerCase().includes(termo);
+            if (bateFiltro) {
+                c.selecionado = !!marcar;
+            }
+        }
+    });
+    renderizarListaCursosModalLote(termo);
+    atualizarContadorSelecaoLote();
+}
+
+function atualizarContadorSelecaoLote() {
+    const qtd = listaCursosModalLoteCache.filter(c => !c.jaVinculado && c.selecionado).length;
+    const contadorEl = document.getElementById('loteContadorSelecionados');
+    const btnContadorEl = document.getElementById('btnContadorSalvarLote');
+    const btnSalvar = document.getElementById('btnSalvarTreinamentosLote');
+
+    if (contadorEl) contadorEl.textContent = String(qtd);
+    if (btnContadorEl) btnContadorEl.textContent = String(qtd);
+    if (btnSalvar) btnSalvar.disabled = (qtd === 0);
+}
+
+async function salvarTreinamentosLote() {
+    if (!loteContextoAtual) return;
+    const selecionados = listaCursosModalLoteCache.filter(c => !c.jaVinculado && c.selecionado);
+    if (selecionados.length === 0) {
+        alert('Selecione pelo menos um treinamento disponível para vincular.');
+        return;
+    }
+
+    const btnSalvar = document.getElementById('btnSalvarTreinamentosLote');
+    const statusMsg = document.getElementById('loteStatusMsg');
+    const obrigatorioAdmissao = document.getElementById('loteObrigatorioAdmissao')?.checked !== false;
+    const ativo = document.getElementById('loteAtivo')?.checked !== false;
+
+    if (btnSalvar) btnSalvar.disabled = true;
+    if (statusMsg) {
+        statusMsg.textContent = `Gravando ${selecionados.length} regras no Supabase...`;
+        statusMsg.style.color = 'var(--text-light)';
+    }
+
+    const payload = selecionados.map(c => ({
+        tipo_regra: loteContextoAtual.tipo,
+        alvo_valor: loteContextoAtual.alvo_valor,
+        treinamento_cod: c.id,
+        obrigatorio_admissao: obrigatorioAdmissao,
+        periodicidade_customizada_meses: null,
+        ativo: ativo
+    }));
+
+    try {
+        await supabaseInsert('treinamentos_regras_recomendacao', payload);
+        invalidarCacheTabela('treinamentos_regras_recomendacao');
+        allTreinamentosRegras = await supabaseFetch('treinamentos_regras_recomendacao', '?select=*&order=created_at.desc') || [];
+        window.allTreinamentosRegras = allTreinamentosRegras;
+
+        const grupoKey = (loteContextoAtual.tipo === 'TODOS') 
+            ? 'TODOS' 
+            : `${loteContextoAtual.tipo}_${encodeURIComponent(loteContextoAtual.alvo_valor)}`;
+        regrasAcordeonsAbertos.add(grupoKey);
+
+        fecharModalLoteTreinamentos();
+        renderTreinamentoRegrasTab();
+
+        setTimeout(() => {
+            const el = document.getElementById('accordion-grupo-' + grupoKey);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }, 150);
+
+        if (document.getElementById('treinSubtab-gaps')?.style.display === 'block') {
+            renderTreinamentoGapsTab();
+        }
+    } catch (err) {
+        console.error('Erro ao salvar treinamentos em lote:', err);
+        if (statusMsg) {
+            statusMsg.textContent = '❌ Erro ao salvar: ' + err.message;
+            statusMsg.style.color = 'var(--danger)';
+        }
+        alert('Falha ao salvar treinamentos no grupo: ' + err.message);
+    } finally {
+        if (btnSalvar) btnSalvar.disabled = false;
+    }
+}
+
+async function excluirVinculoRegraRapido(id, grupoKey, nomeCurso) {
+    const nome = nomeCurso || 'este treinamento';
+    if (!confirm(`Deseja realmente remover o treinamento "${nome}" deste grupo?\n\nO diagnóstico de gaps e prontidão será recalculado.`)) {
+        return;
+    }
+
+    try {
+        await supabaseDelete('treinamentos_regras_recomendacao', id);
+        allTreinamentosRegras = allTreinamentosRegras.filter(r => String(r.id) !== String(id));
+        window.allTreinamentosRegras = allTreinamentosRegras;
+
+        if (grupoKey) regrasAcordeonsAbertos.add(grupoKey);
+
+        renderTreinamentoRegrasTab();
+
+        if (document.getElementById('treinSubtab-gaps')?.style.display === 'block') {
+            renderTreinamentoGapsTab();
+        }
+    } catch (err) {
+        console.error('Erro ao excluir vínculo da regra:', err);
+        alert('Falha ao excluir regra: ' + err.message);
+    }
 }
 
 async function abrirModalNovaRegra(regraId = null) {
@@ -11625,6 +12232,20 @@ const excluirRegraTrein = excluirRegraRecomendacao;
         if (typeof imprimirProntidaoEquipe === 'function') window.imprimirProntidaoEquipe = imprimirProntidaoEquipe;
         if (typeof imprimirProntuarioIndividual === 'function') window.imprimirProntuarioIndividual = imprimirProntuarioIndividual;
         if (typeof toggleSecaoGerenciarEncarregados === 'function') window.toggleSecaoGerenciarEncarregados = toggleSecaoGerenciarEncarregados;
+
+        // Sub-aba Regras de Recomendação (Acordeão por Grupos & Inclusão em Lote NR-01)
+        if (typeof alternarVisualizacaoRegras === 'function') window.alternarVisualizacaoRegras = alternarVisualizacaoRegras;
+        if (typeof toggleAcordeonGrupoRegra === 'function') window.toggleAcordeonGrupoRegra = toggleAcordeonGrupoRegra;
+        if (typeof expandirTodosAcordeonsRegras === 'function') window.expandirTodosAcordeonsRegras = expandirTodosAcordeonsRegras;
+        if (typeof recolherTodosAcordeonsRegras === 'function') window.recolherTodosAcordeonsRegras = recolherTodosAcordeonsRegras;
+        if (typeof abrirModalLoteTreinamentos === 'function') window.abrirModalLoteTreinamentos = abrirModalLoteTreinamentos;
+        if (typeof fecharModalLoteTreinamentos === 'function') window.fecharModalLoteTreinamentos = fecharModalLoteTreinamentos;
+        if (typeof filtrarListaTreinamentosLote === 'function') window.filtrarListaTreinamentosLote = filtrarListaTreinamentosLote;
+        if (typeof aoAlterarCheckboxLote === 'function') window.aoAlterarCheckboxLote = aoAlterarCheckboxLote;
+        if (typeof marcarTodosCursosLote === 'function') window.marcarTodosCursosLote = marcarTodosCursosLote;
+        if (typeof atualizarContadorSelecaoLote === 'function') window.atualizarContadorSelecaoLote = atualizarContadorSelecaoLote;
+        if (typeof salvarTreinamentosLote === 'function') window.salvarTreinamentosLote = salvarTreinamentosLote;
+        if (typeof excluirVinculoRegraRapido === 'function') window.excluirVinculoRegraRapido = excluirVinculoRegraRapido;
 
         // Sincronização de arrays de estado com window
         window.allTreinamentosRealizados = allTreinamentosRealizados;

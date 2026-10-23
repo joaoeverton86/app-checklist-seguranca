@@ -20,7 +20,7 @@
         })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=211">
+    <link rel="stylesheet" href="dashboard.css?v=212">
 </head>
 <body>
 
@@ -33,7 +33,7 @@
         <div style="width:100%; max-width:380px; margin:20px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:32px 28px; box-shadow:0 8px 32px rgba(0,0,0,0.08); box-sizing:border-box;">
             <div style="text-align:center; margin-bottom:22px;">
                 <div style="font-size:34px; margin-bottom:6px;">🛡️</div>
-                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v211</span></div>
+                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v212</span></div>
                 <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; letter-spacing:.5px; margin-top:2px;">PISF Ramal do Agreste</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:12px;">
@@ -149,7 +149,7 @@
             <div class="db-brand">
                 <div class="db-brand-icon">🛡️</div>
                 <div>
-                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v211</span></div>
+                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v212</span></div>
                     <div class="db-brand-sub">PISF Ramal do Agreste</div>
                 </div>
             </div>
@@ -2083,29 +2083,62 @@
                         </div>
                     </div>
 
-                    <!-- Barra de Filtros das Regras -->
-                    <div class="db-chart-card" style="margin-bottom: 16px; padding: 12px 18px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <!-- Barra de Ferramentas e Filtros das Regras -->
+                    <div class="db-chart-card" style="margin-bottom: 16px; padding: 14px 18px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+                            <!-- Filtros por Tipo -->
                             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                                <span style="font-size: 12px; font-weight: 700; color: var(--text-light);">Filtrar Regras:</span>
-                                <button id="btnFiltroRegra-todas" class="db-filter-btn active" onclick="filtrarTipoRegraTab('todas')">Todas</button>
+                                <span style="font-size: 12px; font-weight: 700; color: var(--text-light);">Filtrar Grupos:</span>
+                                <button id="btnFiltroRegra-todas" class="db-filter-btn active" onclick="filtrarTipoRegraTab('todas')">Todos os Grupos</button>
                                 <button id="btnFiltroRegra-TODOS" class="db-filter-btn" onclick="filtrarTipoRegraTab('TODOS')">🌐 Geral (Todos)</button>
-                                <button id="btnFiltroRegra-GHE" class="db-filter-btn" onclick="filtrarTipoRegraTab('GHE')">👥 Por GHE</button>
-                                <button id="btnFiltroRegra-FUNCAO" class="db-filter-btn" onclick="filtrarTipoRegraTab('FUNCAO')">💼 Por Função</button>
+                                <button id="btnFiltroRegra-GHE" class="db-filter-btn" onclick="filtrarTipoRegraTab('GHE')">👥 Por GHE / Risco</button>
+                                <button id="btnFiltroRegra-FUNCAO" class="db-filter-btn" onclick="filtrarTipoRegraTab('FUNCAO')">💼 Por Cargo</button>
                                 <button id="btnFiltroRegra-COLABORADOR" class="db-filter-btn" onclick="filtrarTipoRegraTab('COLABORADOR')">👤 Por Colaborador</button>
                             </div>
+                            <!-- Busca em Tempo Real -->
                             <div style="display: flex; gap: 8px; align-items: center;">
-                                <input type="text" id="filtroRegraBusca" placeholder="Buscar por alvo ou curso..." oninput="renderTreinamentoRegrasTab()" style="padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; width: 220px;">
-                                <button class="db-clear-btn" onclick="document.getElementById('filtroRegraBusca').value=''; renderTreinamentoRegrasTab();">✕</button>
+                                <div style="position: relative;">
+                                    <input type="text" id="filtroRegraBusca" placeholder="🔍 Buscar grupo ou curso..." oninput="renderTreinamentoRegrasTab()" style="padding: 7px 32px 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; width: 230px; box-sizing: border-box;">
+                                    <button class="db-clear-btn" onclick="document.getElementById('filtroRegraBusca').value=''; renderTreinamentoRegrasTab();" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); padding: 1px 5px; font-size: 11px;">✕</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Segunda Linha: Alternador de Visualização e Ações de Acordeão -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; border-top: 1px solid var(--border); padding-top: 10px;">
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button id="btnVisaoAcordeon" class="db-filter-btn active" onclick="alternarVisualizacaoRegras('acordeon')" style="font-weight: 700;">
+                                    🗂️ Visão em Acordeão por Grupos
+                                </button>
+                                <button id="btnVisaoTabela" class="db-filter-btn" onclick="alternarVisualizacaoRegras('tabela')">
+                                    📋 Visão Lista Geral
+                                </button>
+                            </div>
+
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <div style="font-size: 12px; color: var(--text-light); margin-right: 6px;">
+                                    Total: <strong><span id="regrasContador">0</span></strong> regra(s) vinculada(s)
+                                </div>
+                                <button class="db-clear-btn" onclick="expandirTodosAcordeonsRegras()" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600;" title="Expandir todos os blocos">
+                                    🔽 Expandir Todos
+                                </button>
+                                <button class="db-clear-btn" onclick="recolherTodosAcordeonsRegras()" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600;" title="Recolher todos os blocos">
+                                    🔼 Recolher Todos
+                                </button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Tabela de Regras -->
-                    <div class="db-chart-card">
+                    <!-- Container do Acordeão de Grupos (Padrão) -->
+                    <div id="regrasAccordionContainer" class="regras-accordion-container">
+                        <!-- Renderizado dinamicamente via renderTreinamentoRegrasTab() -->
+                    </div>
+
+                    <!-- Tabela de Regras (Modo Alternativo / Compatibilidade) -->
+                    <div id="regrasTabelaContainer" class="db-chart-card" style="display: none;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                             <div style="font-size: 14px; font-weight: 700; color: var(--text);">
-                                Regras Cadastradas (<span id="regrasContador">0</span>)
+                                Lista Geral de Regras Cadastradas
                             </div>
                         </div>
                         <div style="overflow-x: auto;">
@@ -2512,6 +2545,84 @@
                     💾 Salvar Regra
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Inclusão em Lote de Treinamentos no Grupo (NR-01) -->
+<div id="modalTreinamentoLote" style="display:none; position: fixed; inset: 0; background: rgba(15,23,42,0.65); z-index: 10085; justify-content: center; align-items: center; padding: 16px; overflow-y: auto;" onclick="if(event.target===this) fecharModalLoteTreinamentos();">
+    <div style="background: var(--card, #fff); border-radius: 14px; max-width: 680px; width: 100%; max-height: 92vh; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 1px solid var(--border); overflow: hidden;">
+        <!-- Header do Modal -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--bg, #f8fafc);">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 20px;">📦</span>
+                <div>
+                    <h4 style="margin: 0; font-size: 15.5px; font-weight: 700; color: var(--text);">Incluir Treinamentos no Grupo (Lote)</h4>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 1px;">Vincule múltiplos cursos do catálogo de uma única vez com busca em tempo real</div>
+                </div>
+            </div>
+            <button onclick="fecharModalLoteTreinamentos()" style="background: transparent; border: none; font-size: 20px; cursor: pointer; color: var(--text-light); font-weight: 700;">✕</button>
+        </div>
+
+        <!-- Conteúdo do Modal (Scrollável) -->
+        <div style="padding: 18px 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px;">
+            <!-- Contexto do Grupo Selecionado -->
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 12px 14px;">
+                <div style="font-size: 10.5px; font-weight: 700; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px;">Grupo Alvo da Exigência (Contexto Travado)</div>
+                <div id="modalLoteGrupoNome" style="font-size: 14px; font-weight: 800; color: #1e3a8a; margin-top: 2px;">
+                    01 - VIGILÂNCIA
+                </div>
+            </div>
+
+            <!-- Opções Padrão da Regra -->
+            <div style="display: flex; flex-wrap: wrap; gap: 16px; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="loteObrigatorioAdmissao" checked style="width: 16px; height: 16px; accent-color: var(--primary);">
+                    Exigido na Admissão / Integração
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="loteAtivo" checked style="width: 16px; height: 16px; accent-color: var(--primary);">
+                    Regras Ativas no Sistema
+                </label>
+            </div>
+
+            <!-- Busca em Tempo Real no Catálogo -->
+            <div>
+                <div style="position: relative;">
+                    <input type="text" id="loteBuscaTreinamento" placeholder="🔍 Digite para pesquisar cursos por código ou nome em tempo real..." oninput="filtrarListaTreinamentosLote(this.value)" autocomplete="off" style="width: 100%; padding: 10px 36px 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box;">
+                    <button class="db-clear-btn" onclick="document.getElementById('loteBuscaTreinamento').value=''; filtrarListaTreinamentosLote('');" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 2px 6px; font-size: 12px;" title="Limpar busca">✕</button>
+                </div>
+            </div>
+
+            <!-- Barra de Ações Rápidas de Seleção -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px;">
+                <div style="display: flex; gap: 6px;">
+                    <button type="button" class="db-clear-btn" onclick="marcarTodosCursosLote(true)" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600;">
+                        ☑️ Marcar Todos Filtrados
+                    </button>
+                    <button type="button" class="db-clear-btn" onclick="marcarTodosCursosLote(false)" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600;">
+                        ⬜ Desmarcar Todos
+                    </button>
+                </div>
+                <div style="font-weight: 700; color: var(--text);">
+                    <span id="loteContadorSelecionados" style="color: var(--primary); font-size: 14px;">0</span> curso(s) selecionado(s)
+                </div>
+            </div>
+
+            <!-- Lista de Cursos com Checkboxes -->
+            <div id="loteListaTreinamentosContainer" class="lote-cursos-lista-container" style="max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px;">
+                <!-- Preenchido dinamicamente via renderizarListaCursosModalLote() -->
+            </div>
+
+            <div id="loteStatusMsg" style="font-size: 12px; min-height: 16px;"></div>
+        </div>
+
+        <!-- Footer do Modal -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-top: 1px solid var(--border); background: var(--bg, #f8fafc);">
+            <button type="button" class="db-clear-btn" onclick="fecharModalLoteTreinamentos()">Cancelar</button>
+            <button type="button" class="db-apply-btn" id="btnSalvarTreinamentosLote" onclick="salvarTreinamentosLote()" style="font-weight: 700; padding: 8px 18px;" disabled>
+                💾 Salvar <span id="btnContadorSalvarLote">0</span> Treinamento(s) no Grupo
+            </button>
         </div>
     </div>
 </div>
@@ -9510,8 +9621,8 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js"></script>
     <script src="logo_cop_base64.js?v=20261015_v197"></script>
-    <script src="dashboard.js?v=211"></script>
-    <script src="modules/treinamentos_ddsma.js?v=211"></script>
+    <script src="dashboard.js?v=212"></script>
+    <script src="modules/treinamentos_ddsma.js?v=212"></script>
     <script src="modules/efetivo_ferias.js?v=205"></script>
     <script src="modules/ghe_os.js?v=207"></script>
     <script src="modules/relatorio_sms_nc.js?v=203"></script>

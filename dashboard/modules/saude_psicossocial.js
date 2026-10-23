@@ -660,8 +660,22 @@ async function loadSaudeData() {
                 console.warn('Aviso ao carregar colaboradores_ferias na saúde:', errF);
             }
         }
+        window.allAsoExames = allAsoExames;
+        window.allAtestadosOcupacionais = allAtestadosOcupacionais;
+        window.allEfetivo = allEfetivo;
+        window.allColaboradoresFerias = allColaboradoresFerias;
+
         popularSaudeColabDatalists();
         renderSaudePanel();
+
+        // Se a subaba de recomendações/exames estiver ativa, re-renderiza com os dados atualizados
+        const btnRecActive = document.getElementById('saudeSubtabBtn-recomendacoes')?.classList.contains('active');
+        const tabRecVisible = document.getElementById('saudeSubtab-recomendacoes')?.style.display !== 'none';
+        if (btnRecActive || tabRecVisible) {
+            if (typeof renderRecomendacaoPsicossocial === 'function') {
+                renderRecomendacaoPsicossocial();
+            }
+        }
     } catch (err) {
         console.error('Erro ao carregar dados de saúde ocupacional:', err);
     }
@@ -2898,10 +2912,14 @@ function obterRegistroFeriasColab(matricula, dataRefIso) {
         const r = obterRegistroFeriasAtivo(matricula, dataRefIso);
         if (r) return r;
     }
-    if (!Array.isArray(allColaboradoresFerias) || allColaboradoresFerias.length === 0) return null;
+    const feriasLista = (Array.isArray(allColaboradoresFerias) && allColaboradoresFerias.length > 0)
+        ? allColaboradoresFerias
+        : (Array.isArray(window.allColaboradoresFerias) ? window.allColaboradoresFerias : []);
+    if (feriasLista.length === 0) return null;
     const ref = dataRefIso || new Date().toISOString().split('T')[0];
-    return allColaboradoresFerias.find(f => {
-        if (String(f.matricula) !== String(matricula) || f.status === 'cancelada') return false;
+    const matStr = String(matricula).trim();
+    return feriasLista.find(f => {
+        if (String(f.matricula || '').trim() !== matStr || f.status === 'cancelada') return false;
         if (f.data_inicio && f.data_fim) {
             return ref >= f.data_inicio && ref <= f.data_fim;
         }
@@ -2910,10 +2928,15 @@ function obterRegistroFeriasColab(matricula, dataRefIso) {
 }
 
 function obterRegistroAtestadoAtivo(matricula, dataRefIso) {
-    if (!matricula || !Array.isArray(allAtestadosOcupacionais) || allAtestadosOcupacionais.length === 0) return null;
+    if (!matricula) return null;
+    const atestadosLista = (Array.isArray(allAtestadosOcupacionais) && allAtestadosOcupacionais.length > 0)
+        ? allAtestadosOcupacionais
+        : (Array.isArray(window.allAtestadosOcupacionais) ? window.allAtestadosOcupacionais : []);
+    if (atestadosLista.length === 0) return null;
     const ref = dataRefIso || new Date().toISOString().split('T')[0];
-    return allAtestadosOcupacionais.find(a => {
-        if (String(a.matricula || '').trim() !== String(matricula).trim()) return false;
+    const matStr = String(matricula).trim();
+    return atestadosLista.find(a => {
+        if (String(a.matricula || '').trim() !== matStr) return false;
         const dtIni = a.data_inicio || '';
         if (!dtIni) return false;
         let dtFim = a.data_fim || '';
@@ -2929,92 +2952,155 @@ function obterRegistroAtestadoAtivo(matricula, dataRefIso) {
 function popularFiltrosEquipeRecomendacaoExames() {
     const selLider = document.getElementById('psicoFiltroLider');
     const selSetor = document.getElementById('psicoFiltroSetor');
-    if (!selLider) return;
+    const resumoEl = document.getElementById('psicoResumoFiltrosEquipe');
 
-    const valLiderAtual = selLider.value;
-    const valSetorAtual = selSetor ? selSetor.value : '';
+    try {
+        if (!selLider) return;
 
-    const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
-    const regexLider = /ENCARREGADO|SUPERVISOR|L[ÍI]DER|MESTRE|COORDENADOR|GERENTE/i;
+        const valLiderAtual = selLider.value;
+        const valSetorAtual = selSetor ? selSetor.value : '';
 
-    // 1. Mapear responsáveis e líderes a partir de colaboradores_efetivo
-    const lideresMap = new Map();
+        // Sincroniza allEfetivo com escopo global se necessário
+        if ((!allEfetivo || allEfetivo.length === 0) && Array.isArray(window.allEfetivo) && window.allEfetivo.length > 0) {
+            allEfetivo = window.allEfetivo;
+        }
 
-    (allEfetivo || []).forEach(e => {
-        const resp = (e.responsavel || '').trim();
-        if (!resp || resp === '-' || resp === '—') return;
-        const respKey = resp.toUpperCase();
-        if (!lideresMap.has(respKey)) {
-            lideresMap.set(respKey, {
-                valor: resp,
-                nome: resp,
-                nomeCompleto: '',
-                funcao: 'Equipe / Frente de Campo',
-                setor: e.setor || '',
-                totalAtivos: 0
+        // Se ainda estiver vazio, dispara consulta assíncrona ao Supabase sem travar o painel
+        if ((!allEfetivo || allEfetivo.length === 0) && typeof supabaseFetch === 'function' && !window._buscandoEfetivoPsico) {
+            window._buscandoEfetivoPsico = true;
+            supabaseFetch('colaboradores_efetivo', '?select=*').then(rows => {
+                window._buscandoEfetivoPsico = false;
+                if (Array.isArray(rows) && rows.length > 0) {
+                    allEfetivo = rows;
+                    window.allEfetivo = rows;
+                    popularFiltrosEquipeRecomendacaoExames();
+                    renderTabelaRecomendacaoPsicossocial();
+                }
+            }).catch(err => {
+                window._buscandoEfetivoPsico = false;
+                console.warn('Aviso ao carregar colaboradores_efetivo para filtros de equipe:', err);
             });
         }
-        if (colaboradorEstaAtivo(e)) {
-            lideresMap.get(respKey).totalAtivos++;
+
+        const efetivoBase = Array.isArray(allEfetivo) ? allEfetivo : [];
+        const ativos = efetivoBase.filter(e => {
+            try {
+                return (typeof colaboradorEstaAtivo === 'function') ? colaboradorEstaAtivo(e) : (String(e.status || '').toLowerCase().startsWith('ativo'));
+            } catch (_) {
+                return true;
+            }
+        });
+
+        const regexLider = /ENCARREGADO|SUPERVISOR|L[ÍI]DER|MESTRE|COORDENADOR|GERENTE/i;
+
+        // 1. Mapear responsáveis e líderes a partir de colaboradores_efetivo com proteção rigorosa a nulos
+        const lideresMap = new Map();
+
+        efetivoBase.forEach(e => {
+            if (!e) return;
+            const resp = (e.responsavel || '').trim();
+            if (!resp || resp === '-' || resp === '—') return;
+            const respKey = resp.toUpperCase();
+            if (!lideresMap.has(respKey)) {
+                lideresMap.set(respKey, {
+                    valor: resp,
+                    nome: resp,
+                    nomeCompleto: '',
+                    funcao: 'Equipe / Frente de Campo',
+                    setor: (e.setor || '').trim(),
+                    totalAtivos: 0
+                });
+            }
+            const estaAtivo = (typeof colaboradorEstaAtivo === 'function') ? colaboradorEstaAtivo(e) : (String(e.status || '').toLowerCase().startsWith('ativo'));
+            if (estaAtivo) {
+                lideresMap.get(respKey).totalAtivos++;
+            }
+        });
+
+        // Vincula colaboradores com funções de liderança formal às frentes ou cria opção individual
+        efetivoBase.forEach(e => {
+            if (!e) return;
+            const func = (e.funcao || '').trim();
+            const ehLider = regexLider.test(func);
+            if (!ehLider) return;
+            const nomeStr = (e.nome || '').trim();
+            if (!nomeStr) return;
+            const nomeUpper = nomeStr.toUpperCase();
+            const respUpper = (e.responsavel || '').trim().toUpperCase();
+
+            let achou = false;
+            for (let [k, item] of lideresMap.entries()) {
+                if (nomeUpper.includes(k) || k.includes(nomeUpper) || (respUpper && respUpper === k)) {
+                    item.nomeCompleto = nomeStr;
+                    item.funcao = func || item.funcao;
+                    if (e.setor) item.setor = (e.setor || '').trim();
+                    achou = true;
+                    break;
+                }
+            }
+
+            const estaAtivo = (typeof colaboradorEstaAtivo === 'function') ? colaboradorEstaAtivo(e) : (String(e.status || '').toLowerCase().startsWith('ativo'));
+            if (!achou && estaAtivo) {
+                const val = `NOME:${nomeStr}`;
+                lideresMap.set(val.toUpperCase(), {
+                    valor: val,
+                    nome: nomeStr,
+                    nomeCompleto: nomeStr,
+                    funcao: func || 'Líder / Encarregado',
+                    setor: (e.setor || '').trim(),
+                    totalAtivos: 1
+                });
+            }
+        });
+
+        const listaLideres = Array.from(lideresMap.values()).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+
+        let htmlLider = '<option value="">Todos os Encarregados / Equipes</option>';
+        listaLideres.forEach(item => {
+            const qtdTxt = item.totalAtivos > 0 ? ` (${item.totalAtivos} ativos)` : '';
+            const descTxt = item.nomeCompleto ? `${item.nome} — ${item.nomeCompleto} [${item.funcao}]${qtdTxt}` : `${item.nome} [${item.funcao}]${qtdTxt}`;
+            htmlLider += `<option value="${escapeHTML(item.valor)}">${escapeHTML(descTxt)}</option>`;
+        });
+        selLider.innerHTML = htmlLider;
+        if (valLiderAtual && Array.from(selLider.options).some(o => o.value === valLiderAtual)) {
+            selLider.value = valLiderAtual;
         }
-    });
 
-    // Vincula colaboradores com funções de liderança formal às frentes ou cria opção individual
-    (allEfetivo || []).forEach(e => {
-        const ehLider = regexLider.test(e.funcao || '');
-        if (!ehLider) return;
-        const nomeUpper = (e.nome || '').trim().toUpperCase();
-        const respUpper = (e.responsavel || '').trim().toUpperCase();
-
-        let achou = false;
-        for (let [k, item] of lideresMap.entries()) {
-            if (nomeUpper.includes(k) || k.includes(nomeUpper) || respUpper === k) {
-                item.nomeCompleto = e.nome;
-                item.funcao = e.funcao;
-                if (e.setor) item.setor = e.setor;
-                achou = true;
-                break;
+        // 2. Mapear setores dinamicamente com proteção a nulos
+        if (selSetor) {
+            const setoresSet = new Set();
+            ativos.forEach(e => {
+                const s = (e && e.setor ? String(e.setor) : '').trim();
+                if (s) setoresSet.add(s);
+            });
+            const setores = Array.from(setoresSet).sort((a, b) => a.localeCompare(b));
+            let htmlSetor = '<option value="">Todos os Setores / Frentes</option>';
+            setores.forEach(s => {
+                htmlSetor += `<option value="${escapeHTML(s)}">${escapeHTML(s)}</option>`;
+            });
+            selSetor.innerHTML = htmlSetor;
+            if (valSetorAtual && Array.from(selSetor.options).some(o => o.value === valSetorAtual)) {
+                selSetor.value = valSetorAtual;
             }
         }
-
-        if (!achou && colaboradorEstaAtivo(e)) {
-            const val = `NOME:${e.nome.trim()}`;
-            lideresMap.set(val.toUpperCase(), {
-                valor: val,
-                nome: e.nome,
-                nomeCompleto: e.nome,
-                funcao: e.funcao,
-                setor: e.setor || '',
-                totalAtivos: 1
-            });
+    } catch (err) {
+        console.error('Erro ao popular filtros de equipe/encarregados:', err);
+        if (selLider && (!selLider.options || selLider.options.length <= 1)) {
+            selLider.innerHTML = '<option value="">Todos os Encarregados / Equipes</option>';
         }
-    });
-
-    const listaLideres = Array.from(lideresMap.values()).sort((a, b) => a.nome.localeCompare(b.nome));
-
-    let htmlLider = '<option value="">Todos os Encarregados / Equipes</option>';
-    listaLideres.forEach(item => {
-        const qtdTxt = item.totalAtivos > 0 ? ` (${item.totalAtivos} ativos)` : '';
-        const descTxt = item.nomeCompleto ? `${item.nome} — ${item.nomeCompleto} [${item.funcao}]${qtdTxt}` : `${item.nome} [${item.funcao}]${qtdTxt}`;
-        htmlLider += `<option value="${escapeHTML(item.valor)}">${escapeHTML(descTxt)}</option>`;
-    });
-    selLider.innerHTML = htmlLider;
-    if (valLiderAtual) selLider.value = valLiderAtual;
-
-    // 2. Mapear setores dinamicamente
-    if (selSetor) {
-        const setoresSet = new Set();
-        ativos.forEach(e => {
-            const s = (e.setor || '').trim();
-            if (s) setoresSet.add(s);
-        });
-        const setores = Array.from(setoresSet).sort((a, b) => a.localeCompare(b));
-        let htmlSetor = '<option value="">Todos os Setores / Frentes</option>';
-        setores.forEach(s => {
-            htmlSetor += `<option value="${escapeHTML(s)}">${escapeHTML(s)}</option>`;
-        });
-        selSetor.innerHTML = htmlSetor;
-        if (valSetorAtual) selSetor.value = valSetorAtual;
+        if (selSetor && (!selSetor.options || selSetor.options.length <= 1)) {
+            selSetor.innerHTML = '<option value="">Todos os Setores / Frentes</option>';
+        }
+    } finally {
+        // Remove rigorosamente o indicador visual travado "Carregando dados da equipe..."
+        if (resumoEl && resumoEl.textContent.includes('Carregando dados da equipe')) {
+            const totalColabs = (typeof obterDadosRecomendacaoPsicossocial === 'function')
+                ? (obterDadosRecomendacaoPsicossocial() || []).length
+                : (allEfetivo ? allEfetivo.length : 0);
+            resumoEl.innerHTML = totalColabs > 0
+                ? `Visão Geral da Obra (${totalColabs} colaboradores monitorados)`
+                : `Visão Geral da Obra`;
+        }
     }
 }
 
@@ -3023,7 +3109,58 @@ function aoMudarFiltroEquipePsico() {
 }
 
 function obterDadosRecomendacaoPsicossocial() {
-    const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
+    // Sincroniza arrays com o escopo global do window
+    if ((!allEfetivo || allEfetivo.length === 0) && Array.isArray(window.allEfetivo) && window.allEfetivo.length > 0) {
+        allEfetivo = window.allEfetivo;
+    }
+    if ((!allColaboradoresFerias || allColaboradoresFerias.length === 0) && Array.isArray(window.allColaboradoresFerias) && window.allColaboradoresFerias.length > 0) {
+        allColaboradoresFerias = window.allColaboradoresFerias;
+    }
+    if ((!allAtestadosOcupacionais || allAtestadosOcupacionais.length === 0) && Array.isArray(window.allAtestadosOcupacionais) && window.allAtestadosOcupacionais.length > 0) {
+        allAtestadosOcupacionais = window.allAtestadosOcupacionais;
+    }
+    if ((!allAsoExames || allAsoExames.length === 0) && Array.isArray(window.allAsoExames) && window.allAsoExames.length > 0) {
+        allAsoExames = window.allAsoExames;
+    }
+
+    // Se férias ou atestados ainda não estiverem carregados na memória, dispara consulta assíncrona sob demanda
+    if ((!allColaboradoresFerias || allColaboradoresFerias.length === 0) && typeof supabaseFetch === 'function' && !window._buscandoFeriasPsico) {
+        window._buscandoFeriasPsico = true;
+        supabaseFetch('colaboradores_ferias', '?select=*&order=limite_concessivo_fatal.asc').then(rows => {
+            window._buscandoFeriasPsico = false;
+            if (Array.isArray(rows)) {
+                allColaboradoresFerias = rows;
+                window.allColaboradoresFerias = rows;
+                renderRecomendacaoPsicossocial();
+            }
+        }).catch(err => {
+            window._buscandoFeriasPsico = false;
+            console.warn('Aviso ao carregar colaboradores_ferias sob demanda:', err);
+        });
+    }
+
+    if ((!allAtestadosOcupacionais || allAtestadosOcupacionais.length === 0) && typeof supabaseFetch === 'function' && !window._buscandoAtestadosPsico) {
+        window._buscandoAtestadosPsico = true;
+        supabaseFetch('atestados_ocupacionais', '?select=*').then(rows => {
+            window._buscandoAtestadosPsico = false;
+            if (Array.isArray(rows)) {
+                allAtestadosOcupacionais = rows;
+                window.allAtestadosOcupacionais = rows;
+                renderRecomendacaoPsicossocial();
+            }
+        }).catch(err => {
+            window._buscandoAtestadosPsico = false;
+            console.warn('Aviso ao carregar atestados_ocupacionais sob demanda:', err);
+        });
+    }
+
+    const ativos = (allEfetivo || []).filter(e => {
+        try {
+            return (typeof colaboradorEstaAtivo === 'function') ? colaboradorEstaAtivo(e) : (String(e.status || '').toLowerCase().startsWith('ativo'));
+        } catch (_) {
+            return true;
+        }
+    });
     const hojeStr = new Date().toISOString().split('T')[0];
     const dataMutirao = obterDataMutiraoPsico();
     const dataRefChecagem = (dataMutirao && dataMutirao >= hojeStr) ? dataMutirao : hojeStr;
@@ -3416,11 +3553,23 @@ function renderRecomendacaoPsicossocial() {
     renderBannerMutiraoPsico();
 
     const dados = obterDadosRecomendacaoPsicossocial();
-    const total = dados.length;
-    const pendentes = dados.filter(d => d.statusKey === 'PENDENTE').length;
-    const vencendo = dados.filter(d => d.statusKey === 'VENCENDO' || d.statusKey === 'VENCIDO').length;
-    const emDia = dados.filter(d => d.statusKey === 'EM_DIA').length;
-    const emFeriasOuAfastado = dados.filter(d => d.emFerias || d.emAfastamento).length;
+    const chkOcultar = document.getElementById('psicoOcultarEmFerias');
+    const ocultarFerias = chkOcultar ? chkOcultar.checked : true;
+
+    // Quantidade real de colaboradores em férias ou afastamento nos GHEs monitorados
+    const totalAfastados = dados.filter(d => d.emFerias || d.emAfastamento).length;
+
+    // Se "Ocultar colaboradores em período de férias ou afastamento ativo" estiver marcado:
+    // Exclui os colaboradores com afastamento/férias ativas da listagem e recalcula os totais dos cards/pílulas.
+    // Se desmarcado: exibe a totalidade (74) e marca visualmente quem está em afastamento.
+    const dadosOperacionais = (ocultarFerias && psicoFiltroStatusAtual !== 'ferias')
+        ? dados.filter(d => !d.emFerias && !d.emAfastamento)
+        : dados;
+
+    const total = dadosOperacionais.length;
+    const pendentes = dadosOperacionais.filter(d => d.statusKey === 'PENDENTE').length;
+    const vencendo = dadosOperacionais.filter(d => d.statusKey === 'VENCENDO' || d.statusKey === 'VENCIDO').length;
+    const emDia = dadosOperacionais.filter(d => d.statusKey === 'EM_DIA').length;
     const conformidade = total > 0 ? ((emDia / total) * 100).toFixed(1) : 100;
 
     const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -3444,10 +3593,15 @@ function renderRecomendacaoPsicossocial() {
     setTxt('pillCountPsicoPendentes', pendentes);
     setTxt('pillCountPsicoVencendo', vencendo);
     setTxt('pillCountPsicoEmDia', emDia);
-    setTxt('pillCountPsicoFerias', emFeriasOuAfastado);
+    setTxt('pillCountPsicoFerias', totalAfastados);
 
     renderTabelaRecomendacaoPsicossocial();
 }
+
+function aoAlternarOcultarFeriasPsico() {
+    renderRecomendacaoPsicossocial();
+}
+window.aoAlternarOcultarFeriasPsico = aoAlternarOcultarFeriasPsico;
 
 function atualizarBarraSelecaoConvocacaoPsico() {
     const contadorEl = document.getElementById('contadorSelecionadosPsicoMain');

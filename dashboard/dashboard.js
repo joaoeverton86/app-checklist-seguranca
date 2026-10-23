@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const VERSAO_PAINEL = 'v215';
+const VERSAO_PAINEL = 'v216';
 const DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
@@ -25495,8 +25495,30 @@ async function loadSaudeData() {
             diasTrabalhadosRows.forEach(r => { hhtDiasTrabalhadosMap[r.id] = r; });
         }
         if (allAcidentes.length === 0) allAcidentes = await supabaseFetch('acidentes', '?select=*');
+        if (!allColaboradoresFerias || allColaboradoresFerias.length === 0) {
+            try {
+                allColaboradoresFerias = await supabaseFetch('colaboradores_ferias', '?select=*&order=limite_concessivo_fatal.asc');
+                window.allColaboradoresFerias = allColaboradoresFerias;
+            } catch (errF) {
+                console.warn('Aviso ao carregar colaboradores_ferias na saúde:', errF);
+            }
+        }
+        window.allAsoExames = allAsoExames;
+        window.allAtestadosOcupacionais = allAtestadosOcupacionais;
+        window.allEfetivo = allEfetivo;
+        window.allColaboradoresFerias = allColaboradoresFerias;
+
         popularSaudeColabDatalists();
         renderSaudePanel();
+
+        // Se a subaba de recomendações/exames estiver ativa, re-renderiza com os dados atualizados
+        const btnRecActive = document.getElementById('saudeSubtabBtn-recomendacoes')?.classList.contains('active');
+        const tabRecVisible = document.getElementById('saudeSubtab-recomendacoes')?.style.display !== 'none';
+        if (btnRecActive || tabRecVisible) {
+            if (typeof renderRecomendacaoPsicossocial === 'function') {
+                renderRecomendacaoPsicossocial();
+            }
+        }
     } catch (err) {
         console.error('Erro ao carregar dados de saúde ocupacional:', err);
     }
@@ -27722,12 +27744,269 @@ function obterNomeCurtoSetorGhe(gheId) {
     return nome.replace(/^GRUPO\s*\d+\s*-\s*/i, '').replace(/^GHE\s*\d+\s*-\s*/i, '').trim();
 }
 
-let psicoFiltroStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'vencendo' | 'em_dia'
+let psicoFiltroStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'vencendo' | 'em_dia' | 'ferias'
+
+// ==============================================================
+// HELPERS DE FÉRIAS E AFASTAMENTOS (NR-07 / GESTÃO OPERACIONAL)
+// ==============================================================
+function obterRegistroFeriasColab(matricula, dataRefIso) {
+    if (!matricula) return null;
+    if (typeof obterRegistroFeriasAtivo === 'function') {
+        const r = obterRegistroFeriasAtivo(matricula, dataRefIso);
+        if (r) return r;
+    }
+    const feriasLista = (Array.isArray(allColaboradoresFerias) && allColaboradoresFerias.length > 0)
+        ? allColaboradoresFerias
+        : (Array.isArray(window.allColaboradoresFerias) ? window.allColaboradoresFerias : []);
+    if (feriasLista.length === 0) return null;
+    const ref = dataRefIso || new Date().toISOString().split('T')[0];
+    const matStr = String(matricula).trim();
+    return feriasLista.find(f => {
+        if (String(f.matricula || '').trim() !== matStr || f.status === 'cancelada') return false;
+        if (f.data_inicio && f.data_fim) {
+            return ref >= f.data_inicio && ref <= f.data_fim;
+        }
+        return f.status === 'em_gozo';
+    }) || null;
+}
+
+function obterRegistroAtestadoAtivo(matricula, dataRefIso) {
+    if (!matricula) return null;
+    const atestadosLista = (Array.isArray(allAtestadosOcupacionais) && allAtestadosOcupacionais.length > 0)
+        ? allAtestadosOcupacionais
+        : (Array.isArray(window.allAtestadosOcupacionais) ? window.allAtestadosOcupacionais : []);
+    if (atestadosLista.length === 0) return null;
+    const ref = dataRefIso || new Date().toISOString().split('T')[0];
+    const matStr = String(matricula).trim();
+    return atestadosLista.find(a => {
+        if (String(a.matricula || '').trim() !== matStr) return false;
+        const dtIni = a.data_inicio || '';
+        if (!dtIni) return false;
+        let dtFim = a.data_fim || '';
+        if (!dtFim && a.dias_afastamento) {
+            dtFim = addDias(dtIni, Math.max(1, parseInt(a.dias_afastamento, 10)) - 1);
+        }
+        if (!dtFim) dtFim = dtIni;
+        return ref >= dtIni && ref <= dtFim;
+    }) || null;
+}
+
+// Popular dinamicamente os filtros de Equipe / Encarregado e Setor (Zero Hardcode - Regra de Ouro)
+function popularFiltrosEquipeRecomendacaoExames() {
+    const selLider = document.getElementById('psicoFiltroLider');
+    const selSetor = document.getElementById('psicoFiltroSetor');
+    const resumoEl = document.getElementById('psicoResumoFiltrosEquipe');
+
+    try {
+        if (!selLider) return;
+
+        const valLiderAtual = selLider.value;
+        const valSetorAtual = selSetor ? selSetor.value : '';
+
+        // Sincroniza allEfetivo com escopo global se necessário
+        if ((!allEfetivo || allEfetivo.length === 0) && Array.isArray(window.allEfetivo) && window.allEfetivo.length > 0) {
+            allEfetivo = window.allEfetivo;
+        }
+
+        // Se ainda estiver vazio, dispara consulta assíncrona ao Supabase sem travar o painel
+        if ((!allEfetivo || allEfetivo.length === 0) && typeof supabaseFetch === 'function' && !window._buscandoEfetivoPsico) {
+            window._buscandoEfetivoPsico = true;
+            supabaseFetch('colaboradores_efetivo', '?select=*').then(rows => {
+                window._buscandoEfetivoPsico = false;
+                if (Array.isArray(rows) && rows.length > 0) {
+                    allEfetivo = rows;
+                    window.allEfetivo = rows;
+                    popularFiltrosEquipeRecomendacaoExames();
+                    renderTabelaRecomendacaoPsicossocial();
+                }
+            }).catch(err => {
+                window._buscandoEfetivoPsico = false;
+                console.warn('Aviso ao carregar colaboradores_efetivo para filtros de equipe:', err);
+            });
+        }
+
+        const efetivoBase = Array.isArray(allEfetivo) ? allEfetivo : [];
+        const ativos = efetivoBase.filter(e => {
+            try {
+                return (typeof colaboradorEstaAtivo === 'function') ? colaboradorEstaAtivo(e) : (String(e.status || '').toLowerCase().startsWith('ativo'));
+            } catch (_) {
+                return true;
+            }
+        });
+
+        const regexLider = /ENCARREGADO|SUPERVISOR|L[ÍI]DER|MESTRE|COORDENADOR|GERENTE/i;
+
+        // 1. Mapear responsáveis e líderes a partir de colaboradores_efetivo com proteção rigorosa a nulos
+        const lideresMap = new Map();
+
+        efetivoBase.forEach(e => {
+            if (!e) return;
+            const resp = (e.responsavel || '').trim();
+            if (!resp || resp === '-' || resp === '—') return;
+            const respKey = resp.toUpperCase();
+            if (!lideresMap.has(respKey)) {
+                lideresMap.set(respKey, {
+                    valor: resp,
+                    nome: resp,
+                    nomeCompleto: '',
+                    funcao: 'Equipe / Frente de Campo',
+                    setor: (e.setor || '').trim(),
+                    totalAtivos: 0
+                });
+            }
+            const estaAtivo = (typeof colaboradorEstaAtivo === 'function') ? colaboradorEstaAtivo(e) : (String(e.status || '').toLowerCase().startsWith('ativo'));
+            if (estaAtivo) {
+                lideresMap.get(respKey).totalAtivos++;
+            }
+        });
+
+        // Vincula colaboradores com funções de liderança formal às frentes ou cria opção individual
+        efetivoBase.forEach(e => {
+            if (!e) return;
+            const func = (e.funcao || '').trim();
+            const ehLider = regexLider.test(func);
+            if (!ehLider) return;
+            const nomeStr = (e.nome || '').trim();
+            if (!nomeStr) return;
+            const nomeUpper = nomeStr.toUpperCase();
+            const respUpper = (e.responsavel || '').trim().toUpperCase();
+
+            let achou = false;
+            for (let [k, item] of lideresMap.entries()) {
+                if (nomeUpper.includes(k) || k.includes(nomeUpper) || (respUpper && respUpper === k)) {
+                    item.nomeCompleto = nomeStr;
+                    item.funcao = func || item.funcao;
+                    if (e.setor) item.setor = (e.setor || '').trim();
+                    achou = true;
+                    break;
+                }
+            }
+
+            const estaAtivo = (typeof colaboradorEstaAtivo === 'function') ? colaboradorEstaAtivo(e) : (String(e.status || '').toLowerCase().startsWith('ativo'));
+            if (!achou && estaAtivo) {
+                const val = `NOME:${nomeStr}`;
+                lideresMap.set(val.toUpperCase(), {
+                    valor: val,
+                    nome: nomeStr,
+                    nomeCompleto: nomeStr,
+                    funcao: func || 'Líder / Encarregado',
+                    setor: (e.setor || '').trim(),
+                    totalAtivos: 1
+                });
+            }
+        });
+
+        const listaLideres = Array.from(lideresMap.values()).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+
+        let htmlLider = '<option value="">Todos os Encarregados / Equipes</option>';
+        listaLideres.forEach(item => {
+            const qtdTxt = item.totalAtivos > 0 ? ` (${item.totalAtivos} ativos)` : '';
+            const descTxt = item.nomeCompleto ? `${item.nome} — ${item.nomeCompleto} [${item.funcao}]${qtdTxt}` : `${item.nome} [${item.funcao}]${qtdTxt}`;
+            htmlLider += `<option value="${escapeHTML(item.valor)}">${escapeHTML(descTxt)}</option>`;
+        });
+        selLider.innerHTML = htmlLider;
+        if (valLiderAtual && Array.from(selLider.options).some(o => o.value === valLiderAtual)) {
+            selLider.value = valLiderAtual;
+        }
+
+        // 2. Mapear setores dinamicamente com proteção a nulos
+        if (selSetor) {
+            const setoresSet = new Set();
+            ativos.forEach(e => {
+                const s = (e && e.setor ? String(e.setor) : '').trim();
+                if (s) setoresSet.add(s);
+            });
+            const setores = Array.from(setoresSet).sort((a, b) => a.localeCompare(b));
+            let htmlSetor = '<option value="">Todos os Setores / Frentes</option>';
+            setores.forEach(s => {
+                htmlSetor += `<option value="${escapeHTML(s)}">${escapeHTML(s)}</option>`;
+            });
+            selSetor.innerHTML = htmlSetor;
+            if (valSetorAtual && Array.from(selSetor.options).some(o => o.value === valSetorAtual)) {
+                selSetor.value = valSetorAtual;
+            }
+        }
+    } catch (err) {
+        console.error('Erro ao popular filtros de equipe/encarregados:', err);
+        if (selLider && (!selLider.options || selLider.options.length <= 1)) {
+            selLider.innerHTML = '<option value="">Todos os Encarregados / Equipes</option>';
+        }
+        if (selSetor && (!selSetor.options || selSetor.options.length <= 1)) {
+            selSetor.innerHTML = '<option value="">Todos os Setores / Frentes</option>';
+        }
+    } finally {
+        // Remove rigorosamente o indicador visual travado "Carregando dados da equipe..."
+        if (resumoEl && resumoEl.textContent.includes('Carregando dados da equipe')) {
+            const totalColabs = (typeof obterDadosRecomendacaoPsicossocial === 'function')
+                ? (obterDadosRecomendacaoPsicossocial() || []).length
+                : (allEfetivo ? allEfetivo.length : 0);
+            resumoEl.innerHTML = totalColabs > 0
+                ? `Visão Geral da Obra (${totalColabs} colaboradores monitorados)`
+                : `Visão Geral da Obra`;
+        }
+    }
+}
+
+function aoMudarFiltroEquipePsico() {
+    renderTabelaRecomendacaoPsicossocial();
+}
 
 function obterDadosRecomendacaoPsicossocial() {
-    const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
+    // Sincroniza arrays com o escopo global do window
+    if ((!allEfetivo || allEfetivo.length === 0) && Array.isArray(window.allEfetivo) && window.allEfetivo.length > 0) {
+        allEfetivo = window.allEfetivo;
+    }
+    if ((!allColaboradoresFerias || allColaboradoresFerias.length === 0) && Array.isArray(window.allColaboradoresFerias) && window.allColaboradoresFerias.length > 0) {
+        allColaboradoresFerias = window.allColaboradoresFerias;
+    }
+    if ((!allAtestadosOcupacionais || allAtestadosOcupacionais.length === 0) && Array.isArray(window.allAtestadosOcupacionais) && window.allAtestadosOcupacionais.length > 0) {
+        allAtestadosOcupacionais = window.allAtestadosOcupacionais;
+    }
+    if ((!allAsoExames || allAsoExames.length === 0) && Array.isArray(window.allAsoExames) && window.allAsoExames.length > 0) {
+        allAsoExames = window.allAsoExames;
+    }
+
+    // Se férias ou atestados ainda não estiverem carregados na memória, dispara consulta assíncrona sob demanda
+    if ((!allColaboradoresFerias || allColaboradoresFerias.length === 0) && typeof supabaseFetch === 'function' && !window._buscandoFeriasPsico) {
+        window._buscandoFeriasPsico = true;
+        supabaseFetch('colaboradores_ferias', '?select=*&order=limite_concessivo_fatal.asc').then(rows => {
+            window._buscandoFeriasPsico = false;
+            if (Array.isArray(rows)) {
+                allColaboradoresFerias = rows;
+                window.allColaboradoresFerias = rows;
+                renderRecomendacaoPsicossocial();
+            }
+        }).catch(err => {
+            window._buscandoFeriasPsico = false;
+            console.warn('Aviso ao carregar colaboradores_ferias sob demanda:', err);
+        });
+    }
+
+    if ((!allAtestadosOcupacionais || allAtestadosOcupacionais.length === 0) && typeof supabaseFetch === 'function' && !window._buscandoAtestadosPsico) {
+        window._buscandoAtestadosPsico = true;
+        supabaseFetch('atestados_ocupacionais', '?select=*').then(rows => {
+            window._buscandoAtestadosPsico = false;
+            if (Array.isArray(rows)) {
+                allAtestadosOcupacionais = rows;
+                window.allAtestadosOcupacionais = rows;
+                renderRecomendacaoPsicossocial();
+            }
+        }).catch(err => {
+            window._buscandoAtestadosPsico = false;
+            console.warn('Aviso ao carregar atestados_ocupacionais sob demanda:', err);
+        });
+    }
+
+    const ativos = (allEfetivo || []).filter(e => {
+        try {
+            return (typeof colaboradorEstaAtivo === 'function') ? colaboradorEstaAtivo(e) : (String(e.status || '').toLowerCase().startsWith('ativo'));
+        } catch (_) {
+            return true;
+        }
+    });
     const hojeStr = new Date().toISOString().split('T')[0];
     const dataMutirao = obterDataMutiraoPsico();
+    const dataRefChecagem = (dataMutirao && dataMutirao >= hojeStr) ? dataMutirao : hojeStr;
     const ghesObrigatorios = obterGhesObrigatoriosPsicossocial();
     const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
     const ehPsico = (exameComplementarFocoAtual === 'psicossocial' || exameCfg.id === 'psicossocial');
@@ -27792,24 +28071,19 @@ function obterDadosRecomendacaoPsicossocial() {
                     motivoDetalhado = `Avaliação Válida até ${formatSimpleDate(vencExame)}`;
                 }
             } else {
-                // NÃO POSSUI exame psicossocial realizado >= 01/07/2026
                 temExame = false;
 
                 if (admitidoAposMarco) {
-                    // Caso 1: Admitido a partir de 01/07/2026 sem psicossocial
                     statusKey = 'PENDENTE';
                     statusLabel = '🔴 Pendente (Admissional)';
                     statusBadge = '<span style="background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🔴 PENDENTE (ADMISSIONAL)</span>';
                     motivoDetalhado = 'Pendente de Inclusão (Admitido após 01/07/2026 sem Avaliação Psicossocial)';
                 } else if (periodicoAposMarco) {
-                    // Caso 2: Periódico realizado a partir de 01/07/2026 sem o psicossocial (GLEISON, JOSE LEANDRO, LUIS EDUARDO)
                     statusKey = 'PENDENTE';
                     statusLabel = '🔴 Pendente (Periódico)';
                     statusBadge = '<span style="background:#fee2e2; color:#b91c1c; border:1px solid #f87171; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px; box-shadow: 0 1px 2px rgba(185,28,28,0.15);">🔴 PENDENTE (PERIÓDICO)</span>';
                     motivoDetalhado = `Pendente (Periódico realizado em ${formatSimpleDate(dataUltimoPeriodico)} sem Psicossocial)`;
                 } else {
-                    // Caso 3: Admitido < 01/07/2026 E último periódico anterior a 01/07/2026
-                    // Manter regular até o próximo periódico vencer
                     const vencAso = ultimoAso ? ultimoAso.data_vencimento : null;
                     if (vencAso && vencAso < hojeStr) {
                         statusKey = 'VENCIDO';
@@ -27868,12 +28142,66 @@ function obterDadosRecomendacaoPsicossocial() {
             }
         }
 
+        // ==============================================================
+        // CHECAGEM DE FÉRIAS E AFASTAMENTOS ATIVOS (NR-07)
+        // ==============================================================
+        const regFerias = obterRegistroFeriasColab(c.id, dataRefChecagem) || obterRegistroFeriasColab(c.id, hojeStr);
+        const emFerias = !!regFerias;
+        const dtFimFerias = regFerias ? regFerias.data_fim : null;
+        const dtRetornoFerias = dtFimFerias ? addDias(dtFimFerias, 1) : null;
+
+        const regAtestado = obterRegistroAtestadoAtivo(c.id, dataRefChecagem) || obterRegistroAtestadoAtivo(c.id, hojeStr);
+        const emAfastamento = !!regAtestado;
+        const diasAfastamento = regAtestado ? (parseInt(regAtestado.dias_afastamento, 10) || 1) : 0;
+        const exigeRetornoNr07 = diasAfastamento >= 30; // NR-07 item 7.5.9
+        let dtFimAfastamento = null;
+        if (regAtestado) {
+            dtFimAfastamento = regAtestado.data_fim || addDias(regAtestado.data_inicio, Math.max(1, diasAfastamento) - 1);
+        }
+        const dtRetornoAfastamento = dtFimAfastamento ? addDias(dtFimAfastamento, 1) : null;
+
+        let badgeFeriasOuAfastamento = '';
+        let sugestaoRetorno = '';
+
+        if (emFerias) {
+            badgeFeriasOuAfastamento = `<span class="badge-status-ferias" title="Colaborador em gozo de férias">🏖️ Em Férias${dtFimFerias ? ' até ' + formatSimpleDate(dtFimFerias) : ''}</span>`;
+            if (statusKey === 'PENDENTE' || statusKey === 'VENCIDO' || statusKey === 'VENCENDO') {
+                sugestaoRetorno = dtRetornoFerias ? `📅 Agendar para retorno: ${formatSimpleDate(dtRetornoFerias)}` : '📅 Agendar no retorno';
+            }
+        } else if (emAfastamento) {
+            badgeFeriasOuAfastamento = `<span class="badge-status-afastado" title="Colaborador com atestado/afastamento médico">${exigeRetornoNr07 ? '🏥 Afastado (>30d NR-07)' : '🏥 Afastado'}${dtFimAfastamento ? ' até ' + formatSimpleDate(dtFimAfastamento) : ''}</span>`;
+            if (exigeRetornoNr07) {
+                sugestaoRetorno = `⚠️ Exame de Retorno ao Trabalho no 1º dia (${dtRetornoAfastamento ? formatSimpleDate(dtRetornoAfastamento) : 'retorno'})`;
+            } else if (statusKey === 'PENDENTE' || statusKey === 'VENCIDO' || statusKey === 'VENCENDO') {
+                sugestaoRetorno = dtRetornoAfastamento ? `📅 Agendar para retorno: ${formatSimpleDate(dtRetornoAfastamento)}` : '📅 Agendar no retorno';
+            }
+        }
+
+        // CICLOS DE FÉRIAS CLT & APTIDÃO OPERACIONAL NR-07
+        const resumoCiclos = typeof obterResumoCiclosFeriasColab === 'function' ? obterResumoCiclosFeriasColab(c.id) : null;
+        const cicloRotulo = resumoCiclos ? resumoCiclos.cicloAtualRotulo : '1º Ciclo';
+        const ciclo1Fechado = resumoCiclos ? resumoCiclos.ciclo1Fechado : false;
+        const ciclo2Fechado = resumoCiclos ? resumoCiclos.ciclo2Fechado : false;
+        const badgeCiclo = resumoCiclos ? resumoCiclos.badgeCicloHtml : '';
+
+        // Liderança / Encarregado da frente de serviço
+        const respCadastrado = (c.responsavel || '').trim();
+        const liderNome = (respCadastrado && respCadastrado !== '-' && respCadastrado !== '—') ? respCadastrado : '';
+
+        // Exames do GHE exigidos pelo PCMSO
+        const infoGheColab = typeof examesGheColaborador === 'function' ? examesGheColaborador(c) : null;
+        const examesPcmsoGhe = (infoGheColab && Array.isArray(infoGheColab.exames))
+            ? infoGheColab.exames.map(e => e.nome)
+            : [exameCfg.nomeExame];
+
         lista.push({
             matricula: c.id,
             nome: c.nome || '',
             cpf: c.cpf || '',
             funcao: c.funcao || '',
             setor: c.setor || '',
+            responsavel: respCadastrado,
+            liderNome: liderNome,
             ghe: g,
             gheNome: obterNomeGheCompleto(g),
             dt_admissao: dtAdm,
@@ -27889,7 +28217,23 @@ function obterDadosRecomendacaoPsicossocial() {
             statusKey,
             statusLabel,
             statusBadge,
-            motivoDetalhado
+            motivoDetalhado,
+            emFerias,
+            dtFimFerias,
+            dtRetornoFerias,
+            emAfastamento,
+            diasAfastamento,
+            exigeRetornoNr07,
+            dtFimAfastamento,
+            dtRetornoAfastamento,
+            badgeFeriasOuAfastamento,
+            sugestaoRetorno,
+            resumoCiclos,
+            cicloRotulo,
+            ciclo1Fechado,
+            ciclo2Fechado,
+            badgeCiclo,
+            examesPcmsoGhe
         });
     });
 
@@ -28046,15 +28390,29 @@ function popularSelectGhesFiltroPsico() {
 }
 
 function renderRecomendacaoPsicossocial() {
+    popularFiltrosEquipeRecomendacaoExames();
     popularSelectGhesFiltroPsico();
     renderTextoGruposObrigatoriosPsico();
     renderBannerMutiraoPsico();
 
     const dados = obterDadosRecomendacaoPsicossocial();
-    const total = dados.length;
-    const pendentes = dados.filter(d => d.statusKey === 'PENDENTE').length;
-    const vencendo = dados.filter(d => d.statusKey === 'VENCENDO' || d.statusKey === 'VENCIDO').length;
-    const emDia = dados.filter(d => d.statusKey === 'EM_DIA').length;
+    const chkOcultar = document.getElementById('psicoOcultarEmFerias');
+    const ocultarFerias = chkOcultar ? chkOcultar.checked : true;
+
+    // Quantidade real de colaboradores em férias ou afastamento nos GHEs monitorados
+    const totalAfastados = dados.filter(d => d.emFerias || d.emAfastamento).length;
+
+    // Se "Ocultar colaboradores em período de férias ou afastamento ativo" estiver marcado:
+    // Exclui os colaboradores com afastamento/férias ativas da listagem e recalcula os totais dos cards/pílulas.
+    // Se desmarcado: exibe a totalidade (74) e marca visualmente quem está em afastamento.
+    const dadosOperacionais = (ocultarFerias && psicoFiltroStatusAtual !== 'ferias')
+        ? dados.filter(d => !d.emFerias && !d.emAfastamento)
+        : dados;
+
+    const total = dadosOperacionais.length;
+    const pendentes = dadosOperacionais.filter(d => d.statusKey === 'PENDENTE').length;
+    const vencendo = dadosOperacionais.filter(d => d.statusKey === 'VENCENDO' || d.statusKey === 'VENCIDO').length;
+    const emDia = dadosOperacionais.filter(d => d.statusKey === 'EM_DIA').length;
     const conformidade = total > 0 ? ((emDia / total) * 100).toFixed(1) : 100;
 
     const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -28078,9 +28436,15 @@ function renderRecomendacaoPsicossocial() {
     setTxt('pillCountPsicoPendentes', pendentes);
     setTxt('pillCountPsicoVencendo', vencendo);
     setTxt('pillCountPsicoEmDia', emDia);
+    setTxt('pillCountPsicoFerias', totalAfastados);
 
     renderTabelaRecomendacaoPsicossocial();
 }
+
+function aoAlternarOcultarFeriasPsico() {
+    renderRecomendacaoPsicossocial();
+}
+window.aoAlternarOcultarFeriasPsico = aoAlternarOcultarFeriasPsico;
 
 function atualizarBarraSelecaoConvocacaoPsico() {
     const contadorEl = document.getElementById('contadorSelecionadosPsicoMain');
@@ -28153,6 +28517,38 @@ function alternarSelecaoTodosRecomendacao(checked) {
     atualizarBarraSelecaoConvocacaoPsico();
 }
 
+function selecionarTodosFiltradosPsico() {
+    const tbody = document.getElementById('tabelaRecomendacaoPsicoCorpo') || document.getElementById('tabelaPsicossocialCorpo');
+    if (!tbody) return;
+    const checks = tbody.querySelectorAll('.chk-colab-psico-main');
+    if (checks.length === 0) {
+        if (typeof mostrarFeedbackToast === 'function') {
+            mostrarFeedbackToast('Nenhum colaborador visível na listagem atual.', 'aviso');
+        } else {
+            alert('Nenhum colaborador visível na listagem atual.');
+        }
+        return;
+    }
+    const todosMarcados = Array.from(checks).every(c => c.checked);
+    checks.forEach(chk => {
+        chk.checked = !todosMarcados;
+        const mat = chk.value;
+        if (!todosMarcados) {
+            selecionadosPsicoConvocacao.add(mat);
+        } else {
+            selecionadosPsicoConvocacao.delete(mat);
+        }
+        const tr = document.getElementById(`trPsicoColab_${mat}`);
+        if (tr) {
+            tr.style.background = !todosMarcados ? 'rgba(124,58,237,0.06)' : '';
+        }
+    });
+    atualizarBarraSelecaoConvocacaoPsico();
+    if (typeof mostrarFeedbackToast === 'function') {
+        mostrarFeedbackToast(!todosMarcados ? `👥 ${checks.length} colaboradores da equipe selecionados!` : 'Seleção desmarcada.', 'sucesso');
+    }
+}
+
 function selecionarPrimeirosPendentesPsico(limite = 20) {
     const dados = obterDadosRecomendacaoPsicossocial();
     // Prioriza PENDENTE, depois VENCIDO, depois VENCENDO
@@ -28178,6 +28574,7 @@ function limparSelecaoConvocacaoPsicoMain() {
 
 window.aoAlternarCheckboxColabMain = aoAlternarCheckboxColabMain;
 window.alternarSelecaoTodosRecomendacao = alternarSelecaoTodosRecomendacao;
+window.selecionarTodosFiltradosPsico = selecionarTodosFiltradosPsico;
 window.selecionarPrimeirosPendentesPsico = selecionarPrimeirosPendentesPsico;
 window.limparSelecaoConvocacaoPsicoMain = limparSelecaoConvocacaoPsicoMain;
 
@@ -28188,18 +28585,83 @@ function renderTabelaRecomendacaoPsicossocial() {
 
     const dados = obterDadosRecomendacaoPsicossocial();
     const filtroStatus = psicoFiltroStatusAtual;
+    const filtroLider = (document.getElementById('psicoFiltroLider')?.value || '').trim();
+    const filtroSetor = (document.getElementById('psicoFiltroSetor')?.value || '').trim();
     const filtroGhe = (document.getElementById('psicoGheSelect') || document.getElementById('psicoFiltroGhe'))?.value || '';
+    const filtroCiclo = (document.getElementById('psicoFiltroCiclo')?.value || '').trim();
     const busca = (document.getElementById('psicoBuscaInput')?.value || '').toLowerCase().trim();
+    const ocultarFerias = document.getElementById('psicoOcultarEmFerias')?.checked ?? true;
+
+    // Resumo descritivo dos filtros aplicados
+    const resumoEl = document.getElementById('psicoResumoFiltrosEquipe');
+    if (resumoEl) {
+        const partes = [];
+        if (filtroLider) {
+            const opt = document.getElementById('psicoFiltroLider')?.selectedOptions[0]?.text || filtroLider;
+            partes.push(`Equipe: <b>${escapeHTML(opt.replace(/\s*\(\d+\s*ativos\)/i, '').split(' [')[0])}</b>`);
+        }
+        if (filtroSetor) {
+            partes.push(`Setor: <b>${escapeHTML(filtroSetor)}</b>`);
+        }
+        if (filtroGhe) {
+            partes.push(`GHE: <b>${escapeHTML(filtroGhe)}</b>`);
+        }
+        if (filtroCiclo) {
+            const cicloDesc = (filtroCiclo === '1_ok') ? '1º Ciclo Fechado (OK)' : (filtroCiclo === '2_ok' ? '2º Ciclo Fechado (OK)' : 'Ciclo em Aberto');
+            partes.push(`Ciclo: <b>${escapeHTML(cicloDesc)}</b>`);
+        }
+        if (ocultarFerias && filtroStatus !== 'ferias') {
+            partes.push(`<span style="color:#b45309;">🏖️ Ocultando colaboradores em férias/afastamento</span>`);
+        }
+        resumoEl.innerHTML = partes.length > 0 ? partes.join(' • ') : `Visão Geral da Obra (${dados.length} colaboradores monitorados)`;
+    }
 
     let filtrados = dados.filter(d => {
+        // 1. Filtro do Pill de Status
         if (filtroStatus === 'pendentes' && d.statusKey !== 'PENDENTE') return false;
         if (filtroStatus === 'vencendo' && d.statusKey !== 'VENCENDO' && d.statusKey !== 'VENCIDO') return false;
         if (filtroStatus === 'em_dia' && d.statusKey !== 'EM_DIA') return false;
+        if (filtroStatus === 'ferias' && !d.emFerias && !d.emAfastamento) return false;
 
+        // 2. Ocultar férias / afastamento ativo (marcado por padrão para não inflar a lista operacional da clínica)
+        if (ocultarFerias && filtroStatus !== 'ferias' && (d.emFerias || d.emAfastamento)) {
+            return false;
+        }
+
+        // 3. Filtro por Ciclo de Férias
+        if (filtroCiclo === '1_ok' && !d.ciclo1Fechado) return false;
+        if (filtroCiclo === '2_ok' && !d.ciclo2Fechado) return false;
+        if (filtroCiclo === 'aberto' && d.ciclo1Fechado && d.ciclo2Fechado) return false;
+
+        // 4. Filtro por Encarregado / Equipe (sem hardcode)
+        if (filtroLider) {
+            const respUpper = (d.responsavel || '').toUpperCase();
+            const liderUpper = (d.liderNome || '').toUpperCase();
+            const nomeUpper = (d.nome || '').toUpperCase();
+            if (filtroLider.startsWith('NOME:')) {
+                const buscaNome = filtroLider.substring(5).toUpperCase();
+                if (nomeUpper !== buscaNome && !respUpper.includes(buscaNome) && !liderUpper.includes(buscaNome)) {
+                    return false;
+                }
+            } else {
+                const fUpper = filtroLider.toUpperCase();
+                if (respUpper !== fUpper && !respUpper.includes(fUpper) && !liderUpper.includes(fUpper) && !nomeUpper.includes(fUpper)) {
+                    return false;
+                }
+            }
+        }
+
+        // 5. Filtro por Setor
+        if (filtroSetor && (d.setor || '').trim().toLowerCase() !== filtroSetor.toLowerCase()) {
+            return false;
+        }
+
+        // 6. Filtro por GHE
         if (filtroGhe && d.ghe !== filtroGhe) return false;
 
+        // 7. Busca textual
         if (busca) {
-            const txt = `${d.matricula} ${d.nome} ${d.cpf} ${d.funcao} ${d.setor} ${d.ghe}`.toLowerCase();
+            const txt = `${d.matricula} ${d.nome} ${d.cpf} ${d.funcao} ${d.setor} ${d.ghe} ${d.responsavel} ${d.liderNome} ${d.cicloRotulo || ''}`.toLowerCase();
             if (!txt.includes(busca)) return false;
         }
         return true;
@@ -28229,10 +28691,22 @@ function renderTabelaRecomendacaoPsicossocial() {
             : '<span style="color:var(--text-light);">—</span>';
 
         const estaMarcado = selecionadosPsicoConvocacao.has(d.matricula);
-        const bgLinha = estaMarcado ? 'background:rgba(124,58,237,0.06);' : '';
+        let rowCls = '';
+        let rowInlineBg = '';
+        if (estaMarcado) {
+            rowInlineBg = 'background:rgba(124,58,237,0.06);';
+        } else if (d.emFerias) {
+            rowCls = 'linha-colab-ferias';
+        } else if (d.emAfastamento) {
+            rowCls = 'linha-colab-afastado';
+        }
+
+        const liderHtml = (d.liderNome || d.responsavel)
+            ? `<div style="font-size:10.5px; color:#4338ca; font-weight:700; margin-top:3px; display:inline-flex; align-items:center; gap:3px;">👷 Equipe: ${escapeHTML(d.liderNome || d.responsavel)}</div>`
+            : '';
 
         return `
-            <tr id="trPsicoColab_${escapeHTML(d.matricula)}" style="border-bottom: 1px solid var(--border); transition: background 0.15s ease; ${bgLinha}" onmouseover="if(!selecionadosPsicoConvocacao.has('${escapeHTML(d.matricula)}')) this.style.background='rgba(124,58,237,0.03)'" onmouseout="if(!selecionadosPsicoConvocacao.has('${escapeHTML(d.matricula)}')) this.style.background=''">
+            <tr id="trPsicoColab_${escapeHTML(d.matricula)}" class="${rowCls}" style="border-bottom: 1px solid var(--border); transition: background 0.15s ease; ${rowInlineBg}" onmouseover="if(!selecionadosPsicoConvocacao.has('${escapeHTML(d.matricula)}')) this.style.opacity='0.85'" onmouseout="if(!selecionadosPsicoConvocacao.has('${escapeHTML(d.matricula)}')) this.style.opacity='1'">
                 <td style="padding: 10px 10px; text-align: center;">
                     <input type="checkbox" class="chk-colab-psico-main" value="${escapeHTML(d.matricula)}" ${estaMarcado ? 'checked' : ''} onchange="aoAlternarCheckboxColabMain('${escapeHTML(d.matricula)}', this.checked)" style="cursor: pointer; width: 16px; height: 16px; accent-color: #6d28d9;">
                 </td>
@@ -28244,13 +28718,21 @@ function renderTabelaRecomendacaoPsicossocial() {
                 <td style="padding: 10px 14px;">
                     <span style="font-weight:600; font-size:11.5px; color:var(--text); background:var(--bg); border:1px solid var(--border); padding:2px 6px; border-radius:4px;">${escapeHTML(d.gheNome)}</span>
                     <div style="font-size:11px; color:var(--text-light); margin-top:2px;">${escapeHTML(d.setor || '')}</div>
+                    ${liderHtml}
                 </td>
                 <td style="padding: 10px 14px; font-weight: 600; color: var(--text);">${escapeHTML(d.funcao || '—')}</td>
                 <td style="padding: 10px 14px; color: var(--text-light);">${dataAdmFmt}</td>
                 <td style="padding: 10px 14px;">${ultimoAsoFmt}</td>
                 <td style="padding: 10px 14px;">${dataPsicoFmt}</td>
                 <td style="padding: 10px 14px; font-weight:600;">${vencPsicoFmt}</td>
-                <td style="padding: 10px 14px; text-align: center;">${d.statusBadge}</td>
+                <td style="padding: 10px 14px; text-align: center;">
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+                        ${d.badgeCiclo ? `<div style="margin-bottom:2px;">${d.badgeCiclo}</div>` : ''}
+                        ${d.statusBadge}
+                        ${d.badgeFeriasOuAfastamento || ''}
+                        ${d.sugestaoRetorno ? `<div style="font-size:10px; color:#9a3412; font-weight:700; background:#fff7ed; border:1px solid #fed7aa; padding:2px 6px; border-radius:4px; max-width:210px; text-align:center;">${escapeHTML(d.sugestaoRetorno)}</div>` : ''}
+                    </div>
+                </td>
                 <td style="padding: 10px 14px; text-align: center;">
                     <button class="db-clear-btn" style="padding: 4px 8px; font-size: 11.5px; border-color: #8b5cf6; color: #7c3aed; font-weight:700;" onclick="abrirModalRegistrarPsicoRapido('${escapeHTML(d.matricula)}')" title="Registrar atendimento individual">
                         ✍️ Registrar

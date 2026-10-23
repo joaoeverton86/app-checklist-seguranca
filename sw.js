@@ -1,4 +1,4 @@
-const CACHE_NAME = 'app-checklist-v2.0';
+const CACHE_NAME = 'cache-v215';
 const SHELL_URLS = [
     './',
     './index.html',
@@ -28,6 +28,7 @@ self.addEventListener('message', event => {
 });
 
 self.addEventListener('install', event => {
+    self.skipWaiting();
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache => {
             return cache.addAll(SHELL_URLS).then(() => {

@@ -652,6 +652,14 @@ async function loadSaudeData() {
             diasTrabalhadosRows.forEach(r => { hhtDiasTrabalhadosMap[r.id] = r; });
         }
         if (allAcidentes.length === 0) allAcidentes = await supabaseFetch('acidentes', '?select=*');
+        if (!allColaboradoresFerias || allColaboradoresFerias.length === 0) {
+            try {
+                allColaboradoresFerias = await supabaseFetch('colaboradores_ferias', '?select=*&order=limite_concessivo_fatal.asc');
+                window.allColaboradoresFerias = allColaboradoresFerias;
+            } catch (errF) {
+                console.warn('Aviso ao carregar colaboradores_ferias na saúde:', errF);
+            }
+        }
         popularSaudeColabDatalists();
         renderSaudePanel();
     } catch (err) {
@@ -2879,12 +2887,146 @@ function obterNomeCurtoSetorGhe(gheId) {
     return nome.replace(/^GRUPO\s*\d+\s*-\s*/i, '').replace(/^GHE\s*\d+\s*-\s*/i, '').trim();
 }
 
-let psicoFiltroStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'vencendo' | 'em_dia'
+let psicoFiltroStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'vencendo' | 'em_dia' | 'ferias'
+
+// ==============================================================
+// HELPERS DE FÉRIAS E AFASTAMENTOS (NR-07 / GESTÃO OPERACIONAL)
+// ==============================================================
+function obterRegistroFeriasColab(matricula, dataRefIso) {
+    if (!matricula) return null;
+    if (typeof obterRegistroFeriasAtivo === 'function') {
+        const r = obterRegistroFeriasAtivo(matricula, dataRefIso);
+        if (r) return r;
+    }
+    if (!Array.isArray(allColaboradoresFerias) || allColaboradoresFerias.length === 0) return null;
+    const ref = dataRefIso || new Date().toISOString().split('T')[0];
+    return allColaboradoresFerias.find(f => {
+        if (String(f.matricula) !== String(matricula) || f.status === 'cancelada') return false;
+        if (f.data_inicio && f.data_fim) {
+            return ref >= f.data_inicio && ref <= f.data_fim;
+        }
+        return f.status === 'em_gozo';
+    }) || null;
+}
+
+function obterRegistroAtestadoAtivo(matricula, dataRefIso) {
+    if (!matricula || !Array.isArray(allAtestadosOcupacionais) || allAtestadosOcupacionais.length === 0) return null;
+    const ref = dataRefIso || new Date().toISOString().split('T')[0];
+    return allAtestadosOcupacionais.find(a => {
+        if (String(a.matricula || '').trim() !== String(matricula).trim()) return false;
+        const dtIni = a.data_inicio || '';
+        if (!dtIni) return false;
+        let dtFim = a.data_fim || '';
+        if (!dtFim && a.dias_afastamento) {
+            dtFim = addDias(dtIni, Math.max(1, parseInt(a.dias_afastamento, 10)) - 1);
+        }
+        if (!dtFim) dtFim = dtIni;
+        return ref >= dtIni && ref <= dtFim;
+    }) || null;
+}
+
+// Popular dinamicamente os filtros de Equipe / Encarregado e Setor (Zero Hardcode - Regra de Ouro)
+function popularFiltrosEquipeRecomendacaoExames() {
+    const selLider = document.getElementById('psicoFiltroLider');
+    const selSetor = document.getElementById('psicoFiltroSetor');
+    if (!selLider) return;
+
+    const valLiderAtual = selLider.value;
+    const valSetorAtual = selSetor ? selSetor.value : '';
+
+    const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
+    const regexLider = /ENCARREGADO|SUPERVISOR|L[ÍI]DER|MESTRE|COORDENADOR|GERENTE/i;
+
+    // 1. Mapear responsáveis e líderes a partir de colaboradores_efetivo
+    const lideresMap = new Map();
+
+    (allEfetivo || []).forEach(e => {
+        const resp = (e.responsavel || '').trim();
+        if (!resp || resp === '-' || resp === '—') return;
+        const respKey = resp.toUpperCase();
+        if (!lideresMap.has(respKey)) {
+            lideresMap.set(respKey, {
+                valor: resp,
+                nome: resp,
+                nomeCompleto: '',
+                funcao: 'Equipe / Frente de Campo',
+                setor: e.setor || '',
+                totalAtivos: 0
+            });
+        }
+        if (colaboradorEstaAtivo(e)) {
+            lideresMap.get(respKey).totalAtivos++;
+        }
+    });
+
+    // Vincula colaboradores com funções de liderança formal às frentes ou cria opção individual
+    (allEfetivo || []).forEach(e => {
+        const ehLider = regexLider.test(e.funcao || '');
+        if (!ehLider) return;
+        const nomeUpper = (e.nome || '').trim().toUpperCase();
+        const respUpper = (e.responsavel || '').trim().toUpperCase();
+
+        let achou = false;
+        for (let [k, item] of lideresMap.entries()) {
+            if (nomeUpper.includes(k) || k.includes(nomeUpper) || respUpper === k) {
+                item.nomeCompleto = e.nome;
+                item.funcao = e.funcao;
+                if (e.setor) item.setor = e.setor;
+                achou = true;
+                break;
+            }
+        }
+
+        if (!achou && colaboradorEstaAtivo(e)) {
+            const val = `NOME:${e.nome.trim()}`;
+            lideresMap.set(val.toUpperCase(), {
+                valor: val,
+                nome: e.nome,
+                nomeCompleto: e.nome,
+                funcao: e.funcao,
+                setor: e.setor || '',
+                totalAtivos: 1
+            });
+        }
+    });
+
+    const listaLideres = Array.from(lideresMap.values()).sort((a, b) => a.nome.localeCompare(b.nome));
+
+    let htmlLider = '<option value="">Todos os Encarregados / Equipes</option>';
+    listaLideres.forEach(item => {
+        const qtdTxt = item.totalAtivos > 0 ? ` (${item.totalAtivos} ativos)` : '';
+        const descTxt = item.nomeCompleto ? `${item.nome} — ${item.nomeCompleto} [${item.funcao}]${qtdTxt}` : `${item.nome} [${item.funcao}]${qtdTxt}`;
+        htmlLider += `<option value="${escapeHTML(item.valor)}">${escapeHTML(descTxt)}</option>`;
+    });
+    selLider.innerHTML = htmlLider;
+    if (valLiderAtual) selLider.value = valLiderAtual;
+
+    // 2. Mapear setores dinamicamente
+    if (selSetor) {
+        const setoresSet = new Set();
+        ativos.forEach(e => {
+            const s = (e.setor || '').trim();
+            if (s) setoresSet.add(s);
+        });
+        const setores = Array.from(setoresSet).sort((a, b) => a.localeCompare(b));
+        let htmlSetor = '<option value="">Todos os Setores / Frentes</option>';
+        setores.forEach(s => {
+            htmlSetor += `<option value="${escapeHTML(s)}">${escapeHTML(s)}</option>`;
+        });
+        selSetor.innerHTML = htmlSetor;
+        if (valSetorAtual) selSetor.value = valSetorAtual;
+    }
+}
+
+function aoMudarFiltroEquipePsico() {
+    renderTabelaRecomendacaoPsicossocial();
+}
 
 function obterDadosRecomendacaoPsicossocial() {
     const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
     const hojeStr = new Date().toISOString().split('T')[0];
     const dataMutirao = obterDataMutiraoPsico();
+    const dataRefChecagem = (dataMutirao && dataMutirao >= hojeStr) ? dataMutirao : hojeStr;
     const ghesObrigatorios = obterGhesObrigatoriosPsicossocial();
     const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
     const ehPsico = (exameComplementarFocoAtual === 'psicossocial' || exameCfg.id === 'psicossocial');
@@ -2949,24 +3091,19 @@ function obterDadosRecomendacaoPsicossocial() {
                     motivoDetalhado = `Avaliação Válida até ${formatSimpleDate(vencExame)}`;
                 }
             } else {
-                // NÃO POSSUI exame psicossocial realizado >= 01/07/2026
                 temExame = false;
 
                 if (admitidoAposMarco) {
-                    // Caso 1: Admitido a partir de 01/07/2026 sem psicossocial
                     statusKey = 'PENDENTE';
                     statusLabel = '🔴 Pendente (Admissional)';
                     statusBadge = '<span style="background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🔴 PENDENTE (ADMISSIONAL)</span>';
                     motivoDetalhado = 'Pendente de Inclusão (Admitido após 01/07/2026 sem Avaliação Psicossocial)';
                 } else if (periodicoAposMarco) {
-                    // Caso 2: Periódico realizado a partir de 01/07/2026 sem o psicossocial (GLEISON, JOSE LEANDRO, LUIS EDUARDO)
                     statusKey = 'PENDENTE';
                     statusLabel = '🔴 Pendente (Periódico)';
                     statusBadge = '<span style="background:#fee2e2; color:#b91c1c; border:1px solid #f87171; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px; box-shadow: 0 1px 2px rgba(185,28,28,0.15);">🔴 PENDENTE (PERIÓDICO)</span>';
                     motivoDetalhado = `Pendente (Periódico realizado em ${formatSimpleDate(dataUltimoPeriodico)} sem Psicossocial)`;
                 } else {
-                    // Caso 3: Admitido < 01/07/2026 E último periódico anterior a 01/07/2026
-                    // Manter regular até o próximo periódico vencer
                     const vencAso = ultimoAso ? ultimoAso.data_vencimento : null;
                     if (vencAso && vencAso < hojeStr) {
                         statusKey = 'VENCIDO';
@@ -3025,12 +3162,66 @@ function obterDadosRecomendacaoPsicossocial() {
             }
         }
 
+        // ==============================================================
+        // CHECAGEM DE FÉRIAS E AFASTAMENTOS ATIVOS (NR-07)
+        // ==============================================================
+        const regFerias = obterRegistroFeriasColab(c.id, dataRefChecagem) || obterRegistroFeriasColab(c.id, hojeStr);
+        const emFerias = !!regFerias;
+        const dtFimFerias = regFerias ? regFerias.data_fim : null;
+        const dtRetornoFerias = dtFimFerias ? addDias(dtFimFerias, 1) : null;
+
+        const regAtestado = obterRegistroAtestadoAtivo(c.id, dataRefChecagem) || obterRegistroAtestadoAtivo(c.id, hojeStr);
+        const emAfastamento = !!regAtestado;
+        const diasAfastamento = regAtestado ? (parseInt(regAtestado.dias_afastamento, 10) || 1) : 0;
+        const exigeRetornoNr07 = diasAfastamento >= 30; // NR-07 item 7.5.9
+        let dtFimAfastamento = null;
+        if (regAtestado) {
+            dtFimAfastamento = regAtestado.data_fim || addDias(regAtestado.data_inicio, Math.max(1, diasAfastamento) - 1);
+        }
+        const dtRetornoAfastamento = dtFimAfastamento ? addDias(dtFimAfastamento, 1) : null;
+
+        let badgeFeriasOuAfastamento = '';
+        let sugestaoRetorno = '';
+
+        if (emFerias) {
+            badgeFeriasOuAfastamento = `<span class="badge-status-ferias" title="Colaborador em gozo de férias">🏖️ Em Férias${dtFimFerias ? ' até ' + formatSimpleDate(dtFimFerias) : ''}</span>`;
+            if (statusKey === 'PENDENTE' || statusKey === 'VENCIDO' || statusKey === 'VENCENDO') {
+                sugestaoRetorno = dtRetornoFerias ? `📅 Agendar para retorno: ${formatSimpleDate(dtRetornoFerias)}` : '📅 Agendar no retorno';
+            }
+        } else if (emAfastamento) {
+            badgeFeriasOuAfastamento = `<span class="badge-status-afastado" title="Colaborador com atestado/afastamento médico">${exigeRetornoNr07 ? '🏥 Afastado (>30d NR-07)' : '🏥 Afastado'}${dtFimAfastamento ? ' até ' + formatSimpleDate(dtFimAfastamento) : ''}</span>`;
+            if (exigeRetornoNr07) {
+                sugestaoRetorno = `⚠️ Exame de Retorno ao Trabalho no 1º dia (${dtRetornoAfastamento ? formatSimpleDate(dtRetornoAfastamento) : 'retorno'})`;
+            } else if (statusKey === 'PENDENTE' || statusKey === 'VENCIDO' || statusKey === 'VENCENDO') {
+                sugestaoRetorno = dtRetornoAfastamento ? `📅 Agendar para retorno: ${formatSimpleDate(dtRetornoAfastamento)}` : '📅 Agendar no retorno';
+            }
+        }
+
+        // CICLOS DE FÉRIAS CLT & APTIDÃO OPERACIONAL NR-07
+        const resumoCiclos = typeof obterResumoCiclosFeriasColab === 'function' ? obterResumoCiclosFeriasColab(c.id) : null;
+        const cicloRotulo = resumoCiclos ? resumoCiclos.cicloAtualRotulo : '1º Ciclo';
+        const ciclo1Fechado = resumoCiclos ? resumoCiclos.ciclo1Fechado : false;
+        const ciclo2Fechado = resumoCiclos ? resumoCiclos.ciclo2Fechado : false;
+        const badgeCiclo = resumoCiclos ? resumoCiclos.badgeCicloHtml : '';
+
+        // Liderança / Encarregado da frente de serviço
+        const respCadastrado = (c.responsavel || '').trim();
+        const liderNome = (respCadastrado && respCadastrado !== '-' && respCadastrado !== '—') ? respCadastrado : '';
+
+        // Exames do GHE exigidos pelo PCMSO
+        const infoGheColab = typeof examesGheColaborador === 'function' ? examesGheColaborador(c) : null;
+        const examesPcmsoGhe = (infoGheColab && Array.isArray(infoGheColab.exames))
+            ? infoGheColab.exames.map(e => e.nome)
+            : [exameCfg.nomeExame];
+
         lista.push({
             matricula: c.id,
             nome: c.nome || '',
             cpf: c.cpf || '',
             funcao: c.funcao || '',
             setor: c.setor || '',
+            responsavel: respCadastrado,
+            liderNome: liderNome,
             ghe: g,
             gheNome: obterNomeGheCompleto(g),
             dt_admissao: dtAdm,
@@ -3046,7 +3237,23 @@ function obterDadosRecomendacaoPsicossocial() {
             statusKey,
             statusLabel,
             statusBadge,
-            motivoDetalhado
+            motivoDetalhado,
+            emFerias,
+            dtFimFerias,
+            dtRetornoFerias,
+            emAfastamento,
+            diasAfastamento,
+            exigeRetornoNr07,
+            dtFimAfastamento,
+            dtRetornoAfastamento,
+            badgeFeriasOuAfastamento,
+            sugestaoRetorno,
+            resumoCiclos,
+            cicloRotulo,
+            ciclo1Fechado,
+            ciclo2Fechado,
+            badgeCiclo,
+            examesPcmsoGhe
         });
     });
 
@@ -3203,6 +3410,7 @@ function popularSelectGhesFiltroPsico() {
 }
 
 function renderRecomendacaoPsicossocial() {
+    popularFiltrosEquipeRecomendacaoExames();
     popularSelectGhesFiltroPsico();
     renderTextoGruposObrigatoriosPsico();
     renderBannerMutiraoPsico();
@@ -3212,6 +3420,7 @@ function renderRecomendacaoPsicossocial() {
     const pendentes = dados.filter(d => d.statusKey === 'PENDENTE').length;
     const vencendo = dados.filter(d => d.statusKey === 'VENCENDO' || d.statusKey === 'VENCIDO').length;
     const emDia = dados.filter(d => d.statusKey === 'EM_DIA').length;
+    const emFeriasOuAfastado = dados.filter(d => d.emFerias || d.emAfastamento).length;
     const conformidade = total > 0 ? ((emDia / total) * 100).toFixed(1) : 100;
 
     const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -3235,6 +3444,7 @@ function renderRecomendacaoPsicossocial() {
     setTxt('pillCountPsicoPendentes', pendentes);
     setTxt('pillCountPsicoVencendo', vencendo);
     setTxt('pillCountPsicoEmDia', emDia);
+    setTxt('pillCountPsicoFerias', emFeriasOuAfastado);
 
     renderTabelaRecomendacaoPsicossocial();
 }
@@ -3310,6 +3520,38 @@ function alternarSelecaoTodosRecomendacao(checked) {
     atualizarBarraSelecaoConvocacaoPsico();
 }
 
+function selecionarTodosFiltradosPsico() {
+    const tbody = document.getElementById('tabelaRecomendacaoPsicoCorpo') || document.getElementById('tabelaPsicossocialCorpo');
+    if (!tbody) return;
+    const checks = tbody.querySelectorAll('.chk-colab-psico-main');
+    if (checks.length === 0) {
+        if (typeof mostrarFeedbackToast === 'function') {
+            mostrarFeedbackToast('Nenhum colaborador visível na listagem atual.', 'aviso');
+        } else {
+            alert('Nenhum colaborador visível na listagem atual.');
+        }
+        return;
+    }
+    const todosMarcados = Array.from(checks).every(c => c.checked);
+    checks.forEach(chk => {
+        chk.checked = !todosMarcados;
+        const mat = chk.value;
+        if (!todosMarcados) {
+            selecionadosPsicoConvocacao.add(mat);
+        } else {
+            selecionadosPsicoConvocacao.delete(mat);
+        }
+        const tr = document.getElementById(`trPsicoColab_${mat}`);
+        if (tr) {
+            tr.style.background = !todosMarcados ? 'rgba(124,58,237,0.06)' : '';
+        }
+    });
+    atualizarBarraSelecaoConvocacaoPsico();
+    if (typeof mostrarFeedbackToast === 'function') {
+        mostrarFeedbackToast(!todosMarcados ? `👥 ${checks.length} colaboradores da equipe selecionados!` : 'Seleção desmarcada.', 'sucesso');
+    }
+}
+
 function selecionarPrimeirosPendentesPsico(limite = 20) {
     const dados = obterDadosRecomendacaoPsicossocial();
     // Prioriza PENDENTE, depois VENCIDO, depois VENCENDO
@@ -3335,6 +3577,7 @@ function limparSelecaoConvocacaoPsicoMain() {
 
 window.aoAlternarCheckboxColabMain = aoAlternarCheckboxColabMain;
 window.alternarSelecaoTodosRecomendacao = alternarSelecaoTodosRecomendacao;
+window.selecionarTodosFiltradosPsico = selecionarTodosFiltradosPsico;
 window.selecionarPrimeirosPendentesPsico = selecionarPrimeirosPendentesPsico;
 window.limparSelecaoConvocacaoPsicoMain = limparSelecaoConvocacaoPsicoMain;
 
@@ -3345,18 +3588,83 @@ function renderTabelaRecomendacaoPsicossocial() {
 
     const dados = obterDadosRecomendacaoPsicossocial();
     const filtroStatus = psicoFiltroStatusAtual;
+    const filtroLider = (document.getElementById('psicoFiltroLider')?.value || '').trim();
+    const filtroSetor = (document.getElementById('psicoFiltroSetor')?.value || '').trim();
     const filtroGhe = (document.getElementById('psicoGheSelect') || document.getElementById('psicoFiltroGhe'))?.value || '';
+    const filtroCiclo = (document.getElementById('psicoFiltroCiclo')?.value || '').trim();
     const busca = (document.getElementById('psicoBuscaInput')?.value || '').toLowerCase().trim();
+    const ocultarFerias = document.getElementById('psicoOcultarEmFerias')?.checked ?? true;
+
+    // Resumo descritivo dos filtros aplicados
+    const resumoEl = document.getElementById('psicoResumoFiltrosEquipe');
+    if (resumoEl) {
+        const partes = [];
+        if (filtroLider) {
+            const opt = document.getElementById('psicoFiltroLider')?.selectedOptions[0]?.text || filtroLider;
+            partes.push(`Equipe: <b>${escapeHTML(opt.replace(/\s*\(\d+\s*ativos\)/i, '').split(' [')[0])}</b>`);
+        }
+        if (filtroSetor) {
+            partes.push(`Setor: <b>${escapeHTML(filtroSetor)}</b>`);
+        }
+        if (filtroGhe) {
+            partes.push(`GHE: <b>${escapeHTML(filtroGhe)}</b>`);
+        }
+        if (filtroCiclo) {
+            const cicloDesc = (filtroCiclo === '1_ok') ? '1º Ciclo Fechado (OK)' : (filtroCiclo === '2_ok' ? '2º Ciclo Fechado (OK)' : 'Ciclo em Aberto');
+            partes.push(`Ciclo: <b>${escapeHTML(cicloDesc)}</b>`);
+        }
+        if (ocultarFerias && filtroStatus !== 'ferias') {
+            partes.push(`<span style="color:#b45309;">🏖️ Ocultando colaboradores em férias/afastamento</span>`);
+        }
+        resumoEl.innerHTML = partes.length > 0 ? partes.join(' • ') : `Visão Geral da Obra (${dados.length} colaboradores monitorados)`;
+    }
 
     let filtrados = dados.filter(d => {
+        // 1. Filtro do Pill de Status
         if (filtroStatus === 'pendentes' && d.statusKey !== 'PENDENTE') return false;
         if (filtroStatus === 'vencendo' && d.statusKey !== 'VENCENDO' && d.statusKey !== 'VENCIDO') return false;
         if (filtroStatus === 'em_dia' && d.statusKey !== 'EM_DIA') return false;
+        if (filtroStatus === 'ferias' && !d.emFerias && !d.emAfastamento) return false;
 
+        // 2. Ocultar férias / afastamento ativo (marcado por padrão para não inflar a lista operacional da clínica)
+        if (ocultarFerias && filtroStatus !== 'ferias' && (d.emFerias || d.emAfastamento)) {
+            return false;
+        }
+
+        // 3. Filtro por Ciclo de Férias
+        if (filtroCiclo === '1_ok' && !d.ciclo1Fechado) return false;
+        if (filtroCiclo === '2_ok' && !d.ciclo2Fechado) return false;
+        if (filtroCiclo === 'aberto' && d.ciclo1Fechado && d.ciclo2Fechado) return false;
+
+        // 4. Filtro por Encarregado / Equipe (sem hardcode)
+        if (filtroLider) {
+            const respUpper = (d.responsavel || '').toUpperCase();
+            const liderUpper = (d.liderNome || '').toUpperCase();
+            const nomeUpper = (d.nome || '').toUpperCase();
+            if (filtroLider.startsWith('NOME:')) {
+                const buscaNome = filtroLider.substring(5).toUpperCase();
+                if (nomeUpper !== buscaNome && !respUpper.includes(buscaNome) && !liderUpper.includes(buscaNome)) {
+                    return false;
+                }
+            } else {
+                const fUpper = filtroLider.toUpperCase();
+                if (respUpper !== fUpper && !respUpper.includes(fUpper) && !liderUpper.includes(fUpper) && !nomeUpper.includes(fUpper)) {
+                    return false;
+                }
+            }
+        }
+
+        // 5. Filtro por Setor
+        if (filtroSetor && (d.setor || '').trim().toLowerCase() !== filtroSetor.toLowerCase()) {
+            return false;
+        }
+
+        // 6. Filtro por GHE
         if (filtroGhe && d.ghe !== filtroGhe) return false;
 
+        // 7. Busca textual
         if (busca) {
-            const txt = `${d.matricula} ${d.nome} ${d.cpf} ${d.funcao} ${d.setor} ${d.ghe}`.toLowerCase();
+            const txt = `${d.matricula} ${d.nome} ${d.cpf} ${d.funcao} ${d.setor} ${d.ghe} ${d.responsavel} ${d.liderNome} ${d.cicloRotulo || ''}`.toLowerCase();
             if (!txt.includes(busca)) return false;
         }
         return true;
@@ -3386,10 +3694,22 @@ function renderTabelaRecomendacaoPsicossocial() {
             : '<span style="color:var(--text-light);">—</span>';
 
         const estaMarcado = selecionadosPsicoConvocacao.has(d.matricula);
-        const bgLinha = estaMarcado ? 'background:rgba(124,58,237,0.06);' : '';
+        let rowCls = '';
+        let rowInlineBg = '';
+        if (estaMarcado) {
+            rowInlineBg = 'background:rgba(124,58,237,0.06);';
+        } else if (d.emFerias) {
+            rowCls = 'linha-colab-ferias';
+        } else if (d.emAfastamento) {
+            rowCls = 'linha-colab-afastado';
+        }
+
+        const liderHtml = (d.liderNome || d.responsavel)
+            ? `<div style="font-size:10.5px; color:#4338ca; font-weight:700; margin-top:3px; display:inline-flex; align-items:center; gap:3px;">👷 Equipe: ${escapeHTML(d.liderNome || d.responsavel)}</div>`
+            : '';
 
         return `
-            <tr id="trPsicoColab_${escapeHTML(d.matricula)}" style="border-bottom: 1px solid var(--border); transition: background 0.15s ease; ${bgLinha}" onmouseover="if(!selecionadosPsicoConvocacao.has('${escapeHTML(d.matricula)}')) this.style.background='rgba(124,58,237,0.03)'" onmouseout="if(!selecionadosPsicoConvocacao.has('${escapeHTML(d.matricula)}')) this.style.background=''">
+            <tr id="trPsicoColab_${escapeHTML(d.matricula)}" class="${rowCls}" style="border-bottom: 1px solid var(--border); transition: background 0.15s ease; ${rowInlineBg}" onmouseover="if(!selecionadosPsicoConvocacao.has('${escapeHTML(d.matricula)}')) this.style.opacity='0.85'" onmouseout="if(!selecionadosPsicoConvocacao.has('${escapeHTML(d.matricula)}')) this.style.opacity='1'">
                 <td style="padding: 10px 10px; text-align: center;">
                     <input type="checkbox" class="chk-colab-psico-main" value="${escapeHTML(d.matricula)}" ${estaMarcado ? 'checked' : ''} onchange="aoAlternarCheckboxColabMain('${escapeHTML(d.matricula)}', this.checked)" style="cursor: pointer; width: 16px; height: 16px; accent-color: #6d28d9;">
                 </td>
@@ -3401,13 +3721,21 @@ function renderTabelaRecomendacaoPsicossocial() {
                 <td style="padding: 10px 14px;">
                     <span style="font-weight:600; font-size:11.5px; color:var(--text); background:var(--bg); border:1px solid var(--border); padding:2px 6px; border-radius:4px;">${escapeHTML(d.gheNome)}</span>
                     <div style="font-size:11px; color:var(--text-light); margin-top:2px;">${escapeHTML(d.setor || '')}</div>
+                    ${liderHtml}
                 </td>
                 <td style="padding: 10px 14px; font-weight: 600; color: var(--text);">${escapeHTML(d.funcao || '—')}</td>
                 <td style="padding: 10px 14px; color: var(--text-light);">${dataAdmFmt}</td>
                 <td style="padding: 10px 14px;">${ultimoAsoFmt}</td>
                 <td style="padding: 10px 14px;">${dataPsicoFmt}</td>
                 <td style="padding: 10px 14px; font-weight:600;">${vencPsicoFmt}</td>
-                <td style="padding: 10px 14px; text-align: center;">${d.statusBadge}</td>
+                <td style="padding: 10px 14px; text-align: center;">
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+                        ${d.badgeCiclo ? `<div style="margin-bottom:2px;">${d.badgeCiclo}</div>` : ''}
+                        ${d.statusBadge}
+                        ${d.badgeFeriasOuAfastamento || ''}
+                        ${d.sugestaoRetorno ? `<div style="font-size:10px; color:#9a3412; font-weight:700; background:#fff7ed; border:1px solid #fed7aa; padding:2px 6px; border-radius:4px; max-width:210px; text-align:center;">${escapeHTML(d.sugestaoRetorno)}</div>` : ''}
+                    </div>
+                </td>
                 <td style="padding: 10px 14px; text-align: center;">
                     <button class="db-clear-btn" style="padding: 4px 8px; font-size: 11.5px; border-color: #8b5cf6; color: #7c3aed; font-weight:700;" onclick="abrirModalRegistrarPsicoRapido('${escapeHTML(d.matricula)}')" title="Registrar atendimento individual">
                         ✍️ Registrar
@@ -4174,6 +4502,414 @@ function imprimirConvocacaoPsicossocial() {
     abrirModalConvocacaoPsicossocial();
 }
 
+// ==============================================================================
+// CONVOCAÇÃO POR EQUIPE / ENCARREGADO & ENCAMINHAMENTO CLÍNICO EM LOTE (NR-07)
+// ==============================================================================
+
+function imprimirConvocacaoPorEquipe() {
+    const dados = obterDadosRecomendacaoPsicossocial();
+    const filtroLider = (document.getElementById('psicoFiltroLider')?.value || '').trim();
+    const filtroSetor = (document.getElementById('psicoFiltroSetor')?.value || '').trim();
+    const filtroGhe = (document.getElementById('psicoGheSelect') || document.getElementById('psicoFiltroGhe'))?.value || '';
+    const filtroCiclo = (document.getElementById('psicoFiltroCiclo')?.value || '').trim();
+    const busca = (document.getElementById('psicoBuscaInput')?.value || '').toLowerCase().trim();
+    const ocultarFerias = document.getElementById('psicoOcultarEmFerias')?.checked ?? true;
+
+    let lista = [];
+    if (selecionadosPsicoConvocacao && selecionadosPsicoConvocacao.size > 0) {
+        lista = dados.filter(d => selecionadosPsicoConvocacao.has(d.matricula));
+    } else {
+        // Aplica os filtros ativos na tela
+        lista = dados.filter(d => {
+            if (ocultarFerias && (d.emFerias || d.emAfastamento)) return false;
+
+            // Filtro por Ciclo de Férias
+            if (filtroCiclo === '1_ok' && !d.ciclo1Fechado) return false;
+            if (filtroCiclo === '2_ok' && !d.ciclo2Fechado) return false;
+            if (filtroCiclo === 'aberto' && d.ciclo1Fechado && d.ciclo2Fechado) return false;
+
+            if (filtroLider) {
+                const respUpper = (d.responsavel || '').toUpperCase();
+                const liderUpper = (d.liderNome || '').toUpperCase();
+                const nomeUpper = (d.nome || '').toUpperCase();
+                if (filtroLider.startsWith('NOME:')) {
+                    const buscaNome = filtroLider.substring(5).toUpperCase();
+                    if (nomeUpper !== buscaNome && !respUpper.includes(buscaNome) && !liderUpper.includes(buscaNome)) return false;
+                } else {
+                    const fUpper = filtroLider.toUpperCase();
+                    if (respUpper !== fUpper && !respUpper.includes(fUpper) && !liderUpper.includes(fUpper) && !nomeUpper.includes(fUpper)) return false;
+                }
+            }
+            if (filtroSetor && (d.setor || '').trim().toLowerCase() !== filtroSetor.toLowerCase()) return false;
+            if (filtroGhe && d.ghe !== filtroGhe) return false;
+            if (busca) {
+                const txt = `${d.matricula} ${d.nome} ${d.cpf} ${d.funcao} ${d.setor} ${d.ghe} ${d.responsavel} ${d.cicloRotulo || ''}`.toLowerCase();
+                if (!txt.includes(busca)) return false;
+            }
+            return true;
+        });
+
+        if (lista.length === 0) {
+            alert('Não há colaboradores filtrados ou selecionados para emissão da convocação por equipe.');
+            return;
+        }
+
+        // Se nenhum filtro restrito de encarregado estiver ativo e houver muitos colaboradores, prioriza pendentes e vencendo
+        if (!filtroLider && lista.length > 50) {
+            const priorizados = lista.filter(d => d.statusKey === 'PENDENTE' || d.statusKey === 'VENCIDO' || d.statusKey === 'VENCENDO');
+            if (priorizados.length > 0) {
+                lista = priorizados;
+            }
+        }
+    }
+
+    if (lista.length === 0) {
+        alert('Nenhum colaborador encontrado para gerar a convocação por equipe.');
+        return;
+    }
+
+    // Identificação do Encarregado / Liderança no cabeçalho
+    let nomeLiderHeader = 'Todas as Lideranças / Equipes de Campo';
+    if (filtroLider) {
+        const selEl = document.getElementById('psicoFiltroLider');
+        const txtOpt = selEl ? selEl.selectedOptions[0]?.text : filtroLider;
+        nomeLiderHeader = txtOpt.replace(/\s*\(\d+\s*ativos\)/i, '').trim();
+    } else if (selecionadosPsicoConvocacao.size > 0) {
+        const lideresDistintos = Array.from(new Set(lista.map(c => c.liderNome || c.responsavel).filter(Boolean)));
+        if (lideresDistintos.length === 1) {
+            nomeLiderHeader = `Equipe do Encarregado: ${lideresDistintos[0]}`;
+        } else if (lideresDistintos.length > 1) {
+            nomeLiderHeader = `Múltiplas Equipes (${lideresDistintos.slice(0, 3).join(', ')}${lideresDistintos.length > 3 ? '...' : ''})`;
+        }
+    }
+
+    let filtroCicloHeader = 'Todos os Ciclos';
+    if (filtroCiclo === '1_ok') filtroCicloHeader = '1º Ciclo Fechado (OK)';
+    else if (filtroCiclo === '2_ok') filtroCicloHeader = '2º Ciclo Fechado (OK)';
+    else if (filtroCiclo === 'aberto') filtroCicloHeader = 'Ciclo em Aberto / Pendente';
+
+    const setorHeader = filtroSetor || 'Todas as Frentes de Obra / Canteiro';
+    const dataMutirao = typeof obterDataMutiraoPsico === 'function' ? obterDataMutiraoPsico() : new Date().toISOString().split('T')[0];
+    const dataAtendimentoFmt = formatSimpleDate(dataMutirao);
+    const dataHojeExtenso = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+
+    // Ordenação alfabética por Encarregado, depois GHE, depois Nome
+    const listaOrdenada = [...lista].sort((a, b) => {
+        const lidA = a.liderNome || a.responsavel || '';
+        const lidB = b.liderNome || b.responsavel || '';
+        if (lidA !== lidB) return lidA.localeCompare(lidB);
+        if (a.ghe !== b.ghe) return a.ghe.localeCompare(b.ghe);
+        return (a.nome || '').localeCompare(b.nome || '', 'pt-BR');
+    });
+
+    const linhasHtml = listaOrdenada.map((c, i) => {
+        let situacaoEscala = 'Ativo em Campo';
+        let dtSugerida = dataAtendimentoFmt;
+        if (c.emFerias) {
+            situacaoEscala = `<span style="color:#b45309; font-weight:700;">🏖️ Férias até ${formatSimpleDate(c.dtFimFerias)}</span><br><small style="color:#047857; font-weight:700;">Retorno: ${formatSimpleDate(c.dtRetornoFerias)}</small>`;
+            dtSugerida = c.dtRetornoFerias ? formatSimpleDate(c.dtRetornoFerias) : dataAtendimentoFmt;
+        } else if (c.emAfastamento) {
+            const rotAfast = c.exigeRetornoNr07 ? '⚠️ Retorno ao Trabalho (NR-07 >30d)' : `Afastado até ${formatSimpleDate(c.dtFimAfastamento)}`;
+            situacaoEscala = `<span style="color:#b91c1c; font-weight:700;">🏥 ${rotAfast}</span><br><small style="color:#047857; font-weight:700;">Retorno: ${formatSimpleDate(c.dtRetornoAfastamento)}</small>`;
+            dtSugerida = c.dtRetornoAfastamento ? formatSimpleDate(c.dtRetornoAfastamento) : dataAtendimentoFmt;
+        } else {
+            let cicloTag = '<span style="color:#475569; font-size:9px; background:#f1f5f9; padding:1px 4px; border-radius:3px;">1º Ciclo Aberto</span>';
+            if (c.ciclo2Fechado) cicloTag = '<span style="color:#3730a3; font-weight:700; font-size:9.5px; background:#e0e7ff; padding:1px 5px; border-radius:3px;">2º Ciclo OK</span>';
+            else if (c.ciclo1Fechado) cicloTag = '<span style="color:#166534; font-weight:700; font-size:9.5px; background:#dcfce7; padding:1px 5px; border-radius:3px;">1º Ciclo OK</span>';
+
+            situacaoEscala = `<div style="margin-bottom:2px;">${cicloTag}</div><span style="color:#065f46; font-weight:700;">✅ Em Atividade</span>`;
+        }
+
+        const examesListaStr = (c.examesPcmsoGhe && c.examesPcmsoGhe.length > 0)
+            ? c.examesPcmsoGhe.join(', ')
+            : (exameCfg ? exameCfg.nomeExame : 'Exame Clínico Ocupacional (ASO)');
+
+        return `
+            <tr>
+                <td style="text-align:center; font-weight:700;">${i + 1}</td>
+                <td style="text-align:center; font-weight:700; color:#1e1b4b;">${escapeHTML(c.matricula)}</td>
+                <td>
+                    <b>${escapeHTML(c.nome)}</b>
+                    <div style="font-size:9.5px; color:#555;">CPF: ${formatarCpfExibicao(c.cpf)}</div>
+                </td>
+                <td>
+                    <b>${escapeHTML(c.funcao)}</b>
+                    <div style="font-size:9.5px; color:#555;">${escapeHTML(c.setor || '')}</div>
+                </td>
+                <td style="font-size:10px;">
+                    <span style="font-weight:700; background:#f1f5f9; padding:2px 5px; border-radius:3px; border:1px solid #cbd5e1;">${escapeHTML(c.ghe)}</span>
+                    <div style="font-size:9px; color:#555; margin-top:2px;">${escapeHTML(c.gheNome || '')}</div>
+                </td>
+                <td style="font-size:10px;">
+                    <b>${escapeHTML(c.liderNome || c.responsavel || '—')}</b>
+                </td>
+                <td style="font-size:9.5px; line-height:1.25;">
+                    <div style="font-weight:700; color:#1e3a8a;">${escapeHTML(examesListaStr)}</div>
+                    <div style="font-size:8.5px; color:#64748b; margin-top:2px;">Status: ${escapeHTML(c.statusLabel || c.statusKey)}</div>
+                </td>
+                <td style="text-align:center; font-size:9.5px; line-height:1.2;">
+                    ${situacaoEscala}
+                    <div style="font-size:9px; font-weight:800; color:#4338ca; margin-top:3px; background:#e0e7ff; border-radius:3px; padding:1px 3px;">Prev: ${dtSugerida}</div>
+                </td>
+                <td style="width:130px; border-bottom:1px solid #000;">&nbsp;</td>
+                <td style="width:75px; text-align:center; font-size:9.5px; line-height:1.3;">
+                    [ &nbsp; ] Apto<br>[ &nbsp; ] Inapto
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Guia de Convocação Ocupacional (NR-07) — Equipe / Frente de Campo</title>
+    <style>
+        @page { size: landscape; margin: 8mm; }
+        body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #111; margin: 10px; line-height: 1.3; }
+        .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:6px; margin-bottom:8px; }
+        .cabecalho img { max-height:45px; }
+        .titulo-doc { text-align:center; flex:1; margin:0 12px; }
+        .titulo-doc h2 { margin:0; font-size:13.5px; font-weight:800; text-transform:uppercase; color:#0f172a; }
+        .titulo-doc p { margin:2px 0 0; font-size:10.5px; color:#334155; }
+        .bloco-info { display:grid; grid-template-columns: 2fr 1.5fr 1fr; gap:8px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:8px 12px; margin-bottom:8px; font-size:10.5px; }
+        .bloco-info div { display:flex; flex-direction:column; }
+        .bloco-info label { font-size:9px; text-transform:uppercase; color:#64748b; font-weight:700; margin-bottom:1px; }
+        .bloco-info span { font-weight:700; color:#0f172a; }
+        table { width:100%; border-collapse:collapse; margin-top:6px; font-size:9.5px; }
+        th, td { border:1px solid #64748b; padding:5px 6px; }
+        th { background:#f1f5f9; font-weight:700; text-align:left; font-size:9px; text-transform:uppercase; color:#1e293b; }
+        .rodape-assinaturas { margin-top:24px; display:flex; justify-content:space-between; text-align:center; gap:20px; page-break-inside:avoid; }
+        .linha-assinatura { flex:1; border-top:1px solid #000; padding-top:4px; font-size:9.5px; }
+        .no-print { text-align:center; margin-bottom:12px; }
+        .no-print button { padding:8px 18px; font-size:12px; font-weight:700; background:#4338ca; color:#fff; border:none; border-radius:6px; cursor:pointer; }
+        @media print { .no-print { display:none; } body { margin:0; } }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <button onclick="window.print()">🖨️ Imprimir Guia Oficial de Convocação & Encaminhamento (NR-07)</button>
+    </div>
+    <div class="cabecalho">
+        <img src="${LOGO_COP_BASE64}" alt="COP">
+        <div class="titulo-doc">
+            <h2>GUIA DE CONVOCAÇÃO OCUPACIONAL & ENCAMINHAMENTO DE EXAMES (NR-07)</h2>
+            <p><b>Programa de Controle Médico de Saúde Ocupacional (PCMSO)</b> — Cronograma de Exames Periódicos e Complementares</p>
+            <p>Consórcio Operador PISF Ramal do Agreste (COP) • Contrato de Gestão e Operação</p>
+        </div>
+        <div style="font-size:9px; text-align:right; color:#475569; width:110px;">
+            <b>Emissão:</b><br>${dataHojeExtenso}
+        </div>
+    </div>
+
+    <div class="bloco-info">
+        <div>
+            <label>Encarregado / Liderança de Campo Responsável</label>
+            <span>${escapeHTML(nomeLiderHeader)}</span>
+        </div>
+        <div>
+            <label>Frente de Trabalho / Setor Operacional</label>
+            <span>${escapeHTML(setorHeader)}</span>
+        </div>
+        <div>
+            <label>Data Programada do Atendimento</label>
+            <span style="color:#4338ca;">${dataAtendimentoFmt}</span>
+        </div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:10px;">
+        <div><b>Total de Colaboradores Convocados:</b> ${listaOrdenada.length} empregados</div>
+        <div style="color:#64748b;"><i>NR-07 Item 7.5.8: Exames periódicos planejados conforme cronograma e grau de risco do GHE.</i></div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width:25px; text-align:center;">#</th>
+                <th style="width:45px; text-align:center;">Matr.</th>
+                <th style="width:170px;">Colaborador / CPF</th>
+                <th style="width:140px;">Função / Setor</th>
+                <th style="width:110px;">GHE</th>
+                <th style="width:110px;">Encarregado</th>
+                <th>Exames PCMSO Requeridos (NR-07)</th>
+                <th style="width:115px; text-align:center;">Escala & Data Sugerida</th>
+                <th style="width:130px; text-align:center;">Ciente do Colaborador</th>
+                <th style="width:75px; text-align:center;">Parecer</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${linhasHtml}
+        </tbody>
+    </table>
+
+    <div class="rodape-assinaturas">
+        <div class="linha-assinatura">
+            <b>João Everton de Souza Limeira</b><br>
+            Engenheiro de Segurança do Trabalho<br>
+            CREA 12345/D-PE — Consórcio COP
+        </div>
+        <div class="linha-assinatura">
+            <b>${escapeHTML(nomeLiderHeader.split(' — ')[0])}</b><br>
+            Encarregado / Liderança de Campo<br>
+            Ciente do Cronograma & Escala de Transporte
+        </div>
+        <div class="linha-assinatura">
+            <b>Médico Examinador / Clínica de Saúde</b><br>
+            Clínica de Medicina do Trabalho Prestadora<br>
+            CRM: ____________________ / Parecer PCMSO
+        </div>
+    </div>
+
+    <script>
+        window.onload = function() {
+            setTimeout(function() { window.print(); }, 400);
+        };
+    </script>
+</body>
+</html>`;
+
+    abrirDocumentoHtmlParaImpressao(html, `Convocacao_Equipe_${dataAtendimentoFmt.replace(/\//g, '-')}`);
+}
+
+function exportarRelacaoClinica() {
+    const dados = obterDadosRecomendacaoPsicossocial();
+    const filtroLider = (document.getElementById('psicoFiltroLider')?.value || '').trim();
+    const filtroSetor = (document.getElementById('psicoFiltroSetor')?.value || '').trim();
+    const filtroGhe = (document.getElementById('psicoGheSelect') || document.getElementById('psicoFiltroGhe'))?.value || '';
+    const busca = (document.getElementById('psicoBuscaInput')?.value || '').toLowerCase().trim();
+    const ocultarFerias = document.getElementById('psicoOcultarEmFerias')?.checked ?? true;
+
+    let lista = [];
+    if (selecionadosPsicoConvocacao && selecionadosPsicoConvocacao.size > 0) {
+        lista = dados.filter(d => selecionadosPsicoConvocacao.has(d.matricula));
+    } else {
+        lista = dados.filter(d => {
+            if (ocultarFerias && (d.emFerias || d.emAfastamento)) return false;
+            if (filtroLider) {
+                const respUpper = (d.responsavel || '').toUpperCase();
+                const liderUpper = (d.liderNome || '').toUpperCase();
+                const nomeUpper = (d.nome || '').toUpperCase();
+                if (filtroLider.startsWith('NOME:')) {
+                    const buscaNome = filtroLider.substring(5).toUpperCase();
+                    if (nomeUpper !== buscaNome && !respUpper.includes(buscaNome) && !liderUpper.includes(buscaNome)) return false;
+                } else {
+                    const fUpper = filtroLider.toUpperCase();
+                    if (respUpper !== fUpper && !respUpper.includes(fUpper) && !liderUpper.includes(fUpper) && !nomeUpper.includes(fUpper)) return false;
+                }
+            }
+            if (filtroSetor && (d.setor || '').trim().toLowerCase() !== filtroSetor.toLowerCase()) return false;
+            if (filtroGhe && d.ghe !== filtroGhe) return false;
+            if (busca) {
+                const txt = `${d.matricula} ${d.nome} ${d.cpf} ${d.funcao} ${d.setor} ${d.ghe} ${d.responsavel}`.toLowerCase();
+                if (!txt.includes(busca)) return false;
+            }
+            return true;
+        });
+    }
+
+    if (lista.length === 0) {
+        alert('Nenhum colaborador encontrado para exportação da relação clínica.');
+        return;
+    }
+
+    const dataMutirao = typeof obterDataMutiraoPsico === 'function' ? obterDataMutiraoPsico() : new Date().toISOString().split('T')[0];
+    const dataMutiraoFmt = formatSimpleDate(dataMutirao);
+
+    const cabecalhos = [
+        'Item',
+        'Matrícula',
+        'Nome do Colaborador',
+        'CPF',
+        'Função Contratual',
+        'Setor / Frente',
+        'Encarregado / Liderança',
+        'GHE',
+        'Nome do GHE',
+        'Exames PCMSO (NR-07)',
+        'Status do Exame',
+        'Situação de Escala (Férias/Afastamento)',
+        'Data Sugerida para Atendimento'
+    ];
+
+    const rows = lista.map((c, idx) => {
+        let escala = 'Ativo em Campo';
+        let dataSugerida = dataMutiraoFmt;
+        if (c.emFerias) {
+            escala = `Em Férias até ${formatSimpleDate(c.dtFimFerias)} (Retorno em ${formatSimpleDate(c.dtRetornoFerias)})`;
+            dataSugerida = c.dtRetornoFerias ? formatSimpleDate(c.dtRetornoFerias) : dataMutiraoFmt;
+        } else if (c.emAfastamento) {
+            escala = `Afastado até ${formatSimpleDate(c.dtFimAfastamento)} (${c.exigeRetornoNr07 ? 'Exame de Retorno ao Trabalho NR-07' : 'Retorno em ' + formatSimpleDate(c.dtRetornoAfastamento)})`;
+            dataSugerida = c.dtRetornoAfastamento ? formatSimpleDate(c.dtRetornoAfastamento) : dataMutiraoFmt;
+        }
+
+        const examesStr = (c.examesPcmsoGhe && c.examesPcmsoGhe.length > 0)
+            ? c.examesPcmsoGhe.join('; ')
+            : 'Exame Clínico Ocupacional (ASO)';
+
+        return [
+            idx + 1,
+            c.matricula,
+            c.nome,
+            formatarCpfExibicao(c.cpf),
+            c.funcao || '',
+            c.setor || '',
+            c.liderNome || c.responsavel || 'Não Informado',
+            c.ghe || '',
+            c.gheNome || '',
+            examesStr,
+            c.statusLabel || c.statusKey,
+            escala,
+            dataSugerida
+        ];
+    });
+
+    const dataSlug = new Date().toISOString().slice(0, 10);
+    const nomeArquivo = `RELACAO_CLINICA_EXAMES_NR07_${dataSlug}`;
+
+    if (typeof XLSX !== 'undefined') {
+        const aoa = [cabecalhos, ...rows];
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        ws['!cols'] = [
+            { wch: 6 },  // Item
+            { wch: 12 }, // Matrícula
+            { wch: 32 }, // Nome
+            { wch: 16 }, // CPF
+            { wch: 24 }, // Função
+            { wch: 20 }, // Setor
+            { wch: 22 }, // Encarregado
+            { wch: 8 },  // GHE
+            { wch: 28 }, // Nome GHE
+            { wch: 38 }, // Exames
+            { wch: 20 }, // Status
+            { wch: 30 }, // Escala
+            { wch: 18 }  // Data Sugerida
+        ];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'ENCAMINHAMENTO_NR07');
+        XLSX.writeFile(wb, `${nomeArquivo}.xlsx`);
+    } else {
+        // Fallback para CSV UTF-8
+        let csvContent = '\uFEFF' + cabecalhos.map(h => `"${h}"`).join(';') + '\n';
+        rows.forEach(r => {
+            csvContent += r.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(';') + '\n';
+        });
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${nomeArquivo}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    if (typeof mostrarFeedbackToast === 'function') {
+        mostrarFeedbackToast(`📊 Relação clínica exportada com sucesso (${lista.length} colaboradores)!`, 'sucesso');
+    }
+}
+
 function exportarExcelExameAtual() {
     if (typeof XLSX === 'undefined') {
         alert('Biblioteca XLSX não carregada.');
@@ -4343,6 +5079,10 @@ function copiarConvocacaoPsicoWhatsApp() {
 }
 
 window.imprimirConvocacaoSelecionados = imprimirConvocacaoSelecionados;
+window.imprimirConvocacaoPorEquipe = imprimirConvocacaoPorEquipe;
+window.exportarRelacaoClinica = exportarRelacaoClinica;
+window.popularFiltrosEquipeRecomendacaoExames = popularFiltrosEquipeRecomendacaoExames;
+window.aoMudarFiltroEquipePsico = aoMudarFiltroEquipePsico;
 window.copiarConvocacaoSelecionadosWhatsApp = copiarConvocacaoSelecionadosWhatsApp;
 window.copiarConvocacaoPsicoWhatsAppModal = copiarConvocacaoPsicoWhatsAppModal;
 window.imprimirConvocacaoExameAtual = imprimirConvocacaoExameAtual;
@@ -5249,6 +5989,8 @@ window.marcarTodosBaixaLote = marcarTodosBaixaLote;
 window.marcarSomentePendentesBaixaLote = marcarSomentePendentesBaixaLote;
 window.salvarBaixaLoteMutirao = salvarBaixaLoteMutirao;
 window.renderRecomendacaoPsicossocial = renderRecomendacaoPsicossocial;
+window.renderTabelaRecomendacaoPsicossocial = renderTabelaRecomendacaoPsicossocial;
+window.filtrarStatusPsicossocial = filtrarStatusPsicossocial;
 window.aoMudarFiltroPeriodoConvocacao = aoMudarFiltroPeriodoConvocacao;
 window.aoMudarFiltroStatusTriagem = aoMudarFiltroStatusTriagem;
 window.filtrarTabelaConvocacaoPsicossocial = renderTabelaConvocacaoPsicossocial;

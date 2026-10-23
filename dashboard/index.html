@@ -20,7 +20,7 @@
         })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=212">
+    <link rel="stylesheet" href="dashboard.css?v=215">
 </head>
 <body>
 
@@ -33,7 +33,7 @@
         <div style="width:100%; max-width:380px; margin:20px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:32px 28px; box-shadow:0 8px 32px rgba(0,0,0,0.08); box-sizing:border-box;">
             <div style="text-align:center; margin-bottom:22px;">
                 <div style="font-size:34px; margin-bottom:6px;">🛡️</div>
-                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v212</span></div>
+                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v215</span></div>
                 <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; letter-spacing:.5px; margin-top:2px;">PISF Ramal do Agreste</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:12px;">
@@ -149,7 +149,7 @@
             <div class="db-brand">
                 <div class="db-brand-icon">🛡️</div>
                 <div>
-                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v212</span></div>
+                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v215</span></div>
                     <div class="db-brand-sub">PISF Ramal do Agreste</div>
                 </div>
             </div>
@@ -3474,6 +3474,12 @@
                             </div>
                             <!-- Busca e Filtro de Setor -->
                             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <select id="feriasFiltroCiclo" onchange="renderTabelaFerias()" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); font-weight: 600;">
+                                    <option value="">🔄 Todos os Ciclos</option>
+                                    <option value="1_aberto">⏳ 1º Ciclo em Aberto</option>
+                                    <option value="1_ok">✅ 1º Ciclo Fechado/Gozado</option>
+                                    <option value="2_ok">⭐ 2º Ciclo Fechado/Gozado</option>
+                                </select>
                                 <select id="feriasFiltroSetor" onchange="renderTabelaFerias()" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text);">
                                     <option value="">🏢 Todos os Setores</option>
                                 </select>
@@ -3491,7 +3497,7 @@
                                         <th style="padding: 9px 12px;">Função / Setor</th>
                                         <th style="padding: 9px 12px;">Admissão</th>
                                         <th style="padding: 9px 12px;">Tempo de Casa</th>
-                                        <th style="padding: 9px 12px;">Limite Fatal 24m</th>
+                                        <th style="padding: 9px 12px;">Limite Fatal CLT</th>
                                         <th style="padding: 9px 12px; min-width: 170px;">Régua Concessiva CLT</th>
                                         <th style="padding: 9px 12px; text-align: center;">Status Gozo</th>
                                         <th style="padding: 9px 12px; text-align: center;">Isenção SST</th>
@@ -3656,6 +3662,21 @@
 
                 <div id="efetivoSubtab-recomendacoes" style="display:none;">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <!-- Banner Integrador de Convocação de Exames Ocupacionais NR-07 -->
+                    <div style="background: linear-gradient(135deg, #eff6ff 0%, #e0e7ff 100%); border: 1px solid #c7d2fe; border-left: 5px solid #4f46e5; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                        <div>
+                            <div style="font-weight: 800; font-size: 13.5px; color: #1e1b4b; display: flex; align-items: center; gap: 6px;">
+                                <span>🩺</span> Recomendação de Exames Ocupacionais por Equipe / Encarregado (NR-07)
+                            </div>
+                            <div style="font-size: 12px; color: #4338ca; margin-top: 3px; line-height: 1.4;">
+                                Planeje a convocação em lote por frente de serviço, filtre por encarregado e emita guias clínicas sem convocar colaboradores em período de férias ou afastamento.
+                            </div>
+                        </div>
+                        <button type="button" class="db-apply-btn" style="background: #4f46e5; font-size: 12px; font-weight: 700; padding: 8px 16px; border-radius: 8px; white-space: nowrap;" onclick="showPage('saude'); showSaudeSubtab('recomendacoes');">
+                            🩺 Abrir Recomendações de Exames PCMSO ↗
+                        </button>
+                    </div>
+
                     <div class="db-chart-title">📋 Recomendações por Cargo (GHE)</div>
                     <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">
                         Revisão em lote do campo "Recomendações" de cada cargo, usado na Ordem de Serviço. Cargos com o selo 🔁 têm o mesmo texto de outros — geralmente sinal de recomendação genérica que vale personalizar.
@@ -3690,6 +3711,7 @@
                         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                             <button class="db-clear-btn" id="btnExportarExcelEfetivo" onclick="gerarExcelEfetivo()" title="Exportar efetivo em planilha Excel (.xlsx) respeitando os filtros ativos" style="border-color: #10b981; color: #047857; background: #ecfdf5; font-weight: 700; display: inline-flex; align-items: center; gap: 5px;">📊 Gerar Excel</button>
                             <button class="db-clear-btn" onclick="toggleFormPdfEfetivo()" title="Exportar colaboradores em PDF">🖨️ Gerar PDF</button>
+                            <button class="db-clear-btn" id="btnImprimirEquipeEncarregado" onclick="abrirModalRelatorioEquipeEncarregado()" title="Imprimir relação de efetivo por equipe ou encarregado para liberação diária e DDSMA" style="border-color: #4f46e5; color: #4338ca; background: #eef2ff; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-users-cog"></i> 🖨️ Imprimir Equipe / Encarregado</button>
                             <button class="db-apply-btn" onclick="abrirFormEfetivo()">+ Novo Colaborador</button>
                         </div>
                     </div>
@@ -3752,6 +3774,107 @@
                         <button class="db-apply-btn" onclick="gerarPdfEfetivo()">🖨️ Gerar PDF</button>
                         <button class="db-apply-btn" onclick="gerarExcelEfetivo()" style="background: #10b981;">📊 Gerar Excel</button>
                         <span id="efetivoPdfStatus" style="font-size:12px; color:var(--text-light); margin-left:8px;"></span>
+                    </div>
+                </div>
+
+                <!-- Modal: Relação de Efetivo por Equipe / Encarregado (NR-01 / Liberação Diária / DDSMA) -->
+                <div id="modalRelatorioEquipeEncarregado" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:10050; align-items:center; justify-content:center; padding:16px;" onclick="if(event.target===this) fecharModalRelatorioEquipeEncarregado();">
+                    <div style="background:var(--card, #fff); border-radius:14px; max-width:540px; width:100%; max-height:92vh; overflow-y:auto; padding:22px 24px; box-shadow:0 20px 40px rgba(0,0,0,0.25); border:1px solid var(--border); box-sizing:border-box;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+                            <div class="db-chart-title" style="margin-bottom:0; display:flex; align-items:center; gap:8px; font-size:16px;">
+                                <i class="fas fa-clipboard-list" style="color:#4f46e5;"></i> Relação de Efetivo por Equipe
+                            </div>
+                            <button type="button" class="db-clear-btn" style="padding:4px 8px; font-weight:700;" onclick="fecharModalRelatorioEquipeEncarregado()">✕</button>
+                        </div>
+
+                        <div style="font-size:12px; color:var(--text-light); margin-bottom:16px; line-height:1.45;">
+                            Emissão de listagem operacional para conferência em campo, liberação diária de frente de trabalho, registro de presença em DDSMA e fiscalização cadastral (NR-01).
+                        </div>
+
+                        <div style="display:flex; flex-direction:column; gap:13px;">
+                            <!-- Filtro 1: Encarregado / Liderança -->
+                            <div>
+                                <label for="relEquipeFiltroLider" style="font-size:12px; font-weight:700; color:var(--text); display:block; margin-bottom:5px;">
+                                    👷 Encarregado / Responsável de Campo:
+                                </label>
+                                <select id="relEquipeFiltroLider" onchange="aoMudarLiderRelatorioEquipe()" style="width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px; background:var(--card); color:var(--text); font-weight:600;">
+                                    <option value="">Carregando lideranças...</option>
+                                </select>
+                                <div style="font-size:11px; color:var(--text-light); margin-top:3px;">
+                                    Extraído dinamicamente das frentes de serviço e funções de liderança cadastradas no efetivo.
+                                </div>
+                            </div>
+
+                            <!-- Filtro 2: Setor / Frente de Serviço -->
+                            <div>
+                                <label for="relEquipeFiltroSetor" style="font-size:12px; font-weight:700; color:var(--text); display:block; margin-bottom:5px;">
+                                    📍 Setor / Frente de Serviço:
+                                </label>
+                                <select id="relEquipeFiltroSetor" onchange="atualizarPreviaRelatorioEquipe()" style="width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px; background:var(--card); color:var(--text); font-weight:600;">
+                                    <option value="">Todos os Setores / Frentes</option>
+                                </select>
+                            </div>
+
+                            <!-- Filtro 3: Situação / Status -->
+                            <div>
+                                <label for="relEquipeFiltroSituacao" style="font-size:12px; font-weight:700; color:var(--text); display:block; margin-bottom:5px;">
+                                    👥 Situação dos Colaboradores:
+                                </label>
+                                <select id="relEquipeFiltroSituacao" onchange="atualizarPreviaRelatorioEquipe()" style="width:100%; padding:8px 12px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; background:var(--card); color:var(--text);">
+                                    <option value="ativos" selected>🟢 Apenas Ativos (Padrão para Canteiro)</option>
+                                    <option value="demitidos">🔴 Demitidos / Inativos</option>
+                                    <option value="todos">📋 Todos (Ativos + Inativos)</option>
+                                </select>
+                            </div>
+
+                            <!-- Opções Adicionais de Impressão -->
+                            <div style="background:var(--bg, #f8fafc); border:1px solid var(--border); border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:9px;">
+                                <div style="font-size:11.5px; font-weight:700; color:var(--text-light); text-transform:uppercase; letter-spacing:0.5px;">
+                                    ⚙️ Opções do Documento:
+                                </div>
+                                
+                                <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; user-select:none;">
+                                    <input type="checkbox" id="relEquipeIncluirAssinatura" checked onchange="atualizarPreviaRelatorioEquipe()" style="width:16px; height:16px; cursor:pointer;">
+                                    <span><b>Incluir campo para Rubrica / Assinatura</b> (DDSMA e Liberação Diária)</span>
+                                </label>
+
+                                <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; user-select:none;">
+                                    <input type="checkbox" id="relEquipeLinhasExtras" onchange="aoAlternarLinhasExtrasRelatorioEquipe()" style="width:16px; height:16px; cursor:pointer;">
+                                    <span><b>Adicionar linhas em branco</b> para anotação manual (visitantes / apoio)</span>
+                                </label>
+
+                                <div id="relEquipeWrapQtdExtras" style="display:none; padding-left:24px; align-items:center; gap:8px;">
+                                    <span style="font-size:12px; color:var(--text-light);">Quantidade de linhas extras:</span>
+                                    <input type="number" id="relEquipeQtdLinhasExtras" value="5" min="1" max="25" style="width:65px; padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px; font-weight:700; text-align:center;">
+                                </div>
+
+                                <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; user-select:none;">
+                                    <input type="checkbox" id="relEquipeDestacarAsoVencido" checked style="width:16px; height:16px; cursor:pointer;">
+                                    <span><b>Destacar conformidade do ASO</b> (Alerta de aptidão / ASO vencido)</span>
+                                </label>
+                            </div>
+
+                            <!-- Card de Resumo / Prévia em Tempo Real -->
+                            <div id="relEquipeCardPrevia" style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; font-size:12.5px; color:#1e40af; display:flex; align-items:center; justify-content:space-between;">
+                                <div id="relEquipePreviaTexto">Calculando efetivo da equipe...</div>
+                                <div id="relEquipePreviaBadge" style="font-weight:800; font-size:14px; background:#dbeafe; padding:2px 8px; border-radius:6px;">0 colab.</div>
+                            </div>
+
+                            <div id="relEquipeStatusMsg" style="font-size:12px; text-align:center; display:none;"></div>
+
+                            <!-- Botões de Ação -->
+                            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:6px; flex-wrap:wrap;">
+                                <button type="button" class="db-clear-btn" style="padding:9px 16px; font-size:13px;" onclick="fecharModalRelatorioEquipeEncarregado()">
+                                    Cancelar
+                                </button>
+                                <button type="button" class="db-apply-btn" style="background:#10b981; padding:9px 16px; font-size:13px; display:inline-flex; align-items:center; gap:6px;" onclick="exportarExcelEquipeEncarregado()">
+                                    📊 Baixar Excel
+                                </button>
+                                <button type="button" class="db-apply-btn" style="background:#4f46e5; padding:9px 18px; font-size:13px; font-weight:700; display:inline-flex; align-items:center; gap:6px;" onclick="imprimirRelatorioEquipeEncarregado()">
+                                    🖨️ Visualizar / Imprimir
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -5667,10 +5790,11 @@
                             </div>
                             <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                                 <button class="db-apply-btn" style="background: #059669; font-weight: 700;" id="btnBaixaLotePsico" onclick="abrirModalBaixaLoteMutirao()" title="Dar baixa em lote em colaboradores atendidos no mutirão ou clínica">✅ Baixa em Lote</button>
-                                <button class="db-apply-btn" style="background: #4f46e5;" id="btnConfigGhesPsico" onclick="abrirModalGerenciarGhesPsico()" title="Adicionar ou remover GHEs com exigência do exame">⚙️ Configurar GHEs</button>
-                                <button class="db-apply-btn" style="background: #7c3aed;" id="btnReprogDataPsico" onclick="abrirModalReprogramarDataMutirao()" title="Alterar ou reprogramar a data do próximo mutirão / visita">📅 Reprogramar Data</button>
+                                <button class="db-apply-btn" style="background: #4f46e5; font-weight: 700;" id="btnConfigGhesPsico" onclick="abrirModalGerenciarGhesPsico()" title="Adicionar ou remover GHEs com exigência do exame">⚙️ Configurar GHEs</button>
+                                <button class="db-apply-btn" style="background: #7c3aed; font-weight: 700;" id="btnReprogDataPsico" onclick="abrirModalReprogramarDataMutirao()" title="Alterar ou reprogramar a data do próximo mutirão / visita">📅 Reprogramar Data</button>
+                                <button class="db-apply-btn" style="background: #4338ca; font-weight: 700;" id="btnImprimirEquipeTop" onclick="imprimirConvocacaoPorEquipe()" title="Imprimir guia de encaminhamento e convocação oficial por encarregado/equipe (NR-07)">🖨️ Convocação por Equipe</button>
                                 <button class="db-apply-btn" style="background: #2563eb;" id="btnImprimirConvocacaoPsico" onclick="aoClicarEmitirConvocacaoExame()" title="Emitir lista de convocação com parametrização">🖨️ Imprimir Convocação</button>
-                                <button class="db-apply-btn" style="background: #0891b2;" onclick="exportarExcelExameAtual()">📊 Exportar Excel</button>
+                                <button class="db-apply-btn" style="background: #0891b2; font-weight: 700;" onclick="exportarRelacaoClinica()" title="Exportar relação completa formatada para a clínica de medicina do trabalho">📊 Relação Clínica (.xlsx)</button>
                                 <button class="db-apply-btn" style="background: #128c7e;" id="btnWhatsappPsico" onclick="copiarConvocacaoExameWhatsApp()">📲 Convocação WhatsApp</button>
                             </div>
                         </div>
@@ -5703,20 +5827,62 @@
                         </div>
                     </div>
 
-                    <!-- Filtros Rápidos (Pills) e Barra de Pesquisa -->
-                    <div class="db-chart-card" style="margin-bottom: 16px; padding: 12px 16px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
-                            <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="psicoStatusPills">
-                                <button type="button" class="sector-pill active" id="pillPsicoTodos" onclick="filtrarStatusPsicossocial('todos', this)">Todos (<span id="pillCountPsicoTodos">0</span>)</button>
-                                <button type="button" class="sector-pill" id="pillPsicoPendentes" style="border-color:#fca5a5; color:#991b1b;" onclick="filtrarStatusPsicossocial('pendentes', this)">🔴 Pendentes (<span id="pillCountPsicoPendentes">0</span>)</button>
-                                <button type="button" class="sector-pill" id="pillPsicoVencendo" style="border-color:#fde68a; color:#92400e;" onclick="filtrarStatusPsicossocial('vencendo', this)">🟡 Vencendo (<span id="pillCountPsicoVencendo">0</span>)</button>
-                                <button type="button" class="sector-pill" id="pillPsicoEmDia" style="border-color:#a7f3d0; color:#065f46;" onclick="filtrarStatusPsicossocial('em_dia', this)">🟢 Em Dia (<span id="pillCountPsicoEmDia">0</span>)</button>
+                    <!-- Filtros Dinâmicos por Equipe, Setor, GHE e Status com Toggle de Férias -->
+                    <div class="db-chart-card" style="margin-bottom: 16px; padding: 14px 16px;">
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <!-- Linha 1: Pills de Status -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="psicoStatusPills">
+                                    <button type="button" class="sector-pill active" id="pillPsicoTodos" onclick="filtrarStatusPsicossocial('todos', this)">Todos (<span id="pillCountPsicoTodos">0</span>)</button>
+                                    <button type="button" class="sector-pill" id="pillPsicoPendentes" style="border-color:#fca5a5; color:#991b1b;" onclick="filtrarStatusPsicossocial('pendentes', this)">🔴 Pendentes (<span id="pillCountPsicoPendentes">0</span>)</button>
+                                    <button type="button" class="sector-pill" id="pillPsicoVencendo" style="border-color:#fde68a; color:#92400e;" onclick="filtrarStatusPsicossocial('vencendo', this)">🟡 Vencendo (<span id="pillCountPsicoVencendo">0</span>)</button>
+                                    <button type="button" class="sector-pill" id="pillPsicoEmDia" style="border-color:#a7f3d0; color:#065f46;" onclick="filtrarStatusPsicossocial('em_dia', this)">🟢 Em Dia (<span id="pillCountPsicoEmDia">0</span>)</button>
+                                    <button type="button" class="sector-pill" id="pillPsicoFerias" style="border-color:#fed7aa; color:#9a3412;" onclick="filtrarStatusPsicossocial('ferias', this)">🏖️ Férias/Afastados (<span id="pillCountPsicoFerias">0</span>)</button>
+                                </div>
+                                <div id="psicoResumoFiltrosEquipe" style="font-size: 11.5px; color: var(--text-light); font-weight: 600;">
+                                    Carregando dados da equipe...
+                                </div>
                             </div>
-                            <div style="display: flex; gap: 8px; flex: 1; max-width: 500px; min-width: 260px;">
-                                <select id="psicoFiltroGhe" onchange="renderTabelaRecomendacaoPsicossocial()" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text);">
-                                    <option value="">Todos os GHEs Monitorados</option>
-                                </select>
-                                <input type="text" id="psicoBuscaInput" placeholder="Buscar colaborador, matrícula..." oninput="renderTabelaRecomendacaoPsicossocial()" style="flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text);">
+
+                            <!-- Linha 2: Dropdowns Dinâmicos e Barra de Pesquisa -->
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                                <div style="flex: 1; min-width: 190px;">
+                                    <select id="psicoFiltroLider" onchange="aoMudarFiltroEquipePsico()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); font-weight: 600;">
+                                        <option value="">Todos os Encarregados / Equipes</option>
+                                    </select>
+                                </div>
+                                <div style="flex: 1; min-width: 150px;">
+                                    <select id="psicoFiltroSetor" onchange="aoMudarFiltroEquipePsico()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); font-weight: 600;">
+                                        <option value="">Todos os Setores / Frentes</option>
+                                    </select>
+                                </div>
+                                <div style="flex: 1; min-width: 150px;">
+                                    <select id="psicoFiltroGhe" onchange="renderTabelaRecomendacaoPsicossocial()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text);">
+                                        <option value="">Todos os GHEs Monitorados</option>
+                                    </select>
+                                </div>
+                                <div style="flex: 1; min-width: 160px;">
+                                    <select id="psicoFiltroCiclo" onchange="renderTabelaRecomendacaoPsicossocial()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); font-weight: 600;">
+                                        <option value="">🔄 Ciclo: Todos</option>
+                                        <option value="1_ok">✅ 1º Ciclo Fechado</option>
+                                        <option value="2_ok">⭐ 2º Ciclo Fechado</option>
+                                        <option value="aberto">⏳ Em Aberto / A Conceder</option>
+                                    </select>
+                                </div>
+                                <div style="flex: 2; min-width: 200px;">
+                                    <input type="text" id="psicoBuscaInput" placeholder="Buscar colaborador, matrícula, encarregado..." oninput="renderTabelaRecomendacaoPsicossocial()" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); box-sizing: border-box;">
+                                </div>
+                            </div>
+
+                            <!-- Linha 3: Toggle de Férias e Afastamentos (NR-07) -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 4px; border-top: 1px dashed var(--border);">
+                                <label style="display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:700; cursor:pointer; user-select:none; color:var(--text); background:var(--bg); border:1px solid var(--border); padding:6px 12px; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+                                    <input type="checkbox" id="psicoOcultarEmFerias" checked onchange="renderTabelaRecomendacaoPsicossocial()" style="width:16px; height:16px; accent-color:#7c3aed; cursor:pointer;">
+                                    <span>🏖️ Ocultar colaboradores em período de férias ou afastamento ativo</span>
+                                </label>
+                                <span style="font-size: 11px; color: var(--text-light);">
+                                    💡 <i>NR-07: Exames que vencerem durante as férias serão sugeridos automaticamente para o 1º dia útil do retorno.</i>
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -5732,14 +5898,23 @@
                             </span>
                         </div>
                         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                            <button type="button" class="db-clear-btn" style="padding: 5px 12px; font-size: 11.5px; font-weight: 700; color: #6d28d9; border-color: #c084fc; background: #faf5ff;" onclick="selecionarPrimeirosPendentesPsico(20)" title="Selecionar os 20 colaboradores prioritários respeitando a capacidade da psicóloga">
+                            <button type="button" class="db-clear-btn" style="padding: 5px 12px; font-size: 11.5px; font-weight: 700; color: #6d28d9; border-color: #c084fc; background: #faf5ff;" onclick="selecionarPrimeirosPendentesPsico(20)" title="Selecionar os 20 colaboradores prioritários respeitando a capacidade sugerida">
                                 🎯 Selecionar Próximos 20 Pendentes
+                            </button>
+                            <button type="button" class="db-clear-btn" id="btnSelTodosEquipePsico" style="padding: 5px 12px; font-size: 11.5px; font-weight: 700; color: #4338ca; border-color: #a5b4fc; background: #eef2ff;" onclick="selecionarTodosFiltradosPsico()" title="Selecionar todos os colaboradores da equipe ou filtro atual">
+                                👥 Selecionar Todos da Equipe
                             </button>
                             <button type="button" class="db-clear-btn" style="padding: 5px 10px; font-size: 11.5px;" onclick="limparSelecaoConvocacaoPsicoMain()" title="Limpar todas as caixas de seleção">
                                 ⬜ Limpar Seleção
                             </button>
+                            <button type="button" class="db-apply-btn" id="btnImprimirConvocacaoEquipe" style="background: #4f46e5; font-size: 11.5px; padding: 5px 12px; font-weight: 700;" onclick="imprimirConvocacaoPorEquipe()" title="Imprimir convocação oficial por encarregado/frente de serviço com matriz de exames do PCMSO">
+                                🖨️ Imprimir Convocação por Equipe
+                            </button>
                             <button type="button" class="db-apply-btn" style="background: #2563eb; font-size: 11.5px; padding: 5px 12px; font-weight: 700;" onclick="imprimirConvocacaoSelecionados()" title="Imprimir lista oficial contendo apenas os colaboradores selecionados">
                                 🖨️ Imprimir Selecionados
+                            </button>
+                            <button type="button" class="db-apply-btn" style="background: #0891b2; font-size: 11.5px; padding: 5px 12px; font-weight: 700;" onclick="exportarRelacaoClinica()" title="Exportar planilha formatada para encaminhamento à clínica prestadora de exames">
+                                📊 Exportar Relação Clínica
                             </button>
                             <button type="button" class="db-apply-btn" style="background: #128c7e; font-size: 11.5px; padding: 5px 12px; font-weight: 700;" onclick="copiarConvocacaoSelecionadosWhatsApp()" title="Copiar mensagem para envio aos encarregados via WhatsApp">
                                 📲 WhatsApp Selecionados
@@ -9621,18 +9796,18 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js"></script>
     <script src="logo_cop_base64.js?v=20261015_v197"></script>
-    <script src="dashboard.js?v=212"></script>
-    <script src="modules/treinamentos_ddsma.js?v=212"></script>
-    <script src="modules/efetivo_ferias.js?v=205"></script>
-    <script src="modules/ghe_os.js?v=207"></script>
-    <script src="modules/relatorio_sms_nc.js?v=203"></script>
-    <script src="modules/saude_psicossocial.js?v=203"></script>
-    <script src="modules/epi_estoque.js?v=203"></script>
-    <script src="modules/ambiental_compras_hht.js?v=203"></script>
-    <script src="modules/apr_cipa.js?v=203"></script>
-    <script src="modules/documentos_brigada.js?v=203"></script>
-    <script src="modules/ergonomia_periculosidade_pgr.js?v=203"></script>
-    <script src="placar_lideres.js?v=203"></script>
+    <script src="dashboard.js?v=215"></script>
+    <script src="modules/treinamentos_ddsma.js?v=215"></script>
+    <script src="modules/efetivo_ferias.js?v=215"></script>
+    <script src="modules/ghe_os.js?v=215"></script>
+    <script src="modules/relatorio_sms_nc.js?v=215"></script>
+    <script src="modules/saude_psicossocial.js?v=215"></script>
+    <script src="modules/epi_estoque.js?v=215"></script>
+    <script src="modules/ambiental_compras_hht.js?v=215"></script>
+    <script src="modules/apr_cipa.js?v=215"></script>
+    <script src="modules/documentos_brigada.js?v=215"></script>
+    <script src="modules/ergonomia_periculosidade_pgr.js?v=215"></script>
+    <script src="placar_lideres.js?v=215"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();
@@ -10795,10 +10970,32 @@ function filterMatrizEpi(q) {
                 </div>
             </div>
 
-            <!-- Tipo de Afastamento & Status -->
+            <!-- Ciclo Aquisitivo & Status da Operação -->
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                 <div>
-                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Tipo de Afastamento *</label>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Ciclo Aquisitivo (CLT) *</label>
+                    <select id="feriasForm_cicloRotulo" onchange="onCicloOuStatusFeriasChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text); font-weight: 700;">
+                        <option value="1º Ciclo" selected>🥇 1º Ciclo (Período Aquisitivo 1)</option>
+                        <option value="2º Ciclo">🥈 2º Ciclo (Período Aquisitivo 2)</option>
+                        <option value="3º Ciclo">🥉 3º Ciclo (Período Aquisitivo 3)</option>
+                        <option value="4º Ciclo">🏅 4º Ciclo (Período Aquisitivo 4)</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Status da Operação *</label>
+                    <select id="feriasForm_status" onchange="onCicloOuStatusFeriasChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text); font-weight: 700;">
+                        <option value="concluida">✅ Gozado / Histórico Fechado</option>
+                        <option value="programada" selected>📅 Programada (Agendada)</option>
+                        <option value="em_gozo">✈️ Em Gozo (Ativo no Momento)</option>
+                        <option value="pendente">⏳ Pendente (Aguardando Escala)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Tipo de Afastamento & Ação Rápida de Fechamento -->
+            <div style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 12px; margin-bottom: 12px; align-items: flex-end;">
+                <div>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Tipo de Afastamento</label>
                     <select id="feriasForm_tipoAfastamento" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
                         <option value="ferias" selected>🏖️ Férias Regulamentares</option>
                         <option value="licenca_medica">🤒 Licença Médica / INSS</option>
@@ -10807,24 +11004,20 @@ function filterMatrizEpi(q) {
                     </select>
                 </div>
                 <div>
-                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Status da Operação *</label>
-                    <select id="feriasForm_status" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
-                        <option value="programada" selected>📅 Programada (Agendada)</option>
-                        <option value="em_gozo">✈️ Em Gozo (Ativo no Momento)</option>
-                        <option value="concluida">✅ Concluída (Período Gozado)</option>
-                        <option value="pendente">⏳ Pendente (Aguardando Escala)</option>
-                    </select>
+                    <button type="button" class="btn-ciclo-rapido" style="width: 100%; padding: 8px 10px; font-size: 12px; height: 37px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;" onclick="marcarFechamentoRapidoNoModal()" title="Preenche automaticamente como Gozado/Fechado sem exigir datas passadas">
+                        ⚡ Fechar Ciclo (1 Clique)
+                    </button>
                 </div>
             </div>
 
-            <!-- Datas de Início, Fim e Dias -->
+            <!-- Datas de Início, Fim e Dias (Opcionais se Gozado/Fechado) -->
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
                 <div>
-                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Data de Início *</label>
+                    <label id="feriasForm_lblDataInicio" style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Data de Início</label>
                     <input type="date" id="feriasForm_dataInicio" onchange="onDatasFeriasChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
                 </div>
                 <div>
-                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Data de Fim *</label>
+                    <label id="feriasForm_lblDataFim" style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Data de Fim</label>
                     <input type="date" id="feriasForm_dataFim" onchange="onDatasFeriasChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
                 </div>
                 <div>

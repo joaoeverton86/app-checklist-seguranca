@@ -127,13 +127,187 @@ function renderDetalheFeriasColabBadge(matricula) {
     if (!colab) return '—';
     const reg = calcularReguaFeriasClt(colab);
     const prazoTxt = reg.limiteConcessivoFatal ? formatSimpleDate(reg.limiteConcessivoFatal) : '—';
-    return `<span class="${reg.badgeClass}">${escapeHTML(reg.label)} • Limite 24m: ${prazoTxt}</span>`;
+    const cicloBadge = reg.resumoCiclos ? reg.resumoCiclos.badgeCicloHtml : '';
+    return `<div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">${cicloBadge} <span class="${reg.badgeClass}">${escapeHTML(reg.label)} • Limite ${reg.limiteMesesLabel || '24m'}: ${prazoTxt}</span></div>`;
 }
 
-// Cálculo central da régua de vencimento concessivo da CLT (Artigos 130 e 134)
+// Helper central de Ciclos de Férias (CLT Art. 129 a 134 e NR-07)
+function obterResumoCiclosFeriasColab(matricula) {
+    if (!matricula) {
+        return {
+            ciclo1Fechado: false,
+            ciclo2Fechado: false,
+            ciclo3Fechado: false,
+            cicloAtualRotulo: '1º Ciclo',
+            statusCicloAtual: 'Pendente',
+            badgeCicloHtml: '<span class="badge-ciclo-pendente">1º Ciclo Aberto</span>',
+            registroEmGozo: null,
+            registroProgramado: null,
+            registros: []
+        };
+    }
+
+    const matStr = String(matricula);
+    const regs = (allColaboradoresFerias || []).filter(f => String(f.matricula) === matStr && f.status !== 'cancelada');
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const hojeIso = toISODateLocal(hoje);
+
+    // Registro ativo no momento
+    const regEmGozo = regs.find(f => f.status === 'em_gozo' || (f.data_inicio && f.data_fim && hojeIso >= f.data_inicio && hojeIso <= f.data_fim));
+    const regProg = regs.find(f => f.status === 'programada' && f.data_inicio && hojeIso < f.data_inicio);
+
+    // Identificação de ciclos concluídos / gozados
+    // Ciclo 1: marcado com ciclo_rotulo contendo '1' ou registro com status 'concluida' / 'Gozado/Fechado'
+    const ciclo1Fechado = regs.some(f => {
+        const eh1 = !f.ciclo_rotulo || f.ciclo_rotulo.includes('1');
+        const fechado = f.status_ciclo === 'Gozado/Fechado' || f.status === 'concluida';
+        return eh1 && fechado;
+    });
+
+    // Ciclo 2: marcado com ciclo_rotulo contendo '2' e concluída / Gozado
+    const ciclo2Fechado = regs.some(f => {
+        const eh2 = f.ciclo_rotulo && f.ciclo_rotulo.includes('2');
+        const fechado = f.status_ciclo === 'Gozado/Fechado' || f.status === 'concluida';
+        return eh2 && fechado;
+    });
+
+    const ciclo3Fechado = regs.some(f => {
+        const eh3 = f.ciclo_rotulo && f.ciclo_rotulo.includes('3');
+        const fechado = f.status_ciclo === 'Gozado/Fechado' || f.status === 'concluida';
+        return eh3 && fechado;
+    });
+
+    let cicloAtualRotulo = '1º Ciclo';
+    let statusCicloAtual = 'Pendente';
+
+    if (ciclo2Fechado) {
+        cicloAtualRotulo = '3º Ciclo';
+    } else if (ciclo1Fechado) {
+        cicloAtualRotulo = '2º Ciclo';
+    } else {
+        cicloAtualRotulo = '1º Ciclo';
+    }
+
+    let badgeCicloHtml = '';
+    if (regEmGozo) {
+        statusCicloAtual = 'Em Gozo';
+        badgeCicloHtml = '<span class="badge-ferias-em-gozo" title="Colaborador em gozo de férias no momento">🏖️ Em Férias</span>';
+    } else if (ciclo2Fechado) {
+        statusCicloAtual = 'Gozado/Fechado';
+        badgeCicloHtml = '<span class="badge-ciclo-2ok" title="2º Ciclo de Férias Quitado/Gozado">2º Ciclo OK</span>';
+    } else if (ciclo1Fechado) {
+        statusCicloAtual = 'Gozado/Fechado';
+        badgeCicloHtml = '<span class="badge-ciclo-ok" title="1º Ciclo de Férias Quitado/Gozado — Apto rotineiro para exames periódicos">1º Ciclo OK</span>';
+    } else if (regProg) {
+        statusCicloAtual = 'Programado';
+        badgeCicloHtml = `<span class="badge-ferias-programada" title="Férias agendadas para ${formatSimpleDate(regProg.data_inicio)}">📅 1º Ciclo Prog.</span>`;
+    } else {
+        statusCicloAtual = 'Pendente';
+        badgeCicloHtml = '<span class="badge-ciclo-pendente" title="Ciclo em aberto / pendente de agendamento">1º Ciclo Aberto</span>';
+    }
+
+    return {
+        ciclo1Fechado,
+        ciclo2Fechado,
+        ciclo3Fechado,
+        cicloAtualRotulo,
+        statusCicloAtual,
+        badgeCicloHtml,
+        registroEmGozo: regEmGozo || null,
+        registroProgramado: regProg || null,
+        registros: regs
+    };
+}
+
+// Fechamento rápido de ciclo de férias com 1 clique (sem necessidade de datas retroativas)
+async function marcarCicloFeriasGozadoRapido(matricula, cicloRotulo = '1º Ciclo') {
+    if (!matricula) return;
+    const colab = (allEfetivo || []).find(c => String(c.id) === String(matricula));
+    const nomeColab = colab ? colab.nome : `Matrícula ${matricula}`;
+
+    const confirmar = confirm(`Confirma marcar o ${cicloRotulo} como "Gozado / Histórico Fechado" para ${nomeColab}?\n\nEssa ação liquida o ciclo anterior sem exigir o preenchimento de datas retroativas.`);
+    if (!confirmar) return;
+
+    try {
+        const dataAdm = colab ? (colab.dt_admissao || colab.data_admissao) : null;
+        const mesesLimite = cicloRotulo.includes('2') ? 36 : 24;
+        const limiteFatal = dataAdm ? addMeses(dataAdm, mesesLimite) : toISODateLocal(new Date());
+
+        // Busca registro existente do mesmo ciclo para evitar duplicidade
+        const regExistente = (allColaboradoresFerias || []).find(f => 
+            String(f.matricula) === String(matricula) && 
+            f.status !== 'cancelada' &&
+            (f.ciclo_rotulo === cicloRotulo || (cicloRotulo.includes('1') && (!f.ciclo_rotulo || f.ciclo_rotulo.includes('1'))))
+        );
+
+        const payloadFerias = {
+            matricula: String(matricula),
+            nome_colaborador: colab ? colab.nome : '',
+            funcao: colab ? (colab.funcao || '') : '',
+            setor: colab ? (colab.setor || '') : '',
+            data_admissao: dataAdm || toISODateLocal(new Date()),
+            limite_concessivo_fatal: limiteFatal,
+            ciclo_rotulo: cicloRotulo,
+            status_ciclo: 'Gozado/Fechado',
+            status: 'concluida',
+            tipo_afastamento: 'ferias',
+            data_inicio: null,
+            data_fim: null,
+            dias_gozo: 30,
+            observacoes: `Histórico do ${cicloRotulo} liquidado/gozado rapidamente via painel em ${new Date().toLocaleDateString('pt-BR')}.`,
+            updated_at: new Date().toISOString()
+        };
+
+        if (regExistente && regExistente.id) {
+            payloadFerias.id = regExistente.id;
+        }
+
+        // 1. Grava em colaboradores_ferias
+        await supabaseUpsert('colaboradores_ferias', [payloadFerias]);
+
+        // 2. Atualiza colaboradores_efetivo
+        const proximoCiclo = cicloRotulo.includes('1') ? '2º Ciclo' : (cicloRotulo.includes('2') ? '3º Ciclo' : '4º Ciclo');
+        if (colab) {
+            colab.ciclo_ferias_atual = proximoCiclo;
+            await supabaseUpsert('colaboradores_efetivo', [{
+                id: String(colab.id),
+                ciclo_ferias_atual: proximoCiclo
+            }]);
+        }
+
+        // 3. Invalida cache e recarrega
+        if (typeof dashCacheInvalidate === 'function') {
+            await dashCacheInvalidate('colaboradores_ferias');
+            await dashCacheInvalidate('colaboradores_efetivo');
+        }
+        await garantirColaboradoresFeriasCarregados();
+
+        // 4. Atualiza todas as interfaces
+        if (typeof renderFeriasPanel === 'function') await renderFeriasPanel();
+        if (typeof filterEfetivoColaboradores === 'function') filterEfetivoColaboradores(document.getElementById('efetivoSearchInput')?.value || '');
+        if (typeof renderRecomendacaoPsicossocial === 'function') renderRecomendacaoPsicossocial();
+        if (typeof mostrarDetalheColaborador === 'function' && document.getElementById('efetivoColabDetail')?.style.display !== 'none') {
+            mostrarDetalheColaborador(matricula);
+        }
+
+        if (typeof mostrarFeedbackToast === 'function') {
+            mostrarFeedbackToast(`✅ ${cicloRotulo} registrado como Gozado com sucesso!`, 'sucesso');
+        } else {
+            alert(`✅ ${cicloRotulo} registrado como Gozado com sucesso!`);
+        }
+    } catch (err) {
+        console.error('Erro ao fechar ciclo de férias rápido:', err);
+        alert('Falha ao registrar ciclo de férias: ' + (err.message || err));
+    }
+}
+
+// Cálculo central da régua de vencimento concessivo da CLT (Artigos 130 e 134) integrado por Ciclos
 function calcularReguaFeriasClt(colab) {
     const matricula = colab.id;
     const dataAdmStr = colab.dt_admissao || colab.data_admissao || '';
+    const resumoCiclos = obterResumoCiclosFeriasColab(matricula);
     
     if (!dataAdmStr) {
         return {
@@ -145,6 +319,7 @@ function calcularReguaFeriasClt(colab) {
             cpf: colab.cpf || '',
             dataAdmissao: null,
             limiteConcessivoFatal: null,
+            limiteMesesLabel: '24m',
             mesesTotal: 0,
             diasParaDobra: null,
             statusClt: 'normal',
@@ -153,7 +328,11 @@ function calcularReguaFeriasClt(colab) {
             registroFerias: null,
             emGozo: false,
             programada: false,
-            concluida: false
+            concluida: false,
+            resumoCiclos: resumoCiclos,
+            cicloAtualRotulo: resumoCiclos.cicloAtualRotulo,
+            ciclo1Fechado: resumoCiclos.ciclo1Fechado,
+            ciclo2Fechado: resumoCiclos.ciclo2Fechado
         };
     }
 
@@ -162,25 +341,39 @@ function calcularReguaFeriasClt(colab) {
     hoje.setHours(0, 0, 0, 0);
     const hojeIso = toISODateLocal(hoje);
 
-    // Limite Concessivo Fatal: admissão + 24 meses (CLT Art. 134)
-    const limiteFatalStr = addMeses(dataAdmStr, 24);
+    const totalMeses = Math.max(0, (hoje.getTime() - adm.getTime()) / (1000 * 60 * 60 * 24 * 30.4375));
+
+    // Determina o limite fatal concessivo com base no ciclo em aberto:
+    // Se 1º ciclo já fechou e 2º está aberto: concessivo do 2º ciclo = 36 meses (CLT Art. 134)
+    // Se 2º ciclo já fechou: concessivo do 3º ciclo = 48 meses
+    // Se 1º ciclo ainda está em aberto: concessivo = 24 meses
+    let mesesLimiteFatal = 24;
+    let limiteMesesLabel = '24m';
+
+    if (resumoCiclos.ciclo2Fechado) {
+        mesesLimiteFatal = 48;
+        limiteMesesLabel = '48m';
+    } else if (resumoCiclos.ciclo1Fechado) {
+        mesesLimiteFatal = 36;
+        limiteMesesLabel = '36m';
+    }
+
+    const limiteFatalStr = addMeses(dataAdmStr, mesesLimiteFatal);
     const limiteFatalDate = parseLocalDate(limiteFatalStr);
     limiteFatalDate.setHours(0, 0, 0, 0);
 
     const diasParaDobra = Math.ceil((limiteFatalDate.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
-    const totalMeses = Math.max(0, (hoje.getTime() - adm.getTime()) / (1000 * 60 * 60 * 24 * 30.4375));
 
     // Busca registros cadastrados para a matrícula
-    const feriasRegs = (allColaboradoresFerias || []).filter(f => String(f.matricula) === String(matricula));
-    
-    const regEmGozo = feriasRegs.find(f => f.status === 'em_gozo' || (f.status !== 'cancelada' && f.data_inicio && f.data_fim && hojeIso >= f.data_inicio && hojeIso <= f.data_fim));
-    const regProgramada = feriasRegs.find(f => f.status === 'programada' && f.data_inicio && hojeIso < f.data_inicio);
-    const regConcluida = feriasRegs.find(f => f.status === 'concluida' || (f.data_fim && hojeIso > f.data_fim && f.status !== 'cancelada' && f.status !== 'pendente'));
+    const feriasRegs = resumoCiclos.registros;
+    const regEmGozo = resumoCiclos.registroEmGozo;
+    const regProgramada = resumoCiclos.registroProgramado;
+    const regConcluida = feriasRegs.find(f => f.status === 'concluida' || f.status_ciclo === 'Gozado/Fechado' || (f.data_fim && hojeIso > f.data_fim && f.status !== 'cancelada' && f.status !== 'pendente'));
     const regPendente = feriasRegs.find(f => f.status === 'pendente');
     const ultimoRegistro = regEmGozo || regProgramada || regConcluida || regPendente || feriasRegs[0] || null;
 
     let statusClt = 'normal';
-    let label = '🟢 Normal (<18m)';
+    let label = '🟢 Normal';
     let badgeClass = 'badge-ferias-normal';
 
     if (regEmGozo) {
@@ -191,26 +384,30 @@ function calcularReguaFeriasClt(colab) {
         statusClt = 'programada';
         label = `📅 Programada (${formatSimpleDate(regProgramada.data_inicio)})`;
         badgeClass = 'badge-ferias-programada';
-    } else if (regConcluida) {
+    } else if (resumoCiclos.ciclo2Fechado) {
         statusClt = 'concluida';
-        label = '✅ Férias Quitadas';
-        badgeClass = 'badge-ferias-concluida';
+        label = '✅ 2º Ciclo Quitado';
+        badgeClass = 'badge-ciclo-2ok';
+    } else if (resumoCiclos.ciclo1Fechado && totalMeses < 30) {
+        statusClt = 'concluida';
+        label = '✅ 1º Ciclo Quitado';
+        badgeClass = 'badge-ciclo-ok';
     } else {
-        // Régua do Semáforo CLT para colaboradores sem gozo registrado:
-        // Vermelho: tempo de admissão >= 23 meses sem férias concluídas
-        // Amarelo: tempo de admissão entre 19 e 22 meses sem gozo
-        // Verde: tempo de admissão < 18 meses
-        if (totalMeses >= 23) {
+        // Régua do Semáforo CLT em relação ao ciclo em aberto
+        const mesesAlerta = mesesLimiteFatal - 5;
+        const mesesRisco = mesesLimiteFatal - 1;
+
+        if (totalMeses >= mesesRisco) {
             statusClt = 'critico';
-            label = '🔴 Risco Dobra CLT (≥23m)';
+            label = `🔴 Risco Dobra (${resumoCiclos.cicloAtualRotulo})`;
             badgeClass = 'badge-ferias-critico';
-        } else if (totalMeses >= 18.5) {
+        } else if (totalMeses >= mesesAlerta) {
             statusClt = 'atencao';
-            label = '🟡 Atenção / Programar (19-22m)';
+            label = `🟡 Atenção (${resumoCiclos.cicloAtualRotulo})`;
             badgeClass = 'badge-ferias-atencao';
         } else {
             statusClt = 'normal';
-            label = '🟢 Normal (<18m)';
+            label = resumoCiclos.ciclo1Fechado ? '🟢 2º Ciclo Regular' : '🟢 1º Ciclo Regular';
             badgeClass = 'badge-ferias-normal';
         }
     }
@@ -224,6 +421,8 @@ function calcularReguaFeriasClt(colab) {
         cpf: colab.cpf || '',
         dataAdmissao: dataAdmStr,
         limiteConcessivoFatal: limiteFatalStr,
+        limiteMesesLabel: limiteMesesLabel,
+        mesesLimiteFatal: mesesLimiteFatal,
         mesesTotal: totalMeses,
         diasParaDobra: diasParaDobra,
         statusClt: statusClt,
@@ -232,7 +431,11 @@ function calcularReguaFeriasClt(colab) {
         registroFerias: ultimoRegistro,
         emGozo: !!regEmGozo,
         programada: !!regProgramada,
-        concluida: !!regConcluida
+        concluida: resumoCiclos.ciclo1Fechado || !!regConcluida,
+        resumoCiclos: resumoCiclos,
+        cicloAtualRotulo: resumoCiclos.cicloAtualRotulo,
+        ciclo1Fechado: resumoCiclos.ciclo1Fechado,
+        ciclo2Fechado: resumoCiclos.ciclo2Fechado
     };
 }
 
@@ -302,6 +505,7 @@ function renderTabelaFerias() {
 
     const busca = (document.getElementById('feriasSearchInput')?.value || '').toLowerCase().trim();
     const setorFiltro = document.getElementById('feriasFiltroSetor')?.value || '';
+    const cicloFiltro = document.getElementById('feriasFiltroCiclo')?.value || '';
 
     const filtrados = dadosFeriasCltCache.filter(d => {
         if (valFeriasFiltroAtual === 'critico' && d.statusClt !== 'critico') return false;
@@ -313,8 +517,13 @@ function renderTabelaFerias() {
 
         if (setorFiltro && d.setor !== setorFiltro) return false;
 
+        // Filtro por Ciclo de Férias
+        if (cicloFiltro === '1_ok' && !d.ciclo1Fechado) return false;
+        if (cicloFiltro === '2_ok' && !d.ciclo2Fechado) return false;
+        if (cicloFiltro === 'aberto' && d.ciclo1Fechado && d.ciclo2Fechado) return false;
+
         if (busca) {
-            const txt = `${d.matricula} ${d.nome} ${d.cpf} ${d.funcao} ${d.setor}`.toLowerCase();
+            const txt = `${d.matricula} ${d.nome} ${d.cpf} ${d.funcao} ${d.setor} ${d.cicloAtualRotulo || ''}`.toLowerCase();
             if (!txt.includes(busca)) return false;
         }
         return true;
@@ -326,8 +535,10 @@ function renderTabelaFerias() {
     }
 
     tbody.innerHTML = filtrados.map(d => {
+        const cInfo = d.resumoCiclos || obterResumoCiclosFeriasColab(d.matricula);
         const mesesInt = Math.floor(d.mesesTotal);
-        const pct24 = Math.min(100, Math.max(0, Math.round((d.mesesTotal / 24) * 100)));
+        const maxMesesRegua = d.mesesLimiteFatal || 24;
+        const pct24 = Math.min(100, Math.max(0, Math.round((d.mesesTotal / maxMesesRegua) * 100)));
         
         let fillClass = 'ferias-regua-fill-aquisitivo';
         if (pct24 >= 95) fillClass = 'ferias-regua-fill-concessivo-alerta';
@@ -348,17 +559,37 @@ function renderTabelaFerias() {
         const mesesResto = Math.floor(d.mesesTotal % 12);
         const tempoCasaTxt = anos > 0 ? `${anos}a ${mesesResto}m` : `${mesesResto}m`;
 
-        let periodoGozoTxt = '<span style="color:var(--text-light); font-size:11px;">Pendente</span>';
+        let periodoGozoTxt = `<div style="margin-bottom:3px;">${cInfo.badgeCicloHtml}</div>`;
         if (d.registroFerias && d.registroFerias.data_inicio && d.registroFerias.data_fim) {
             const dtIniFmt = formatSimpleDate(d.registroFerias.data_inicio);
             const dtFimFmt = formatSimpleDate(d.registroFerias.data_fim);
-            periodoGozoTxt = `<div style="font-weight:700; color:var(--text); font-size:11.5px;">${dtIniFmt} a ${dtFimFmt}</div>
+            periodoGozoTxt += `<div style="font-weight:700; color:var(--text); font-size:11px;">${dtIniFmt} a ${dtFimFmt}</div>
                 <div style="font-size:10px; color:var(--text-light);">${d.registroFerias.dias_gozo || 30} dias • ${escapeHTML(d.registroFerias.status).toUpperCase()}</div>`;
+        } else if (cInfo.ciclo1Fechado) {
+            periodoGozoTxt += `<span style="font-size:10px; color:#047857; font-weight:600;">Histórico Liquidado</span>`;
+        } else {
+            periodoGozoTxt += `<span style="color:var(--text-light); font-size:10.5px;">Pendente</span>`;
         }
 
         let isencaoTag = '<span style="color:var(--text-light);">—</span>';
         if (d.emGozo) {
             isencaoTag = `<span class="badge-isencao-sst" title="Colaborador em gozo: ausência justificada em DDSMA/Treinamentos e ASO regulariza no retorno.">🛡️ Isento DDS/Trein.</span>`;
+        }
+
+        // Botão de ação rápida de 1 clique para fechar ciclo
+        let btnCicloRapido = '';
+        if (!cInfo.ciclo1Fechado) {
+            btnCicloRapido = `
+                <button class="btn-ciclo-rapido" onclick="marcarCicloFeriasGozadoRapido('${escapeHTML(d.matricula)}', '1º Ciclo')" title="Fechar 1º ciclo como gozado/liquidado (sem exigência de datas retroativas)">
+                    ✔️ Fechar 1º Ciclo
+                </button>
+            `;
+        } else if (!cInfo.ciclo2Fechado && d.mesesTotal >= 12) {
+            btnCicloRapido = `
+                <button class="btn-ciclo-rapido-2" onclick="marcarCicloFeriasGozadoRapido('${escapeHTML(d.matricula)}', '2º Ciclo')" title="Fechar 2º ciclo como gozado/liquidado">
+                    ✔️ Fechar 2º Ciclo
+                </button>
+            `;
         }
 
         const feriasId = d.registroFerias ? d.registroFerias.id : '';
@@ -404,19 +635,22 @@ function renderTabelaFerias() {
                         <span class="${d.badgeClass}">${escapeHTML(d.label)}</span>
                         <span style="font-size:10px; font-weight:700; color:var(--text-light);">${pct24}%</span>
                     </div>
-                    <div class="ferias-regua-track" title="${mesesInt} meses de contrato (Limite fatal: 24 meses)">
+                    <div class="ferias-regua-track" title="${mesesInt} meses de contrato (Limite fatal: ${maxMesesRegua} meses)">
                         <div class="${fillClass}" style="width: ${pct24}%;"></div>
                     </div>
                     <div class="ferias-regua-marcos">
                         <span>0m</span>
-                        <span>12m (Aquisitivo)</span>
-                        <span>24m (Limite Fatal)</span>
+                        <span>12m</span>
+                        <span>${maxMesesRegua}m (${d.limiteMesesLabel || 'Fatal'})</span>
                     </div>
                 </td>
                 <td style="padding: 8px 12px; text-align: center;">${periodoGozoTxt}</td>
                 <td style="padding: 8px 12px; text-align: center;">${isencaoTag}</td>
                 <td style="padding: 8px 12px; text-align: center; white-space:nowrap;">
-                    <div style="display:flex; gap:4px; justify-content:center; flex-wrap:wrap;">${btnAcoes}</div>
+                    <div style="display:flex; gap:4px; justify-content:center; flex-wrap:wrap; align-items:center;">
+                        ${btnCicloRapido}
+                        ${btnAcoes}
+                    </div>
                 </td>
             </tr>
         `;
@@ -442,14 +676,20 @@ function abrirModalLancamentoFerias(matriculaAlvo, feriasIdAlvo) {
 
     // Se passou matrícula, seleciona e preenche dados
     if (matriculaAlvo) {
-        selColab.value = matriculaAlvo;
+        if (selColab) selColab.value = matriculaAlvo;
     }
+
+    // Identifica ciclo sugerido
+    const targetMat = matriculaAlvo || (selColab ? selColab.value : '');
+    const cInfo = targetMat ? obterResumoCiclosFeriasColab(targetMat) : null;
+    const cicloSelEl = document.getElementById('feriasForm_cicloRotulo');
 
     // Se passou ID de férias, carrega os dados já cadastrados
     if (feriasIdAlvo) {
         const reg = (allColaboradoresFerias || []).find(f => String(f.id) === String(feriasIdAlvo));
         if (reg) {
-            selColab.value = reg.matricula;
+            if (selColab) selColab.value = reg.matricula;
+            if (cicloSelEl) cicloSelEl.value = reg.ciclo_rotulo || '1º Ciclo';
             document.getElementById('feriasForm_tipoAfastamento').value = reg.tipo_afastamento || 'ferias';
             document.getElementById('feriasForm_status').value = reg.status || 'programada';
             document.getElementById('feriasForm_dataInicio').value = reg.data_inicio || '';
@@ -459,6 +699,7 @@ function abrirModalLancamentoFerias(matriculaAlvo, feriasIdAlvo) {
         }
     } else {
         // Defaults para novo lançamento
+        if (cicloSelEl && cInfo) cicloSelEl.value = cInfo.cicloAtualRotulo;
         document.getElementById('feriasForm_tipoAfastamento').value = 'ferias';
         document.getElementById('feriasForm_status').value = 'programada';
         document.getElementById('feriasForm_dataInicio').value = '';
@@ -495,12 +736,18 @@ function onColabFeriasSelectChange() {
     const mesesResto = Math.floor(reg.mesesTotal % 12);
     const tempoCasaTxt = anos > 0 ? `${anos} ano(s) e ${mesesResto} mês(es)` : `${mesesResto} mês(es)`;
 
+    // Sugere ciclo no select se ainda não selecionado manualmente
+    const cicloSelEl = document.getElementById('feriasForm_cicloRotulo');
+    if (cicloSelEl && !document.getElementById('feriasForm_id')?.value) {
+        cicloSelEl.value = reg.cicloAtualRotulo;
+    }
+
     document.getElementById('feriasForm_lblNome').textContent = colab.nome || '—';
     document.getElementById('feriasForm_lblMatricula').textContent = colab.id;
     document.getElementById('feriasForm_lblSetor').textContent = colab.setor || '—';
     document.getElementById('feriasForm_lblAdmissao').textContent = reg.dataAdmissao ? formatSimpleDate(reg.dataAdmissao) : '—';
     document.getElementById('feriasForm_lblTempoCasa').textContent = `${tempoCasaTxt} (${Math.floor(reg.mesesTotal)} meses)`;
-    document.getElementById('feriasForm_lblLimiteFatal').textContent = reg.limiteConcessivoFatal ? formatSimpleDate(reg.limiteConcessivoFatal) : '—';
+    document.getElementById('feriasForm_lblLimiteFatal').textContent = reg.limiteConcessivoFatal ? `${formatSimpleDate(reg.limiteConcessivoFatal)} (${reg.limiteMesesLabel || '24m'})` : '—';
     
     let diasDobraTxt = '—';
     if (reg.diasParaDobra !== null) {
@@ -541,6 +788,30 @@ function onDatasFeriasChange() {
     }
 }
 
+function onCicloOuStatusFeriasChange() {
+    const status = document.getElementById('feriasForm_status')?.value;
+    const lblIni = document.getElementById('feriasForm_lblDataInicio');
+    const lblFim = document.getElementById('feriasForm_lblDataFim');
+    const ehHistorico = status === 'concluida';
+    if (lblIni) lblIni.innerHTML = ehHistorico ? 'Data Início <span style="font-weight:400; font-size:11px; color:#10b981;">(Opcional)</span>' : 'Data de Início *';
+    if (lblFim) lblFim.innerHTML = ehHistorico ? 'Data Fim <span style="font-weight:400; font-size:11px; color:#10b981;">(Opcional)</span>' : 'Data de Fim *';
+}
+
+function marcarFechamentoRapidoNoModal() {
+    const selStatus = document.getElementById('feriasForm_status');
+    if (selStatus) selStatus.value = 'concluida';
+    onCicloOuStatusFeriasChange();
+    const obs = document.getElementById('feriasForm_obs');
+    if (obs && !obs.value) {
+        const cicloSel = document.getElementById('feriasForm_cicloRotulo')?.value || '1º Ciclo';
+        obs.value = `${cicloSel} gozado e liquidado conforme histórico interno (fechamento rápido sem exigência de datas retroativas).`;
+    }
+    const statusMsg = document.getElementById('feriasForm_statusMsg');
+    if (statusMsg) {
+        statusMsg.innerHTML = '<span style="color:#059669; font-weight:700;">⚡ Modo Fechamento Rápido Ativado: Datas tornaram-se opcionais. Clique em "Salvar Programação" para liquidar o ciclo.</span>';
+    }
+}
+
 async function salvarLancamentoFerias() {
     const statusMsg = document.getElementById('feriasForm_statusMsg');
     const btnSalvar = document.getElementById('btnSalvarFeriasModal');
@@ -567,13 +838,20 @@ async function salvarLancamentoFerias() {
         return;
     }
 
-    const limiteFatal = addMeses(dataAdmissao, 24);
+    const cicloRotulo = document.getElementById('feriasForm_cicloRotulo')?.value || '1º Ciclo';
+    const mesesLimite = cicloRotulo.includes('2') ? 36 : 24;
+    const limiteFatal = addMeses(dataAdmissao, mesesLimite);
     const tipoAfastamento = document.getElementById('feriasForm_tipoAfastamento')?.value || 'ferias';
     const status = document.getElementById('feriasForm_status')?.value || 'programada';
     const dataInicio = document.getElementById('feriasForm_dataInicio')?.value || null;
     const dataFim = document.getElementById('feriasForm_dataFim')?.value || null;
     const diasGozo = parseInt(document.getElementById('feriasForm_diasGozo')?.value || '30', 10);
     const obs = document.getElementById('feriasForm_obs')?.value || '';
+
+    let statusCiclo = 'Pendente';
+    if (status === 'concluida') statusCiclo = 'Gozado/Fechado';
+    else if (status === 'em_gozo') statusCiclo = 'Em Gozo';
+    else if (status === 'programada') statusCiclo = 'Programado';
 
     const payload = {
         matricula: String(colab.id),
@@ -582,6 +860,8 @@ async function salvarLancamentoFerias() {
         setor: colab.setor || '',
         data_admissao: dataAdmissao,
         limite_concessivo_fatal: limiteFatal,
+        ciclo_rotulo: cicloRotulo,
+        status_ciclo: statusCiclo,
         tipo_afastamento: tipoAfastamento,
         data_inicio: dataInicio,
         data_fim: dataFim,
@@ -603,9 +883,23 @@ async function salvarLancamentoFerias() {
 
         await supabaseUpsert('colaboradores_ferias', [payload]);
 
-        statusMsg.textContent = '✅ Programação de férias salva com sucesso!';
+        // Se marcado como Gozado/Concluído, sincroniza o ciclo_ferias_atual em colaboradores_efetivo
+        if (status === 'concluida') {
+            const proxCiclo = cicloRotulo.includes('1') ? '2º Ciclo' : (cicloRotulo.includes('2') ? '3º Ciclo' : '4º Ciclo');
+            colab.ciclo_ferias_atual = proxCiclo;
+            await supabaseUpsert('colaboradores_efetivo', [{
+                id: String(colab.id),
+                ciclo_ferias_atual: proxCiclo
+            }]);
+        }
+
+        statusMsg.textContent = '✅ Registro de férias e ciclo salvo com sucesso!';
         statusMsg.style.color = '#059669';
 
+        if (typeof dashCacheInvalidate === 'function') {
+            await dashCacheInvalidate('colaboradores_ferias');
+            await dashCacheInvalidate('colaboradores_efetivo');
+        }
         await garantirColaboradoresFeriasCarregados();
         renderFeriasPanel();
 
@@ -1371,4 +1665,16 @@ async function renomearSetor() {
         statusEl.style.color = 'var(--danger)';
     }
 }
+
+// Exportações globais para integração com outros módulos
+window.obterResumoCiclosFeriasColab = obterResumoCiclosFeriasColab;
+window.marcarCicloFeriasGozadoRapido = marcarCicloFeriasGozadoRapido;
+window.calcularReguaFeriasClt = calcularReguaFeriasClt;
+window.renderFeriasPanel = renderFeriasPanel;
+window.abrirModalLancamentoFerias = abrirModalLancamentoFerias;
+window.fecharModalLancamentoFerias = fecharModalLancamentoFerias;
+window.salvarLancamentoFerias = salvarLancamentoFerias;
+window.onCicloOuStatusFeriasChange = onCicloOuStatusFeriasChange;
+window.marcarFechamentoRapidoNoModal = marcarFechamentoRapidoNoModal;
+
 

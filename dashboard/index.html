@@ -2066,7 +2066,7 @@
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;">
                             <div>
                                 <h3 style="margin: 0 0 6px 0; font-size: 16px; font-weight: 700; color: var(--text, #1e293b); display: flex; align-items: center; gap: 8px;">
-                                    <span>⚙️</span> Matriz de Regras de Recomendação de Treinamentos (NR-01)
+                                    <span>⚙️</span> Matriz de Capacitação por GHE & Requisitos Normativos (NR-01)
                                 </h3>
                                 <p style="font-size: 12.5px; color: var(--text-light, #64748b); margin: 0; line-height: 1.5; max-width: 900px;">
                                     Parametrização inteligente de capacitações normativas por <strong>Regra Geral (Todos)</strong>, por <strong>Grupo Homogêneo de Exposição (GHE/PGR)</strong>, por <strong>Função/Cargo</strong> ou por <strong>Colaborador Individual</strong>. O motor de auditoria cruza estas diretrizes em tempo real com o histórico de conclusão de cada colaborador para identificar pendências na admissão e vencimentos de reciclagem.
@@ -2088,27 +2088,27 @@
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
                             <!-- Filtros por Tipo -->
                             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                                <span style="font-size: 12px; font-weight: 700; color: var(--text-light);">Filtrar Grupos:</span>
-                                <button id="btnFiltroRegra-todas" class="db-filter-btn active" onclick="filtrarTipoRegraTab('todas')">Todos os Grupos</button>
+                                <span style="font-size: 12px; font-weight: 700; color: var(--text-light);">Filtrar por:</span>
+                                <button id="btnFiltroRegra-todas" class="db-filter-btn active" onclick="filtrarTipoRegraTab('todas')">Todas as Matrizes</button>
                                 <button id="btnFiltroRegra-TODOS" class="db-filter-btn" onclick="filtrarTipoRegraTab('TODOS')">🌐 Geral (Todos)</button>
-                                <button id="btnFiltroRegra-GHE" class="db-filter-btn" onclick="filtrarTipoRegraTab('GHE')">👥 Por GHE / Risco</button>
+                                <button id="btnFiltroRegra-GHE" class="db-filter-btn" onclick="filtrarTipoRegraTab('GHE')">👥 Por GHE / PGR</button>
                                 <button id="btnFiltroRegra-FUNCAO" class="db-filter-btn" onclick="filtrarTipoRegraTab('FUNCAO')">💼 Por Cargo</button>
                                 <button id="btnFiltroRegra-COLABORADOR" class="db-filter-btn" onclick="filtrarTipoRegraTab('COLABORADOR')">👤 Por Colaborador</button>
                             </div>
                             <!-- Busca em Tempo Real -->
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 <div style="position: relative;">
-                                    <input type="text" id="filtroRegraBusca" placeholder="🔍 Buscar grupo ou curso..." oninput="renderTreinamentoRegrasTab()" style="padding: 7px 32px 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; width: 230px; box-sizing: border-box;">
+                                    <input type="text" id="filtroRegraBusca" placeholder="🔍 Buscar GHE, cargo ou curso..." oninput="renderTreinamentoRegrasTab()" style="padding: 7px 32px 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; width: 230px; box-sizing: border-box;">
                                     <button class="db-clear-btn" onclick="document.getElementById('filtroRegraBusca').value=''; renderTreinamentoRegrasTab();" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); padding: 1px 5px; font-size: 11px;">✕</button>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Segunda Linha: Alternador de Visualização e Ações de Acordeão -->
+                        <!-- Segunda Linha: Alternador de Visualização e Ações de Matriz por GHE -->
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; border-top: 1px solid var(--border); padding-top: 10px;">
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 <button id="btnVisaoAcordeon" class="db-filter-btn active" onclick="alternarVisualizacaoRegras('acordeon')" style="font-weight: 700;">
-                                    🗂️ Visão em Acordeão por Grupos
+                                    🗂️ Matriz de Capacitação por GHE
                                 </button>
                                 <button id="btnVisaoTabela" class="db-filter-btn" onclick="alternarVisualizacaoRegras('tabela')">
                                     📋 Visão Lista Geral
@@ -2119,17 +2119,17 @@
                                 <div style="font-size: 12px; color: var(--text-light); margin-right: 6px;">
                                     Total: <strong><span id="regrasContador">0</span></strong> regra(s) vinculada(s)
                                 </div>
-                                <button class="db-clear-btn" onclick="expandirTodosAcordeonsRegras()" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600;" title="Expandir todos os blocos">
+                                <button class="db-clear-btn" onclick="expandirTodosAcordeonsRegras()" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600;" title="Expandir todas as matrizes">
                                     🔽 Expandir Todos
                                 </button>
-                                <button class="db-clear-btn" onclick="recolherTodosAcordeonsRegras()" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600;" title="Recolher todos os blocos">
+                                <button class="db-clear-btn" onclick="recolherTodosAcordeonsRegras()" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600;" title="Recolher todas as matrizes">
                                     🔼 Recolher Todos
                                 </button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Container do Acordeão de Grupos (Padrão) -->
+                    <!-- Container da Matriz de Capacitação por GHE (Padrão) -->
                     <div id="regrasAccordionContainer" class="regras-accordion-container">
                         <!-- Renderizado dinamicamente via renderTreinamentoRegrasTab() -->
                     </div>
@@ -2549,7 +2549,7 @@
     </div>
 </div>
 
-<!-- Modal: Inclusão em Lote de Treinamentos no Grupo (NR-01) -->
+<!-- Modal: Inclusão em Lote de Treinamentos na Matriz de Capacitação (NR-01) -->
 <div id="modalTreinamentoLote" style="display:none; position: fixed; inset: 0; background: rgba(15,23,42,0.65); z-index: 10085; justify-content: center; align-items: center; padding: 16px; overflow-y: auto;" onclick="if(event.target===this) fecharModalLoteTreinamentos();">
     <div style="background: var(--card, #fff); border-radius: 14px; max-width: 680px; width: 100%; max-height: 92vh; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 1px solid var(--border); overflow: hidden;">
         <!-- Header do Modal -->
@@ -2557,7 +2557,7 @@
             <div style="display: flex; align-items: center; gap: 10px;">
                 <span style="font-size: 20px;">📦</span>
                 <div>
-                    <h4 style="margin: 0; font-size: 15.5px; font-weight: 700; color: var(--text);">Incluir Treinamentos no Grupo (Lote)</h4>
+                    <h4 style="margin: 0; font-size: 15.5px; font-weight: 700; color: var(--text);">Incluir Treinamentos na Matriz de Capacitação (Lote)</h4>
                     <div style="font-size: 11.5px; color: var(--text-light); margin-top: 1px;">Vincule múltiplos cursos do catálogo de uma única vez com busca em tempo real</div>
                 </div>
             </div>
@@ -2566,9 +2566,9 @@
 
         <!-- Conteúdo do Modal (Scrollável) -->
         <div style="padding: 18px 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px;">
-            <!-- Contexto do Grupo Selecionado -->
+            <!-- Contexto do GHE / Alvo Selecionado -->
             <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 12px 14px;">
-                <div style="font-size: 10.5px; font-weight: 700; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px;">Grupo Alvo da Exigência (Contexto Travado)</div>
+                <div style="font-size: 10.5px; font-weight: 700; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px;">GHE / Alvo da Matriz (Contexto Selecionado)</div>
                 <div id="modalLoteGrupoNome" style="font-size: 14px; font-weight: 800; color: #1e3a8a; margin-top: 2px;">
                     01 - VIGILÂNCIA
                 </div>
@@ -2621,7 +2621,7 @@
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-top: 1px solid var(--border); background: var(--bg, #f8fafc);">
             <button type="button" class="db-clear-btn" onclick="fecharModalLoteTreinamentos()">Cancelar</button>
             <button type="button" class="db-apply-btn" id="btnSalvarTreinamentosLote" onclick="salvarTreinamentosLote()" style="font-weight: 700; padding: 8px 18px;" disabled>
-                💾 Salvar <span id="btnContadorSalvarLote">0</span> Treinamento(s) no Grupo
+                💾 Salvar <span id="btnContadorSalvarLote">0</span> Treinamento(s) na Matriz
             </button>
         </div>
     </div>

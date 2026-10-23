@@ -10212,10 +10212,40 @@ function obterPeriodicidadeCursoCatalogo(cod) {
     return curso && curso.meses_validade ? parseInt(curso.meses_validade, 10) : null;
 }
 
+function formatarTituloGheExibicao(cod, rawNome) {
+    const c = String(cod || '').trim();
+    let n = String(rawNome || '').trim();
+    if (!n) return c ? `GHE ${c}` : 'GHE';
+
+    // Se já começa com "GRUPO " (ex: "GRUPO 07 - MANUTENÇÃO CIVIL" ou "GRUPO 07 — ...")
+    if (/^grupo\s+/i.test(n)) {
+        n = n.replace(/^grupo\s+/i, 'GHE ');
+        return n.replace(/\s*—\s*/g, ' - ');
+    }
+
+    // Se já começa com "GHE " (ex: "GHE 07 - MANUTENÇÃO CIVIL")
+    if (/^ghe\s+/i.test(n)) {
+        return n.replace(/\s*—\s*/g, ' - ');
+    }
+
+    // Se começa com o código numérico seguido de separador (ex: "07 - MANUTENÇÃO CIVIL" ou "07 — ...")
+    if (new RegExp(`^${c}\\s*[-—–]\\s*`, 'i').test(n)) {
+        return `GHE ${n.replace(/\s*[-—–]\s*/, ' - ')}`;
+    }
+
+    // Se n for apenas o código
+    if (n === c) {
+        return `GHE ${c}`;
+    }
+
+    // Se for apenas a descrição (ex: "MANUTENÇÃO CIVIL")
+    return c ? `GHE ${c} - ${n}` : `GHE - ${n}`;
+}
+
 function obterNomeGhePorCodigo(gheCod) {
     if (!gheCod) return 'GHE Não Informado';
-    const item = allGheCatalogo.find(g => String(g.id).trim() === String(gheCod).trim() || String(g.nome).trim() === String(gheCod).trim());
-    if (item) return item.nome ? `${item.id} — ${item.nome}` : item.id;
+    const item = (allGheCatalogo || []).find(g => String(g.id).trim() === String(gheCod).trim() || String(g.nome).trim() === String(gheCod).trim());
+    if (item) return formatarTituloGheExibicao(item.id, item.nome);
     return `GHE ${gheCod}`;
 }
 
@@ -10365,14 +10395,16 @@ function construirListaGruposRegras(termoBusca = '') {
                 colaboradorEstaAtivo(e) && String(e.ghe || '').trim() === cod
             ).length;
 
+            const tituloGhe = formatarTituloGheExibicao(cod, g.nome);
+
             grupos.push({
                 key: 'GHE_' + cod,
                 tipo: 'GHE',
                 alvo_valor: cod,
                 icone: '👥',
-                titulo: g.nome.startsWith(cod) ? g.nome : `${cod} — ${g.nome}`,
-                tituloCurto: g.nome.startsWith(cod) ? g.nome : `${cod} — ${g.nome}`,
-                subtitulo: `Grupo Homogêneo de Exposição (NR-01 / PGR)`,
+                titulo: tituloGhe,
+                tituloCurto: tituloGhe,
+                subtitulo: `Matriz de Capacitação por GHE (NR-01 / PGR)`,
                 regras: regrasGhe,
                 totalColaboradores: totalColabs
             });
@@ -10481,9 +10513,9 @@ function renderizarCorpoGrupoRegras(grupo) {
         return `
             <div class="empty-grupo-regras">
                 <div style="font-size: 24px; margin-bottom: 6px;">📂</div>
-                <div style="font-weight: 700; color: var(--text); font-size: 13.5px;">Nenhum treinamento vinculado a este grupo</div>
+                <div style="font-weight: 700; color: var(--text); font-size: 13.5px;">Nenhum treinamento vinculado a esta matriz</div>
                 <div style="font-size: 12px; color: var(--text-light); margin-top: 4px; max-width: 480px; margin-left: auto; margin-right: auto;">
-                    Defina a matriz de capacitação obrigatória exigida pela NR-01 para habilitar o diagnóstico automático de gaps e conformidade deste grupo.
+                    Defina a matriz de capacitação obrigatória exigida pela NR-01 para habilitar o diagnóstico automático de gaps e conformidade deste GHE.
                 </div>
                 <button type="button" class="db-apply-btn btn-incluir-treinamentos" style="margin-top: 12px;" onclick="abrirModalLoteTreinamentos('${grupo.tipo}', '${escapeHTML(grupo.alvo_valor)}', '${escapeHTML(grupo.tituloCurto)}')">
                     ➕ Incluir Treinamentos em Lote
@@ -10522,7 +10554,7 @@ function renderizarCorpoGrupoRegras(grupo) {
                             <button type="button" class="db-clear-btn" onclick="abrirModalNovaRegra('${r.id}')" style="padding: 4px 8px; font-size: 11px;" title="Editar periodicidade ou regras finas">
                                 ✏️ Ajustar
                             </button>
-                            <button type="button" class="btn-excluir-vinculo-direto" onclick="excluirVinculoRegraRapido('${r.id}', '${grupo.key}', '${escapeHTML(nomeCurso)}')" title="Remover este treinamento do grupo">
+                            <button type="button" class="btn-excluir-vinculo-direto" onclick="excluirVinculoRegraRapido('${r.id}', '${grupo.key}', '${escapeHTML(nomeCurso)}')" title="Remover este treinamento desta matriz">
                                 🗑️ Remover Vínculo
                             </button>
                         </div>
@@ -10536,7 +10568,7 @@ function renderizarCorpoGrupoRegras(grupo) {
 function renderizarAcordeonGrupoItem(grupo, estaAberto) {
     const qtdCursos = grupo.regras.length;
     const badgeCursosClass = qtdCursos > 0 ? 'tem-cursos' : 'sem-cursos';
-    const badgeCursosTexto = `${qtdCursos} ${qtdCursos === 1 ? 'Treinamento' : 'Treinamentos'}`;
+    const badgeCursosTexto = `${qtdCursos} ${qtdCursos === 1 ? 'Treinamento Vinculado' : 'Treinamentos Vinculados'}`;
 
     return `
         <div class="regras-accordion-item ${estaAberto ? 'expanded' : ''}" id="accordion-grupo-${grupo.key}" data-grupokey="${grupo.key}">
@@ -10560,7 +10592,7 @@ function renderizarAcordeonGrupoItem(grupo, estaAberto) {
                             ${badgeCursosTexto}
                         </span>
                         ${grupo.totalColaboradores !== undefined ? `
-                            <span class="badge-acordeon-efetivo" title="Colaboradores ativos vinculados a este grupo">
+                            <span class="badge-acordeon-efetivo" title="Colaboradores ativos vinculados a este GHE / público">
                                 👥 ${grupo.totalColaboradores} ativos
                             </span>
                         ` : ''}
@@ -10608,9 +10640,9 @@ function renderTreinamentoRegrasTab() {
             accordionContainer.innerHTML = `
                 <div class="empty-grupo-regras" style="background:var(--card); border:1px solid var(--border); padding:36px 16px;">
                     <div style="font-size:32px; margin-bottom:8px;">🔍</div>
-                    <div style="font-weight:700; font-size:15px; color:var(--text);">Nenhum grupo ou treinamento encontrado</div>
+                    <div style="font-weight:700; font-size:15px; color:var(--text);">Nenhuma matriz de capacitação ou treinamento encontrado</div>
                     <div style="font-size:12px; color:var(--text-light); margin-top:4px;">
-                        Tente ajustar o termo de pesquisa ou trocar o filtro de tipo de grupo.
+                        Tente ajustar o termo de pesquisa ou trocar o filtro de tipo de matriz.
                     </div>
                 </div>
             `;
@@ -10801,7 +10833,7 @@ function renderizarListaCursosModalLote(termo = '') {
 
         if (c.jaVinculado) {
             return `
-                <div class="lote-curso-item ja-vinculado" title="Este treinamento já está vinculado a este grupo">
+                <div class="lote-curso-item ja-vinculado" title="Este treinamento já está vinculado a esta matriz">
                     <div class="lote-curso-item-info">
                         <input type="checkbox" checked disabled style="width: 16px; height: 16px; accent-color: var(--primary);">
                         <span class="badge-curso-cod">Cód. ${escapeHTML(c.id)}</span>
@@ -10928,7 +10960,7 @@ async function salvarTreinamentosLote() {
             statusMsg.textContent = '❌ Erro ao salvar: ' + err.message;
             statusMsg.style.color = 'var(--danger)';
         }
-        alert('Falha ao salvar treinamentos no grupo: ' + err.message);
+        alert('Falha ao salvar treinamentos na matriz de capacitação: ' + err.message);
     } finally {
         if (btnSalvar) btnSalvar.disabled = false;
     }
@@ -10936,7 +10968,7 @@ async function salvarTreinamentosLote() {
 
 async function excluirVinculoRegraRapido(id, grupoKey, nomeCurso) {
     const nome = nomeCurso || 'este treinamento';
-    if (!confirm(`Deseja realmente remover o treinamento "${nome}" deste grupo?\n\nO diagnóstico de gaps e prontidão será recalculado.`)) {
+    if (!confirm(`Deseja realmente remover o treinamento "${nome}" desta matriz de capacitação?\n\nO diagnóstico de gaps e prontidão será recalculado.`)) {
         return;
     }
 
@@ -10984,7 +11016,7 @@ async function abrirModalNovaRegra(regraId = null) {
         const ghesSet = new Map();
         allGheCatalogo.forEach(g => {
             const cod = String(g.id).trim();
-            if (cod) ghesSet.set(cod, g.nome ? `${cod} — ${g.nome}` : `GHE ${cod}`);
+            if (cod) ghesSet.set(cod, formatarTituloGheExibicao(cod, g.nome));
         });
         // Complementa com GHEs de colaboradores_efetivo caso haja algum não cadastrado no catálogo
         allEfetivo.forEach(e => {

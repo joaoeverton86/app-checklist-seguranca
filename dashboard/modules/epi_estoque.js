@@ -11,17 +11,17 @@
 // quando alguém registra a primeira Entrada.
 // ============================================
 
-let allEpiCatalogo = [];
-let allEpiEstoque = [];
-let allEpiEntregas = [];
-let allEpiEntradas = [];
-let epiModoVisaoEstoque = 'grade'; // 'grade' (Modo Família/Grade) ou 'lista' (Modo Detalhado)
-let epiLoaded = false;
-let epiFilter = 'mes';
-let epiFiltroAno = '';
-let epiFiltroMes = '';
+var allEpiCatalogo = [];
+var allEpiEstoque = [];
+var allEpiEntregas = [];
+var allEpiEntradas = [];
+var epiModoVisaoEstoque = 'grade'; // 'grade' (Modo Família/Grade) ou 'lista' (Modo Detalhado)
+var epiLoaded = false;
+var epiFilter = 'mes';
+var epiFiltroAno = '';
+var epiFiltroMes = '';
 
-const EPI_TIPO_LABELS = { maos: 'Mãos', pes: 'Pés', cabeca: 'Cabeça', olhos: 'Olhos', rosto: 'Rosto', respiratorio: 'Respiratório', corpo: 'Corpo', altura: 'Altura', audicao: 'Audição', outro: 'Outro' };
+var EPI_TIPO_LABELS = { maos: 'Mãos', pes: 'Pés', cabeca: 'Cabeça', olhos: 'Olhos', rosto: 'Rosto', respiratorio: 'Respiratório', corpo: 'Corpo', altura: 'Altura', audicao: 'Audição', outro: 'Outro' };
 
 // Status do CA (Certificado de Aprovação) de um item do catálogo - mesma janela de 30
 // dias e mesmos buckets já usados pra vencimento de ASO (calcularStatusAsoColaborador) e
@@ -287,7 +287,7 @@ function gerarPdfEpi() {
 // -1 = semana passada, +1 = semana que vem, etc.).
 // ============================================
 
-let epiRelatorioSemanaOffset = 0;
+var epiRelatorioSemanaOffset = 0;
 
 function calcularEpiSemana(offset) {
     const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
@@ -325,8 +325,8 @@ function montarLinhasEpiSemanal() {
     return { inicio, fim, catalogoPorId, entregas };
 }
 
-const TIPO_ENTREGA_LABELS_EPI = { inicial: 'Inicial', reposicao: 'Reposição', troca: 'Troca' };
-const MOTIVO_REPOSICAO_LABELS_EPI_SEMANAL = { perda: 'Perda', dano: 'Dano/Rompimento', desgaste: 'Desgaste Natural', troca_tamanho: 'Troca de Tamanho', vencimento: 'Vencimento (CA)' };
+var TIPO_ENTREGA_LABELS_EPI = { inicial: 'Inicial', reposicao: 'Reposição', troca: 'Troca' };
+var MOTIVO_REPOSICAO_LABELS_EPI_SEMANAL = { perda: 'Perda', dano: 'Dano/Rompimento', desgaste: 'Desgaste Natural', troca_tamanho: 'Troca de Tamanho', vencimento: 'Vencimento (CA)' };
 
 async function gerarExcelEpiSemanal() {
     const statusEl = document.getElementById('epiRelatorioSemanalStatus');
@@ -1069,7 +1069,7 @@ async function confirmarMesclarExcluirEpi() {
 
 // ---- Estoque Inteligente (Consumo, Cobertura, Famílias de Tamanhos e Sugestão de Compras) ----
 
-let epiEstoqueFiltroAtual = 'todos';
+var epiEstoqueFiltroAtual = 'todos';
 
 function setEpiModoVisualizacao(modo) {
     epiModoVisaoEstoque = modo;
@@ -1084,7 +1084,7 @@ function renderEpiEstoquePanel() {
     filterEpiEstoqueLista(document.getElementById('epiEstoqueSearchInput')?.value || '');
 }
 
-const EPI_ESTOQUE_FILTRO_LABELS = { todos: 'Todos', com: 'Com saldo', sem: 'Sem saldo' };
+var EPI_ESTOQUE_FILTRO_LABELS = { todos: 'Todos', com: 'Com saldo', sem: 'Sem saldo' };
 
 function filtrarEpiEstoquePorSaldo(filtro) {
     epiEstoqueFiltroAtual = filtro;
@@ -1360,7 +1360,7 @@ function limparBuscaEpiEstoque() {
 
 // ---- Sugestão de Compras Interativa (Ponto de Pedido) ----
 
-let epiItensSolicitacaoCompras = [];
+var epiItensSolicitacaoCompras = [];
 
 function toggleFormAdicionarItemCompras() {
     const p = document.getElementById('formAdicionarItemComprasPanel');
@@ -1913,7 +1913,7 @@ function popularEpiColabDatalist() {
 
 // ---- Histórico por colaborador (mesma visão que o app de campo mostra ao escanear o QR) ----
 
-const EPI_FICHA_BTN_IDS = ['epiFichaBtnHoje', 'epiFichaBtnMes', 'epiFichaBtnTrimestre', 'epiFichaBtnAno', 'epiFichaBtnTodos'];
+var EPI_FICHA_BTN_IDS = ['epiFichaBtnHoje', 'epiFichaBtnMes', 'epiFichaBtnTrimestre', 'epiFichaBtnAno', 'epiFichaBtnTodos'];
 
 // Preenche De/Até a partir de um atalho - os campos continuam editáveis na mão depois,
 // pro caso de um recorte que não bate com nenhum atalho (ver comentário em
@@ -2570,7 +2570,7 @@ async function importarEpiCSV() {
 // e Justificativa Técnica NR-06 para Suprimentos e Diretoria)
 // ================================================================
 
-let epiConsumoEstado = {
+var epiConsumoEstado = {
     diasHorizonte: 60,
     dadosCalculados: null
 };
@@ -3389,7 +3389,7 @@ function imprimirDossieConsumoEpi() {
 // NAVEGAÇÃO ENTRE PÁGINAS (barra lateral)
 // ============================================
 
-const DB_PAGE_TITLES = {
+var DB_PAGE_TITLES = {
     relatoriosms: 'Relatório Mensal SMS',
     checklists: 'Checklists',
     extintores: 'Extintores',
@@ -3426,13 +3426,13 @@ const DB_PAGE_TITLES = {
 // de verdade é no banco (RLS via usuario_tem_acesso_modulo) - esta tela só gerencia quem
 // tem qual perfil, não implementa nenhuma trava por conta própria.
 // ============================================
-let allPainelPerfis = [];
-let allPainelUsuarios = [];
-let usuariosPainelLoaded = false;
-let painelPerfilEditandoId = null;
+var allPainelPerfis = [];
+var allPainelUsuarios = [];
+var usuariosPainelLoaded = false;
+var painelPerfilEditandoId = null;
 
-let allColaboradoresInternos = [];
-let filtroColabsInternosTexto = '';
+var allColaboradoresInternos = [];
+var filtroColabsInternosTexto = '';
 
 function showUsuariosPainelSubtab(subtab) {
     const btnColabs = document.getElementById('usuariosSubtabBtn-colabs');
@@ -4215,7 +4215,7 @@ async function salvarPerfilPainel() {
 // ================================================================
 // MENU LATERAL EM GRUPOS (accordion por pilar de SSMA)
 // ================================================================
-const NAV_GROUP_POR_PAGINA = {
+var NAV_GROUP_POR_PAGINA = {
     checklists: 'seguranca', treinamentos: 'seguranca', ddsma: 'seguranca', apr: 'seguranca', matrizrisco: 'seguranca', planoacao: 'seguranca',
     epi: 'seguranca', periculosidade: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca', brigada: 'seguranca',
     saude: 'saude', psicossocial: 'saude', ergonomia: 'saude',

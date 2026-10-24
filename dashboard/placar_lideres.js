@@ -2,16 +2,16 @@
 // MÓDULO: PLACAR DAS LIDERANÇAS & ROTINAS DE ENCARREGADOS (GAMIFICAÇÃO DE SST)
 // ==========================================================================
 
-let placarLideresLoaded = false;
-let placarFiltroAno = String(new Date().getFullYear());
-let placarFiltroMes = String(new Date().getMonth());
-let placarFiltroSetor = '';
-let placarBuscaTermo = '';
-let placarMetaDiasCustom = null;
-let placarRankingAtual = [];
-let allRotinasConfig = null;
-let placarLiderMsgAtual = null;
-let placarChartHistoricoInstance = null;
+var placarLideresLoaded = false;
+var placarFiltroAno = String(new Date().getFullYear());
+var placarFiltroMes = String(new Date().getMonth());
+var placarFiltroSetor = '';
+var placarBuscaTermo = '';
+var placarMetaDiasCustom = null;
+var placarRankingAtual = [];
+var allRotinasConfig = null;
+var placarLiderMsgAtual = null;
+var placarChartHistoricoInstance = null;
 
 // Rótulos amigáveis de setores para exibição e disputas
 function obterRotuloSetor(chave) {

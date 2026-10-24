@@ -9,13 +9,13 @@
 // efetivo real como headcount na data, índice = HHT do mês ÷ efetivo do mês × 100.
 // ============================================
 
-let allEfetivo = [];
-let allGheCatalogo = [];
-let allMunicipiosAda = [];
-let allColaboradoresFerias = [];
-let dadosFeriasCltCache = [];
-let valFeriasFiltroAtual = 'todos'; // 'todos' | 'critico' | 'atencao' | 'normal' | 'emGozo' | 'programadas' | 'concluidas'
-let efetivoLoaded = false;
+var allEfetivo = [];
+var allGheCatalogo = [];
+var allMunicipiosAda = [];
+var allColaboradoresFerias = [];
+var dadosFeriasCltCache = [];
+var valFeriasFiltroAtual = 'todos'; // 'todos' | 'critico' | 'atencao' | 'normal' | 'emGozo' | 'programadas' | 'concluidas'
+var efetivoLoaded = false;
 
 async function loadEfetivoData() {
     const statusEl = document.getElementById('efetivoImportStatus');
@@ -1381,7 +1381,7 @@ function gerarPdfRelatorioEfetivo() {
 // Mapa nome-do-estado -> UF, porque "estado" em colaboradores_efetivo é texto
 // livre (tem registro como "PERNAMBUCO" e outro como "PE" pro MESMO município
 // - sem isso, os dois viram grupos separados e o Quadro 1 conta errado).
-const NOME_ESTADO_PARA_UF = {
+var NOME_ESTADO_PARA_UF = {
     'ACRE': 'AC', 'ALAGOAS': 'AL', 'AMAPÁ': 'AP', 'AMAZONAS': 'AM', 'BAHIA': 'BA',
     'CEARÁ': 'CE', 'DISTRITO FEDERAL': 'DF', 'ESPÍRITO SANTO': 'ES', 'GOIÁS': 'GO',
     'MARANHÃO': 'MA', 'MATO GROSSO': 'MT', 'MATO GROSSO DO SUL': 'MS',
@@ -1516,7 +1516,7 @@ function montarQuadrosMaoDeObra(ano, mesIndex0) {
 // "renomear" é um UPDATE em lote de todo mundo que está com aquele texto hoje.
 // ============================================
 
-let setorAtualGerenciado = null;
+var setorAtualGerenciado = null;
 
 function renderSetoresLista() {
     const container = document.getElementById('setoresLista');

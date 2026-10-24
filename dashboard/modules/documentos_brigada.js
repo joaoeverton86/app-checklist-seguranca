@@ -9,12 +9,12 @@
 // próximo PDF impresso, sem tocar em nenhuma função geradora.
 // ============================================
 
-let allDocumentosControle = [];
-let allDocumentosRevisoes = [];
-let allDocumentosEmissoes = [];
-let documentosControleLoaded = false;
+var allDocumentosControle = [];
+var allDocumentosRevisoes = [];
+var allDocumentosEmissoes = [];
+var documentosControleLoaded = false;
 
-const DOC_STATUS_LABELS = { vigente: '✅ Vigente', em_elaboracao: '🛠️ Em Elaboração', obsoleto: '🚫 Obsoleto' };
+var DOC_STATUS_LABELS = { vigente: '✅ Vigente', em_elaboracao: '🛠️ Em Elaboração', obsoleto: '🚫 Obsoleto' };
 
 async function loadDocumentosControleData() {
     try {
@@ -273,19 +273,19 @@ function registrarEmissaoDocumento(documentoId, referencia) {
 // 41 perguntas, números conferidos um a um contra o texto extraído do PDF.
 // ============================================
 
-let allAvaliacoesPsicossociais = [];
-let allEscalasPsicossociais = [];
-let allPerguntasPsicossociais = [];
-let psicossocialLoaded = false;
-let psicossocialAplicacaoAtivaId = null;
-let psicoPerguntasAbertas = false;
-let chartPsicoEscalas = null;
+var allAvaliacoesPsicossociais = [];
+var allEscalasPsicossociais = [];
+var allPerguntasPsicossociais = [];
+var psicossocialLoaded = false;
+var psicossocialAplicacaoAtivaId = null;
+var psicoPerguntasAbertas = false;
+var chartPsicoEscalas = null;
 
-let PSICO_LIMIAR_RISCO_CRITICO = 40; // % - limiar só de UI (não vem do PGR/instrumento) - valor
+var PSICO_LIMIAR_RISCO_CRITICO = 40; // % - limiar só de UI (não vem do PGR/instrumento) - valor
 // padrão; pode ser sobrescrito por configuracoes_sistema (ver carregarConfiguracoesSistema)
-let PSICO_LIMIAR_FAVORAVEL_FORTE = 90; // % - mesma observação acima
+var PSICO_LIMIAR_FAVORAVEL_FORTE = 90; // % - mesma observação acima
 
-const PSICO_ESCALAS_PADRAO = [
+var PSICO_ESCALAS_PADRAO = [
     'Apoio social de superiores', 'Auto-eficácia', 'Comportamentos ofensivos', 'Compromisso face ao local de trabalho',
     'Comunidade social no trabalho', 'Confiança vertical', 'Conflito trabalho/vida', 'Estresse', 'Exigências cognitivas',
     'Exigências emocionais', 'Exigências quantitativas', 'Extenuação', 'Influência no trabalho', 'Insegurança laboral',
@@ -640,7 +640,7 @@ async function excluirAplicacaoPsicossocial() {
 // moravam dentro de "Configurações") não precisa de nada disso - são só as mesmas
 // funções de sempre (importarTreinamentosCSV etc.), com card/página nova no menu.
 // ============================================
-let configuracoesSistemaCarregadas = false;
+var configuracoesSistemaCarregadas = false;
 
 async function carregarConfiguracoesSistema() {
     try {
@@ -1020,7 +1020,7 @@ function onBrigadaGrauRiscoChange() {
 // brigadistas (para população > 4 na área); alto risco = mínimo 4 brigadistas (para
 // população > 10 na área). Isto é o piso normativo por equipe/área de resposta - aqui
 // aplicado, por simplificação já acordada com o usuário, ao efetivo total da obra.
-const BRIGADA_PISO_NORMATIVO_NBR14276 = { baixo: 2, medio: 2, alto: 4 };
+var BRIGADA_PISO_NORMATIVO_NBR14276 = { baixo: 2, medio: 2, alto: 4 };
 
 async function salvarBrigadaParametros() {
     const statusEl = document.getElementById('cfgBrigadaStatus');
@@ -1058,7 +1058,7 @@ async function salvarBrigadaParametros() {
 
 // ---- Organograma ----
 
-const BRIGADA_NIVEL_LABELS = {
+var BRIGADA_NIVEL_LABELS = {
     basico: 'Nível Básico',
     intermediario: 'Nível Intermediário',
     avancado: 'Nível Avançado'

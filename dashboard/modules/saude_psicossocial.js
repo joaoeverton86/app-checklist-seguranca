@@ -9,12 +9,12 @@
 // 220h) já usado no painel Efetivo. Tabela isolada (acidentes), só lida/escrita aqui.
 // ============================================
 
-let allAcidentes = [];
-let acidentesLoaded = false;
-let acidentesFilter = 'mes';
-let acidentesFiltroAno = '';
-let acidentesFiltroMes = '';
-let hhtDiasTrabalhadosMap = {}; // 'YYYY-MM' -> { dias_trabalhados, horas_por_dia }
+var allAcidentes = [];
+var acidentesLoaded = false;
+var acidentesFilter = 'mes';
+var acidentesFiltroAno = '';
+var acidentesFiltroMes = '';
+var hhtDiasTrabalhadosMap = {}; // 'YYYY-MM' -> { dias_trabalhados, horas_por_dia }
 
 // Ano/mês específico pra comparar períodos distantes - mesmo raciocínio do filtro
 // equivalente em Treinamentos ([[popularFiltroAnoTreinamentos]]). Usa os anos já
@@ -552,15 +552,15 @@ async function excluirAcidenteAtual() {
 // acidente de trabalho, sobre a mesma HHT de exposição já usada em Acidentabilidade).
 // ============================================
 
-let allAsoExames = [];
-let allAtestadosOcupacionais = [];
-let allPressaoArterial = [];
-let saudeLoaded = false;
-let saudeFilter = 'mes';
-let saudeFiltroAno = '';
-let saudeFiltroMes = '';
+var allAsoExames = [];
+var allAtestadosOcupacionais = [];
+var allPressaoArterial = [];
+var saudeLoaded = false;
+var saudeFilter = 'mes';
+var saudeFiltroAno = '';
+var saudeFiltroMes = '';
 
-const ASO_TIPO_LABELS = {
+var ASO_TIPO_LABELS = {
     admissional: 'Admissional',
     periodico: 'Periódico',
     demissional: 'Demissional',
@@ -712,7 +712,7 @@ function buscarColaboradorPorInput(inputId) {
 // Audiometria + Glicose + Hemograma, todos 12 meses) - bateu exatamente.
 // ============================================
 
-const PCMSO_EXAMES_POR_GHE = {
+var PCMSO_EXAMES_POR_GHE = {
     G01: { nome: 'Vigilância Patrimonial', exames: [
         { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
         { nome: 'Audiometria', periodicidade: 12, demissional: true }
@@ -900,7 +900,7 @@ const PCMSO_EXAMES_POR_GHE = {
 // PCMSO (ex: "OPERAÇÃO" tem tanto Operador de Sistemas Hídricos quanto Operador de
 // Subestação - grupos com exames diferentes) - confirmado cruzando setor+função reais
 // via SQL antes de montar este mapa. Chave normalizada "SETOR||FUNÇÃO" (maiúsculas).
-const PCMSO_SETOR_FUNCAO_GHE = {
+var PCMSO_SETOR_FUNCAO_GHE = {
     'ADMINISTRATIVO||AUX. ADMINISTRATIVO': 'G03',
     'ADMINISTRATIVO||AUX. SERVIÇOS GERAIS': 'G03',
     'ADMINISTRATIVO||AUXILIAR DE ALMOXARIFADO': 'G02',
@@ -1138,12 +1138,12 @@ function calcularStatusAsoColaborador(matricula) {
 // mês em vez de por colaborador individual.
 // ============================================
 
-let previsaoExamesAno = null;
-let previsaoExamesMes = null;
+var previsaoExamesAno = null;
+var previsaoExamesMes = null;
 // Guarda o último resultado calculado por renderPrevisaoExames (mesma lista que já
 // alimenta "Colaboradores e Exames Exigidos") pro relatório de líderes reaproveitar sem
 // recalcular vencimento nenhum - só reagrupa (por líder ou setor) e reformata como texto/PDF.
-let previsaoExamesUltimoResultado = null;
+var previsaoExamesUltimoResultado = null;
 
 function popularFiltroPrevisaoExames() {
     const hoje = new Date();
@@ -1292,7 +1292,7 @@ function renderPrevisaoExames() {
 // cópia - nesse modo o usuário escolhe se agrupa por líder ou por setor).
 // ============================================
 
-const RELATORIO_CAMPO_INFO = {
+var RELATORIO_CAMPO_INFO = {
     responsavel: {
         rotulo: 'líder',
         avisoSemValorTitulo: '⚠️ Sem líder definido - revisar cadastro',
@@ -1305,10 +1305,10 @@ const RELATORIO_CAMPO_INFO = {
     }
 };
 
-let previsaoExamesRelatorioModo = 'individual'; // 'individual' | 'geral'
-let previsaoExamesRelatorioCriterio = 'responsavel'; // 'responsavel' | 'setor' - só usado no modo geral
-let previsaoExamesLideresGrupos = []; // grupos do modo individual, indexados pros botões copiar/baixar
-let previsaoExamesRelatorioGeral = null; // { texto, mesLabel, campo, grupos, aberturaTopo } do modo geral
+var previsaoExamesRelatorioModo = 'individual'; // 'individual' | 'geral'
+var previsaoExamesRelatorioCriterio = 'responsavel'; // 'responsavel' | 'setor' - só usado no modo geral
+var previsaoExamesLideresGrupos = []; // grupos do modo individual, indexados pros botões copiar/baixar
+var previsaoExamesRelatorioGeral = null; // { texto, mesLabel, campo, grupos, aberturaTopo } do modo geral
 
 // Colaboradores sem o campo escolhido preenchido caem num grupo à parte em vez de sumir
 // da lista - usuário pediu explicitamente pra não perder esses casos silenciosamente.
@@ -1435,8 +1435,8 @@ function fecharRelatorioLideresModal() {
 // (api/anexo-iniciar.js + PUT direto pro Drive + api/anexo-finalizar.js) pra
 // não esbarrar no limite de 4,5 MB por requisição das functions do Vercel.
 // ============================================
-let anexoModalTabela = null;
-let anexoModalChave = null;
+var anexoModalTabela = null;
+var anexoModalChave = null;
 
 function abrirAnexoModal(tabela, chave, tituloRegistro) {
     anexoModalTabela = tabela;
@@ -1498,7 +1498,7 @@ function lerComoBase64(blob) {
 // último pedaço pode ser menor) e cada pedaço é mandado em base64 (~3,3 MB,
 // dentro do limite de 4,5 MB por requisição do Vercel) pra
 // /api/anexo-enviar-pedaco, que repassa servidor-a-servidor pro Google.
-const ANEXO_TAMANHO_PEDACO = 2.5 * 1024 * 1024;
+var ANEXO_TAMANHO_PEDACO = 2.5 * 1024 * 1024;
 
 async function enviarArquivoEmPedacos(file, uploadUrl, statusEl) {
     const total = file.size;
@@ -2089,8 +2089,8 @@ function renderSaudePanel() {
 }
 
 // Filtro e Renderização da Lista de Alertas de ASO na Visão Geral
-let asoAlertFilterAtual = 'todos';
-let listaAlertasAsoCache = [];
+var asoAlertFilterAtual = 'todos';
+var listaAlertasAsoCache = [];
 
 function filtrarListaAsoAlertas(status, btn) {
     asoAlertFilterAtual = status;
@@ -2229,8 +2229,8 @@ function calcularValidadeAsoPcmso(colaborador) {
 // ============================================
 // MODAL DE GESTÃO DE VALIDADE DE ASOs (30 e 60 dias)
 // ============================================
-let valAsoFiltroAtual = 'todos'; // 'todos' | 'vencidos' | 'vencendo30' | 'vencendo60' | 'emDia' | 'semRegistro'
-let dadosValidadeAsosCache = [];
+var valAsoFiltroAtual = 'todos'; // 'todos' | 'vencidos' | 'vencendo30' | 'vencendo60' | 'emDia' | 'semRegistro'
+var dadosValidadeAsosCache = [];
 
 function abrirModalGestaoValidadeAsos() {
     valAsoFiltroAtual = 'todos';
@@ -2584,14 +2584,14 @@ function copiarAlertaValidadeAsosWhatsApp() {
 // ============================================
 // RECOMENDAÇÃO DE EXAMES E COMPLEMENTARES PCMSO MULTI-EXAMES
 // ============================================
-let exameComplementarFocoAtual = 'psicossocial';
+var exameComplementarFocoAtual = 'psicossocial';
 
 // Marco temporal inicial oficial de implantação do programa estruturado de Avaliação Psicossocial
 // (NR-01, NR-33, NR-35 e NR-10) no Consórcio Operador do PISF Ramal do Agreste (Julho/2026).
 // Apenas admissões e exames realizados a partir de 01/07/2026 são considerados para fins de conformidade e renovação periódica.
-let DATA_IMPLANTACAO_PSICOSSOCIAL = '2026-07-01';
+var DATA_IMPLANTACAO_PSICOSSOCIAL = '2026-07-01';
 
-const CATALOGO_EXAMES_COMPLEMENTARES = {
+var CATALOGO_EXAMES_COMPLEMENTARES = {
     psicossocial: {
         id: 'psicossocial',
         nomeExame: 'Avaliação Psicossocial',
@@ -2741,7 +2741,7 @@ function salvarCapacidadeMutiraoPsico(vagas) {
 }
 
 // Conjunto de matrículas selecionadas para convocação na tabela principal
-let selecionadosPsicoConvocacao = new Set();
+var selecionadosPsicoConvocacao = new Set();
 
 // Data do próximo mutirão / visita clínica para o exame em foco
 function obterDataMutiraoPsico() {
@@ -2901,7 +2901,7 @@ function obterNomeCurtoSetorGhe(gheId) {
     return nome.replace(/^GRUPO\s*\d+\s*-\s*/i, '').replace(/^GHE\s*\d+\s*-\s*/i, '').trim();
 }
 
-let psicoFiltroStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'vencendo' | 'em_dia' | 'ferias'
+var psicoFiltroStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'vencendo' | 'em_dia' | 'ferias'
 
 // ==============================================================
 // HELPERS DE FÉRIAS E AFASTAMENTOS (NR-07 / GESTÃO OPERACIONAL)
@@ -5249,8 +5249,8 @@ window.toggleHeaderCheckboxConvocacao = marcarTodosConvocacaoPsico;
 // MÓDULO: PARAMETRIZAÇÃO E TRIAGEM DE CONVOCAÇÃO — PSICOSSOCIAL
 // ============================================================
 
-let convocacaoPsicoLista = [];
-let convocacaoPsicoAvulsos = [];
+var convocacaoPsicoLista = [];
+var convocacaoPsicoAvulsos = [];
 
 function aoClicarEmitirConvocacaoExame() {
     if (exameComplementarFocoAtual === 'psicossocial') {

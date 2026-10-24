@@ -5,8 +5,8 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-const VERSAO_PAINEL = 'v217';
-const DASHBOARD_VERSION = VERSAO_PAINEL;
+var VERSAO_PAINEL = 'v218';
+var DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;
 console.log('%c 🛡️ Painel Gerencial - Versão ' + VERSAO_PAINEL + ' ', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;');
@@ -14,15 +14,15 @@ console.log('%c 🛡️ Painel Gerencial - Versão ' + VERSAO_PAINEL + ' ', 'bac
 // Logotipo Institucional do Consórcio COP em Base64
 var LOGO_COP_BASE64 = (typeof window !== 'undefined' && window.LOGO_COP_BASE64) ? window.LOGO_COP_BASE64 : '';
 
-const SUPABASE_URL = 'https://qqtcwxvbjmybyzubocgd.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxdGN3eHZiam15Ynl6dWJvY2dkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1ODczNDUsImV4cCI6MjEwMDE2MzM0NX0.T6Nm-lUD2I_mRULsEXCDQBkJe2cEpl6_z7hUNR30yTk';
+var SUPABASE_URL = 'https://qqtcwxvbjmybyzubocgd.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxdGN3eHZiam15Ynl6dWJvY2dkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1ODczNDUsImV4cCI6MjEwMDE2MzM0NX0.T6Nm-lUD2I_mRULsEXCDQBkJe2cEpl6_z7hUNR30yTk';
 
 // Client oficial do Supabase Auth (Fase 3 do roteiro de login/auditoria - ver
 // scratch/roteiro_apr_login_auditoria.txt) - usado SÓ pra autenticação (login/logout/
 // sessão). As chamadas de dados continuam nos helpers supabaseFetch/Upsert/Insert/Delete
 // abaixo, sem reescrever cada chamador - eles só passam a mandar o token de sessão real
 // (via authTokenDashboard()) em vez da anon key fixa, quando existir uma sessão Auth.
-const sbAuth = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+var sbAuth = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Devolve o access_token da sessão Supabase Auth real, se existir, senão a anon key de
 // sempre (mesmo comportamento de hoje pras tabelas que ainda não têm RLS restrita). Não
@@ -36,7 +36,7 @@ async function authTokenDashboard() {
     }
 }
 
-let REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutos (reduz consumo de Egress; dados persistem em cache local)
+var REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutos (reduz consumo de Egress; dados persistem em cache local)
 
 // Pagina automaticamente via Range/Content-Range. O PostgREST corta em 1000 linhas por
 // padrão - sem isso, o relatório de treinamentos (13 mil+ linhas de histórico) mostrava
@@ -84,14 +84,14 @@ async function supabaseFetch(table, query = '') {
 // Salva tabelas massivas no banco local do navegador, reduzindo em mais de 90%
 // o consumo de Egress do Supabase e prevenindo restrições de cota.
 // ============================================
-const DASH_IDB_NAME = 'DashboardPainelCacheDB';
-const DASH_IDB_STORE = 'tabelas_cache';
-const DASH_IDB_VERSION = 1;
-const CACHE_TTL_MS = 60 * 60 * 1000; // 60 minutos de retenção inteligente
-const _dashMemoryCache = new Map();
+var DASH_IDB_NAME = 'DashboardPainelCacheDB';
+var DASH_IDB_STORE = 'tabelas_cache';
+var DASH_IDB_VERSION = 1;
+var CACHE_TTL_MS = 60 * 60 * 1000; // 60 minutos de retenção inteligente
+var _dashMemoryCache = new Map();
 
-let _dashDbInstance = null;
-let _dashDbPromise = null;
+var _dashDbInstance = null;
+var _dashDbPromise = null;
 
 function openDashboardCacheDB() {
     if (_dashDbInstance) return Promise.resolve(_dashDbInstance);
@@ -375,7 +375,7 @@ function entrarComContaTeste() {
 
 // Módulos usam as mesmas chaves de showDbPage()/DB_PAGE_TITLES - mantenha igual se
 // adicionar uma página nova no menu.
-const MODULOS_PAINEL_DISPONIVEIS = [
+var MODULOS_PAINEL_DISPONIVEIS = [
     { key: 'checklists', label: 'Checklists' },
     { key: 'treinamentos', label: 'Treinamentos' },
     { key: 'ddsma', label: 'DDSMA' },
@@ -403,7 +403,7 @@ const MODULOS_PAINEL_DISPONIVEIS = [
 
 // Matrículas que podem mexer em "Usuários do Painel" (perfis/convites) - hoje só o
 // usuário responsável pelo módulo.
-const SUPER_ADMIN_MATRICULAS = ['76', 'TESTE'];
+var SUPER_ADMIN_MATRICULAS = ['76', 'TESTE'];
 
 // Determina se o usuário pode acessar/ver a página no painel
 function moduloPermitidoPainel(pageId) {
@@ -1093,7 +1093,7 @@ function formatarSexoExibicao(val) {
 // Ciclo de 4 cores trimestral: VERDE, BRANCO, AZUL, AMARELO
 // ============================================
 
-const TABELA_CORES_MES = [
+var TABELA_CORES_MES = [
     { mes: 1, nome: 'Janeiro', cor: 'VERDE', bg: '#10b981', fg: '#ffffff', border: '#059669' },
     { mes: 2, nome: 'Fevereiro', cor: 'BRANCO', bg: '#ffffff', fg: '#1e293b', border: '#94a3b8' },
     { mes: 3, nome: 'Março', cor: 'AZUL', bg: '#0284c7', fg: '#ffffff', border: '#0369a1' },
@@ -1392,17 +1392,17 @@ function normalizarStatusChecklist(val, checklist) {
 // ESTADO E FILTROS
 // ============================================
 
-let allChecklists = [];
-let allCadastros = [];
-let allExtintores = [];
-let allInspecoesExtintores = [];
-let inspecaoExtintorPainelData = {};
-let allRelatos = [];
-let reportFilter = 'mes';
-let customFrom = null;
-let customTo = null;
-let chartInstances = {};
-let refreshTimer = null;
+var allChecklists = [];
+var allCadastros = [];
+var allExtintores = [];
+var allInspecoesExtintores = [];
+var inspecaoExtintorPainelData = {};
+var allRelatos = [];
+var reportFilter = 'mes';
+var customFrom = null;
+var customTo = null;
+var chartInstances = {};
+var refreshTimer = null;
 
 function getDateRange() {
     const now = new Date();
@@ -1672,7 +1672,7 @@ function renderChecklistPendentesLista(pendentes) {
 // Acidentabilidade) mesmo que ela nem esteja visível no momento - na prática isso
 // destruía de verdade (via .destroy()) o canvas do Chart.js de outras páginas sempre que
 // um filtro era trocado aqui, deixando-as em branco na próxima visita.
-const CHECKLIST_CHART_KEYS = ['conformidade', 'tipo', 'meses', 'itens', 'equip', 'empresa'];
+var CHECKLIST_CHART_KEYS = ['conformidade', 'tipo', 'meses', 'itens', 'equip', 'empresa'];
 function destroyCharts() {
     CHECKLIST_CHART_KEYS.forEach(k => {
         if (chartInstances[k]) { chartInstances[k].destroy(); delete chartInstances[k]; }
@@ -2225,12 +2225,12 @@ async function excluirCadastroAtual() {
 // localStorage isolado.
 // ============================================
 
-let allChecklistItemSettings = [];
-let checklistItemSettingsLoaded = false;
-let itemGerenciaTypeId = null;
-let itemGerenciaTypeCategory = null;
-let itemGerenciaDisabled = [];
-let itemGerenciaCustom = [];
+var allChecklistItemSettings = [];
+var checklistItemSettingsLoaded = false;
+var itemGerenciaTypeId = null;
+var itemGerenciaTypeCategory = null;
+var itemGerenciaDisabled = [];
+var itemGerenciaCustom = [];
 
 async function carregarChecklistItemSettings() {
     try {
@@ -2404,7 +2404,7 @@ function limparFiltroHistorico() {
     renderHistoricoChecklists();
 }
 
-let historicoExpandido = {};
+var historicoExpandido = {};
 
 function renderHistoricoChecklists() {
     const listaEl = document.getElementById('historicoChecklistsList');
@@ -2537,8 +2537,8 @@ function toggleHistoricoItem(id) {
 // Nome Padrão: CKL_{YYYY-MM-DD}_{PATRIMONIO}_{NOME_EQUIPAMENTO}.pdf
 // ============================================
 
-const DRIVE_ROOT_FOLDER_CHECKLISTS_ID = '1rMsZNvgDdk4Lu0WbPYW4ScxBOx1TBsCY';
-const DRIVE_ROOT_FOLDER_CHECKLISTS_URL = 'https://drive.google.com/drive/folders/1rMsZNvgDdk4Lu0WbPYW4ScxBOx1TBsCY';
+var DRIVE_ROOT_FOLDER_CHECKLISTS_ID = '1rMsZNvgDdk4Lu0WbPYW4ScxBOx1TBsCY';
+var DRIVE_ROOT_FOLDER_CHECKLISTS_URL = 'https://drive.google.com/drive/folders/1rMsZNvgDdk4Lu0WbPYW4ScxBOx1TBsCY';
 
 function getDriveFolderUrl() {
     return localStorage.getItem('checklist_drive_folder_url') || DRIVE_ROOT_FOLDER_CHECKLISTS_URL;
@@ -2550,7 +2550,7 @@ function abrirPastaChecklistsNoDrive(e) {
     window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-const DEFAULT_CHECKLIST_DRIVE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzhFCnB2VLSH4i7i_JNZajCc_88UgQEWdeHtgzHtcJGaS_kHQd7ixffVab2F9zHiMWFZQ/exec';
+var DEFAULT_CHECKLIST_DRIVE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzhFCnB2VLSH4i7i_JNZajCc_88UgQEWdeHtgzHtcJGaS_kHQd7ixffVab2F9zHiMWFZQ/exec';
 
 function getDriveScriptUrl() {
     return localStorage.getItem('checklist_drive_script_url') || localStorage.getItem('sync_script_url') || DEFAULT_CHECKLIST_DRIVE_SCRIPT_URL;
@@ -2560,7 +2560,7 @@ function getDriveRootFolder() {
     return localStorage.getItem('checklist_drive_root_folder') || 'Checklists SST';
 }
 
-const ID_PASTA_TREINAMENTOS_DEFAULT = '1gIjh4Cea8mU_X8hnpgOXkIe8Q1ZnOnCA';
+var ID_PASTA_TREINAMENTOS_DEFAULT = '1gIjh4Cea8mU_X8hnpgOXkIe8Q1ZnOnCA';
 
 function getDriveFolderTreinamentosId() {
     const inp = document.getElementById('cfgDriveFolderTreinamentosUrl');
@@ -3132,8 +3132,12 @@ async function visualizarPdfChecklist(idChecklist) {
         const link = document.createElement('a');
         link.href = blobUrl;
         link.target = '_blank';
+        link.rel = 'noopener';
         link.download = fileName;
-        window.open(blobUrl, '_blank');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
     } catch (err) {
         console.error('Erro ao gerar PDF do checklist:', err);
         mostrarFeedbackToast('Erro ao gerar PDF: ' + err.message, 'erro');
@@ -3276,7 +3280,7 @@ async function enviarChecklistAoGoogleDrive(idChecklist, forcarReenvio = false) 
 }
 
 // Sincronização em Lote de Checklists Pendentes
-let syncDriveCancelado = false;
+var syncDriveCancelado = false;
 
 function cancelarSincronizacaoDrive() {
     syncDriveCancelado = true;
@@ -3345,7 +3349,7 @@ async function sincronizarChecklistsPendentesAoGoogleDrive() {
 // IMPORTADOR DE CHECKLISTS ANTERIORES (LEGADOS VIA PDF)
 // ============================================
 
-let arquivosLegadosSelecionados = [];
+var arquivosLegadosSelecionados = [];
 
 function abrirModalImportarChecklistsLegados() {
     const modal = document.getElementById('modalImportarChecklistsLegados');
@@ -4376,14 +4380,14 @@ function showRelatosSubtab(tab) {
 // nenhuma tabela nova, nenhuma mudança no app de celular.
 // ============================================
 
-const RELATO_TIPOS_LABEL = {
+var RELATO_TIPOS_LABEL = {
     infraestrutura: '🧱 Infraestrutura / Acessos',
     equipamento: '🚜 Equipamento / Veículo',
     epi: '🦺 EPI / EPC',
     comportamental: '⚠️ Atóxico / Comportamental',
     outro: '📦 Outros'
 };
-const RELATO_STATUS_LABEL = {
+var RELATO_STATUS_LABEL = {
     aberto: '🔴 Aberto',
     em_andamento: '🟡 Em Andamento',
     resolvido: '🟢 Resolvido'
@@ -4546,60 +4550,60 @@ async function excluirRelatoAtual() {
 // em segundo plano se ninguém está olhando a página.
 // ============================================
 
-let allTreinamentosRealizados = [];
-let allTreinamentosCatalogo = [];
-let allTreinamentosStatus = [];
-let allTreinamentosCronograma = [];
-let allTreinamentosConvocados = [];
+var allTreinamentosRealizados = [];
+var allTreinamentosCatalogo = [];
+var allTreinamentosStatus = [];
+var allTreinamentosCronograma = [];
+var allTreinamentosConvocados = [];
 // DDS (Diálogo de Saúde, Segurança e Meio Ambiente) - mesmo padrão dessas tabelas de cima:
 // carregado sob demanda junto com o resto de Treinamentos (loadTreinamentosData), tabela
 // denormalizada de propósito (1 linha por participante por dia, igual
 // treinamentos_realizados) pra reaproveitar o mesmo tipo de filtro/soma de carga_horaria
 // já usado ali, em vez de aprender um padrão novo de JOIN.
-let allDdsRealizados = [];
-let allDdsFechamentoSemanal = [];
+var allDdsRealizados = [];
+var allDdsFechamentoSemanal = [];
 // Cronograma anual de temas (1 tema por dia útil, o MESMO tema pra todas as frentes naquele
 // dia - diferente de treinamentos_cronograma, que é por treinamento+frente) - o usuário já
 // mantém isso fora do sistema (TEMAS_DDS_2026.pdf); usado só como SUGESTÃO/auto-preenchimento
 // (Lançar DDS e a ficha impressa), nunca trava o campo - datas de feriado (ex: 25/12)
 // continuam com um tema "normal" cadastrado, ajustado na hora pelo usuário quando bate.
-let allDdsTemasCronograma = [];
-let allDdsFrentesConfig = [];
-let allDdsHistoricoAgregado = [];
-let allDdsFrentesAlias = [];
-let allRelatorioMensalConfig = [];
+var allDdsTemasCronograma = [];
+var allDdsFrentesConfig = [];
+var allDdsHistoricoAgregado = [];
+var allDdsFrentesAlias = [];
+var allRelatorioMensalConfig = [];
 // Cache em memória dos 3 valores de "turmas/módulos" (um por categoria do relatório
 // mensal) - populado a partir de allRelatorioMensalConfig em
 // popularRelatorioMensalDefaults(), usado por montarLinhasRelatorioMensal().
-let relatorioMensalTurmas = { integracao: null, seguranca: null, ddsms: null, adicionais: null };
-let treinamentosFilter = 'mes';
-let treinamentosFiltroAno = '';
-let treinamentosFiltroMes = '';
-let treinColaboradoresPeriodoAtual = [];
-let treinColabPeriodoSelecionados = new Set();
-let treinamentosLoaded = false;
+var relatorioMensalTurmas = { integracao: null, seguranca: null, ddsms: null, adicionais: null };
+var treinamentosFilter = 'mes';
+var treinamentosFiltroAno = '';
+var treinamentosFiltroMes = '';
+var treinColaboradoresPeriodoAtual = [];
+var treinColabPeriodoSelecionados = new Set();
+var treinamentosLoaded = false;
 // Filtro do Cronograma nasce no mês/ano atual (é assim que a equipe de SMS planeja -
 // o mês corrente ou o seguinte), mas só na primeira renderização - depois disso o
 // usuário controla livremente (ver renderCronogramaLista).
-const hojeCronograma = new Date();
-let cronogramaFiltroAno = String(hojeCronograma.getFullYear());
-let cronogramaFiltroMes = String(hojeCronograma.getMonth());
+var hojeCronograma = new Date();
+var cronogramaFiltroAno = String(hojeCronograma.getFullYear());
+var cronogramaFiltroMes = String(hojeCronograma.getMonth());
 // Começa filtrado em "planejado" (não "Todos") de propósito - um cronograma existe pra
 // mostrar o que ESTÁ POR VIR, não misturar com o que já foi lançado (isso já tem seu
 // próprio histórico em Treinamentos Realizados/Visão Geral). "Ver todos" continua
 // disponível pra quem quiser conferir os já lançados.
-let cronogramaFiltroStatus = 'planejado';
+var cronogramaFiltroStatus = 'planejado';
 // Setado por lancarPresencaDoCronograma() antes de trocar pra aba "Lançar Treinamento";
 // salvarLancamentoTreinamento() usa isso pra marcar o item de origem como 'lancado' ao
 // salvar com sucesso. abrirFormLancarTreinamento() zera de novo sempre que a aba é
 // aberta "do zero" (pelo próprio botão da aba, não vindo do cronograma).
-let cronogramaOrigemId = null;
+var cronogramaOrigemId = null;
 // Filtro de mês/ano da impressão em lote (aba Registro) - independente do filtro de
 // visualização do Cronograma (cronogramaFiltroAno/Mes), já que são telas diferentes com
 // propósitos diferentes (ver imprimir lote em gerarListasCronogramaMes).
-let registroLoteFiltroAno = String(hojeCronograma.getFullYear());
-let registroLoteFiltroMes = String(hojeCronograma.getMonth());
-let registroLoteFiltroTema = '';
+var registroLoteFiltroAno = String(hojeCronograma.getFullYear());
+var registroLoteFiltroMes = String(hojeCronograma.getMonth());
+var registroLoteFiltroTema = '';
 // Frentes marcadas pro filtro/prévia/geração da impressão em lote - checkbox múltiplo, não
 // select único, pra cobrir "3 frentes específicas de 12" (não só "todas" ou "só uma").
 // Inicializado com TODAS as frentes ativas marcadas na primeira vez que a tela carrega
@@ -4607,25 +4611,25 @@ let registroLoteFiltroTema = '';
 // frentes" quando o usuário não mexe em nada. Continua cobrindo tanto "todos os temas pra
 // um encarregado específico" (só a frente dele marcada) quanto "um tema pra várias frentes
 // escolhidas" (tema + subconjunto de frentes marcado).
-let registroLoteFrentesSelecionadas = new Set();
+var registroLoteFrentesSelecionadas = new Set();
 // Ids do cronograma marcados pra entrar na impressão em lote - null = ainda não
 // inicializado (marca todos por padrão na primeira renderização do filtro atual).
-let registroLoteSelecionados = null;
+var registroLoteSelecionados = null;
 // Equipe da sessão em "Nova Sessão" (aba Registro) - mesmo padrão de lancTreinEquipe
 // (Lançar Treinamento): "Carregar equipe do Responsável" pré-carrega, mas o usuário
 // pode ajustar (remover/adicionar avulso) antes de gerar o documento. Existe pra cobrir
 // frentes sem encarregado direto no cadastro (colaboradores_efetivo.responsavel vazio),
 // onde não tem o que pré-carregar automaticamente.
-let registroNovaEquipe = new Map();
+var registroNovaEquipe = new Map();
 
 // Variáveis de estado do Lote de Impressão de Formulários DDSMS (lógica análoga a Treinamentos)
 // Configurações e parametrizações operacionais do módulo DDSMA (Supabase configuracoes_sistema + localStorage)
-const DDS_CONFIG_PADRAO = {
+var DDS_CONFIG_PADRAO = {
     regraSemana: 'primeira_segunda', // 'primeira_segunda' | 'maioria_dias' | 'dia_primeiro'
     cicloEnvio: 'atual',             // 'atual' | 'subsequente'
     linhasVaziasMin: 10              // linhas mínimas na tabela de colaboradores
 };
-let ddsConfiguracoes = { ...DDS_CONFIG_PADRAO };
+var ddsConfiguracoes = { ...DDS_CONFIG_PADRAO };
 try {
     const _savedDdsCfg = localStorage.getItem('dds_configuracoes');
     if (_savedDdsCfg) {
@@ -4647,16 +4651,16 @@ function calcularMesAnoPadraoDds() {
     return { ano: String(hoje.getFullYear()), mes: String(hoje.getMonth()) };
 }
 
-const _padraoDdsInicial = calcularMesAnoPadraoDds();
-let ddsLoteFiltroAno = _padraoDdsInicial.ano;
-let ddsLoteFiltroMes = _padraoDdsInicial.mes;
-let ddsLoteFiltroSemana = ''; // '' = todas as semanas do mês, ou ISO da segunda-feira
-let ddsLoteFiltroTema = '';
-let ddsLoteFrentesSelecionadas = new Set();
-let ddsLoteSelecionados = null; // Set de chaves `${frente}__${segIso}`
+var _padraoDdsInicial = calcularMesAnoPadraoDds();
+var ddsLoteFiltroAno = _padraoDdsInicial.ano;
+var ddsLoteFiltroMes = _padraoDdsInicial.mes;
+var ddsLoteFiltroSemana = ''; // '' = todas as semanas do mês, ou ISO da segunda-feira
+var ddsLoteFiltroTema = '';
+var ddsLoteFrentesSelecionadas = new Set();
+var ddsLoteSelecionados = null; // Set de chaves `${frente}__${segIso}`
 
-const NOMES_MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-const NOMES_DIAS_SEMANA = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+var NOMES_MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+var NOMES_DIAS_SEMANA = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
 // Reconstrói as opções de ano de um <select> a partir do conjunto de anos calculado,
 // preservando a seleção atual quando ela continua válida. Só reconstrói quando o
@@ -4727,8 +4731,8 @@ function getTreinamentosDateRange() {
     return { inicio, fim };
 }
 
-let renderizandoTreinamentos = false;
-let debounceTreinamentosTimer = null;
+var renderizandoTreinamentos = false;
+var debounceTreinamentosTimer = null;
 
 function agendarRenderTreinamentosPanel() {
     if (debounceTreinamentosTimer) clearTimeout(debounceTreinamentosTimer);
@@ -5110,10 +5114,10 @@ function gerarPdfDdsma() {
 // ---- Histórico: lista navegável de sessões já realizadas (separada de Registro, que
 // agora só gera/imprime) - agrupa treinamentos_realizados por treinamento_cod+data,
 // mesma lógica de agrupamento já usada em renderListaTreinAderencia. ----
-let treinHistFilter = 'todos';
-let treinHistFiltroAno = '';
-let treinHistFiltroMes = '';
-let treinHistExpandidoChave = null;
+var treinHistFilter = 'todos';
+var treinHistFiltroAno = '';
+var treinHistFiltroMes = '';
+var treinHistExpandidoChave = null;
 
 function popularFiltroAnoTreinHist() {
     const anos = new Set([new Date().getFullYear()]);
@@ -5611,7 +5615,7 @@ function renderCumprimentoCronogramaEPresenca(inicio, fim) {
 // IDs atualmente visíveis (após busca) - usado pelo "selecionar todos", que só marca o
 // que está na tela, não a lista inteira do período (evita selecionar às cegas algo que
 // a busca escondeu).
-let treinColabPeriodoVisiveisAtual = [];
+var treinColabPeriodoVisiveisAtual = [];
 
 function renderListaTreinColaboradoresPeriodo() {
     const el = document.getElementById('listTreinColaboradoresPeriodo');
@@ -6211,7 +6215,7 @@ async function importarTreinamentosCSV() {
 // pelo usuário (cada lista já é uma equipe fixa por encarregado, só tira quem faltou).
 // ============================================
 
-let lancTreinEquipe = new Map(); // matricula -> {nome, funcao, setor, checked}
+var lancTreinEquipe = new Map(); // matricula -> {nome, funcao, setor, checked}
 
 // A página de Treinamentos é dividida em abas (Visão Geral/Lançar/Catálogo) - esse
 // form vive sempre visível dentro da própria aba "Lançar", então essa função virou
@@ -6361,7 +6365,7 @@ function imprimirCronogramaFiltro() {
     setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
-let pastasCronogramaDriveCache = {};
+var pastasCronogramaDriveCache = {};
 try {
     const savedPastas = localStorage.getItem('pastas_cronograma_drive_cache');
     if (savedPastas) pastasCronogramaDriveCache = JSON.parse(savedPastas);
@@ -6889,7 +6893,7 @@ function frentesAtivasDds() {
     return Array.from(todas).filter(f => (config.has(f) ? config.get(f) : true)).sort();
 }
 
-const CRONOGRAMA_DEFAULTS_SESSAO = {
+var CRONOGRAMA_DEFAULTS_SESSAO = {
     instrutor_nome: 'MARIA GESSICA DA SILVA ROQUE',
     instrutor_qualificacao: 'TEC. SEG. TRABALHO',
     instrutor_registro: 'MTE: 15760/PE',
@@ -7420,30 +7424,30 @@ async function salvarLancamentoTreinamento() {
 // linha por colaborador por dia.
 // ============================================
 
-let lancDdsEquipe = new Map(); // matricula -> {nome, funcao, setor, checked}
-let lancDdsEmociogramaPorMatricula = {}; // matricula -> 'bom' | 'regular' | 'ruim'
+var lancDdsEquipe = new Map(); // matricula -> {nome, funcao, setor, checked}
+var lancDdsEmociogramaPorMatricula = {}; // matricula -> 'bom' | 'regular' | 'ruim'
 // Guardado separado do emociograma (não apagado ao trocar de opção e voltar pra 'ruim')
 // pra não perder o que a pessoa já tinha digitado só por ter clicado sem querer noutro
 // botão do emociograma antes de confirmar.
-let lancDdsAcaoTratativaPorMatricula = {}; // matricula -> texto (só relevante quando 'ruim')
+var lancDdsAcaoTratativaPorMatricula = {}; // matricula -> texto (só relevante quando 'ruim')
 // Preenchido com a loteKeyDds() do lançamento em edição (ver editarLoteDds) - null quando o
 // formulário está em modo "lançamento novo". salvarLancamentoDds() usa isso pra apagar as
 // linhas antigas desse lote antes de inserir as novas, em vez de duplicar.
-let lancDdsLoteEmEdicao = null;
+var lancDdsLoteEmEdicao = null;
 
 // Estado do painel "📅 Lançar Semana Inteira" - independente do lançamento de 1 dia acima
 // (os dois convivem, nenhum substitui o outro). lancDdsSemanaEstados guarda, por matrícula,
 // o estado de CADA dia da semana ('bom'|'regular'|'ruim'|'ausente' - "ausente" não gera
 // lançamento nesse dia pra essa pessoa).
-let lancDdsSemanaFrente = '';
-let lancDdsSemanaDias = []; // array de Date, segunda a domingo
-let lancDdsSemanaTemas = {}; // 'YYYY-MM-DD' -> tema do dia (editável, pré-vem do cronograma)
-let lancDdsSemanaTurno = '';
-let lancDdsSemanaHorario = '';
-let lancDdsSemanaDuracao = 10;
-let lancDdsSemanaEquipe = new Map(); // matricula -> {nome, funcao, setor}
-let lancDdsSemanaEstados = {}; // matricula -> { 'YYYY-MM-DD': 'bom'|'regular'|'ruim'|'ausente' }
-let lancDdsSemanaAcaoTratativa = {}; // 'matricula|YYYY-MM-DD' -> texto (só quando 'ruim')
+var lancDdsSemanaFrente = '';
+var lancDdsSemanaDias = []; // array de Date, segunda a domingo
+var lancDdsSemanaTemas = {}; // 'YYYY-MM-DD' -> tema do dia (editável, pré-vem do cronograma)
+var lancDdsSemanaTurno = '';
+var lancDdsSemanaHorario = '';
+var lancDdsSemanaDuracao = 10;
+var lancDdsSemanaEquipe = new Map(); // matricula -> {nome, funcao, setor}
+var lancDdsSemanaEstados = {}; // matricula -> { 'YYYY-MM-DD': 'bom'|'regular'|'ruim'|'ausente' }
+var lancDdsSemanaAcaoTratativa = {}; // 'matricula|YYYY-MM-DD' -> texto (só quando 'ruim')
 
 function popularDdsFrenteSelect() {
     const sel = document.getElementById('lancDdsFrente');
@@ -7729,10 +7733,10 @@ function loteKeyDds(row) {
     return partes.length >= 2 ? `${partes[0]}_${partes[1]}` : row.id;
 }
 
-let allAnexosSms = [];
-let anexosSmsCarregados = false;
-let _anexosSmsCarregando = false;
-let _anexosSmsCallbacks = [];
+var allAnexosSms = [];
+var anexosSmsCarregados = false;
+var _anexosSmsCarregando = false;
+var _anexosSmsCallbacks = [];
 
 // Carrega os anexos (PDFs escaneados/fotos guardados no Google Drive) sob demanda, na
 // primeira vez que a lista de DDS ou Treinamentos for desenhada - função separada e
@@ -7828,8 +7832,8 @@ function limparFiltrosDdsLancamentos() {
     renderDdsLancamentosRecentes();
 }
 
-let _filtrosDdsListenersAtivos = false;
-let _filtrosDdsDebounceTimer = null;
+var _filtrosDdsListenersAtivos = false;
+var _filtrosDdsDebounceTimer = null;
 function configurarFiltrosDdsListeners() {
     if (_filtrosDdsListenersAtivos) return;
     const mesEl = document.getElementById('filtroMesDDS');
@@ -8021,8 +8025,8 @@ async function renderDdsLancamentosRecentes() {
 }
 
 // Alias para padronização técnica
-const carregarLancamentosRecentesDDS = renderDdsLancamentosRecentes;
-const renderizarListaDDS = renderDdsLancamentosRecentes;
+var carregarLancamentosRecentesDDS = renderDdsLancamentosRecentes;
+var renderizarListaDDS = renderDdsLancamentosRecentes;
 
 async function excluirLoteDds(loteKey) {
     if (bloquearEdicaoSeNaoAutorizado('ddsma')) return;
@@ -8098,8 +8102,8 @@ function editarLoteDds(loteKey) {
 // específico depois com a mesma Correção 1 de cima.
 // ============================================
 
-const DDS_SEMANA_ESTADO_CICLO = { bom: 'regular', regular: 'ruim', ruim: 'ausente', ausente: 'bom' };
-const DDS_SEMANA_ESTADO_VISUAL = {
+var DDS_SEMANA_ESTADO_CICLO = { bom: 'regular', regular: 'ruim', ruim: 'ausente', ausente: 'bom' };
+var DDS_SEMANA_ESTADO_VISUAL = {
     bom: { emoji: '🟢', cor: '#1a7f4b', bg: '#e6f7ee' },
     regular: { emoji: '🟡', cor: '#b78a00', bg: '#fff9e6' },
     ruim: { emoji: '🔴', cor: '#c0392b', bg: '#fdf2f2' },
@@ -8398,9 +8402,9 @@ async function salvarLancamentoDdsSemana() {
 // cronograma original não previu) sem precisar mexer no banco na mão.
 // ============================================
 
-let ddsCalendarioFiltroAno = new Date().getFullYear();
-let ddsCalendarioFiltroMes = new Date().getMonth();
-let ddsCalendarioEditandoData = null; // 'YYYY-MM-DD' da linha em edição, ou null
+var ddsCalendarioFiltroAno = new Date().getFullYear();
+var ddsCalendarioFiltroMes = new Date().getMonth();
+var ddsCalendarioEditandoData = null; // 'YYYY-MM-DD' da linha em edição, ou null
 
 function diasUteisDoMes(ano, mes) {
     const dias = [];
@@ -8567,7 +8571,7 @@ async function salvarNovoDdsTemaDia() {
 // não perder o controle de quais semanas/frentes já passaram pelo carimbo dele.
 // ============================================
 
-let ddsFechamentoFrenteSelecionada = '';
+var ddsFechamentoFrenteSelecionada = '';
 
 function toISODateLocal(d) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -8707,9 +8711,9 @@ function renderDdsFechamentosLista() {
 // passou pela Visão Geral antes).
 // ============================================
 
-let ddsFilter = 'mes';
-let ddsFiltroAno = '';
-let ddsFiltroMes = '';
+var ddsFilter = 'mes';
+var ddsFiltroAno = '';
+var ddsFiltroMes = '';
 
 function popularFiltroAnoDds() {
     const anos = new Set([new Date().getFullYear()]);
@@ -10270,11 +10274,11 @@ function imprimirRelatorioSemanalDds() {
 // de criar uma tabela "sessões" nova só pra isso.
 // ============================================
 
-let registroSessaoAtual = [];
-let registroDataAtual = '';
-let registroCodigoAtual = '';
-let registroModoNovo = false;
-const REGISTRO_SEM_ENCARREGADO = '__SEM_ENCARREGADO__';
+var registroSessaoAtual = [];
+var registroDataAtual = '';
+var registroCodigoAtual = '';
+var registroModoNovo = false;
+var REGISTRO_SEM_ENCARREGADO = '__SEM_ENCARREGADO__';
 
 function popularRegistroResponsavelNovaSelect() {
     const sel = document.getElementById('registroResponsavelNovaSelect');
@@ -10554,13 +10558,13 @@ function renderRegistroNovaEquipeList() {
 // de deixar no valor padrão, sem duplicar a lógica de montagem de nenhum documento.
 // ============================================
 
-let kitsEquipe = new Map();
-let kitsCodigoAtual = '';
-let kitsDataAtual = '';
+var kitsEquipe = new Map();
+var kitsCodigoAtual = '';
+var kitsDataAtual = '';
 // Rastreia se Horário Início/Término/Local ainda estão no valor que NÓS preenchemos
 // (então é seguro atualizar quando o treinamento mudar) ou se o usuário editou na mão
 // (aí o valor dele nunca é sobrescrito, mesmo trocando de treinamento depois).
-let kitsCamposAutoPreenchidos = { horaInicio: true, horaTermino: true, local: true };
+var kitsCamposAutoPreenchidos = { horaInicio: true, horaTermino: true, local: true };
 
 function popularKitsResponsavelSelect() {
     const sel = document.getElementById('kitsResponsavelSelect');
@@ -10993,7 +10997,7 @@ async function salvarDetalhesSessao() {
 // CSS compartilhado entre o Registro de Treinamento avulso (uma sessão) e a impressão em
 // lote do Cronograma (várias sessões, uma "folha" por página) - um só lugar pra manter
 // os dois documentos visualmente idênticos.
-const REGISTRO_TREINAMENTO_CSS = `
+var REGISTRO_TREINAMENTO_CSS = `
     body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111; margin: 20px; }
     /* Nome próprio (não ".folha") de propósito - o Kit Completo mescla este CSS com
        DOC_INDIVIDUAL_CSS num só <style>, e os dois definiam ".folha" com padding/max-width
@@ -11250,7 +11254,7 @@ function renderRegistroDocsIndividuaisList() {
     }).join('');
 }
 
-const DOC_INDIVIDUAL_CSS = `
+var DOC_INDIVIDUAL_CSS = `
     @page { size: A4 portrait; margin: 12mm; }
     @page os_portrait { size: A4 portrait; margin: 12mm; }
     @page registro_portrait { size: A4 portrait; margin: 6mm 8mm; }
@@ -11775,7 +11779,7 @@ function blocoAssinatura(conteudoHTML) {
     return `<div class="assinatura-item"><div class="linha-assinatura">______________________________</div><div class="linha-nome">${conteudoHTML}</div></div>`;
 }
 
-const CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01 = 
+var CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01 = 
 `1. As condições e meio ambiente de trabalho;
 2. Os riscos inerentes às atividades (físicos, químicos, biológicos, ergonômicos e fatores psicossociais);
 3. Prevenção e combate ao assédio no ambiente de trabalho (Lei 14.457/22);
@@ -12054,8 +12058,8 @@ async function gerarCertificadosTurma(ctx = contextoRegistroPadrao(), customPara
 }
 
 // ---- Modal de Emissão de Certificado de Treinamento (NR-01 / NR-18) ----
-let certModalCtxAtual = null;
-let certModalMatriculaAtual = null;
+var certModalCtxAtual = null;
+var certModalMatriculaAtual = null;
 
 function abrirModalEmissaoCertificado(matricula, ctx = contextoRegistroPadrao()) {
     certModalCtxAtual = ctx;
@@ -12550,7 +12554,7 @@ function normalizarTextoCargoBasico(s) {
         .trim();
 }
 
-const MAPA_ABREVIACOES_CARGO_SST = {
+var MAPA_ABREVIACOES_CARGO_SST = {
     'aux': 'auxiliar',
     'enc': 'encarregado',
     'tec': 'tecnico',
@@ -12566,7 +12570,7 @@ const MAPA_ABREVIACOES_CARGO_SST = {
     'manut': 'manutencao'
 };
 
-const STOP_WORDS_CARGO_SST = new Set(['de', 'da', 'do', 'dos', 'das', 'em', 'e', 'para', 'com']);
+var STOP_WORDS_CARGO_SST = new Set(['de', 'da', 'do', 'dos', 'das', 'em', 'e', 'para', 'com']);
 
 function normalizarTextoCargo(s) {
     if (!s) return '';
@@ -12951,7 +12955,7 @@ function renderCatalogoResumo() {
 // meses_validade preenchido) dos ~153 tópicos de DDS pontuais (sem validade) misturados
 // no mesmo catálogo de 172 itens - sem isso não tinha como achar só um grupo ou outro
 // sem rolar a lista inteira.
-let catalogoFiltroValidade = 'todos';
+var catalogoFiltroValidade = 'todos';
 
 function setCatalogoFiltroValidade(valor) {
     catalogoFiltroValidade = valor;
@@ -13000,7 +13004,7 @@ function filterCatalogoTreinamentos(query) {
 // treinamentos com pelo menos 1 questão salva ganham os botões de prova/gabarito em
 // Registro (gerarProvaTurma/gerarGabaritoProva) - sem banco cadastrado, sem prova
 // fabricada.
-let catFormQuestoes = [];
+var catFormQuestoes = [];
 
 function questaoVazia() {
     return { pergunta: '', alternativas: ['', '', '', ''], correta: 0 };
@@ -13623,13 +13627,13 @@ async function salvarCatalogoTreinamento() {
 // efetivo real como headcount na data, índice = HHT do mês ÷ efetivo do mês × 100.
 // ============================================
 
-let allEfetivo = [];
-let allGheCatalogo = [];
-let allMunicipiosAda = [];
-let allColaboradoresFerias = [];
-let dadosFeriasCltCache = [];
-let valFeriasFiltroAtual = 'todos'; // 'todos' | 'critico' | 'atencao' | 'normal' | 'emGozo' | 'programadas' | 'concluidas'
-let efetivoLoaded = false;
+var allEfetivo = [];
+var allGheCatalogo = [];
+var allMunicipiosAda = [];
+var allColaboradoresFerias = [];
+var dadosFeriasCltCache = [];
+var valFeriasFiltroAtual = 'todos'; // 'todos' | 'critico' | 'atencao' | 'normal' | 'emGozo' | 'programadas' | 'concluidas'
+var efetivoLoaded = false;
 
 async function loadEfetivoData() {
     const statusEl = document.getElementById('efetivoImportStatus');
@@ -14702,7 +14706,7 @@ function gerarPdfRelatorioEfetivo() {
 // Mapa nome-do-estado -> UF, porque "estado" em colaboradores_efetivo é texto
 // livre (tem registro como "PERNAMBUCO" e outro como "PE" pro MESMO município
 // - sem isso, os dois viram grupos separados e o Quadro 1 conta errado).
-const NOME_ESTADO_PARA_UF = {
+var NOME_ESTADO_PARA_UF = {
     'ACRE': 'AC', 'ALAGOAS': 'AL', 'AMAPÁ': 'AP', 'AMAZONAS': 'AM', 'BAHIA': 'BA',
     'CEARÁ': 'CE', 'DISTRITO FEDERAL': 'DF', 'ESPÍRITO SANTO': 'ES', 'GOIÁS': 'GO',
     'MARANHÃO': 'MA', 'MATO GROSSO': 'MT', 'MATO GROSSO DO SUL': 'MS',
@@ -14837,7 +14841,7 @@ function montarQuadrosMaoDeObra(ano, mesIndex0) {
 // "renomear" é um UPDATE em lote de todo mundo que está com aquele texto hoje.
 // ============================================
 
-let setorAtualGerenciado = null;
+var setorAtualGerenciado = null;
 
 function renderSetoresLista() {
     const container = document.getElementById('setoresLista');
@@ -14997,7 +15001,7 @@ async function renomearSetor() {
 // setor+função e não lê este campo.
 // ============================================
 
-let gheAtualGerenciado = null;
+var gheAtualGerenciado = null;
 
 // colaboradores_efetivo.ghe é texto livre - normaliza número solto ("1") pro mesmo
 // formato de 2 dígitos usado no catálogo ("01") antes de comparar.
@@ -15108,7 +15112,7 @@ function renderGheMapaRiscosHtml(g) {
 // mesmo cargo recém-adicionado manualmente e ainda sem nenhum campo preenchido - antes
 // só abria quem já tinha descricao_atividade ou cbo (vindo da planilha oficial), o que
 // tornava impossível editar/criar um cargo à mão.
-let gheCargoExpandidoIdx = null;
+var gheCargoExpandidoIdx = null;
 
 function toggleCargoGheDescricao(idx) {
     gheCargoExpandidoIdx = gheCargoExpandidoIdx === idx ? null : idx;
@@ -15161,8 +15165,8 @@ function optsDatalistGhe(valores) {
 // os 3 pontos que chamam renderGheCargosHtml com uma linha expandida (toggleCargoGheDescricao,
 // adicionarCargoGhe, salvarCargoAgentesEpi pós-salvar) - mesmo comportamento que os demais
 // campos já têm hoje (fecha sem salvar = perde a edição em andamento).
-let gheCargoEpisForm = {};
-let gheCargoEpcsForm = {};
+var gheCargoEpisForm = {};
+var gheCargoEpcsForm = {};
 
 function htmlGheCargoItens(i, tipo) {
     const estado = (tipo === 'epis' ? gheCargoEpisForm : gheCargoEpcsForm)[i] || [];
@@ -15542,7 +15546,7 @@ function abrirGerenciarGhe(id) {
 // permite ao técnico preencher manualmente os outros 26 grupos (o Grupo 27 foi
 // pré-populado direto do laudo da ENGMED; os demais o laudo já concluiu "sem riscos
 // significativos", mas a estrutura fica pronta pra quando um novo laudo trouxer dados).
-let gheRiscosForm = [];
+var gheRiscosForm = [];
 
 function rowRiscoGheVazio() {
     // probabilidade/severidade (1-5, vazios por padrão) alimentam nivelRiscoGhe() e
@@ -15824,12 +15828,12 @@ async function importarQuadroFuncionalXLS() {
 // 82-87/300. Sem tabela nova no Supabase, sem CRUD - é leitura/visualização.
 // ============================================
 
-let matrizRiscoLoaded = false;
-let chartRiscoNivel = null;
-let chartRiscoTipoAgente = null;
+var matrizRiscoLoaded = false;
+var chartRiscoNivel = null;
+var chartRiscoTipoAgente = null;
 
-const NIVEIS_RISCO_ORDEM = ['Trivial', 'Baixo', 'Moderado', 'Alto', 'Muito Alto'];
-const NIVEIS_RISCO_COR = { 'Trivial': '#6aa84f', 'Baixo': '#f1c232', 'Moderado': '#e69138', 'Alto': '#cc0000', 'Muito Alto': '#990000' };
+var NIVEIS_RISCO_ORDEM = ['Trivial', 'Baixo', 'Moderado', 'Alto', 'Muito Alto'];
+var NIVEIS_RISCO_COR = { 'Trivial': '#6aa84f', 'Baixo': '#f1c232', 'Moderado': '#e69138', 'Alto': '#cc0000', 'Muito Alto': '#990000' };
 
 // Âncoras da Probabilidade e do Efeito EXATAMENTE como a tabela 16.1 do PGR (mesmo texto
 // da tabela "📐 Metodologia AIHA — Referência Oficial" que já aparece na tela de Matriz de
@@ -15837,14 +15841,14 @@ const NIVEIS_RISCO_COR = { 'Trivial': '#6aa84f', 'Baixo': '#f1c232', 'Moderado':
 // "Lesão leve/Fatalidade" que a APR usa (a APR é uma matriz de campo genérica; o GHE segue
 // um documento oficial específico, com critérios próprios). Pesos oficiais são 0-4;
 // somamos 1 pra guardar como 1-5 nos mesmos campos probabilidade/severidade de sempre.
-const GHE_ANCORAS_PROBABILIDADE = {
+var GHE_ANCORAS_PROBABILIDADE = {
     1: 'Não há exposição — nenhum contato com o agente ou contato improvável',
     2: 'Exposição a níveis baixos — contatos não frequentes com o agente',
     3: 'Exposição moderada — contato frequente a baixas concentrações ou não frequente a altas concentrações',
     4: 'Exposição elevada — contato frequente com o agente a altas concentrações',
     5: 'Exposição elevadíssima — contato frequente com o agente a concentrações elevadíssimas'
 };
-const GHE_ANCORAS_EFEITO = {
+var GHE_ANCORAS_EFEITO = {
     1: 'Pouca importância — efeitos reversíveis de pouca importância, ou não conhecidos/apenas suspeitos',
     2: 'Preocupantes — efeitos reversíveis preocupantes',
     3: 'Severos — efeitos reversíveis severos e preocupantes',
@@ -15858,7 +15862,7 @@ const GHE_ANCORAS_EFEITO = {
 // cruzamentos não batia com essa tabela oficial - ex: Efeito 5 (Ameaça) × Probabilidade 4
 // (Exp. elevada) essa tabela classifica como "Moderado", mas a multiplicação simples (5×4
 // = 20) caía na faixa de "Muito Alto".
-const GHE_MATRIZ_NIVEIS = {
+var GHE_MATRIZ_NIVEIS = {
     1: { 1: 'Trivial', 2: 'Trivial', 3: 'Trivial', 4: 'Trivial', 5: 'Baixo' },
     2: { 1: 'Trivial', 2: 'Baixo', 3: 'Baixo', 4: 'Baixo', 5: 'Moderado' },
     3: { 1: 'Trivial', 2: 'Baixo', 3: 'Moderado', 4: 'Moderado', 5: 'Moderado' },
@@ -16056,9 +16060,9 @@ async function recalcularClassificacaoRiscoGhe() {
 // conflitar com gheAtualGerenciado/gheRiscosForm daquela outra tela.
 // ============================================
 
-let matrizEpiLoaded = false;
-let matrizEditId = null;
-let matrizEditForm = [];
+var matrizEpiLoaded = false;
+var matrizEditId = null;
+var matrizEditForm = [];
 
 function loadMatrizEpiData() {
     const jobs = [];
@@ -16326,7 +16330,7 @@ function limparBuscaEfetivo() {
 // ---- Gerar PDF de Colaboradores (Ativos/Demitidos/Completo, colunas escolhidas) ----
 // Mesmo padrão de blob+<a>+window.print() de todo documento gerado no sistema - "PDF" é
 // o navegador imprimindo/salvando essa página HTML, não uma lib de PDF.
-const EFETIVO_PDF_COLUNAS = [
+var EFETIVO_PDF_COLUNAS = [
     { id: 'matricula', label: 'Matrícula', get: e => e.id },
     { id: 'nome', label: 'Nome', get: e => e.nome },
     { id: 'status', label: 'Status', get: e => {
@@ -16359,8 +16363,8 @@ const EFETIVO_PDF_COLUNAS = [
     { id: 'camisa', label: 'Camisa', get: e => e.camisa },
     { id: 'bota', label: 'Bota', get: e => e.bota }
 ];
-const EFETIVO_PDF_COLUNAS_PADRAO = new Set(['matricula', 'nome', 'status', 'funcao', 'setor', 'responsavel', 'ghe']);
-let efetivoPdfStatusFiltro = 'ativos';
+var EFETIVO_PDF_COLUNAS_PADRAO = new Set(['matricula', 'nome', 'status', 'funcao', 'setor', 'responsavel', 'ghe']);
+var efetivoPdfStatusFiltro = 'ativos';
 
 function toggleFormPdfEfetivo() {
     const card = document.getElementById('efetivoPdfCard');
@@ -17440,8 +17444,8 @@ function diasProximoAniversario(dataNascimento, hoje) {
     return Math.ceil((prox.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-let colabTreinamentosDetalhe = [];
-let colabTreinBadgeAberto = null;
+var colabTreinamentosDetalhe = [];
+var colabTreinBadgeAberto = null;
 
 // Mostra/esconde a lista de treinamentos por trás de um badge (vencido/vencendo/
 // válido/sem validade) clicado no card de detalhe do colaborador.
@@ -17806,8 +17810,8 @@ async function salvarColaboradorEfetivo() {
 // Ocupacional (examesGheColaborador) - não duplica nenhuma das duas regras.
 // ============================================
 
-let allHistoricoTrocaFuncao = [];
-let trocaFuncaoMatriculaAtual = null;
+var allHistoricoTrocaFuncao = [];
+var trocaFuncaoMatriculaAtual = null;
 
 // Monta um "colaborador" hipotético só com setor/função/ghe pra reaproveitar
 // resolverCargoInfoDoColaborador e examesGheColaborador tanto pra situação atual quanto
@@ -18088,7 +18092,7 @@ function construirFolhaTermoTrocaFuncao(colab, atual, novo, sugeridos, examesObs
     </div>`;
 }
 
-const _headcountMemoMap = new Map();
+var _headcountMemoMap = new Map();
 
 function headcountAsOf(dateEnd) {
     if (!dateEnd || !(dateEnd instanceof Date) || isNaN(dateEnd.getTime())) return 0;
@@ -18131,8 +18135,8 @@ function headcountAsOf(dateEnd) {
 // e quem está pendente de entrega, prevenindo passivos trabalhistas.
 // ================================================================
 
-let filtroOsStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'assinadas'
-let allOrdensServicoEntregas = [];
+var filtroOsStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'assinadas'
+var allOrdensServicoEntregas = [];
 
 function filtrarStatusControleOs(status) {
     filtroOsStatusAtual = status;
@@ -19361,11 +19365,11 @@ function onRelSmsPeriodoChange() {
 
 // Paleta e helpers de estilo do relatório - mesmas cores/tamanhos usados no modelo Word
 // gerado manualmente (capa, títulos, texto), só reescritos em cima da API do docx.js.
-const RELSMS_NAVY = '1F3864';
-const RELSMS_BLUE = '2E5395';
-const RELSMS_GREY = '595959';
+var RELSMS_NAVY = '1F3864';
+var RELSMS_BLUE = '2E5395';
+var RELSMS_GREY = '595959';
 
-const RELSMS_TEMAS_FALLBACK_DDS = [
+var RELSMS_TEMAS_FALLBACK_DDS = [
     'Ordem e Limpeza (Housekeeping 5S)',
     'Atenção aos Riscos no Canteiro de Obras',
     'Inspeção Prévia e Conservação dos EPIs',
@@ -19626,7 +19630,7 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
 }
 
 // Alias para compatibilidade com chamadas da interface e relatórios
-const gerarGraficoHistoricoHHTSVG = gerarGraficoBarrasHHTSVG;
+var gerarGraficoHistoricoHHTSVG = gerarGraficoBarrasHHTSVG;
 
 function gerarGraficoDonutADASVG(arcoverdeQtd, sertaniaQtd, outrosQtd) {
     const sQtd = Number(sertaniaQtd) || 0;
@@ -20081,7 +20085,7 @@ function relSmsNota(text) {
     });
 }
 
-const RELSMS_BORDA_FINA = { style: docx.BorderStyle.SINGLE, size: 2, color: 'BFBFBF' };
+var RELSMS_BORDA_FINA = { style: (typeof docx !== 'undefined' && docx.BorderStyle ? docx.BorderStyle.SINGLE : 'single'), size: 2, color: 'BFBFBF' };
 
 function relSmsCelula(text, header) {
     return new docx.TableCell({
@@ -21641,7 +21645,7 @@ async function gerarRelatorioMensalSms() {
 // Riscos Psicossociais (COPSOQ II), NR-23 (Extintores e Brigada) e Meio Ambiente (PGRS).
 // ==========================================================================
 
-let allNaoConformidades = [];
+var allNaoConformidades = [];
 
 // Garante o carregamento em paralelo (Promise.all) de todas as tabelas e módulos
 // necessários para compor o dossiê executivo de SMS.
@@ -23931,8 +23935,8 @@ function hhtDoMes(ano, mesIndex0) {
     return hhtTreinamento + ddsHorasDoMes(ano, mesIndex0);
 }
 
-let efetivoFiltroAno = '';
-let efetivoFiltroMes = '';
+var efetivoFiltroAno = '';
+var efetivoFiltroMes = '';
 
 // Popula o select de anos com base nos dados reais (admissão/demissão), não uma lista
 // fixa - "dinâmico" a pedido do usuário, então acompanha a base automaticamente.
@@ -24852,12 +24856,12 @@ async function importarEfetivoCSV() {
 // 220h) já usado no painel Efetivo. Tabela isolada (acidentes), só lida/escrita aqui.
 // ============================================
 
-let allAcidentes = [];
-let acidentesLoaded = false;
-let acidentesFilter = 'mes';
-let acidentesFiltroAno = '';
-let acidentesFiltroMes = '';
-let hhtDiasTrabalhadosMap = {}; // 'YYYY-MM' -> { dias_trabalhados, horas_por_dia }
+var allAcidentes = [];
+var acidentesLoaded = false;
+var acidentesFilter = 'mes';
+var acidentesFiltroAno = '';
+var acidentesFiltroMes = '';
+var hhtDiasTrabalhadosMap = {}; // 'YYYY-MM' -> { dias_trabalhados, horas_por_dia }
 
 // Ano/mês específico pra comparar períodos distantes - mesmo raciocínio do filtro
 // equivalente em Treinamentos ([[popularFiltroAnoTreinamentos]]). Usa os anos já
@@ -25395,15 +25399,15 @@ async function excluirAcidenteAtual() {
 // acidente de trabalho, sobre a mesma HHT de exposição já usada em Acidentabilidade).
 // ============================================
 
-let allAsoExames = [];
-let allAtestadosOcupacionais = [];
-let allPressaoArterial = [];
-let saudeLoaded = false;
-let saudeFilter = 'mes';
-let saudeFiltroAno = '';
-let saudeFiltroMes = '';
+var allAsoExames = [];
+var allAtestadosOcupacionais = [];
+var allPressaoArterial = [];
+var saudeLoaded = false;
+var saudeFilter = 'mes';
+var saudeFiltroAno = '';
+var saudeFiltroMes = '';
 
-const ASO_TIPO_LABELS = {
+var ASO_TIPO_LABELS = {
     admissional: 'Admissional',
     periodico: 'Periódico',
     demissional: 'Demissional',
@@ -25555,7 +25559,7 @@ function buscarColaboradorPorInput(inputId) {
 // Audiometria + Glicose + Hemograma, todos 12 meses) - bateu exatamente.
 // ============================================
 
-const PCMSO_EXAMES_POR_GHE = {
+var PCMSO_EXAMES_POR_GHE = {
     G01: { nome: 'Vigilância Patrimonial', exames: [
         { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
         { nome: 'Audiometria', periodicidade: 12, demissional: true }
@@ -25743,7 +25747,7 @@ const PCMSO_EXAMES_POR_GHE = {
 // PCMSO (ex: "OPERAÇÃO" tem tanto Operador de Sistemas Hídricos quanto Operador de
 // Subestação - grupos com exames diferentes) - confirmado cruzando setor+função reais
 // via SQL antes de montar este mapa. Chave normalizada "SETOR||FUNÇÃO" (maiúsculas).
-const PCMSO_SETOR_FUNCAO_GHE = {
+var PCMSO_SETOR_FUNCAO_GHE = {
     'ADMINISTRATIVO||AUX. ADMINISTRATIVO': 'G03',
     'ADMINISTRATIVO||AUX. SERVIÇOS GERAIS': 'G03',
     'ADMINISTRATIVO||AUXILIAR DE ALMOXARIFADO': 'G02',
@@ -25981,12 +25985,12 @@ function calcularStatusAsoColaborador(matricula) {
 // mês em vez de por colaborador individual.
 // ============================================
 
-let previsaoExamesAno = null;
-let previsaoExamesMes = null;
+var previsaoExamesAno = null;
+var previsaoExamesMes = null;
 // Guarda o último resultado calculado por renderPrevisaoExames (mesma lista que já
 // alimenta "Colaboradores e Exames Exigidos") pro relatório de líderes reaproveitar sem
 // recalcular vencimento nenhum - só reagrupa (por líder ou setor) e reformata como texto/PDF.
-let previsaoExamesUltimoResultado = null;
+var previsaoExamesUltimoResultado = null;
 
 function popularFiltroPrevisaoExames() {
     const hoje = new Date();
@@ -26135,7 +26139,7 @@ function renderPrevisaoExames() {
 // cópia - nesse modo o usuário escolhe se agrupa por líder ou por setor).
 // ============================================
 
-const RELATORIO_CAMPO_INFO = {
+var RELATORIO_CAMPO_INFO = {
     responsavel: {
         rotulo: 'líder',
         avisoSemValorTitulo: '⚠️ Sem líder definido - revisar cadastro',
@@ -26148,10 +26152,10 @@ const RELATORIO_CAMPO_INFO = {
     }
 };
 
-let previsaoExamesRelatorioModo = 'individual'; // 'individual' | 'geral'
-let previsaoExamesRelatorioCriterio = 'responsavel'; // 'responsavel' | 'setor' - só usado no modo geral
-let previsaoExamesLideresGrupos = []; // grupos do modo individual, indexados pros botões copiar/baixar
-let previsaoExamesRelatorioGeral = null; // { texto, mesLabel, campo, grupos, aberturaTopo } do modo geral
+var previsaoExamesRelatorioModo = 'individual'; // 'individual' | 'geral'
+var previsaoExamesRelatorioCriterio = 'responsavel'; // 'responsavel' | 'setor' - só usado no modo geral
+var previsaoExamesLideresGrupos = []; // grupos do modo individual, indexados pros botões copiar/baixar
+var previsaoExamesRelatorioGeral = null; // { texto, mesLabel, campo, grupos, aberturaTopo } do modo geral
 
 // Colaboradores sem o campo escolhido preenchido caem num grupo à parte em vez de sumir
 // da lista - usuário pediu explicitamente pra não perder esses casos silenciosamente.
@@ -26278,8 +26282,8 @@ function fecharRelatorioLideresModal() {
 // (api/anexo-iniciar.js + PUT direto pro Drive + api/anexo-finalizar.js) pra
 // não esbarrar no limite de 4,5 MB por requisição das functions do Vercel.
 // ============================================
-let anexoModalTabela = null;
-let anexoModalChave = null;
+var anexoModalTabela = null;
+var anexoModalChave = null;
 
 function abrirAnexoModal(tabela, chave, tituloRegistro) {
     anexoModalTabela = tabela;
@@ -26341,7 +26345,7 @@ function lerComoBase64(blob) {
 // último pedaço pode ser menor) e cada pedaço é mandado em base64 (~3,3 MB,
 // dentro do limite de 4,5 MB por requisição do Vercel) pra
 // /api/anexo-enviar-pedaco, que repassa servidor-a-servidor pro Google.
-const ANEXO_TAMANHO_PEDACO = 2.5 * 1024 * 1024;
+var ANEXO_TAMANHO_PEDACO = 2.5 * 1024 * 1024;
 
 async function enviarArquivoEmPedacos(file, uploadUrl, statusEl) {
     const total = file.size;
@@ -26932,8 +26936,8 @@ function renderSaudePanel() {
 }
 
 // Filtro e Renderização da Lista de Alertas de ASO na Visão Geral
-let asoAlertFilterAtual = 'todos';
-let listaAlertasAsoCache = [];
+var asoAlertFilterAtual = 'todos';
+var listaAlertasAsoCache = [];
 
 function filtrarListaAsoAlertas(status, btn) {
     asoAlertFilterAtual = status;
@@ -27072,8 +27076,8 @@ function calcularValidadeAsoPcmso(colaborador) {
 // ============================================
 // MODAL DE GESTÃO DE VALIDADE DE ASOs (30 e 60 dias)
 // ============================================
-let valAsoFiltroAtual = 'todos'; // 'todos' | 'vencidos' | 'vencendo30' | 'vencendo60' | 'emDia' | 'semRegistro'
-let dadosValidadeAsosCache = [];
+var valAsoFiltroAtual = 'todos'; // 'todos' | 'vencidos' | 'vencendo30' | 'vencendo60' | 'emDia' | 'semRegistro'
+var dadosValidadeAsosCache = [];
 
 function abrirModalGestaoValidadeAsos() {
     valAsoFiltroAtual = 'todos';
@@ -27427,14 +27431,14 @@ function copiarAlertaValidadeAsosWhatsApp() {
 // ============================================
 // RECOMENDAÇÃO DE EXAMES E COMPLEMENTARES PCMSO MULTI-EXAMES
 // ============================================
-let exameComplementarFocoAtual = 'psicossocial';
+var exameComplementarFocoAtual = 'psicossocial';
 
 // Marco temporal inicial oficial de implantação do programa estruturado de Avaliação Psicossocial
 // (NR-01, NR-33, NR-35 e NR-10) no Consórcio Operador do PISF Ramal do Agreste (Julho/2026).
 // Apenas admissões e exames realizados a partir de 01/07/2026 são considerados para fins de conformidade e renovação periódica.
-let DATA_IMPLANTACAO_PSICOSSOCIAL = '2026-07-01';
+var DATA_IMPLANTACAO_PSICOSSOCIAL = '2026-07-01';
 
-const CATALOGO_EXAMES_COMPLEMENTARES = {
+var CATALOGO_EXAMES_COMPLEMENTARES = {
     psicossocial: {
         id: 'psicossocial',
         nomeExame: 'Avaliação Psicossocial',
@@ -27584,7 +27588,7 @@ function salvarCapacidadeMutiraoPsico(vagas) {
 }
 
 // Conjunto de matrículas selecionadas para convocação na tabela principal
-let selecionadosPsicoConvocacao = new Set();
+var selecionadosPsicoConvocacao = new Set();
 
 // Data do próximo mutirão / visita clínica para o exame em foco
 function obterDataMutiraoPsico() {
@@ -27744,7 +27748,7 @@ function obterNomeCurtoSetorGhe(gheId) {
     return nome.replace(/^GRUPO\s*\d+\s*-\s*/i, '').replace(/^GHE\s*\d+\s*-\s*/i, '').trim();
 }
 
-let psicoFiltroStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'vencendo' | 'em_dia' | 'ferias'
+var psicoFiltroStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'vencendo' | 'em_dia' | 'ferias'
 
 // ==============================================================
 // HELPERS DE FÉRIAS E AFASTAMENTOS (NR-07 / GESTÃO OPERACIONAL)
@@ -29680,8 +29684,8 @@ window.toggleHeaderCheckboxConvocacao = marcarTodosConvocacaoPsico;
 // MÓDULO: PARAMETRIZAÇÃO E TRIAGEM DE CONVOCAÇÃO — PSICOSSOCIAL
 // ============================================================
 
-let convocacaoPsicoLista = [];
-let convocacaoPsicoAvulsos = [];
+var convocacaoPsicoLista = [];
+var convocacaoPsicoAvulsos = [];
 
 function aoClicarEmitirConvocacaoExame() {
     if (exameComplementarFocoAtual === 'psicossocial') {
@@ -31326,17 +31330,17 @@ async function excluirAtestadoAtual() {
 // quando alguém registra a primeira Entrada.
 // ============================================
 
-let allEpiCatalogo = [];
-let allEpiEstoque = [];
-let allEpiEntregas = [];
-let allEpiEntradas = [];
-let epiModoVisaoEstoque = 'grade'; // 'grade' (Modo Família/Grade) ou 'lista' (Modo Detalhado)
-let epiLoaded = false;
-let epiFilter = 'mes';
-let epiFiltroAno = '';
-let epiFiltroMes = '';
+var allEpiCatalogo = [];
+var allEpiEstoque = [];
+var allEpiEntregas = [];
+var allEpiEntradas = [];
+var epiModoVisaoEstoque = 'grade'; // 'grade' (Modo Família/Grade) ou 'lista' (Modo Detalhado)
+var epiLoaded = false;
+var epiFilter = 'mes';
+var epiFiltroAno = '';
+var epiFiltroMes = '';
 
-const EPI_TIPO_LABELS = { maos: 'Mãos', pes: 'Pés', cabeca: 'Cabeça', olhos: 'Olhos', rosto: 'Rosto', respiratorio: 'Respiratório', corpo: 'Corpo', altura: 'Altura', audicao: 'Audição', outro: 'Outro' };
+var EPI_TIPO_LABELS = { maos: 'Mãos', pes: 'Pés', cabeca: 'Cabeça', olhos: 'Olhos', rosto: 'Rosto', respiratorio: 'Respiratório', corpo: 'Corpo', altura: 'Altura', audicao: 'Audição', outro: 'Outro' };
 
 // Status do CA (Certificado de Aprovação) de um item do catálogo - mesma janela de 30
 // dias e mesmos buckets já usados pra vencimento de ASO (calcularStatusAsoColaborador) e
@@ -31602,7 +31606,7 @@ function gerarPdfEpi() {
 // -1 = semana passada, +1 = semana que vem, etc.).
 // ============================================
 
-let epiRelatorioSemanaOffset = 0;
+var epiRelatorioSemanaOffset = 0;
 
 function calcularEpiSemana(offset) {
     const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
@@ -31640,8 +31644,8 @@ function montarLinhasEpiSemanal() {
     return { inicio, fim, catalogoPorId, entregas };
 }
 
-const TIPO_ENTREGA_LABELS_EPI = { inicial: 'Inicial', reposicao: 'Reposição', troca: 'Troca' };
-const MOTIVO_REPOSICAO_LABELS_EPI_SEMANAL = { perda: 'Perda', dano: 'Dano/Rompimento', desgaste: 'Desgaste Natural', troca_tamanho: 'Troca de Tamanho', vencimento: 'Vencimento (CA)' };
+var TIPO_ENTREGA_LABELS_EPI = { inicial: 'Inicial', reposicao: 'Reposição', troca: 'Troca' };
+var MOTIVO_REPOSICAO_LABELS_EPI_SEMANAL = { perda: 'Perda', dano: 'Dano/Rompimento', desgaste: 'Desgaste Natural', troca_tamanho: 'Troca de Tamanho', vencimento: 'Vencimento (CA)' };
 
 async function gerarExcelEpiSemanal() {
     const statusEl = document.getElementById('epiRelatorioSemanalStatus');
@@ -32384,7 +32388,7 @@ async function confirmarMesclarExcluirEpi() {
 
 // ---- Estoque Inteligente (Consumo, Cobertura, Famílias de Tamanhos e Sugestão de Compras) ----
 
-let epiEstoqueFiltroAtual = 'todos';
+var epiEstoqueFiltroAtual = 'todos';
 
 function setEpiModoVisualizacao(modo) {
     epiModoVisaoEstoque = modo;
@@ -32399,7 +32403,7 @@ function renderEpiEstoquePanel() {
     filterEpiEstoqueLista(document.getElementById('epiEstoqueSearchInput')?.value || '');
 }
 
-const EPI_ESTOQUE_FILTRO_LABELS = { todos: 'Todos', com: 'Com saldo', sem: 'Sem saldo' };
+var EPI_ESTOQUE_FILTRO_LABELS = { todos: 'Todos', com: 'Com saldo', sem: 'Sem saldo' };
 
 function filtrarEpiEstoquePorSaldo(filtro) {
     epiEstoqueFiltroAtual = filtro;
@@ -32675,7 +32679,7 @@ function limparBuscaEpiEstoque() {
 
 // ---- Sugestão de Compras Interativa (Ponto de Pedido) ----
 
-let epiItensSolicitacaoCompras = [];
+var epiItensSolicitacaoCompras = [];
 
 function toggleFormAdicionarItemCompras() {
     const p = document.getElementById('formAdicionarItemComprasPanel');
@@ -33228,7 +33232,7 @@ function popularEpiColabDatalist() {
 
 // ---- Histórico por colaborador (mesma visão que o app de campo mostra ao escanear o QR) ----
 
-const EPI_FICHA_BTN_IDS = ['epiFichaBtnHoje', 'epiFichaBtnMes', 'epiFichaBtnTrimestre', 'epiFichaBtnAno', 'epiFichaBtnTodos'];
+var EPI_FICHA_BTN_IDS = ['epiFichaBtnHoje', 'epiFichaBtnMes', 'epiFichaBtnTrimestre', 'epiFichaBtnAno', 'epiFichaBtnTodos'];
 
 // Preenche De/Até a partir de um atalho - os campos continuam editáveis na mão depois,
 // pro caso de um recorte que não bate com nenhum atalho (ver comentário em
@@ -33885,7 +33889,7 @@ async function importarEpiCSV() {
 // e Justificativa Técnica NR-06 para Suprimentos e Diretoria)
 // ================================================================
 
-let epiConsumoEstado = {
+var epiConsumoEstado = {
     diasHorizonte: 60,
     dadosCalculados: null
 };
@@ -34704,7 +34708,7 @@ function imprimirDossieConsumoEpi() {
 // NAVEGAÇÃO ENTRE PÁGINAS (barra lateral)
 // ============================================
 
-const DB_PAGE_TITLES = {
+var DB_PAGE_TITLES = {
     relatoriosms: 'Relatório Mensal SMS',
     checklists: 'Checklists',
     extintores: 'Extintores',
@@ -34741,13 +34745,13 @@ const DB_PAGE_TITLES = {
 // de verdade é no banco (RLS via usuario_tem_acesso_modulo) - esta tela só gerencia quem
 // tem qual perfil, não implementa nenhuma trava por conta própria.
 // ============================================
-let allPainelPerfis = [];
-let allPainelUsuarios = [];
-let usuariosPainelLoaded = false;
-let painelPerfilEditandoId = null;
+var allPainelPerfis = [];
+var allPainelUsuarios = [];
+var usuariosPainelLoaded = false;
+var painelPerfilEditandoId = null;
 
-let allColaboradoresInternos = [];
-let filtroColabsInternosTexto = '';
+var allColaboradoresInternos = [];
+var filtroColabsInternosTexto = '';
 
 function showUsuariosPainelSubtab(subtab) {
     const btnColabs = document.getElementById('usuariosSubtabBtn-colabs');
@@ -35530,7 +35534,7 @@ async function salvarPerfilPainel() {
 // ================================================================
 // MENU LATERAL EM GRUPOS (accordion por pilar de SSMA)
 // ================================================================
-const NAV_GROUP_POR_PAGINA = {
+var NAV_GROUP_POR_PAGINA = {
     checklists: 'seguranca', treinamentos: 'seguranca', ddsma: 'seguranca', apr: 'seguranca', matrizrisco: 'seguranca', planoacao: 'seguranca',
     epi: 'seguranca', periculosidade: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca', brigada: 'seguranca',
     saude: 'saude', psicossocial: 'saude', ergonomia: 'saude',
@@ -35763,14 +35767,14 @@ function showDbPage(pageId) {
 // Suporta Treinamentos (SCAN), DDSMA (SCAN - DDS), Checklists SST e SMS_COP.
 // Permite consulta e upload direto para pastas do Drive via Vercel Serverless / Google Drive API.
 // ============================================
-let acervoDriveCategoria = null;
-let acervoDriveTrilha = [];
-let acervoDriveItens = [];
-let acervoDriveNextPageToken = null;
-let acervoArquivosParaUpload = [];
-let acervoPastaContextualAtiva = null;
-let acervoDrivePastaUrlAtual = null;
-let acervoDriveTermoBusca = '';
+var acervoDriveCategoria = null;
+var acervoDriveTrilha = [];
+var acervoDriveItens = [];
+var acervoDriveNextPageToken = null;
+var acervoArquivosParaUpload = [];
+var acervoPastaContextualAtiva = null;
+var acervoDrivePastaUrlAtual = null;
+var acervoDriveTermoBusca = '';
 
 
 function resetAcervoDrive() {
@@ -36189,7 +36193,7 @@ function montarEstruturaPastaFotos(tipoOuCategoria, dataStr, temaStr) {
     };
 }
 
-const DEFAULT_DRIVE_GAS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzdCzGE9Jm77RauUe8iuo1p8il193F7Pd7HeLLbut0zToD8zhHtv2RBSAY86bQZGLtA/exec';
+var DEFAULT_DRIVE_GAS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzdCzGE9Jm77RauUe8iuo1p8il193F7Pd7HeLLbut0zToD8zhHtv2RBSAY86bQZGLtA/exec';
 
 function getDriveGasWebhookUrl() {
     const fromSettings = (allChecklistItemSettings || []).find(s => 
@@ -36210,7 +36214,7 @@ function getDriveGasWebhookUrl() {
            DEFAULT_DRIVE_GAS_WEBHOOK_URL;
 }
 
-const ID_DDSMA_LEGADO = '1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
+var ID_DDSMA_LEGADO = '1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
 
 function normalizarUrlGoogleDriveFolder(urlOuId) {
     if (!urlOuId) return '';
@@ -37031,10 +37035,10 @@ function gerarPdfAcidentes() {
 // Suporte total a compensações de dias/pontes (ex: 23/09 trabalhado +9h e 25/09 folga compensada 0h)
 // ============================================
 
-const ACIDENTES_MES_INICIO_CONTRATO = { ano: 2024, mes: 6 }; // mes 0-indexado (6 = julho)
-let calHhtAnoAtual = new Date().getFullYear();
-let calHhtMesAtual = new Date().getMonth();
-let calHhtCompensacoesCache = {}; // { 'YYYY-MM': { [dia]: { horas: number, motivo: string } } }
+var ACIDENTES_MES_INICIO_CONTRATO = { ano: 2024, mes: 6 }; // mes 0-indexado (6 = julho)
+var calHhtAnoAtual = new Date().getFullYear();
+var calHhtMesAtual = new Date().getMonth();
+var calHhtCompensacoesCache = {}; // { 'YYYY-MM': { [dia]: { horas: number, motivo: string } } }
 
 // Cálculo do Domingo de Páscoa (Algoritmo astronômico de Meeus/Jones/Butcher)
 function calcularPascoa(ano) {
@@ -37541,17 +37545,17 @@ function renderDiasTrabalhadosConfig() {
 // não fabricar uma estrutura de licenciamento ambiental genérica.
 // ============================================
 
-let allResiduosRefeicoes = [];
-let allManutencaoVeicular = [];
-let ambientalLoaded = false;
-let ambientalFilter = 'mes';
-let ambientalFiltroAno = '';
-let ambientalFiltroMes = '';
+var allResiduosRefeicoes = [];
+var allManutencaoVeicular = [];
+var ambientalLoaded = false;
+var ambientalFilter = 'mes';
+var ambientalFiltroAno = '';
+var ambientalFiltroMes = '';
 
-let allCipaMembros = [];
-let allCipaReunioes = [];
-let allCipaPlanoAcao = [];
-let cipaLoaded = false;
+var allCipaMembros = [];
+var allCipaReunioes = [];
+var allCipaPlanoAcao = [];
+var cipaLoaded = false;
 
 // Brigada de Incêndio (2026-09-21, texto da ABNT NBR 14276:2020 conferido em 2026-09-22 -
 // ver claude/bloco-notas-melhorias.md). Reaproveita o treinamento já cadastrado em
@@ -37564,33 +37568,33 @@ let cipaLoaded = false;
 // sendo uma estimativa nossa (a norma não define percentual: ela soma o dimensionamento
 // por área/tempo de resposta, itens 4.1.6 a 4.1.8, que exige estudo formal do profissional
 // habilitado).
-let allBrigadaMembros = [];
-let brigadaLoaded = false;
-let brigadaMatriculasPendentesTreinamento = [];
-let BRIGADA_PARAMETROS = {
+var allBrigadaMembros = [];
+var brigadaLoaded = false;
+var brigadaMatriculasPendentesTreinamento = [];
+var BRIGADA_PARAMETROS = {
     grau_risco: 'medio',
     percentual_efetivo: 10,
     minimo_brigadistas: 2
 };
-const BRIGADA_CARGO_LABELS = {
+var BRIGADA_CARGO_LABELS = {
     coordenador_geral: 'Coordenador Geral da Brigada',
     chefe_brigada: 'Chefe de Brigada',
     lider_area: 'Líder de Área/Turno',
     brigadista: 'Brigadista'
 };
-const BRIGADA_CARGO_ORDEM = { coordenador_geral: 0, chefe_brigada: 1, lider_area: 2, brigadista: 3 };
+var BRIGADA_CARGO_ORDEM = { coordenador_geral: 0, chefe_brigada: 1, lider_area: 2, brigadista: 3 };
 
 // Constantes documentadas na própria planilha do usuário (aba RESIDUOS, ESTIMATIVA_
 // RESIDUOS_COP_RAMAL_DO_AGRESTE.xlsx) e conferidas batendo com os valores calculados lá:
 // isopor limpo (8,9g) + resíduo orgânico que sobra dentro ao descartar (15g) = 23,9g por
 // quentinha; copo descartável PP 200ml = 1,8g por unidade.
-let RESIDUO_KG_POR_QUENTINHA = 0.0239;
-let RESIDUO_KG_POR_COPO = 0.0018;
+var RESIDUO_KG_POR_QUENTINHA = 0.0239;
+var RESIDUO_KG_POR_COPO = 0.0018;
 // Peso médio único por unidade de EPI usado sem contaminação (luva, bota, capacete etc. -
 // varia muito entre tipos, então o usuário optou por uma média única em vez de detalhar por
 // tipo) - decidido com o usuário em 2026-09-16, pensado pra cobrir desde item leve até
 // botina/capacete.
-let RESIDUO_KG_POR_EPI = 0.5;
+var RESIDUO_KG_POR_EPI = 0.5;
 
 function pesoResiduoRefeicoesKg(r) {
     return (r.quentinhas_qtd || 0) * RESIDUO_KG_POR_QUENTINHA + (r.copos_qtd || 0) * RESIDUO_KG_POR_COPO + (r.epi_qtd || 0) * RESIDUO_KG_POR_EPI;
@@ -37888,7 +37892,7 @@ async function salvarResiduoRefeicaoMes(key, ano, mes) {
 // contratada pela Prefeitura etc.), é só pedir pra atualizar aqui.
 // ============================================
 
-const MANIFESTO_RESIDUOS_INFO = {
+var MANIFESTO_RESIDUOS_INFO = {
     origem: 'Frentes de Serviço e Manutenção Operacional do Ramal do Agreste (Distrito de Henrique Dias, Zona Rural do município de Sertânia-PE)',
     etapa1: {
         titulo: '1ª Etapa — Frente de Serviço → Sertânia-PE',
@@ -38396,7 +38400,7 @@ async function importarManutencaoCSV() {
 // Exporta e restaura todas as bases operacionais e administrativas
 // ============================================
 
-const BACKUP_TABELAS_CONFIG = [
+var BACKUP_TABELAS_CONFIG = [
     { tabela: 'checklists', modulo: 'Checklists', label: 'Checklists de Inspeção' },
     { tabela: 'cadastros', modulo: 'Checklists', label: 'Equipamentos e Veículos' },
     { tabela: 'checklist_item_settings', modulo: 'Checklists', label: 'Configurações de Itens de Checklist' },
@@ -38573,7 +38577,7 @@ async function gerarBackupCompletoSistema(formato = 'json') {
 // --------------------------------------------
 // RESTAURAÇÃO DE BACKUP
 // --------------------------------------------
-let backupParaRestaurarCarregado = null;
+var backupParaRestaurarCarregado = null;
 
 function aoSelecionarArquivoBackup(event) {
     const file = event.target.files?.[0];
@@ -38752,14 +38756,14 @@ async function executarRestauracaoBackup() {
 // data de recebimento preenchida (o campo existe no papel mas nunca foi digitado), então
 // rastrear prazo de entrega é uma capacidade nova, não algo herdado do histórico.
 // ============================================
-let allComprasRequisicoes = [];
-let comprasLoaded = false;
-let comprasFilter = 'mes';
-let comprasFiltroAno = '';
-let comprasFiltroMes = '';
-let comprasStatusFiltro = '';
-let comprasItensForm = [];
-let comprasItemExpandidoId = null;
+var allComprasRequisicoes = [];
+var comprasLoaded = false;
+var comprasFilter = 'mes';
+var comprasFiltroAno = '';
+var comprasFiltroMes = '';
+var comprasStatusFiltro = '';
+var comprasItensForm = [];
+var comprasItemExpandidoId = null;
 
 async function loadComprasData() {
     try {
@@ -39302,10 +39306,10 @@ function imprimirRequisicaoCompra(id) {
 // Registro de Treinamento - reusa equipeDaFrente()). Validade padrão 15 dias (pedido
 // explícito do usuário), mas editável por APR.
 // ============================================
-let allAprRegistros = [];
-let aprLoaded = false;
-let aprRiscosForm = [];
-let aprItemExpandidoId = null;
+var allAprRegistros = [];
+var aprLoaded = false;
+var aprRiscosForm = [];
+var aprItemExpandidoId = null;
 
 // Faixas de classificação da matriz 5×5 da APR, padronizadas pelo usuário em
 // 03/09/2026: 1-4 Baixo, 5-9 Moderado, 10-16 Alto, 17-25 Crítico. Cores só de
@@ -39327,14 +39331,14 @@ function nivelRiscoApr(p, s) {
 // selects de P/S - resolve a dúvida real relatada em campo ("qual peso colocar?") sem
 // precisar de outra tela; o resumo curto também aparece fixo acima da matriz no HTML.
 // Critério padronizado pelo usuário em 03/09/2026.
-const APR_ANCORAS_P = {
+var APR_ANCORAS_P = {
     1: 'Raro — pode ocorrer apenas em circunstâncias excepcionais',
     2: 'Improvável — pode ocorrer eventualmente',
     3: 'Possível — pode ocorrer em algum momento',
     4: 'Provável — provavelmente ocorrerá na maioria das circunstâncias',
     5: 'Frequente — espera-se que ocorra com frequência'
 };
-const APR_ANCORAS_S = {
+var APR_ANCORAS_S = {
     1: 'Lesão leve sem afastamento — primeiros socorros, sem afastamento do trabalho',
     2: 'Lesão com atendimento ambulatorial — atendimento médico, sem afastamento',
     3: 'Lesão com afastamento — atendimento médico com afastamento do trabalho',
@@ -39370,7 +39374,7 @@ async function loadAprData() {
     }
 }
 
-let allAprAuditLog = [];
+var allAprAuditLog = [];
 
 // Busca o histórico de alterações de todas as APRs de uma vez (mesma tabela audit_log que
 // o app de celular já usa) - carregado só quando a aba Histórico é aberta, não no
@@ -39384,7 +39388,7 @@ async function carregarAprAuditLog() {
     }
 }
 
-let allAprModelos = [];
+var allAprModelos = [];
 
 // Modelos de APR reutilizáveis - tabela SEPARADA de apr_registros, carregada só quando a
 // aba "Modelos" é aberta. Nunca entra em KPI/gráfico/histórico de APR real nenhum.
@@ -39521,7 +39525,7 @@ function onMudarPuroApr(i, campo, valor) {
 }
 
 // 2. Biblioteca de Riscos Padrão da Obra Pesada (Ramal do Agreste)
-const BIBLIOTECA_RISCOS_OBRA = [
+var BIBLIOTECA_RISCOS_OBRA = [
     {
         categoria: "🚧 Escavação de Vala e Movimentação de Terra",
         riscos: [
@@ -40666,22 +40670,22 @@ function imprimirApr(id) {
 // CIPA (Comissão Interna de Prevenção de Acidentes) - Fase 1: Reuniões e Atas
 // ============================================
 
-const CIPA_CARGO_LABELS = {
+var CIPA_CARGO_LABELS = {
     titular_empregado: 'Titular - Empregados',
     suplente_empregado: 'Suplente - Empregados',
     titular_empregador: 'Titular - Empregador',
     suplente_empregador: 'Suplente - Empregador'
 };
-const CIPA_TIPO_LABELS = { posse: 'Posse', ordinaria: 'Ordinária', extraordinaria: 'Extraordinária' };
-const CIPA_STATUS_LABELS = { agendada: '🗓️ Agendada', realizada: '✅ Realizada', cancelada: '❌ Cancelada' };
-const PLANO_ACAO_STATUS_LABELS = { pendente: '⏳ Pendente', em_andamento: '🔧 Em Andamento', concluido: '✅ Concluído' };
-const CIPA_PAPEL_LABELS = { presidente: 'Presidente', vice_presidente: 'Vice-Presidente', secretario: 'Secretário(a)' };
+var CIPA_TIPO_LABELS = { posse: 'Posse', ordinaria: 'Ordinária', extraordinaria: 'Extraordinária' };
+var CIPA_STATUS_LABELS = { agendada: '🗓️ Agendada', realizada: '✅ Realizada', cancelada: '❌ Cancelada' };
+var PLANO_ACAO_STATUS_LABELS = { pendente: '⏳ Pendente', em_andamento: '🔧 Em Andamento', concluido: '✅ Concluído' };
+var CIPA_PAPEL_LABELS = { presidente: 'Presidente', vice_presidente: 'Vice-Presidente', secretario: 'Secretário(a)' };
 
 // Dados reais do cadastro de CNPJ (comprovante da Receita Federal, emitido 28/06/2024) -
 // usados no cabeçalho da ata (seção 1). Grau de Risco (NR-4) NÃO consta nesse documento
 // e não foi informado ainda - fica em branco na ata até o usuário fornecer, em vez de
 // ser adivinhado a partir do CNAE.
-const EMPRESA_INFO = {
+var EMPRESA_INFO = {
     razaoSocial: 'CONSORCIO OPERADOR RAMAL DO AGRESTE',
     cnpj: '55.623.017/0001-97',
     cnaePrincipal: '71.12-0-00 - Serviços de engenharia',
@@ -40842,10 +40846,10 @@ function popularCipaColabDatalist() {
     });
 }
 
-let cipaReuniaoParticipantesAtual = [];
-let cipaReuniaoPautaAtual = [];
-let cipaReuniaoAssuntosAtual = [];
-let cipaAssuntoEditandoIndex = null;
+var cipaReuniaoParticipantesAtual = [];
+var cipaReuniaoPautaAtual = [];
+var cipaReuniaoAssuntosAtual = [];
+var cipaAssuntoEditandoIndex = null;
 
 // Compatibilidade: reuniões salvas antes da itemização guardavam pauta/assuntos_tratados
 // como texto livre (TEXT). Depois da migração pra JSONB isso não deve mais acontecer,
@@ -41479,11 +41483,11 @@ async function gerarAtaCipa() {
 // cipa_membros/allCipaMembros - não é uma foto congelada do dia da posse original -
 // então, se a composição da CIPA mudar depois, regerar o Termo já reflete a mudança.
 
-let allCipaProcessosEleitorais = [];
-let allCipaCandidatos = [];
+var allCipaProcessosEleitorais = [];
+var allCipaCandidatos = [];
 
-const CIPA_RESULTADO_LABELS = { titular: 'Titular (eleito)', suplente: 'Suplente (eleito)', nao_eleito: 'Não eleito' };
-const CIPA_PROCESSO_STATUS_LABELS = {
+var CIPA_RESULTADO_LABELS = { titular: 'Titular (eleito)', suplente: 'Suplente (eleito)', nao_eleito: 'Não eleito' };
+var CIPA_PROCESSO_STATUS_LABELS = {
     planejamento: '🗓️ Planejamento',
     inscricoes_abertas: '📝 Inscrições Abertas',
     inscricoes_encerradas: '🔒 Inscrições Encerradas',
@@ -41501,8 +41505,8 @@ const CIPA_PROCESSO_STATUS_LABELS = {
 // null = grau de risco não exige CIPA formal nessa faixa (aplica-se o item 5.4.13 da
 // NR-5 - designação de 1 representante da organização, sem processo eletivo).
 // "acrescentar" = incremento por grupo de 2.500 empregados acima de 10.000.
-const QUADRO_I_FAIXAS = [19, 29, 50, 80, 100, 120, 140, 300, 500, 1000, 2500, 5000, 10000];
-const QUADRO_I_DIMENSIONAMENTO = {
+var QUADRO_I_FAIXAS = [19, 29, 50, 80, 100, 120, 140, 300, 500, 1000, 2500, 5000, 10000];
+var QUADRO_I_DIMENSIONAMENTO = {
     '1': { efetivos: [null, null, null, null, 1, 1, 1, 1, 2, 4, 5, 6, 8], suplentes: [null, null, null, null, 1, 1, 1, 1, 2, 3, 4, 5, 6], acrescentar: 1 },
     '2': { efetivos: [null, null, null, 1, 1, 2, 2, 3, 4, 5, 6, 8, 10], suplentes: [null, null, null, 1, 1, 1, 1, 2, 3, 4, 5, 6, 8], acrescentar: 1 },
     '3': { efetivos: [null, 1, 1, 2, 2, 2, 3, 4, 5, 6, 8, 10, 12], suplentes: [null, 1, 1, 1, 1, 1, 2, 2, 4, 4, 6, 8, 8], acrescentar: 2 },
@@ -41558,7 +41562,7 @@ function processoEleitoralAtual() {
     return allCipaProcessosEleitorais.find(p => p.id === select.value) || null;
 }
 
-const CIPA_PROCESSO_CAMPO_COL = {
+var CIPA_PROCESSO_CAMPO_COL = {
     gestao: 'gestao', dataInicioGestao: 'data_inicio_gestao', dataFimGestao: 'data_fim_gestao',
     dataEditalConvocacao: 'data_edital_convocacao', dataEditalInscricao: 'data_edital_inscricao',
     dataInicioInscricoes: 'data_inicio_inscricoes', dataFimInscricoes: 'data_fim_inscricoes',
@@ -41589,9 +41593,9 @@ function renderCipaEleicao() {
 // ASSISTENTE INTELIGENTE DE CRONOGRAMA ELEITORAL DA CIPA (NR-05)
 // =========================================================================
 
-let cipaUltimoCronogramaCalculado = null;
+var cipaUltimoCronogramaCalculado = null;
 
-const DIAS_SEMANA_NOMES_PT = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+var DIAS_SEMANA_NOMES_PT = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
 function cipaParseDataLocal(str) {
     if (!str || typeof str !== 'string') return null;
@@ -42417,7 +42421,7 @@ async function excluirCipaCandidatoAtual() {
 // estilo 6 vezes (o mesmo padrão visual usado em gerarAtaCipa). Reduz duplicação -
 // tech debt real já registrado no bloco de notas do projeto em 2026-09-18 pra outras
 // partes do dashboard.js; aqui evitamos criar mais do mesmo problema em código novo.
-const CIPA_DOC_CSS = `
+var CIPA_DOC_CSS = `
     body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111; margin: 20px; }
     @page { size: portrait; margin: 12mm; }
     .folha { max-width: 1000px; min-height: 273mm; margin: 0 auto; border: 2px solid #000; display: flex; flex-direction: column; }
@@ -43015,12 +43019,12 @@ async function excluirCipaMembroAtual() {
 // próximo PDF impresso, sem tocar em nenhuma função geradora.
 // ============================================
 
-let allDocumentosControle = [];
-let allDocumentosRevisoes = [];
-let allDocumentosEmissoes = [];
-let documentosControleLoaded = false;
+var allDocumentosControle = [];
+var allDocumentosRevisoes = [];
+var allDocumentosEmissoes = [];
+var documentosControleLoaded = false;
 
-const DOC_STATUS_LABELS = { vigente: '✅ Vigente', em_elaboracao: '🛠️ Em Elaboração', obsoleto: '🚫 Obsoleto' };
+var DOC_STATUS_LABELS = { vigente: '✅ Vigente', em_elaboracao: '🛠️ Em Elaboração', obsoleto: '🚫 Obsoleto' };
 
 async function loadDocumentosControleData() {
     try {
@@ -43279,19 +43283,19 @@ function registrarEmissaoDocumento(documentoId, referencia) {
 // 41 perguntas, números conferidos um a um contra o texto extraído do PDF.
 // ============================================
 
-let allAvaliacoesPsicossociais = [];
-let allEscalasPsicossociais = [];
-let allPerguntasPsicossociais = [];
-let psicossocialLoaded = false;
-let psicossocialAplicacaoAtivaId = null;
-let psicoPerguntasAbertas = false;
-let chartPsicoEscalas = null;
+var allAvaliacoesPsicossociais = [];
+var allEscalasPsicossociais = [];
+var allPerguntasPsicossociais = [];
+var psicossocialLoaded = false;
+var psicossocialAplicacaoAtivaId = null;
+var psicoPerguntasAbertas = false;
+var chartPsicoEscalas = null;
 
-let PSICO_LIMIAR_RISCO_CRITICO = 40; // % - limiar só de UI (não vem do PGR/instrumento) - valor
+var PSICO_LIMIAR_RISCO_CRITICO = 40; // % - limiar só de UI (não vem do PGR/instrumento) - valor
 // padrão; pode ser sobrescrito por configuracoes_sistema (ver carregarConfiguracoesSistema)
-let PSICO_LIMIAR_FAVORAVEL_FORTE = 90; // % - mesma observação acima
+var PSICO_LIMIAR_FAVORAVEL_FORTE = 90; // % - mesma observação acima
 
-const PSICO_ESCALAS_PADRAO = [
+var PSICO_ESCALAS_PADRAO = [
     'Apoio social de superiores', 'Auto-eficácia', 'Comportamentos ofensivos', 'Compromisso face ao local de trabalho',
     'Comunidade social no trabalho', 'Confiança vertical', 'Conflito trabalho/vida', 'Estresse', 'Exigências cognitivas',
     'Exigências emocionais', 'Exigências quantitativas', 'Extenuação', 'Influência no trabalho', 'Insegurança laboral',
@@ -43646,7 +43650,7 @@ async function excluirAplicacaoPsicossocial() {
 // moravam dentro de "Configurações") não precisa de nada disso - são só as mesmas
 // funções de sempre (importarTreinamentosCSV etc.), com card/página nova no menu.
 // ============================================
-let configuracoesSistemaCarregadas = false;
+var configuracoesSistemaCarregadas = false;
 
 async function carregarConfiguracoesSistema() {
     try {
@@ -44026,7 +44030,7 @@ function onBrigadaGrauRiscoChange() {
 // brigadistas (para população > 4 na área); alto risco = mínimo 4 brigadistas (para
 // população > 10 na área). Isto é o piso normativo por equipe/área de resposta - aqui
 // aplicado, por simplificação já acordada com o usuário, ao efetivo total da obra.
-const BRIGADA_PISO_NORMATIVO_NBR14276 = { baixo: 2, medio: 2, alto: 4 };
+var BRIGADA_PISO_NORMATIVO_NBR14276 = { baixo: 2, medio: 2, alto: 4 };
 
 async function salvarBrigadaParametros() {
     const statusEl = document.getElementById('cfgBrigadaStatus');
@@ -44064,7 +44068,7 @@ async function salvarBrigadaParametros() {
 
 // ---- Organograma ----
 
-const BRIGADA_NIVEL_LABELS = {
+var BRIGADA_NIVEL_LABELS = {
     basico: 'Nível Básico',
     intermediario: 'Nível Intermediário',
     avancado: 'Nível Avançado'
@@ -44770,7 +44774,7 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 window.addEventListener('focus', rerenderGraficosDaPaginaAtiva);
-const MODELOS_APR_SEED = [
+var MODELOS_APR_SEED = [
     {
         "numero_legado": "004.16",
         "titulo": "Almoxarifado",
@@ -48149,9 +48153,9 @@ const MODELOS_APR_SEED = [
 // MÓDULO DE ERGONOMIA (NR-17) - AEP E PLANO DE AÇÃO
 // ============================================
 
-let allErgonomiaAep = [];
-let allErgonomiaPlanoAcao = [];
-let ergonomiaLoaded = false;
+var allErgonomiaAep = [];
+var allErgonomiaPlanoAcao = [];
+var ergonomiaLoaded = false;
 
 async function loadErgonomiaData() {
     try {
@@ -49149,15 +49153,24 @@ function abrirDocumentoHtmlParaImpressao(html, titulo) {
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (err) {
-        console.warn('Erro ao abrir documento via Blob:', err);
-        const win = window.open('', '_blank');
-        if (win) {
-            win.document.open();
-            win.document.write(html);
-            win.document.close();
-        } else {
-            alert('O navegador bloqueou a abertura do documento. Por favor, autorize pop-ups para visualizar a impressão.');
-        }
+        console.warn('Erro ao abrir documento via Blob, utilizando iframe de impressão:', err);
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+        const doc = iframe.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+        setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+            setTimeout(() => document.body.removeChild(iframe), 60000);
+        }, 400);
     }
 }
 
@@ -49165,10 +49178,10 @@ function abrirDocumentoHtmlParaImpressao(html, titulo) {
 // MÓDULO DE PERICULOSIDADE (NR-16) - LAUDO TÉCNICO (LTP)
 // Consórcio Operador Ramal do Agreste - Gestão Técnica Oficial
 // ================================================================
-let allPericulosidadeLaudos = [];
-let allPericulosidadeAnalises = [];
-let periculosidadeLoaded = false;
-let analisePericEditandoId = null;
+var allPericulosidadeLaudos = [];
+var allPericulosidadeAnalises = [];
+var periculosidadeLoaded = false;
+var analisePericEditandoId = null;
 
 async function loadPericulosidadeData() {
     try {
@@ -50440,10 +50453,10 @@ function exportarMatrizPericulosidade() {
 // ergonomia (NR-17), CIPA (NR-05), acidentes e inspeções em uma matriz 5W2H corporativa.
 // ==============================================================================
 
-let allPlanoAcaoPgr = [];
-let planoAcaoPgrLoaded = false;
-let planoAcaoSubtabAtual = 'tabela'; // 'tabela' | 'kanban' | 'scanner'
-let scannerDesviosCache = [];
+var allPlanoAcaoPgr = [];
+var planoAcaoPgrLoaded = false;
+var planoAcaoSubtabAtual = 'tabela'; // 'tabela' | 'kanban' | 'scanner'
+var scannerDesviosCache = [];
 
 function formatarDataLocal(d) {
     if (!d) return '—';
@@ -51549,7 +51562,7 @@ function imprimirPlanoAcaoPgrTimbrado() {
 // & CRONOGRAMA OPERACIONAL DE TERÇAS E QUINTAS-FEIRAS
 // =====================================================================
 
-const CAMPANHAS_SAZONAIS_SST = {
+var CAMPANHAS_SAZONAIS_SST = {
     0: {
         cor: '#3b82f6',
         nomeMes: 'Janeiro',
@@ -51636,10 +51649,10 @@ const CAMPANHAS_SAZONAIS_SST = {
     }
 };
 
-let patAnoAtual = 2026;
-let patCategoriaFiltroAtual = 'todos'; // 'todos' | 'normativos' | 'campanhas' | 'operacionais'
-let modalSugestaoFiltroAtual = 'recomendados'; // 'recomendados' | 'ineditos' | 'liberados' | 'bloqueados'
-let modalSugestaoMesAlvoIndex = new Date().getMonth();
+var patAnoAtual = 2026;
+var patCategoriaFiltroAtual = 'todos'; // 'todos' | 'normativos' | 'campanhas' | 'operacionais'
+var modalSugestaoFiltroAtual = 'recomendados'; // 'recomendados' | 'ineditos' | 'liberados' | 'bloqueados'
+var modalSugestaoMesAlvoIndex = new Date().getMonth();
 
 // 0. Utilitário: Obter todas as Terças e Quintas-feiras de um Mês
 function obterTerceirasEQuintasDoMes(ano, mesIdx) {
@@ -52920,8 +52933,8 @@ async function salvarAcaoPatComData() {
 }
 
 // 2. Modal de Reprogramação de Datas e Permuta de Temas
-let reprogramacaoAcaoAtual = 'mover'; // 'mover' | 'permutar'
-let reprogramacaoOutroItemId = null;
+var reprogramacaoAcaoAtual = 'mover'; // 'mover' | 'permutar'
+var reprogramacaoOutroItemId = null;
 
 function abrirModalReprogramarCronograma(id) {
     const modal = document.getElementById('modalReprogramarCronograma');
@@ -53202,7 +53215,7 @@ window.carregarConfiguracoesDdsDoSupabase = carregarConfiguracoesDdsDoSupabase;
 // Roteamento inteligente por perfil, 0 B de egress extra, 100% parametrizável.
 // =====================================================================
 
-const CONFIG_ALERTAS_SST_PADRAO = {
+var CONFIG_ALERTAS_SST_PADRAO = {
     dia_limite_checklists: 10,
     dia_aviso_previo_checklists: 5,
     dias_antecedencia_vencimento: 15,
@@ -53261,11 +53274,11 @@ const CONFIG_ALERTAS_SST_PADRAO = {
     }
 };
 
-let _configAlertasEquipeAtual = null;
-let _centralAlertasFiltroAba = 'minhas'; // 'minhas' ou 'equipe'
-let _colaboradoresChecklistAlertasCache = null;
-let _ultimoResumoAlertasCalculado = { minhas: [], equipe: [] };
-let _centralAlertasCalculando = false;
+var _configAlertasEquipeAtual = null;
+var _centralAlertasFiltroAba = 'minhas'; // 'minhas' ou 'equipe'
+var _colaboradoresChecklistAlertasCache = null;
+var _ultimoResumoAlertasCalculado = { minhas: [], equipe: [] };
+var _centralAlertasCalculando = false;
 
 function obterConfigAlertasEquipe() {
     if (_configAlertasEquipeAtual) return _configAlertasEquipeAtual;

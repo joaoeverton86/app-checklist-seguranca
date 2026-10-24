@@ -48,11 +48,11 @@ function onRelSmsPeriodoChange() {
 
 // Paleta e helpers de estilo do relatório - mesmas cores/tamanhos usados no modelo Word
 // gerado manualmente (capa, títulos, texto), só reescritos em cima da API do docx.js.
-const RELSMS_NAVY = '1F3864';
-const RELSMS_BLUE = '2E5395';
-const RELSMS_GREY = '595959';
+var RELSMS_NAVY = '1F3864';
+var RELSMS_BLUE = '2E5395';
+var RELSMS_GREY = '595959';
 
-const RELSMS_TEMAS_FALLBACK_DDS = [
+var RELSMS_TEMAS_FALLBACK_DDS = [
     'Ordem e Limpeza (Housekeeping 5S)',
     'Atenção aos Riscos no Canteiro de Obras',
     'Inspeção Prévia e Conservação dos EPIs',
@@ -313,7 +313,7 @@ function gerarGraficoBarrasHHTSVG(dadosHistorico) {
 }
 
 // Alias para compatibilidade com chamadas da interface e relatórios
-const gerarGraficoHistoricoHHTSVG = gerarGraficoBarrasHHTSVG;
+var gerarGraficoHistoricoHHTSVG = gerarGraficoBarrasHHTSVG;
 
 function gerarGraficoDonutADASVG(arcoverdeQtd, sertaniaQtd, outrosQtd) {
     const sQtd = Number(sertaniaQtd) || 0;
@@ -768,7 +768,7 @@ function relSmsNota(text) {
     });
 }
 
-const RELSMS_BORDA_FINA = { style: docx.BorderStyle.SINGLE, size: 2, color: 'BFBFBF' };
+var RELSMS_BORDA_FINA = { style: (typeof docx !== 'undefined' && docx.BorderStyle ? docx.BorderStyle.SINGLE : 'single'), size: 2, color: 'BFBFBF' };
 
 function relSmsCelula(text, header) {
     return new docx.TableCell({
@@ -2328,7 +2328,7 @@ async function gerarRelatorioMensalSms() {
 // Riscos Psicossociais (COPSOQ II), NR-23 (Extintores e Brigada) e Meio Ambiente (PGRS).
 // ==========================================================================
 
-let allNaoConformidades = [];
+var allNaoConformidades = [];
 
 // Garante o carregamento em paralelo (Promise.all) de todas as tabelas e módulos
 // necessários para compor o dossiê executivo de SMS.
@@ -4618,8 +4618,8 @@ function hhtDoMes(ano, mesIndex0) {
     return hhtTreinamento + ddsHorasDoMes(ano, mesIndex0);
 }
 
-let efetivoFiltroAno = '';
-let efetivoFiltroMes = '';
+var efetivoFiltroAno = '';
+var efetivoFiltroMes = '';
 
 // Popula o select de anos com base nos dados reais (admissão/demissão), não uma lista
 // fixa - "dinâmico" a pedido do usuário, então acompanha a base automaticamente.

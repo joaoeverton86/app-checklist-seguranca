@@ -13,7 +13,7 @@
 // setor+função e não lê este campo.
 // ============================================
 
-let gheAtualGerenciado = null;
+var gheAtualGerenciado = null;
 
 // colaboradores_efetivo.ghe é texto livre - normaliza número solto ("1") pro mesmo
 // formato de 2 dígitos usado no catálogo ("01") antes de comparar.
@@ -124,7 +124,7 @@ function renderGheMapaRiscosHtml(g) {
 // mesmo cargo recém-adicionado manualmente e ainda sem nenhum campo preenchido - antes
 // só abria quem já tinha descricao_atividade ou cbo (vindo da planilha oficial), o que
 // tornava impossível editar/criar um cargo à mão.
-let gheCargoExpandidoIdx = null;
+var gheCargoExpandidoIdx = null;
 
 function toggleCargoGheDescricao(idx) {
     gheCargoExpandidoIdx = gheCargoExpandidoIdx === idx ? null : idx;
@@ -177,8 +177,8 @@ function optsDatalistGhe(valores) {
 // os 3 pontos que chamam renderGheCargosHtml com uma linha expandida (toggleCargoGheDescricao,
 // adicionarCargoGhe, salvarCargoAgentesEpi pós-salvar) - mesmo comportamento que os demais
 // campos já têm hoje (fecha sem salvar = perde a edição em andamento).
-let gheCargoEpisForm = {};
-let gheCargoEpcsForm = {};
+var gheCargoEpisForm = {};
+var gheCargoEpcsForm = {};
 
 function htmlGheCargoItens(i, tipo) {
     const estado = (tipo === 'epis' ? gheCargoEpisForm : gheCargoEpcsForm)[i] || [];
@@ -558,7 +558,7 @@ function abrirGerenciarGhe(id) {
 // permite ao técnico preencher manualmente os outros 26 grupos (o Grupo 27 foi
 // pré-populado direto do laudo da ENGMED; os demais o laudo já concluiu "sem riscos
 // significativos", mas a estrutura fica pronta pra quando um novo laudo trouxer dados).
-let gheRiscosForm = [];
+var gheRiscosForm = [];
 
 function rowRiscoGheVazio() {
     // probabilidade/severidade (1-5, vazios por padrão) alimentam nivelRiscoGhe() e
@@ -840,12 +840,12 @@ async function importarQuadroFuncionalXLS() {
 // 82-87/300. Sem tabela nova no Supabase, sem CRUD - é leitura/visualização.
 // ============================================
 
-let matrizRiscoLoaded = false;
-let chartRiscoNivel = null;
-let chartRiscoTipoAgente = null;
+var matrizRiscoLoaded = false;
+var chartRiscoNivel = null;
+var chartRiscoTipoAgente = null;
 
-const NIVEIS_RISCO_ORDEM = ['Trivial', 'Baixo', 'Moderado', 'Alto', 'Muito Alto'];
-const NIVEIS_RISCO_COR = { 'Trivial': '#6aa84f', 'Baixo': '#f1c232', 'Moderado': '#e69138', 'Alto': '#cc0000', 'Muito Alto': '#990000' };
+var NIVEIS_RISCO_ORDEM = ['Trivial', 'Baixo', 'Moderado', 'Alto', 'Muito Alto'];
+var NIVEIS_RISCO_COR = { 'Trivial': '#6aa84f', 'Baixo': '#f1c232', 'Moderado': '#e69138', 'Alto': '#cc0000', 'Muito Alto': '#990000' };
 
 // Âncoras da Probabilidade e do Efeito EXATAMENTE como a tabela 16.1 do PGR (mesmo texto
 // da tabela "📐 Metodologia AIHA — Referência Oficial" que já aparece na tela de Matriz de
@@ -853,14 +853,14 @@ const NIVEIS_RISCO_COR = { 'Trivial': '#6aa84f', 'Baixo': '#f1c232', 'Moderado':
 // "Lesão leve/Fatalidade" que a APR usa (a APR é uma matriz de campo genérica; o GHE segue
 // um documento oficial específico, com critérios próprios). Pesos oficiais são 0-4;
 // somamos 1 pra guardar como 1-5 nos mesmos campos probabilidade/severidade de sempre.
-const GHE_ANCORAS_PROBABILIDADE = {
+var GHE_ANCORAS_PROBABILIDADE = {
     1: 'Não há exposição — nenhum contato com o agente ou contato improvável',
     2: 'Exposição a níveis baixos — contatos não frequentes com o agente',
     3: 'Exposição moderada — contato frequente a baixas concentrações ou não frequente a altas concentrações',
     4: 'Exposição elevada — contato frequente com o agente a altas concentrações',
     5: 'Exposição elevadíssima — contato frequente com o agente a concentrações elevadíssimas'
 };
-const GHE_ANCORAS_EFEITO = {
+var GHE_ANCORAS_EFEITO = {
     1: 'Pouca importância — efeitos reversíveis de pouca importância, ou não conhecidos/apenas suspeitos',
     2: 'Preocupantes — efeitos reversíveis preocupantes',
     3: 'Severos — efeitos reversíveis severos e preocupantes',
@@ -874,7 +874,7 @@ const GHE_ANCORAS_EFEITO = {
 // cruzamentos não batia com essa tabela oficial - ex: Efeito 5 (Ameaça) × Probabilidade 4
 // (Exp. elevada) essa tabela classifica como "Moderado", mas a multiplicação simples (5×4
 // = 20) caía na faixa de "Muito Alto".
-const GHE_MATRIZ_NIVEIS = {
+var GHE_MATRIZ_NIVEIS = {
     1: { 1: 'Trivial', 2: 'Trivial', 3: 'Trivial', 4: 'Trivial', 5: 'Baixo' },
     2: { 1: 'Trivial', 2: 'Baixo', 3: 'Baixo', 4: 'Baixo', 5: 'Moderado' },
     3: { 1: 'Trivial', 2: 'Baixo', 3: 'Moderado', 4: 'Moderado', 5: 'Moderado' },
@@ -1072,9 +1072,9 @@ async function recalcularClassificacaoRiscoGhe() {
 // conflitar com gheAtualGerenciado/gheRiscosForm daquela outra tela.
 // ============================================
 
-let matrizEpiLoaded = false;
-let matrizEditId = null;
-let matrizEditForm = [];
+var matrizEpiLoaded = false;
+var matrizEditId = null;
+var matrizEditForm = [];
 
 function loadMatrizEpiData() {
     const jobs = [];
@@ -1342,7 +1342,7 @@ function limparBuscaEfetivo() {
 // ---- Gerar PDF de Colaboradores (Ativos/Demitidos/Completo, colunas escolhidas) ----
 // Mesmo padrão de blob+<a>+window.print() de todo documento gerado no sistema - "PDF" é
 // o navegador imprimindo/salvando essa página HTML, não uma lib de PDF.
-const EFETIVO_PDF_COLUNAS = [
+var EFETIVO_PDF_COLUNAS = [
     { id: 'matricula', label: 'Matrícula', get: e => e.id },
     { id: 'nome', label: 'Nome', get: e => e.nome },
     { id: 'status', label: 'Status', get: e => {
@@ -1375,8 +1375,8 @@ const EFETIVO_PDF_COLUNAS = [
     { id: 'camisa', label: 'Camisa', get: e => e.camisa },
     { id: 'bota', label: 'Bota', get: e => e.bota }
 ];
-const EFETIVO_PDF_COLUNAS_PADRAO = new Set(['matricula', 'nome', 'status', 'funcao', 'setor', 'responsavel', 'ghe']);
-let efetivoPdfStatusFiltro = 'ativos';
+var EFETIVO_PDF_COLUNAS_PADRAO = new Set(['matricula', 'nome', 'status', 'funcao', 'setor', 'responsavel', 'ghe']);
+var efetivoPdfStatusFiltro = 'ativos';
 
 function toggleFormPdfEfetivo() {
     const card = document.getElementById('efetivoPdfCard');
@@ -2470,8 +2470,8 @@ function diasProximoAniversario(dataNascimento, hoje) {
     return Math.ceil((prox.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-let colabTreinamentosDetalhe = [];
-let colabTreinBadgeAberto = null;
+var colabTreinamentosDetalhe = [];
+var colabTreinBadgeAberto = null;
 
 // Mostra/esconde a lista de treinamentos por trás de um badge (vencido/vencendo/
 // válido/sem validade) clicado no card de detalhe do colaborador.
@@ -2845,8 +2845,8 @@ async function salvarColaboradorEfetivo() {
 // Ocupacional (examesGheColaborador) - não duplica nenhuma das duas regras.
 // ============================================
 
-let allHistoricoTrocaFuncao = [];
-let trocaFuncaoMatriculaAtual = null;
+var allHistoricoTrocaFuncao = [];
+var trocaFuncaoMatriculaAtual = null;
 
 // Monta um "colaborador" hipotético só com setor/função/ghe pra reaproveitar
 // resolverCargoInfoDoColaborador e examesGheColaborador tanto pra situação atual quanto
@@ -3136,7 +3136,7 @@ function construirFolhaTermoTrocaFuncao(colab, atual, novo, sugeridos, examesObs
     </div>`;
 }
 
-const _headcountMemoMap = new Map();
+var _headcountMemoMap = new Map();
 
 function headcountAsOf(dateEnd) {
     if (!dateEnd || !(dateEnd instanceof Date) || isNaN(dateEnd.getTime())) return 0;
@@ -3179,8 +3179,8 @@ function headcountAsOf(dateEnd) {
 // e quem está pendente de entrega, prevenindo passivos trabalhistas.
 // ================================================================
 
-let filtroOsStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'assinadas'
-let allOrdensServicoEntregas = [];
+var filtroOsStatusAtual = 'todos'; // 'todos' | 'pendentes' | 'assinadas'
+var allOrdensServicoEntregas = [];
 
 function filtrarStatusControleOs(status) {
     filtroOsStatusAtual = status;

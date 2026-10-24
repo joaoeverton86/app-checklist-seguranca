@@ -7,9 +7,9 @@
 // MÓDULO DE ERGONOMIA (NR-17) - AEP E PLANO DE AÇÃO
 // ============================================
 
-let allErgonomiaAep = [];
-let allErgonomiaPlanoAcao = [];
-let ergonomiaLoaded = false;
+var allErgonomiaAep = [];
+var allErgonomiaPlanoAcao = [];
+var ergonomiaLoaded = false;
 
 async function loadErgonomiaData() {
     try {
@@ -1007,15 +1007,24 @@ function abrirDocumentoHtmlParaImpressao(html, titulo) {
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (err) {
-        console.warn('Erro ao abrir documento via Blob:', err);
-        const win = window.open('', '_blank');
-        if (win) {
-            win.document.open();
-            win.document.write(html);
-            win.document.close();
-        } else {
-            alert('O navegador bloqueou a abertura do documento. Por favor, autorize pop-ups para visualizar a impressão.');
-        }
+        console.warn('Erro ao abrir documento via Blob, utilizando iframe de impressão:', err);
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+        const doc = iframe.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+        setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+            setTimeout(() => document.body.removeChild(iframe), 60000);
+        }, 400);
     }
 }
 
@@ -1023,10 +1032,10 @@ function abrirDocumentoHtmlParaImpressao(html, titulo) {
 // MÓDULO DE PERICULOSIDADE (NR-16) - LAUDO TÉCNICO (LTP)
 // Consórcio Operador Ramal do Agreste - Gestão Técnica Oficial
 // ================================================================
-let allPericulosidadeLaudos = [];
-let allPericulosidadeAnalises = [];
-let periculosidadeLoaded = false;
-let analisePericEditandoId = null;
+var allPericulosidadeLaudos = [];
+var allPericulosidadeAnalises = [];
+var periculosidadeLoaded = false;
+var analisePericEditandoId = null;
 
 async function loadPericulosidadeData() {
     try {
@@ -2298,10 +2307,10 @@ function exportarMatrizPericulosidade() {
 // ergonomia (NR-17), CIPA (NR-05), acidentes e inspeções em uma matriz 5W2H corporativa.
 // ==============================================================================
 
-let allPlanoAcaoPgr = [];
-let planoAcaoPgrLoaded = false;
-let planoAcaoSubtabAtual = 'tabela'; // 'tabela' | 'kanban' | 'scanner'
-let scannerDesviosCache = [];
+var allPlanoAcaoPgr = [];
+var planoAcaoPgrLoaded = false;
+var planoAcaoSubtabAtual = 'tabela'; // 'tabela' | 'kanban' | 'scanner'
+var scannerDesviosCache = [];
 
 function formatarDataLocal(d) {
     if (!d) return '—';
@@ -3407,7 +3416,7 @@ function imprimirPlanoAcaoPgrTimbrado() {
 // & CRONOGRAMA OPERACIONAL DE TERÇAS E QUINTAS-FEIRAS
 // =====================================================================
 
-const CAMPANHAS_SAZONAIS_SST = {
+var CAMPANHAS_SAZONAIS_SST = {
     0: {
         cor: '#3b82f6',
         nomeMes: 'Janeiro',
@@ -3494,10 +3503,10 @@ const CAMPANHAS_SAZONAIS_SST = {
     }
 };
 
-let patAnoAtual = 2026;
-let patCategoriaFiltroAtual = 'todos'; // 'todos' | 'normativos' | 'campanhas' | 'operacionais'
-let modalSugestaoFiltroAtual = 'recomendados'; // 'recomendados' | 'ineditos' | 'liberados' | 'bloqueados'
-let modalSugestaoMesAlvoIndex = new Date().getMonth();
+var patAnoAtual = 2026;
+var patCategoriaFiltroAtual = 'todos'; // 'todos' | 'normativos' | 'campanhas' | 'operacionais'
+var modalSugestaoFiltroAtual = 'recomendados'; // 'recomendados' | 'ineditos' | 'liberados' | 'bloqueados'
+var modalSugestaoMesAlvoIndex = new Date().getMonth();
 
 // 0. Utilitário: Obter todas as Terças e Quintas-feiras de um Mês
 function obterTerceirasEQuintasDoMes(ano, mesIdx) {
@@ -4778,8 +4787,8 @@ async function salvarAcaoPatComData() {
 }
 
 // 2. Modal de Reprogramação de Datas e Permuta de Temas
-let reprogramacaoAcaoAtual = 'mover'; // 'mover' | 'permutar'
-let reprogramacaoOutroItemId = null;
+var reprogramacaoAcaoAtual = 'mover'; // 'mover' | 'permutar'
+var reprogramacaoOutroItemId = null;
 
 function abrirModalReprogramarCronograma(id) {
     const modal = document.getElementById('modalReprogramarCronograma');
@@ -5060,7 +5069,7 @@ window.carregarConfiguracoesDdsDoSupabase = carregarConfiguracoesDdsDoSupabase;
 // Roteamento inteligente por perfil, 0 B de egress extra, 100% parametrizável.
 // =====================================================================
 
-const CONFIG_ALERTAS_SST_PADRAO = {
+var CONFIG_ALERTAS_SST_PADRAO = {
     dia_limite_checklists: 10,
     dia_aviso_previo_checklists: 5,
     dias_antecedencia_vencimento: 15,
@@ -5119,11 +5128,11 @@ const CONFIG_ALERTAS_SST_PADRAO = {
     }
 };
 
-let _configAlertasEquipeAtual = null;
-let _centralAlertasFiltroAba = 'minhas'; // 'minhas' ou 'equipe'
-let _colaboradoresChecklistAlertasCache = null;
-let _ultimoResumoAlertasCalculado = { minhas: [], equipe: [] };
-let _centralAlertasCalculando = false;
+var _configAlertasEquipeAtual = null;
+var _centralAlertasFiltroAba = 'minhas'; // 'minhas' ou 'equipe'
+var _colaboradoresChecklistAlertasCache = null;
+var _ultimoResumoAlertasCalculado = { minhas: [], equipe: [] };
+var _centralAlertasCalculando = false;
 
 function obterConfigAlertasEquipe() {
     if (_configAlertasEquipeAtual) return _configAlertasEquipeAtual;

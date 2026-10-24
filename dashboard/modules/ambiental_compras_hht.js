@@ -11,14 +11,14 @@
 // Suporta Treinamentos (SCAN), DDSMA (SCAN - DDS), Checklists SST e SMS_COP.
 // Permite consulta e upload direto para pastas do Drive via Vercel Serverless / Google Drive API.
 // ============================================
-let acervoDriveCategoria = null;
-let acervoDriveTrilha = [];
-let acervoDriveItens = [];
-let acervoDriveNextPageToken = null;
-let acervoArquivosParaUpload = [];
-let acervoPastaContextualAtiva = null;
-let acervoDrivePastaUrlAtual = null;
-let acervoDriveTermoBusca = '';
+var acervoDriveCategoria = null;
+var acervoDriveTrilha = [];
+var acervoDriveItens = [];
+var acervoDriveNextPageToken = null;
+var acervoArquivosParaUpload = [];
+var acervoPastaContextualAtiva = null;
+var acervoDrivePastaUrlAtual = null;
+var acervoDriveTermoBusca = '';
 
 
 function resetAcervoDrive() {
@@ -437,7 +437,7 @@ function montarEstruturaPastaFotos(tipoOuCategoria, dataStr, temaStr) {
     };
 }
 
-const DEFAULT_DRIVE_GAS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzdCzGE9Jm77RauUe8iuo1p8il193F7Pd7HeLLbut0zToD8zhHtv2RBSAY86bQZGLtA/exec';
+var DEFAULT_DRIVE_GAS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzdCzGE9Jm77RauUe8iuo1p8il193F7Pd7HeLLbut0zToD8zhHtv2RBSAY86bQZGLtA/exec';
 
 function getDriveGasWebhookUrl() {
     const fromSettings = (allChecklistItemSettings || []).find(s => 
@@ -458,7 +458,7 @@ function getDriveGasWebhookUrl() {
            DEFAULT_DRIVE_GAS_WEBHOOK_URL;
 }
 
-const ID_DDSMA_LEGADO = '1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
+var ID_DDSMA_LEGADO = '1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms';
 
 function normalizarUrlGoogleDriveFolder(urlOuId) {
     if (!urlOuId) return '';
@@ -1279,10 +1279,10 @@ function gerarPdfAcidentes() {
 // Suporte total a compensações de dias/pontes (ex: 23/09 trabalhado +9h e 25/09 folga compensada 0h)
 // ============================================
 
-const ACIDENTES_MES_INICIO_CONTRATO = { ano: 2024, mes: 6 }; // mes 0-indexado (6 = julho)
-let calHhtAnoAtual = new Date().getFullYear();
-let calHhtMesAtual = new Date().getMonth();
-let calHhtCompensacoesCache = {}; // { 'YYYY-MM': { [dia]: { horas: number, motivo: string } } }
+var ACIDENTES_MES_INICIO_CONTRATO = { ano: 2024, mes: 6 }; // mes 0-indexado (6 = julho)
+var calHhtAnoAtual = new Date().getFullYear();
+var calHhtMesAtual = new Date().getMonth();
+var calHhtCompensacoesCache = {}; // { 'YYYY-MM': { [dia]: { horas: number, motivo: string } } }
 
 // Cálculo do Domingo de Páscoa (Algoritmo astronômico de Meeus/Jones/Butcher)
 function calcularPascoa(ano) {
@@ -1789,17 +1789,17 @@ function renderDiasTrabalhadosConfig() {
 // não fabricar uma estrutura de licenciamento ambiental genérica.
 // ============================================
 
-let allResiduosRefeicoes = [];
-let allManutencaoVeicular = [];
-let ambientalLoaded = false;
-let ambientalFilter = 'mes';
-let ambientalFiltroAno = '';
-let ambientalFiltroMes = '';
+var allResiduosRefeicoes = [];
+var allManutencaoVeicular = [];
+var ambientalLoaded = false;
+var ambientalFilter = 'mes';
+var ambientalFiltroAno = '';
+var ambientalFiltroMes = '';
 
-let allCipaMembros = [];
-let allCipaReunioes = [];
-let allCipaPlanoAcao = [];
-let cipaLoaded = false;
+var allCipaMembros = [];
+var allCipaReunioes = [];
+var allCipaPlanoAcao = [];
+var cipaLoaded = false;
 
 // Brigada de Incêndio (2026-09-21, texto da ABNT NBR 14276:2020 conferido em 2026-09-22 -
 // ver claude/bloco-notas-melhorias.md). Reaproveita o treinamento já cadastrado em
@@ -1812,33 +1812,33 @@ let cipaLoaded = false;
 // sendo uma estimativa nossa (a norma não define percentual: ela soma o dimensionamento
 // por área/tempo de resposta, itens 4.1.6 a 4.1.8, que exige estudo formal do profissional
 // habilitado).
-let allBrigadaMembros = [];
-let brigadaLoaded = false;
-let brigadaMatriculasPendentesTreinamento = [];
-let BRIGADA_PARAMETROS = {
+var allBrigadaMembros = [];
+var brigadaLoaded = false;
+var brigadaMatriculasPendentesTreinamento = [];
+var BRIGADA_PARAMETROS = {
     grau_risco: 'medio',
     percentual_efetivo: 10,
     minimo_brigadistas: 2
 };
-const BRIGADA_CARGO_LABELS = {
+var BRIGADA_CARGO_LABELS = {
     coordenador_geral: 'Coordenador Geral da Brigada',
     chefe_brigada: 'Chefe de Brigada',
     lider_area: 'Líder de Área/Turno',
     brigadista: 'Brigadista'
 };
-const BRIGADA_CARGO_ORDEM = { coordenador_geral: 0, chefe_brigada: 1, lider_area: 2, brigadista: 3 };
+var BRIGADA_CARGO_ORDEM = { coordenador_geral: 0, chefe_brigada: 1, lider_area: 2, brigadista: 3 };
 
 // Constantes documentadas na própria planilha do usuário (aba RESIDUOS, ESTIMATIVA_
 // RESIDUOS_COP_RAMAL_DO_AGRESTE.xlsx) e conferidas batendo com os valores calculados lá:
 // isopor limpo (8,9g) + resíduo orgânico que sobra dentro ao descartar (15g) = 23,9g por
 // quentinha; copo descartável PP 200ml = 1,8g por unidade.
-let RESIDUO_KG_POR_QUENTINHA = 0.0239;
-let RESIDUO_KG_POR_COPO = 0.0018;
+var RESIDUO_KG_POR_QUENTINHA = 0.0239;
+var RESIDUO_KG_POR_COPO = 0.0018;
 // Peso médio único por unidade de EPI usado sem contaminação (luva, bota, capacete etc. -
 // varia muito entre tipos, então o usuário optou por uma média única em vez de detalhar por
 // tipo) - decidido com o usuário em 2026-09-16, pensado pra cobrir desde item leve até
 // botina/capacete.
-let RESIDUO_KG_POR_EPI = 0.5;
+var RESIDUO_KG_POR_EPI = 0.5;
 
 function pesoResiduoRefeicoesKg(r) {
     return (r.quentinhas_qtd || 0) * RESIDUO_KG_POR_QUENTINHA + (r.copos_qtd || 0) * RESIDUO_KG_POR_COPO + (r.epi_qtd || 0) * RESIDUO_KG_POR_EPI;
@@ -2136,7 +2136,7 @@ async function salvarResiduoRefeicaoMes(key, ano, mes) {
 // contratada pela Prefeitura etc.), é só pedir pra atualizar aqui.
 // ============================================
 
-const MANIFESTO_RESIDUOS_INFO = {
+var MANIFESTO_RESIDUOS_INFO = {
     origem: 'Frentes de Serviço e Manutenção Operacional do Ramal do Agreste (Distrito de Henrique Dias, Zona Rural do município de Sertânia-PE)',
     etapa1: {
         titulo: '1ª Etapa — Frente de Serviço → Sertânia-PE',
@@ -2644,7 +2644,7 @@ async function importarManutencaoCSV() {
 // Exporta e restaura todas as bases operacionais e administrativas
 // ============================================
 
-const BACKUP_TABELAS_CONFIG = [
+var BACKUP_TABELAS_CONFIG = [
     { tabela: 'checklists', modulo: 'Checklists', label: 'Checklists de Inspeção' },
     { tabela: 'cadastros', modulo: 'Checklists', label: 'Equipamentos e Veículos' },
     { tabela: 'checklist_item_settings', modulo: 'Checklists', label: 'Configurações de Itens de Checklist' },
@@ -2821,7 +2821,7 @@ async function gerarBackupCompletoSistema(formato = 'json') {
 // --------------------------------------------
 // RESTAURAÇÃO DE BACKUP
 // --------------------------------------------
-let backupParaRestaurarCarregado = null;
+var backupParaRestaurarCarregado = null;
 
 function aoSelecionarArquivoBackup(event) {
     const file = event.target.files?.[0];
@@ -3000,14 +3000,14 @@ async function executarRestauracaoBackup() {
 // data de recebimento preenchida (o campo existe no papel mas nunca foi digitado), então
 // rastrear prazo de entrega é uma capacidade nova, não algo herdado do histórico.
 // ============================================
-let allComprasRequisicoes = [];
-let comprasLoaded = false;
-let comprasFilter = 'mes';
-let comprasFiltroAno = '';
-let comprasFiltroMes = '';
-let comprasStatusFiltro = '';
-let comprasItensForm = [];
-let comprasItemExpandidoId = null;
+var allComprasRequisicoes = [];
+var comprasLoaded = false;
+var comprasFilter = 'mes';
+var comprasFiltroAno = '';
+var comprasFiltroMes = '';
+var comprasStatusFiltro = '';
+var comprasItensForm = [];
+var comprasItemExpandidoId = null;
 
 async function loadComprasData() {
     try {

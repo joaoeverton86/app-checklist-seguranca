@@ -12,10 +12,10 @@
 // Registro de Treinamento - reusa equipeDaFrente()). Validade padrão 15 dias (pedido
 // explícito do usuário), mas editável por APR.
 // ============================================
-let allAprRegistros = [];
-let aprLoaded = false;
-let aprRiscosForm = [];
-let aprItemExpandidoId = null;
+var allAprRegistros = [];
+var aprLoaded = false;
+var aprRiscosForm = [];
+var aprItemExpandidoId = null;
 
 // Faixas de classificação da matriz 5×5 da APR, padronizadas pelo usuário em
 // 03/09/2026: 1-4 Baixo, 5-9 Moderado, 10-16 Alto, 17-25 Crítico. Cores só de
@@ -37,14 +37,14 @@ function nivelRiscoApr(p, s) {
 // selects de P/S - resolve a dúvida real relatada em campo ("qual peso colocar?") sem
 // precisar de outra tela; o resumo curto também aparece fixo acima da matriz no HTML.
 // Critério padronizado pelo usuário em 03/09/2026.
-const APR_ANCORAS_P = {
+var APR_ANCORAS_P = {
     1: 'Raro — pode ocorrer apenas em circunstâncias excepcionais',
     2: 'Improvável — pode ocorrer eventualmente',
     3: 'Possível — pode ocorrer em algum momento',
     4: 'Provável — provavelmente ocorrerá na maioria das circunstâncias',
     5: 'Frequente — espera-se que ocorra com frequência'
 };
-const APR_ANCORAS_S = {
+var APR_ANCORAS_S = {
     1: 'Lesão leve sem afastamento — primeiros socorros, sem afastamento do trabalho',
     2: 'Lesão com atendimento ambulatorial — atendimento médico, sem afastamento',
     3: 'Lesão com afastamento — atendimento médico com afastamento do trabalho',
@@ -80,7 +80,7 @@ async function loadAprData() {
     }
 }
 
-let allAprAuditLog = [];
+var allAprAuditLog = [];
 
 // Busca o histórico de alterações de todas as APRs de uma vez (mesma tabela audit_log que
 // o app de celular já usa) - carregado só quando a aba Histórico é aberta, não no
@@ -94,7 +94,7 @@ async function carregarAprAuditLog() {
     }
 }
 
-let allAprModelos = [];
+var allAprModelos = [];
 
 // Modelos de APR reutilizáveis - tabela SEPARADA de apr_registros, carregada só quando a
 // aba "Modelos" é aberta. Nunca entra em KPI/gráfico/histórico de APR real nenhum.
@@ -231,7 +231,7 @@ function onMudarPuroApr(i, campo, valor) {
 }
 
 // 2. Biblioteca de Riscos Padrão da Obra Pesada (Ramal do Agreste)
-const BIBLIOTECA_RISCOS_OBRA = [
+var BIBLIOTECA_RISCOS_OBRA = [
     {
         categoria: "🚧 Escavação de Vala e Movimentação de Terra",
         riscos: [
@@ -1376,22 +1376,22 @@ function imprimirApr(id) {
 // CIPA (Comissão Interna de Prevenção de Acidentes) - Fase 1: Reuniões e Atas
 // ============================================
 
-const CIPA_CARGO_LABELS = {
+var CIPA_CARGO_LABELS = {
     titular_empregado: 'Titular - Empregados',
     suplente_empregado: 'Suplente - Empregados',
     titular_empregador: 'Titular - Empregador',
     suplente_empregador: 'Suplente - Empregador'
 };
-const CIPA_TIPO_LABELS = { posse: 'Posse', ordinaria: 'Ordinária', extraordinaria: 'Extraordinária' };
-const CIPA_STATUS_LABELS = { agendada: '🗓️ Agendada', realizada: '✅ Realizada', cancelada: '❌ Cancelada' };
-const PLANO_ACAO_STATUS_LABELS = { pendente: '⏳ Pendente', em_andamento: '🔧 Em Andamento', concluido: '✅ Concluído' };
-const CIPA_PAPEL_LABELS = { presidente: 'Presidente', vice_presidente: 'Vice-Presidente', secretario: 'Secretário(a)' };
+var CIPA_TIPO_LABELS = { posse: 'Posse', ordinaria: 'Ordinária', extraordinaria: 'Extraordinária' };
+var CIPA_STATUS_LABELS = { agendada: '🗓️ Agendada', realizada: '✅ Realizada', cancelada: '❌ Cancelada' };
+var PLANO_ACAO_STATUS_LABELS = { pendente: '⏳ Pendente', em_andamento: '🔧 Em Andamento', concluido: '✅ Concluído' };
+var CIPA_PAPEL_LABELS = { presidente: 'Presidente', vice_presidente: 'Vice-Presidente', secretario: 'Secretário(a)' };
 
 // Dados reais do cadastro de CNPJ (comprovante da Receita Federal, emitido 28/06/2024) -
 // usados no cabeçalho da ata (seção 1). Grau de Risco (NR-4) NÃO consta nesse documento
 // e não foi informado ainda - fica em branco na ata até o usuário fornecer, em vez de
 // ser adivinhado a partir do CNAE.
-const EMPRESA_INFO = {
+var EMPRESA_INFO = {
     razaoSocial: 'CONSORCIO OPERADOR RAMAL DO AGRESTE',
     cnpj: '55.623.017/0001-97',
     cnaePrincipal: '71.12-0-00 - Serviços de engenharia',
@@ -1552,10 +1552,10 @@ function popularCipaColabDatalist() {
     });
 }
 
-let cipaReuniaoParticipantesAtual = [];
-let cipaReuniaoPautaAtual = [];
-let cipaReuniaoAssuntosAtual = [];
-let cipaAssuntoEditandoIndex = null;
+var cipaReuniaoParticipantesAtual = [];
+var cipaReuniaoPautaAtual = [];
+var cipaReuniaoAssuntosAtual = [];
+var cipaAssuntoEditandoIndex = null;
 
 // Compatibilidade: reuniões salvas antes da itemização guardavam pauta/assuntos_tratados
 // como texto livre (TEXT). Depois da migração pra JSONB isso não deve mais acontecer,
@@ -2189,11 +2189,11 @@ async function gerarAtaCipa() {
 // cipa_membros/allCipaMembros - não é uma foto congelada do dia da posse original -
 // então, se a composição da CIPA mudar depois, regerar o Termo já reflete a mudança.
 
-let allCipaProcessosEleitorais = [];
-let allCipaCandidatos = [];
+var allCipaProcessosEleitorais = [];
+var allCipaCandidatos = [];
 
-const CIPA_RESULTADO_LABELS = { titular: 'Titular (eleito)', suplente: 'Suplente (eleito)', nao_eleito: 'Não eleito' };
-const CIPA_PROCESSO_STATUS_LABELS = {
+var CIPA_RESULTADO_LABELS = { titular: 'Titular (eleito)', suplente: 'Suplente (eleito)', nao_eleito: 'Não eleito' };
+var CIPA_PROCESSO_STATUS_LABELS = {
     planejamento: '🗓️ Planejamento',
     inscricoes_abertas: '📝 Inscrições Abertas',
     inscricoes_encerradas: '🔒 Inscrições Encerradas',
@@ -2211,8 +2211,8 @@ const CIPA_PROCESSO_STATUS_LABELS = {
 // null = grau de risco não exige CIPA formal nessa faixa (aplica-se o item 5.4.13 da
 // NR-5 - designação de 1 representante da organização, sem processo eletivo).
 // "acrescentar" = incremento por grupo de 2.500 empregados acima de 10.000.
-const QUADRO_I_FAIXAS = [19, 29, 50, 80, 100, 120, 140, 300, 500, 1000, 2500, 5000, 10000];
-const QUADRO_I_DIMENSIONAMENTO = {
+var QUADRO_I_FAIXAS = [19, 29, 50, 80, 100, 120, 140, 300, 500, 1000, 2500, 5000, 10000];
+var QUADRO_I_DIMENSIONAMENTO = {
     '1': { efetivos: [null, null, null, null, 1, 1, 1, 1, 2, 4, 5, 6, 8], suplentes: [null, null, null, null, 1, 1, 1, 1, 2, 3, 4, 5, 6], acrescentar: 1 },
     '2': { efetivos: [null, null, null, 1, 1, 2, 2, 3, 4, 5, 6, 8, 10], suplentes: [null, null, null, 1, 1, 1, 1, 2, 3, 4, 5, 6, 8], acrescentar: 1 },
     '3': { efetivos: [null, 1, 1, 2, 2, 2, 3, 4, 5, 6, 8, 10, 12], suplentes: [null, 1, 1, 1, 1, 1, 2, 2, 4, 4, 6, 8, 8], acrescentar: 2 },
@@ -2268,7 +2268,7 @@ function processoEleitoralAtual() {
     return allCipaProcessosEleitorais.find(p => p.id === select.value) || null;
 }
 
-const CIPA_PROCESSO_CAMPO_COL = {
+var CIPA_PROCESSO_CAMPO_COL = {
     gestao: 'gestao', dataInicioGestao: 'data_inicio_gestao', dataFimGestao: 'data_fim_gestao',
     dataEditalConvocacao: 'data_edital_convocacao', dataEditalInscricao: 'data_edital_inscricao',
     dataInicioInscricoes: 'data_inicio_inscricoes', dataFimInscricoes: 'data_fim_inscricoes',
@@ -2299,9 +2299,9 @@ function renderCipaEleicao() {
 // ASSISTENTE INTELIGENTE DE CRONOGRAMA ELEITORAL DA CIPA (NR-05)
 // =========================================================================
 
-let cipaUltimoCronogramaCalculado = null;
+var cipaUltimoCronogramaCalculado = null;
 
-const DIAS_SEMANA_NOMES_PT = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+var DIAS_SEMANA_NOMES_PT = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
 function cipaParseDataLocal(str) {
     if (!str || typeof str !== 'string') return null;
@@ -3127,7 +3127,7 @@ async function excluirCipaCandidatoAtual() {
 // estilo 6 vezes (o mesmo padrão visual usado em gerarAtaCipa). Reduz duplicação -
 // tech debt real já registrado no bloco de notas do projeto em 2026-09-18 pra outras
 // partes do dashboard.js; aqui evitamos criar mais do mesmo problema em código novo.
-const CIPA_DOC_CSS = `
+var CIPA_DOC_CSS = `
     body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111; margin: 20px; }
     @page { size: portrait; margin: 12mm; }
     .folha { max-width: 1000px; min-height: 273mm; margin: 0 auto; border: 2px solid #000; display: flex; flex-direction: column; }
@@ -3722,7 +3722,7 @@ async function excluirCipaMembroAtual() {
 // ============================================
 // BANCO DE TEMPLATES E MODELOS LEGADOS DE APR
 // ============================================
-const MODELOS_APR_SEED = [
+var MODELOS_APR_SEED = [
     {
         "numero_legado": "004.16",
         "titulo": "Almoxarifado",

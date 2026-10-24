@@ -2,7 +2,7 @@
 // MODULO: TREINAMENTOS NR, CRONOGRAMA, MATRIZ, DDS E DDSMA (v211)
 // Encapsulado em IIFE para isolamento de escopo lexical e imunidade a colisões
 // ==============================================================================
-(function(window) {
+// [Escopo Global Compartilhado - v218]
 
 // ==============================================================================
 // MODULO: TREINAMENTOS NR, CRONOGRAMA, MATRIZ, DDS E DDSMA
@@ -19,78 +19,78 @@
 // em segundo plano se ninguém está olhando a página.
 // ============================================
 
-let allTreinamentosRealizados = [];
-let allTreinamentosCatalogo = [];
-let allTreinamentosStatus = [];
-let allTreinamentosCronograma = [];
-let allTreinamentosConvocados = [];
-let allTreinamentosRegras = [];
-let gapFiltroGhe = '';
-let gapFiltroFuncao = '';
-let gapFiltroStatus = 'todas_pendencias';
-let gapFiltroBusca = '';
-let gapSelecionados = new Set();
-let regraFiltroTipoAtual = 'todas';
-let regraEmEdicaoId = null;
+var allTreinamentosRealizados = [];
+var allTreinamentosCatalogo = [];
+var allTreinamentosStatus = [];
+var allTreinamentosCronograma = [];
+var allTreinamentosConvocados = [];
+var allTreinamentosRegras = [];
+var gapFiltroGhe = '';
+var gapFiltroFuncao = '';
+var gapFiltroStatus = 'todas_pendencias';
+var gapFiltroBusca = '';
+var gapSelecionados = new Set();
+var regraFiltroTipoAtual = 'todas';
+var regraEmEdicaoId = null;
 
 // Central de Prontidão por Equipe e Dossiê do Colaborador (NR-01)
-let prontidaoFiltroBusca = '';
-let prontidaoFiltroSetores = [];
-let prontidaoFiltroSetor = '';
-let prontidaoFiltroGhe = '';
-let prontidaoFiltroFuncao = '';
-let prontidaoFiltroStatus = 'todos';
-let prontidaoFiltroCurso = '';
-let prontidaoDadosCalculadosCache = null;
+var prontidaoFiltroBusca = '';
+var prontidaoFiltroSetores = [];
+var prontidaoFiltroSetor = '';
+var prontidaoFiltroGhe = '';
+var prontidaoFiltroFuncao = '';
+var prontidaoFiltroStatus = 'todos';
+var prontidaoFiltroCurso = '';
+var prontidaoDadosCalculadosCache = null;
 // DDS (Diálogo de Saúde, Segurança e Meio Ambiente) - mesmo padrão dessas tabelas de cima:
 // carregado sob demanda junto com o resto de Treinamentos (loadTreinamentosData), tabela
 // denormalizada de propósito (1 linha por participante por dia, igual
 // treinamentos_realizados) pra reaproveitar o mesmo tipo de filtro/soma de carga_horaria
 // já usado ali, em vez de aprender um padrão novo de JOIN.
-let allDdsRealizados = [];
-let allDdsFechamentoSemanal = [];
+var allDdsRealizados = [];
+var allDdsFechamentoSemanal = [];
 // Cronograma anual de temas (1 tema por dia útil, o MESMO tema pra todas as frentes naquele
 // dia - diferente de treinamentos_cronograma, que é por treinamento+frente) - o usuário já
 // mantém isso fora do sistema (TEMAS_DDS_2026.pdf); usado só como SUGESTÃO/auto-preenchimento
 // (Lançar DDS e a ficha impressa), nunca trava o campo - datas de feriado (ex: 25/12)
 // continuam com um tema "normal" cadastrado, ajustado na hora pelo usuário quando bate.
-let allDdsTemasCronograma = [];
-let allDdsFrentesConfig = [];
-let allDdsHistoricoAgregado = [];
-let allDdsFrentesAlias = [];
-let allRelatorioMensalConfig = [];
+var allDdsTemasCronograma = [];
+var allDdsFrentesConfig = [];
+var allDdsHistoricoAgregado = [];
+var allDdsFrentesAlias = [];
+var allRelatorioMensalConfig = [];
 // Cache em memória dos 3 valores de "turmas/módulos" (um por categoria do relatório
 // mensal) - populado a partir de allRelatorioMensalConfig em
 // popularRelatorioMensalDefaults(), usado por montarLinhasRelatorioMensal().
-let relatorioMensalTurmas = { integracao: null, seguranca: null, ddsms: null, adicionais: null };
-let treinamentosFilter = 'mes';
-let treinamentosFiltroAno = '';
-let treinamentosFiltroMes = '';
-let treinColaboradoresPeriodoAtual = [];
-let treinColabPeriodoSelecionados = new Set();
-let treinamentosLoaded = false;
+var relatorioMensalTurmas = { integracao: null, seguranca: null, ddsms: null, adicionais: null };
+var treinamentosFilter = 'mes';
+var treinamentosFiltroAno = '';
+var treinamentosFiltroMes = '';
+var treinColaboradoresPeriodoAtual = [];
+var treinColabPeriodoSelecionados = new Set();
+var treinamentosLoaded = false;
 // Filtro do Cronograma nasce no mês/ano atual (é assim que a equipe de SMS planeja -
 // o mês corrente ou o seguinte), mas só na primeira renderização - depois disso o
 // usuário controla livremente (ver renderCronogramaLista).
-const hojeCronograma = new Date();
-let cronogramaFiltroAno = String(hojeCronograma.getFullYear());
-let cronogramaFiltroMes = String(hojeCronograma.getMonth());
+var hojeCronograma = new Date();
+var cronogramaFiltroAno = String(hojeCronograma.getFullYear());
+var cronogramaFiltroMes = String(hojeCronograma.getMonth());
 // Começa filtrado em "planejado" (não "Todos") de propósito - um cronograma existe pra
 // mostrar o que ESTÁ POR VIR, não misturar com o que já foi lançado (isso já tem seu
 // próprio histórico em Treinamentos Realizados/Visão Geral). "Ver todos" continua
 // disponível pra quem quiser conferir os já lançados.
-let cronogramaFiltroStatus = 'planejado';
+var cronogramaFiltroStatus = 'planejado';
 // Setado por lancarPresencaDoCronograma() antes de trocar pra aba "Lançar Treinamento";
 // salvarLancamentoTreinamento() usa isso pra marcar o item de origem como 'lancado' ao
 // salvar com sucesso. abrirFormLancarTreinamento() zera de novo sempre que a aba é
 // aberta "do zero" (pelo próprio botão da aba, não vindo do cronograma).
-let cronogramaOrigemId = null;
+var cronogramaOrigemId = null;
 // Filtro de mês/ano da impressão em lote (aba Registro) - independente do filtro de
 // visualização do Cronograma (cronogramaFiltroAno/Mes), já que são telas diferentes com
 // propósitos diferentes (ver imprimir lote em gerarListasCronogramaMes).
-let registroLoteFiltroAno = String(hojeCronograma.getFullYear());
-let registroLoteFiltroMes = String(hojeCronograma.getMonth());
-let registroLoteFiltroTema = '';
+var registroLoteFiltroAno = String(hojeCronograma.getFullYear());
+var registroLoteFiltroMes = String(hojeCronograma.getMonth());
+var registroLoteFiltroTema = '';
 // Frentes marcadas pro filtro/prévia/geração da impressão em lote - checkbox múltiplo, não
 // select único, pra cobrir "3 frentes específicas de 12" (não só "todas" ou "só uma").
 // Inicializado com TODAS as frentes ativas marcadas na primeira vez que a tela carrega
@@ -98,25 +98,25 @@ let registroLoteFiltroTema = '';
 // frentes" quando o usuário não mexe em nada. Continua cobrindo tanto "todos os temas pra
 // um encarregado específico" (só a frente dele marcada) quanto "um tema pra várias frentes
 // escolhidas" (tema + subconjunto de frentes marcado).
-let registroLoteFrentesSelecionadas = new Set();
+var registroLoteFrentesSelecionadas = new Set();
 // Ids do cronograma marcados pra entrar na impressão em lote - null = ainda não
 // inicializado (marca todos por padrão na primeira renderização do filtro atual).
-let registroLoteSelecionados = null;
+var registroLoteSelecionados = null;
 // Equipe da sessão em "Nova Sessão" (aba Registro) - mesmo padrão de lancTreinEquipe
 // (Lançar Treinamento): "Carregar equipe do Responsável" pré-carrega, mas o usuário
 // pode ajustar (remover/adicionar avulso) antes de gerar o documento. Existe pra cobrir
 // frentes sem encarregado direto no cadastro (colaboradores_efetivo.responsavel vazio),
 // onde não tem o que pré-carregar automaticamente.
-let registroNovaEquipe = new Map();
+var registroNovaEquipe = new Map();
 
 // Variáveis de estado do Lote de Impressão de Formulários DDSMS (lógica análoga a Treinamentos)
 // Configurações e parametrizações operacionais do módulo DDSMA (Supabase configuracoes_sistema + localStorage)
-const DDS_CONFIG_PADRAO = {
+var DDS_CONFIG_PADRAO = {
     regraSemana: 'primeira_segunda', // 'primeira_segunda' | 'maioria_dias' | 'dia_primeiro'
     cicloEnvio: 'atual',             // 'atual' | 'subsequente'
     linhasVaziasMin: 10              // linhas mínimas na tabela de colaboradores
 };
-let ddsConfiguracoes = { ...DDS_CONFIG_PADRAO };
+var ddsConfiguracoes = { ...DDS_CONFIG_PADRAO };
 try {
     const _savedDdsCfg = localStorage.getItem('dds_configuracoes');
     if (_savedDdsCfg) {
@@ -138,16 +138,16 @@ function calcularMesAnoPadraoDds() {
     return { ano: String(hoje.getFullYear()), mes: String(hoje.getMonth()) };
 }
 
-const _padraoDdsInicial = calcularMesAnoPadraoDds();
-let ddsLoteFiltroAno = _padraoDdsInicial.ano;
-let ddsLoteFiltroMes = _padraoDdsInicial.mes;
-let ddsLoteFiltroSemana = ''; // '' = todas as semanas do mês, ou ISO da segunda-feira
-let ddsLoteFiltroTema = '';
-let ddsLoteFrentesSelecionadas = new Set();
-let ddsLoteSelecionados = null; // Set de chaves `${frente}__${segIso}`
+var _padraoDdsInicial = calcularMesAnoPadraoDds();
+var ddsLoteFiltroAno = _padraoDdsInicial.ano;
+var ddsLoteFiltroMes = _padraoDdsInicial.mes;
+var ddsLoteFiltroSemana = ''; // '' = todas as semanas do mês, ou ISO da segunda-feira
+var ddsLoteFiltroTema = '';
+var ddsLoteFrentesSelecionadas = new Set();
+var ddsLoteSelecionados = null; // Set de chaves `${frente}__${segIso}`
 
-const NOMES_MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-const NOMES_DIAS_SEMANA = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+var NOMES_MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+var NOMES_DIAS_SEMANA = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
 // Reconstrói as opções de ano de um <select> a partir do conjunto de anos calculado,
 // preservando a seleção atual quando ela continua válida. Só reconstrói quando o
@@ -218,8 +218,8 @@ function getTreinamentosDateRange() {
     return { inicio, fim };
 }
 
-let renderizandoTreinamentos = false;
-let debounceTreinamentosTimer = null;
+var renderizandoTreinamentos = false;
+var debounceTreinamentosTimer = null;
 
 function agendarRenderTreinamentosPanel() {
     if (debounceTreinamentosTimer) clearTimeout(debounceTreinamentosTimer);
@@ -621,10 +621,10 @@ function gerarPdfDdsma() {
 // ---- Histórico: lista navegável de sessões já realizadas (separada de Registro, que
 // agora só gera/imprime) - agrupa treinamentos_realizados por treinamento_cod+data,
 // mesma lógica de agrupamento já usada em renderListaTreinAderencia. ----
-let treinHistFilter = 'todos';
-let treinHistFiltroAno = '';
-let treinHistFiltroMes = '';
-let treinHistExpandidoChave = null;
+var treinHistFilter = 'todos';
+var treinHistFiltroAno = '';
+var treinHistFiltroMes = '';
+var treinHistExpandidoChave = null;
 
 function popularFiltroAnoTreinHist() {
     const anos = new Set([new Date().getFullYear()]);
@@ -1122,7 +1122,7 @@ function renderCumprimentoCronogramaEPresenca(inicio, fim) {
 // IDs atualmente visíveis (após busca) - usado pelo "selecionar todos", que só marca o
 // que está na tela, não a lista inteira do período (evita selecionar às cegas algo que
 // a busca escondeu).
-let treinColabPeriodoVisiveisAtual = [];
+var treinColabPeriodoVisiveisAtual = [];
 
 function renderListaTreinColaboradoresPeriodo() {
     const el = document.getElementById('listTreinColaboradoresPeriodo');
@@ -1722,7 +1722,7 @@ async function importarTreinamentosCSV() {
 // pelo usuário (cada lista já é uma equipe fixa por encarregado, só tira quem faltou).
 // ============================================
 
-let lancTreinEquipe = new Map(); // matricula -> {nome, funcao, setor, checked}
+var lancTreinEquipe = new Map(); // matricula -> {nome, funcao, setor, checked}
 
 // A página de Treinamentos é dividida em abas (Visão Geral/Lançar/Catálogo) - esse
 // form vive sempre visível dentro da própria aba "Lançar", então essa função virou
@@ -1872,7 +1872,7 @@ function imprimirCronogramaFiltro() {
     setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
-let pastasCronogramaDriveCache = {};
+var pastasCronogramaDriveCache = {};
 try {
     const savedPastas = localStorage.getItem('pastas_cronograma_drive_cache');
     if (savedPastas) pastasCronogramaDriveCache = JSON.parse(savedPastas);
@@ -2400,7 +2400,7 @@ function frentesAtivasDds() {
     return Array.from(todas).filter(f => (config.has(f) ? config.get(f) : true)).sort();
 }
 
-const CRONOGRAMA_DEFAULTS_SESSAO = {
+var CRONOGRAMA_DEFAULTS_SESSAO = {
     instrutor_nome: 'MARIA GESSICA DA SILVA ROQUE',
     instrutor_qualificacao: 'TEC. SEG. TRABALHO',
     instrutor_registro: 'MTE: 15760/PE',
@@ -2931,30 +2931,30 @@ async function salvarLancamentoTreinamento() {
 // linha por colaborador por dia.
 // ============================================
 
-let lancDdsEquipe = new Map(); // matricula -> {nome, funcao, setor, checked}
-let lancDdsEmociogramaPorMatricula = {}; // matricula -> 'bom' | 'regular' | 'ruim'
+var lancDdsEquipe = new Map(); // matricula -> {nome, funcao, setor, checked}
+var lancDdsEmociogramaPorMatricula = {}; // matricula -> 'bom' | 'regular' | 'ruim'
 // Guardado separado do emociograma (não apagado ao trocar de opção e voltar pra 'ruim')
 // pra não perder o que a pessoa já tinha digitado só por ter clicado sem querer noutro
 // botão do emociograma antes de confirmar.
-let lancDdsAcaoTratativaPorMatricula = {}; // matricula -> texto (só relevante quando 'ruim')
+var lancDdsAcaoTratativaPorMatricula = {}; // matricula -> texto (só relevante quando 'ruim')
 // Preenchido com a loteKeyDds() do lançamento em edição (ver editarLoteDds) - null quando o
 // formulário está em modo "lançamento novo". salvarLancamentoDds() usa isso pra apagar as
 // linhas antigas desse lote antes de inserir as novas, em vez de duplicar.
-let lancDdsLoteEmEdicao = null;
+var lancDdsLoteEmEdicao = null;
 
 // Estado do painel "📅 Lançar Semana Inteira" - independente do lançamento de 1 dia acima
 // (os dois convivem, nenhum substitui o outro). lancDdsSemanaEstados guarda, por matrícula,
 // o estado de CADA dia da semana ('bom'|'regular'|'ruim'|'ausente' - "ausente" não gera
 // lançamento nesse dia pra essa pessoa).
-let lancDdsSemanaFrente = '';
-let lancDdsSemanaDias = []; // array de Date, segunda a domingo
-let lancDdsSemanaTemas = {}; // 'YYYY-MM-DD' -> tema do dia (editável, pré-vem do cronograma)
-let lancDdsSemanaTurno = '';
-let lancDdsSemanaHorario = '';
-let lancDdsSemanaDuracao = 10;
-let lancDdsSemanaEquipe = new Map(); // matricula -> {nome, funcao, setor}
-let lancDdsSemanaEstados = {}; // matricula -> { 'YYYY-MM-DD': 'bom'|'regular'|'ruim'|'ausente' }
-let lancDdsSemanaAcaoTratativa = {}; // 'matricula|YYYY-MM-DD' -> texto (só quando 'ruim')
+var lancDdsSemanaFrente = '';
+var lancDdsSemanaDias = []; // array de Date, segunda a domingo
+var lancDdsSemanaTemas = {}; // 'YYYY-MM-DD' -> tema do dia (editável, pré-vem do cronograma)
+var lancDdsSemanaTurno = '';
+var lancDdsSemanaHorario = '';
+var lancDdsSemanaDuracao = 10;
+var lancDdsSemanaEquipe = new Map(); // matricula -> {nome, funcao, setor}
+var lancDdsSemanaEstados = {}; // matricula -> { 'YYYY-MM-DD': 'bom'|'regular'|'ruim'|'ausente' }
+var lancDdsSemanaAcaoTratativa = {}; // 'matricula|YYYY-MM-DD' -> texto (só quando 'ruim')
 
 function popularDdsFrenteSelect() {
     const sel = document.getElementById('lancDdsFrente');
@@ -3240,10 +3240,10 @@ function loteKeyDds(row) {
     return partes.length >= 2 ? `${partes[0]}_${partes[1]}` : row.id;
 }
 
-let allAnexosSms = [];
-let anexosSmsCarregados = false;
-let _anexosSmsCarregando = false;
-let _anexosSmsCallbacks = [];
+var allAnexosSms = [];
+var anexosSmsCarregados = false;
+var _anexosSmsCarregando = false;
+var _anexosSmsCallbacks = [];
 
 // Carrega os anexos (PDFs escaneados/fotos guardados no Google Drive) sob demanda, na
 // primeira vez que a lista de DDS ou Treinamentos for desenhada - função separada e
@@ -3339,8 +3339,8 @@ function limparFiltrosDdsLancamentos() {
     renderDdsLancamentosRecentes();
 }
 
-let _filtrosDdsListenersAtivos = false;
-let _filtrosDdsDebounceTimer = null;
+var _filtrosDdsListenersAtivos = false;
+var _filtrosDdsDebounceTimer = null;
 function configurarFiltrosDdsListeners() {
     if (_filtrosDdsListenersAtivos) return;
     const mesEl = document.getElementById('filtroMesDDS');
@@ -3532,8 +3532,8 @@ async function renderDdsLancamentosRecentes() {
 }
 
 // Alias para padronização técnica
-const carregarLancamentosRecentesDDS = renderDdsLancamentosRecentes;
-const renderizarListaDDS = renderDdsLancamentosRecentes;
+var carregarLancamentosRecentesDDS = renderDdsLancamentosRecentes;
+var renderizarListaDDS = renderDdsLancamentosRecentes;
 
 async function excluirLoteDds(loteKey) {
     if (bloquearEdicaoSeNaoAutorizado('ddsma')) return;
@@ -3609,8 +3609,8 @@ function editarLoteDds(loteKey) {
 // específico depois com a mesma Correção 1 de cima.
 // ============================================
 
-const DDS_SEMANA_ESTADO_CICLO = { bom: 'regular', regular: 'ruim', ruim: 'ausente', ausente: 'bom' };
-const DDS_SEMANA_ESTADO_VISUAL = {
+var DDS_SEMANA_ESTADO_CICLO = { bom: 'regular', regular: 'ruim', ruim: 'ausente', ausente: 'bom' };
+var DDS_SEMANA_ESTADO_VISUAL = {
     bom: { emoji: '🟢', cor: '#1a7f4b', bg: '#e6f7ee' },
     regular: { emoji: '🟡', cor: '#b78a00', bg: '#fff9e6' },
     ruim: { emoji: '🔴', cor: '#c0392b', bg: '#fdf2f2' },
@@ -3909,9 +3909,9 @@ async function salvarLancamentoDdsSemana() {
 // cronograma original não previu) sem precisar mexer no banco na mão.
 // ============================================
 
-let ddsCalendarioFiltroAno = new Date().getFullYear();
-let ddsCalendarioFiltroMes = new Date().getMonth();
-let ddsCalendarioEditandoData = null; // 'YYYY-MM-DD' da linha em edição, ou null
+var ddsCalendarioFiltroAno = new Date().getFullYear();
+var ddsCalendarioFiltroMes = new Date().getMonth();
+var ddsCalendarioEditandoData = null; // 'YYYY-MM-DD' da linha em edição, ou null
 
 function diasUteisDoMes(ano, mes) {
     const dias = [];
@@ -4078,7 +4078,7 @@ async function salvarNovoDdsTemaDia() {
 // não perder o controle de quais semanas/frentes já passaram pelo carimbo dele.
 // ============================================
 
-let ddsFechamentoFrenteSelecionada = '';
+var ddsFechamentoFrenteSelecionada = '';
 
 function toISODateLocal(d) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -4218,9 +4218,9 @@ function renderDdsFechamentosLista() {
 // passou pela Visão Geral antes).
 // ============================================
 
-let ddsFilter = 'mes';
-let ddsFiltroAno = '';
-let ddsFiltroMes = '';
+var ddsFilter = 'mes';
+var ddsFiltroAno = '';
+var ddsFiltroMes = '';
 
 function popularFiltroAnoDds() {
     const anos = new Set([new Date().getFullYear()]);
@@ -5781,11 +5781,11 @@ function imprimirRelatorioSemanalDds() {
 // de criar uma tabela "sessões" nova só pra isso.
 // ============================================
 
-let registroSessaoAtual = [];
-let registroDataAtual = '';
-let registroCodigoAtual = '';
-let registroModoNovo = false;
-const REGISTRO_SEM_ENCARREGADO = '__SEM_ENCARREGADO__';
+var registroSessaoAtual = [];
+var registroDataAtual = '';
+var registroCodigoAtual = '';
+var registroModoNovo = false;
+var REGISTRO_SEM_ENCARREGADO = '__SEM_ENCARREGADO__';
 
 function popularRegistroResponsavelNovaSelect() {
     const sel = document.getElementById('registroResponsavelNovaSelect');
@@ -6065,13 +6065,13 @@ function renderRegistroNovaEquipeList() {
 // de deixar no valor padrão, sem duplicar a lógica de montagem de nenhum documento.
 // ============================================
 
-let kitsEquipe = new Map();
-let kitsCodigoAtual = '';
-let kitsDataAtual = '';
+var kitsEquipe = new Map();
+var kitsCodigoAtual = '';
+var kitsDataAtual = '';
 // Rastreia se Horário Início/Término/Local ainda estão no valor que NÓS preenchemos
 // (então é seguro atualizar quando o treinamento mudar) ou se o usuário editou na mão
 // (aí o valor dele nunca é sobrescrito, mesmo trocando de treinamento depois).
-let kitsCamposAutoPreenchidos = { horaInicio: true, horaTermino: true, local: true };
+var kitsCamposAutoPreenchidos = { horaInicio: true, horaTermino: true, local: true };
 
 function popularKitsResponsavelSelect() {
     const sel = document.getElementById('kitsResponsavelSelect');
@@ -6504,7 +6504,7 @@ async function salvarDetalhesSessao() {
 // CSS compartilhado entre o Registro de Treinamento avulso (uma sessão) e a impressão em
 // lote do Cronograma (várias sessões, uma "folha" por página) - um só lugar pra manter
 // os dois documentos visualmente idênticos.
-const REGISTRO_TREINAMENTO_CSS = `
+var REGISTRO_TREINAMENTO_CSS = `
     @page { size: A4 portrait; margin: 6mm 8mm; }
     @page registro_portrait { size: A4 portrait; margin: 6mm 8mm; }
 
@@ -6757,7 +6757,7 @@ function renderRegistroDocsIndividuaisList() {
     }).join('');
 }
 
-const DOC_INDIVIDUAL_CSS = `
+var DOC_INDIVIDUAL_CSS = `
     @page { size: A4 portrait; margin: 12mm; }
     @page os_portrait { size: A4 portrait; margin: 12mm; }
     @page registro_portrait { size: A4 portrait; margin: 6mm 8mm; }
@@ -7282,7 +7282,7 @@ function blocoAssinatura(conteudoHTML) {
     return `<div class="assinatura-item"><div class="linha-assinatura">______________________________</div><div class="linha-nome">${conteudoHTML}</div></div>`;
 }
 
-const CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01 = 
+var CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01 = 
 `1. As condições e meio ambiente de trabalho;
 2. Os riscos inerentes às atividades (físicos, químicos, biológicos, ergonômicos e fatores psicossociais);
 3. Prevenção e combate ao assédio no ambiente de trabalho (Lei 14.457/22);
@@ -7561,8 +7561,8 @@ async function gerarCertificadosTurma(ctx = contextoRegistroPadrao(), customPara
 }
 
 // ---- Modal de Emissão de Certificado de Treinamento (NR-01 / NR-18) ----
-let certModalCtxAtual = null;
-let certModalMatriculaAtual = null;
+var certModalCtxAtual = null;
+var certModalMatriculaAtual = null;
 
 function abrirModalEmissaoCertificado(matricula, ctx = contextoRegistroPadrao()) {
     certModalCtxAtual = ctx;
@@ -8075,7 +8075,7 @@ function normalizarTextoCargoBasico(s) {
         .trim();
 }
 
-const MAPA_ABREVIACOES_CARGO_SST = {
+var MAPA_ABREVIACOES_CARGO_SST = {
     'aux': 'auxiliar',
     'enc': 'encarregado',
     'tec': 'tecnico',
@@ -8091,7 +8091,7 @@ const MAPA_ABREVIACOES_CARGO_SST = {
     'manut': 'manutencao'
 };
 
-const STOP_WORDS_CARGO_SST = new Set(['de', 'da', 'do', 'dos', 'das', 'em', 'e', 'para', 'com']);
+var STOP_WORDS_CARGO_SST = new Set(['de', 'da', 'do', 'dos', 'das', 'em', 'e', 'para', 'com']);
 
 function normalizarTextoCargo(s) {
     if (!s) return '';
@@ -9986,7 +9986,7 @@ function renderCatalogoResumo() {
 // meses_validade preenchido) dos ~153 tópicos de DDS pontuais (sem validade) misturados
 // no mesmo catálogo de 172 itens - sem isso não tinha como achar só um grupo ou outro
 // sem rolar a lista inteira.
-let catalogoFiltroValidade = 'todos';
+var catalogoFiltroValidade = 'todos';
 
 function setCatalogoFiltroValidade(valor) {
     catalogoFiltroValidade = valor;
@@ -10035,7 +10035,7 @@ function filterCatalogoTreinamentos(query) {
 // treinamentos com pelo menos 1 questão salva ganham os botões de prova/gabarito em
 // Registro (gerarProvaTurma/gerarGabaritoProva) - sem banco cadastrado, sem prova
 // fabricada.
-let catFormQuestoes = [];
+var catFormQuestoes = [];
 
 function questaoVazia() {
     return { pergunta: '', alternativas: ['', '', '', ''], correta: 0 };
@@ -10763,10 +10763,10 @@ async function recarregarRegrasRecomendacao() {
 }
 
 // Estado do Acordeão e Inclusão em Lote das Regras
-let regraModoVisualizacao = 'acordeon';
-const regrasAcordeonsAbertos = new Set();
-let loteContextoAtual = null;
-let listaCursosModalLoteCache = [];
+var regraModoVisualizacao = 'acordeon';
+var regrasAcordeonsAbertos = new Set();
+var loteContextoAtual = null;
+var listaCursosModalLoteCache = [];
 
 function alternarVisualizacaoRegras(modo) {
     regraModoVisualizacao = modo;
@@ -12375,15 +12375,15 @@ function imprimirDiagnosticoGaps() {
 // ==============================================================================
 
 // Aliases para máxima compatibilidade com convenções e rotinas de UI
-const carregarRegrasTreinamentoRecomendado = recarregarRegrasRecomendacao;
-const renderizarTabelaRegrasTrein = renderTreinamentoRegrasTab;
-const filtrarRegrasTreinamentoUI = filtrarTipoRegraTab;
-const abrirModalNovaRegraTrein = abrirModalNovaRegra;
-const fecharModalRegraTrein = fecharModalRegra;
-const aoMudarTipoRegraModal = onTipoRegraChange;
-const salvarRegraTreinamentoRecomendado = salvarRegraRecomendacao;
-const alternarStatusRegraTrein = alternarStatusRegraRecomendacao;
-const excluirRegraTrein = excluirRegraRecomendacao;
+var carregarRegrasTreinamentoRecomendado = recarregarRegrasRecomendacao;
+var renderizarTabelaRegrasTrein = renderTreinamentoRegrasTab;
+var filtrarRegrasTreinamentoUI = filtrarTipoRegraTab;
+var abrirModalNovaRegraTrein = abrirModalNovaRegra;
+var fecharModalRegraTrein = fecharModalRegra;
+var aoMudarTipoRegraModal = onTipoRegraChange;
+var salvarRegraTreinamentoRecomendado = salvarRegraRecomendacao;
+var alternarStatusRegraTrein = alternarStatusRegraRecomendacao;
+var excluirRegraTrein = excluirRegraRecomendacao;
 
     // ==============================================================================
     // EXPORTACAO EXPLICITA NO ESCOPO GLOBAL (WINDOW)
@@ -12787,4 +12787,4 @@ const excluirRegraTrein = excluirRegraRecomendacao;
         window.allTreinamentosRegras = allTreinamentosRegras;
     }
 
-})(typeof window !== 'undefined' ? window : this);
+// [Fim do Módulo treinamentos_ddsma.js - v218]

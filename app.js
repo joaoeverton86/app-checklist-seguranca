@@ -325,6 +325,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     refreshHomePageContent();
                     updatePendingBadge();
                 });
+                sincronizarTreinamentosStatusIncremental();
+                sincronizarEpiEntregasIncremental();
             }, 500);
         }
     }
@@ -582,9 +584,6 @@ function initConnectionStatus() {
     updateConnectionStatus();
     window.addEventListener('online', () => {
         updateConnectionStatus();
-        if (typeof sincronizarFilaPendente === 'function') {
-            sincronizarFilaPendente();
-        }
     });
     window.addEventListener('offline', updateConnectionStatus);
 }
@@ -597,6 +596,8 @@ function updateConnectionStatus() {
             if (typeof sincronizarFilaPendente === 'function') {
                 sincronizarFilaPendente().then(() => {
                     sincronizarComSupabase().then(updatePendingBadge);
+                    if (typeof sincronizarEpiEntregasIncremental === 'function') sincronizarEpiEntregasIncremental();
+                    if (typeof sincronizarTreinamentosStatusIncremental === 'function') sincronizarTreinamentosStatusIncremental();
                 });
             } else {
                 sincronizarComSupabase().then(updatePendingBadge);
@@ -3093,16 +3094,18 @@ async function enfileirarIssueParaSync(issue) {
     }
 }
 
+let filaSyncEmAndamento = false;
+
 async function sincronizarFilaPendente() {
     if (!isSupabaseConfigured() || !navigator.onLine) {
         updatePendingBadge();
         return;
     }
-    if (syncEmAndamento) {
-        console.log('⏳ Sincronização em andamento - adiando ciclo da fila pendente.');
+    if (filaSyncEmAndamento) {
+        console.log('⏳ Fila pendente já em processamento - adiando ciclo concorrente.');
         return;
     }
-    syncEmAndamento = true;
+    filaSyncEmAndamento = true;
 
     try {
         console.log('⚡ [SyncQueue] Verificando itens pendentes na fila...');
@@ -3198,12 +3201,15 @@ async function sincronizarFilaPendente() {
                         continue; // Mantém na fila para próxima tentativa
                     }
 
-                    // 3. Inserir Não Conformidades em public.nao_conformidades
+                    // 3. Inserir Não Conformidades em public.nao_conformidades (sem duplicar)
                     if (checklist.items) {
                         const ncRows = [];
+                        const nomesVistos = new Set();
                         for (const [k, v] of Object.entries(checklist.items)) {
                             if (k === '_form' || !v || v.status !== 'NC') continue;
-                            const itemNome = ITEM_NAMES[k] || v.customText || k;
+                            const itemNome = String(ITEM_NAMES[k] || v.customText || k).trim();
+                            if (!itemNome || itemNome.startsWith('nc_import_') || nomesVistos.has(itemNome.toUpperCase())) continue;
+                            nomesVistos.add(itemNome.toUpperCase());
                             let obsTexto = v.observation || '';
                             if (v.fotoUrl && !obsTexto.includes(v.fotoUrl)) {
                                 obsTexto = obsTexto ? `${obsTexto} [Foto: ${v.fotoUrl}]` : `[Foto: ${v.fotoUrl}]`;
@@ -3218,6 +3224,10 @@ async function sincronizarFilaPendente() {
                                 observacao: obsTexto
                             });
                         }
+                        await supabaseFetch('nao_conformidades', {
+                            method: 'DELETE',
+                            query: '?checklist_id=eq.' + encodeURIComponent(String(checklist.id).trim())
+                        });
                         if (ncRows.length > 0) {
                             await supabaseFetch('nao_conformidades', {
                                 method: 'POST',
@@ -3259,7 +3269,7 @@ async function sincronizarFilaPendente() {
     } catch (err) {
         console.error('Erro na execução de sincronizarFilaPendente:', err);
     } finally {
-        syncEmAndamento = false;
+        filaSyncEmAndamento = false;
         updatePendingBadge();
     }
 }
@@ -3710,8 +3720,8 @@ async function saveChecklist() {
         synced: false
     };
     
-    // Salvar no IndexedDB (store local)
-    await saveToIndexedDB('checklists', checklist);
+    // Salvar no IndexedDB (store local) com skipSync=true pois o envio ocorre pela sync_queue logo abaixo (após subir as fotos)
+    await saveToIndexedDB('checklists', checklist, true);
     
     // Enfileirar na fila de sincronização offline blindada (sync_queue)
     await enfileirarChecklistParaSync(checklist);
@@ -3723,12 +3733,9 @@ async function saveChecklist() {
             if (originalChecklist) {
                 originalChecklist.statusChecklist = 'reinspecionado';
                 originalChecklist.synced = false;
-                await saveToIndexedDB('checklists', originalChecklist);
+                originalChecklist.supabase_synced = false;
+                await saveToIndexedDB('checklists', originalChecklist, true);
                 await enfileirarChecklistParaSync(originalChecklist);
-                
-                if (isSupabaseConfigured() && navigator.onLine) {
-                    sincronizarItemIndividualSupabase('checklists', originalChecklist);
-                }
             }
         } catch (e) {
             console.error('Erro ao atualizar status do checklist original:', e);
@@ -3802,7 +3809,7 @@ function saveIssue() {
         synced: false
     };
     
-    saveToIndexedDB('issues', issue);
+    saveToIndexedDB('issues', issue, true);
     enfileirarIssueParaSync(issue);
     
     if (!navigator.onLine) {
@@ -4453,14 +4460,34 @@ async function sincronizarNaoConformidadesComChecklists(ncRows) {
             if (!target.items || typeof target.items !== 'object') {
                 target.items = {};
             }
+            if (itemText.startsWith('nc_import_')) continue;
 
-            const itemId = 'nc_import_' + Math.abs(hashCode(itemText));
-            target.items[itemId] = {
-                status: 'NC',
-                observation: obs,
-                customText: itemText,
-                risk: risco
-            };
+            // Verifica se o checklist já possui esse item registrado originalmente (evita duplicar com nc_import_...)
+            const itemUpper = itemText.toUpperCase();
+            const existingKey = Object.keys(target.items).find(k => {
+                if (k === '_form' || k.startsWith('nc_import_')) return false;
+                const v = target.items[k];
+                const nome = String(ITEM_NAMES[k] || v?.customText || k).trim().toUpperCase();
+                return nome === itemUpper;
+            });
+
+            if (existingKey) {
+                if (obs && !target.items[existingKey].observation) {
+                    target.items[existingKey].observation = obs;
+                }
+                const dupImportKey = 'nc_import_' + Math.abs(hashCode(itemText));
+                if (target.items[dupImportKey]) {
+                    delete target.items[dupImportKey];
+                }
+            } else {
+                const itemId = 'nc_import_' + Math.abs(hashCode(itemText));
+                target.items[itemId] = {
+                    status: 'NC',
+                    observation: obs,
+                    customText: itemText,
+                    risk: risco
+                };
+            }
 
             const stats = recalcularStatsChecklist(target);
             target.stats = stats;
@@ -7987,28 +8014,39 @@ async function sincronizarItemIndividualSupabase(storeName, data) {
             // corrigir sozinha ao puxar o registro de volta do servidor.
             await saveToIndexedDB(storeName, data, true);
             console.log(`⚡ [Supabase] ${storeName} sincronizado com sucesso:`, data.id);
-        }
 
-        if (storeName === 'checklists' && data.items) {
-            const ncRows = [];
-            for (const [k, v] of Object.entries(data.items)) {
-                if (k === '_form' || !v || v.status !== 'NC') continue;
-                const itemNome = ITEM_NAMES[k] || v.customText || k;
-                ncRows.push({
-                    checklist_id: String(data.id).trim(),
-                    date: data.date || '',
-                    patrimonio: (data.patrimonio || '').toUpperCase(),
-                    item_text: itemNome,
-                    nr: v.nr || '',
-                    risco: v.risk || 'high',
-                    observacao: v.observation || ''
-                });
-            }
-            if (ncRows.length > 0) {
+            if (storeName === 'checklists' && data.items) {
+                const ncRows = [];
+                const nomesVistos = new Set();
+                for (const [k, v] of Object.entries(data.items)) {
+                    if (k === '_form' || !v || v.status !== 'NC') continue;
+                    const itemNome = String(ITEM_NAMES[k] || v.customText || k).trim();
+                    if (!itemNome || itemNome.startsWith('nc_import_') || nomesVistos.has(itemNome.toUpperCase())) continue;
+                    nomesVistos.add(itemNome.toUpperCase());
+                    let obsTexto = v.observation || '';
+                    if (v.fotoUrl && !obsTexto.includes(v.fotoUrl)) {
+                        obsTexto = obsTexto ? `${obsTexto} [Foto: ${v.fotoUrl}]` : `[Foto: ${v.fotoUrl}]`;
+                    }
+                    ncRows.push({
+                        checklist_id: String(data.id).trim(),
+                        date: data.date || '',
+                        patrimonio: (data.patrimonio || '').toUpperCase(),
+                        item_text: itemNome,
+                        nr: v.nr || '',
+                        risco: v.risk || 'high',
+                        observacao: obsTexto
+                    });
+                }
                 await supabaseFetch('nao_conformidades', {
-                    method: 'POST',
-                    body: ncRows
+                    method: 'DELETE',
+                    query: '?checklist_id=eq.' + encodeURIComponent(String(data.id).trim())
                 });
+                if (ncRows.length > 0) {
+                    await supabaseFetch('nao_conformidades', {
+                        method: 'POST',
+                        body: ncRows
+                    });
+                }
             }
         }
     } catch (err) {
@@ -8134,31 +8172,42 @@ async function sincronizarComSupabase(forcar = false) {
                             local.synced = true;
                             local.supabase_synced = true;
                             await saveToIndexedDB(store, local, true);
+
+                            if (store === 'checklists' && local.items) {
+                                const ncRows = [];
+                                const nomesVistos = new Set();
+                                for (const [k, v] of Object.entries(local.items)) {
+                                    if (k === '_form' || !v || v.status !== 'NC') continue;
+                                    const itemNome = String(ITEM_NAMES[k] || v.customText || k).trim();
+                                    if (!itemNome || itemNome.startsWith('nc_import_') || nomesVistos.has(itemNome.toUpperCase())) continue;
+                                    nomesVistos.add(itemNome.toUpperCase());
+                                    let obsTexto = v.observation || '';
+                                    if (v.fotoUrl && !obsTexto.includes(v.fotoUrl)) {
+                                        obsTexto = obsTexto ? `${obsTexto} [Foto: ${v.fotoUrl}]` : `[Foto: ${v.fotoUrl}]`;
+                                    }
+                                    ncRows.push({
+                                        checklist_id: String(local.id).trim(),
+                                        date: local.date || '',
+                                        patrimonio: (local.patrimonio || '').toUpperCase(),
+                                        item_text: itemNome,
+                                        nr: v.nr || '',
+                                        risco: v.risk || 'high',
+                                        observacao: obsTexto
+                                    });
+                                }
+                                await supabaseFetch('nao_conformidades', {
+                                    method: 'DELETE',
+                                    query: '?checklist_id=eq.' + encodeURIComponent(String(local.id).trim())
+                                });
+                                if (ncRows.length > 0) {
+                                    await supabaseFetch('nao_conformidades', {
+                                        method: 'POST',
+                                        body: ncRows
+                                    });
+                                }
+                            }
                         } else {
                             falhas.push({ etapa: `upload tabela "${table}" (registro ${local.id})`, erro: upsertRes.error || 'requisição sem sucesso' });
-                        }
-
-                        if (store === 'checklists' && local.items) {
-                            const ncRows = [];
-                            for (const [k, v] of Object.entries(local.items)) {
-                                if (k === '_form' || !v || v.status !== 'NC') continue;
-                                const itemNome = ITEM_NAMES[k] || v.customText || k;
-                                ncRows.push({
-                                    checklist_id: String(local.id).trim(),
-                                    date: local.date || '',
-                                    patrimonio: (local.patrimonio || '').toUpperCase(),
-                                    item_text: itemNome,
-                                    nr: v.nr || '',
-                                    risco: v.risk || 'high',
-                                    observacao: v.observation || ''
-                                });
-                            }
-                            if (ncRows.length > 0) {
-                                await supabaseFetch('nao_conformidades', {
-                                    method: 'POST',
-                                    body: ncRows
-                                });
-                            }
                         }
                     }
                 }

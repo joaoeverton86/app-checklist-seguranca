@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cache-v218';
+const CACHE_NAME = 'cache-v219';
 const SHELL_URLS = [
     './',
     './index.html',
@@ -85,7 +85,7 @@ self.addEventListener('fetch', event => {
 
     const isShellFile = SHELL_URLS.some(s => url.pathname.endsWith(s.replace('./', '/')) || (s === './' && (url.pathname === '/' || url.pathname.endsWith('/index.html'))));
 
-    // Recursos da casca da aplicação (HTML/JS/CSS): Network first com fallback garantido para cache offline
+    // Recursos da casca da aplicação (HTML/JS/CSS): Network first com fallback garantido para cache offline (ignorando ?v=...)
     if (isShellFile) {
         event.respondWith(
             fetch(event.request, { cache: 'no-cache' }).then(response => {
@@ -95,10 +95,10 @@ self.addEventListener('fetch', event => {
                 }
                 return response;
             }).catch(() => {
-                return caches.match(event.request).then(cached => {
+                return caches.match(event.request, { ignoreSearch: true }).then(cached => {
                     if (cached) return cached;
                     if (event.request.mode === 'navigate') {
-                        return caches.match('./index.html') || caches.match('/');
+                        return caches.match('./index.html', { ignoreSearch: true }) || caches.match('/', { ignoreSearch: true });
                     }
                     return null;
                 });
@@ -109,7 +109,7 @@ self.addEventListener('fetch', event => {
 
     // Demais recursos: Cache com fallback para rede
     event.respondWith(
-        caches.match(event.request).then(cached => {
+        caches.match(event.request, { ignoreSearch: true }).then(cached => {
             if (cached) return cached;
             return fetch(event.request).then(response => {
                 if (response && response.status === 200) {
@@ -119,7 +119,7 @@ self.addEventListener('fetch', event => {
                 return response;
             }).catch(() => {
                 if (event.request.mode === 'navigate') {
-                    return caches.match('./index.html');
+                    return caches.match('./index.html', { ignoreSearch: true });
                 }
                 return null;
             });

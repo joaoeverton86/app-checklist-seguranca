@@ -5,7 +5,8 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-var VERSAO_PAINEL = 'v220';
+var VERSAO_PAINEL = 'v221';
+try { ['badgeVersaoDashboardLogin', 'badgeVersaoDashboardSidebar'].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = VERSAO_PAINEL; }); } catch(e){}
 var DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
 window.DASHBOARD_VERSION = DASHBOARD_VERSION;

@@ -10567,7 +10567,7 @@ var kitsEquipesSelecionadas = new Set();
 // Rastreia se Horário Início/Término/Local/CargaHoraria ainda estão no valor que NÓS preenchemos
 // (então é seguro atualizar quando o treinamento mudar) ou se o usuário editou na mão
 // (aí o valor dele nunca é sobrescrito, mesmo trocando de treinamento depois).
-var kitsCamposAutoPreenchidos = { horaInicio: true, horaTermino: true, local: true, cargaHoraria: true };
+var kitsCamposAutoPreenchidos = { horaInicio: true, horaTermino: true, local: true, cargaHoraria: true, encResponsavel: true };
 
 var CONTEUDO_NR10_INICIAL_ANEXO_III =
 `1. Introdução à segurança com eletricidade e regulamentações do MTE (NR-10 e NR-01);
@@ -10777,19 +10777,33 @@ function aplicarSelecaoMultiEquipesKits() {
     renderKitsDocsIndividuaisList();
 }
 
-function atualizarCampoEncResponsavelKits() {
+function atualizarCampoEncResponsavelKits(forcar = false) {
     const encInput = document.getElementById('kitsForm_encResponsavel');
     if (!encInput) return;
+    if (!forcar && kitsCamposAutoPreenchidos.encResponsavel === false) return;
     const equipesNaTurma = Array.from(new Set(
         Array.from(kitsEquipe.values())
-            .filter(c => c.checked && c.responsavel)
+            .filter(c => c.checked && c.responsavel && c.responsavel !== 'SEM EQUIPE')
             .map(c => c.responsavel)
     ));
     if (equipesNaTurma.length > 0) {
         encInput.value = equipesNaTurma.join(' / ');
     } else if (kitsEquipesSelecionadas.size > 0) {
         encInput.value = Array.from(kitsEquipesSelecionadas).join(' / ');
+    } else if (forcar) {
+        encInput.value = '';
     }
+}
+
+function limparCampoEncResponsavelKits() {
+    const encInput = document.getElementById('kitsForm_encResponsavel');
+    if (encInput) encInput.value = '';
+    kitsCamposAutoPreenchidos.encResponsavel = false;
+}
+
+function preencherAutoEncResponsavelKits() {
+    kitsCamposAutoPreenchidos.encResponsavel = true;
+    atualizarCampoEncResponsavelKits(true);
 }
 
 function carregarKitsAtalhoGlobalStatus(modo) {
@@ -11176,8 +11190,12 @@ function renderKitsEquipeList() {
 
 function contextoKits() {
     const campos = lerCamposSessaoForm('kitsForm_');
+    const colaboradores = Array.from(kitsEquipe.entries())
+        .filter(([, c]) => c.checked)
+        .map(([matricula, c]) => ({ matricula, nome: c.nome, funcao: c.funcao, responsavel: c.responsavel }))
+        .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR', { sensitivity: 'base' }));
     return {
-        colaboradores: Array.from(kitsEquipe.entries()).filter(([, c]) => c.checked).map(([matricula, c]) => ({ matricula, nome: c.nome, funcao: c.funcao, responsavel: c.responsavel })),
+        colaboradores,
         codigo: kitsCodigoAtual,
         data: kitsDataAtual || kitsDataInicioAtual || new Date().toISOString().slice(0, 10),
         campos
@@ -11204,7 +11222,10 @@ function obterDocumentosMarcadosNoKit() {
 function renderKitsDocsIndividuaisList() {
     const container = document.getElementById('kitsDocsIndividuaisLista');
     if (!container) return;
-    const colaboradores = Array.from(kitsEquipe.entries()).filter(([, c]) => c.checked).map(([matricula, c]) => ({ matricula, nome: c.nome, funcao: c.funcao, responsavel: c.responsavel }));
+    const colaboradores = Array.from(kitsEquipe.entries())
+        .filter(([, c]) => c.checked)
+        .map(([matricula, c]) => ({ matricula, nome: c.nome, funcao: c.funcao, responsavel: c.responsavel }))
+        .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR', { sensitivity: 'base' }));
     if (colaboradores.length === 0) {
         container.innerHTML = '<div class="db-list-empty">Nenhum colaborador selecionado na turma ainda — marque as equipes acima ou clique em "🔴 Juntar Todos os Vencidos".</div>';
         return;
@@ -11524,51 +11545,54 @@ async function salvarDetalhesSessao() {
 // lote do Cronograma (várias sessões, uma "folha" por página) - um só lugar pra manter
 // os dois documentos visualmente idênticos.
 var REGISTRO_TREINAMENTO_CSS = `
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111; margin: 20px; }
-    /* Nome próprio (não ".folha") de propósito - o Kit Completo mescla este CSS com
-       DOC_INDIVIDUAL_CSS num só <style>, e os dois definiam ".folha" com padding/max-width
-       diferentes; a regra declarada por último vencia o cascade e empurrava o cabeçalho/
-       tabela pra dentro com um padding que eles não foram desenhados pra ter, deixando um
-       vão vazio entre a borda externa e o conteúdo (relatado como "borda completa por fora
-       mas item de cima vago"). Classe isolada evita a colisão de vez. */
-    .folha-registro { max-width: 1000px; margin: 0 auto 24px; border: 2px solid #000; }
+    @page { size: A4 portrait; margin: 5mm 7mm; }
+    @page registro_portrait { size: A4 portrait; margin: 5mm 7mm; }
+
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; }
+    .folha-registro { max-width: 1000px; margin: 0 auto; border: 2px solid #000; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid; }
     .cabecalho { display: flex; align-items: stretch; border-bottom: 2px solid #000; }
-    .cabecalho .logo { width: 150px; padding: 5px 10px; border-right: 2px solid #000; text-align: center; display: flex; align-items: center; justify-content: center; }
-    .cabecalho .titulo { flex: 1; text-align: center; font-weight: 700; font-size: 14px; padding: 6px; display:flex; align-items:center; justify-content:center; }
-    .cabecalho .codigo { width: 110px; padding: 6px; border-left: 2px solid #000; text-align: center; font-weight: 700; font-size: 10.5px; display:flex; align-items:center; justify-content:center; }
+    .cabecalho .logo { width: 130px; padding: 2px 6px; border-right: 2px solid #000; text-align: center; display: flex; align-items: center; justify-content: center; }
+    .cabecalho .titulo { flex: 1; text-align: center; font-weight: 700; font-size: 12pt; padding: 2px; display:flex; align-items:center; justify-content:center; }
+    .cabecalho .codigo { width: 100px; padding: 2px; border-left: 2px solid #000; text-align: center; font-weight: 700; font-size: 9.5pt; display:flex; align-items:center; justify-content:center; }
     .linha { display: flex; border-bottom: 1px solid #000; }
-    .campo { flex: 1; padding: 3px 10px; border-right: 1px solid #000; }
+    .campo { flex: 1; padding: 1px 6px; border-right: 1px solid #000; font-size: 8.8pt; line-height: 1.16; }
     .campo:last-child { border-right: none; }
-    .campo b { margin-right: 4px; }
-    .campo-titulo { font-weight: 700; text-align: center; }
-    /* Sem padding próprio (fica só o pequeno respiro do "gap") - o .campo que envolve já
-       dá o espaçamento; a versão antiga somava os dois (padding do .campo + padding do
-       .bloco-texto empilhados), inflando bastante essas linhas específicas (Objetivo,
-       Método de Avaliação, Conteúdo Programático) e foi a causa real da folha de 26
-       linhas sempre estourar pra uma 2ª página, mesmo com poucos participantes. */
-    .bloco-texto { padding: 0; white-space: pre-line; }
+    .campo b { margin-right: 3px; }
+    .campo-titulo { font-weight: 700; text-align: center; font-size: 8.2pt; background: #fafafa; }
+    .bloco-texto { padding: 0; white-space: pre-line; font-size: 8.2pt; line-height: 1.14; }
+    .bloco-texto-col2 { columns: 2; column-gap: 12px; font-size: 7.8pt; line-height: 1.12; white-space: pre-line; }
     table { width: 100%; border-collapse: collapse; }
-    /* Linhas mais altas de propósito (compensando o corte de 26 pra 22 linhas abaixo) -
-       dá mais respiro visual e mais folga natural pra quando nome/função quebram em
-       duas linhas (a própria altura da linha já cresce sozinha nesse caso, sem precisar
-       de nada especial no CSS - só não pode ficar tão apertada que uma quebra pareça
-       colada nas bordas). */
-    th, td { border: 1px solid #000; padding: 4px 7px; font-size: 10.5px; vertical-align: middle; }
-    th { background: #e5e5e5; font-size: 10px; }
+    th, td { border: 1px solid #000; padding: 1px 4px; font-size: 8.8pt; vertical-align: middle; }
+    th { background: #e5e5e5; font-size: 8.8pt; font-weight: 700; height: 19px; }
+    .tr-registro { height: 24px !important; }
+    .tr-registro td { height: 24px !important; vertical-align: middle; }
     .no-print { text-align: center; margin: 16px 0; }
     .no-print button { padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; border: none; background: #4f46e5; color: #fff; }
-    .quebra-pagina { page-break-after: always; }
-    @media print { .no-print { display: none; } body { margin: 0; } .folha-registro { border: 2px solid #000; } }
+    .quebra-pagina { page-break-after: always; break-after: page; }
+    @media print {
+        .no-print { display: none !important; }
+        body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+        .folha-registro { border: 2px solid #000; page-break-inside: avoid !important; break-inside: avoid !important; }
+        .print-registro-portrait { page: registro_portrait; page-break-after: always; break-after: page; }
+    }
 `;
 
-// Monta só o bloco <div class="folha">...</div> (cabeçalho + tabela de presença) de um
-// Registro de Treinamento - usado tanto pela geração avulsa (gerarRegistroTreinamento)
-// quanto pela impressão em lote do Cronograma (gerarListasCronogramaMes), que concatena
-// uma folha por sessão num único documento.
 function construirFolhaRegistroTreinamento(sessaoRows, campos, codigo, cat, data) {
-    const REGISTRO_MIN_LINHAS = 22;
-    const REGISTRO_ALTURA_LINHA = '28px';
-    const linhasReais = sessaoRows.map((r, i) => `<tr class="tr-registro" style="height:${REGISTRO_ALTURA_LINHA};">
+    // Garante ordem alfabética (A -> Z) em todas as Listas de Presença
+    const rowsOrdenadas = [...(sessaoRows || [])].sort((a, b) =>
+        (a?.nome || '').localeCompare(b?.nome || '', 'pt-BR', { sensitivity: 'base' })
+    );
+
+    const conteudoProg = (campos?.conteudo_programatico_custom && campos.conteudo_programatico_custom.trim())
+        ? campos.conteudo_programatico_custom.trim()
+        : (cat?.conteudo_programatico || '');
+    const qtdLinhasConteudo = conteudoProg ? conteudoProg.split('\n').filter(Boolean).length : 0;
+    const usarDuasColunasConteudo = qtdLinhasConteudo >= 5 || conteudoProg.length > 340;
+
+    // Adequação sutil de linhas para caber perfeitamente em 01 página A4 (20 linhas padrão)
+    const REGISTRO_MIN_LINHAS = 20;
+    const REGISTRO_ALTURA_LINHA = rowsOrdenadas.length > 20 ? '22px' : '24px';
+    const linhasReais = rowsOrdenadas.map((r, i) => `<tr class="tr-registro" style="height:${REGISTRO_ALTURA_LINHA};">
         <td style="text-align:center; height:${REGISTRO_ALTURA_LINHA};">${String(i + 1).padStart(2, '0')}</td>
         <td style="text-align:center; height:${REGISTRO_ALTURA_LINHA};">${escapeHTML(r.matricula || '')}</td>
         <td style="height:${REGISTRO_ALTURA_LINHA};">${escapeHTML(r.nome || '')}</td>
@@ -11576,7 +11600,7 @@ function construirFolhaRegistroTreinamento(sessaoRows, campos, codigo, cat, data
         <td style="height:${REGISTRO_ALTURA_LINHA};"></td>
     </tr>`);
     const linhasVazias = [];
-    for (let i = sessaoRows.length; i < REGISTRO_MIN_LINHAS; i++) {
+    for (let i = rowsOrdenadas.length; i < REGISTRO_MIN_LINHAS; i++) {
         linhasVazias.push(`<tr class="tr-registro" style="height:${REGISTRO_ALTURA_LINHA};">
         <td style="text-align:center; height:${REGISTRO_ALTURA_LINHA};">${String(i + 1).padStart(2, '0')}</td>
         <td style="height:${REGISTRO_ALTURA_LINHA};"></td>
@@ -11589,9 +11613,6 @@ function construirFolhaRegistroTreinamento(sessaoRows, campos, codigo, cat, data
 
     const { titulo: tituloTreinamento, cargaHoraria } = obterTituloECargaSessao(cat, codigo, campos);
     const periodoInfo = formatarPeriodoTreinamento(data, campos);
-    const conteudoProg = (campos?.conteudo_programatico_custom && campos.conteudo_programatico_custom.trim())
-        ? campos.conteudo_programatico_custom.trim()
-        : (cat?.conteudo_programatico || '');
     const ehNr10 = ehCursoNr10(codigo, cat);
     const labelAssinatura1 = ehNr10 ? 'Resp. Técnico Elétrica / Instrutor (NR-10):' : 'Instrutor / Profissional Habilitado:';
     const qualReg1 = [campos.instrutor_qualificacao, campos.instrutor_registro].filter(Boolean).join(' — ');
@@ -11600,7 +11621,7 @@ function construirFolhaRegistroTreinamento(sessaoRows, campos, codigo, cat, data
     return `
     <div class="folha-registro print-registro-portrait">
         <div class="cabecalho">
-            <div class="logo"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-width:100%; max-height:36px; object-fit:contain;"></div>
+            <div class="logo"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-width:100%; max-height:34px; object-fit:contain;"></div>
             <div class="titulo">REGISTRO DE TREINAMENTO (LISTA DE PRESENÇA)</div>
             <div class="codigo">${escapeHTML(codigoRevisaoDocumento('registro_treinamento') || 'FOR.001')}</div>
         </div>
@@ -11620,11 +11641,11 @@ function construirFolhaRegistroTreinamento(sessaoRows, campos, codigo, cat, data
             <div class="campo" style="flex:1.3;"><b>Carga Horária:</b> ${cargaHoraria ? cargaHoraria + ' horas' : ''}</div>
         </div>
         <div class="linha">
-            <div class="campo" style="flex:2;"><b>Objetivo:</b><div class="bloco-texto">${escapeHTML(cat?.objetivo || '')}</div></div>
+            <div class="campo" style="flex:2.2;"><b>Objetivo:</b><div class="bloco-texto">${escapeHTML(cat?.objetivo || '')}</div></div>
             <div class="campo"><b>Método de Avaliação da Eficácia:</b><div class="bloco-texto">${escapeHTML(cat?.metodo_avaliacao || 'Entendimento Participante / Aproveitamento Satisfatório')}</div></div>
         </div>
         <div class="linha">
-            <div class="campo"><b>Conteúdo Programático:</b><div class="bloco-texto">${escapeHTML(conteudoProg)}</div></div>
+            <div class="campo"><b>Conteúdo Programático:</b><div class="${usarDuasColunasConteudo ? 'bloco-texto-col2' : 'bloco-texto'}">${escapeHTML(conteudoProg)}</div></div>
         </div>
         <div class="linha">
             <div class="campo" style="flex:2;"><b>Local de Realização do Treinamento:</b> ${escapeHTML(campos.local_realizacao || '')}</div>
@@ -12085,7 +12106,7 @@ var DOC_INDIVIDUAL_CSS = `
     .assinaturas-cert {
         display: flex;
         justify-content: space-between;
-        align-items: flex-end;
+        align-items: flex-start;
         margin-top: auto;
         padding-top: 10px;
         gap: 12px;
@@ -12413,7 +12434,7 @@ function construirFolhaCertificado(r, colab, cat, codigo, campos, data, customPa
             <div class="assinaturas-cert">
                 ${blocoAssinatura(`<b>${escapeHTML(instrutorNome || (ehNr10 ? 'Engenheiro Eletricista Responsável' : 'Instrutor Autorizado'))}</b><br>${escapeHTML(instrutorQualificacao || (ehNr10 ? 'ENGENHEIRO ELETRICISTA' : 'Qualificação Técnica'))}${instrutorRegistro ? '<br>' + escapeHTML(instrutorRegistro) : ''}<br><span style="font-size:8.5pt; color:#1e40af; font-weight:600;">${legendaAssinatura1}</span>`)}
                 ${blocoAssinatura(`<b>${escapeHTML(respTecnicoNome || 'JOÃO EVERTON DE SOUZA LIMEIRA')}</b><br>${escapeHTML(respTecnicoQualificacao || 'ENG. SEG. TRABALHO')}${respTecnicoRegistro ? '<br>' + escapeHTML(respTecnicoRegistro) : ''}<br><span style="font-size:8.5pt; color:#3730a3; font-weight:600;">Eng. de Segurança do Trabalho — Resp. Técnico SST</span>`)}
-                ${blocoAssinatura(`<b>${escapeHTML(r.nome)}</b><br>CPF: ${escapeHTML(colab?.cpf || 'Não informado')}<br><span style="font-size:8.5pt; color:#065f46; font-weight:600;">Colaborador(a) Treinado(a)</span>`)}
+                ${blocoAssinatura(`<b>${escapeHTML(r.nome)}</b><br>${escapeHTML(r.funcao || colab?.funcao || 'Colaborador')}<br>CPF: ${escapeHTML(colab?.cpf || 'Não informado')}<br><span style="font-size:8.5pt; color:#065f46; font-weight:600;">Colaborador(a) Treinado(a)</span>`)}
             </div>
         </div>
     </div>`;
@@ -12501,22 +12522,25 @@ function construirFolhaAnuenciaNr10(r, colab, cat, codigo, campos, data, customP
             <b>3. DECLARAÇÃO DE CIÊNCIA DO TRABALHADOR AUTORIZADO:</b> Declaro estar plenamente ciente das diretrizes de segurança contidas nesta Anuência Formal e na NR-10, comprometendo-me a cumpri-las fielmente e a somente executar serviços elétricos para os quais esteja devidamente autorizado, equipado e amparado por procedimentos de segurança.
         </div>
 
-        <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px; margin-top:16px; margin-bottom:10px; page-break-inside:avoid;">
-            <div style="flex:1; text-align:center; font-size:8.5pt;">
-                <div>_______________________________________</div>
-                <div style="font-weight:700; margin-top:2px;">${escapeHTML(instrutorNome || 'Engenheiro Eletricista Responsável')}</div>
-                <div>${escapeHTML(instrutorQualificacao)}${instrutorRegistro ? ' — ' + escapeHTML(instrutorRegistro) : ''}</div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-top:18px; margin-bottom:10px; page-break-inside:avoid;">
+            <div style="flex:1; text-align:center; font-size:8.5pt; line-height:1.28;">
+                <div style="letter-spacing:0.5px; margin-bottom:2px; white-space:nowrap;">______________________________</div>
+                <div style="font-weight:700;">${escapeHTML(instrutorNome || 'Engenheiro Eletricista Responsável')}</div>
+                <div>${escapeHTML(instrutorQualificacao || 'ENGENHEIRO ELETRICISTA')}</div>
+                <div>${escapeHTML(instrutorRegistro || '')}</div>
                 <div style="color:#1e40af; font-weight:700; font-size:8pt;">Eng. Eletricista — Resp. Técnico Habilitado (NR-10)</div>
             </div>
-            <div style="flex:1; text-align:center; font-size:8.5pt;">
-                <div>_______________________________________</div>
-                <div style="font-weight:700; margin-top:2px;">${escapeHTML(respTecnicoNome)}</div>
-                <div>${escapeHTML(respTecnicoQualificacao)}${respTecnicoRegistro ? ' — ' + escapeHTML(respTecnicoRegistro) : ''}</div>
+            <div style="flex:1; text-align:center; font-size:8.5pt; line-height:1.28;">
+                <div style="letter-spacing:0.5px; margin-bottom:2px; white-space:nowrap;">______________________________</div>
+                <div style="font-weight:700;">${escapeHTML(respTecnicoNome || 'JOÃO EVERTON DE SOUZA LIMEIRA')}</div>
+                <div>${escapeHTML(respTecnicoQualificacao || 'ENG. SEG. TRABALHO')}</div>
+                <div>${escapeHTML(respTecnicoRegistro || '')}</div>
                 <div style="color:#3730a3; font-weight:700; font-size:8pt;">Eng. de Segurança do Trabalho — Resp. Técnico SST</div>
             </div>
-            <div style="flex:1; text-align:center; font-size:8.5pt;">
-                <div>_______________________________________</div>
-                <div style="font-weight:700; margin-top:2px;">${escapeHTML(r.nome)}</div>
+            <div style="flex:1; text-align:center; font-size:8.5pt; line-height:1.28;">
+                <div style="letter-spacing:0.5px; margin-bottom:2px; white-space:nowrap;">______________________________</div>
+                <div style="font-weight:700;">${escapeHTML(r.nome)}</div>
+                <div>${escapeHTML(r.funcao || colab?.funcao || 'Colaborador')}</div>
                 <div>CPF: ${escapeHTML(colab?.cpf || '—')} — Mat.: ${escapeHTML(r.matricula || colab?.id || '—')}</div>
                 <div style="color:#065f46; font-weight:700; font-size:8pt;">Assinatura do Trabalhador Autorizado</div>
             </div>

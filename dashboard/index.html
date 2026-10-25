@@ -20,7 +20,7 @@
         })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=220">
+    <link rel="stylesheet" href="dashboard.css?v=221">
 </head>
 <body>
 
@@ -1524,8 +1524,14 @@
                             <input type="text" id="kitsForm_local" oninput="kitsMarcarCampoEditado('local')" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
                         </div>
                         <div>
-                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Equipe(s) / Enc. Responsável</label>
-                            <input type="text" id="kitsForm_encResponsavel" list="equipesResponsavelList" placeholder="Ex: LÚCIO / ROBSON / DEYLON" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px; gap:4px;">
+                                <label style="color: var(--text-light); font-weight: 600;">Equipe(s) / Enc. Responsável</label>
+                                <div style="display:flex; gap:4px; align-items:center;">
+                                    <button type="button" class="db-clear-btn" style="padding:1px 6px; font-size:10px; color:var(--primary);" onclick="preencherAutoEncResponsavelKits()" title="Preenche automaticamente com as equipes/frentes selecionadas">🔄 Auto</button>
+                                    <button type="button" class="db-clear-btn" style="padding:1px 6px; font-size:10px; color:var(--danger);" onclick="limparCampoEncResponsavelKits()" title="Deixa o campo Equipe(s) / Enc. Responsável em branco na Lista de Presença">🧹 Deixar em Branco</button>
+                                </div>
+                            </div>
+                            <input type="text" id="kitsForm_encResponsavel" list="equipesResponsavelList" oninput="kitsMarcarCampoEditado('encResponsavel')" placeholder="Deixe em branco ou digite (Ex: ROBSON / ELÉTRICA)..." style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
                         </div>
                     </div>
 
@@ -10028,20 +10034,20 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="../data.js?v=220"></script>
-    <script src="logo_cop_base64.js?v=220"></script>
-    <script src="dashboard.js?v=220"></script>
-    <script src="modules/treinamentos_ddsma.js?v=220"></script>
-    <script src="modules/efetivo_ferias.js?v=220"></script>
-    <script src="modules/ghe_os.js?v=220"></script>
-    <script src="modules/relatorio_sms_nc.js?v=220"></script>
-    <script src="modules/saude_psicossocial.js?v=220"></script>
-    <script src="modules/epi_estoque.js?v=220"></script>
-    <script src="modules/ambiental_compras_hht.js?v=220"></script>
-    <script src="modules/apr_cipa.js?v=220"></script>
-    <script src="modules/documentos_brigada.js?v=220"></script>
-    <script src="modules/ergonomia_periculosidade_pgr.js?v=220"></script>
-    <script src="placar_lideres.js?v=220"></script>
+    <script src="../data.js?v=221"></script>
+    <script src="logo_cop_base64.js?v=221"></script>
+    <script src="dashboard.js?v=221"></script>
+    <script src="modules/treinamentos_ddsma.js?v=221"></script>
+    <script src="modules/efetivo_ferias.js?v=221"></script>
+    <script src="modules/ghe_os.js?v=221"></script>
+    <script src="modules/relatorio_sms_nc.js?v=221"></script>
+    <script src="modules/saude_psicossocial.js?v=221"></script>
+    <script src="modules/epi_estoque.js?v=221"></script>
+    <script src="modules/ambiental_compras_hht.js?v=221"></script>
+    <script src="modules/apr_cipa.js?v=221"></script>
+    <script src="modules/documentos_brigada.js?v=221"></script>
+    <script src="modules/ergonomia_periculosidade_pgr.js?v=221"></script>
+    <script src="placar_lideres.js?v=221"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();

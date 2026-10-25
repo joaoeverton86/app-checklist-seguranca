@@ -6068,28 +6068,313 @@ function renderRegistroNovaEquipeList() {
 var kitsEquipe = new Map();
 var kitsCodigoAtual = '';
 var kitsDataAtual = '';
-// Rastreia se Horário Início/Término/Local ainda estão no valor que NÓS preenchemos
+var kitsDataInicioAtual = '';
+var kitsTipoCapacitacaoAtual = 'reciclagem';
+var kitsEquipesSelecionadas = new Set();
+// Rastreia se Horário Início/Término/Local/CargaHoraria ainda estão no valor que NÓS preenchemos
 // (então é seguro atualizar quando o treinamento mudar) ou se o usuário editou na mão
 // (aí o valor dele nunca é sobrescrito, mesmo trocando de treinamento depois).
-var kitsCamposAutoPreenchidos = { horaInicio: true, horaTermino: true, local: true };
+var kitsCamposAutoPreenchidos = { horaInicio: true, horaTermino: true, local: true, cargaHoraria: true };
 
-function popularKitsResponsavelSelect() {
-    const sel = document.getElementById('kitsResponsavelSelect');
-    if (!sel || sel.options.length > 1) return;
-    todasFrentesAtivas().forEach(r => {
-        const opt = document.createElement('option');
-        opt.value = r;
-        opt.textContent = r;
-        sel.appendChild(opt);
-    });
+var CONTEUDO_NR10_INICIAL_ANEXO_III =
+`1. Introdução à segurança com eletricidade e regulamentações do MTE (NR-10 e NR-01);
+2. Riscos em instalações e serviços com eletricidade: a) choque elétrico, mecanismos e efeitos; b) arcos elétricos, queimaduras e quedas; c) campos eletromagnéticos;
+3. Técnicas de Análise de Risco (APR) e Permissão de Trabalho (PT);
+4. Medidas de Controle do Risco Elétrico: desenergização, aterramento funcional (TN/TT/IT), de proteção e temporário, equipotencialização, seccionamento automático da alimentação (DR), extra baixa tensão, barreiras e invólucros, bloqueios e impedimentos de religamento (LOTO), obstáculos e anteparos, isolamento das partes vivas, isolação dupla/reforçada, colocação fora de alcance e separação elétrica;
+5. Normas Técnicas Brasileiras — NBR da ABNT: NBR-5410, NBR-14039 e outras;
+6. Equipamentos de proteção coletiva (EPC) e equipamentos de proteção individual (EPI dielétricos e vestimenta antichama ATPV);
+7. Rotinas de trabalho e procedimentos: instalações desenergizadas, liberação para serviços, sinalização, inspeções de áreas, serviços, ferramental e equipamento;
+8. Documentação de instalações elétricas (Prontuário das Instalações Elétricas);
+9. Riscos adicionais: altura (NR-35), ambientes confinados (NR-33), áreas classificadas, umidade e condições atmosféricas (descargas atmosféricas);
+10. Proteção e combate a incêndios: noções básicas, medidas preventivas, métodos de extinção e prática;
+11. Acidentes de origem elétrica (causas diretas e indiretas) e Primeiros socorros (priorização do atendimento, respiração artificial, massagem cardíaca/RCP e técnicas para remoção e transporte de acidentados);
+12. Responsabilidades, qualificação, habilitação, capacitação e Anuência Formal (Autorização NR-10 Item 10.8).`;
+
+var CONTEUDO_NR10_RECICLAGEM_BIENAL =
+`1. Revisão das disposições da NR-10 (Item 10.8.8.2) e análise de riscos elétricos nas Estações de Bombeamento (EBs), subestações, quadros de comando e frentes do Ramal do Agreste;
+2. Riscos em instalações e serviços com eletricidade: mecanismos e efeitos do choque elétrico, arcos voltaicos, queimaduras e campos eletromagnéticos;
+3. Procedimentos de desenergização, bloqueio, etiquetagem (LOTO), aterramento temporário e constatação de ausência de tensão;
+4. Medidas de proteção coletiva (EPC) e uso, guarda e inspeção de EPIs dielétricos e vestimentas de proteção contra arco elétrico (ATPV);
+5. Rotinas seguras de intervenção, Análise Preliminar de Risco (APR), liberação de serviços e distâncias de segurança (Zonas de Risco e Controlada / LT 69 kV);
+6. Riscos adicionais (trabalho em altura, espaços confinados, umidade e descargas atmosféricas) e combate a princípios de incêndio em instalações elétricas;
+7. Condutas de emergência em acidentes de origem elétrica, desvencilhamento seguro, primeiros socorros (RCP) e transporte de acidentados;
+8. Responsabilidades operacionais, Direito de Recusa (NR-01 Item 1.4.3) e diretrizes de Anuência Formal (Autorização NR-10 Item 10.8.4).`;
+
+var BASE_LEGAL_NR10_OFICIAL = 'Portaria MTb nº 3.214/1978, Portaria MTE nº 598/2004, Portaria SEPRT nº 915/2019, Portaria MTE nº 1.419/2024 — NR-01 (Item 1.7.1.1) e NR-10 (Item 10.8 e Anexo III).';
+
+function ehCursoNr10(codigo, cat) {
+    const c = String(codigo || '').trim();
+    const nome = String(cat?.nome || '').toUpperCase();
+    return c === '10' || c === '6' || nome.includes('NR-10') || nome.includes('NR.10') || nome.includes('NR 10') || nome.includes('ELETRICIDADE');
 }
 
-// Chamado ao entrar na aba - só popula o select de frentes e os campos de
-// instrutor/responsável técnico na primeira vez (mesmo padrão de "só popula uma vez" já
-// usado em popularCatalogoDatalist/popularResponsavelSelect), preservando o que o
-// usuário já tiver editado se ele voltar pra essa aba depois de visitar outra.
+function obterEngEletricistaPadraoSalvo() {
+    try {
+        const raw = localStorage.getItem('cop_kits_eng_eletricista_padrao');
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') return parsed;
+        }
+    } catch (e) {}
+    return {
+        nome: '',
+        qualificacao: 'ENGENHEIRO ELETRICISTA',
+        registro: 'CREA: '
+    };
+}
+
+function salvarEngEletricistaPadraoKits() {
+    const nome = (document.getElementById('kitsForm_instrutorNome')?.value || '').trim();
+    const qualificacao = (document.getElementById('kitsForm_instrutorQualificacao')?.value || 'ENGENHEIRO ELETRICISTA').trim();
+    const registro = (document.getElementById('kitsForm_instrutorRegistro')?.value || '').trim();
+    try {
+        localStorage.setItem('cop_kits_eng_eletricista_padrao', JSON.stringify({ nome, qualificacao, registro }));
+        alert(`✅ Dados do Responsável Técnico (Eng. Eletricista) salvos como padrão para NR-10:\n\nNome: ${nome || '(em branco para preenchimento)'}\nQualificação: ${qualificacao}\nRegistro: ${registro}`);
+    } catch (e) {
+        alert('Não foi possível salvar no navegador: ' + e.message);
+    }
+}
+
+function aplicarPresetAssinatura1Kits(tipo) {
+    const nomeEl = document.getElementById('kitsForm_instrutorNome');
+    const qualEl = document.getElementById('kitsForm_instrutorQualificacao');
+    const regEl = document.getElementById('kitsForm_instrutorRegistro');
+    const lblEl = document.getElementById('kitsLabelAssinatura1');
+    if (!nomeEl || !qualEl || !regEl) return;
+
+    if (tipo === 'eng_eletricista') {
+        const eng = obterEngEletricistaPadraoSalvo();
+        nomeEl.value = eng.nome || '';
+        qualEl.value = eng.qualificacao || 'ENGENHEIRO ELETRICISTA';
+        regEl.value = eng.registro || 'CREA: ';
+        if (lblEl) lblEl.innerHTML = '⚡ 1ª Assinatura: Eng. Eletricista — Resp. Técnico (NR-10)';
+    } else {
+        nomeEl.value = CRONOGRAMA_DEFAULTS_SESSAO.instrutor_nome;
+        qualEl.value = CRONOGRAMA_DEFAULTS_SESSAO.instrutor_qualificacao;
+        regEl.value = CRONOGRAMA_DEFAULTS_SESSAO.instrutor_registro;
+        if (lblEl) lblEl.innerHTML = '👷 1ª Assinatura: Instrutor / Profissional Habilitado';
+    }
+}
+
+function restaurarRespTecnicoSstPadraoKits() {
+    const nomeEl = document.getElementById('kitsForm_respTecnicoNome');
+    const qualEl = document.getElementById('kitsForm_respTecnicoQualificacao');
+    const regEl = document.getElementById('kitsForm_respTecnicoRegistro');
+    if (nomeEl) nomeEl.value = CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_nome;
+    if (qualEl) qualEl.value = CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_qualificacao;
+    if (regEl) regEl.value = CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_registro;
+}
+
+function popularKitsResponsavelSelect() {
+    const frentes = todasFrentesAtivas();
+    const sel = document.getElementById('kitsResponsavelSelect');
+    if (sel && sel.options.length <= 1) {
+        frentes.forEach(r => {
+            const opt = document.createElement('option');
+            opt.value = r;
+            opt.textContent = r;
+            sel.appendChild(opt);
+        });
+    }
+    renderKitsEquipesMultiCheckboxes();
+}
+
+function renderKitsEquipesMultiCheckboxes() {
+    const wrap = document.getElementById('kitsEquipesMultiCheckboxList');
+    if (!wrap) return;
+    const frentes = todasFrentesAtivas();
+    if (frentes.length === 0) {
+        wrap.innerHTML = '<div class="db-list-empty" style="grid-column:1/-1;">Nenhuma equipe cadastrada em Efetivo.</div>';
+        return;
+    }
+    wrap.innerHTML = frentes.map(f => {
+        const qtdEquipe = equipeDaFrente(f).length;
+        const checked = kitsEquipesSelecionadas.has(f) ? 'checked' : '';
+        return `
+            <label style="display:flex; align-items:center; gap:6px; font-size:12px; padding:3px 4px; border-radius:4px; cursor:pointer; user-select:none; background:${checked ? 'rgba(37,99,235,0.08)' : 'transparent'};">
+                <input type="checkbox" value="${escapeHTML(f)}" ${checked} onchange="onKitsEquipeMultiCheckboxChange()" style="width:15px; height:15px; cursor:pointer; flex-shrink:0;">
+                <span style="font-weight:${checked ? '700' : '500'}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHTML(f)} (${qtdEquipe} colab.)">${escapeHTML(f)} <small style="color:var(--text-light);">(${qtdEquipe})</small></span>
+            </label>`;
+    }).join('');
+}
+
+function onKitsEquipeMultiCheckboxChange() {
+    const wrap = document.getElementById('kitsEquipesMultiCheckboxList');
+    if (!wrap) return;
+    kitsEquipesSelecionadas = new Set(
+        Array.from(wrap.querySelectorAll('input[type=checkbox]:checked')).map(el => el.value)
+    );
+    renderKitsEquipesMultiCheckboxes();
+    aplicarSelecaoMultiEquipesKits();
+}
+
+function marcarTodasEquipesKits(marcar) {
+    kitsEquipesSelecionadas = marcar ? new Set(todasFrentesAtivas()) : new Set();
+    renderKitsEquipesMultiCheckboxes();
+    aplicarSelecaoMultiEquipesKits();
+}
+
+// Avalia o status atual do colaborador no curso selecionado (Vencido, A Vencer, Em Dia ou Sem Registro)
+function avaliarStatusColabNoCursoKits(matricula, codigo) {
+    if (!codigo) {
+        return { status: 'indefinido', label: '', corBg: '#f1f5f9', corTexto: '#475569', dataUltimo: null, dataVencimento: null };
+    }
+    const hoje = new Date();
+    const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+    const limite60 = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 60);
+    const limite60Str = `${limite60.getFullYear()}-${String(limite60.getMonth() + 1).padStart(2, '0')}-${String(limite60.getDate()).padStart(2, '0')}`;
+
+    // Busca em allTreinamentosRealizados (mais recente) e fallback em allTreinamentosStatus
+    const realizados = (typeof allTreinamentosRealizados !== 'undefined' && Array.isArray(allTreinamentosRealizados))
+        ? allTreinamentosRealizados.filter(r => String(r.matricula) === String(matricula) && String(r.treinamento_cod) === String(codigo))
+        : [];
+    const statusRows = (typeof allTreinamentosStatus !== 'undefined' && Array.isArray(allTreinamentosStatus))
+        ? allTreinamentosStatus.filter(r => String(r.matricula) === String(matricula) && String(r.treinamento_cod) === String(codigo))
+        : [];
+
+    const todos = [...realizados, ...statusRows].sort((a, b) => (b.data_treinamento || '').localeCompare(a.data_treinamento || ''));
+    if (todos.length === 0) {
+        return { status: 'sem_registro', label: '⚪ Sem registro (Inicial)', corBg: '#f1f5f9', corTexto: '#475569', dataUltimo: null, dataVencimento: null };
+    }
+
+    const ultimo = todos[0];
+    const venc = ultimo.data_proxima_reciclagem || null;
+    if (!venc) {
+        return { status: 'em_dia', label: `🟢 Realizado em ${formatSimpleDate(ultimo.data_treinamento)}`, corBg: '#dcfce7', corTexto: '#166534', dataUltimo: ultimo.data_treinamento, dataVencimento: null };
+    }
+    if (venc < hojeStr) {
+        return { status: 'vencido', label: `🔴 Vencido em ${formatSimpleDate(venc)}`, corBg: '#fee2e2', corTexto: '#991b1b', dataUltimo: ultimo.data_treinamento, dataVencimento: venc };
+    }
+    if (venc <= limite60Str) {
+        return { status: 'a_vencer', label: `🟠 Vence em ${formatSimpleDate(venc)}`, corBg: '#fef3c7', corTexto: '#92400e', dataUltimo: ultimo.data_treinamento, dataVencimento: venc };
+    }
+    return { status: 'em_dia', label: `🟢 Em dia (até ${formatSimpleDate(venc)})`, corBg: '#dcfce7', corTexto: '#166534', dataUltimo: ultimo.data_treinamento, dataVencimento: venc };
+}
+
+function colabPassaNoFiltroStatusKits(matricula, codigo, filtro) {
+    if (!filtro || filtro === 'todos' || !codigo) return true;
+    const info = avaliarStatusColabNoCursoKits(matricula, codigo);
+    if (filtro === 'vencidos') return info.status === 'vencido';
+    if (filtro === 'vencidos_a_vencer') return info.status === 'vencido' || info.status === 'a_vencer';
+    if (filtro === 'sem_registro') return info.status === 'sem_registro';
+    if (filtro === 'pendentes') return info.status === 'vencido' || info.status === 'a_vencer' || info.status === 'sem_registro';
+    return true;
+}
+
+function aplicarSelecaoMultiEquipesKits() {
+    const filtro = document.getElementById('kitsFiltroStatusEquipe')?.value || 'todos';
+    const frentesMarcadas = Array.from(kitsEquipesSelecionadas);
+    kitsEquipe = new Map();
+
+    frentesMarcadas.forEach(frente => {
+        equipeDaFrente(frente).forEach(p => {
+            if (colabPassaNoFiltroStatusKits(p.matricula, kitsCodigoAtual, filtro)) {
+                kitsEquipe.set(p.matricula, {
+                    nome: p.nome,
+                    funcao: p.funcao,
+                    responsavel: frente,
+                    checked: true
+                });
+            }
+        });
+    });
+
+    atualizarCampoEncResponsavelKits();
+    renderKitsEquipeList();
+    renderKitsDocsIndividuaisList();
+}
+
+function atualizarCampoEncResponsavelKits() {
+    const encInput = document.getElementById('kitsForm_encResponsavel');
+    if (!encInput) return;
+    const equipesNaTurma = Array.from(new Set(
+        Array.from(kitsEquipe.values())
+            .filter(c => c.checked && c.responsavel)
+            .map(c => c.responsavel)
+    ));
+    if (equipesNaTurma.length > 0) {
+        encInput.value = equipesNaTurma.join(' / ');
+    } else if (kitsEquipesSelecionadas.size > 0) {
+        encInput.value = Array.from(kitsEquipesSelecionadas).join(' / ');
+    }
+}
+
+function carregarKitsAtalhoGlobalStatus(modo) {
+    if (!kitsCodigoAtual) {
+        // Se não tiver treinamento selecionado, assume NR-10 (código 10) por padrão e já preenche
+        const inputCod = document.getElementById('kitsCodigoInput');
+        if (inputCod) {
+            inputCod.value = '10 - NR.10 - SEGURANÇA EM INSTALAÇÕES E SERVIÇOS EM ELETRICIDADE';
+            onKitsCodigoChange();
+        }
+    }
+
+    const filtroSelect = document.getElementById('kitsFiltroStatusEquipe');
+    if (filtroSelect) filtroSelect.value = modo;
+
+    kitsEquipe = new Map();
+    const equipesEncontradas = new Set();
+
+    (allEfetivo || []).filter(colaboradorEstaAtivo).forEach(e => {
+        if (colabPassaNoFiltroStatusKits(e.id, kitsCodigoAtual, modo)) {
+            const resp = (e.responsavel || '').trim();
+            if (resp) equipesEncontradas.add(resp);
+            kitsEquipe.set(e.id, {
+                nome: e.nome,
+                funcao: e.funcao,
+                responsavel: resp || 'SEM EQUIPE',
+                checked: true
+            });
+        }
+    });
+
+    kitsEquipesSelecionadas = equipesEncontradas;
+    renderKitsEquipesMultiCheckboxes();
+    atualizarCampoEncResponsavelKits();
+    renderKitsEquipeList();
+    renderKitsDocsIndividuaisList();
+}
+
+function limparTurmaKits() {
+    kitsEquipe = new Map();
+    kitsEquipesSelecionadas = new Set();
+    renderKitsEquipesMultiCheckboxes();
+    const encInput = document.getElementById('kitsForm_encResponsavel');
+    if (encInput) encInput.value = '';
+    renderKitsEquipeList();
+    renderKitsDocsIndividuaisList();
+}
+
+function selecionarAtalhoCursoKits(codigo, modalidade) {
+    const cat = allTreinamentosCatalogo.find(c => c.id === String(codigo));
+    const inputCod = document.getElementById('kitsCodigoInput');
+    if (inputCod) {
+        inputCod.value = cat ? `${cat.id} - ${cat.nome}` : String(codigo);
+    }
+    const selTipo = document.getElementById('kitsTipoCapacitacaoSelect');
+    if (selTipo && modalidade) {
+        selTipo.value = modalidade;
+        kitsTipoCapacitacaoAtual = modalidade;
+    }
+    kitsCamposAutoPreenchidos.cargaHoraria = true;
+    onKitsCodigoChange();
+}
+
 function inicializarKitsTab() {
     popularKitsResponsavelSelect();
+    const hoje = new Date();
+    const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+    const dataInput = document.getElementById('kitsDataInput');
+    const dataInicioInput = document.getElementById('kitsDataInicioInput');
+    if (dataInput && !dataInput.value) {
+        dataInput.value = hojeIso;
+        kitsDataAtual = hojeIso;
+    }
+    if (dataInicioInput && !dataInicioInput.value) {
+        dataInicioInput.value = kitsDataAtual || hojeIso;
+        kitsDataInicioAtual = dataInicioInput.value;
+    }
+
     const instrutorEl = document.getElementById('kitsForm_instrutorNome');
     if (instrutorEl && !instrutorEl.dataset.inicializado) {
         instrutorEl.value = CRONOGRAMA_DEFAULTS_SESSAO.instrutor_nome;
@@ -6105,54 +6390,201 @@ function inicializarKitsTab() {
     renderKitsDocsIndividuaisList();
 }
 
-// Horário e Local padrão por treinamento (confirmado com o usuário): o Kit de Integração
-// (id "1") precisa somar 6h efetivas exigidas pela norma descontando 1h de almoço - 08h
-// às 12h (4h) + almoço (não conta) + 13h às 15h (2h) = 6h efetivas. Qualquer outro
-// treinamento do catálogo (os formais, lançados às terças/quintas nesse contrato - não é
-// o DDS diário, que é outro processo fora do sistema) usa 07h-09h. Só sobrescreve o campo
-// se ele ainda estiver no valor que preenchemos automaticamente (ver
-// kitsCamposAutoPreenchidos) - edição manual do usuário nunca é sobrescrita.
 function aplicarDefaultsSessaoKits(codigo) {
-    const defaults = codigo === '1' ? { horaInicio: '08:00', horaTermino: '15:00' } : { horaInicio: '07:00', horaTermino: '09:00' };
-    if (kitsCamposAutoPreenchidos.horaInicio) document.getElementById('kitsForm_horaInicio').value = defaults.horaInicio;
-    if (kitsCamposAutoPreenchidos.horaTermino) document.getElementById('kitsForm_horaTermino').value = defaults.horaTermino;
-    if (kitsCamposAutoPreenchidos.local) document.getElementById('kitsForm_local').value = 'Canteiro / Frente de Serviço';
+    const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+    const ehNr10 = ehCursoNr10(codigo, cat);
+    const tipo = document.getElementById('kitsTipoCapacitacaoSelect')?.value || 'inicial';
+    kitsTipoCapacitacaoAtual = tipo;
+
+    let defaults = { horaInicio: '07:00', horaTermino: '09:00', carga: cat?.carga_horaria || 2 };
+    if (codigo === '1') {
+        defaults = { horaInicio: '08:00', horaTermino: '15:00', carga: 6 };
+    } else if (ehNr10) {
+        if (tipo === 'reciclagem') {
+            defaults = { horaInicio: '08:00', horaTermino: '17:00', carga: 16 };
+        } else {
+            defaults = { horaInicio: '08:00', horaTermino: '17:00', carga: 40 };
+        }
+    } else if (cat && cat.carga_horaria >= 8) {
+        defaults = { horaInicio: '08:00', horaTermino: '17:00', carga: cat.carga_horaria };
+    }
+
+    if (kitsCamposAutoPreenchidos.horaInicio && document.getElementById('kitsForm_horaInicio')) {
+        document.getElementById('kitsForm_horaInicio').value = defaults.horaInicio;
+    }
+    if (kitsCamposAutoPreenchidos.horaTermino && document.getElementById('kitsForm_horaTermino')) {
+        document.getElementById('kitsForm_horaTermino').value = defaults.horaTermino;
+    }
+    if (kitsCamposAutoPreenchidos.local && document.getElementById('kitsForm_local')) {
+        document.getElementById('kitsForm_local').value = 'Canteiro / Frente de Serviço — PISF Ramal do Agreste';
+    }
+    if (kitsCamposAutoPreenchidos.cargaHoraria && document.getElementById('kitsCargaHorariaInput')) {
+        document.getElementById('kitsCargaHorariaInput').value = defaults.carga;
+    }
+
+    // Ajusta assinatura 1 (Eng. Eletricista para NR-10 vs Instrutor SST para demais)
+    if (ehNr10) {
+        aplicarPresetAssinatura1Kits('eng_eletricista');
+    } else if (codigo) {
+        const qualAtual = (document.getElementById('kitsForm_instrutorQualificacao')?.value || '').toUpperCase();
+        if (qualAtual.includes('ELETRICISTA')) {
+            aplicarPresetAssinatura1Kits('instrutor_sst');
+        }
+    }
+
+    // Ajusta checkboxes de composição do Kit automaticamente conforme o treinamento
+    const chkLista = document.getElementById('kitsDocCheck_lista');
+    const chkCert = document.getElementById('kitsDocCheck_certificado');
+    const chkAnuencia = document.getElementById('kitsDocCheck_anuencia');
+    const chkOs = document.getElementById('kitsDocCheck_os');
+    const chkDecl = document.getElementById('kitsDocCheck_declaracao');
+    const chkRecusa = document.getElementById('kitsDocCheck_recusa');
+
+    if (chkLista) chkLista.checked = true;
+    if (chkCert) chkCert.checked = true;
+    if (ehNr10) {
+        if (chkAnuencia) chkAnuencia.checked = true;
+        if (chkOs) chkOs.checked = false;
+        if (chkDecl) chkDecl.checked = false;
+        if (chkRecusa) chkRecusa.checked = false;
+    } else if (codigo === '1') {
+        if (chkAnuencia) chkAnuencia.checked = false;
+        if (chkOs) chkOs.checked = true;
+        if (chkDecl) chkDecl.checked = true;
+        if (chkRecusa) chkRecusa.checked = true;
+    } else if (codigo) {
+        if (chkAnuencia) chkAnuencia.checked = false;
+        if (chkOs) chkOs.checked = false;
+        if (chkDecl) chkDecl.checked = false;
+        if (chkRecusa) chkRecusa.checked = false;
+    }
+
+    // Atualiza conteúdo programático e base legal na aba Kits
+    if (ehNr10) {
+        carregarPresetConteudoKits(tipo === 'reciclagem' ? 'nr10_reciclagem' : 'nr10_inicial');
+    } else if (codigo === '1') {
+        carregarPresetConteudoKits('nr18_integracao');
+    } else if (codigo) {
+        carregarPresetConteudoKits('catalogo');
+    }
+}
+
+function carregarPresetConteudoKits(preset) {
+    const txtEl = document.getElementById('kitsForm_conteudoProgramatico');
+    const baseEl = document.getElementById('kitsForm_baseLegal');
+    const cat = allTreinamentosCatalogo.find(c => c.id === kitsCodigoAtual);
+    if (!txtEl || !baseEl) return;
+
+    if (preset === 'nr10_inicial') {
+        txtEl.value = CONTEUDO_NR10_INICIAL_ANEXO_III;
+        baseEl.value = BASE_LEGAL_NR10_OFICIAL;
+    } else if (preset === 'nr10_reciclagem') {
+        txtEl.value = CONTEUDO_NR10_RECICLAGEM_BIENAL;
+        baseEl.value = BASE_LEGAL_NR10_OFICIAL;
+    } else if (preset === 'nr18_integracao') {
+        txtEl.value = CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01;
+        baseEl.value = 'Portaria MTE nº 1.419/2024, NR-01 Item 1.7.1.1, Lei nº 14.457/2022 e NR-18 Anexo I (Capacitação Básica em Canteiro de Obras).';
+    } else {
+        txtEl.value = cat?.conteudo_programatico || '';
+        baseEl.value = cat?.certificado_base_legal || 'Portaria MTE nº 1.419/2024 — NR-01 (Item 1.7.1.1 — Capacitação em Segurança e Saúde no Trabalho).';
+    }
 }
 
 function kitsMarcarCampoEditado(campo) {
     kitsCamposAutoPreenchidos[campo] = false;
 }
 
-function onKitsCodigoChange() {
-    const codigo = extrairCodigoTreinamento(document.getElementById('kitsCodigoInput').value);
-    const infoEl = document.getElementById('kitsInfo');
-    kitsCodigoAtual = codigo;
-    if (!codigo) { infoEl.style.display = 'none'; return; }
+function onKitsTipoCapacitacaoChange() {
+    kitsTipoCapacitacaoAtual = document.getElementById('kitsTipoCapacitacaoSelect')?.value || 'inicial';
+    kitsCamposAutoPreenchidos.cargaHoraria = true;
+    aplicarDefaultsSessaoKits(kitsCodigoAtual);
+    renderKitsInfoResumo();
+    renderKitsDocsIndividuaisList();
+}
 
-    const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+function renderKitsInfoResumo() {
+    const infoEl = document.getElementById('kitsInfo');
+    if (!infoEl) return;
+    if (!kitsCodigoAtual) { infoEl.style.display = 'none'; return; }
+    const cat = allTreinamentosCatalogo.find(c => c.id === kitsCodigoAtual);
     infoEl.style.display = 'block';
     if (!cat) {
         infoEl.style.color = 'var(--danger)';
         infoEl.innerHTML = '❌ Código não encontrado no catálogo de treinamentos.';
         return;
     }
+    const cargaSessao = document.getElementById('kitsCargaHorariaInput')?.value || cat.carga_horaria || 0;
+    const tipo = document.getElementById('kitsTipoCapacitacaoSelect')?.value || 'inicial';
+    const badgeTipo = tipo === 'reciclagem'
+        ? '<span style="background:#fef3c7; color:#b45309; padding:2px 6px; border-radius:4px; font-weight:700;">🔄 Reciclagem Bienal</span>'
+        : tipo === 'complementar_sep'
+        ? '<span style="background:#ede9fe; color:#6d28d9; padding:2px 6px; border-radius:4px; font-weight:700;">⚡ Complementar SEP</span>'
+        : '<span style="background:#dbeafe; color:#1d4ed8; padding:2px 6px; border-radius:4px; font-weight:700;">🎓 Capacitação Inicial</span>';
+
     infoEl.style.color = 'var(--text)';
-    infoEl.innerHTML = `<strong>${escapeHTML(cat.nome)}</strong> — Carga horária: ${cat.carga_horaria || 0}h — ${cat.meses_validade ? `Validade: ${cat.meses_validade} meses` : 'Sem validade (avulso)'}`;
-    aplicarDefaultsSessaoKits(codigo);
+    infoEl.innerHTML = `${badgeTipo} <strong>${escapeHTML(cat.nome)}</strong> — Carga desta sessão: <strong>${escapeHTML(String(cargaSessao))}h</strong> — ${cat.meses_validade ? `Validade: <strong>${cat.meses_validade} meses</strong>` : 'Sem validade periódica'}`;
+}
+
+function onKitsCodigoChange() {
+    const codigo = extrairCodigoTreinamento(document.getElementById('kitsCodigoInput').value);
+    kitsCodigoAtual = codigo;
+    if (!codigo) {
+        const infoEl = document.getElementById('kitsInfo');
+        if (infoEl) infoEl.style.display = 'none';
+        return;
+    }
+    const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+    if (cat) {
+        // Se for um treinamento sem validade periódica (palestra/DDSMA de 2h), seleciona 'eventual'
+        const selTipo = document.getElementById('kitsTipoCapacitacaoSelect');
+        if (selTipo && !cat.meses_validade && cat.carga_horaria <= 2 && codigo !== '10' && codigo !== '6') {
+            selTipo.value = 'eventual';
+        }
+        kitsCamposAutoPreenchidos.cargaHoraria = true;
+        aplicarDefaultsSessaoKits(codigo);
+    }
+    renderKitsInfoResumo();
+    renderKitsEquipeList();
+    renderKitsDocsIndividuaisList();
+}
+
+function atualizarBotaoListaDiariaPeriodoKits() {
+    const btn = document.getElementById('btnKitsListaDiariaPeriodo');
+    if (!btn) return;
+    if (kitsDataInicioAtual && kitsDataAtual && kitsDataInicioAtual < kitsDataAtual) {
+        btn.style.display = 'inline-block';
+    } else {
+        btn.style.display = 'none';
+    }
+}
+
+function onKitsDataInicioChange() {
+    kitsDataInicioAtual = document.getElementById('kitsDataInicioInput')?.value || '';
+    const dataFimEl = document.getElementById('kitsDataInput');
+    if (dataFimEl && (!dataFimEl.value || dataFimEl.value < kitsDataInicioAtual)) {
+        dataFimEl.value = kitsDataInicioAtual;
+        kitsDataAtual = kitsDataInicioAtual;
+    }
+    atualizarBotaoListaDiariaPeriodoKits();
 }
 
 function onKitsDataChange() {
-    kitsDataAtual = document.getElementById('kitsDataInput').value;
+    kitsDataAtual = document.getElementById('kitsDataInput')?.value || '';
+    const dataInicioEl = document.getElementById('kitsDataInicioInput');
+    if (dataInicioEl && (!dataInicioEl.value || dataInicioEl.value > kitsDataAtual)) {
+        dataInicioEl.value = kitsDataAtual;
+        kitsDataInicioAtual = kitsDataAtual;
+    }
+    atualizarBotaoListaDiariaPeriodoKits();
 }
 
 function carregarKitsEquipeResponsavel() {
-    const responsavel = document.getElementById('kitsResponsavelSelect').value;
-    kitsEquipe = new Map();
+    const responsavel = document.getElementById('kitsResponsavelSelect')?.value;
     if (responsavel) {
-        equipeDaFrente(responsavel).forEach(p => kitsEquipe.set(p.matricula, { nome: p.nome, funcao: p.funcao, checked: true }));
+        kitsEquipesSelecionadas.add(responsavel);
+        renderKitsEquipesMultiCheckboxes();
+        aplicarSelecaoMultiEquipesKits();
     }
-    renderKitsEquipeList();
-    renderKitsDocsIndividuaisList();
 }
 
 function filterKitsAddColab(query) {
@@ -6161,31 +6593,37 @@ function filterKitsAddColab(query) {
     if (q.length < 2) { container.innerHTML = ''; return; }
     const matches = allEfetivo.filter(e =>
         !kitsEquipe.has(e.id) &&
-        ((e.nome && e.nome.toLowerCase().includes(q)) || (e.id && e.id.toLowerCase().includes(q)))
+        ((e.nome && e.nome.toLowerCase().includes(q)) || (e.id && e.id.toLowerCase().includes(q)) || (e.funcao && e.funcao.toLowerCase().includes(q)))
     ).slice(0, 15);
     if (matches.length === 0) {
         container.innerHTML = '<div class="db-list-empty">Nenhum colaborador encontrado</div>';
         return;
     }
-    container.innerHTML = matches.map(e => `
+    container.innerHTML = matches.map(e => {
+        const st = avaliarStatusColabNoCursoKits(e.id, kitsCodigoAtual);
+        const stBadge = st.label ? ` <span style="font-size:10.5px; padding:1px 6px; border-radius:4px; background:${st.corBg}; color:${st.corTexto}; font-weight:700;">${escapeHTML(st.label)}</span>` : '';
+        return `
         <div class="db-list-item" style="cursor:pointer;" onclick="adicionarKitsColabAvulso('${escapeHTML(e.id)}')">
-            <div class="db-list-item-title">${escapeHTML(e.nome || '')}</div>
-            <div class="db-list-item-sub">${escapeHTML(e.funcao || '')} — Matrícula ${escapeHTML(e.id)}${colaboradorEstaAtivo(e) ? '' : ' — (Desligado)'}</div>
-        </div>`).join('');
+            <div class="db-list-item-title">${escapeHTML(e.nome || '')}${stBadge}</div>
+            <div class="db-list-item-sub">${escapeHTML(e.funcao || '')} — Matrícula ${escapeHTML(e.id)} — Equipe: ${escapeHTML(e.responsavel || '—')}${colaboradorEstaAtivo(e) ? '' : ' — (Desligado)'}</div>
+        </div>`;
+    }).join('');
 }
 
 function adicionarKitsColabAvulso(matricula) {
     const e = allEfetivo.find(x => x.id === matricula);
     if (!e) return;
-    kitsEquipe.set(matricula, { nome: e.nome, funcao: e.funcao, checked: true });
+    kitsEquipe.set(matricula, { nome: e.nome, funcao: e.funcao, responsavel: e.responsavel || '', checked: true });
     document.getElementById('kitsAddColab').value = '';
     document.getElementById('kitsAddColabResults').innerHTML = '';
+    atualizarCampoEncResponsavelKits();
     renderKitsEquipeList();
     renderKitsDocsIndividuaisList();
 }
 
 function removerKitsColabLista(matricula) {
     kitsEquipe.delete(matricula);
+    atualizarCampoEncResponsavelKits();
     renderKitsEquipeList();
     renderKitsDocsIndividuaisList();
 }
@@ -6193,64 +6631,111 @@ function removerKitsColabLista(matricula) {
 function toggleKitsColabPresenca(matricula, checked) {
     const c = kitsEquipe.get(matricula);
     if (c) c.checked = checked;
+    atualizarCampoEncResponsavelKits();
     renderKitsDocsIndividuaisList();
 }
 
 function renderKitsEquipeList() {
     const container = document.getElementById('kitsEquipeList');
     const contagemEl = document.getElementById('kitsEquipeContagem');
+    const resumoEquipesEl = document.getElementById('kitsResumoEquipesTurma');
     if (!container) return;
-    if (contagemEl) contagemEl.textContent = Array.from(kitsEquipe.values()).filter(c => c.checked).length;
+    const ativos = Array.from(kitsEquipe.values()).filter(c => c.checked);
+    if (contagemEl) contagemEl.textContent = ativos.length;
+
+    if (resumoEquipesEl) {
+        const eqs = Array.from(new Set(ativos.map(c => c.responsavel).filter(Boolean)));
+        resumoEquipesEl.innerHTML = eqs.length > 0
+            ? `Equipes reunidas nesta turma (${eqs.length}): <strong>${escapeHTML(eqs.join(' + '))}</strong>`
+            : '';
+    }
+
     if (kitsEquipe.size === 0) {
-        container.innerHTML = '<div class="db-list-empty">Nenhum colaborador na equipe ainda.</div>';
+        container.innerHTML = '<div class="db-list-empty">Nenhum colaborador na turma ainda — marque 1 ou mais equipes acima ou clique em "🔴 Juntar Todos os Vencidos".</div>';
         return;
     }
     const entries = Array.from(kitsEquipe.entries()).sort((a, b) => (a[1].nome || '').localeCompare(b[1].nome || ''));
-    container.innerHTML = entries.map(([matricula, c]) => `
-        <div class="db-list-item" style="display:flex; align-items:center; gap:10px;">
+    container.innerHTML = entries.map(([matricula, c]) => {
+        const colabEf = allEfetivo.find(x => x.id === matricula);
+        const respNome = c.responsavel || colabEf?.responsavel || '';
+        const st = avaliarStatusColabNoCursoKits(matricula, kitsCodigoAtual);
+        const badgeSt = st.label
+            ? `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:${st.corBg}; color:${st.corTexto}; font-weight:700; white-space:nowrap;">${escapeHTML(st.label)}</span>`
+            : '';
+        const badgeEq = respNome
+            ? `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:#e0e7ff; color:#3730a3; font-weight:700; white-space:nowrap;">👥 Equipe: ${escapeHTML(respNome)}</span>`
+            : '';
+        return `
+        <div class="db-list-item" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <input type="checkbox" ${c.checked ? 'checked' : ''} onchange="toggleKitsColabPresenca('${escapeHTML(matricula)}', this.checked)" style="width:17px; height:17px; flex-shrink:0; cursor:pointer;">
-            <div style="flex:1;">
-                <div class="db-list-item-title">${escapeHTML(c.nome || '')}</div>
+            <div style="flex:1; min-width:200px;">
+                <div class="db-list-item-title" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                    <span>${escapeHTML(c.nome || '')}</span>
+                    ${badgeEq}
+                    ${badgeSt}
+                </div>
                 <div class="db-list-item-sub">${escapeHTML(c.funcao || '')} — Matrícula ${escapeHTML(matricula)}</div>
             </div>
-            <button onclick="removerKitsColabLista('${escapeHTML(matricula)}')" title="Remover" style="background:none; border:none; color: var(--danger); cursor:pointer; font-size: 16px; padding: 4px;">✕</button>
-        </div>`).join('');
+            <button onclick="removerKitsColabLista('${escapeHTML(matricula)}')" title="Remover da turma" style="background:none; border:none; color: var(--danger); cursor:pointer; font-size: 16px; padding: 4px;">✕</button>
+        </div>`;
+    }).join('');
 }
 
-// Mesmo formato de contexto que os 5 geradores esperam (ver contextoRegistroPadrao) - só
-// a fonte dos dados muda (equipe/campos/código/data desta aba, não os da aba Registro).
 function contextoKits() {
+    const campos = lerCamposSessaoForm('kitsForm_');
     return {
-        colaboradores: Array.from(kitsEquipe.entries()).filter(([, c]) => c.checked).map(([matricula, c]) => ({ matricula, nome: c.nome, funcao: c.funcao })),
+        colaboradores: Array.from(kitsEquipe.entries()).filter(([, c]) => c.checked).map(([matricula, c]) => ({ matricula, nome: c.nome, funcao: c.funcao, responsavel: c.responsavel })),
         codigo: kitsCodigoAtual,
-        data: kitsDataAtual,
-        campos: lerCamposSessaoForm('kitsForm_')
+        data: kitsDataAtual || kitsDataInicioAtual || new Date().toISOString().slice(0, 10),
+        campos
+    };
+}
+
+function obterDocumentosMarcadosNoKit() {
+    const chkLista = document.getElementById('kitsDocCheck_lista');
+    const chkCert = document.getElementById('kitsDocCheck_certificado');
+    const chkAnuencia = document.getElementById('kitsDocCheck_anuencia');
+    const chkOs = document.getElementById('kitsDocCheck_os');
+    const chkDecl = document.getElementById('kitsDocCheck_declaracao');
+    const chkRecusa = document.getElementById('kitsDocCheck_recusa');
+    return {
+        lista: chkLista ? chkLista.checked : true,
+        certificado: chkCert ? chkCert.checked : true,
+        anuencia: chkAnuencia ? chkAnuencia.checked : false,
+        os: chkOs ? chkOs.checked : false,
+        declaracao: chkDecl ? chkDecl.checked : false,
+        recusa: chkRecusa ? chkRecusa.checked : false
     };
 }
 
 function renderKitsDocsIndividuaisList() {
     const container = document.getElementById('kitsDocsIndividuaisLista');
     if (!container) return;
-    const colaboradores = Array.from(kitsEquipe.entries()).filter(([, c]) => c.checked).map(([matricula, c]) => ({ matricula, nome: c.nome, funcao: c.funcao }));
+    const colaboradores = Array.from(kitsEquipe.entries()).filter(([, c]) => c.checked).map(([matricula, c]) => ({ matricula, nome: c.nome, funcao: c.funcao, responsavel: c.responsavel }));
     if (colaboradores.length === 0) {
-        container.innerHTML = '<div class="db-list-empty">Nenhum colaborador na equipe ainda - carregue pelo Responsável ou adicione avulso acima.</div>';
+        container.innerHTML = '<div class="db-list-empty">Nenhum colaborador selecionado na turma ainda — marque as equipes acima ou clique em "🔴 Juntar Todos os Vencidos".</div>';
         return;
     }
+    const cat = allTreinamentosCatalogo.find(c => c.id === kitsCodigoAtual);
+    const ehNr10 = ehCursoNr10(kitsCodigoAtual, cat);
+
     container.innerHTML = colaboradores.map(r => {
-        // Mesmo aviso que sai impresso na própria OS (ver textoAvisoCargoOs) - mostrado
-        // aqui também, ANTES de gerar o documento.
         const avaliacao = avaliarCorrespondenciaCargoOs(r.matricula, r.funcao);
         const avisoOsIcon = avaliacao.semCorrespondencia
             ? ` <span title="${escapeHTML(textoAvisoCargoOs({ ghe: avaliacao.ghe, funcao: avaliacao.funcao, ambiguo: avaliacao.ambiguo }))}" style="cursor:help;">⚠️</span>`
             : '';
+        const eqTag = r.responsavel ? ` <span style="font-size:10.5px; color:#3730a3; background:#e0e7ff; padding:1px 6px; border-radius:4px; font-weight:600;">${escapeHTML(r.responsavel)}</span>` : '';
         return `
-        <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; flex-wrap:wrap;">
-            <div style="flex:1; min-width:180px; font-size:12.5px;">${escapeHTML(r.nome)} <span style="color:var(--text-light);">— ${escapeHTML(r.funcao || '')}</span></div>
-            <button class="db-apply-btn" style="padding:5px 10px; font-size:11.5px;" title="OS + Lista de Presença + Certificado + Declaração de Integração + Termo de Recusa" onclick="gerarKitCompletoIntegracao('${escapeHTML(r.matricula)}', contextoKits())">🖨️ Kit Completo</button>
-            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarOrdemServicoIndividual('${escapeHTML(r.matricula)}', contextoKits())">🖨️ OS</button>${avisoOsIcon}
-            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="abrirModalEmissaoCertificado('${escapeHTML(r.matricula)}', contextoKits())">🖨️ Certificado</button>
-            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarDeclaracaoIntegracaoIndividual('${escapeHTML(r.matricula)}', contextoKits())">🖨️ Declaração</button>
-            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarTermoRecusaIndividual('${escapeHTML(r.matricula)}', contextoKits())">🖨️ Termo de Recusa</button>
+        <div style="display:flex; align-items:center; gap:6px; padding:7px 10px; border:1px solid var(--border); border-radius:8px; flex-wrap:wrap; background:var(--card);">
+            <div style="flex:1; min-width:200px; font-size:12.5px;">
+                <strong>${escapeHTML(r.nome)}</strong> <span style="color:var(--text-light);">— ${escapeHTML(r.funcao || '')}</span>${eqTag}
+            </div>
+            <button class="db-apply-btn" style="padding:5px 10px; font-size:11.5px;" title="Gera o Kit com todos os documentos marcados acima para este colaborador" onclick="gerarKitCompletoIntegracao('${escapeHTML(r.matricula)}', contextoKits())">🖨️ Kit do Colaborador</button>
+            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px; font-weight:600; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;" onclick="abrirModalEmissaoCertificado('${escapeHTML(r.matricula)}', contextoKits())">🎓 Certificado</button>
+            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px; font-weight:${ehNr10 ? '700' : '500'}; color:#b45309; border-color:#fcd34d; background:#fffbeb;" onclick="gerarAnuenciaFormalIndividual('${escapeHTML(r.matricula)}', contextoKits())">⚡ Anuência NR-10</button>
+            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarOrdemServicoIndividual('${escapeHTML(r.matricula)}', contextoKits())">📄 OS</button>${avisoOsIcon}
+            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarDeclaracaoIntegracaoIndividual('${escapeHTML(r.matricula)}', contextoKits())">📝 Declaração</button>
+            <button class="db-clear-btn" style="padding:5px 10px; font-size:11.5px;" onclick="gerarTermoRecusaIndividual('${escapeHTML(r.matricula)}', contextoKits())">🛑 Termo de Recusa</button>
         </div>`;
     }).join('');
 }
@@ -6452,18 +6937,59 @@ function marcarTodosLoteCronograma(marcar) {
 // mesmo conjunto de campos, dois lugares na tela (não dá pra ter os dois com o mesmo id
 // no DOM ao mesmo tempo), uma lógica só de leitura.
 function lerCamposSessaoForm(prefix = 'registroForm_') {
+    const isKits = prefix === 'kitsForm_';
     return {
-        numero_turma: document.getElementById(`${prefix}turma`).value.trim() || null,
-        hora_inicio: document.getElementById(`${prefix}horaInicio`).value || null,
-        hora_termino: document.getElementById(`${prefix}horaTermino`).value || null,
-        local_realizacao: document.getElementById(`${prefix}local`).value.trim() || null,
-        encarregado_responsavel: document.getElementById(`${prefix}encResponsavel`).value.trim() || null,
-        instrutor_nome: document.getElementById(`${prefix}instrutorNome`).value.trim() || null,
-        instrutor_qualificacao: document.getElementById(`${prefix}instrutorQualificacao`).value.trim() || null,
-        instrutor_registro: document.getElementById(`${prefix}instrutorRegistro`).value.trim() || null,
-        responsavel_tecnico_nome: document.getElementById(`${prefix}respTecnicoNome`).value.trim() || null,
-        responsavel_tecnico_qualificacao: document.getElementById(`${prefix}respTecnicoQualificacao`).value.trim() || null,
-        responsavel_tecnico_registro: document.getElementById(`${prefix}respTecnicoRegistro`).value.trim() || null
+        numero_turma: document.getElementById(`${prefix}turma`)?.value.trim() || null,
+        hora_inicio: document.getElementById(`${prefix}horaInicio`)?.value || null,
+        hora_termino: document.getElementById(`${prefix}horaTermino`)?.value || null,
+        local_realizacao: document.getElementById(`${prefix}local`)?.value.trim() || null,
+        encarregado_responsavel: document.getElementById(`${prefix}encResponsavel`)?.value.trim() || null,
+        instrutor_nome: document.getElementById(`${prefix}instrutorNome`)?.value.trim() || null,
+        instrutor_qualificacao: document.getElementById(`${prefix}instrutorQualificacao`)?.value.trim() || null,
+        instrutor_registro: document.getElementById(`${prefix}instrutorRegistro`)?.value.trim() || null,
+        responsavel_tecnico_nome: document.getElementById(`${prefix}respTecnicoNome`)?.value.trim() || null,
+        responsavel_tecnico_qualificacao: document.getElementById(`${prefix}respTecnicoQualificacao`)?.value.trim() || null,
+        responsavel_tecnico_registro: document.getElementById(`${prefix}respTecnicoRegistro`)?.value.trim() || null,
+        data_inicio: isKits ? (document.getElementById('kitsDataInicioInput')?.value || null) : null,
+        tipo_capacitacao: isKits ? (document.getElementById('kitsTipoCapacitacaoSelect')?.value || null) : null,
+        carga_horaria_sessao: isKits ? (parseFloat(document.getElementById('kitsCargaHorariaInput')?.value) || null) : null,
+        conteudo_programatico_custom: isKits ? (document.getElementById('kitsForm_conteudoProgramatico')?.value || null) : null,
+        base_legal_custom: isKits ? (document.getElementById('kitsForm_baseLegal')?.value.trim() || null) : null
+    };
+}
+
+function obterTituloECargaSessao(cat, codigo, campos = {}) {
+    let tituloBase = cat ? cat.nome : (codigo || 'Treinamento de Segurança do Trabalho');
+    const ehNr10 = ehCursoNr10(codigo, cat);
+    const tipo = campos?.tipo_capacitacao || '';
+    if (tipo === 'reciclagem' && !/reciclagem/i.test(tituloBase)) {
+        tituloBase = `${tituloBase} — RECICLAGEM BIENAL`;
+    } else if (tipo === 'inicial' && ehNr10 && !/inicial|b[aá]sico/i.test(tituloBase)) {
+        tituloBase = `${tituloBase} — CURSO BÁSICO (INICIAL)`;
+    } else if (tipo === 'complementar_sep' && !/sep|pot[eê]ncia/i.test(tituloBase)) {
+        tituloBase = `${tituloBase} — COMPLEMENTAR SEP`;
+    }
+    const cargaHoraria = campos?.carga_horaria_sessao || (cat && cat.carga_horaria ? cat.carga_horaria : '');
+    return { titulo: tituloBase, cargaHoraria };
+}
+
+function formatarPeriodoTreinamento(dataFim, campos = {}) {
+    const dFim = formatSimpleDate(dataFim);
+    const dIniRaw = campos?.data_inicio || '';
+    if (dIniRaw && dataFim && dIniRaw !== dataFim && dIniRaw < dataFim) {
+        const dIni = formatSimpleDate(dIniRaw);
+        return {
+            curto: `${dIni} a ${dFim}`,
+            extenso: `no período de <b>${dIni} a ${dFim}</b>`,
+            emissao: dFim,
+            multiplosDias: true
+        };
+    }
+    return {
+        curto: dFim,
+        extenso: `em <b>${dFim}</b>`,
+        emissao: dFim,
+        multiplosDias: false
     };
 }
 
@@ -6541,8 +7067,6 @@ var REGISTRO_TREINAMENTO_CSS = `
 // quanto pela impressão em lote do Cronograma (gerarListasCronogramaMes), que concatena
 // uma folha por sessão num único documento.
 function construirFolhaRegistroTreinamento(sessaoRows, campos, codigo, cat, data) {
-    // Grade fixa de 22 linhas (linhas 01 a 22) com altura mínima de 28px por linha
-    // Preenche a folha harmoniosamente até a base, eliminando o vazio inferior (NR-01).
     const REGISTRO_MIN_LINHAS = 22;
     const REGISTRO_ALTURA_LINHA = '28px';
     const linhasReais = sessaoRows.map((r, i) => `<tr class="tr-registro" style="height:${REGISTRO_ALTURA_LINHA};">
@@ -6564,53 +7088,63 @@ function construirFolhaRegistroTreinamento(sessaoRows, campos, codigo, cat, data
     }
     const linhasTabela = linhasReais.concat(linhasVazias).join('');
 
+    const { titulo: tituloTreinamento, cargaHoraria } = obterTituloECargaSessao(cat, codigo, campos);
+    const periodoInfo = formatarPeriodoTreinamento(data, campos);
+    const conteudoProg = (campos?.conteudo_programatico_custom && campos.conteudo_programatico_custom.trim())
+        ? campos.conteudo_programatico_custom.trim()
+        : (cat?.conteudo_programatico || '');
+    const ehNr10 = ehCursoNr10(codigo, cat);
+    const labelAssinatura1 = ehNr10 ? 'Resp. Técnico Elétrica / Instrutor (NR-10):' : 'Instrutor / Profissional Habilitado:';
+    const qualReg1 = [campos.instrutor_qualificacao, campos.instrutor_registro].filter(Boolean).join(' — ');
+    const qualReg2 = [campos.responsavel_tecnico_qualificacao, campos.responsavel_tecnico_registro].filter(Boolean).join(' — ');
+
     return `
     <div class="folha-registro print-registro-portrait">
         <div class="cabecalho">
             <div class="logo"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-width:100%; max-height:36px; object-fit:contain;"></div>
-            <div class="titulo">REGISTRO DE TREINAMENTO</div>
+            <div class="titulo">REGISTRO DE TREINAMENTO (LISTA DE PRESENÇA)</div>
             <div class="codigo">${escapeHTML(codigoRevisaoDocumento('registro_treinamento') || 'FOR.001')}</div>
         </div>
         <div class="linha">
-            <div class="campo" style="flex:0 0 100px;"><b>Código:</b> ${escapeHTML(codigo)}</div>
-            <div class="campo" style="flex:3;"><b>Título do Treinamento:</b> ${escapeHTML(cat ? cat.nome : '')}</div>
-            <div class="campo" style="flex:0 0 140px;"><b>Nº Turma:</b> ${escapeHTML(campos.numero_turma || '')}</div>
+            <div class="campo" style="flex:0 0 90px;"><b>Código:</b> ${escapeHTML(codigo)}</div>
+            <div class="campo" style="flex:3;"><b>Título do Treinamento:</b> ${escapeHTML(tituloTreinamento)}</div>
+            <div class="campo" style="flex:0 0 130px;"><b>Nº Turma:</b> ${escapeHTML(campos.numero_turma || '')}</div>
         </div>
         <div class="linha">
             <div class="campo" style="flex:2;"><b>EMPRESA:</b> COP - Consórcio Operador Ramal do Agreste</div>
             <div class="campo"><b>Início:</b> ${escapeHTML(campos.hora_inicio || '')}${campos.hora_inicio ? 'h' : ''}</div>
-            <div class="campo"><b>Data:</b> ${formatSimpleDate(data)}</div>
+            <div class="campo" style="flex:1.3;"><b>${periodoInfo.multiplosDias ? 'Período:' : 'Data:'}</b> ${periodoInfo.curto}</div>
         </div>
         <div class="linha">
             <div class="campo" style="flex:2;"><b>OBRA:</b> Ramal do Agreste</div>
             <div class="campo"><b>Término:</b> ${escapeHTML(campos.hora_termino || '')}${campos.hora_termino ? 'h' : ''}</div>
-            <div class="campo"><b>Carga Horária:</b> ${cat && cat.carga_horaria ? cat.carga_horaria + ' horas' : ''}</div>
+            <div class="campo" style="flex:1.3;"><b>Carga Horária:</b> ${cargaHoraria ? cargaHoraria + ' horas' : ''}</div>
         </div>
         <div class="linha">
             <div class="campo" style="flex:2;"><b>Objetivo:</b><div class="bloco-texto">${escapeHTML(cat?.objetivo || '')}</div></div>
-            <div class="campo"><b>Método de Avaliação da Eficácia:</b><div class="bloco-texto">${escapeHTML(cat?.metodo_avaliacao || 'Entendimento Participante')}</div></div>
+            <div class="campo"><b>Método de Avaliação da Eficácia:</b><div class="bloco-texto">${escapeHTML(cat?.metodo_avaliacao || 'Entendimento Participante / Aproveitamento Satisfatório')}</div></div>
         </div>
         <div class="linha">
-            <div class="campo"><b>Conteúdo Programático:</b><div class="bloco-texto">${escapeHTML(cat?.conteudo_programatico || '')}</div></div>
+            <div class="campo"><b>Conteúdo Programático:</b><div class="bloco-texto">${escapeHTML(conteudoProg)}</div></div>
         </div>
         <div class="linha">
             <div class="campo" style="flex:2;"><b>Local de Realização do Treinamento:</b> ${escapeHTML(campos.local_realizacao || '')}</div>
-            <div class="campo"><b>Enc. / Responsável:</b> ${escapeHTML(campos.encarregado_responsavel || '')}</div>
+            <div class="campo"><b>Equipe(s) / Enc. Responsável:</b> ${escapeHTML(campos.encarregado_responsavel || '')}</div>
         </div>
         <div class="linha">
-            <div class="campo" style="flex:2;"><b>Instrutor do Treinamento:</b> ${escapeHTML(campos.instrutor_nome || '')}</div>
-            <div class="campo"><b>Qualificação:</b> ${escapeHTML(campos.instrutor_qualificacao || '')}</div>
-            <div class="campo"><b>Assinatura:</b></div>
+            <div class="campo" style="flex:1.8;"><b>${labelAssinatura1}</b> ${escapeHTML(campos.instrutor_nome || '')}</div>
+            <div class="campo" style="flex:1.4;"><b>Qualificação / Registro:</b> ${escapeHTML(qualReg1)}</div>
+            <div class="campo" style="flex:1;"><b>Assinatura:</b></div>
         </div>
         <div class="linha">
-            <div class="campo" style="flex:2;"><b>Responsável Técnico:</b> ${escapeHTML(campos.responsavel_tecnico_nome || '')}</div>
-            <div class="campo"><b>Qualificação:</b> ${escapeHTML(campos.responsavel_tecnico_qualificacao || '')}</div>
-            <div class="campo"><b>Assinatura:</b></div>
+            <div class="campo" style="flex:1.8;"><b>Resp. Técnico SST (Eng. Seg. Trabalho):</b> ${escapeHTML(campos.responsavel_tecnico_nome || '')}</div>
+            <div class="campo" style="flex:1.4;"><b>Qualificação / Registro:</b> ${escapeHTML(qualReg2)}</div>
+            <div class="campo" style="flex:1;"><b>Assinatura:</b></div>
         </div>
-        <div class="linha campo-titulo"><div class="campo">TODOS OS CAMPOS ACIMA SÃO DE PREENCHIMENTO OBRIGATÓRIO</div></div>
+        <div class="linha campo-titulo"><div class="campo">TODOS OS CAMPOS ACIMA SÃO DE PREENCHIMENTO OBRIGATÓRIO — ASSINATURA DOS COLABORADORES TREINADOS ABAIXO</div></div>
         <table class="tabela-registro">
             <thead>
-                <tr><th style="width:32px;">QTD</th><th style="width:65px;">MATRÍCULA</th><th>NOME COMPLETO (LEGÍVEL)</th><th style="width:140px;">FUNÇÃO</th><th style="width:150px;">ASSINATURA</th></tr>
+                <tr><th style="width:32px;">QTD</th><th style="width:65px;">MATRÍCULA</th><th>NOME COMPLETO (LEGÍVEL)</th><th style="width:150px;">FUNÇÃO</th><th style="width:165px;">ASSINATURA DO COLABORADOR</th></tr>
             </thead>
             <tbody>
                 ${linhasTabela || '<tr><td colspan="5" style="text-align:center; color:#888;">Nenhum colaborador nesta sessão</td></tr>'}
@@ -7291,9 +7825,8 @@ var CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01 =
 
 function construirFolhaCertificado(r, colab, cat, codigo, campos, data, customParams = {}) {
     const codigoDoc = codigoRevisaoDocumento('certificado_individual') || 'CERT.SMS.001';
-    
-    // Aproveitamento Satisfatório (NR-01 Item 1.7.1.1 Alínea "f")
-    // Preenchimento dinâmico: exibe 'Apto', nota ou percentual informado (evita linha vazia)
+    const ehNr10 = ehCursoNr10(codigo, cat);
+
     let aproveitamentoVal = (customParams.aproveitamento !== undefined && customParams.aproveitamento !== null)
         ? String(customParams.aproveitamento).trim()
         : (r && r.aproveitamento ? String(r.aproveitamento).trim() : 'Apto');
@@ -7303,44 +7836,53 @@ function construirFolhaCertificado(r, colab, cat, codigo, campos, data, customPa
         aproveitamentoHtml = '<u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u>';
     } else {
         let displayVal = aproveitamentoVal;
-        // Se for puramente numérico (ex: "100" ou "95"), adiciona o símbolo de porcentagem
         if (/^\d+(\s*,\s*\d+)?$/.test(displayVal)) {
             displayVal = `${displayVal}%`;
         }
         aproveitamentoHtml = `<u>&nbsp;${escapeHTML(displayVal)}&nbsp;</u>`;
     }
-    
-    // Conteúdo programático (prioridade: customParams -> cat.conteudo_programatico -> padrão NR-18/NR-01)
+
     let conteudo = customParams.conteudoProgramatico;
-    if (conteudo === undefined || conteudo === null) {
-        conteudo = cat?.conteudo_programatico || '';
+    if (conteudo === undefined || conteudo === null || !String(conteudo).trim()) {
+        conteudo = campos?.conteudo_programatico_custom || cat?.conteudo_programatico || '';
     }
-    const nomeTreinamento = cat ? cat.nome : (codigo || 'Treinamento de Segurança do Trabalho');
-    const nomeNorm = (nomeTreinamento || '').toLowerCase();
-    if (!conteudo.trim() && (codigo === '1' || nomeNorm.includes('integra') || nomeNorm.includes('18') || nomeNorm.includes('capacita'))) {
-        conteudo = CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01;
+    const { titulo: tituloTreinamento, cargaHoraria } = obterTituloECargaSessao(cat, codigo, campos);
+    const nomeNorm = (tituloTreinamento || '').toLowerCase();
+    if (!conteudo.trim()) {
+        if (ehNr10) {
+            conteudo = campos?.tipo_capacitacao === 'reciclagem' ? CONTEUDO_NR10_RECICLAGEM_BIENAL : CONTEUDO_NR10_INICIAL_ANEXO_III;
+        } else if (codigo === '1' || nomeNorm.includes('integra') || nomeNorm.includes('18') || nomeNorm.includes('capacita')) {
+            conteudo = CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01;
+        }
     }
-    
-    // Base legal
-    const baseLegal = customParams.certificadoBaseLegal || cat?.certificado_base_legal || 'Portaria MTE nº 1.419/2024, NR-01 Item 1.7.1.1, Lei nº 14.457/2022 e NR-18 Anexo I (Capacitação Básica em Canteiro de Obras).';
-    
-    // Modalidade
+
+    const baseLegal = customParams.certificadoBaseLegal
+        || campos?.base_legal_custom
+        || cat?.certificado_base_legal
+        || (ehNr10 ? BASE_LEGAL_NR10_OFICIAL : 'Portaria MTE nº 1.419/2024, NR-01 Item 1.7.1.1, Lei nº 14.457/2022 e NR-18 Anexo I (Capacitação Básica em Canteiro de Obras).');
+
     const modalidade = customParams.modalidade || 'Presencial';
-    
-    // Local e horários
     const localRealizacao = customParams.localRealizacao || campos.local_realizacao || 'Canteiro de Obras — PISF Ramal do Agreste';
     const instrutorNome = customParams.instrutorNome || campos.instrutor_nome || '';
-    const instrutorQualificacao = customParams.instrutorQualificacao || campos.instrutor_qualificacao || '';
+    const instrutorQualificacao = customParams.instrutorQualificacao || campos.instrutor_qualificacao || (ehNr10 ? 'ENGENHEIRO ELETRICISTA' : '');
     const instrutorRegistro = customParams.instrutorRegistro || campos.instrutor_registro || '';
-    const respTecnicoNome = customParams.respTecnicoNome || campos.responsavel_tecnico_nome || '';
-    const respTecnicoQualificacao = customParams.respTecnicoQualificacao || campos.responsavel_tecnico_qualificacao || '';
-    const respTecnicoRegistro = customParams.respTecnicoRegistro || campos.responsavel_tecnico_registro || '';
-    
-    const cargaHorariaStr = (cat && cat.carga_horaria) ? `${cat.carga_horaria} horas` : 'Carga horária regulamentar';
+    const respTecnicoNome = customParams.respTecnicoNome || campos.responsavel_tecnico_nome || 'JOÃO EVERTON DE SOUZA LIMEIRA';
+    const respTecnicoQualificacao = customParams.respTecnicoQualificacao || campos.responsavel_tecnico_qualificacao || 'ENG. SEG. TRABALHO';
+    const respTecnicoRegistro = customParams.respTecnicoRegistro || campos.responsavel_tecnico_registro || 'CREA: 0522078320';
+
+    const cargaHorariaStr = cargaHoraria ? `${cargaHoraria} horas` : 'Carga horária regulamentar';
     const horarioStr = (campos.hora_inicio && campos.hora_termino) ? ` (das ${campos.hora_inicio} às ${campos.hora_termino})` : '';
     const turmaStr = campos.numero_turma ? ` | Turma: ${escapeHTML(campos.numero_turma)}` : '';
-    
-    const tituloTreinamento = cat ? cat.nome : (codigo || 'Treinamento de Segurança do Trabalho');
+    const periodoInfo = formatarPeriodoTreinamento(data, campos);
+
+    // Compacta levemente a fonte do conteúdo programático quando tiver muitos itens (ex: NR-10 40h com 12 itens)
+    const qtdLinhasConteudo = conteudo.trim().split('\n').length;
+    const fontConteudoCert = qtdLinhasConteudo >= 9 ? '8.2pt' : '9.5pt';
+    const lineConteudoCert = qtdLinhasConteudo >= 9 ? '1.24' : '1.4';
+
+    const legendaAssinatura1 = ehNr10
+        ? 'Eng. Eletricista — Resp. Técnico Habilitado (NR-10)'
+        : 'Instrutor / Profissional Habilitado';
 
     return `<div class="folha-certificado print-certificado-landscape">
         <div class="moldura-certificado">
@@ -7354,35 +7896,158 @@ function construirFolhaCertificado(r, colab, cat, codigo, campos, data, customPa
             
             <div class="titulo-cert">CERTIFICADO DE CAPACITAÇÃO</div>
             <div class="subtitulo-cert">
-                Segurança e Saúde no Trabalho — Requisitos da NR-01 (Item 1.7.1.1) • ${escapeHTML(codigoDoc)}
+                Segurança e Saúde no Trabalho — Requisitos da NR-01 (Item 1.7.1.1)${ehNr10 ? ' e NR-10 (Anexo III)' : ''} • ${escapeHTML(codigoDoc)}
             </div>
 
             <div class="texto-cert">
                 Certificamos que <b>${escapeHTML(r.nome)}</b>, portador(a) do CPF nº <b>${escapeHTML(colab?.cpf || 'Não informado')}</b>, 
                 função: <b>${escapeHTML(r.funcao || colab?.funcao || 'Operacional')}</b>, colaborador(a) da empresa <b>${escapeHTML(EMPRESA_INFO.razaoSocial)}</b>, 
-                CNPJ: <b>${escapeHTML(EMPRESA_INFO.cnpj)}</b>, participou do treinamento de <b>${escapeHTML(tituloTreinamento)}</b>, realizado em <b>${formatSimpleDate(data)}</b>, 
+                CNPJ: <b>${escapeHTML(EMPRESA_INFO.cnpj)}</b>, participou do treinamento de <b>${escapeHTML(tituloTreinamento)}</b>, realizado ${periodoInfo.extenso}, 
                 com carga horária total de <b>${escapeHTML(cargaHorariaStr)}</b>${horarioStr}${turmaStr}, ministrado na modalidade <b>${escapeHTML(modalidade)}</b>, 
                 e <b>concluiu com aproveitamento satisfatório: ${aproveitamentoHtml}</b>.
             </div>
 
             ${conteudo.trim() ? `
-            <div class="bloco-conteudo-cert">
+            <div class="bloco-conteudo-cert" style="padding:6px 12px;">
                 <div class="bloco-conteudo-titulo-cert">Conteúdo Programático Ministrado:</div>
-                <div class="bloco-conteudo-texto-cert">${escapeHTML(conteudo.trim())}</div>
+                <div class="bloco-conteudo-texto-cert" style="font-size:${fontConteudoCert}; line-height:${lineConteudoCert};">${escapeHTML(conteudo.trim())}</div>
             </div>` : ''}
 
             <div class="meta-cert">
                 <div><b>Local de realização:</b> ${escapeHTML(localRealizacao)}</div>
                 ${cat?.meses_validade ? `<div><b>Validade / Periodicidade:</b> Reciclagem a cada ${cat.meses_validade} meses</div>` : ''}
-                <div><b>Data de Emissão:</b> ${formatSimpleDate(data)}</div>
+                <div><b>Data de Conclusão / Emissão:</b> ${periodoInfo.emissao}</div>
             </div>
 
             ${baseLegal ? `<div class="rodape-legal-cert">${escapeHTML(baseLegal)}</div>` : ''}
 
             <div class="assinaturas-cert">
-                ${blocoAssinatura(`${escapeHTML(instrutorNome || 'Instrutor Autorizado')}<br>${escapeHTML(instrutorQualificacao || 'Qualificação Técnica')}${instrutorRegistro ? '<br>' + escapeHTML(instrutorRegistro) : ''}<br><span style="font-size:8.5pt; color:#64748b;">Instrutor / Capacitação</span>`)}
-                ${blocoAssinatura(`${escapeHTML(r.nome)}<br>CPF: ${escapeHTML(colab?.cpf || '')}<br><span style="font-size:8.5pt; color:#64748b;">Colaborador(a) Capacitado(a)</span>`)}
-                ${blocoAssinatura(`${escapeHTML(respTecnicoNome || 'Responsável Técnico SST')}<br>${escapeHTML(respTecnicoQualificacao || 'Engenharia de Segurança')}${respTecnicoRegistro ? '<br>' + escapeHTML(respTecnicoRegistro) : ''}<br><span style="font-size:8.5pt; color:#64748b;">Responsável Técnico</span>`)}
+                ${blocoAssinatura(`<b>${escapeHTML(instrutorNome || (ehNr10 ? 'Engenheiro Eletricista Responsável' : 'Instrutor Autorizado'))}</b><br>${escapeHTML(instrutorQualificacao || (ehNr10 ? 'ENGENHEIRO ELETRICISTA' : 'Qualificação Técnica'))}${instrutorRegistro ? '<br>' + escapeHTML(instrutorRegistro) : ''}<br><span style="font-size:8.5pt; color:#1e40af; font-weight:600;">${legendaAssinatura1}</span>`)}
+                ${blocoAssinatura(`<b>${escapeHTML(respTecnicoNome || 'JOÃO EVERTON DE SOUZA LIMEIRA')}</b><br>${escapeHTML(respTecnicoQualificacao || 'ENG. SEG. TRABALHO')}${respTecnicoRegistro ? '<br>' + escapeHTML(respTecnicoRegistro) : ''}<br><span style="font-size:8.5pt; color:#3730a3; font-weight:600;">Eng. de Segurança do Trabalho — Resp. Técnico SST</span>`)}
+                ${blocoAssinatura(`<b>${escapeHTML(r.nome)}</b><br>CPF: ${escapeHTML(colab?.cpf || 'Não informado')}<br><span style="font-size:8.5pt; color:#065f46; font-weight:600;">Colaborador(a) Treinado(a)</span>`)}
+            </div>
+        </div>
+    </div>`;
+}
+
+// ---- TERMO DE ANUÊNCIA FORMAL DA EMPRESA (AUTORIZAÇÃO NR-10 ITEM 10.8.4 e 10.8.5) ----
+function construirFolhaAnuenciaNr10(r, colab, cat, codigo, campos, data, customParams = {}) {
+    const codigoDoc = codigoRevisaoDocumento('anuencia_nr10') || 'FORM.SMS.010';
+    const { titulo: tituloTreinamento, cargaHoraria } = obterTituloECargaSessao(cat, codigo || '10', campos);
+    const periodoInfo = formatarPeriodoTreinamento(data, campos);
+    const mesesValidade = cat?.meses_validade || 24;
+
+    let dataValidadeStr = '24 meses após a conclusão';
+    if (data) {
+        try {
+            const d = parseLocalDate(data);
+            const alvo = new Date(d.getFullYear(), d.getMonth() + mesesValidade, d.getDate());
+            dataValidadeStr = formatSimpleDate(`${alvo.getFullYear()}-${String(alvo.getMonth() + 1).padStart(2, '0')}-${String(alvo.getDate()).padStart(2, '0')}`);
+        } catch (e) {}
+    }
+
+    const instrutorNome = customParams.instrutorNome || campos.instrutor_nome || '';
+    const instrutorQualificacao = customParams.instrutorQualificacao || campos.instrutor_qualificacao || 'ENGENHEIRO ELETRICISTA';
+    const instrutorRegistro = customParams.instrutorRegistro || campos.instrutor_registro || 'CREA: ';
+    const respTecnicoNome = customParams.respTecnicoNome || campos.responsavel_tecnico_nome || 'JOÃO EVERTON DE SOUZA LIMEIRA';
+    const respTecnicoQualificacao = customParams.respTecnicoQualificacao || campos.responsavel_tecnico_qualificacao || 'ENG. SEG. TRABALHO';
+    const respTecnicoRegistro = customParams.respTecnicoRegistro || campos.responsavel_tecnico_registro || 'CREA: 0522078320';
+
+    const ghe = colab?.ghe ? (allGheCatalogo || []).find(g => normalizarGhe(g.id) === normalizarGhe(colab.ghe)) : null;
+    const setorTexto = ghe ? `${ghe.id} - ${ghe.nome}` : (colab?.setor || 'OPERAÇÃO E MANUTENÇÃO');
+    const dataAsoStr = colab?.data_ultimo_aso ? formatSimpleDate(colab.data_ultimo_aso) : 'Vigente no PCMSO';
+
+    return `<div class="folha-declaracao declaracao-container print-declaracao-portrait" style="padding:12px 16px; border:2px solid #0f172a;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #0f172a; padding-bottom:6px; margin-bottom:8px;">
+            <img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:40px; object-fit:contain;">
+            <div style="text-align:center; flex:1; padding:0 8px;">
+                <div style="font-size:12.5pt; font-weight:800; color:#0f172a; letter-spacing:0.4px;">TERMO DE ANUÊNCIA FORMAL — AUTORIZAÇÃO NR-10</div>
+                <div style="font-size:8.5pt; font-weight:700; color:#475569;">Autorização da Empresa para Trabalhos em Instalações Elétricas (NR-10 Itens 10.8.4, 10.8.5 e 10.8.8)</div>
+            </div>
+            <div style="font-size:9pt; font-weight:700; border:1px solid #0f172a; padding:4px 8px; border-radius:4px;">${escapeHTML(codigoDoc)}</div>
+        </div>
+
+        <table style="width:100%; border-collapse:collapse; font-size:9pt; margin-bottom:8px;">
+            <tr>
+                <td style="border:1px solid #334155; padding:4px 6px;" colspan="2"><b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO.razaoSocial)}</td>
+                <td style="border:1px solid #334155; padding:4px 6px;"><b>CNPJ:</b> ${escapeHTML(EMPRESA_INFO.cnpj)}</td>
+            </tr>
+            <tr>
+                <td style="border:1px solid #334155; padding:4px 6px;" colspan="2"><b>TRABALHADOR AUTORIZADO:</b> ${escapeHTML(r.nome)}</td>
+                <td style="border:1px solid #334155; padding:4px 6px;"><b>MATRÍCULA:</b> ${escapeHTML(r.matricula || colab?.id || '—')}</td>
+            </tr>
+            <tr>
+                <td style="border:1px solid #334155; padding:4px 6px;"><b>CPF:</b> ${escapeHTML(colab?.cpf || '—')}</td>
+                <td style="border:1px solid #334155; padding:4px 6px;"><b>FUNÇÃO:</b> ${escapeHTML(r.funcao || colab?.funcao || '—')}</td>
+                <td style="border:1px solid #334155; padding:4px 6px;"><b>SETOR / GHE:</b> ${escapeHTML(setorTexto)}</td>
+            </tr>
+            <tr>
+                <td style="border:1px solid #334155; padding:4px 6px;" colspan="2"><b>CAPACITAÇÃO REALIZADA:</b> ${escapeHTML(tituloTreinamento)} (${cargaHoraria || 40}h)</td>
+                <td style="border:1px solid #334155; padding:4px 6px;"><b>DATA / PERÍODO:</b> ${periodoInfo.curto}</td>
+            </tr>
+            <tr>
+                <td style="border:1px solid #334155; padding:4px 6px;"><b>APTIDÃO CLÍNICA (ASO NR-07):</b> Apto (${escapeHTML(dataAsoStr)})</td>
+                <td style="border:1px solid #334155; padding:4px 6px;"><b>EMISSÃO DA ANUÊNCIA:</b> ${periodoInfo.emissao}</td>
+                <td style="border:1px solid #334155; padding:4px 6px;"><b>VÁLIDA ATÉ:</b> <b>${escapeHTML(dataValidadeStr)}</b></td>
+            </tr>
+        </table>
+
+        <div style="font-size:9pt; line-height:1.36; text-align:justify; color:#1e293b; margin-bottom:6px;">
+            <b>1. CONCESSÃO DE ANUÊNCIA FORMAL PELA EMPRESA (NR-10 ITEM 10.8.4):</b><br>
+            Em cumprimento ao disposto nos subitens <b>10.8.1 a 10.8.8 da Norma Regulamentadora nº 10 (NR-10)</b> e na <b>NR-01 (Portaria MTE nº 1.419/2024)</b>, a empresa <b>${escapeHTML(EMPRESA_INFO.razaoSocial)}</b> declara que o(a) colaborador(a) acima qualificado(a) possui aptidão clínica ocupacional atestada em Atestado de Saúde Ocupacional (ASO) compatível com a atividade e concluiu com aproveitamento satisfatório o treinamento de <b>${escapeHTML(tituloTreinamento)}</b>, recebendo por meio deste instrumento <b>ANUÊNCIA FORMAL E AUTORIZAÇÃO EXPRESSA</b> para intervir e executar serviços em instalações elétricas nas Estações de Bombeamento (EBs), subestações, painéis, quadros de comando e frentes operacionais do <b>PISF — Ramal do Agreste</b>, dentro dos limites de sua atribuição funcional.
+        </div>
+
+        <div style="font-size:8.8pt; line-height:1.32; text-align:justify; color:#1e293b; margin-bottom:6px;">
+            <b>2. ABRANGÊNCIA E DIRETRIZES OBRIGATÓRIAS DE SEGURANÇA ELÉTRICA:</b>
+            <ol style="margin:3px 0 4px 18px; padding:0;">
+                <li>Cumprir rigorosamente as etapas de <b>desenergização, seccionamento, impedimento de reenergização (Bloqueio e Etiquetagem — LOTO), constatação de ausência de tensão, instalação de aterramento temporário com equipotencialização e proteção dos elementos energizados</b> (item 10.5 da NR-10);</li>
+                <li>Utilizar obrigatoriamente os <b>EPIs dielétricos e vestimentas de proteção contra arco elétrico (ATPV)</b> compatíveis com a classe de tensão, mantendo a proibição absoluta do porte de adornos pessoais metálicos ou condutivos (anéis, alianças, relógios, pulseiras, correntes);</li>
+                <li>Respeitar os limites das <b>Zonas de Risco e Zonas Controladas (Anexo II da NR-10)</b>, preceder toda intervenção de <b>Análise Preliminar de Risco (APR)</b> e, quando aplicável, de Permissão de Trabalho (PT);</li>
+                <li>Exercer imediatamente o <b>Direito de Recusa (item 1.4.3 da NR-01 e item 10.14.1 da NR-10)</b> sempre que constatar evidências de riscos graves e iminentes para sua segurança e saúde ou a de terceiros, comunicando de imediato à supervisão e ao SESMT;</li>
+                <li>Esta autorização tem validade vinculada à vigência bienal do treinamento de NR-10 (24 meses) e à manutenção da aptidão no ASO periódico, devendo ser submetida a reciclagem nas hipóteses do item 10.8.8.2 da NR-10.</li>
+            </ol>
+        </div>
+
+        <div style="font-size:8.8pt; line-height:1.3; text-align:justify; color:#0f172a; background:#f8fafc; border:1px solid #cbd5e1; padding:5px 8px; border-radius:4px; margin-bottom:10px;">
+            <b>3. DECLARAÇÃO DE CIÊNCIA DO TRABALHADOR AUTORIZADO:</b> Declaro estar plenamente ciente das diretrizes de segurança contidas nesta Anuência Formal e na NR-10, comprometendo-me a cumpri-las fielmente e a somente executar serviços elétricos para os quais esteja devidamente autorizado, equipado e amparado por procedimentos de segurança.
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px; margin-top:16px; margin-bottom:10px; page-break-inside:avoid;">
+            <div style="flex:1; text-align:center; font-size:8.5pt;">
+                <div>_______________________________________</div>
+                <div style="font-weight:700; margin-top:2px;">${escapeHTML(instrutorNome || 'Engenheiro Eletricista Responsável')}</div>
+                <div>${escapeHTML(instrutorQualificacao)}${instrutorRegistro ? ' — ' + escapeHTML(instrutorRegistro) : ''}</div>
+                <div style="color:#1e40af; font-weight:700; font-size:8pt;">Eng. Eletricista — Resp. Técnico Habilitado (NR-10)</div>
+            </div>
+            <div style="flex:1; text-align:center; font-size:8.5pt;">
+                <div>_______________________________________</div>
+                <div style="font-weight:700; margin-top:2px;">${escapeHTML(respTecnicoNome)}</div>
+                <div>${escapeHTML(respTecnicoQualificacao)}${respTecnicoRegistro ? ' — ' + escapeHTML(respTecnicoRegistro) : ''}</div>
+                <div style="color:#3730a3; font-weight:700; font-size:8pt;">Eng. de Segurança do Trabalho — Resp. Técnico SST</div>
+            </div>
+            <div style="flex:1; text-align:center; font-size:8.5pt;">
+                <div>_______________________________________</div>
+                <div style="font-weight:700; margin-top:2px;">${escapeHTML(r.nome)}</div>
+                <div>CPF: ${escapeHTML(colab?.cpf || '—')} — Mat.: ${escapeHTML(r.matricula || colab?.id || '—')}</div>
+                <div style="color:#065f46; font-weight:700; font-size:8pt;">Assinatura do Trabalhador Autorizado</div>
+            </div>
+        </div>
+
+        <!-- Credencial de Identificação NR-10 Item 10.8.5 (Recortável) -->
+        <div style="border-top:1px dashed #64748b; padding-top:8px; margin-top:6px;">
+            <div style="font-size:7.5pt; color:#64748b; text-align:center; margin-bottom:4px;">✂️ CREDENCIAL DE IDENTIFICAÇÃO DE TRABALHADOR AUTORIZADO (NR-10 ITEM 10.8.5 — PORTAR JUNTO AO CRACHÁ FUNCIONAL)</div>
+            <div style="border:2px solid #0f172a; border-radius:6px; padding:6px 10px; max-width:440px; margin:0 auto; background:#fff;">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #cbd5e1; padding-bottom:3px; margin-bottom:4px;">
+                    <img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:22px; object-fit:contain;">
+                    <div style="font-size:8pt; font-weight:800; color:#b45309;">⚡ TRABALHADOR AUTORIZADO — NR-10</div>
+                    <div style="font-size:7.5pt; font-weight:700;">Mat.: ${escapeHTML(r.matricula || colab?.id || '—')}</div>
+                </div>
+                <div style="font-size:8pt; line-height:1.3;">
+                    <div><b>Nome:</b> ${escapeHTML(r.nome)} &nbsp;|&nbsp; <b>CPF:</b> ${escapeHTML(colab?.cpf || '—')}</div>
+                    <div><b>Função:</b> ${escapeHTML(r.funcao || colab?.funcao || '—')} &nbsp;|&nbsp; <b>Curso:</b> NR-10 (${cargaHoraria || 40}h)</div>
+                    <div><b>Realização:</b> ${periodoInfo.curto} &nbsp;|&nbsp; <b>Válido até:</b> <b style="color:#b91c1c;">${escapeHTML(dataValidadeStr)}</b></div>
+                    <div style="font-size:7pt; color:#475569; margin-top:2px;">Resp. Téc. Elétrica: ${escapeHTML(instrutorNome || instrutorQualificacao)} | Resp. Téc. SST: ${escapeHTML(respTecnicoNome)}</div>
+                </div>
             </div>
         </div>
     </div>`;
@@ -7703,6 +8368,15 @@ function certModalAtualizarBotaoTexto() {
     }
 }
 
+function certModalCarregarPadraoNr10(modo = 'inicial') {
+    const textarea = document.getElementById('certModalConteudoProgramatico');
+    if (textarea) {
+        textarea.value = modo === 'reciclagem' ? CONTEUDO_NR10_RECICLAGEM_BIENAL : CONTEUDO_NR10_INICIAL_ANEXO_III;
+    }
+    const baseLegal = document.getElementById('certModalBaseLegal');
+    if (baseLegal) baseLegal.value = BASE_LEGAL_NR10_OFICIAL;
+}
+
 function certModalCarregarPadraoNr18() {
     const textarea = document.getElementById('certModalConteudoProgramatico');
     if (textarea) textarea.value = CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01;
@@ -7905,6 +8579,157 @@ async function gerarTermoRecusaIndividual(matricula, ctx = contextoRegistroPadra
 
 // ---- Kit Completo (5 folhas num documento só) ----
 
+async function gerarAnuenciaFormalIndividual(matricula, ctx = contextoRegistroPadrao(), customParams = {}) {
+    const { colaboradores, codigo, data, campos } = ctx;
+    const r = colaboradores.find(x => x.matricula === matricula);
+    if (!r) return;
+    await garantirDocumentosControleCarregados();
+    const cat = allTreinamentosCatalogo.find(c => c.id === (codigo || '10'));
+    const colab = allEfetivo.find(e => e.id === matricula);
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Anuência Formal NR-10 - ${escapeHTML(r.nome)} - ${formatSimpleDate(data)}</title>
+<style>
+    ${DOC_INDIVIDUAL_CSS}
+    @page { size: A4 portrait; margin: 8mm 10mm; }
+</style>
+<script>
+    window.addEventListener('load', function() {
+        setTimeout(function() { window.print(); }, 400);
+    });
+</script>
+</head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    ${construirFolhaAnuenciaNr10(r, colab, cat, codigo || '10', campos, data, customParams)}
+</body></html>`;
+
+    abrirDocumentoHtmlParaImpressao(html, `Anuencia_Formal_NR10_${(r.nome || 'Colaborador').replace(/[^a-zA-Z0-9]/g, '_')}_${formatSimpleDate(data).replace(/\//g, '-')}`);
+    registrarEmissaoDocumento('anuencia_nr10', `${r.nome} — ${cat ? cat.nome : (codigo || 'NR-10')}`);
+}
+
+async function gerarAnuenciaFormalTurma(ctx = contextoRegistroPadrao(), customParams = {}) {
+    const { colaboradores, codigo, data, campos } = ctx;
+    if (!colaboradores || colaboradores.length === 0) {
+        alert('Nenhum colaborador selecionado na turma para emitir a Anuência Formal.');
+        return;
+    }
+    await garantirDocumentosControleCarregados();
+    const cat = allTreinamentosCatalogo.find(c => c.id === (codigo || '10'));
+
+    const folhas = colaboradores.map(r => {
+        const colab = allEfetivo.find(e => e.id === r.matricula);
+        return construirFolhaAnuenciaNr10(r, colab, cat, codigo || '10', campos, data, customParams);
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Anuências Formais NR-10 (Turma) - ${formatSimpleDate(data)}</title>
+<style>
+    ${DOC_INDIVIDUAL_CSS}
+    @page { size: A4 portrait; margin: 8mm 10mm; }
+</style>
+<script>
+    window.addEventListener('load', function() {
+        setTimeout(function() { window.print(); }, 400);
+    });
+</script>
+</head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF (${colaboradores.length} Anuências Formais)</button></div>
+    ${folhas}
+</body></html>`;
+
+    abrirDocumentoHtmlParaImpressao(html, `Anuencias_NR10_Turma_${formatSimpleDate(data).replace(/\//g, '-')}`);
+    colaboradores.forEach(r => {
+        registrarEmissaoDocumento('anuencia_nr10', `${r.nome} — ${cat ? cat.nome : (codigo || 'NR-10')}`);
+    });
+}
+
+async function gerarListaPresencaKits() {
+    const ctx = contextoKits();
+    const { colaboradores: sessaoRows, codigo, data, campos } = ctx;
+    if (!codigo) {
+        alert('Selecione o treinamento no topo da aba Kits e Documentos.');
+        return;
+    }
+    await garantirDocumentosControleCarregados();
+    const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+    const folha = construirFolhaRegistroTreinamento(sessaoRows, campos, codigo, cat, data);
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Lista de Presença - ${escapeHTML(cat ? cat.nome : codigo)} - ${formatSimpleDate(data)}</title>
+<style>
+    @page { size: A4 portrait; margin: 6mm 8mm; }
+    ${REGISTRO_TREINAMENTO_CSS}
+</style>
+<script>
+    window.addEventListener('load', function() {
+        setTimeout(function() { window.print(); }, 400);
+    });
+</script>
+</head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    ${folha}
+</body></html>`;
+
+    abrirDocumentoHtmlParaImpressao(html, `Lista_Presenca_${(cat ? cat.nome : codigo).replace(/[^a-zA-Z0-9]/g, '_')}_${formatSimpleDate(data).replace(/\//g, '-')}`);
+    registrarEmissaoDocumento('registro_treinamento', `${cat ? cat.nome : codigo} — ${formatSimpleDate(data)}`);
+}
+
+async function gerarListaPresencaPorDiaPeriodoKits() {
+    const ctx = contextoKits();
+    const { colaboradores: sessaoRows, codigo, data, campos } = ctx;
+    if (!codigo) {
+        alert('Selecione o treinamento primeiro.');
+        return;
+    }
+    const dIniStr = campos.data_inicio || data;
+    const dFimStr = data;
+    if (!dIniStr || !dFimStr || dIniStr > dFimStr) {
+        alert('Informe uma Data de Início e Data de Conclusão válidas.');
+        return;
+    }
+    await garantirDocumentosControleCarregados();
+    const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+
+    const dias = [];
+    let cur = parseLocalDate(dIniStr);
+    const fim = parseLocalDate(dFimStr);
+    while (cur <= fim && dias.length < 15) {
+        dias.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`);
+        cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 1);
+    }
+
+    const folhas = dias.map(diaIso => {
+        const camposDia = { ...campos, data_inicio: diaIso };
+        return construirFolhaRegistroTreinamento(sessaoRows, camposDia, codigo, cat, diaIso);
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Listas de Presença Diárias (${dias.length} dias) - ${escapeHTML(cat ? cat.nome : codigo)}</title>
+<style>
+    @page { size: A4 portrait; margin: 6mm 8mm; }
+    ${REGISTRO_TREINAMENTO_CSS}
+</style>
+<script>
+    window.addEventListener('load', function() {
+        setTimeout(function() { window.print(); }, 400);
+    });
+</script>
+</head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF (${dias.length} Listas Diárias)</button></div>
+    ${folhas}
+</body></html>`;
+
+    abrirDocumentoHtmlParaImpressao(html, `Listas_Presenca_Periodo_${formatSimpleDate(dIniStr).replace(/\//g, '-')}_a_${formatSimpleDate(dFimStr).replace(/\//g, '-')}`);
+}
+
 async function gerarKitCompletoIntegracao(matricula, ctx = contextoRegistroPadrao()) {
     const { colaboradores: sessaoRows, codigo, data, campos } = ctx;
     const r = sessaoRows.find(x => x.matricula === matricula);
@@ -7913,17 +8738,33 @@ async function gerarKitCompletoIntegracao(matricula, ctx = contextoRegistroPadra
     const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
     const colab = allEfetivo.find(e => e.id === matricula);
 
-    const folhas = [
-        construirFolhaOrdemServico(matricula, r, campos, data),
-        construirFolhaRegistroTreinamento(sessaoRows, campos, codigo, cat, data),
-        construirFolhaCertificado(r, colab, cat, codigo, campos, data),
-        construirFolhaDeclaracaoIntegracao(r, cat, campos, data),
-        construirFolhaTermoRecusa(r, cat, campos, data)
-    ].join('');
+    // Se vier da aba Kits e Documentos, respeita os checkboxes marcados na composição do Kit
+    const veioDeKits = campos && (campos.tipo_capacitacao !== null || document.getElementById('treinSubtab-kits')?.style.display !== 'none');
+    const docs = veioDeKits ? obterDocumentosMarcadosNoKit() : {
+        lista: true,
+        certificado: true,
+        anuencia: ehCursoNr10(codigo, cat),
+        os: codigo === '1' || !ehCursoNr10(codigo, cat),
+        declaracao: codigo === '1',
+        recusa: codigo === '1'
+    };
+
+    const partes = [];
+    if (docs.os) partes.push(construirFolhaOrdemServico(matricula, r, campos, data));
+    if (docs.lista) partes.push(construirFolhaRegistroTreinamento(sessaoRows, campos, codigo, cat, data));
+    if (docs.certificado) partes.push(construirFolhaCertificado(r, colab, cat, codigo, campos, data));
+    if (docs.anuencia) partes.push(construirFolhaAnuenciaNr10(r, colab, cat, codigo, campos, data));
+    if (docs.declaracao) partes.push(construirFolhaDeclaracaoIntegracao(r, cat, campos, data));
+    if (docs.recusa) partes.push(construirFolhaTermoRecusa(r, cat, campos, data));
+
+    if (partes.length === 0) {
+        alert('Marque ao menos um documento (ex: Lista de Presença e Certificado) na composição do Kit.');
+        return;
+    }
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
-<title>Kit Completo - ${escapeHTML(r.nome)} - ${formatSimpleDate(data)}</title>
+<title>Kit de Treinamento - ${escapeHTML(r.nome)} - ${formatSimpleDate(data)}</title>
 <style>
     ${REGISTRO_TREINAMENTO_CSS}
     ${DOC_INDIVIDUAL_CSS}
@@ -7935,16 +8776,173 @@ async function gerarKitCompletoIntegracao(matricula, ctx = contextoRegistroPadra
 </script>
 </head>
 <body>
-    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
-    ${folhas}
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF (${partes.length} documento(s))</button></div>
+    ${partes.join('')}
 </body></html>`;
 
-    abrirDocumentoHtmlParaImpressao(html, `Kit_Integracao_${(r.nome || 'Colaborador').replace(/[^a-zA-Z0-9]/g, '_')}_${formatSimpleDate(data).replace(/\//g, '-')}`);
-    registrarEmissaoDocumento('ordem_servico', r.nome);
-    registrarEmissaoDocumento('registro_treinamento', `${cat ? cat.nome : codigo} — ${formatSimpleDate(data)}`);
-    registrarEmissaoDocumento('certificado_individual', `${r.nome} — ${cat ? cat.nome : codigo}`);
-    registrarEmissaoDocumento('declaracao_integracao', `${r.nome} — ${cat ? cat.nome : codigo}`);
-    registrarEmissaoDocumento('termo_recusa', r.nome);
+    abrirDocumentoHtmlParaImpressao(html, `Kit_Treinamento_${(r.nome || 'Colaborador').replace(/[^a-zA-Z0-9]/g, '_')}_${formatSimpleDate(data).replace(/\//g, '-')}`);
+    if (docs.os) registrarEmissaoDocumento('ordem_servico', r.nome);
+    if (docs.lista) registrarEmissaoDocumento('registro_treinamento', `${cat ? cat.nome : codigo} — ${formatSimpleDate(data)}`);
+    if (docs.certificado) registrarEmissaoDocumento('certificado_individual', `${r.nome} — ${cat ? cat.nome : codigo}`);
+    if (docs.anuencia) registrarEmissaoDocumento('anuencia_nr10', `${r.nome} — ${cat ? cat.nome : codigo}`);
+    if (docs.declaracao) registrarEmissaoDocumento('declaracao_integracao', `${r.nome} — ${cat ? cat.nome : codigo}`);
+    if (docs.recusa) registrarEmissaoDocumento('termo_recusa', r.nome);
+}
+
+// Emite o Kit Completo de TODA A TURMA em um único documento de impressão:
+// 1 Lista de Presença coletiva da turma + Certificados individuais + Anuências Formais (e demais itens marcados)
+async function gerarKitCompletoTurmaKits() {
+    const ctx = contextoKits();
+    const { colaboradores: sessaoRows, codigo, data, campos } = ctx;
+    if (!codigo) {
+        alert('Selecione o treinamento no topo da aba Kits e Documentos.');
+        return;
+    }
+    if (!sessaoRows || sessaoRows.length === 0) {
+        alert('Selecione ao menos um colaborador na turma antes de emitir o Kit Completo.');
+        return;
+    }
+    await garantirDocumentosControleCarregados();
+    const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+    const docs = obterDocumentosMarcadosNoKit();
+
+    const partes = [];
+    // 1. Lista de Presença Coletiva da Turma
+    if (docs.lista) {
+        partes.push(construirFolhaRegistroTreinamento(sessaoRows, campos, codigo, cat, data));
+    }
+    // 2. Documentos Individuais de cada colaborador da turma
+    sessaoRows.forEach(r => {
+        const colab = allEfetivo.find(e => e.id === r.matricula);
+        if (docs.certificado) partes.push(construirFolhaCertificado(r, colab, cat, codigo, campos, data));
+        if (docs.anuencia) partes.push(construirFolhaAnuenciaNr10(r, colab, cat, codigo, campos, data));
+        if (docs.os) partes.push(construirFolhaOrdemServico(r.matricula, r, campos, data));
+        if (docs.declaracao) partes.push(construirFolhaDeclaracaoIntegracao(r, cat, campos, data));
+        if (docs.recusa) partes.push(construirFolhaTermoRecusa(r, cat, campos, data));
+    });
+
+    if (partes.length === 0) {
+        alert('Marque ao menos um documento (ex: Lista de Presença e Certificado) na composição do Kit.');
+        return;
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Kit Completo da Turma (${sessaoRows.length} colaboradores) - ${escapeHTML(cat ? cat.nome : codigo)}</title>
+<style>
+    ${REGISTRO_TREINAMENTO_CSS}
+    ${DOC_INDIVIDUAL_CSS}
+</style>
+<script>
+    window.addEventListener('load', function() {
+        setTimeout(function() { window.print(); }, 400);
+    });
+</script>
+</head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir Kit Completo da Turma (${sessaoRows.length} colaborador(es) • ${partes.length} página(s))</button></div>
+    ${partes.join('')}
+</body></html>`;
+
+    abrirDocumentoHtmlParaImpressao(html, `Kit_Turma_${(cat ? cat.nome : codigo).replace(/[^a-zA-Z0-9]/g, '_')}_${formatSimpleDate(data).replace(/\//g, '-')}`);
+}
+
+// Registra diretamente no banco (treinamentos_realizados) a presença da turma montada na aba Kits
+async function salvarPresencaTurmaDiretoKits() {
+    if (typeof bloquearEdicaoSeNaoAutorizado === 'function' && bloquearEdicaoSeNaoAutorizado('treinamentos')) return;
+    const statusEl = document.getElementById('kitsLancamentoStatus');
+    const ctx = contextoKits();
+    const { colaboradores: sessaoRows, codigo, data, campos } = ctx;
+    const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+
+    if (!cat) {
+        alert('Selecione um treinamento válido do catálogo.');
+        return;
+    }
+    if (!data) {
+        alert('Informe a Data de Conclusão / Emissão do treinamento.');
+        return;
+    }
+    if (!sessaoRows || sessaoRows.length === 0) {
+        alert('Selecione ao menos um colaborador na turma.');
+        return;
+    }
+
+    const { titulo: tituloTreinamento, cargaHoraria } = obterTituloECargaSessao(cat, codigo, campos);
+    let dataProximaReciclagem = null;
+    if (cat.meses_validade) {
+        const d = parseLocalDate(data);
+        const alvo = new Date(d.getFullYear(), d.getMonth() + cat.meses_validade, d.getDate());
+        dataProximaReciclagem = `${alvo.getFullYear()}-${String(alvo.getMonth() + 1).padStart(2, '0')}-${String(alvo.getDate()).padStart(2, '0')}`;
+    }
+
+    if (!confirm(`Confirma o lançamento oficial de "${tituloTreinamento}" para ${sessaoRows.length} colaborador(es) na data de conclusão ${formatSimpleDate(data)}${dataProximaReciclagem ? ' (próxima reciclagem em ' + formatSimpleDate(dataProximaReciclagem) + ')' : ''}?`)) {
+        return;
+    }
+
+    if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.style.background = '#eef2ff';
+        statusEl.style.color = '#3730a3';
+        statusEl.textContent = `⏳ Salvando ${sessaoRows.length} registro(s) de presença no Supabase...`;
+    }
+
+    const rows = sessaoRows.map(r => {
+        const efetivo = allEfetivo.find(e => e.id === r.matricula);
+        return {
+            id: `${r.matricula}_${codigo}_${data}`,
+            matricula: r.matricula,
+            nome: r.nome,
+            funcao: r.funcao || efetivo?.funcao || '',
+            setor: efetivo?.setor || '',
+            status_colaborador: efetivo ? efetivo.status : 'ATIVO',
+            treinamento_cod: codigo,
+            treinamento_nome: cat.nome,
+            carga_horaria: cargaHoraria || cat.carga_horaria,
+            data_treinamento: data,
+            meses_validade: cat.meses_validade,
+            data_proxima_reciclagem: dataProximaReciclagem,
+            observacoes: campos.tipo_capacitacao === 'reciclagem' ? 'Reciclagem Bienal' : (campos.tipo_capacitacao === 'inicial' ? 'Capacitação Inicial' : ''),
+            numero_turma: campos.numero_turma,
+            hora_inicio: campos.hora_inicio,
+            hora_termino: campos.hora_termino,
+            local_realizacao: campos.local_realizacao,
+            encarregado_responsavel: campos.encarregado_responsavel,
+            instrutor_nome: campos.instrutor_nome,
+            instrutor_qualificacao: campos.instrutor_qualificacao,
+            instrutor_registro: campos.instrutor_registro,
+            responsavel_tecnico_nome: campos.responsavel_tecnico_nome,
+            responsavel_tecnico_qualificacao: campos.responsavel_tecnico_qualificacao,
+            responsavel_tecnico_registro: campos.responsavel_tecnico_registro,
+            aproveitamento: 'Apto'
+        };
+    });
+
+    try {
+        await supabaseUpsert('treinamentos_realizados', rows);
+        rows.forEach(nova => {
+            const idx = allTreinamentosRealizados.findIndex(x => x.id === nova.id);
+            if (idx >= 0) allTreinamentosRealizados[idx] = nova;
+            else allTreinamentosRealizados.push(nova);
+        });
+        if (typeof rebuildTreinamentosStatusInMemory === 'function') {
+            rebuildTreinamentosStatusInMemory();
+        }
+        renderKitsEquipeList();
+        renderKitsDocsIndividuaisList();
+        if (statusEl) {
+            statusEl.style.background = '#dcfce7';
+            statusEl.style.color = '#166534';
+            statusEl.textContent = `✅ Presença de ${rows.length} colaborador(es) registrada com sucesso! Validade atualizada até ${dataProximaReciclagem ? formatSimpleDate(dataProximaReciclagem) : 'concluído'}.`;
+        }
+    } catch (err) {
+        console.error('Erro ao salvar presença direto pela aba Kits:', err);
+        if (statusEl) {
+            statusEl.style.background = '#fee2e2';
+            statusEl.style.color = '#991b1b';
+            statusEl.textContent = '❌ Erro ao registrar presença: ' + err.message;
+        }
+    }
 }
 
 // ---- Banco de Provas: só aparece/gera quando o treinamento carregado tem questões
@@ -10120,11 +11118,11 @@ function gerarDadosSstPorTema(nomeOriginal, codigo) {
         };
     }
 
-    // 2. NR 10 - Eletricidade / Fuga / Choque
-    if (n.includes('NR 10') || n.includes('NR.10') || n.includes('ELETRICIDADE') || n.includes('CHOQUE ELÉTRICO') || n.includes('FUGA DE CORRENTE') || n.includes('HABILITADO E AUTORIZADO')) {
+    // 2. NR 10 - Eletricidade / Fuga / Choque (Anexo III da NR-10 e Item 10.8.8.2)
+    if (n.includes('NR 10') || n.includes('NR.10') || n.includes('ELETRICIDADE') || n.includes('ELETRECIDADE') || n.includes('CHOQUE ELÉTRICO') || n.includes('FUGA DE CORRENTE') || n.includes('HABILITADO E AUTORIZADO')) {
         return {
-            objetivo: 'Instruir os colaboradores sobre os perigos da eletricidade nos canteiros e frentes de canal do Ramal do Agreste, prevenindo acidentes por choque elétrico, arcos voltaicos e curto-circuitos, em conformidade com a NR-10.',
-            conteudo_programatico: '1. Conceitos básicos de eletricidade e riscos associados (choque elétrico, queimaduras e arcos);\n2. Medidas de proteção coletiva: desenergização, bloqueio, etiquetagem (LOTO) e aterramento;\n3. Diferença legal e operacional entre trabalhador qualificado, habilitado e autorizado;\n4. Condições e cuidados com quadros elétricos, cabos, extensões e ferramentas portáteis em campo;\n5. Procedimentos de emergência, desvencilhamento seguro e primeiros socorros em caso de choque.'
+            objetivo: 'Capacitar, reciclar e autorizar os profissionais que interajam direta ou indiretamente em instalações elétricas e serviços com eletricidade nos canteiros, estações de bombeamento (EBV) e frentes operacionais do Ramal do Agreste, estabelecendo os requisitos e condições mínimas para implementação de medidas de controle e sistemas preventivos, garantindo a segurança e a saúde dos trabalhadores em estrita conformidade com a NR-10 (Portaria MTb nº 3.214/1978, Anexo III e Item 10.8) e NR-01.',
+            conteudo_programatico: CONTEUDO_PROGRAMATICO_NR10_BASICO_40H
         };
     }
 
@@ -12593,6 +13591,27 @@ var excluirRegraTrein = excluirRegraRecomendacao;
         if (typeof renderKitsEquipeList === 'function') window.renderKitsEquipeList = renderKitsEquipeList;
         if (typeof contextoKits === 'function') window.contextoKits = contextoKits;
         if (typeof renderKitsDocsIndividuaisList === 'function') window.renderKitsDocsIndividuaisList = renderKitsDocsIndividuaisList;
+        if (typeof selecionarAtalhoCursoKits === 'function') window.selecionarAtalhoCursoKits = selecionarAtalhoCursoKits;
+        if (typeof onKitsTipoCapacitacaoChange === 'function') window.onKitsTipoCapacitacaoChange = onKitsTipoCapacitacaoChange;
+        if (typeof onKitsDataInicioChange === 'function') window.onKitsDataInicioChange = onKitsDataInicioChange;
+        if (typeof onKitsEquipeMultiCheckboxChange === 'function') window.onKitsEquipeMultiCheckboxChange = onKitsEquipeMultiCheckboxChange;
+        if (typeof marcarTodasEquipesKits === 'function') window.marcarTodasEquipesKits = marcarTodasEquipesKits;
+        if (typeof aplicarSelecaoMultiEquipesKits === 'function') window.aplicarSelecaoMultiEquipesKits = aplicarSelecaoMultiEquipesKits;
+        if (typeof carregarKitsAtalhoGlobalStatus === 'function') window.carregarKitsAtalhoGlobalStatus = carregarKitsAtalhoGlobalStatus;
+        if (typeof limparTurmaKits === 'function') window.limparTurmaKits = limparTurmaKits;
+        if (typeof aplicarPresetAssinatura1Kits === 'function') window.aplicarPresetAssinatura1Kits = aplicarPresetAssinatura1Kits;
+        if (typeof salvarEngEletricistaPadraoKits === 'function') window.salvarEngEletricistaPadraoKits = salvarEngEletricistaPadraoKits;
+        if (typeof restaurarRespTecnicoSstPadraoKits === 'function') window.restaurarRespTecnicoSstPadraoKits = restaurarRespTecnicoSstPadraoKits;
+        if (typeof carregarPresetConteudoKits === 'function') window.carregarPresetConteudoKits = carregarPresetConteudoKits;
+        if (typeof renderKitsInfoResumo === 'function') window.renderKitsInfoResumo = renderKitsInfoResumo;
+        if (typeof construirFolhaAnuenciaNr10 === 'function') window.construirFolhaAnuenciaNr10 = construirFolhaAnuenciaNr10;
+        if (typeof gerarAnuenciaFormalIndividual === 'function') window.gerarAnuenciaFormalIndividual = gerarAnuenciaFormalIndividual;
+        if (typeof gerarAnuenciaFormalTurma === 'function') window.gerarAnuenciaFormalTurma = gerarAnuenciaFormalTurma;
+        if (typeof gerarListaPresencaKits === 'function') window.gerarListaPresencaKits = gerarListaPresencaKits;
+        if (typeof gerarListaPresencaPorDiaPeriodoKits === 'function') window.gerarListaPresencaPorDiaPeriodoKits = gerarListaPresencaPorDiaPeriodoKits;
+        if (typeof gerarKitCompletoTurmaKits === 'function') window.gerarKitCompletoTurmaKits = gerarKitCompletoTurmaKits;
+        if (typeof salvarPresencaTurmaDiretoKits === 'function') window.salvarPresencaTurmaDiretoKits = salvarPresencaTurmaDiretoKits;
+        if (typeof certModalCarregarPadraoNr10 === 'function') window.certModalCarregarPadraoNr10 = certModalCarregarPadraoNr10;
         if (typeof popularFiltroAnoRegistroLote === 'function') window.popularFiltroAnoRegistroLote = popularFiltroAnoRegistroLote;
         if (typeof renderRegistroLoteFrentesCheckboxes === 'function') window.renderRegistroLoteFrentesCheckboxes = renderRegistroLoteFrentesCheckboxes;
         if (typeof atualizarResumoFrentesLote === 'function') window.atualizarResumoFrentesLote = atualizarResumoFrentesLote;
@@ -12787,4 +13806,4 @@ var excluirRegraTrein = excluirRegraRecomendacao;
         window.allTreinamentosRegras = allTreinamentosRegras;
     }
 
-// [Fim do Módulo treinamentos_ddsma.js - v218]
+// [Fim do Módulo treinamentos_ddsma.js - v220]

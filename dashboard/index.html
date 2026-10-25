@@ -20,7 +20,7 @@
         })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=218">
+    <link rel="stylesheet" href="dashboard.css?v=220">
 </head>
 <body>
 
@@ -1374,45 +1374,142 @@
                 </div>
 
                 <div id="treinSubtab-kits" style="display:none;">
-                <div class="db-chart-card" style="margin-bottom: 16px;">
-                    <div class="db-chart-title">🪪 Kits e Documentos</div>
-                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">
-                        Atalho pra emitir/reimprimir Kit Completo, OS, Certificado, Declaração de Integração e Termo de Recusa sem passar pelo fluxo de lançar presença - pra isso, use "🖨️ Registro" normalmente. Aqui os campos da sessão ficam sempre visíveis, prontos pra ajustar antes de gerar.
-                    </p>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px;">
+                <!-- Banner e Passo 1: Seleção do Treinamento, Modalidade (Inicial/Reciclagem) e Período -->
+                <div class="db-chart-card" style="margin-bottom: 16px; border-left: 4px solid var(--primary, #2563eb);">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
                         <div>
-                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Treinamento</label>
-                            <input type="text" id="kitsCodigoInput" list="lancTreinCatalogoList" oninput="onKitsCodigoChange()" placeholder="Digite o código ou nome..."
-                                   style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <div class="db-chart-title" style="margin-bottom:4px;">🪪 Central de Kits Normativos, Certificados e Anuência Formal (NR-01 / NR-10 / NR-18 / NR-35)</div>
+                            <p style="font-size: 11.5px; color: var(--text-light); margin: 0; line-height:1.45;">
+                                Monte turmas combinando <strong>múltiplas equipes</strong>, filtre automaticamente <strong>apenas colaboradores vencidos</strong>, defina se o treinamento é <strong>Inicial (ex: 40h em vários dias)</strong> ou <strong>Reciclagem Bienal</strong> e emita o Kit Completo (Lista de Presença + Certificado + Termo de Anuência Formal NR-10 + OS) com as <strong>03 assinaturas exigidas (Eng. Eletricista / Eng. Segurança do Trabalho / Colaborador)</strong>.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; font-size: 12.5px; margin-top: 12px;">
+                        <div style="grid-column: span 2; min-width: 240px;">
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">1. Treinamento do Catálogo</label>
+                            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                <input type="text" id="kitsCodigoInput" list="lancTreinCatalogoList" oninput="onKitsCodigoChange()" placeholder="Digite o código (ex: 10 para NR-10, 1 para Integração) ou nome..."
+                                       style="flex:1; min-width:180px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <button type="button" class="db-clear-btn" style="padding:6px 10px; font-size:11.5px; font-weight:700; color:#b45309; background:#fef3c7; border-color:#fcd34d; white-space:nowrap;" onclick="selecionarAtalhoCursoKits('10', 'reciclagem')" title="Carrega rapidamente NR-10 no modo Reciclagem Bienal">⚡ NR-10 Reciclagem</button>
+                                <button type="button" class="db-clear-btn" style="padding:6px 10px; font-size:11.5px; font-weight:700; color:#1d4ed8; background:#dbeafe; border-color:#93c5fd; white-space:nowrap;" onclick="selecionarAtalhoCursoKits('10', 'inicial')" title="Carrega rapidamente NR-10 no modo Inicial 40h">⚡ NR-10 Inicial (40h)</button>
+                            </div>
                             <div id="kitsInfo" style="display:none; margin-top: 6px; font-size: 11.5px;"></div>
                         </div>
+
                         <div>
-                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data</label>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">2. Tipo / Modalidade Normativa</label>
+                            <select id="kitsTipoCapacitacaoSelect" onchange="onKitsTipoCapacitacaoChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-weight:600;">
+                                <option value="inicial">🎓 Capacitação Inicial (Ex: NR-10 40h)</option>
+                                <option value="reciclagem">🔄 Reciclagem Periódica / Bienal (NR-10 16h)</option>
+                                <option value="complementar_sep">⚡ Complementar — SEP (Alta Tensão)</option>
+                                <option value="eventual">📋 Treinamento Eventual / DDSMA</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">3. Carga Horária da Sessão (h)</label>
+                            <input type="number" id="kitsCargaHorariaInput" min="1" max="200" step="1" oninput="kitsMarcarCampoEditado('cargaHoraria'); renderKitsInfoResumo();" placeholder="Ex: 40 ou 16"
+                                   style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-weight:700;">
+                        </div>
+
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">4. Data de Início</label>
+                            <input type="date" id="kitsDataInicioInput" onchange="onKitsDataInicioChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                        </div>
+
+                        <div>
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">5. Data de Conclusão / Emissão</label>
                             <input type="date" id="kitsDataInput" onchange="onKitsDataChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
                         </div>
-                        <div>
-                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Carregar equipe do Responsável (opcional)</label>
-                            <select id="kitsResponsavelSelect" onchange="carregarKitsEquipeResponsavel()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
-                                <option value="">— Sem equipe pré-carregada (lista em branco) —</option>
+                    </div>
+
+                    <div style="margin-top:8px; padding:8px 12px; background:rgba(37,99,235,0.05); border:1px dashed rgba(37,99,235,0.25); border-radius:8px; font-size:11.5px; color:var(--text-light); line-height:1.4;">
+                        💡 <strong>Como preencher as Datas (Inicial vs. Reciclagem):</strong> Para treinamentos de <strong>1 único dia</strong> (ex: Reciclagem), deixe a Data de Início igual à Data de Conclusão (sai <em>"realizado em DD/MM/AAAA"</em>). Para treinamentos de <strong>vários dias</strong> (ex: NR-10 Inicial de 40h = 5 dias de 8h), informe a Data de Início e a Data de Conclusão: o certificado e a lista exibirão automaticamente <strong><em>"realizado no período de DD/MM/AAAA a DD/MM/AAAA"</em></strong>, usando a <strong>Data de Conclusão</strong> para emissão e contagem da validade de 24 meses.
+                    </div>
+                </div>
+
+                <!-- Passo 2: Composição da Turma (Múltiplas Equipes + Filtro de Vencidos) -->
+                <div class="db-chart-card" style="margin-bottom: 16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                        <div class="db-chart-title" style="font-size: 13.5px; margin-bottom: 0;">👥 2. Seleção de Equipes e Colaboradores da Turma (Multi-Equipes &amp; Vencidos)</div>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button type="button" class="db-apply-btn" style="padding:5px 11px; font-size:11.5px; background:#dc2626; border-color:#b91c1c;" onclick="carregarKitsAtalhoGlobalStatus('vencidos')" title="Busca automaticamente em todas as equipes todos os colaboradores ativos cujo treinamento selecionado já está vencido">
+                                🔴 Juntar Todos os Vencidos neste Curso (Qualquer Equipe)
+                            </button>
+                            <button type="button" class="db-clear-btn" style="padding:5px 10px; font-size:11.5px; font-weight:600; color:#d97706; border-color:#fcd34d; background:#fffbeb;" onclick="carregarKitsAtalhoGlobalStatus('vencidos_a_vencer')" title="Busca todos os colaboradores vencidos ou que vencem nos próximos 60 dias">
+                                🟠 Vencidos + A Vencer (60d)
+                            </button>
+                            <button type="button" class="db-clear-btn" style="padding:5px 10px; font-size:11.5px; font-weight:600; color:#475569;" onclick="carregarKitsAtalhoGlobalStatus('sem_registro')" title="Busca quem ainda não possui registro deste treinamento">
+                                ⚪ Apenas Sem Registro (Inicial)
+                            </button>
+                            <button type="button" class="db-clear-btn" style="padding:5px 10px; font-size:11.5px; color:var(--danger);" onclick="limparTurmaKits()">
+                                🗑️ Limpar Turma
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; align-items:start; margin-top:8px;">
+                        <!-- Caixa Multi-Equipes -->
+                        <div style="border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:var(--card);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
+                                <label style="font-size:12px; font-weight:700; color:var(--text);">Selecionar 1 ou Mais Equipes (Encarregados):</label>
+                                <div style="display:flex; gap:6px; font-size:11px;">
+                                    <button type="button" onclick="marcarTodasEquipesKits(true)" style="background:none; border:none; color:var(--primary); font-weight:600; cursor:pointer; padding:0;">Marcar todas</button>
+                                    <span style="color:var(--border);">|</span>
+                                    <button type="button" onclick="marcarTodasEquipesKits(false)" style="background:none; border:none; color:var(--text-light); font-weight:600; cursor:pointer; padding:0;">Desmarcar</button>
+                                </div>
+                            </div>
+                            <div id="kitsEquipesMultiCheckboxList" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:4px 10px; max-height:135px; overflow-y:auto; padding:4px 2px;"></div>
+                            <!-- Mantém select oculto para retrocompatibilidade -->
+                            <select id="kitsResponsavelSelect" onchange="carregarKitsEquipeResponsavel()" style="display:none;">
+                                <option value="">— Sem equipe pré-carregada —</option>
                             </select>
+                        </div>
+
+                        <!-- Filtro de Status ao Juntar Equipes + Busca Avulsa -->
+                        <div style="display:flex; flex-direction:column; gap:8px;">
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600; font-size:12px;">Critério ao carregar as equipes marcadas ao lado:</label>
+                                <div style="display:flex; gap:6px;">
+                                    <select id="kitsFiltroStatusEquipe" onchange="aplicarSelecaoMultiEquipesKits()" style="flex:1; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; font-weight:600;">
+                                        <option value="todos">👥 Todos os colaboradores das equipes marcadas</option>
+                                        <option value="vencidos">🔴 Apenas os VENCIDOS no curso selecionado</option>
+                                        <option value="vencidos_a_vencer">🟠 Apenas VENCIDOS + A VENCER (próx. 60 dias)</option>
+                                        <option value="pendentes">🚨 Todos com Pendência (Vencidos + A Vencer + Sem registro)</option>
+                                        <option value="sem_registro">⚪ Apenas SEM REGISTRO anterior (Inicial)</option>
+                                    </select>
+                                    <button type="button" class="db-apply-btn" style="padding:8px 12px; font-size:12px; white-space:nowrap;" onclick="aplicarSelecaoMultiEquipesKits()">🔄 Aplicar Filtro</button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600; font-size:12px;">Adicionar colaborador avulso (qualquer equipe):</label>
+                                <input type="text" id="kitsAddColab" oninput="filterKitsAddColab(this.value)" placeholder="Digite nome, matrícula ou função para incluir na turma..."
+                                       style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                                <div id="kitsAddColabResults" class="db-list"></div>
+                            </div>
                         </div>
                     </div>
 
                     <div style="margin-top: 12px;">
-                        <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600; font-size: 12.5px;">Equipe desta sessão (<span id="kitsEquipeContagem">0</span> selecionado(s))</label>
-                        <input type="text" id="kitsAddColab" oninput="filterKitsAddColab(this.value)" placeholder="Adicionar colaborador avulso (nome ou matrícula)..."
-                               style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; margin-bottom: 6px;">
-                        <div id="kitsAddColabResults" class="db-list"></div>
-                        <div id="kitsEquipeList" class="db-list" style="margin-top: 8px; max-height: 240px; overflow-y: auto;"></div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
+                            <label style="color: var(--text); font-weight: 700; font-size: 12.5px;">
+                                Integrantes da Turma (<span id="kitsEquipeContagem">0</span> selecionado(s) para o treinamento)
+                            </label>
+                            <div id="kitsResumoEquipesTurma" style="font-size:11.5px; color:var(--text-light);"></div>
+                        </div>
+                        <div id="kitsEquipeList" class="db-list" style="margin-top: 4px; max-height: 260px; overflow-y: auto; border:1px solid var(--border); border-radius:8px; padding:4px;"></div>
                     </div>
                 </div>
 
+                <!-- Passo 3: Dados da Sessão + 03 Assinaturas (Eng. Eletricista / Eng. Seg. Trabalho / Colaborador) -->
                 <div class="db-chart-card" style="margin-bottom: 16px;">
-                    <div class="db-chart-title" style="font-size: 13px; margin-bottom: 6px;">📋 Dados da Sessão (aparecem nos documentos)</div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px;">
+                    <div class="db-chart-title" style="font-size: 13.5px; margin-bottom: 6px;">✍️ 3. Dados da Sessão &amp; 03 Campos de Assinatura (Eng. Eletricista / Eng. Seg. Trabalho / Colaborador)</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px; margin-bottom: 12px;">
                         <div>
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Nº Turma</label>
-                            <input type="text" id="kitsForm_turma" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <input type="text" id="kitsForm_turma" placeholder="Ex: 01/2026" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
                         </div>
                         <div>
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Horário Início</label>
@@ -1427,32 +1524,136 @@
                             <input type="text" id="kitsForm_local" oninput="kitsMarcarCampoEditado('local')" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
                         </div>
                         <div>
-                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Enc. / Responsável</label>
-                            <input type="text" id="kitsForm_encResponsavel" list="equipesResponsavelList" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Equipe(s) / Enc. Responsável</label>
+                            <input type="text" id="kitsForm_encResponsavel" list="equipesResponsavelList" placeholder="Ex: LÚCIO / ROBSON / DEYLON" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
                         </div>
-                        <div>
-                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Instrutor</label>
-                            <input type="text" id="kitsForm_instrutorNome" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; margin-bottom: 6px;">
-                            <input type="text" id="kitsForm_instrutorQualificacao" placeholder="Qualificação" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; margin-bottom: 6px;">
-                            <input type="text" id="kitsForm_instrutorRegistro" placeholder="Registro (ex: MTE: 15760/PE)" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                    </div>
+
+                    <!-- Os 3 Blocos de Assinatura -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; font-size: 12.5px; padding-top: 10px; border-top: 1px dashed var(--border);">
+                        <!-- Assinatura 1: Eng. Eletricista (NR-10) / Profissional Legalmente Habilitado / Instrutor -->
+                        <div style="border:1px solid #bfdbfe; background:rgba(59,130,246,0.04); border-radius:8px; padding:10px 12px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
+                                <label id="kitsLabelAssinatura1" style="color:#1e40af; font-weight:700; font-size:12px;">⚡ 1ª Assinatura: Eng. Eletricista / Instrutor Habilitado</label>
+                                <div style="display:flex; gap:4px;">
+                                    <button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:10.5px; color:#1d4ed8; border-color:#93c5fd; background:#eff6ff;" onclick="aplicarPresetAssinatura1Kits('eng_eletricista')" title="Preenche com os dados do Engenheiro Eletricista salvo para NR-10">⚡ Eng. Eletricista</button>
+                                    <button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:10.5px;" onclick="aplicarPresetAssinatura1Kits('instrutor_sst')" title="Preenche com o Instrutor de SST padrão (Maria Gessica)">👷 Instrutor SST</button>
+                                    <button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:10.5px; color:#047857; border-color:#6ee7b7; background:#ecfdf5;" onclick="salvarEngEletricistaPadraoKits()" title="Salva o nome e CREA digitados abaixo como padrão de Engenheiro Eletricista para próximos treinamentos de NR-10">💾 Salvar Padrão</button>
+                                </div>
+                            </div>
+                            <input type="text" id="kitsForm_instrutorNome" placeholder="Nome do Engenheiro Eletricista / Profissional Habilitado" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; margin-bottom: 5px; font-weight:600;">
+                            <input type="text" id="kitsForm_instrutorQualificacao" placeholder="Qualificação (ex: ENGENHEIRO ELETRICISTA)" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; margin-bottom: 5px;">
+                            <input type="text" id="kitsForm_instrutorRegistro" placeholder="Registro no Conselho (ex: CREA: 123456/PE)" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
+                            <div style="font-size:10.5px; color:var(--text-light); margin-top:4px;">Exigido pela NR-10 (Item 10.8.8) como Responsável Técnico Legalmente Habilitado em Elétrica.</div>
                         </div>
-                        <div>
-                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Responsável Técnico</label>
-                            <input type="text" id="kitsForm_respTecnicoNome" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; margin-bottom: 6px;">
-                            <input type="text" id="kitsForm_respTecnicoQualificacao" placeholder="Qualificação" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; margin-bottom: 6px;">
-                            <input type="text" id="kitsForm_respTecnicoRegistro" placeholder="Registro (ex: CREA: 0522078320)" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+
+                        <!-- Assinatura 2: Eng. de Segurança do Trabalho (Responsável Técnico SST) -->
+                        <div style="border:1px solid #c7d2fe; background:rgba(79,70,229,0.04); border-radius:8px; padding:10px 12px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
+                                <label style="color:#3730a3; font-weight:700; font-size:12px;">🛡️ 2ª Assinatura: Eng. de Segurança do Trabalho (SST)</label>
+                                <button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:10.5px;" onclick="restaurarRespTecnicoSstPadraoKits()">↺ Padrão SST</button>
+                            </div>
+                            <input type="text" id="kitsForm_respTecnicoNome" placeholder="Nome do Eng. de Segurança do Trabalho" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; margin-bottom: 5px; font-weight:600;">
+                            <input type="text" id="kitsForm_respTecnicoQualificacao" placeholder="Qualificação (ENG. SEG. TRABALHO)" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; margin-bottom: 5px;">
+                            <input type="text" id="kitsForm_respTecnicoRegistro" placeholder="Registro (ex: CREA: 0522078320)" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
+                            <div style="font-size:10.5px; color:var(--text-light); margin-top:4px;">Responsável Técnico pela Gestão de SST (NR-01 / PGR / Conformidade Normativa).</div>
+                        </div>
+
+                        <!-- Assinatura 3: Colaborador Treinado -->
+                        <div style="border:1px solid #bbf7d0; background:rgba(16,185,129,0.04); border-radius:8px; padding:10px 12px; display:flex; flex-direction:column; justify-content:space-between;">
+                            <div>
+                                <label style="color:#065f46; font-weight:700; font-size:12px; display:block; margin-bottom:6px;">👷 3ª Assinatura: Colaborador Treinado / Autorizado</label>
+                                <div style="font-size:11.5px; color:var(--text); line-height:1.45;">
+                                    Impressa automaticamente em cada documento com o <strong>Nome Completo</strong>, <strong>CPF</strong>, <strong>Matrícula</strong> e <strong>Função</strong> de cada trabalhador selecionado na turma:
+                                    <ul style="margin:6px 0 0 16px; padding:0; font-size:11px; color:var(--text-light);">
+                                        <li>Linha individual na <strong>Lista de Presença (FOR.001)</strong></li>
+                                        <li>Campo de assinatura no <strong>Certificado de Capacitação</strong></li>
+                                        <li>Termo de <strong>Anuência Formal (Autorização NR-10)</strong></li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div style="font-size:10.5px; color:#047857; font-weight:600; margin-top:6px;">✅ 03 Campos de Assinatura ativos em todos os documentos do Kit.</div>
                         </div>
                     </div>
                 </div>
 
+                <!-- Passo 4: Composição do Kit, Conteúdo Programático Normativo e Emissão -->
                 <div class="db-chart-card">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px; flex-wrap:wrap; gap:8px;">
-                        <div class="db-chart-title" style="font-size: 13px; margin-bottom: 0;">🪪 Documentos Individuais por Colaborador</div>
-                        <button type="button" class="db-clear-btn" style="padding:5px 12px; font-size:11.5px; font-weight:600; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;" onclick="abrirModalEmissaoCertificadoLote(contextoKits())">🖨️ Emitir Certificados da Turma (Lote)</button>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; flex-wrap:wrap; gap:8px;">
+                        <div>
+                            <div class="db-chart-title" style="font-size: 13.5px; margin-bottom: 2px;">📦 4. Composição do Kit de Documentos &amp; Emissão (Turma ou Individual)</div>
+                            <div style="font-size:11.5px; color:var(--text-light);">Todo Kit inclui no mínimo <strong>Lista de Presença + Certificado</strong>. Para <strong>NR-10</strong>, inclui automaticamente a <strong>Anuência Formal (Autorização da Empresa — Item 10.8.4)</strong>.</div>
+                        </div>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button type="button" class="db-apply-btn" style="padding:7px 14px; font-size:12px; font-weight:700;" onclick="gerarKitCompletoTurmaKits()">
+                                🖨️ Emitir Kit Completo da Turma (Lote)
+                            </button>
+                            <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:600; color:#0f172a;" onclick="gerarListaPresencaKits()">
+                                📋 Lista de Presença
+                            </button>
+                            <button type="button" id="btnKitsListaDiariaPeriodo" class="db-clear-btn" style="display:none; padding:7px 12px; font-size:11.5px; font-weight:600; color:#1d4ed8; background:#eff6ff; border-color:#93c5fd;" onclick="gerarListaPresencaPorDiaPeriodoKits()" title="Gera uma folha de Lista de Presença para cada dia do período informado">
+                                📅 1 Lista por Dia do Período
+                            </button>
+                            <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:600; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;" onclick="abrirModalEmissaoCertificadoLote(contextoKits())">
+                                🎓 Certificados da Turma (Lote)
+                            </button>
+                            <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:600; color:#b45309; border-color:#fcd34d; background:#fffbeb;" onclick="gerarAnuenciaFormalTurma(contextoKits())">
+                                ⚡ Anuência Formal NR-10 (Lote)
+                            </button>
+                            <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:700; color:#047857; border-color:#6ee7b7; background:#ecfdf5;" onclick="salvarPresencaTurmaDiretoKits()" title="Registra oficialmente este treinamento no histórico da turma e atualiza a validade de 24 meses na Matriz">
+                                💾 Lançar Presença no Histórico
+                            </button>
+                        </div>
                     </div>
-                    <p style="font-size: 11.5px; color: var(--text-light); margin-bottom: 10px;">
-                        Kit Completo: gera de uma vez OS + Lista de Presença + Certificado + Declaração de Integração + Termo de Recusa (use pra Integração/admissão). Os 4 botões menores geram só um documento por vez - use quando precisar reimprimir apenas um (ex: colaborador errou uma assinatura). Declaração/Termo dependem dos campos preenchidos no Catálogo.
-                    </p>
+
+                    <!-- Checkboxes de Documentos do Kit -->
+                    <div style="display:flex; flex-wrap:wrap; gap:10px 18px; padding:10px 14px; background:var(--bg, #f8fafc); border:1px solid var(--border); border-radius:8px; margin-bottom:12px; font-size:12px;">
+                        <span style="font-weight:700; color:var(--text);">Documentos incluídos no botão "🖨️ Kit Completo":</span>
+                        <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">
+                            <input type="checkbox" id="kitsDocCheck_lista" checked onchange="renderKitsDocsIndividuaisList()"> 📋 Lista de Presença (FOR.001)
+                        </label>
+                        <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">
+                            <input type="checkbox" id="kitsDocCheck_certificado" checked onchange="renderKitsDocsIndividuaisList()"> 🎓 Certificado (3 Assinaturas)
+                        </label>
+                        <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:700; color:#b45309;">
+                            <input type="checkbox" id="kitsDocCheck_anuencia" onchange="renderKitsDocsIndividuaisList()"> ⚡ Anuência Formal NR-10 (Autorização da Empresa)
+                        </label>
+                        <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer;">
+                            <input type="checkbox" id="kitsDocCheck_os" onchange="renderKitsDocsIndividuaisList()"> 📄 Ordem de Serviço (OS)
+                        </label>
+                        <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer;">
+                            <input type="checkbox" id="kitsDocCheck_declaracao" onchange="renderKitsDocsIndividuaisList()"> 📝 Declaração de Integração
+                        </label>
+                        <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer;">
+                            <input type="checkbox" id="kitsDocCheck_recusa" onchange="renderKitsDocsIndividuaisList()"> 🛑 Termo de Direito de Recusa
+                        </label>
+                    </div>
+
+                    <!-- Conteúdo Programático e Base Legal Revisáveis na Própria Aba -->
+                    <details style="margin-bottom:12px; border:1px solid var(--border); border-radius:8px; padding:8px 12px; background:var(--card);">
+                        <summary style="cursor:pointer; font-size:12px; font-weight:700; color:var(--primary);">
+                            📚 Ver / Editar Conteúdo Programático Normativo e Base Legal (Anexo III NR-10 / NR-01 / NR-35 / NR-18)
+                        </summary>
+                        <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                                <span style="font-size:11.5px; color:var(--text-light);">Conteúdo impresso na Lista de Presença e no Certificado:</span>
+                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#1d4ed8; font-weight:600;" onclick="carregarPresetConteudoKits('nr10_inicial')">⚡ NR-10 Básico Inicial (40h - Anexo III Completo)</button>
+                                    <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#b45309; font-weight:600;" onclick="carregarPresetConteudoKits('nr10_reciclagem')">🔄 NR-10 Reciclagem Bienal (Item 10.8.8.2)</button>
+                                    <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#4f46e5; font-weight:600;" onclick="carregarPresetConteudoKits('nr18_integracao')">✨ NR-18 / NR-01 Integração</button>
+                                    <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px;" onclick="carregarPresetConteudoKits('catalogo')">↺ Restaurar do Catálogo</button>
+                                </div>
+                            </div>
+                            <textarea id="kitsForm_conteudoProgramatico" rows="6" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:11.5px; line-height:1.45; box-sizing:border-box;"></textarea>
+                            <div>
+                                <label style="display:block; font-size:11.5px; font-weight:600; color:var(--text-light); margin-bottom:3px;">Base Legal Normativa (Rodapé do Certificado e Anuência):</label>
+                                <input type="text" id="kitsForm_baseLegal" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:8px; font-size:11.5px; box-sizing:border-box;">
+                            </div>
+                        </div>
+                    </details>
+
+                    <div id="kitsLancamentoStatus" style="display:none; margin-bottom:10px; padding:8px 12px; border-radius:8px; font-size:12px; font-weight:600;"></div>
+
                     <div id="kitsDocsIndividuaisLista" style="display:flex; flex-direction:column; gap:6px;"></div>
                 </div>
                 </div>
@@ -9827,20 +10028,20 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="../data.js?v=218"></script>
-    <script src="logo_cop_base64.js?v=218"></script>
-    <script src="dashboard.js?v=218"></script>
-    <script src="modules/treinamentos_ddsma.js?v=218"></script>
-    <script src="modules/efetivo_ferias.js?v=218"></script>
-    <script src="modules/ghe_os.js?v=218"></script>
-    <script src="modules/relatorio_sms_nc.js?v=218"></script>
-    <script src="modules/saude_psicossocial.js?v=218"></script>
-    <script src="modules/epi_estoque.js?v=218"></script>
-    <script src="modules/ambiental_compras_hht.js?v=218"></script>
-    <script src="modules/apr_cipa.js?v=218"></script>
-    <script src="modules/documentos_brigada.js?v=218"></script>
-    <script src="modules/ergonomia_periculosidade_pgr.js?v=218"></script>
-    <script src="placar_lideres.js?v=218"></script>
+    <script src="../data.js?v=220"></script>
+    <script src="logo_cop_base64.js?v=220"></script>
+    <script src="dashboard.js?v=220"></script>
+    <script src="modules/treinamentos_ddsma.js?v=220"></script>
+    <script src="modules/efetivo_ferias.js?v=220"></script>
+    <script src="modules/ghe_os.js?v=220"></script>
+    <script src="modules/relatorio_sms_nc.js?v=220"></script>
+    <script src="modules/saude_psicossocial.js?v=220"></script>
+    <script src="modules/epi_estoque.js?v=220"></script>
+    <script src="modules/ambiental_compras_hht.js?v=220"></script>
+    <script src="modules/apr_cipa.js?v=220"></script>
+    <script src="modules/documentos_brigada.js?v=220"></script>
+    <script src="modules/ergonomia_periculosidade_pgr.js?v=220"></script>
+    <script src="placar_lideres.js?v=220"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();
@@ -9966,6 +10167,12 @@ function filterMatrizEpi(q) {
                         Conteúdo Programático Impresso no Certificado:
                     </label>
                     <div style="display:flex; gap:6px;">
+                        <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#1d4ed8; font-weight:600;" onclick="certModalCarregarPadraoNr10('inicial')" title="Insere o conteúdo programático oficial completo do Anexo III da NR-10 (40h)">
+                            ⚡ NR-10 Inicial (40h)
+                        </button>
+                        <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#b45309; font-weight:600;" onclick="certModalCarregarPadraoNr10('reciclagem')" title="Insere o conteúdo programático de Reciclagem Bienal da NR-10 (Item 10.8.8.2)">
+                            🔄 NR-10 Reciclagem
+                        </button>
                         <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#4f46e5; font-weight:600;" onclick="certModalCarregarPadraoNr18()" title="Insere os tópicos atualizados conforme NR-18 Anexo I, NR-01 Portaria 1.419/2024 e Lei 14.457/2022">
                             ✨ Padrão NR-18 / NR-01
                         </button>

@@ -2865,10 +2865,60 @@ function renderHistoricoTrocaFuncaoColab(matricula) {
     return `
         <div style="margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border);">
             <div style="font-size: 11px; color: var(--text-light); font-weight: 700; text-transform: uppercase; margin-bottom: 6px;">Histórico de Trocas de Função (${linhas.length})</div>
-            ${linhas.map(h => `<div style="font-size:12px; padding:6px 0; border-bottom:1px solid var(--border);">
-                <b>${formatSimpleDate(h.data_troca)}</b> — ${escapeHTML(h.setor_anterior)} / ${escapeHTML(h.funcao_anterior)} (GHE ${escapeHTML(h.ghe_anterior)}) → ${escapeHTML(h.setor_novo)} / ${escapeHTML(h.funcao_novo)} (GHE ${escapeHTML(h.ghe_novo)})
+            ${linhas.map(h => `<div style="font-size:12px; padding:6px 0; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                <div>
+                    <b>${formatSimpleDate(h.data_troca)}</b> — ${escapeHTML(h.setor_anterior)} / ${escapeHTML(h.funcao_anterior)} (GHE ${escapeHTML(h.ghe_anterior)}) → ${escapeHTML(h.setor_novo)} / ${escapeHTML(h.funcao_novo)} (GHE ${escapeHTML(h.ghe_novo)})
+                </div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <button class="db-clear-btn" style="padding:2px 8px; font-size:11px;" title="Reimprimir Termo de Troca de Função e OS" onclick="reimprimirHistoricoTrocaFuncao('${escapeHTML(h.id)}')">🖨️ Documentos</button>
+                    <button class="db-clear-btn" style="padding:2px 8px; font-size:11px; color:var(--danger); border-color:rgba(239,68,68,0.3);" title="Excluir registro do histórico" onclick="excluirHistoricoTrocaFuncao('${escapeHTML(h.id)}', '${escapeHTML(matricula)}')">🗑️</button>
+                </div>
             </div>`).join('')}
         </div>`;
+}
+
+async function reimprimirHistoricoTrocaFuncao(idHistorico) {
+    const h = allHistoricoTrocaFuncao.find(item => item.id === idHistorico);
+    if (!h) return;
+    const colab = allEfetivo.find(e => e.id === h.matricula) || { id: h.matricula, nome: h.nome_colaborador, setor: h.setor_novo, funcao: h.funcao_novo, ghe: h.ghe_novo };
+    await garantirDocumentosControleCarregados();
+    const atual = resolverSituacaoCargo(h.setor_anterior, h.funcao_anterior, h.ghe_anterior);
+    const novo = resolverSituacaoCargo(h.setor_novo, h.funcao_novo, h.ghe_novo);
+    const sugeridos = examesNovosSugeridos(atual.exames, novo.exames);
+    const folhas = [
+        construirFolhaOrdemServico(h.matricula, { nome: colab.nome, funcao: h.funcao_novo }, CRONOGRAMA_DEFAULTS_SESSAO, h.data_troca),
+        construirFolhaTermoTrocaFuncao(colab, atual, novo, sugeridos, h.exames_observacao || '', h.motivo || '', h.data_troca)
+    ].join('');
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Troca de Função - ${escapeHTML(colab.nome)} - ${formatSimpleDate(h.data_troca)}</title>
+<style>
+    ${typeof DOC_INDIVIDUAL_CSS !== 'undefined' ? DOC_INDIVIDUAL_CSS : ''}
+    @page { size: A4 portrait; margin: 12mm; }
+</style>
+<script>
+    window.addEventListener('load', function() {
+        setTimeout(function() { window.print(); }, 400);
+    });
+</script>
+</head>
+<body>
+    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
+    ${folhas}
+</body></html>`;
+    abrirDocumentoHtmlParaImpressao(html, `Troca_Funcao_${(colab.nome || 'Colaborador').replace(/[^a-zA-Z0-9]/g, '_')}_${formatSimpleDate(h.data_troca).replace(/\//g, '-')}`);
+}
+
+async function excluirHistoricoTrocaFuncao(idHistorico, matricula) {
+    if (!confirm('Deseja realmente remover este registro do histórico de trocas de função?')) return;
+    try {
+        await supabaseDelete('historico_troca_funcao', idHistorico);
+        allHistoricoTrocaFuncao = allHistoricoTrocaFuncao.filter(h => h.id !== idHistorico);
+        mostrarDetalheColaborador(matricula);
+    } catch (err) {
+        console.error('Erro ao excluir histórico de troca de função:', err);
+        alert('❌ Falha ao excluir registro do histórico: ' + err.message);
+    }
 }
 
 function abrirTrocaFuncao(matricula) {
@@ -2979,14 +3029,61 @@ async function confirmarTrocaFuncao() {
         const novo = resolverSituacaoCargo(setorNovo, funcaoNovo, gheNovo);
         const sugeridos = examesNovosSugeridos(atual.exames, novo.exames);
 
+        // 1) Atualiza primeiro o cadastro oficial em colaboradores_efetivo (enviando apenas
+        // as colunas reais atualizadas para evitar conflito com propriedades de cache em memória como _admMs)
+        const payloadEfetivo = {
+            id: matricula,
+            setor: setorNovo,
+            funcao: funcaoNovo,
+            ghe: gheNovo
+        };
+        await supabaseUpsert('colaboradores_efetivo', [payloadEfetivo]);
+
+        const rowEfetivo = { ...colab, setor: setorNovo, funcao: funcaoNovo, ghe: gheNovo };
+        const idx = allEfetivo.findIndex(e => e.id === matricula);
+        if (idx >= 0) allEfetivo[idx] = rowEfetivo;
+
+        // 2) Sincronização dupla obrigatória com a base de campo (colaboradores_checklist)
+        try {
+            const resColab = await supabaseFetch('colaboradores_checklist', `?or=(matricula.eq.${encodeURIComponent(matricula)},id.eq.${encodeURIComponent(matricula)})`);
+            if (Array.isArray(resColab) && resColab.length > 0) {
+                for (const item of resColab) {
+                    await fetch(`${SUPABASE_URL}/rest/v1/colaboradores_checklist?id=eq.${encodeURIComponent(item.id)}`, {
+                        method: 'PATCH',
+                        headers: {
+                            apikey: SUPABASE_KEY,
+                            Authorization: `Bearer ${await authTokenDashboard()}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            nome: colab.nome,
+                            funcao: funcaoNovo,
+                            setor: setorNovo
+                        })
+                    });
+                    if (Array.isArray(allColaboradoresInternos)) {
+                        const local = allColaboradoresInternos.find(c => String(c.id) === String(item.id));
+                        if (local) {
+                            local.nome = colab.nome;
+                            local.funcao = funcaoNovo;
+                            local.setor = setorNovo;
+                        }
+                    }
+                }
+            }
+        } catch (errSync) {
+            console.warn('Aviso: falha ao sincronizar troca de função em colaboradores_checklist:', errSync);
+        }
+
+        // 3) Registra o histórico somente após o sucesso da alteração do cadastro
         const historicoRow = {
             id: `TF_${matricula}_${Date.now()}`,
             matricula,
             nome_colaborador: colab.nome,
             data_troca: data,
-            setor_anterior: colab.setor || '',
-            funcao_anterior: colab.funcao || '',
-            ghe_anterior: colab.ghe || '',
+            setor_anterior: atual.setor || '',
+            funcao_anterior: atual.funcao || '',
+            ghe_anterior: atual.ghe || '',
             cargo_anterior: atual.cargoInfo?.cargo || '',
             setor_novo: setorNovo,
             funcao_novo: funcaoNovo,
@@ -2999,11 +3096,6 @@ async function confirmarTrocaFuncao() {
         };
         await supabaseUpsert('historico_troca_funcao', [historicoRow]);
         allHistoricoTrocaFuncao.push(historicoRow);
-
-        const rowEfetivo = { ...colab, setor: setorNovo, funcao: funcaoNovo, ghe: gheNovo };
-        await supabaseUpsert('colaboradores_efetivo', [rowEfetivo]);
-        const idx = allEfetivo.findIndex(e => e.id === matricula);
-        if (idx >= 0) allEfetivo[idx] = rowEfetivo;
 
         const folhas = [
             construirFolhaOrdemServico(matricula, { nome: colab.nome, funcao: funcaoNovo }, CRONOGRAMA_DEFAULTS_SESSAO, data),
@@ -3129,9 +3221,9 @@ function construirFolhaTermoTrocaFuncao(colab, atual, novo, sugeridos, examesObs
             Declaro estar ciente da mudança de função acima descrita, dos riscos a ela associados e da entrega, nesta mesma data, da Ordem de Serviço
             atualizada com as orientações de segurança referentes à nova função.
         </div>
-        <div class="assinaturas">
-            ${blocoAssinatura(`${escapeHTML(colab.nome)}<br>Colaborador`)}
-            ${blocoAssinatura(`${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_nome)}<br>${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_qualificacao)}<br>${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_registro)}`)}
+        <div class="assinaturas" style="display:flex; justify-content:space-around; align-items:flex-start; margin-top:52px; margin-bottom:10px; gap:24px; text-align:center;">
+            ${blocoAssinatura(`<b>${escapeHTML(colab.nome)}</b><br>Colaborador(a)${colab.cpf ? '<br>CPF: ' + escapeHTML(colab.cpf) : ''}`)}
+            ${blocoAssinatura(`<b>${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_nome)}</b><br>${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_qualificacao)}<br>${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_registro)}`)}
         </div>
     </div>`;
 }

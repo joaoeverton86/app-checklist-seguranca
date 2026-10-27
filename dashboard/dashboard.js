@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-var VERSAO_PAINEL = 'v222';
+var VERSAO_PAINEL = 'v223';
 try { ['badgeVersaoDashboardLogin', 'badgeVersaoDashboardSidebar'].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = VERSAO_PAINEL; }); } catch(e){}
 var DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
@@ -12001,7 +12001,7 @@ var DOC_INDIVIDUAL_CSS = `
     .folha-os .assinaturas-os {
         display: flex;
         justify-content: space-around;
-        margin-top: 10px;
+        margin-top: 22px;
         margin-bottom: 0;
         gap: 16px;
         page-break-inside: avoid !important;
@@ -12015,7 +12015,7 @@ var DOC_INDIVIDUAL_CSS = `
         break-inside: avoid !important;
     }
     .folha-os .assinaturas-os .assinatura-item .linha-assinatura {
-        margin-top: 10px;
+        margin-top: 18px;
         font-size: 10pt;
         letter-spacing: 0.5px;
         line-height: 1;
@@ -12333,8 +12333,25 @@ var DOC_INDIVIDUAL_CSS = `
     .folha-compacta .lista-obrigacoes li { margin-bottom: 1.5px; }
     .folha-compacta .grade-topicos { font-size: 8pt; line-height: 1.2; margin-top: 2px; margin-bottom: 4px; columns: 3; column-gap: 10px; color: #334155; }
     .folha-compacta .grade-topicos > div { padding: 1px 3px; break-inside: avoid; }
-    .assinatura-item .linha-assinatura { font-size: 11pt; letter-spacing: 0.5px; }
-    .assinatura-item .linha-nome { margin-top: 2px; }
+    .assinaturas {
+        display: flex;
+        justify-content: space-around;
+        align-items: flex-start;
+        margin-top: 44px;
+        margin-bottom: 8px;
+        gap: 24px;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .assinaturas .assinatura-item {
+        text-align: center;
+        font-size: 9.5pt;
+        width: 45%;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .assinatura-item .linha-assinatura { padding-top: 24px; font-size: 10.5pt; letter-spacing: 0.5px; line-height: 1; margin-bottom: 4px; }
+    .assinatura-item .linha-nome { margin-top: 3px; line-height: 1.3; font-size: 9.5pt; }
     .no-print { text-align: center; margin: 16px 0; }
     .no-print button { padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; border: none; background: #4f46e5; color: #fff; }
 `;
@@ -19201,8 +19218,8 @@ function construirFolhaTermoTrocaFuncao(colab, atual, novo, sugeridos, examesObs
             atualizada com as orientações de segurança referentes à nova função.
         </div>
         <div class="assinaturas">
-            ${blocoAssinatura(`${escapeHTML(colab.nome)}<br>Colaborador`)}
-            ${blocoAssinatura(`${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_nome)}<br>${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_qualificacao)}<br>${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_registro)}`)}
+            ${blocoAssinatura(`<b>${escapeHTML(colab.nome)}</b><br>Colaborador(a)${colab.cpf ? '<br>CPF: ' + escapeHTML(colab.cpf) : ''}`)}
+            ${blocoAssinatura(`<b>${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_nome)}</b><br>${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_qualificacao)}<br>${escapeHTML(CRONOGRAMA_DEFAULTS_SESSAO.responsavel_tecnico_registro)}`)}
         </div>
     </div>`;
 }

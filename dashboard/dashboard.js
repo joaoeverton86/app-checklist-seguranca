@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-var VERSAO_PAINEL = 'v224';
+var VERSAO_PAINEL = 'v225';
 try { ['badgeVersaoDashboardLogin', 'badgeVersaoDashboardSidebar'].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = VERSAO_PAINEL; }); } catch(e){}
 var DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
@@ -18536,7 +18536,7 @@ function toggleTreinamentosBadge(status) {
 }
 
 function mostrarDetalheColaborador(matricula) {
-    const e = allEfetivo.find(x => x.id === matricula);
+    const e = allEfetivo.find(x => String(x.id) === String(matricula));
     if (!e) return;
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
@@ -18550,9 +18550,10 @@ function mostrarDetalheColaborador(matricula) {
         : `<span style="font-size: 11px; padding: 3px 10px; border-radius: 8px; background: #fee2e2; color: #b91c1c; font-weight: 700;">🔴 ${escapeHTML(e.status || 'INATIVO')}</span>`;
 
     let tempoCasaTxt = '—';
+    let totalMeses = 0;
     if (admissao) {
         const fimRef = demissao || hoje;
-        const totalMeses = Math.floor((fimRef.getTime() - admissao.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
+        totalMeses = Math.floor((fimRef.getTime() - admissao.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
         const anos = Math.floor(totalMeses / 12);
         const mesesResto = totalMeses % 12;
         tempoCasaTxt = anos > 0 ? `${anos} ano(s) e ${mesesResto} mês(es)` : `${mesesResto} mês(es)`;

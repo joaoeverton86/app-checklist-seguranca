@@ -284,13 +284,19 @@ async function marcarCicloFeriasGozadoRapido(matricula, cicloRotulo = '1º Ciclo
         }
         await garantirColaboradoresFeriasCarregados();
 
-        // 4. Atualiza todas as interfaces
+        // 4. Atualiza todas as interfaces com isolamento seguro
         if (typeof renderFeriasPanel === 'function') await renderFeriasPanel();
-        if (typeof filterEfetivoColaboradores === 'function') filterEfetivoColaboradores(document.getElementById('efetivoSearchInput')?.value || '');
-        if (typeof renderRecomendacaoPsicossocial === 'function') renderRecomendacaoPsicossocial();
-        if (typeof mostrarDetalheColaborador === 'function' && document.getElementById('efetivoColabDetail')?.style.display !== 'none') {
-            mostrarDetalheColaborador(matricula);
-        }
+        try {
+            if (typeof filterEfetivoColaboradores === 'function') filterEfetivoColaboradores(document.getElementById('efetivoSearchInput')?.value || '');
+        } catch (eUi1) { console.warn('Aviso ao atualizar lista de colaboradores:', eUi1); }
+        try {
+            if (typeof renderRecomendacaoPsicossocial === 'function') renderRecomendacaoPsicossocial();
+        } catch (eUi2) { console.warn('Aviso ao atualizar painel psicossocial:', eUi2); }
+        try {
+            if (typeof mostrarDetalheColaborador === 'function' && document.getElementById('efetivoColabDetail')?.style.display !== 'none') {
+                mostrarDetalheColaborador(matricula);
+            }
+        } catch (eUi3) { console.warn('Aviso ao atualizar ficha do colaborador:', eUi3); }
 
         if (typeof mostrarFeedbackToast === 'function') {
             mostrarFeedbackToast(`✅ ${cicloRotulo} registrado como Gozado com sucesso!`, 'sucesso');

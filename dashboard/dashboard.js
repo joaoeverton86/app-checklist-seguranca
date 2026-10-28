@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-var VERSAO_PAINEL = 'v225';
+var VERSAO_PAINEL = 'v226';
 try { ['badgeVersaoDashboardLogin', 'badgeVersaoDashboardSidebar'].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = VERSAO_PAINEL; }); } catch(e){}
 var DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
@@ -26532,8 +26532,8 @@ async function excluirAcidenteAtual() {
 // acidente de trabalho, sobre a mesma HHT de exposição já usada em Acidentabilidade).
 // ============================================
 
-var allAsoExames = [];
-var allAtestadosOcupacionais = [];
+var allAsoExames = window.allAsoExames || [];
+var allAtestadosOcupacionais = window.allAtestadosOcupacionais || [];
 var allPressaoArterial = [];
 var saudeLoaded = false;
 var saudeFilter = 'mes';
@@ -27096,8 +27096,19 @@ function onAtestadoDatasChange() {
 // Status de ASO do colaborador = calculado a partir do exame mais recente (qualquer
 // tipo) por data_exame. "sem_registro" cobre tanto quem nunca teve exame lançado quanto
 // quem tem exame mas sem data de vencimento preenchida (não dá pra avaliar sem isso).
+function ehRegistroAsoGeralPcmso(a) {
+    if (!a || !a.data_exame) return false;
+    const t = String(a.tipo_aso || '').toLowerCase();
+    const id = String(a.id || '');
+    if (t.includes('psico') || id.startsWith('ASO_PSICO_')) return false;
+    return true;
+}
+
 function calcularStatusAsoColaborador(matricula) {
-    const exames = allAsoExames.filter(a => a.matricula === matricula && a.data_exame);
+    const matStr = String(matricula || '').trim();
+    const todos = (allAsoExames || []).filter(a => String(a.matricula || '').trim() === matStr && a.data_exame);
+    const gerais = todos.filter(ehRegistroAsoGeralPcmso);
+    const exames = gerais.length > 0 ? gerais : todos;
     if (exames.length === 0) return { status: 'sem_registro', ultimoExame: null, diffDays: null };
     const ultimo = exames.reduce((max, a) => parseLocalDate(a.data_exame) > parseLocalDate(max.data_exame) ? a : max, exames[0]);
     if (!ultimo.data_vencimento) return { status: 'sem_registro', ultimoExame: ultimo, diffDays: null };
@@ -28136,8 +28147,10 @@ function renderListaAsoAlertasFiltrada() {
 // Se não tem nenhum ASO registrado, calcula: dt_admissao + periodicidade
 // ============================================
 function calcularValidadeAsoPcmso(colaborador) {
-    const matricula = colaborador.id;
-    const exames = (allAsoExames || []).filter(a => a.matricula === matricula && a.data_exame);
+    const matricula = String(colaborador.id || '').trim();
+    const todos = (allAsoExames || []).filter(a => String(a.matricula || '').trim() === matricula && a.data_exame);
+    const gerais = todos.filter(ehRegistroAsoGeralPcmso);
+    const exames = gerais.length > 0 ? gerais : todos;
     const gheNum = normalizarGhe(colaborador.ghe);
     const isAdministrativo = ['03', '16', '22', '23', '24'].includes(gheNum);
     const periodicidadeMeses = isAdministrativo ? 24 : 12;
@@ -28575,6 +28588,7 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
     psicossocial: {
         id: 'psicossocial',
         nomeExame: 'Avaliação Psicossocial',
+        termosBusca: ['psicossocial', 'psico'],
         tituloHeader: '🧠 Recomendação de Exames — Avaliação Psicossocial (PGR & PCMSO)',
         descricaoBase: 'Exigência mandatória para atividades de risco crítico: Trabalho em Altura (NR-35), Espaço Confinado (NR-33) e Sistema Elétrico de Potência - SEP (NR-10).',
         ghesPadrao: ['05', '06', '07', '08', '10', '25', '26'],
@@ -28586,9 +28600,10 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
     audiometria: {
         id: 'audiometria',
         nomeExame: 'Audiometria Ocupacional',
+        termosBusca: ['audiometria', 'audio'],
         tituloHeader: '👂 Recomendação de Exames — Audiometria Tonal e Vocal (NR-07 Anexo II)',
         descricaoBase: 'Controle audiológico obrigatório para trabalhadores expostos a níveis de ruído contínuo ou intermitente acima dos limites de tolerância (NR-09 e NR-15).',
-        ghesPadrao: ['01', '04', '05', '06', '07', '08', '10', '11', '12', '13', '17', '18', '19', '21', '25', '26'],
+        ghesPadrao: ['01', '04', '05', '06', '07', '08', '10', '11', '12', '13', '17', '18', '19', '21', '25', '26', '27'],
         periodicidadeMeses: 12,
         profissionalPadrao: 'Fonoaudióloga Ocupacional',
         tipoProfissional: 'CRFa',
@@ -28597,6 +28612,7 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
     ecg: {
         id: 'ecg',
         nomeExame: 'Eletrocardiograma (ECG)',
+        termosBusca: ['eletrocardiograma', 'ecg'],
         tituloHeader: '🫀 Recomendação de Exames — Eletrocardiograma (ECG)',
         descricaoBase: 'Rastreamento de arritmias e cardiopatias prévias obrigatório para atividades em altura (NR-35), eletricidade (NR-10) e manuseio de máquinas.',
         ghesPadrao: ['05', '06', '07', '08', '10', '15', '19', '25', '26'],
@@ -28608,9 +28624,10 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
     espirometria: {
         id: 'espirometria',
         nomeExame: 'Espirometria Ocupacional',
+        termosBusca: ['espirometria', 'espiro'],
         tituloHeader: '🫁 Recomendação de Exames — Espirometria Ocupacional (Função Pulmonar)',
         descricaoBase: 'Avaliação da integridade respiratória para operadores e frentes de manutenção com exposição a poeiras minerais, fumos e aerodispersóides.',
-        ghesPadrao: ['05', '06', '07', '08', '10', '11', '12', '15', '17', '18', '19', '21', '25', '26'],
+        ghesPadrao: ['05', '06', '07', '08', '10', '11', '12', '15', '19', '21', '25', '26'],
         periodicidadeMeses: 24,
         profissionalPadrao: 'Médico Pneumologista / Medicina do Trabalho',
         tipoProfissional: 'CRM',
@@ -28619,9 +28636,10 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
     acuidade: {
         id: 'acuidade',
         nomeExame: 'Acuidade Visual',
+        termosBusca: ['acuidade visual', 'acuidade'],
         tituloHeader: '👁️ Recomendação de Exames — Teste de Acuidade Visual (Snellen)',
-        descricaoBase: 'Avaliação de campo visual e nitidez obrigatória para motoristas, operadores de máquinas pesadas, empilhadeiras e operadores de sistemas hídricos.',
-        ghesPadrao: ['08', '09', '10', '11', '12', '15', '25'],
+        descricaoBase: 'Avaliação de campo visual e nitidez obrigatória para motoristas de veículos pesados e operação de máquinas.',
+        ghesPadrao: ['12'],
         periodicidadeMeses: 12,
         profissionalPadrao: 'Médico Oftalmologista / Examinador Credenciado',
         tipoProfissional: 'CRM',
@@ -28630,6 +28648,7 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
     rx_coluna: {
         id: 'rx_coluna',
         nomeExame: 'Raio X da Coluna Lombo Sacra',
+        termosBusca: ['coluna lombo', 'raio x da coluna', 'rx coluna'],
         tituloHeader: '🦴 Recomendação de Exames — Raio X Coluna Lombo-Sacra (NR-17 Ergonomia)',
         descricaoBase: 'Acompanhamento preventivo osteomuscular para atividades que envolvem movimentação manual de peso, esforço postural e manutenção pesada.',
         ghesPadrao: ['05', '06', '07', '08', '11', '12', '15', '19', '26'],
@@ -28641,9 +28660,10 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
     rx_torax: {
         id: 'rx_torax',
         nomeExame: 'Raio X de Tórax (Padrão OIT)',
+        termosBusca: ['tórax', 'torax', 'padrão oit'],
         tituloHeader: '🫁 Recomendação de Exames — Raio X de Tórax Padrão OIT',
         descricaoBase: 'Rastreamento de pneumoconioses em colaboradores expostos a poeiras minerais e atividades em carpintaria / corte de madeira.',
-        ghesPadrao: ['07', '19', '26'],
+        ghesPadrao: ['19'],
         periodicidadeMeses: 60,
         profissionalPadrao: 'Médico Radiologista / Leitor OIT',
         tipoProfissional: 'CRM',
@@ -28651,10 +28671,11 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
     },
     glicose: {
         id: 'glicose',
-        nomeExame: 'Glicemia de Jejum',
-        tituloHeader: '🩸 Recomendação de Exames — Glicemia de Jejum (Laboratorial)',
-        descricaoBase: 'Controle metabólico para prevenção de mal súbito, vertigens e síncopes em trabalhadores executantes de atividades em altura e espaços confinados.',
-        ghesPadrao: ['04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '17', '18', '19', '20', '21', '25', '26'],
+        nomeExame: 'Glicemia de Jejum (Glicose)',
+        termosBusca: ['glicose', 'glicemia'],
+        tituloHeader: '🩸 Recomendação de Exames — Glicemia de Jejum / Glicose (Laboratorial)',
+        descricaoBase: 'Controle metabólico para prevenção de mal súbito, vertigens e síncopes em trabalhadores executantes de atividades operacionais, em altura e espaços confinados.',
+        ghesPadrao: ['04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '17', '18', '19', '20', '21', '25', '26', '27'],
         periodicidadeMeses: 12,
         profissionalPadrao: 'Laboratório de Análises Clínicas',
         tipoProfissional: 'CRF / CRBM',
@@ -28663,9 +28684,10 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
     hemograma: {
         id: 'hemograma',
         nomeExame: 'Hemograma Completo',
+        termosBusca: ['hemograma'],
         tituloHeader: '🩸 Recomendação de Exames — Hemograma Completo (Laboratorial)',
         descricaoBase: 'Avaliação hematológica abrangente para rastreamento de anemias e respostas infecciosas nos trabalhadores de frente de obra.',
-        ghesPadrao: ['04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '17', '18', '19', '20', '21', '25', '26'],
+        ghesPadrao: ['04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '17', '18', '19', '20', '21', '25', '26', '27'],
         periodicidadeMeses: 12,
         profissionalPadrao: 'Laboratório de Análises Clínicas',
         tipoProfissional: 'CRF / CRBM',
@@ -28674,10 +28696,11 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
     ige_abelha: {
         id: 'ige_abelha',
         nomeExame: 'IgE Específica - Abelha',
+        termosBusca: ['ige específica', 'ige especifica', 'abelha'],
         tituloHeader: '🐝 Recomendação de Exames — IgE Específica - Veneno de Abelha (Risco Biológico)',
-        descricaoBase: 'Identificação de hipersensibilidade e risco de choque anafilático para equipes de supressão vegetal, motosserristas, roçadeiras e conservação de faixa.',
-        ghesPadrao: ['07', '08', '26'],
-        periodicidadeMeses: 24,
+        descricaoBase: 'Identificação admissional de hipersensibilidade e risco de choque anafilático para equipes de campo, manutenção civil, motosserristas, roçadeiras e inspeção de estruturas.',
+        ghesPadrao: ['07', '08', '27'],
+        periodicidadeMeses: null,
         profissionalPadrao: 'Laboratório de Análises Clínicas',
         tipoProfissional: 'CRF / CRBM',
         localPadrao: 'Posto de Coleta Ambulatorial da Obra'
@@ -28685,13 +28708,14 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
     matriz_geral: {
         id: 'matriz_geral',
         nomeExame: 'Matriz Geral de Exames do PCMSO',
+        termosBusca: [],
         tituloHeader: '📋 Matriz Geral de Exames Complementares do PCMSO (Consolidado)',
-        descricaoBase: 'Visão consolidada de todas as exigências do PCMSO para os 27 Grupos Homogêneos de Exposição (GHEs) da obra.',
+        descricaoBase: 'Visão consolidada de todas as exigências clínicas e complementares do PCMSO para os 27 Grupos Homogêneos de Exposição (GHEs) da obra.',
         ghesPadrao: ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27'],
         periodicidadeMeses: 12,
         profissionalPadrao: 'Médico Coordenador do PCMSO',
         tipoProfissional: 'CRM',
-        localPadrao: 'Consórcio COP'
+        localPadrao: 'Consórcio COP / Clínica Credenciada'
     }
 };
 
@@ -28700,6 +28724,7 @@ function aoMudarExameComplementarFoco() {
     if (sel) {
         exameComplementarFocoAtual = sel.value;
     }
+    selecionadosPsicoConvocacao.clear();
     renderRecomendacaoPsicossocial();
 }
 
@@ -28726,7 +28751,7 @@ var selecionadosPsicoConvocacao = new Set();
 // Data do próximo mutirão / visita clínica para o exame em foco
 function obterDataMutiraoPsico() {
     const chave = `exame_data_mutirao_${exameComplementarFocoAtual}`;
-    return localStorage.getItem(chave) || localStorage.getItem('psico_data_mutirao') || '2026-10-06';
+    return localStorage.getItem(chave) || localStorage.getItem('psico_data_mutirao') || '2026-10-27';
 }
 
 function salvarDataMutiraoPsico(novaData) {
@@ -28774,10 +28799,6 @@ function verificarExamePsicossocialRealizado(matricula, asosDoColab) {
             for (const item of a.exames_detalhe) {
                 const nomeItem = (item.nome || '').toLowerCase();
                 if (nomeItem.includes('psico')) {
-                    // Para ser considerado REALIZADO, deve possuir data_avaliacao ou data_exame explícita >= MARCO,
-                    // OU resultado cadastrado (ex: 'Apto', 'Inapto') com data >= MARCO,
-                    // OU profissional de psicologia/tipo explícito de psicossocial.
-                    // A mera lista padrão do SGG (apenas nome e vencimento, sem data_avaliacao e sem resultado) NÃO é realização!
                     const dtItem = item.data_avaliacao || (item.resultado ? (item.data_exame || dataAso) : null);
                     const temResultadoOuTipo = !!(item.resultado || item.tipo === 'psicossocial' || item.crp || (item.obs && item.obs.toLowerCase().includes('psico')));
 
@@ -28820,13 +28841,23 @@ function verificarExamePsicossocialRealizado(matricula, asosDoColab) {
     return { realizado: false };
 }
 
+// Verifica se um nome de exame bate com o exameCfg selecionado no catálogo
+function nomeExameCorrespondeAoCatalogo(nomeItem, exameCfg) {
+    if (!nomeItem || !exameCfg) return false;
+    const nLower = String(nomeItem).toLowerCase().trim();
+    const termos = Array.isArray(exameCfg.termosBusca) && exameCfg.termosBusca.length > 0
+        ? exameCfg.termosBusca
+        : [String(exameCfg.nomeExame || '').toLowerCase().slice(0, 6)];
+    return termos.some(t => t && nLower.includes(t.toLowerCase()));
+}
+
 // GHEs obrigatórios para o exame selecionado
 function obterGhesObrigatoriosPsicossocial() {
     const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
-    const chave = `exame_ghes_${exameComplementarFocoAtual}`;
+    const chaveCustom = `exame_ghes_custom_${exameComplementarFocoAtual}`;
 
     try {
-        const salvo = localStorage.getItem(chave) || (exameComplementarFocoAtual === 'psicossocial' ? localStorage.getItem('psico_ghes_obrigatorios') : null);
+        const salvo = localStorage.getItem(chaveCustom);
         if (salvo) {
             const arr = JSON.parse(salvo);
             if (Array.isArray(arr) && arr.length > 0) return new Set(arr);
@@ -28835,14 +28866,16 @@ function obterGhesObrigatoriosPsicossocial() {
         console.warn('Erro ao ler GHEs configurados:', e);
     }
 
-    // Se não há configuração salva, detecta no catálogo PCMSO
-    const detectados = new Set();
-    const termoBusca = (exameCfg.nomeExame || '').toLowerCase();
+    if (exameComplementarFocoAtual === 'matriz_geral') {
+        return new Set(exameCfg.ghesPadrao || []);
+    }
 
+    // Detecta dinamicamente no catálogo PCMSO_EXAMES_POR_GHE usando termosBusca precisos
+    const detectados = new Set();
     if (typeof PCMSO_EXAMES_POR_GHE === 'object') {
         Object.entries(PCMSO_EXAMES_POR_GHE).forEach(([gId, info]) => {
             const num = gId.startsWith('G') ? gId.slice(1) : gId;
-            if (Array.isArray(info.exames) && info.exames.some(e => e.nome && e.nome.toLowerCase().includes(termoBusca.slice(0, 5)))) {
+            if (Array.isArray(info.exames) && info.exames.some(e => nomeExameCorrespondeAoCatalogo(e.nome, exameCfg))) {
                 detectados.add(normalizarGhe(num));
             }
         });
@@ -29103,6 +29136,21 @@ function obterDadosRecomendacaoPsicossocial() {
         allAsoExames = window.allAsoExames;
     }
 
+    if ((!allAsoExames || allAsoExames.length === 0) && typeof supabaseFetch === 'function' && !window._buscandoAsoPsico) {
+        window._buscandoAsoPsico = true;
+        supabaseFetch('aso_exames', '?select=*').then(rows => {
+            window._buscandoAsoPsico = false;
+            if (Array.isArray(rows)) {
+                allAsoExames = rows;
+                window.allAsoExames = rows;
+                renderRecomendacaoPsicossocial();
+            }
+        }).catch(err => {
+            window._buscandoAsoPsico = false;
+            console.warn('Aviso ao carregar aso_exames sob demanda:', err);
+        });
+    }
+
     // Se férias ou atestados ainda não estiverem carregados na memória, dispara consulta assíncrona sob demanda
     if ((!allColaboradoresFerias || allColaboradoresFerias.length === 0) && typeof supabaseFetch === 'function' && !window._buscandoFeriasPsico) {
         window._buscandoFeriasPsico = true;
@@ -29147,11 +29195,12 @@ function obterDadosRecomendacaoPsicossocial() {
     const ghesObrigatorios = obterGhesObrigatoriosPsicossocial();
     const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
     const ehPsico = (exameComplementarFocoAtual === 'psicossocial' || exameCfg.id === 'psicossocial');
+    const ehMatrizGeral = (exameComplementarFocoAtual === 'matriz_geral' || exameCfg.id === 'matriz_geral');
+    const ghesPsicoSet = new Set(CATALOGO_EXAMES_COMPLEMENTARES.psicossocial.ghesPadrao || ['05', '06', '07', '08', '10', '25', '26']);
     const MARCO = DATA_IMPLANTACAO_PSICOSSOCIAL || '2026-07-01';
-    const termoBusca = (exameCfg.nomeExame || '').toLowerCase().slice(0, 5);
     const lista = [];
 
-    const dataLimiteVencendo = addMeses(dataMutirao, 2);
+    const dataLimiteVencendo = addMeses(hojeStr, 2);
 
     ativos.forEach(c => {
         const g = normalizarGhe(c.ghe);
@@ -29162,13 +29211,23 @@ function obterDadosRecomendacaoPsicossocial() {
 
         const asos = (allAsoExames || []).filter(a => String(a.matricula || '').trim() === String(c.id || '').trim())
             .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
-        const ultimoAso = asos[0] || null;
+
+        // Separa os ASOs Gerais (Admissional, Periódico, etc.) dos lançamentos avulsos de Avaliação Psicossocial
+        const asosGerais = asos.filter(ehRegistroAsoGeralPcmso);
+        const ultimoAso = asosGerais[0] || asos[0] || null;
+        const aguardandoResultadoClinica = !!(ultimoAso && ultimoAso.obs && String(ultimoAso.obs).toLowerCase().includes('aguardando resultado'));
 
         // Identificar o último ASO Periódico do colaborador
-        const asosPeriodicos = asos.filter(a => (a.tipo_aso || '').toLowerCase().includes('period'));
+        const asosPeriodicos = asosGerais.filter(a => (a.tipo_aso || '').toLowerCase().includes('period'));
         const ultimoPeriodico = asosPeriodicos[0] || null;
         const dataUltimoPeriodico = ultimoPeriodico ? (ultimoPeriodico.data_exame || '') : '';
         const periodicoAposMarco = !!(dataUltimoPeriodico && dataUltimoPeriodico >= MARCO);
+
+        // Exames do GHE exigidos pelo PCMSO
+        const infoGheColab = typeof examesGheColaborador === 'function' ? examesGheColaborador(c) : null;
+        const examesPcmsoGhe = (infoGheColab && Array.isArray(infoGheColab.exames))
+            ? infoGheColab.exames.map(e => e.nome)
+            : [exameCfg.nomeExame];
 
         let temExame = false;
         let dataExame = null;
@@ -29179,6 +29238,7 @@ function obterDadosRecomendacaoPsicossocial() {
         let statusLabel = '🟢 EM DIA';
         let statusBadge = '';
         let motivoDetalhado = '';
+        let resumoMatrizHtml = '';
 
         if (ehPsico) {
             // Lógica específica com matriz anti-falso positivo da Avaliação Psicossocial
@@ -29240,15 +29300,73 @@ function obterDadosRecomendacaoPsicossocial() {
                     }
                 }
             }
+        } else if (ehMatrizGeral) {
+            // ==============================================================
+            // MATRIZ GERAL DE EXAMES DO PCMSO (CONSOLIDADO POR GHE)
+            // Avalia o ASO Geral do colaborador + todos os exames exigidos pelo seu GHE
+            // ==============================================================
+            const totalExamesGhe = examesPcmsoGhe.length;
+            const exigePsicoNoGhe = ghesPsicoSet.has(g);
+            const infoPsico = exigePsicoNoGhe ? verificarExamePsicossocialRealizado(c.id, asos) : { realizado: true };
+            const pendenciaPsicoPosMarco = exigePsicoNoGhe && !infoPsico.realizado && (admitidoAposMarco || periodicoAposMarco);
+
+            if (ultimoAso && ultimoAso.data_exame) {
+                temExame = true;
+                dataExame = ultimoAso.data_exame;
+                const perAso = typeof periodicidadeAsoPeriodico === 'function' ? periodicidadeAsoPeriodico(c) : 12;
+                vencExame = ultimoAso.data_vencimento || addMeses(dataExame, perAso);
+                tipoAsoExame = ultimoAso.tipo_aso;
+                asoIdExame = ultimoAso.id;
+
+                if (pendenciaPsicoPosMarco) {
+                    const qtdOk = Math.max(0, totalExamesGhe - 1);
+                    resumoMatrizHtml = `<div style="font-size:10.5px; color:#b91c1c; font-weight:700; margin-top:2px;" title="Exames clínicos e laboratoriais realizados em ${formatSimpleDate(dataExame)}. Pendente apenas Avaliação Psicossocial.">⚠️ ${qtdOk}/${totalExamesGhe} OK (Pend. Psicossocial)</div>`;
+                    statusKey = 'PENDENTE';
+                    statusLabel = '🔴 Pendente (Avaliação Psicossocial)';
+                    statusBadge = '<span style="background:#fee2e2; color:#b91c1c; border:1px solid #f87171; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;" title="Exames periódicos realizados; pendente apenas a Avaliação Psicossocial">🔴 PEND. PSICOSSOCIAL</span>';
+                    motivoDetalhado = `Exames periódicos realizados em ${formatSimpleDate(dataExame)} — Pendente apenas Avaliação Psicossocial`;
+                } else if (vencExame && vencExame < hojeStr) {
+                    resumoMatrizHtml = `<div style="font-size:10.5px; color:#b91c1c; font-weight:700; margin-top:2px;">🔴 Ciclo Periódico Vencido (${totalExamesGhe} exames)</div>`;
+                    statusKey = 'VENCIDO';
+                    statusLabel = '🔴 VENCIDO (Renovação Periódica PCMSO)';
+                    statusBadge = '<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🔴 VENCIDO</span>';
+                    motivoDetalhado = `Renovação Periódica PCMSO (Vencido em ${formatSimpleDate(vencExame)})`;
+                } else if (vencExame && vencExame <= dataLimiteVencendo) {
+                    resumoMatrizHtml = `<div style="font-size:10.5px; color:#b45309; font-weight:700; margin-top:2px;" title="Exames do GHE: ${escapeHTML(examesPcmsoGhe.join(', '))}">🟡 ${totalExamesGhe}/${totalExamesGhe} Exames (Renovação Próxima)</div>`;
+                    statusKey = 'VENCENDO';
+                    statusLabel = `🟡 VENCENDO EM BREVE (${formatSimpleDate(vencExame)})`;
+                    statusBadge = `<span style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🟡 VENCE EM ${formatSimpleDate(vencExame)}</span>`;
+                    motivoDetalhado = `Renovação Periódica PCMSO em ${formatSimpleDate(vencExame)} (${examesPcmsoGhe.join(', ')})`;
+                } else {
+                    resumoMatrizHtml = `<div style="font-size:10.5px; color:#047857; font-weight:700; margin-top:2px;" title="Exames em dia: ${escapeHTML(examesPcmsoGhe.join(', '))}">✅ ${totalExamesGhe}/${totalExamesGhe} Exames GHE OK</div>`;
+                    statusKey = 'EM_DIA';
+                    statusLabel = '🟢 EM DIA (PCMSO Regular)';
+                    statusBadge = '<span style="background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🟢 EM DIA</span>';
+                    motivoDetalhado = `Matriz PCMSO em dia até ${formatSimpleDate(vencExame)}`;
+                }
+            } else {
+                temExame = false;
+                statusKey = 'PENDENTE';
+                statusLabel = '🔴 Pendente (Sem ASO Registrado)';
+                statusBadge = '<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🔴 PENDENTE</span>';
+                motivoDetalhado = 'Colaborador sem registro de ASO no sistema';
+            }
         } else {
-            // Outros exames complementares do catálogo (audiometria, ecg, espirometria, etc.)
-            for (const a of asos) {
+            // ==============================================================
+            // EXAMES COMPLEMENTARES ESPECÍFICOS DO CATÁLOGO
+            // (Audiometria, ECG, Espirometria, Acuidade, RX Coluna, RX Tórax, Glicose, Hemograma, IgE Abelha)
+            // ==============================================================
+            for (const a of asosGerais) {
                 if (Array.isArray(a.exames_detalhe)) {
-                    const item = a.exames_detalhe.find(ex => ex.nome && ex.nome.toLowerCase().includes(termoBusca));
+                    const item = a.exames_detalhe.find(ex => nomeExameCorrespondeAoCatalogo(ex.nome, exameCfg));
                     if (item) {
                         temExame = true;
                         dataExame = item.data_avaliacao || item.data_exame || a.data_exame;
-                        vencExame = item.data_vencimento || a.data_vencimento || (dataExame ? addMeses(dataExame, exameCfg.periodicidadeMeses || 12) : null);
+                        if (exameCfg.periodicidadeMeses === null) {
+                            vencExame = null; // Exame exclusivamente admissional (ex: IgE Específica - Abelha)
+                        } else {
+                            vencExame = item.data_vencimento || (dataExame ? addMeses(dataExame, exameCfg.periodicidadeMeses || 12) : a.data_vencimento);
+                        }
                         tipoAsoExame = a.tipo_aso;
                         asoIdExame = a.id;
                         break;
@@ -29256,11 +29374,27 @@ function obterDadosRecomendacaoPsicossocial() {
                 }
             }
 
+            // Fallback inteligente: se o colaborador possui ASO Geral válido mas o registro antigo não detalhou exames_detalhe item a item
+            if (!temExame && ultimoAso && ultimoAso.data_exame) {
+                temExame = true;
+                dataExame = ultimoAso.data_exame;
+                vencExame = (exameCfg.periodicidadeMeses === null)
+                    ? null
+                    : ( addMeses(dataExame, exameCfg.periodicidadeMeses || 12) || ultimoAso.data_vencimento );
+                tipoAsoExame = ultimoAso.tipo_aso;
+                asoIdExame = ultimoAso.id;
+            }
+
             if (!temExame) {
                 statusKey = 'PENDENTE';
                 statusLabel = `🔴 PENDENTE (Convocação ${formatSimpleDate(dataMutirao)})`;
                 statusBadge = '<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🔴 PENDENTE</span>';
                 motivoDetalhado = `Exame complementar pendente de realização`;
+            } else if (exameCfg.periodicidadeMeses === null) {
+                statusKey = 'EM_DIA';
+                statusLabel = '🟢 REALIZADO (Exigência Admissional)';
+                statusBadge = '<span style="background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🟢 REALIZADO (ADMISSIONAL)</span>';
+                motivoDetalhado = `Realizado em ${formatSimpleDate(dataExame)} (Exigência Admissional Única)`;
             } else if (vencExame && vencExame < hojeStr) {
                 statusKey = 'VENCIDO';
                 statusLabel = '🔴 VENCIDO (Renovação Periódica)';
@@ -29268,7 +29402,7 @@ function obterDadosRecomendacaoPsicossocial() {
                 motivoDetalhado = `Renovação Periódica (Vencido em ${formatSimpleDate(vencExame)})`;
             } else if (vencExame && vencExame <= dataLimiteVencendo) {
                 statusKey = 'VENCENDO';
-                statusLabel = `🟡 VENCENDO EM BREVE (Aproveitar ${formatSimpleDate(dataMutirao)})`;
+                statusLabel = `🟡 VENCENDO EM BREVE (${formatSimpleDate(vencExame)})`;
                 statusBadge = `<span style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🟡 VENCE EM ${formatSimpleDate(vencExame)}</span>`;
                 motivoDetalhado = `Vencendo em Breve (${formatSimpleDate(vencExame)})`;
             } else {
@@ -29278,6 +29412,10 @@ function obterDadosRecomendacaoPsicossocial() {
                 motivoDetalhado = `Em Dia (Validade: ${formatSimpleDate(vencExame)})`;
             }
         }
+
+        const badgeAguardandoResultado = (aguardandoResultadoClinica && !ehPsico)
+            ? `<span style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; padding:2px 8px; border-radius:999px; font-weight:700; font-size:10px; display:inline-flex; align-items:center; gap:3px;" title="Exames periódicos realizados em Outubro/2026 — Aguardando envio dos resultados pela clínica">⏳ Realizado Out/26 (Aguard. Resultado)</span>`
+            : '';
 
         // ==============================================================
         // CHECAGEM DE FÉRIAS E AFASTAMENTOS ATIVOS (NR-07)
@@ -29302,14 +29440,15 @@ function obterDadosRecomendacaoPsicossocial() {
 
         if (emFerias) {
             badgeFeriasOuAfastamento = `<span class="badge-status-ferias" title="Colaborador em gozo de férias">🏖️ Em Férias${dtFimFerias ? ' até ' + formatSimpleDate(dtFimFerias) : ''}</span>`;
-            if (statusKey === 'PENDENTE' || statusKey === 'VENCIDO' || statusKey === 'VENCENDO') {
+            const venceDuranteFerias = !!(vencExame && dtFimFerias && vencExame <= dtFimFerias);
+            if (statusKey === 'PENDENTE' || statusKey === 'VENCIDO' || (statusKey === 'VENCENDO' && venceDuranteFerias)) {
                 sugestaoRetorno = dtRetornoFerias ? `📅 Agendar para retorno: ${formatSimpleDate(dtRetornoFerias)}` : '📅 Agendar no retorno';
             }
         } else if (emAfastamento) {
             badgeFeriasOuAfastamento = `<span class="badge-status-afastado" title="Colaborador com atestado/afastamento médico">${exigeRetornoNr07 ? '🏥 Afastado (>30d NR-07)' : '🏥 Afastado'}${dtFimAfastamento ? ' até ' + formatSimpleDate(dtFimAfastamento) : ''}</span>`;
             if (exigeRetornoNr07) {
                 sugestaoRetorno = `⚠️ Exame de Retorno ao Trabalho no 1º dia (${dtRetornoAfastamento ? formatSimpleDate(dtRetornoAfastamento) : 'retorno'})`;
-            } else if (statusKey === 'PENDENTE' || statusKey === 'VENCIDO' || statusKey === 'VENCENDO') {
+            } else if (statusKey === 'PENDENTE' || statusKey === 'VENCIDO') {
                 sugestaoRetorno = dtRetornoAfastamento ? `📅 Agendar para retorno: ${formatSimpleDate(dtRetornoAfastamento)}` : '📅 Agendar no retorno';
             }
         }
@@ -29319,17 +29458,15 @@ function obterDadosRecomendacaoPsicossocial() {
         const cicloRotulo = resumoCiclos ? resumoCiclos.cicloAtualRotulo : '1º Ciclo';
         const ciclo1Fechado = resumoCiclos ? resumoCiclos.ciclo1Fechado : false;
         const ciclo2Fechado = resumoCiclos ? resumoCiclos.ciclo2Fechado : false;
-        const badgeCiclo = resumoCiclos ? resumoCiclos.badgeCicloHtml : '';
+        let badgeCiclo = resumoCiclos ? resumoCiclos.badgeCicloHtml : '';
+        // Evitar duplicidade visual do badge "🏖️ Em Férias" quando badgeFeriasOuAfastamento já exibe a data de término das férias
+        if ((emFerias || emAfastamento) && badgeCiclo && (badgeCiclo.includes('Férias') || badgeCiclo.includes('Afastado'))) {
+            badgeCiclo = '';
+        }
 
         // Liderança / Encarregado da frente de serviço
         const respCadastrado = (c.responsavel || '').trim();
         const liderNome = (respCadastrado && respCadastrado !== '-' && respCadastrado !== '—') ? respCadastrado : '';
-
-        // Exames do GHE exigidos pelo PCMSO
-        const infoGheColab = typeof examesGheColaborador === 'function' ? examesGheColaborador(c) : null;
-        const examesPcmsoGhe = (infoGheColab && Array.isArray(infoGheColab.exames))
-            ? infoGheColab.exames.map(e => e.nome)
-            : [exameCfg.nomeExame];
 
         lista.push({
             matricula: c.id,
@@ -29346,6 +29483,9 @@ function obterDadosRecomendacaoPsicossocial() {
             ultimoAsoTipo: ultimoAso ? ultimoAso.tipo_aso : null,
             ultimoAsoVenc: ultimoAso ? ultimoAso.data_vencimento : null,
             ultimoPeriodicoData: dataUltimoPeriodico || null,
+            aguardandoResultadoClinica,
+            badgeAguardandoResultado,
+            resumoMatrizHtml,
             temPsico: temExame,
             dataPsico: dataExame,
             vencPsico: vencExame,
@@ -29411,8 +29551,6 @@ function renderBannerMutiraoPsico() {
     let bannerHtml = '';
 
     if (ehDataPassada) {
-        // Se a data já passou, o mutirão anterior foi realizado e baixado.
-        // O card exibe o status limpo de conclusão e o botão em destaque para agendar a próxima data!
         bannerHtml = `
             <div style="background: var(--card); border: 1px solid var(--border); border-left: 5px solid #10b981; border-radius: 8px; padding: 12px 18px; margin-top: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <div style="display: flex; align-items: center; gap: 14px;">
@@ -29423,7 +29561,7 @@ function renderBannerMutiraoPsico() {
                             <span style="background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;">Atendimento Concluído</span>
                         </div>
                         <div style="font-size: 12px; color: var(--text-light); margin-top: 2px;">
-                            Profissional: <b>${exameCfg.profissionalPadrao}</b> • Capacidade padrão: <b>${capacidadeVagas} vagas/dia</b> (18 a 20) • Alinhe previamente com os líderes as próximas liberações de campo.
+                            Profissional: <b>${exameCfg.profissionalPadrao}</b> • Capacidade padrão: <b>${capacidadeVagas} vagas/dia</b> • Alinhe previamente com os líderes as próximas liberações de campo.
                         </div>
                     </div>
                 </div>
@@ -29438,7 +29576,6 @@ function renderBannerMutiraoPsico() {
             </div>
         `;
     } else {
-        // Data futura ou para hoje
         let bannerStatusHtml = '';
         if (diffDias > 1) {
             bannerStatusHtml = `<span style="background: rgba(255,255,255,0.25); padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 11.5px; border: 1px solid rgba(255,255,255,0.4);">⏳ Faltam ${diffDias} dias</span>`;
@@ -29458,7 +29595,7 @@ function renderBannerMutiraoPsico() {
                             ${bannerStatusHtml}
                         </div>
                         <div style="font-size: 11.5px; opacity: 0.95; margin-top: 2px;">
-                            Profissional: <b>${exameCfg.profissionalPadrao}</b> • Capacidade: <b>${capacidadeVagas} vagas sugeridas (18 a 20)</b> • Local: ${exameCfg.localPadrao}
+                            Profissional: <b>${exameCfg.profissionalPadrao}</b> • Capacidade: <b>${capacidadeVagas} vagas sugeridas</b> • Local: ${exameCfg.localPadrao}
                         </div>
                     </div>
                 </div>
@@ -29536,12 +29673,8 @@ function renderRecomendacaoPsicossocial() {
     const chkOcultar = document.getElementById('psicoOcultarEmFerias');
     const ocultarFerias = chkOcultar ? chkOcultar.checked : true;
 
-    // Quantidade real de colaboradores em férias ou afastamento nos GHEs monitorados
     const totalAfastados = dados.filter(d => d.emFerias || d.emAfastamento).length;
 
-    // Se "Ocultar colaboradores em período de férias ou afastamento ativo" estiver marcado:
-    // Exclui os colaboradores com afastamento/férias ativas da listagem e recalcula os totais dos cards/pílulas.
-    // Se desmarcado: exibe a totalidade (74) e marca visualmente quem está em afastamento.
     const dadosOperacionais = (ocultarFerias && psicoFiltroStatusAtual !== 'ferias')
         ? dados.filter(d => !d.emFerias && !d.emAfastamento)
         : dados;
@@ -29591,6 +29724,8 @@ function atualizarBarraSelecaoConvocacaoPsico() {
 
     const total = selecionadosPsicoConvocacao.size;
     const meta = obterCapacidadeMutiraoPsico();
+    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+    const ehPsico = (exameComplementarFocoAtual === 'psicossocial' || exameCfg.id === 'psicossocial');
 
     if (contadorEl) contadorEl.textContent = total;
     if (metaEl) metaEl.textContent = meta;
@@ -29610,7 +29745,9 @@ function atualizarBarraSelecaoConvocacaoPsico() {
             badgeEl.style.background = '#e0e7ff';
             badgeEl.style.color = '#4338ca';
             badgeEl.style.borderColor = '#c7d2fe';
-            badgeEl.textContent = `Capacidade da psicóloga: 18 a 20 atendimentos/dia`;
+            badgeEl.textContent = ehPsico
+                ? `Capacidade da psicóloga: 18 a ${meta} atendimentos/dia`
+                : `Capacidade sugerida (${exameCfg.profissionalPadrao}): ${meta} atendimentos/dia`;
         }
     }
 
@@ -29688,7 +29825,6 @@ function selecionarTodosFiltradosPsico() {
 
 function selecionarPrimeirosPendentesPsico(limite = 20) {
     const dados = obterDadosRecomendacaoPsicossocial();
-    // Prioriza PENDENTE, depois VENCIDO, depois VENCENDO
     const pendentes = dados.filter(d => d.statusKey === 'PENDENTE' || d.statusKey === 'VENCIDO' || d.statusKey === 'VENCENDO');
     selecionadosPsicoConvocacao.clear();
 
@@ -29721,6 +29857,7 @@ function renderTabelaRecomendacaoPsicossocial() {
     if (!tbody) return;
 
     const dados = obterDadosRecomendacaoPsicossocial();
+    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
     const filtroStatus = psicoFiltroStatusAtual;
     const filtroLider = (document.getElementById('psicoFiltroLider')?.value || '').trim();
     const filtroSetor = (document.getElementById('psicoFiltroSetor')?.value || '').trim();
@@ -29729,7 +29866,6 @@ function renderTabelaRecomendacaoPsicossocial() {
     const busca = (document.getElementById('psicoBuscaInput')?.value || '').toLowerCase().trim();
     const ocultarFerias = document.getElementById('psicoOcultarEmFerias')?.checked ?? true;
 
-    // Resumo descritivo dos filtros aplicados
     const resumoEl = document.getElementById('psicoResumoFiltrosEquipe');
     if (resumoEl) {
         const partes = [];
@@ -29754,23 +29890,19 @@ function renderTabelaRecomendacaoPsicossocial() {
     }
 
     let filtrados = dados.filter(d => {
-        // 1. Filtro do Pill de Status
         if (filtroStatus === 'pendentes' && d.statusKey !== 'PENDENTE') return false;
         if (filtroStatus === 'vencendo' && d.statusKey !== 'VENCENDO' && d.statusKey !== 'VENCIDO') return false;
         if (filtroStatus === 'em_dia' && d.statusKey !== 'EM_DIA') return false;
         if (filtroStatus === 'ferias' && !d.emFerias && !d.emAfastamento) return false;
 
-        // 2. Ocultar férias / afastamento ativo (marcado por padrão para não inflar a lista operacional da clínica)
         if (ocultarFerias && filtroStatus !== 'ferias' && (d.emFerias || d.emAfastamento)) {
             return false;
         }
 
-        // 3. Filtro por Ciclo de Férias
         if (filtroCiclo === '1_ok' && !d.ciclo1Fechado) return false;
         if (filtroCiclo === '2_ok' && !d.ciclo2Fechado) return false;
         if (filtroCiclo === 'aberto' && d.ciclo1Fechado && d.ciclo2Fechado) return false;
 
-        // 4. Filtro por Encarregado / Equipe (sem hardcode)
         if (filtroLider) {
             const respUpper = (d.responsavel || '').toUpperCase();
             const liderUpper = (d.liderNome || '').toUpperCase();
@@ -29788,15 +29920,12 @@ function renderTabelaRecomendacaoPsicossocial() {
             }
         }
 
-        // 5. Filtro por Setor
         if (filtroSetor && (d.setor || '').trim().toLowerCase() !== filtroSetor.toLowerCase()) {
             return false;
         }
 
-        // 6. Filtro por GHE
         if (filtroGhe && d.ghe !== filtroGhe) return false;
 
-        // 7. Busca textual
         if (busca) {
             const txt = `${d.matricula} ${d.nome} ${d.cpf} ${d.funcao} ${d.setor} ${d.ghe} ${d.responsavel} ${d.liderNome} ${d.cicloRotulo || ''}`.toLowerCase();
             if (!txt.includes(busca)) return false;
@@ -29815,17 +29944,20 @@ function renderTabelaRecomendacaoPsicossocial() {
     tbody.innerHTML = filtrados.map(d => {
         const dataAdmFmt = d.dt_admissao ? formatSimpleDate(d.dt_admissao) : '—';
         const ultimoAsoFmt = d.ultimoAsoData 
-            ? `<div>${formatSimpleDate(d.ultimoAsoData)}</div><div style="font-size:10.5px; color:var(--text-light); text-transform:uppercase;">${d.ultimoAsoTipo || 'ASO'}</div>`
+            ? `<div>${formatSimpleDate(d.ultimoAsoData)}</div><div style="font-size:10.5px; color:var(--text-light); text-transform:uppercase;">${escapeHTML(d.ultimoAsoTipo || 'ASO')}</div>`
             : '<span style="color:var(--text-light);">Sem registro</span>';
 
         const rotuloNaoRealizada = (exameComplementarFocoAtual === 'psicossocial') ? 'Pendente' : 'Não realizada';
         const dataPsicoFmt = d.dataPsico
-            ? `<div style="font-weight:700; color:#4338ca;">${formatSimpleDate(d.dataPsico)}</div>`
-            : `<span style="color:#b91c1c; font-weight:600; font-size:11.5px;">${rotuloNaoRealizada}</span>`;
+            ? `<div style="font-weight:700; color:#4338ca;">${formatSimpleDate(d.dataPsico)}</div>${d.resumoMatrizHtml || ''}`
+            : `<span style="color:#b91c1c; font-weight:600; font-size:11.5px;">${rotuloNaoRealizada}</span>${d.resumoMatrizHtml || ''}`;
 
-        const vencPsicoFmt = d.vencPsico
-            ? `<div>${formatSimpleDate(d.vencPsico)}</div>`
-            : '<span style="color:var(--text-light);">—</span>';
+        let vencPsicoFmt = '<span style="color:var(--text-light);">—</span>';
+        if (d.vencPsico) {
+            vencPsicoFmt = `<div>${formatSimpleDate(d.vencPsico)}</div>`;
+        } else if (d.temPsico && exameCfg.periodicidadeMeses === null) {
+            vencPsicoFmt = '<span style="color:#065f46; font-size:11px; font-weight:700;">Admissional (Único)</span>';
+        }
 
         const estaMarcado = selecionadosPsicoConvocacao.has(d.matricula);
         let rowCls = '';
@@ -29866,6 +29998,7 @@ function renderTabelaRecomendacaoPsicossocial() {
                     <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
                         ${d.badgeCiclo ? `<div style="margin-bottom:2px;">${d.badgeCiclo}</div>` : ''}
                         ${d.statusBadge}
+                        ${d.badgeAguardandoResultado || ''}
                         ${d.badgeFeriasOuAfastamento || ''}
                         ${d.sugestaoRetorno ? `<div style="font-size:10px; color:#9a3412; font-weight:700; background:#fff7ed; border:1px solid #fed7aa; padding:2px 6px; border-radius:4px; max-width:210px; text-align:center;">${escapeHTML(d.sugestaoRetorno)}</div>` : ''}
                     </div>
@@ -29967,6 +30100,8 @@ function marcarTodosGhesPsico(marcar) {
 }
 
 function restaurarPadraoPcmsoGhesPsico() {
+    const chaveCustom = `exame_ghes_custom_${exameComplementarFocoAtual}`;
+    localStorage.removeItem(chaveCustom);
     const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
     const padroes = new Set(exameCfg.ghesPadrao || ['05', '06', '07', '08', '10', '25', '26']);
     document.querySelectorAll('.chk-ghe-psico').forEach(chk => {
@@ -29981,8 +30116,8 @@ function salvarConfiguracaoGhesPsico() {
         return;
     }
 
-    const chave = `exame_ghes_${exameComplementarFocoAtual}`;
-    localStorage.setItem(chave, JSON.stringify(selecionados));
+    const chaveCustom = `exame_ghes_custom_${exameComplementarFocoAtual}`;
+    localStorage.setItem(chaveCustom, JSON.stringify(selecionados));
     if (exameComplementarFocoAtual === 'psicossocial') {
         localStorage.setItem('psico_ghes_obrigatorios', JSON.stringify(selecionados));
     }
@@ -29992,7 +30127,7 @@ function salvarConfiguracaoGhesPsico() {
     alert(`✅ ${selecionados.length} grupos configurados com sucesso para o exame!`);
 }
 
-// ---- Modal de Registro Individual / Avaliação Psicossocial ----
+// ---- Modal de Registro Individual / Exames Complementares e Psicossocial ----
 function abrirModalPsicossocial(colaboradorOuMatricula) {
     let matricula = '';
     let colab = null;
@@ -30022,22 +30157,25 @@ function abrirModalPsicossocial(colaboradorOuMatricula) {
         ? obterDataMutiraoPsico() 
         : new Date().toISOString().split('T')[0];
 
-    const exameCfg = (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' && CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual]) 
-        || (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' ? CATALOGO_EXAMES_COMPLEMENTARES.psicossocial : {
-            nomeExame: 'Avaliação Psicossocial',
-            profissionalPadrao: 'Psicóloga Responsável',
-            periodicidadeMeses: 12
-        });
+    let exameCfg = (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' && CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual]) 
+        || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+
+    // Se estiver na Matriz Geral e o colaborador for de GHE Psicossocial pendente, sugere Avaliação Psicossocial
+    const gNum = normalizarGhe(colab?.ghe);
+    const ghesPsico = new Set(CATALOGO_EXAMES_COMPLEMENTARES.psicossocial.ghesPadrao || []);
+    const asosColab = (allAsoExames || []).filter(a => String(a.matricula || '').trim() === matricula);
+    const infoPsico = ghesPsico.has(gNum) ? verificarExamePsicossocialRealizado(matricula, asosColab) : { realizado: true };
+    if (exameComplementarFocoAtual === 'matriz_geral' && ghesPsico.has(gNum) && !infoPsico.realizado) {
+        exameCfg = CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+    }
 
     const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
     const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
 
-    // Sincronizar todos os IDs de matrícula (ocultos)
     setVal('psicoColaboradorMatricula', matricula);
     setVal('modalPsico_matricula', matricula);
     setVal('regPsico_matricula', matricula);
 
-    // Preencher cabeçalho e dados visuais do colaborador
     const nomeColab = colab?.nome || 'Colaborador';
     const funcColab = colab?.funcao || '—';
     const gheColab = colab?.ghe 
@@ -30051,34 +30189,32 @@ function abrirModalPsicossocial(colaboradorOuMatricula) {
     setText('modalPsico_lblFuncao', funcColab);
     setText('modalPsico_lblGhe', gheColab);
 
-    // Fallbacks para campos textuais legados se existirem
     setVal('regPsico_colaboradorNome', `${nomeColab} (Matrícula ${matricula})`);
     setVal('regPsico_ghe', gheColab);
 
-    // Data da Avaliação (padrão: data do mutirão ou data atual)
-    const dataInicial = dataMutirao || new Date().toISOString().split('T')[0];
+    const dataInicial = (dataMutirao && dataMutirao <= new Date().toISOString().split('T')[0])
+        ? dataMutirao
+        : new Date().toISOString().split('T')[0];
     setVal('psicoDataAvaliacao', dataInicial);
     setVal('modalPsico_data', dataInicial);
     setVal('data_avaliacao', dataInicial);
     setVal('regPsico_dataExame', dataInicial);
 
-    // Resultado padrão
     setVal('modalPsico_resultado', 'Apto');
     setVal('regPsico_resultado', 'Apto');
 
-    // Profissional e CRP
     const profPadrao = exameCfg.profissionalPadrao || 'Psicóloga Responsável';
     setVal('modalPsico_profissional', profPadrao);
     setVal('regPsico_psicologaNome', profPadrao);
     setVal('modalPsico_crp', '');
     setVal('regPsico_crp', '');
 
-    // Observações
-    const obsPadrao = `Avaliação psicossocial realizada conforme diretrizes de NR-35/NR-33/NR-10.`;
+    const obsPadrao = (exameCfg.id === 'psicossocial')
+        ? 'Avaliação psicossocial realizada conforme diretrizes de NR-35/NR-33/NR-10.'
+        : `${exameCfg.nomeExame} realizado conforme cronograma do PCMSO (NR-07).`;
     setVal('modalPsico_obs', obsPadrao);
     setVal('regPsico_obs', obsPadrao);
 
-    // Limpar mensagens de status anteriores
     const statusMsg = document.getElementById('modalPsico_statusMsg') 
         || document.getElementById('regPsico_statusMsg');
     if (statusMsg) statusMsg.innerHTML = '';
@@ -30102,13 +30238,11 @@ function fecharModalPsicossocial() {
 async function salvarRegistroPsicoRapido() {
     const modal = document.getElementById('modalRegistrarPsicoRapido') || document.getElementById('modalRegistrarPsicossocial');
 
-    // 1. Captura segura e resiliente da matrícula
     const matricula = (document.getElementById('psicoColaboradorMatricula')?.value ||
                        document.getElementById('modalPsico_matricula')?.value ||
                        document.getElementById('regPsico_matricula')?.value ||
                        modal?.dataset?.matricula || '').trim();
 
-    // 2. Captura da Data da Avaliação (suporte a múltiplos IDs)
     const inputData = (document.getElementById('psicoDataAvaliacao')?.value 
                     || document.getElementById('data_avaliacao')?.value 
                     || document.getElementById('psicoData')?.value
@@ -30119,8 +30253,8 @@ async function salvarRegistroPsicoRapido() {
     const resultado = document.getElementById('modalPsico_resultado')?.value ||
                       document.getElementById('regPsico_resultado')?.value || 'Apto';
 
-    const nomePsicologa = (document.getElementById('modalPsico_profissional')?.value ||
-                           document.getElementById('regPsico_psicologaNome')?.value || 'Psicóloga Responsável').trim();
+    const nomeProfissional = (document.getElementById('modalPsico_profissional')?.value ||
+                              document.getElementById('regPsico_psicologaNome')?.value || 'Psicóloga Responsável').trim();
 
     const crp = (document.getElementById('modalPsico_crp')?.value ||
                  document.getElementById('regPsico_crp')?.value || '').trim();
@@ -30134,7 +30268,6 @@ async function salvarRegistroPsicoRapido() {
     const btnSalvar = document.getElementById('btnSalvarPsicoModal') ||
                       modal?.querySelector('.db-apply-btn');
 
-    // Validação estrita da data da avaliação
     if (!inputData) {
         if (statusMsg) {
             statusMsg.innerHTML = '<span style="color:var(--danger); font-weight:700;">⚠️ Por favor, informe a Data da Avaliação.</span>';
@@ -30167,87 +30300,154 @@ async function salvarRegistroPsicoRapido() {
         const funcaoColaborador = colab?.funcao || '';
         const setorColaborador = colab?.setor || '';
 
-        const periodicidadeMeses = 12;
-        const dataVencimento = typeof addMeses === 'function' ? addMeses(inputData, periodicidadeMeses) : inputData;
-        const profFormatado = crp ? `${nomePsicologa} (${crp})` : nomePsicologa;
-
-        const itemExame = {
-            nome: 'Avaliação Psicossocial',
-            tipo: 'psicossocial',
-            data_avaliacao: inputData,
-            data_exame: inputData,
-            periodicidade: periodicidadeMeses,
-            data_vencimento: dataVencimento,
-            resultado: resultado,
-            profissional: profFormatado,
-            crp: crp,
-            obs: parecerObs
-        };
-
-        const obsTexto = crp ? `CRP: ${crp} | Parecer: ${parecerObs}` : (parecerObs || 'Avaliação Psicossocial (PGR/PCMSO)');
-
-        // Garantir ID único para o registro dedicado
-        const idAsoPsico = `ASO_PSICO_${Date.now()}_${matricula}`;
-
-        const payloadAso = {
-            id: idAsoPsico,
-            matricula: matricula,
-            nome_colaborador: nomeColaborador,
-            funcao: funcaoColaborador,
-            setor: setorColaborador,
-            tipo_aso: 'AVALIAÇÃO PSICOSSOCIAL',
-            data_exame: inputData, // <-- CAMPO OBRIGATÓRIO (NOT NULL)
-            data_vencimento: dataVencimento,
-            resultado: resultado.toLowerCase().includes('inapto') ? 'inapto' : 'apto',
-            medico_responsavel: profFormatado,
-            obs: obsTexto,
-            exames_detalhe: [itemExame]
-        };
-
-        // 1. Gravar registro dedicado de Avaliação Psicossocial com data_exame explícito
-        await supabaseUpsert('aso_exames', [payloadAso]);
-
-        // 2. Se houver ASO geral prévio do colaborador, sincronizar o exame_detalhe com data_exame SEMPRE presente
-        const asos = (allAsoExames || []).filter(a => String(a.matricula || '').trim() === matricula)
+        let exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+        const gNum = normalizarGhe(colab?.ghe);
+        const ghesPsico = new Set(CATALOGO_EXAMES_COMPLEMENTARES.psicossocial.ghesPadrao || []);
+        const asosColab = (allAsoExames || []).filter(a => String(a.matricula || '').trim() === matricula)
             .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
-        const ultimoAso = asos.find(a => a.id !== idAsoPsico);
+        const infoPsico = ghesPsico.has(gNum) ? verificarExamePsicossocialRealizado(matricula, asosColab) : { realizado: true };
 
-        if (ultimoAso && (!DATA_IMPLANTACAO_PSICOSSOCIAL || (ultimoAso.data_exame && ultimoAso.data_exame >= DATA_IMPLANTACAO_PSICOSSOCIAL))) {
-            let examesDetalhe = Array.isArray(ultimoAso.exames_detalhe) ? [...ultimoAso.exames_detalhe] : [];
-            const idx = examesDetalhe.findIndex(e => e.nome && e.nome.toLowerCase().includes('psico'));
-            if (idx >= 0) {
-                examesDetalhe[idx] = { ...examesDetalhe[idx], ...itemExame };
-            } else {
-                examesDetalhe.push(itemExame);
-            }
+        // Se estiver na Matriz Geral e o colaborador tiver pendência de Psicossocial, registra a Avaliação Psicossocial
+        const registrarComoPsico = (exameCfg.id === 'psicossocial') ||
+            (exameCfg.id === 'matriz_geral' && ghesPsico.has(gNum) && !infoPsico.realizado) ||
+            nomeProfissional.toLowerCase().includes('psic');
 
-            const payloadUpdateUltimoAso = {
-                id: ultimoAso.id,
-                matricula: ultimoAso.matricula || matricula,
-                data_exame: ultimoAso.data_exame || inputData, // <-- CAMPO OBRIGATÓRIO (NOT NULL)
-                exames_detalhe: examesDetalhe,
-                obs: parecerObs ? `${ultimoAso.obs ? ultimoAso.obs + ' | ' : ''}Avaliação Psicossocial em ${formatSimpleDate(inputData)}: ${parecerObs}` : ultimoAso.obs
+        if (registrarComoPsico) {
+            const periodicidadeMeses = 12;
+            const dataVencimento = typeof addMeses === 'function' ? addMeses(inputData, periodicidadeMeses) : inputData;
+            const profBase = nomeProfissional.includes('Médico Coordenador') ? 'Psicóloga Responsável' : nomeProfissional;
+            const profFormatado = crp ? `${profBase} (${crp})` : profBase;
+
+            const itemExame = {
+                nome: 'Avaliação Psicossocial',
+                tipo: 'psicossocial',
+                data_avaliacao: inputData,
+                data_exame: inputData,
+                periodicidade: periodicidadeMeses,
+                data_vencimento: dataVencimento,
+                resultado: resultado,
+                profissional: profFormatado,
+                crp: crp,
+                obs: parecerObs
             };
-            try {
-                await supabaseUpsert('aso_exames', [payloadUpdateUltimoAso]);
-                ultimoAso.exames_detalhe = examesDetalhe;
-            } catch (errSync) {
-                console.warn('Aviso ao sincronizar exame detalhado no ASO anterior:', errSync);
+
+            const obsTexto = crp ? `CRP: ${crp} | Parecer: ${parecerObs}` : (parecerObs || 'Avaliação Psicossocial (PGR/PCMSO)');
+            const idAsoPsico = `ASO_PSICO_${Date.now()}_${matricula}`;
+
+            const payloadAso = {
+                id: idAsoPsico,
+                matricula: matricula,
+                nome_colaborador: nomeColaborador,
+                funcao: funcaoColaborador,
+                setor: setorColaborador,
+                tipo_aso: 'AVALIAÇÃO PSICOSSOCIAL',
+                data_exame: inputData,
+                data_vencimento: dataVencimento,
+                resultado: resultado.toLowerCase().includes('inapto') ? 'inapto' : 'apto',
+                medico_responsavel: profFormatado,
+                obs: obsTexto,
+                exames_detalhe: [itemExame]
+            };
+
+            await supabaseUpsert('aso_exames', [payloadAso]);
+
+            const asosGerais = asosColab.filter(ehRegistroAsoGeralPcmso);
+            const ultimoAso = asosGerais[0] || null;
+
+            if (ultimoAso && (!DATA_IMPLANTACAO_PSICOSSOCIAL || (ultimoAso.data_exame && ultimoAso.data_exame >= DATA_IMPLANTACAO_PSICOSSOCIAL))) {
+                let examesDetalhe = Array.isArray(ultimoAso.exames_detalhe) ? [...ultimoAso.exames_detalhe] : [];
+                const idx = examesDetalhe.findIndex(e => e.nome && e.nome.toLowerCase().includes('psico'));
+                if (idx >= 0) {
+                    examesDetalhe[idx] = { ...examesDetalhe[idx], ...itemExame };
+                } else {
+                    examesDetalhe.push(itemExame);
+                }
+
+                const payloadUpdateUltimoAso = {
+                    id: ultimoAso.id,
+                    matricula: ultimoAso.matricula || matricula,
+                    data_exame: ultimoAso.data_exame || inputData,
+                    exames_detalhe: examesDetalhe,
+                    obs: parecerObs ? `${ultimoAso.obs ? ultimoAso.obs + ' | ' : ''}Avaliação Psicossocial em ${formatSimpleDate(inputData)}: ${parecerObs}` : ultimoAso.obs
+                };
+                try {
+                    await supabaseUpsert('aso_exames', [payloadUpdateUltimoAso]);
+                    ultimoAso.exames_detalhe = examesDetalhe;
+                } catch (errSync) {
+                    console.warn('Aviso ao sincronizar exame detalhado no ASO anterior:', errSync);
+                }
             }
+
+            invalidarCacheTabela('aso_exames');
+            allAsoExames.unshift(payloadAso);
+        } else {
+            // Registro de Exame Complementar específico ou Atualização da Matriz Geral (ASO Periódico)
+            const periodicidadeMeses = exameCfg.periodicidadeMeses;
+            const dataVencimento = periodicidadeMeses ? addMeses(inputData, periodicidadeMeses) : null;
+            const profFormatado = crp ? `${nomeProfissional} (${crp})` : nomeProfissional;
+
+            const asosGerais = asosColab.filter(ehRegistroAsoGeralPcmso);
+            const ultimoAso = asosGerais[0] || null;
+
+            const itemExame = {
+                nome: exameCfg.nomeExame,
+                data_avaliacao: inputData,
+                data_exame: inputData,
+                periodicidade: periodicidadeMeses,
+                data_vencimento: dataVencimento,
+                resultado: resultado,
+                profissional: profFormatado,
+                obs: parecerObs
+            };
+
+            if (ultimoAso) {
+                let examesDetalhe = Array.isArray(ultimoAso.exames_detalhe) ? [...ultimoAso.exames_detalhe] : [];
+                const idx = examesDetalhe.findIndex(e => nomeExameCorrespondeAoCatalogo(e.nome, exameCfg));
+                if (idx >= 0) {
+                    examesDetalhe[idx] = { ...examesDetalhe[idx], ...itemExame };
+                } else {
+                    examesDetalhe.push(itemExame);
+                }
+                const payloadUpdate = {
+                    id: ultimoAso.id,
+                    matricula: matricula,
+                    data_exame: ultimoAso.data_exame || inputData,
+                    exames_detalhe: examesDetalhe,
+                    obs: parecerObs ? `${ultimoAso.obs ? ultimoAso.obs + ' | ' : ''}${exameCfg.nomeExame} em ${formatSimpleDate(inputData)}: ${parecerObs}` : ultimoAso.obs
+                };
+                await supabaseUpsert('aso_exames', [payloadUpdate]);
+                ultimoAso.exames_detalhe = examesDetalhe;
+                ultimoAso.obs = payloadUpdate.obs;
+            } else {
+                const idNovo = `ASO_${Date.now()}_${matricula}`;
+                const novoAso = {
+                    id: idNovo,
+                    matricula: matricula,
+                    nome_colaborador: nomeColaborador,
+                    funcao: funcaoColaborador,
+                    setor: setorColaborador,
+                    tipo_aso: 'periodico',
+                    data_exame: inputData,
+                    data_vencimento: dataVencimento || addMeses(inputData, 12),
+                    resultado: resultado.toLowerCase().includes('inapto') ? 'inapto' : 'apto',
+                    medico_responsavel: profFormatado,
+                    obs: parecerObs,
+                    exames_detalhe: [itemExame]
+                };
+                await supabaseUpsert('aso_exames', [novoAso]);
+                allAsoExames.unshift(novoAso);
+            }
+            invalidarCacheTabela('aso_exames');
         }
 
-        // 3. Atualizar cache e estado local
-        invalidarCacheTabela('aso_exames');
-        allAsoExames.unshift(payloadAso);
-
         if (statusMsg) {
-            statusMsg.innerHTML = `<span style="color:var(--success); font-weight:700;">✅ Avaliação psicossocial registrada com sucesso!</span>`;
+            statusMsg.innerHTML = `<span style="color:var(--success); font-weight:700;">✅ Registro salvo com sucesso!</span>`;
         }
 
         if (typeof mostrarFeedbackToast === 'function') {
-            mostrarFeedbackToast('Avaliação psicossocial registrada com sucesso!', 'sucesso');
+            mostrarFeedbackToast('Registro ocupacional salvo com sucesso!', 'sucesso');
         } else if (typeof showToast === 'function') {
-            showToast('Avaliação psicossocial registrada com sucesso!', 'success');
+            showToast('Registro ocupacional salvo com sucesso!', 'success');
         }
 
         setTimeout(() => {
@@ -30261,7 +30461,7 @@ async function salvarRegistroPsicoRapido() {
         }, 600);
 
     } catch (err) {
-        console.error('Erro ao salvar avaliação psicossocial:', err);
+        console.error('Erro ao salvar registro ocupacional:', err);
         if (btnSalvar) {
             btnSalvar.disabled = false;
             btnSalvar.innerHTML = '💾 Salvar e Regularizar';

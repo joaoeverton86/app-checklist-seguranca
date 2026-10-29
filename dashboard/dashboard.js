@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-var VERSAO_PAINEL = 'v231';
+var VERSAO_PAINEL = 'v232';
 try { ['badgeVersaoDashboardLogin', 'badgeVersaoDashboardSidebar'].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = VERSAO_PAINEL; }); } catch(e){}
 var DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
@@ -10613,6 +10613,12 @@ var CONTEUDO_NR10_RECICLAGEM_BIENAL =
 
 var BASE_LEGAL_NR10_OFICIAL = 'Portaria MTb nº 3.214/1978, Portaria MTE nº 598/2004, Portaria SEPRT nº 915/2019, Portaria MTE nº 1.419/2024 — NR-01 (Item 1.7.1.1) e NR-10 (Item 10.8 e Anexo III).';
 
+function ehCursoNr35(codigo, cat) {
+    const c = String(codigo || '').trim();
+    const nome = String(cat?.nome || '').toUpperCase();
+    return c === '16' || c === '35' || nome.includes('NR-35') || nome.includes('NR.35') || nome.includes('NR 35') || (nome.includes('TRABALHO EM ALTURA') && !nome.includes('MESMO NÍVEL'));
+}
+
 function ehCursoNr10(codigo, cat) {
     const c = String(codigo || '').trim();
     const nome = String(cat?.nome || '').toUpperCase();
@@ -11062,7 +11068,7 @@ function onKitsCodigoChange() {
     if (cat) {
         // Se for um treinamento sem validade periódica (palestra/DDSMA de 2h), seleciona 'eventual'
         const selTipo = document.getElementById('kitsTipoCapacitacaoSelect');
-        if (selTipo && !cat.meses_validade && cat.carga_horaria <= 2 && codigo !== '10' && codigo !== '6') {
+        if (selTipo && !cat.meses_validade && cat.carga_horaria <= 2 && !ehCursoNr10(codigo, cat)) {
             selTipo.value = 'eventual';
         }
         kitsCamposAutoPreenchidos.cargaHoraria = true;

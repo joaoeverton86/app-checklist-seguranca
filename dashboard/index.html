@@ -20,7 +20,7 @@
         })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=231">
+    <link rel="stylesheet" href="dashboard.css?v=232">
 </head>
 <body>
 
@@ -33,7 +33,7 @@
         <div style="width:100%; max-width:380px; margin:20px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:32px 28px; box-shadow:0 8px 32px rgba(0,0,0,0.08); box-sizing:border-box;">
             <div style="text-align:center; margin-bottom:22px;">
                 <div style="font-size:34px; margin-bottom:6px;">🛡️</div>
-                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v231</span></div>
+                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v232</span></div>
                 <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; letter-spacing:.5px; margin-top:2px;">PISF Ramal do Agreste</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:12px;">
@@ -149,7 +149,7 @@
             <div class="db-brand">
                 <div class="db-brand-icon">🛡️</div>
                 <div>
-                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v231</span></div>
+                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v232</span></div>
                     <div class="db-brand-sub">PISF Ramal do Agreste</div>
                 </div>
             </div>
@@ -1378,21 +1378,33 @@
                 <div class="db-chart-card" style="margin-bottom: 16px; border-left: 4px solid var(--primary, #2563eb);">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
                         <div>
-                            <div class="db-chart-title" style="margin-bottom:4px;">🪪 Central de Kits Normativos, Certificados e Anuência Formal (NR-01 / NR-10 / NR-18 / NR-35)</div>
+                            <div class="db-chart-title" style="margin-bottom:4px;">🪪 Central de Kits Normativos, Certificados e Anuência Formal (NR-01 / NR-10 / NR-18 / NR-35)<span id="kitsBannerNormaAtiva" style="font-size:12.5px; font-weight:600; color:var(--primary); margin-left:8px;"></span></div>
                             <p style="font-size: 11.5px; color: var(--text-light); margin: 0; line-height:1.45;">
-                                Monte turmas combinando <strong>múltiplas equipes</strong>, filtre automaticamente <strong>apenas colaboradores vencidos</strong>, defina se o treinamento é <strong>Inicial (ex: 40h em vários dias)</strong> ou <strong>Reciclagem Bienal</strong> e emita o Kit Completo (Lista de Presença + Certificado + Termo de Anuência Formal NR-10 + OS) com as <strong>03 assinaturas exigidas (Eng. Eletricista / Eng. Segurança do Trabalho / Colaborador)</strong>.
+                                Monte turmas combinando <strong>múltiplas equipes</strong>, filtre automaticamente <strong>apenas colaboradores vencidos</strong>, defina a modalidade (<strong>Inicial</strong> ou <strong>Reciclagem Periódica</strong>) e emita o Kit Regulamentar Completo (Lista de Presença + Certificados Normativos + Termos de Anuência Formal e Autorização da Empresa + Ordens de Serviço) com as <strong>03 assinaturas exigidas pelas NRs</strong>.
                             </p>
                         </div>
                     </div>
 
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; font-size: 12.5px; margin-top: 12px;">
                         <div style="grid-column: span 2; min-width: 240px;">
-                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">1. Treinamento do Catálogo</label>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px; flex-wrap:wrap; gap:4px;">
+                                <label style="color: var(--text-light); font-weight: 600;">1. Treinamento do Catálogo</label>
+                                <div style="display:flex; gap:4px; flex-wrap:wrap; font-size:11px;">
+                                    <span style="color:var(--text-light); font-size:10.5px; align-self:center;">Norma Rápida:</span>
+                                    <button type="button" class="db-clear-btn" style="padding:2px 7px; font-size:11px; font-weight:700; color:#0369a1; background:#e0f2fe; border-color:#7dd3fc;" onclick="selecionarNormaRapidaKits('16')" title="Carregar Treinamento NR-35 (Trabalho em Altura)">🧗 NR-35</button>
+                                    <button type="button" class="db-clear-btn" style="padding:2px 7px; font-size:11px; font-weight:700; color:#b45309; background:#fef3c7; border-color:#fcd34d;" onclick="selecionarNormaRapidaKits('10')" title="Carregar Treinamento NR-10 (Elétrica)">⚡ NR-10</button>
+                                    <button type="button" class="db-clear-btn" style="padding:2px 7px; font-size:11px; font-weight:700; color:#4f46e5; background:#eef2ff; border-color:#c7d2fe;" onclick="selecionarNormaRapidaKits('1')" title="Carregar Integração NR-18 / NR-01">✨ NR-18</button>
+                                    <button type="button" class="db-clear-btn" style="padding:2px 7px; font-size:11px; font-weight:700; color:#c2410c; background:#ffedd5; border-color:#fed7aa;" onclick="selecionarNormaRapidaKits('33')" title="Carregar NR-33 (Espaços Confinados)">🕳️ NR-33</button>
+                                </div>
+                            </div>
                             <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                                <input type="text" id="kitsCodigoInput" list="lancTreinCatalogoList" oninput="onKitsCodigoChange()" placeholder="Digite o código (ex: 10 para NR-10, 1 para Integração) ou nome..."
+                                <input type="text" id="kitsCodigoInput" list="lancTreinCatalogoList" oninput="onKitsCodigoChange()" placeholder="Digite o código (ex: 16 para NR-35, 10 para NR-10) ou nome..."
                                        style="flex:1; min-width:180px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
-                                <button type="button" class="db-clear-btn" style="padding:6px 10px; font-size:11.5px; font-weight:700; color:#b45309; background:#fef3c7; border-color:#fcd34d; white-space:nowrap;" onclick="selecionarAtalhoCursoKits('10', 'reciclagem')" title="Carrega rapidamente NR-10 no modo Reciclagem Bienal">⚡ NR-10 Reciclagem</button>
-                                <button type="button" class="db-clear-btn" style="padding:6px 10px; font-size:11.5px; font-weight:700; color:#1d4ed8; background:#dbeafe; border-color:#93c5fd; white-space:nowrap;" onclick="selecionarAtalhoCursoKits('10', 'inicial')" title="Carrega rapidamente NR-10 no modo Inicial 40h">⚡ NR-10 Inicial (40h)</button>
+                                <!-- Botões contextuais que se adaptam dinamicamente ao treinamento selecionado -->
+                                <div id="kitsBotoesAtalhosContextuais" style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button type="button" class="db-clear-btn" style="padding:6px 10px; font-size:11.5px; font-weight:700; color:#0369a1; background:#e0f2fe; border-color:#7dd3fc; white-space:nowrap;" onclick="aplicarModalidadeAtalhoKits('inicial', 8)" title="Carrega NR-35 Capacitação Inicial (8h)">🧗 NR-35 Capacitação (8h)</button>
+                                    <button type="button" class="db-clear-btn" style="padding:6px 10px; font-size:11.5px; font-weight:700; color:#047857; background:#d1fae5; border-color:#6ee7b7; white-space:nowrap;" onclick="aplicarModalidadeAtalhoKits('reciclagem', 8)" title="Carrega NR-35 Reciclagem Bienal (8h)">🔄 NR-35 Reciclagem (8h)</button>
+                                </div>
                             </div>
                             <div id="kitsInfo" style="display:none; margin-top: 6px; font-size: 11.5px;"></div>
                         </div>
@@ -1400,9 +1412,9 @@
                         <div>
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">2. Tipo / Modalidade Normativa</label>
                             <select id="kitsTipoCapacitacaoSelect" onchange="onKitsTipoCapacitacaoChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-weight:600;">
-                                <option value="inicial">🎓 Capacitação Inicial (Ex: NR-10 40h)</option>
-                                <option value="reciclagem">🔄 Reciclagem Periódica / Bienal (NR-10 16h)</option>
-                                <option value="complementar_sep">⚡ Complementar — SEP (Alta Tensão)</option>
+                                <option value="inicial">🎓 Capacitação Inicial</option>
+                                <option value="reciclagem">🔄 Reciclagem Periódica / Bienal</option>
+                                <option value="complementar_sep">⚡ Complementar / Específico</option>
                                 <option value="eventual">📋 Treinamento Eventual / DDSMA</option>
                             </select>
                         </div>
@@ -1542,6 +1554,7 @@
                             <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
                                 <label id="kitsLabelAssinatura1" style="color:#1e40af; font-weight:700; font-size:12px;">⚡ 1ª Assinatura: Eng. Eletricista / Instrutor Habilitado</label>
                                 <div style="display:flex; gap:4px;">
+                                    <button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:10.5px; color:#0369a1; border-color:#7dd3fc; background:#f0f9ff;" onclick="aplicarPresetAssinatura1Kits('instrutor_altura')" title="Preenche com os dados de Instrutor de Trabalho em Altura (NR-35)">🧗 Instrutor Altura</button>
                                     <button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:10.5px; color:#1d4ed8; border-color:#93c5fd; background:#eff6ff;" onclick="aplicarPresetAssinatura1Kits('eng_eletricista')" title="Preenche com os dados do Engenheiro Eletricista salvo para NR-10">⚡ Eng. Eletricista</button>
                                     <button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:10.5px;" onclick="aplicarPresetAssinatura1Kits('instrutor_sst')" title="Preenche com o Instrutor de SST padrão (Maria Gessica)">👷 Instrutor SST</button>
                                     <button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:10.5px; color:#047857; border-color:#6ee7b7; background:#ecfdf5;" onclick="salvarEngEletricistaPadraoKits()" title="Salva o nome e CREA digitados abaixo como padrão de Engenheiro Eletricista para próximos treinamentos de NR-10">💾 Salvar Padrão</button>
@@ -1550,7 +1563,7 @@
                             <input type="text" id="kitsForm_instrutorNome" placeholder="Nome do Engenheiro Eletricista / Profissional Habilitado" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; margin-bottom: 5px; font-weight:600;">
                             <input type="text" id="kitsForm_instrutorQualificacao" placeholder="Qualificação (ex: ENGENHEIRO ELETRICISTA)" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; margin-bottom: 5px;">
                             <input type="text" id="kitsForm_instrutorRegistro" placeholder="Registro no Conselho (ex: CREA: 123456/PE)" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
-                            <div style="font-size:10.5px; color:var(--text-light); margin-top:4px;">Exigido pela NR-10 (Item 10.8.8) como Responsável Técnico Legalmente Habilitado em Elétrica.</div>
+                            <div id="kitsAjudaAssinatura1" style="font-size:10.5px; color:var(--text-light); margin-top:4px;">Exigido pela NR-10 (Item 10.8.8) como Responsável Técnico Legalmente Habilitado em Elétrica.</div>
                         </div>
 
                         <!-- Assinatura 2: Eng. de Segurança do Trabalho (Responsável Técnico SST) -->
@@ -1574,7 +1587,7 @@
                                     <ul style="margin:6px 0 0 16px; padding:0; font-size:11px; color:var(--text-light);">
                                         <li>Linha individual na <strong>Lista de Presença (FOR.001)</strong></li>
                                         <li>Campo de assinatura no <strong>Certificado de Capacitação</strong></li>
-                                        <li>Termo de <strong>Anuência Formal (Autorização NR-10)</strong></li>
+                                        <li>Termo de <strong>Anuência Formal / Autorização da Empresa</strong></li>
                                     </ul>
                                 </div>
                             </div>
@@ -1588,7 +1601,7 @@
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; flex-wrap:wrap; gap:8px;">
                         <div>
                             <div class="db-chart-title" style="font-size: 13.5px; margin-bottom: 2px;">📦 4. Composição do Kit de Documentos &amp; Emissão (Turma ou Individual)</div>
-                            <div style="font-size:11.5px; color:var(--text-light);">Todo Kit inclui no mínimo <strong>Lista de Presença + Certificado</strong>. Para <strong>NR-10</strong>, inclui automaticamente a <strong>Anuência Formal (Autorização da Empresa — Item 10.8.4)</strong>.</div>
+                            <div id="kitsSubtituloPasso4" style="font-size:11.5px; color:var(--text-light);">Todo Kit inclui no mínimo <strong>Lista de Presença + Certificado</strong>. Para <strong>NR-10 e NR-35</strong>, inclui automaticamente a <strong>Anuência Formal e Autorização da Empresa</strong>.</div>
                         </div>
                         <div style="display:flex; gap:6px; flex-wrap:wrap;">
                             <button type="button" class="db-apply-btn" style="padding:7px 14px; font-size:12px; font-weight:700;" onclick="gerarKitCompletoTurmaKits()">
@@ -1603,8 +1616,8 @@
                             <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:600; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;" onclick="abrirModalEmissaoCertificadoLote(contextoKits())">
                                 🎓 Certificados da Turma (Lote)
                             </button>
-                            <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:600; color:#b45309; border-color:#fcd34d; background:#fffbeb;" onclick="gerarAnuenciaFormalTurma(contextoKits())">
-                                ⚡ Anuência Formal NR-10 (Lote)
+                            <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:600; color:#b45309; border-color:#fcd34d; background:#fffbeb;" id="btnKitsAnuenciaLote" onclick="gerarAnuenciaFormalTurma(contextoKits())">
+                                ⚡ Anuência Formal (Lote)
                             </button>
                             <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:700; color:#047857; border-color:#6ee7b7; background:#ecfdf5;" onclick="salvarPresencaTurmaDiretoKits()" title="Registra oficialmente este treinamento no histórico da turma e atualiza a validade de 24 meses na Matriz">
                                 💾 Lançar Presença no Histórico
@@ -1622,7 +1635,7 @@
                             <input type="checkbox" id="kitsDocCheck_certificado" checked onchange="renderKitsDocsIndividuaisList()"> 🎓 Certificado (3 Assinaturas)
                         </label>
                         <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:700; color:#b45309;">
-                            <input type="checkbox" id="kitsDocCheck_anuencia" onchange="renderKitsDocsIndividuaisList()"> ⚡ Anuência Formal NR-10 (Autorização da Empresa)
+                            <input type="checkbox" id="kitsDocCheck_anuencia" onchange="renderKitsDocsIndividuaisList()"> <span id="kitsDocCheckLabel_anuencia">⚡ Anuência Formal (Autorização da Empresa)</span>
                         </label>
                         <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer;">
                             <input type="checkbox" id="kitsDocCheck_os" onchange="renderKitsDocsIndividuaisList()"> 📄 Ordem de Serviço (OS)
@@ -1645,7 +1658,8 @@
                                 <span style="font-size:11.5px; color:var(--text-light);">Conteúdo impresso na Lista de Presença e no Certificado:</span>
                                 <div style="display:flex; gap:6px; flex-wrap:wrap;">
                                     <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#1d4ed8; font-weight:600;" onclick="carregarPresetConteudoKits('nr10_inicial')">⚡ NR-10 Básico Inicial (40h - Anexo III Completo)</button>
-                                    <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#b45309; font-weight:600;" onclick="carregarPresetConteudoKits('nr10_reciclagem')">🔄 NR-10 Reciclagem Bienal (Item 10.8.8.2)</button>
+                                    <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#b45309; font-weight:600;" onclick="carregarPresetConteudoKits('nr10_reciclagem')">🔄 NR-10 Reciclagem (16h)</button>
+                                    <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#0369a1; font-weight:700; background:#f0f9ff; border-color:#7dd3fc;" onclick="carregarPresetConteudoKits('nr35_oficial')">🧗 NR-35 Altura (8h)</button>
                                     <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#4f46e5; font-weight:600;" onclick="carregarPresetConteudoKits('nr18_integracao')">✨ NR-18 / NR-01 Integração</button>
                                     <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px;" onclick="carregarPresetConteudoKits('catalogo')">↺ Restaurar do Catálogo</button>
                                 </div>
@@ -10034,20 +10048,20 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="../data.js?v=231"></script>
-    <script src="logo_cop_base64.js?v=231"></script>
-    <script src="dashboard.js?v=231"></script>
-    <script src="modules/treinamentos_ddsma.js?v=231"></script>
-    <script src="modules/efetivo_ferias.js?v=231"></script>
-    <script src="modules/ghe_os.js?v=231"></script>
-    <script src="modules/relatorio_sms_nc.js?v=231"></script>
-    <script src="modules/saude_psicossocial.js?v=231"></script>
-    <script src="modules/epi_estoque.js?v=231"></script>
-    <script src="modules/ambiental_compras_hht.js?v=231"></script>
-    <script src="modules/apr_cipa.js?v=231"></script>
-    <script src="modules/documentos_brigada.js?v=231"></script>
-    <script src="modules/ergonomia_periculosidade_pgr.js?v=231"></script>
-    <script src="placar_lideres.js?v=231"></script>
+    <script src="../data.js?v=232"></script>
+    <script src="logo_cop_base64.js?v=232"></script>
+    <script src="dashboard.js?v=232"></script>
+    <script src="modules/treinamentos_ddsma.js?v=232"></script>
+    <script src="modules/efetivo_ferias.js?v=232"></script>
+    <script src="modules/ghe_os.js?v=232"></script>
+    <script src="modules/relatorio_sms_nc.js?v=232"></script>
+    <script src="modules/saude_psicossocial.js?v=232"></script>
+    <script src="modules/epi_estoque.js?v=232"></script>
+    <script src="modules/ambiental_compras_hht.js?v=232"></script>
+    <script src="modules/apr_cipa.js?v=232"></script>
+    <script src="modules/documentos_brigada.js?v=232"></script>
+    <script src="modules/ergonomia_periculosidade_pgr.js?v=232"></script>
+    <script src="placar_lideres.js?v=232"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();
@@ -10173,11 +10187,14 @@ function filterMatrizEpi(q) {
                         Conteúdo Programático Impresso no Certificado:
                     </label>
                     <div style="display:flex; gap:6px;">
-                        <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#1d4ed8; font-weight:600;" onclick="certModalCarregarPadraoNr10('inicial')" title="Insere o conteúdo programático oficial completo do Anexo III da NR-10 (40h)">
+                        <button type="button" id="certModalBtnPadraoNr10Inicial" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#1d4ed8; font-weight:600;" onclick="certModalCarregarPadraoNr10('inicial')" title="Insere o conteúdo programático oficial completo do Anexo III da NR-10 (40h)">
                             ⚡ NR-10 Inicial (40h)
                         </button>
-                        <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#b45309; font-weight:600;" onclick="certModalCarregarPadraoNr10('reciclagem')" title="Insere o conteúdo programático de Reciclagem Bienal da NR-10 (Item 10.8.8.2)">
+                        <button type="button" id="certModalBtnPadraoNr10Reciclagem" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#b45309; font-weight:600;" onclick="certModalCarregarPadraoNr10('reciclagem')" title="Insere o conteúdo programático de Reciclagem Bienal da NR-10 (Item 10.8.8.2)">
                             🔄 NR-10 Reciclagem
+                        </button>
+                        <button type="button" id="certModalBtnPadraoNr35" class="db-clear-btn" style="display:none; padding:3px 8px; font-size:11px; color:#0369a1; font-weight:700; background:#f0f9ff; border-color:#7dd3fc;" onclick="certModalCarregarPadraoNr35()" title="Insere o conteúdo programático oficial de Trabalho em Altura (NR-35 Item 35.3.5)">
+                            🧗 Padrão NR-35 Altura (8h)
                         </button>
                         <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#4f46e5; font-weight:600;" onclick="certModalCarregarPadraoNr18()" title="Insere os tópicos atualizados conforme NR-18 Anexo I, NR-01 Portaria 1.419/2024 e Lei 14.457/2022">
                             ✨ Padrão NR-18 / NR-01

@@ -20,7 +20,7 @@
         })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=226">
+    <link rel="stylesheet" href="dashboard.css?v=228">
 </head>
 <body>
 
@@ -33,7 +33,7 @@
         <div style="width:100%; max-width:380px; margin:20px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:32px 28px; box-shadow:0 8px 32px rgba(0,0,0,0.08); box-sizing:border-box;">
             <div style="text-align:center; margin-bottom:22px;">
                 <div style="font-size:34px; margin-bottom:6px;">🛡️</div>
-                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v226</span></div>
+                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v228</span></div>
                 <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; letter-spacing:.5px; margin-top:2px;">PISF Ramal do Agreste</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:12px;">
@@ -149,7 +149,7 @@
             <div class="db-brand">
                 <div class="db-brand-icon">🛡️</div>
                 <div>
-                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v226</span></div>
+                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v228</span></div>
                     <div class="db-brand-sub">PISF Ramal do Agreste</div>
                 </div>
             </div>
@@ -6030,7 +6030,7 @@
                             </div>
                             <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                                 <button class="db-apply-btn" style="background: #059669; font-weight: 700;" id="btnBaixaLotePsico" onclick="abrirModalBaixaLoteMutirao()" title="Dar baixa em lote em colaboradores atendidos no mutirão ou clínica">✅ Baixa em Lote</button>
-                                <button class="db-apply-btn" style="background: #4f46e5; font-weight: 700;" id="btnConfigGhesPsico" onclick="abrirModalGerenciarGhesPsico()" title="Adicionar ou remover GHEs com exigência do exame">⚙️ Configurar GHEs</button>
+                                <button class="db-apply-btn" style="background: #0f766e; font-weight: 700;" id="btnEditarMatrizPcmso" onclick="abrirEditorMatrizPcmso()" title="Incluir ou remover exames da matriz do PCMSO por GHE (vale para todos os usuários)">🧩 Matriz de Exames</button>
                                 <button class="db-apply-btn" style="background: #7c3aed; font-weight: 700;" id="btnReprogDataPsico" onclick="abrirModalReprogramarDataMutirao()" title="Alterar ou reprogramar a data do próximo mutirão / visita">📅 Reprogramar Data</button>
                                 <button class="db-apply-btn" style="background: #4338ca; font-weight: 700;" id="btnImprimirEquipeTop" onclick="imprimirConvocacaoPorEquipe()" title="Imprimir guia de encaminhamento e convocação oficial por encarregado/equipe (NR-07)">🖨️ Convocação por Equipe</button>
                                 <button class="db-apply-btn" style="background: #2563eb;" id="btnImprimirConvocacaoPsico" onclick="aoClicarEmitirConvocacaoExame()" title="Emitir lista de convocação com parametrização">🖨️ Imprimir Convocação</button>
@@ -10034,20 +10034,20 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="../data.js?v=226"></script>
-    <script src="logo_cop_base64.js?v=226"></script>
-    <script src="dashboard.js?v=226"></script>
-    <script src="modules/treinamentos_ddsma.js?v=226"></script>
-    <script src="modules/efetivo_ferias.js?v=226"></script>
-    <script src="modules/ghe_os.js?v=226"></script>
-    <script src="modules/relatorio_sms_nc.js?v=226"></script>
-    <script src="modules/saude_psicossocial.js?v=226"></script>
-    <script src="modules/epi_estoque.js?v=226"></script>
-    <script src="modules/ambiental_compras_hht.js?v=226"></script>
-    <script src="modules/apr_cipa.js?v=226"></script>
-    <script src="modules/documentos_brigada.js?v=226"></script>
-    <script src="modules/ergonomia_periculosidade_pgr.js?v=226"></script>
-    <script src="placar_lideres.js?v=226"></script>
+    <script src="../data.js?v=228"></script>
+    <script src="logo_cop_base64.js?v=228"></script>
+    <script src="dashboard.js?v=228"></script>
+    <script src="modules/treinamentos_ddsma.js?v=228"></script>
+    <script src="modules/efetivo_ferias.js?v=228"></script>
+    <script src="modules/ghe_os.js?v=228"></script>
+    <script src="modules/relatorio_sms_nc.js?v=228"></script>
+    <script src="modules/saude_psicossocial.js?v=228"></script>
+    <script src="modules/epi_estoque.js?v=228"></script>
+    <script src="modules/ambiental_compras_hht.js?v=228"></script>
+    <script src="modules/apr_cipa.js?v=228"></script>
+    <script src="modules/documentos_brigada.js?v=228"></script>
+    <script src="modules/ergonomia_periculosidade_pgr.js?v=228"></script>
+    <script src="placar_lideres.js?v=228"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();
@@ -10760,36 +10760,36 @@ function filterMatrizEpi(q) {
     </div>
 </div>
 
-<!-- Modal: Gerenciar GHEs Obrigatórios para Avaliação Psicossocial -->
-<div id="modalGerenciarGhesPsico" class="placar-modal-overlay" style="display:none;" onclick="if(event.target===this) fecharModalGerenciarGhesPsico()">
-    <div class="placar-modal-card" style="max-width: 640px;" onclick="event.stopPropagation()">
-        <div class="placar-modal-header" style="background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);">
+<!-- Modal: Editor da Matriz de Exames do PCMSO (por GHE e por exame) -->
+<div id="modalMatrizPcmso" class="placar-modal-overlay" style="display:none;" onclick="if(event.target===this) fecharEditorMatrizPcmso()">
+    <div class="placar-modal-card" style="max-width: 900px;" onclick="event.stopPropagation()">
+        <div class="placar-modal-header" style="background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%);">
             <div>
-                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #fff;">⚙️ Configurar GHEs Obrigatórios (Psicossocial)</h3>
-                <p style="margin: 3px 0 0; font-size: 12px; color: #c7d2fe;">Selecione os grupos que necessitam realizar Avaliação Psicossocial conforme PGR / PCMSO</p>
+                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #fff;">🧩 Matriz de Exames do PCMSO</h3>
+                <p style="margin: 3px 0 0; font-size: 12px; color: #ccfbf1;">Inclua ou remova exames por GHE. A alteração vale para todos os usuários do painel.</p>
             </div>
-            <button type="button" class="placar-modal-close" onclick="fecharModalGerenciarGhesPsico()">&times;</button>
+            <button type="button" class="placar-modal-close" onclick="fecharEditorMatrizPcmso()">&times;</button>
         </div>
-        <div class="placar-modal-body" style="padding: 16px 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-                <span style="font-size: 12px; color: var(--text-light);">Marque os grupos que possuem risco em altura (NR-35), espaço confinado (NR-33) ou SEP (NR-10):</span>
-                <div style="display: flex; gap: 6px;">
-                    <button type="button" class="db-clear-btn" style="font-size: 11px; padding: 3px 8px;" onclick="marcarTodosGhesPsico(true)">Marcar Todos</button>
-                    <button type="button" class="db-clear-btn" style="font-size: 11px; padding: 3px 8px;" onclick="marcarTodosGhesPsico(false)">Desmarcar</button>
-                    <button type="button" class="db-clear-btn" style="font-size: 11px; padding: 3px 8px; border-color: #818cf8; color: #4f46e5;" onclick="restaurarPadraoPcmsoGhesPsico()">Padrão PCMSO (7 GHEs)</button>
-                </div>
+        <div class="placar-modal-body" style="padding: 14px 20px;">
+            <div style="display: flex; gap: 6px; margin-bottom: 12px;">
+                <button type="button" id="matrizPcmsoTabGhe" onclick="trocarAbaMatrizPcmso('ghe')"
+                    style="padding: 6px 14px; border: 1px solid #0f766e; border-radius: 8px; font-size: 12px; font-weight: 800; cursor: pointer; background: #0f766e; color: #fff;">
+                    Por GHE
+                </button>
+                <button type="button" id="matrizPcmsoTabExame" onclick="trocarAbaMatrizPcmso('exame')"
+                    style="padding: 6px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; font-weight: 800; cursor: pointer; background: transparent; color: var(--text);">
+                    Por exame
+                </button>
             </div>
-
-            <div id="listaCheckboxesGhesPsico" style="max-height: 380px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--bg); display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                <!-- Preenchido dinamicamente via JS -->
-            </div>
-            <div style="font-size: 11.5px; color: var(--text-light); margin-top: 10px;">
-                💡 <em>Dica técnica:</em> Ao marcar um novo grupo, todos os colaboradores ativos dele passarão a ser rastreados automaticamente quanto à necessidade da Avaliação Psicossocial.
-            </div>
+            <div id="matrizPcmsoAviso"></div>
+            <div id="matrizPcmsoConteudo"></div>
         </div>
-        <div class="placar-modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 8px;">
-            <button type="button" class="db-clear-btn" onclick="fecharModalGerenciarGhesPsico()">Cancelar</button>
-            <button type="button" class="db-apply-btn" style="background: #4f46e5;" onclick="salvarConfiguracaoGhesPsico()">💾 Salvar Grupos</button>
+        <div class="placar-modal-footer" style="padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span id="matrizPcmsoStatus" style="font-size: 11.5px; color: var(--text-light);"></span>
+            <div style="display: flex; gap: 8px;">
+                <button type="button" class="db-clear-btn" onclick="fecharEditorMatrizPcmso()">Fechar</button>
+                <button type="button" class="db-apply-btn" id="matrizPcmsoBtnSalvar" style="background: #0f766e;" onclick="salvarMatrizPcmso()">💾 Salvar alterações</button>
+            </div>
         </div>
     </div>
 </div>

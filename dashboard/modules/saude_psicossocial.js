@@ -635,6 +635,12 @@ function onSaudeFiltroAnoMesChange() {
 
 async function loadSaudeData() {
     try {
+        // A matriz do PCMSO precisa estar aplicada ANTES de qualquer render da saúde,
+        // porque PCMSO_EXAMES_POR_GHE é lida de forma síncrona por várias funções.
+        // Sem a tabela no Supabase, esta chamada não falha: mantém a matriz do código.
+        if (typeof carregarMatrizPcmsoExames === 'function') {
+            await carregarMatrizPcmsoExames();
+        }
         const [asoRows, atestadoRows, pressaoRows] = await Promise.all([
             supabaseFetch('aso_exames', '?select=*'),
             supabaseFetch('atestados_ocupacionais', '?select=*'),
@@ -758,12 +764,14 @@ var PCMSO_EXAMES_POR_GHE = {
         { nome: 'Avaliação Psicossocial', periodicidade: 12, demissional: false },
         { nome: 'Glicose', periodicidade: 12, demissional: true },
         { nome: 'Raio X da Coluna Lombo Sacra', periodicidade: 24, demissional: false },
-        { nome: 'IgE Específica - Abelha', periodicidade: null, demissional: false }
+        { nome: 'IgE Específica - Abelha', periodicidade: null, demissional: false },
+        { nome: 'Raio X de Tórax (Padrão OIT)', periodicidade: 60, demissional: true }
     ]},
     G08: { nome: 'Motosserras e Roçadeiras', exames: [
         { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
         { nome: 'Audiometria', periodicidade: 12, demissional: true },
         { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Acuidade Visual', periodicidade: 12, demissional: false },
         { nome: 'Eletrocardiograma (ECG)', periodicidade: 12, demissional: true },
         { nome: 'Espirometria', periodicidade: 24, demissional: true },
         { nome: 'Avaliação Psicossocial', periodicidade: 12, demissional: false },
@@ -774,12 +782,14 @@ var PCMSO_EXAMES_POR_GHE = {
     G09: { nome: 'Motorista de Veículos Leve', exames: [
         { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
         { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Acuidade Visual', periodicidade: 12, demissional: false },
         { nome: 'Glicose', periodicidade: 12, demissional: true }
     ]},
     G10: { nome: 'Operador de Sistemas Hídricos', exames: [
         { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
         { nome: 'Audiometria', periodicidade: 12, demissional: true },
         { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Acuidade Visual', periodicidade: 12, demissional: false },
         { nome: 'Eletrocardiograma (ECG)', periodicidade: 12, demissional: true },
         { nome: 'Espirometria', periodicidade: 24, demissional: true },
         { nome: 'Avaliação Psicossocial', periodicidade: 12, demissional: false },
@@ -789,6 +799,7 @@ var PCMSO_EXAMES_POR_GHE = {
         { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
         { nome: 'Audiometria', periodicidade: 12, demissional: true },
         { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Acuidade Visual', periodicidade: 12, demissional: false },
         { nome: 'Espirometria', periodicidade: 24, demissional: true },
         { nome: 'Glicose', periodicidade: 12, demissional: true },
         { nome: 'Raio X da Coluna Lombo Sacra', periodicidade: null, demissional: false }
@@ -816,6 +827,7 @@ var PCMSO_EXAMES_POR_GHE = {
     G15: { nome: 'Motorista de Caminhão Comboio', exames: [
         { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
         { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Acuidade Visual', periodicidade: 12, demissional: false },
         { nome: 'Eletrocardiograma (ECG)', periodicidade: 12, demissional: true },
         { nome: 'Espirometria', periodicidade: 24, demissional: true },
         { nome: 'Glicose', periodicidade: 12, demissional: true },
@@ -870,6 +882,7 @@ var PCMSO_EXAMES_POR_GHE = {
         { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
         { nome: 'Audiometria', periodicidade: 12, demissional: true },
         { nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+        { nome: 'Acuidade Visual', periodicidade: 12, demissional: false },
         { nome: 'Eletrocardiograma (ECG)', periodicidade: 12, demissional: true },
         { nome: 'Espirometria', periodicidade: 24, demissional: true },
         { nome: 'Avaliação Psicossocial', periodicidade: 12, demissional: false },
@@ -2658,8 +2671,8 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
         nomeExame: 'Acuidade Visual',
         termosBusca: ['acuidade visual', 'acuidade'],
         tituloHeader: '👁️ Recomendação de Exames — Teste de Acuidade Visual (Snellen)',
-        descricaoBase: 'Avaliação de campo visual e nitidez obrigatória para motoristas de veículos pesados e operação de máquinas.',
-        ghesPadrao: ['12'],
+        descricaoBase: 'Avaliação de acuidade e campo visual obrigatória para motoristas, operadores de máquinas e equipamentos, motosserras/roçadeiras e demais funções com exigência de vigilância visual para o trabalho.',
+        ghesPadrao: ['08', '09', '10', '11', '12', '15', '25'],
         periodicidadeMeses: 12,
         profissionalPadrao: 'Médico Oftalmologista / Examinador Credenciado',
         tipoProfissional: 'CRM',
@@ -2682,8 +2695,8 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
         nomeExame: 'Raio X de Tórax (Padrão OIT)',
         termosBusca: ['tórax', 'torax', 'padrão oit'],
         tituloHeader: '🫁 Recomendação de Exames — Raio X de Tórax Padrão OIT',
-        descricaoBase: 'Rastreamento de pneumoconioses em colaboradores expostos a poeiras minerais e atividades em carpintaria / corte de madeira.',
-        ghesPadrao: ['19'],
+        descricaoBase: 'Rastreamento de pneumoconioses em colaboradores expostos a poeiras minerais, carpintaria / corte de madeira e atividades de manutenção civil com geração de poeira.',
+        ghesPadrao: ['07', '19'],
         periodicidadeMeses: 60,
         profissionalPadrao: 'Médico Radiologista / Leitor OIT',
         tipoProfissional: 'CRM',
@@ -2874,18 +2887,11 @@ function nomeExameCorrespondeAoCatalogo(nomeItem, exameCfg) {
 // GHEs obrigatórios para o exame selecionado
 function obterGhesObrigatoriosPsicossocial() {
     const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
-    const chaveCustom = `exame_ghes_custom_${exameComplementarFocoAtual}`;
 
-    try {
-        const salvo = localStorage.getItem(chaveCustom);
-        if (salvo) {
-            const arr = JSON.parse(salvo);
-            if (Array.isArray(arr) && arr.length > 0) return new Set(arr);
-        }
-    } catch (e) {
-        console.warn('Erro ao ler GHEs configurados:', e);
-    }
-
+    // Fonte única da matriz: PCMSO_EXAMES_POR_GHE, já sobreposta pelo banco em
+    // carregarMatrizPcmsoExames(). O override por navegador (localStorage
+    // 'exame_ghes_custom_*') foi desativado no v228: ele vencia a detecção e fazia
+    // cada máquina enxergar uma matriz diferente da do banco.
     if (exameComplementarFocoAtual === 'matriz_geral') {
         return new Set(exameCfg.ghesPadrao || []);
     }
@@ -4077,74 +4083,566 @@ function salvarReprogramacaoDataMutirao() {
     alert(`✅ Atendimento agendado com sucesso para ${formatSimpleDate(novaData)} com capacidade de ${novasVagas} vagas sugeridas!`);
 }
 
-// ---- Modal de Configuração de GHEs Obrigatórios ----
-function abrirModalGerenciarGhesPsico() {
-    const container = document.getElementById('listaCheckboxesGhesPsico');
-    if (!container) return;
+// ============================================
+// MATRIZ DE EXAMES DO PCMSO — EDIÇÃO PELO PAINEL (v228)
+// Fonte única: tabela pcmso_matriz_exames (Supabase). Quando ela tem pelo menos uma
+// linha, substitui PCMSO_EXAMES_POR_GHE em memória; quando está vazia ou não existe,
+// a matriz hardcoded continua valendo (fallback seguro — nada quebra sem a migração).
+// Duas abas: "por GHE" (escolhe o GHE e marca os exames) e "por exame" (escolhe o
+// exame e marca os GHEs). As duas gravam na mesma tabela, então o resultado é sempre
+// o mesmo, independente do caminho usado para editar.
+// ============================================
 
-    const ghesAtivosConfig = obterGhesObrigatoriosPsicossocial();
-    const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
+// Exames que podem entrar/sair da matriz na tela. 'clinico' é o ASO geral: existe na
+// matriz mas não tem aba própria no catálogo, e é obrigatório em todo GHE.
+var PCMSO_EXAMES_EDITAVEIS = [
+    { id: 'clinico', nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true, obrigatorio: true },
+    { id: 'psicossocial', nome: 'Avaliação Psicossocial', periodicidade: 12, demissional: false },
+    { id: 'audiometria', nome: 'Audiometria', periodicidade: 12, demissional: true },
+    { id: 'ecg', nome: 'Eletrocardiograma (ECG)', periodicidade: 12, demissional: true },
+    { id: 'espirometria', nome: 'Espirometria', periodicidade: 24, demissional: true },
+    { id: 'acuidade', nome: 'Acuidade Visual', periodicidade: 12, demissional: false },
+    { id: 'rx_coluna', nome: 'Raio X da Coluna Lombo Sacra', periodicidade: 24, demissional: false },
+    { id: 'rx_torax', nome: 'Raio X de Tórax (Padrão OIT)', periodicidade: 60, demissional: true },
+    { id: 'glicose', nome: 'Glicose', periodicidade: 12, demissional: true },
+    { id: 'hemograma', nome: 'Hemograma Completo', periodicidade: 12, demissional: true },
+    { id: 'ige_abelha', nome: 'IgE Específica - Abelha', periodicidade: null, demissional: false }
+];
 
-    const todosGhes = [];
-    for (let i = 1; i <= 27; i++) {
-        const id = String(i).padStart(2, '0');
-        const nome = obterNomeGheCompleto(id);
-        const contagem = ativos.filter(e => normalizarGhe(e.ghe) === id).length;
-        todosGhes.push({ id, nome, contagem });
-    }
+var pcmsoMatrizCarregada = false;
+var pcmsoMatrizDisponivel = false;   // a tabela existe no Supabase?
+var pcmsoMatrizLinhas = [];          // linhas cruas da tabela (inclusive ativo = false)
+var pcmsoMatrizPromessa = null;
+var matrizPcmsoAbaAtual = 'ghe';
+var matrizPcmsoGheAtual = '01';
+var matrizPcmsoExameAtual = 'acuidade';
+var matrizPcmsoSalvando = false;
+var matrizPcmsoSujo = false;   // há edição na tela ainda não salva?
 
-    container.innerHTML = todosGhes.map(g => {
-        const checked = ghesAtivosConfig.has(g.id) ? 'checked' : '';
-        return `
-            <label style="display:flex; align-items:flex-start; gap:8px; padding:6px 8px; border-radius:6px; background:var(--card); border:1px solid var(--border); font-size:12px; cursor:pointer;">
-                <input type="checkbox" class="chk-ghe-psico" value="${g.id}" ${checked} style="margin-top:2px;">
-                <div>
-                    <strong style="color:var(--text);">${escapeHTML(g.nome)}</strong>
-                    <div style="font-size:11px; color:var(--text-light);">${g.contagem} colaborador(es) ativo(s)</div>
-                </div>
-            </label>
-        `;
-    }).join('');
-
-    const modal = document.getElementById('modalGerenciarGhesPsico');
-    if (modal) modal.style.display = 'flex';
+// normalizarGhe() só trata string puramente numérica; aqui as chaves vêm como 'G05'.
+function normalizarGheMatriz(valor) {
+    const bruto = String(valor == null ? '' : valor).trim();
+    const num = bruto.replace(/^G/i, '');
+    return /^\d+$/.test(num) ? num.padStart(2, '0') : '';
 }
 
-function fecharModalGerenciarGhesPsico() {
-    const modal = document.getElementById('modalGerenciarGhesPsico');
-    if (modal) modal.style.display = 'none';
+function obterMetaExameMatrizPcmso(exameId) {
+    return PCMSO_EXAMES_EDITAVEIS.find(e => e.id === exameId)
+        || { id: exameId, nome: exameId, periodicidade: 12, demissional: true };
 }
 
-function marcarTodosGhesPsico(marcar) {
-    document.querySelectorAll('.chk-ghe-psico').forEach(chk => chk.checked = marcar);
+// Nome livre da matriz (vindo do banco ou do código) -> exame_id estável.
+function obterExameIdPorNomeMatriz(nome) {
+    const alvo = String(nome || '').toLowerCase().trim();
+    if (!alvo) return null;
+    const direto = PCMSO_EXAMES_EDITAVEIS.find(e => e.nome.toLowerCase() === alvo);
+    if (direto) return direto.id;
+    const porCatalogo = Object.values(CATALOGO_EXAMES_COMPLEMENTARES || {}).find(cfg =>
+        cfg && cfg.id !== 'matriz_geral' && nomeExameCorrespondeAoCatalogo(nome, cfg)
+    );
+    if (porCatalogo) return porCatalogo.id;
+    if (alvo.includes('clínica') || alvo.includes('clinica') || alvo.includes('aso')) return 'clinico';
+    return null;
 }
 
-function restaurarPadraoPcmsoGhesPsico() {
-    const chaveCustom = `exame_ghes_custom_${exameComplementarFocoAtual}`;
-    localStorage.removeItem(chaveCustom);
-    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
-    const padroes = new Set(exameCfg.ghesPadrao || ['05', '06', '07', '08', '10', '25', '26']);
-    document.querySelectorAll('.chk-ghe-psico').forEach(chk => {
-        chk.checked = padroes.has(chk.value);
+// Aplica as linhas do banco sobre PCMSO_EXAMES_POR_GHE e sobre ghesPadrao. Só é
+// chamada quando a tabela tem alguma linha (mesmo inativa): a partir daí o banco é a
+// verdade e o código passa a ser apenas o estado inicial.
+function aplicarMatrizPcmsoExames(linhas) {
+    const nomesGhe = {};
+    Object.entries(PCMSO_EXAMES_POR_GHE || {}).forEach(([chave, info]) => {
+        const num = normalizarGheMatriz(chave);
+        if (num && info && info.nome) nomesGhe[num] = info.nome;
+    });
+
+    const porGhe = {};
+    const porExame = {};
+    (linhas || []).forEach(linha => {
+        if (!linha || linha.ativo === false) return;
+        const ghe = normalizarGheMatriz(linha.ghe);
+        const exameId = linha.exame_id || obterExameIdPorNomeMatriz(linha.exame_nome);
+        if (!ghe || !exameId) return;
+        (porGhe[ghe] = porGhe[ghe] || []).push({ linha, exameId });
+        (porExame[exameId] = porExame[exameId] || []).push(ghe);
+    });
+
+    const novaMatriz = {};
+    Object.keys(nomesGhe).sort().forEach(ghe => {
+        const itens = (porGhe[ghe] || []).slice()
+            .sort((a, b) => (Number(a.linha.ordem) || 0) - (Number(b.linha.ordem) || 0));
+        novaMatriz['G' + ghe] = {
+            nome: nomesGhe[ghe],
+            exames: itens.map(({ linha, exameId }) => ({
+                nome: linha.exame_nome || obterMetaExameMatrizPcmso(exameId).nome,
+                periodicidade: linha.periodicidade_meses == null ? null : Number(linha.periodicidade_meses),
+                demissional: linha.demissional !== false,
+                exame_id: exameId
+            }))
+        };
+    });
+    PCMSO_EXAMES_POR_GHE = novaMatriz;
+
+    // Sem realinhar ghesPadrao, um exame removido "voltaria" pela detecção vazia
+    // (obterGhesObrigatoriosPsicossocial cai no padrão quando não detecta nada).
+    Object.entries(CATALOGO_EXAMES_COMPLEMENTARES || {}).forEach(([id, cfg]) => {
+        if (!cfg || id === 'matriz_geral') return;
+        cfg.ghesPadrao = (porExame[id] || []).slice().sort();
     });
 }
 
-function salvarConfiguracaoGhesPsico() {
-    const selecionados = Array.from(document.querySelectorAll('.chk-ghe-psico:checked')).map(chk => chk.value);
-    if (selecionados.length === 0) {
-        alert('Selecione ao menos um GHE para monitoramento deste exame.');
+// Carrega a matriz do banco uma única vez por sessão (exceto quando forçado, depois de
+// salvar). Nunca lança: sem a tabela, o app segue com a matriz do código.
+async function carregarMatrizPcmsoExames(forcarAtualizacao) {
+    if (forcarAtualizacao) pcmsoMatrizPromessa = null;
+    if (!pcmsoMatrizPromessa) {
+        pcmsoMatrizPromessa = (async () => {
+            try {
+                const linhas = await supabaseFetchCacheado(
+                    'pcmso_matriz_exames',
+                    '?select=*&order=ghe.asc,ordem.asc',
+                    !!forcarAtualizacao
+                );
+                pcmsoMatrizDisponivel = true;
+                pcmsoMatrizLinhas = Array.isArray(linhas) ? linhas : [];
+                if (pcmsoMatrizLinhas.length > 0) aplicarMatrizPcmsoExames(pcmsoMatrizLinhas);
+            } catch (err) {
+                console.warn('Matriz PCMSO: tabela pcmso_matriz_exames indisponível — usando a matriz do código.', err);
+                pcmsoMatrizDisponivel = false;
+                pcmsoMatrizLinhas = [];
+            }
+            pcmsoMatrizCarregada = true;
+            return pcmsoMatrizDisponivel;
+        })();
+    }
+    return pcmsoMatrizPromessa;
+}
+
+// chave 'ghe|exame_id' -> linha do banco
+function matrizPcmsoMapaLinhas() {
+    const mapa = {};
+    (pcmsoMatrizLinhas || []).forEach(linha => {
+        const ghe = normalizarGheMatriz(linha.ghe);
+        if (!ghe || !linha.exame_id) return;
+        mapa[ghe + '|' + linha.exame_id] = linha;
+    });
+    return mapa;
+}
+
+// Estado exibido na tela: banco quando ele é a fonte; senão, a matriz do código.
+function matrizPcmsoEstadoEfetivo() {
+    const estado = {};
+    const bancoManda = pcmsoMatrizLinhas && pcmsoMatrizLinhas.length > 0;
+
+    if (bancoManda) {
+        pcmsoMatrizLinhas.forEach(linha => {
+            if (!linha || linha.ativo === false) return;
+            const ghe = normalizarGheMatriz(linha.ghe);
+            if (!ghe || !linha.exame_id) return;
+            estado[ghe + '|' + linha.exame_id] = {
+                ghe,
+                exame_id: linha.exame_id,
+                nome: linha.exame_nome || obterMetaExameMatrizPcmso(linha.exame_id).nome,
+                periodicidade: linha.periodicidade_meses == null ? null : Number(linha.periodicidade_meses),
+                demissional: linha.demissional !== false,
+                ordem: Number(linha.ordem) || 0
+            };
+        });
+        return estado;
+    }
+
+    Object.entries(PCMSO_EXAMES_POR_GHE || {}).forEach(([chave, info]) => {
+        const ghe = normalizarGheMatriz(chave);
+        if (!ghe || !info || !Array.isArray(info.exames)) return;
+        info.exames.forEach((exame, idx) => {
+            const exameId = exame.exame_id || obterExameIdPorNomeMatriz(exame.nome);
+            if (!exameId) return;
+            estado[ghe + '|' + exameId] = {
+                ghe,
+                exame_id: exameId,
+                nome: exame.nome,
+                periodicidade: exame.periodicidade == null ? null : Number(exame.periodicidade),
+                demissional: exame.demissional !== false,
+                ordem: idx
+            };
+        });
+    });
+    return estado;
+}
+
+function abrirEditorMatrizPcmso(aba) {
+    matrizPcmsoSujo = false;
+    matrizPcmsoAbaAtual = (aba === 'exame') ? 'exame' : 'ghe';
+    if (exameComplementarFocoAtual && exameComplementarFocoAtual !== 'matriz_geral'
+        && PCMSO_EXAMES_EDITAVEIS.some(e => e.id === exameComplementarFocoAtual)) {
+        matrizPcmsoExameAtual = exameComplementarFocoAtual;
+    }
+    const modal = document.getElementById('modalMatrizPcmso');
+    if (modal) modal.style.display = 'flex';
+    renderMatrizPcmso();
+    // Revalida no banco em segundo plano: a tabela pode ter sido criada/alterada
+    // depois do login, e a tela deve abrir com o estado mais recente.
+    carregarMatrizPcmsoExames(true).then(() => { if (!matrizPcmsoSujo) renderMatrizPcmso(); }).catch(() => {});
+}
+
+function fecharEditorMatrizPcmso() {
+    if (matrizPcmsoSujo && !confirm('Você tem alterações não salvas na matriz do PCMSO. Fechar mesmo assim?')) return;
+    matrizPcmsoSujo = false;
+    const modal = document.getElementById('modalMatrizPcmso');
+    if (modal) modal.style.display = 'none';
+}
+
+function podeDescartarEdicaoMatrizPcmso() {
+    if (!matrizPcmsoSujo) return true;
+    if (!confirm('Você tem alterações não salvas na matriz do PCMSO. Descartar e continuar?')) return false;
+    matrizPcmsoSujo = false;
+    return true;
+}
+
+function trocarAbaMatrizPcmso(aba) {
+    if (!podeDescartarEdicaoMatrizPcmso()) return;
+    matrizPcmsoAbaAtual = (aba === 'exame') ? 'exame' : 'ghe';
+    renderMatrizPcmso();
+}
+
+function aoTrocarGheMatrizPcmso(ghe) {
+    if (!podeDescartarEdicaoMatrizPcmso()) { renderMatrizPcmso(); return; }
+    matrizPcmsoGheAtual = normalizarGheMatriz(ghe) || '01';
+    renderMatrizPcmso();
+}
+
+function aoTrocarExameMatrizPcmso(exameId) {
+    if (!podeDescartarEdicaoMatrizPcmso()) { renderMatrizPcmso(); return; }
+    matrizPcmsoExameAtual = exameId;
+    renderMatrizPcmso();
+}
+
+// Marcar/desmarcar um exame habilita/desabilita periodicidade e demissional da linha.
+function aoAlternarExameMatrizPcmso(checkbox) {
+    const linha = checkbox ? checkbox.closest('tr') : null;
+    if (!linha) return;
+    const desabilitar = !checkbox.checked;
+    linha.querySelectorAll('.inp-matriz-periodicidade, .chk-matriz-demissional').forEach(campo => {
+        campo.disabled = desabilitar;
+    });
+}
+
+function renderMatrizPcmso() {
+    const container = document.getElementById('matrizPcmsoConteudo');
+    if (!container) return;
+
+    [['ghe', 'matrizPcmsoTabGhe'], ['exame', 'matrizPcmsoTabExame']].forEach(([aba, id]) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        const ativo = matrizPcmsoAbaAtual === aba;
+        btn.style.background = ativo ? '#0f766e' : 'transparent';
+        btn.style.color = ativo ? '#fff' : 'var(--text)';
+        btn.style.borderColor = ativo ? '#0f766e' : 'var(--border)';
+    });
+
+    const aviso = document.getElementById('matrizPcmsoAviso');
+    if (aviso) {
+        aviso.innerHTML = (!pcmsoMatrizCarregada || pcmsoMatrizDisponivel) ? '' : `
+            <div style="background:#fef2f2; border:1px solid #fecaca; color:#991b1b; border-radius:8px; padding:8px 10px; font-size:12px; margin-bottom:10px;">
+                ⚠️ A tabela <strong>pcmso_matriz_exames</strong> ainda não existe no Supabase. Peça para rodar
+                <code>supabase/migrations/20261028_pcmso_matriz_exames.sql</code> no SQL Editor do Supabase.
+                Enquanto isso, a tela mostra a matriz que está no código, <strong>somente para consulta</strong>.
+            </div>`;
+    }
+
+    const btnSalvar = document.getElementById('matrizPcmsoBtnSalvar');
+    if (btnSalvar) {
+        btnSalvar.disabled = !pcmsoMatrizDisponivel || matrizPcmsoSalvando;
+        btnSalvar.style.opacity = btnSalvar.disabled ? '0.5' : '1';
+    }
+
+    const status = document.getElementById('matrizPcmsoStatus');
+    if (status) {
+        if (!pcmsoMatrizDisponivel) {
+            status.textContent = 'Origem: matriz do código (somente leitura)';
+        } else if (pcmsoMatrizLinhas.length === 0) {
+            status.textContent = 'Origem: banco vazio — ao salvar, a matriz do código é copiada para o banco';
+        } else {
+            status.textContent = `Origem: banco de dados (${pcmsoMatrizLinhas.filter(l => l.ativo !== false).length} exames ativos em 27 GHEs)`;
+        }
+    }
+
+    if (matrizPcmsoAbaAtual === 'exame') renderMatrizPcmsoAbaExame();
+    else renderMatrizPcmsoAbaGhe();
+}
+
+function renderMatrizPcmsoAbaGhe() {
+    const container = document.getElementById('matrizPcmsoConteudo');
+    if (!container) return;
+    const estado = matrizPcmsoEstadoEfetivo();
+    const efetivoAtivo = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
+    const ghe = matrizPcmsoGheAtual;
+
+    const opcoes = [];
+    for (let i = 1; i <= 27; i++) {
+        const num = String(i).padStart(2, '0');
+        const qtd = efetivoAtivo.filter(e => normalizarGheMatriz(e.ghe) === num).length;
+        opcoes.push(`<option value="${num}"${num === ghe ? ' selected' : ''}>${escapeHTML(obterNomeGheCompleto(num))} — ${qtd} ativo(s)</option>`);
+    }
+
+    const linhas = PCMSO_EXAMES_EDITAVEIS.map(meta => {
+        const item = estado[ghe + '|' + meta.id];
+        const marcado = !!item;
+        const periodicidade = item && item.periodicidade != null ? item.periodicidade : '';
+        const demissional = item ? item.demissional : meta.demissional;
+        const travado = !!meta.obrigatorio;
+        const desabilitado = marcado ? '' : 'disabled';
+        return `
+            <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:5px 6px;">
+                    <label style="display:flex; align-items:center; gap:7px; font-size:12px; cursor:${travado ? 'not-allowed' : 'pointer'}; color:var(--text);">
+                        <input type="checkbox" class="chk-matriz-exame" data-exame="${meta.id}"
+                            ${marcado || travado ? 'checked' : ''} ${travado ? 'disabled' : ''}
+                            onchange="aoAlternarExameMatrizPcmso(this)">
+                        <span>${escapeHTML(meta.nome)}${travado ? ' <span style="font-size:10px; color:var(--text-light);">(obrigatório)</span>' : ''}</span>
+                    </label>
+                </td>
+                <td style="padding:5px 6px; text-align:center; width:120px;">
+                    <input type="number" min="1" max="120" class="inp-matriz-periodicidade" value="${periodicidade}"
+                        placeholder="—" ${desabilitado}
+                        style="width:70px; padding:3px 6px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px;">
+                </td>
+                <td style="padding:5px 6px; text-align:center; width:80px;">
+                    <input type="checkbox" class="chk-matriz-demissional" ${demissional ? 'checked' : ''} ${desabilitado}>
+                </td>
+            </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+            <label style="font-size:12px; font-weight:700; color:var(--text);">GHE:</label>
+            <select onchange="aoTrocarGheMatrizPcmso(this.value)"
+                style="flex:1; min-width:260px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:12px; font-weight:600;">
+                ${opcoes.join('')}
+            </select>
+        </div>
+        <div style="max-height:380px; overflow:auto; border:1px solid var(--border); border-radius:8px;">
+            <table style="width:100%; border-collapse:collapse;">
+                <thead style="position:sticky; top:0; background:var(--bg); z-index:1;">
+                    <tr style="font-size:11px; text-transform:uppercase; color:var(--text-light);">
+                        <th style="text-align:left; padding:6px;">Exame exigido neste GHE</th>
+                        <th style="padding:6px;">Periodicidade (meses)</th>
+                        <th style="padding:6px;">Demissional</th>
+                    </tr>
+                </thead>
+                <tbody>${linhas}</tbody>
+            </table>
+        </div>
+        <div style="font-size:11.5px; color:var(--text-light); margin-top:8px;">
+            Desmarque para <strong>remover</strong> o exame deste GHE; marque para <strong>incluir</strong>. A alteração vale
+            para todos os usuários depois de salvar. O ASO (avaliação clínica) é obrigatório em qualquer GHE.
+        </div>`;
+
+    container.querySelectorAll('input').forEach(campo => {
+        campo.addEventListener('change', () => { matrizPcmsoSujo = true; });
+    });
+}
+
+function renderMatrizPcmsoAbaExame() {
+    const container = document.getElementById('matrizPcmsoConteudo');
+    if (!container) return;
+    const estado = matrizPcmsoEstadoEfetivo();
+    const exameId = matrizPcmsoExameAtual;
+    const meta = obterMetaExameMatrizPcmso(exameId);
+
+    const opcoes = PCMSO_EXAMES_EDITAVEIS
+        .filter(e => !e.obrigatorio)
+        .map(e => `<option value="${e.id}"${e.id === exameId ? ' selected' : ''}>${escapeHTML(e.nome)}</option>`)
+        .join('');
+
+    const caixas = [];
+    for (let i = 1; i <= 27; i++) {
+        const num = String(i).padStart(2, '0');
+        const marcado = !!estado[num + '|' + exameId];
+        caixas.push(`
+            <label style="display:flex; align-items:flex-start; gap:6px; padding:5px 7px; border:1px solid var(--border); border-radius:6px; background:var(--card); font-size:11.5px; cursor:pointer;">
+                <input type="checkbox" class="chk-matriz-ghe" data-ghe="${num}" ${marcado ? 'checked' : ''} style="margin-top:2px;">
+                <span>${escapeHTML(obterNomeGheCompleto(num))}</span>
+            </label>`);
+    }
+
+    // Periodicidade/demissional exibidos: o valor mais comum entre os GHEs marcados;
+    // se não houver nenhum, o padrão do exame.
+    const marcados = [];
+    for (let i = 1; i <= 27; i++) {
+        const num = String(i).padStart(2, '0');
+        const item = estado[num + '|' + exameId];
+        if (item) marcados.push(item);
+    }
+    let periodicidade = meta.periodicidade;
+    let demissional = meta.demissional;
+    if (marcados.length > 0) {
+        periodicidade = marcados[0].periodicidade;
+        demissional = marcados[0].demissional;
+        const uniforme = marcados.every(m => m.periodicidade === periodicidade && m.demissional === demissional);
+        if (!uniforme) periodicidade = ''; // deixa claro que há valores diferentes
+    }
+
+    container.innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+            <label style="font-size:12px; font-weight:700; color:var(--text);">Exame:</label>
+            <select onchange="aoTrocarExameMatrizPcmso(this.value)"
+                style="flex:1; min-width:240px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:12px; font-weight:600;">
+                ${opcoes}
+            </select>
+            <label style="font-size:11.5px; color:var(--text-light);">Periodicidade:</label>
+            <input type="number" id="matrizPcmsoExamePeriodicidade" min="1" max="120" value="${periodicidade}" placeholder="—"
+                style="width:70px; padding:4px 6px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px;">
+            <label style="display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--text-light);">
+                <input type="checkbox" id="matrizPcmsoExameDemissional" ${demissional ? 'checked' : ''}> demissional
+            </label>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:6px; max-height:360px; overflow:auto; padding:2px;">
+            ${caixas.join('')}
+        </div>
+        <div style="font-size:11.5px; color:var(--text-light); margin-top:8px;">
+            Marque os GHEs que exigem <strong>${escapeHTML(meta.nome)}</strong>. A periodicidade e a flag demissional acima
+            são aplicadas a <strong>todos</strong> os GHEs marcados ao salvar. Para valores diferentes por GHE, use a aba
+            “Por GHE”.
+        </div>`;
+
+    container.querySelectorAll('input').forEach(campo => {
+        campo.addEventListener('change', () => { matrizPcmsoSujo = true; });
+    });
+}
+
+async function salvarMatrizPcmso() {
+    if (!pcmsoMatrizDisponivel) {
+        alert('A tabela pcmso_matriz_exames ainda não existe no Supabase. Rode a migração 20261028_pcmso_matriz_exames.sql antes de salvar.');
         return;
     }
+    if (matrizPcmsoSalvando) return;
+    matrizPcmsoSalvando = true;
+    const btnSalvar = document.getElementById('matrizPcmsoBtnSalvar');
+    if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.textContent = '⏳ Salvando...'; }
 
-    const chaveCustom = `exame_ghes_custom_${exameComplementarFocoAtual}`;
-    localStorage.setItem(chaveCustom, JSON.stringify(selecionados));
-    if (exameComplementarFocoAtual === 'psicossocial') {
-        localStorage.setItem('psico_ghes_obrigatorios', JSON.stringify(selecionados));
+    try {
+        // Estado de partida: banco (ou matriz do código, quando o banco ainda está vazio).
+        const desejado = {};
+        Object.entries(matrizPcmsoEstadoEfetivo()).forEach(([chave, item]) => { desejado[chave] = Object.assign({}, item); });
+
+        if (matrizPcmsoAbaAtual === 'ghe') {
+            const ghe = matrizPcmsoGheAtual;
+            // exame novo entra no fim da lista deste GHE (ordem de exibição/impressão)
+            const maiorOrdemGhe = Object.values(desejado)
+                .filter(item => item.ghe === ghe)
+                .reduce((maior, item) => Math.max(maior, Number(item.ordem) || 0), -1);
+            document.querySelectorAll('#matrizPcmsoConteudo tr').forEach(tr => {
+                const chk = tr.querySelector('.chk-matriz-exame');
+                if (!chk) return;
+                const exameId = chk.dataset.exame;
+                const chave = ghe + '|' + exameId;
+                if (!chk.checked) { delete desejado[chave]; return; }
+                const meta = obterMetaExameMatrizPcmso(exameId);
+                const campoPeriodicidade = tr.querySelector('.inp-matriz-periodicidade');
+                const campoDemissional = tr.querySelector('.chk-matriz-demissional');
+                const valorPeriodicidade = campoPeriodicidade && campoPeriodicidade.value !== ''
+                    ? parseInt(campoPeriodicidade.value, 10) : null;
+                desejado[chave] = {
+                    ghe,
+                    exame_id: exameId,
+                    nome: (desejado[chave] && desejado[chave].nome) || meta.nome,
+                    periodicidade: Number.isFinite(valorPeriodicidade) ? valorPeriodicidade : null,
+                    demissional: campoDemissional ? campoDemissional.checked : meta.demissional,
+                    ordem: (desejado[chave] && desejado[chave].ordem != null) ? desejado[chave].ordem : maiorOrdemGhe + 1
+                };
+            });
+        } else {
+            const exameId = matrizPcmsoExameAtual;
+            const meta = obterMetaExameMatrizPcmso(exameId);
+            const campoPeriodicidade = document.getElementById('matrizPcmsoExamePeriodicidade');
+            const campoDemissional = document.getElementById('matrizPcmsoExameDemissional');
+            const valorPeriodicidade = campoPeriodicidade && campoPeriodicidade.value !== ''
+                ? parseInt(campoPeriodicidade.value, 10) : null;
+            const periodicidade = Number.isFinite(valorPeriodicidade) ? valorPeriodicidade : null;
+            const demissional = campoDemissional ? campoDemissional.checked : meta.demissional;
+
+            document.querySelectorAll('#matrizPcmsoConteudo .chk-matriz-ghe').forEach(chk => {
+                const ghe = normalizarGheMatriz(chk.dataset.ghe);
+                if (!ghe) return;
+                const chave = ghe + '|' + exameId;
+                if (!chk.checked) { delete desejado[chave]; return; }
+                const maiorOrdemGhe = Object.values(desejado)
+                    .filter(item => item.ghe === ghe)
+                    .reduce((maior, item) => Math.max(maior, Number(item.ordem) || 0), -1);
+                desejado[chave] = {
+                    ghe,
+                    exame_id: exameId,
+                    nome: (desejado[chave] && desejado[chave].nome) || meta.nome,
+                    periodicidade,
+                    demissional,
+                    ordem: (desejado[chave] && desejado[chave].ordem != null) ? desejado[chave].ordem : maiorOrdemGhe + 1
+                };
+            });
+        }
+
+        const mapaBanco = matrizPcmsoMapaLinhas();
+        const inserir = [];
+        const atualizar = [];
+        const agora = new Date().toISOString();
+
+        Object.entries(desejado).forEach(([chave, item]) => {
+            const atual = mapaBanco[chave];
+            const payload = {
+                ghe: item.ghe,
+                exame_id: item.exame_id,
+                exame_nome: item.nome,
+                periodicidade_meses: item.periodicidade,
+                demissional: !!item.demissional,
+                ativo: true,
+                ordem: Number(item.ordem) || 0,
+                updated_at: agora
+            };
+            if (!atual) {
+                inserir.push(payload);
+                return;
+            }
+            const mudou = atual.ativo === false
+                || (atual.periodicidade_meses == null ? null : Number(atual.periodicidade_meses)) !== payload.periodicidade_meses
+                || (atual.demissional !== false) !== payload.demissional
+                || atual.exame_nome !== payload.exame_nome
+                || (Number(atual.ordem) || 0) !== payload.ordem;
+            if (mudou) atualizar.push({ id: atual.id, payload });
+        });
+
+        Object.entries(mapaBanco).forEach(([chave, atual]) => {
+            if (atual.ativo === false) return;
+            if (desejado[chave]) return;
+            atualizar.push({ id: atual.id, payload: { ativo: false, updated_at: agora } });
+        });
+
+        if (inserir.length === 0 && atualizar.length === 0) {
+            matrizPcmsoSujo = false;
+            alert('Nenhuma alteração para salvar.');
+            return;
+        }
+
+        if (inserir.length > 0) await supabaseInsert('pcmso_matriz_exames', inserir);
+        for (const alteracao of atualizar) {
+            await supabasePatch('pcmso_matriz_exames', `id=eq.${encodeURIComponent(alteracao.id)}`, alteracao.payload);
+        }
+        invalidarCacheTabela('pcmso_matriz_exames');
+
+        await carregarMatrizPcmsoExames(true);
+        matrizPcmsoSujo = false;
+        renderMatrizPcmso();
+        if (typeof renderRecomendacaoPsicossocial === 'function') renderRecomendacaoPsicossocial();
+
+        const resumo = [];
+        if (inserir.length) resumo.push(`${inserir.length} inclusão(ões)`);
+        if (atualizar.length) resumo.push(`${atualizar.length} alteração(ões)`);
+        alert(`✅ Matriz do PCMSO atualizada: ${resumo.join(' e ')}.\n\nA mudança vale para todos os usuários do painel.`);
+    } catch (err) {
+        console.error('Erro ao salvar matriz PCMSO:', err);
+        alert('❌ Não foi possível salvar a matriz: ' + (err && err.message ? err.message : err));
+    } finally {
+        matrizPcmsoSalvando = false;
+        if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.textContent = '💾 Salvar alterações'; }
     }
-
-    fecharModalGerenciarGhesPsico();
-    renderRecomendacaoPsicossocial();
-    alert(`✅ ${selecionados.length} grupos configurados com sucesso para o exame!`);
 }
 
 // ---- Modal de Registro Individual / Exames Complementares e Psicossocial ----

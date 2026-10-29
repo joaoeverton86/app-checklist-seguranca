@@ -47,7 +47,7 @@ GRANT ALL ON public.pcmso_matriz_exames TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 
 -- ------------------------------------------------------------------------------
--- SEED: matriz vigente no v227 (132 linhas / 27 GHEs). Idempotente: rodar de novo
+-- SEED: matriz vigente (131 linhas / 27 GHEs). RX Tórax só no GHE 19, conforme o PCMSO. Idempotente: rodar de novo
 -- não sobrescreve nada que já tenha sido editado pela tela.
 -- ------------------------------------------------------------------------------
 INSERT INTO public.pcmso_matriz_exames
@@ -86,7 +86,6 @@ VALUES
     ('07', 'glicose', 'Glicose', 12, true, 6),
     ('07', 'rx_coluna', 'Raio X da Coluna Lombo Sacra', 24, false, 7),
     ('07', 'ige_abelha', 'IgE Específica - Abelha', NULL, false, 8),
-    ('07', 'rx_torax', 'Raio X de Tórax (Padrão OIT)', 60, true, 9),
     ('08', 'clinico', 'Avaliação clínica ocupacional', 12, true, 0),
     ('08', 'audiometria', 'Audiometria', 12, true, 1),
     ('08', 'hemograma', 'Hemograma Completo', 12, true, 2),

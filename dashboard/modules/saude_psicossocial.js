@@ -764,8 +764,7 @@ var PCMSO_EXAMES_POR_GHE = {
         { nome: 'Avaliação Psicossocial', periodicidade: 12, demissional: false },
         { nome: 'Glicose', periodicidade: 12, demissional: true },
         { nome: 'Raio X da Coluna Lombo Sacra', periodicidade: 24, demissional: false },
-        { nome: 'IgE Específica - Abelha', periodicidade: null, demissional: false },
-        { nome: 'Raio X de Tórax (Padrão OIT)', periodicidade: 60, demissional: true }
+        { nome: 'IgE Específica - Abelha', periodicidade: null, demissional: false }
     ]},
     G08: { nome: 'Motosserras e Roçadeiras', exames: [
         { nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true },
@@ -2695,8 +2694,8 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
         nomeExame: 'Raio X de Tórax (Padrão OIT)',
         termosBusca: ['tórax', 'torax', 'padrão oit'],
         tituloHeader: '🫁 Recomendação de Exames — Raio X de Tórax Padrão OIT',
-        descricaoBase: 'Rastreamento de pneumoconioses em colaboradores expostos a poeiras minerais, carpintaria / corte de madeira e atividades de manutenção civil com geração de poeira.',
-        ghesPadrao: ['07', '19'],
+        descricaoBase: 'Rastreamento de pneumoconioses em colaboradores expostos a poeiras minerais e carpintaria / corte de madeira (PCMSO: apenas GHE 19 - Carpintaria).',
+        ghesPadrao: ['19'],
         periodicidadeMeses: 60,
         profissionalPadrao: 'Médico Radiologista / Leitor OIT',
         tipoProfissional: 'CRM',

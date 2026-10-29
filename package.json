@@ -6,7 +6,8 @@
     "dev": "node server.js",
     "lint": "eslint --no-eslintrc -c .eslintrc.undef-check.json app.js data.js dashboard/dashboard.js",
     "lint:undef": "eslint --no-eslintrc -c .eslintrc.undef-check.json app.js data.js dashboard/dashboard.js",
-    "deploy": "vercel --prod"
+    "deploy": "vercel --prod",
+    "bump": "node scripts/bump-version.js"
   },
   "dependencies": {
     "node-forge": "^1.4.0",

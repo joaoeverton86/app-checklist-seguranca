@@ -28700,7 +28700,7 @@ var CATALOGO_EXAMES_COMPLEMENTARES = {
         termosBusca: ['hemograma'],
         tituloHeader: '🩸 Recomendação de Exames — Hemograma Completo (Laboratorial)',
         descricaoBase: 'Avaliação hematológica abrangente para rastreamento de anemias e respostas infecciosas nos trabalhadores de frente de obra.',
-        ghesPadrao: ['04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '17', '18', '19', '20', '21', '25', '26', '27'],
+        ghesPadrao: ['04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '17', '18', '20', '21', '25', '26', '27'],
         periodicidadeMeses: 12,
         profissionalPadrao: 'Laboratório de Análises Clínicas',
         tipoProfissional: 'CRF / CRBM',
@@ -29306,58 +29306,179 @@ function obterDadosRecomendacaoPsicossocial() {
                     }
                 }
             }
-        } else if (ehMatrizGeral) {
+                } else if (ehMatrizGeral) {
             // ==============================================================
             // MATRIZ GERAL DE EXAMES DO PCMSO (CONSOLIDADO POR GHE)
-            // Avalia o ASO Geral do colaborador + todos os exames exigidos pelo seu GHE
+            // Avalia individualmente CADA exame exigido pelo GHE do colaborador
+            // (Avaliação Clínica / ASO Geral, Avaliação Psicossocial e todos os
+            // exames complementares específicos definidos no PCMSO).
             // ==============================================================
             const totalExamesGhe = examesPcmsoGhe.length;
-            const exigePsicoNoGhe = ghesPsicoSet.has(g);
-            const infoPsico = exigePsicoNoGhe ? verificarExamePsicossocialRealizado(c.id, asos) : { realizado: true };
-            const pendenciaPsicoPosMarco = exigePsicoNoGhe && !infoPsico.realizado && (admitidoAposMarco || periodicoAposMarco);
+            const examesDetalhadosGhe = (infoGheColab && Array.isArray(infoGheColab.exames))
+                ? infoGheColab.exames
+                : [{ nome: 'Avaliação clínica ocupacional', periodicidade: 12, demissional: true }];
 
-            if (ultimoAso && ultimoAso.data_exame) {
-                temExame = true;
-                dataExame = ultimoAso.data_exame;
-                const perAso = typeof periodicidadeAsoPeriodico === 'function' ? periodicidadeAsoPeriodico(c) : 12;
-                vencExame = ultimoAso.data_vencimento || addMeses(dataExame, perAso);
-                tipoAsoExame = ultimoAso.tipo_aso;
-                asoIdExame = ultimoAso.id;
+            const listaPendentes = [];
+            const listaVencidos = [];
+            const listaVencendo = [];
+            const listaEmDia = [];
+            const detalheStatusExames = [];
+            let menorVencimento = null;
+            let maiorDataExame = null;
 
-                if (pendenciaPsicoPosMarco) {
-                    const qtdOk = Math.max(0, totalExamesGhe - 1);
-                    resumoMatrizHtml = `<div style="font-size:10.5px; color:#b91c1c; font-weight:700; margin-top:2px;" title="Exames clínicos e laboratoriais realizados em ${formatSimpleDate(dataExame)}. Pendente apenas Avaliação Psicossocial.">⚠️ ${qtdOk}/${totalExamesGhe} OK (Pend. Psicossocial)</div>`;
-                    statusKey = 'PENDENTE';
-                    statusLabel = '🔴 Pendente (Avaliação Psicossocial)';
-                    statusBadge = '<span style="background:#fee2e2; color:#b91c1c; border:1px solid #f87171; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;" title="Exames periódicos realizados; pendente apenas a Avaliação Psicossocial">🔴 PEND. PSICOSSOCIAL</span>';
-                    motivoDetalhado = `Exames periódicos realizados em ${formatSimpleDate(dataExame)} — Pendente apenas Avaliação Psicossocial`;
-                } else if (vencExame && vencExame < hojeStr) {
-                    resumoMatrizHtml = `<div style="font-size:10.5px; color:#b91c1c; font-weight:700; margin-top:2px;">🔴 Ciclo Periódico Vencido (${totalExamesGhe} exames)</div>`;
-                    statusKey = 'VENCIDO';
-                    statusLabel = '🔴 VENCIDO (Renovação Periódica PCMSO)';
-                    statusBadge = '<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🔴 VENCIDO</span>';
-                    motivoDetalhado = `Renovação Periódica PCMSO (Vencido em ${formatSimpleDate(vencExame)})`;
-                } else if (vencExame && vencExame <= dataLimiteVencendo) {
-                    resumoMatrizHtml = `<div style="font-size:10.5px; color:#b45309; font-weight:700; margin-top:2px;" title="Exames do GHE: ${escapeHTML(examesPcmsoGhe.join(', '))}">🟡 ${totalExamesGhe}/${totalExamesGhe} Exames (Renovação Próxima)</div>`;
-                    statusKey = 'VENCENDO';
-                    statusLabel = `🟡 VENCENDO EM BREVE (${formatSimpleDate(vencExame)})`;
-                    statusBadge = `<span style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🟡 VENCE EM ${formatSimpleDate(vencExame)}</span>`;
-                    motivoDetalhado = `Renovação Periódica PCMSO em ${formatSimpleDate(vencExame)} (${examesPcmsoGhe.join(', ')})`;
+            examesDetalhadosGhe.forEach(exGhe => {
+                const nomeEx = exGhe.nome;
+                const nomeLower = String(nomeEx || '').toLowerCase();
+                const isClinico = nomeLower.includes('clínica') || nomeLower.includes('clinica') || nomeLower.includes('aso');
+                const isPsico = nomeLower.includes('psicossocial') || nomeLower.includes('psico');
+
+                if (isClinico) {
+                    if (ultimoAso && ultimoAso.data_exame) {
+                        const dt = ultimoAso.data_exame;
+                        if (!maiorDataExame || dt > maiorDataExame) maiorDataExame = dt;
+                        const per = typeof periodicidadeAsoPeriodico === 'function' ? periodicidadeAsoPeriodico(c) : (exGhe.periodicidade || 12);
+                        const venc = ultimoAso.data_vencimento || addMeses(dt, per);
+                        if (venc && (!menorVencimento || venc < menorVencimento)) menorVencimento = venc;
+
+                        if (venc && venc < hojeStr) {
+                            listaVencidos.push(nomeEx);
+                            detalheStatusExames.push(`${nomeEx}: VENCIDO (${formatSimpleDate(venc)})`);
+                        } else if (venc && venc <= dataLimiteVencendo) {
+                            listaVencendo.push(nomeEx);
+                            detalheStatusExames.push(`${nomeEx}: VENCE EM BREVE (${formatSimpleDate(venc)})`);
+                        } else {
+                            listaEmDia.push(nomeEx);
+                            detalheStatusExames.push(`${nomeEx}: EM DIA (${formatSimpleDate(venc)})`);
+                        }
+                    } else {
+                        listaPendentes.push(nomeEx);
+                        detalheStatusExames.push(`${nomeEx}: PENDENTE (Sem ASO)`);
+                    }
+                } else if (isPsico) {
+                    const exigePsicoNoGhe = ghesPsicoSet.has(g);
+                    const infoPsico = exigePsicoNoGhe ? verificarExamePsicossocialRealizado(c.id, asos) : { realizado: true };
+
+                    if (infoPsico.realizado) {
+                        const dt = infoPsico.dataExame;
+                        if (dt && (!maiorDataExame || dt > maiorDataExame)) maiorDataExame = dt;
+                        const venc = infoPsico.dataVencimento || (dt ? addMeses(dt, 12) : null);
+                        if (venc && (!menorVencimento || venc < menorVencimento)) menorVencimento = venc;
+
+                        if (venc && venc < hojeStr) {
+                            listaVencidos.push(nomeEx);
+                            detalheStatusExames.push(`${nomeEx}: VENCIDO (${formatSimpleDate(venc)})`);
+                        } else if (venc && venc <= dataLimiteVencendo) {
+                            listaVencendo.push(nomeEx);
+                            detalheStatusExames.push(`${nomeEx}: VENCE EM BREVE (${formatSimpleDate(venc)})`);
+                        } else {
+                            listaEmDia.push(nomeEx);
+                            detalheStatusExames.push(`${nomeEx}: EM DIA (${formatSimpleDate(venc)})`);
+                        }
+                    } else {
+                        const pendenciaPsicoPosMarco = exigePsicoNoGhe && (admitidoAposMarco || periodicoAposMarco);
+                        if (pendenciaPsicoPosMarco) {
+                            listaPendentes.push(nomeEx);
+                            detalheStatusExames.push(`${nomeEx}: PENDENTE (Obrigatório pós-julho/2026)`);
+                        } else {
+                            // Regular até o próximo periódico pela regra de transição do PCMSO
+                            listaEmDia.push(nomeEx);
+                            detalheStatusExames.push(`${nomeEx}: REGULAR (Admissão Pré-Julho/2026)`);
+                        }
+                    }
                 } else {
-                    resumoMatrizHtml = `<div style="font-size:10.5px; color:#047857; font-weight:700; margin-top:2px;" title="Exames em dia: ${escapeHTML(examesPcmsoGhe.join(', '))}">✅ ${totalExamesGhe}/${totalExamesGhe} Exames GHE OK</div>`;
-                    statusKey = 'EM_DIA';
-                    statusLabel = '🟢 EM DIA (PCMSO Regular)';
-                    statusBadge = '<span style="background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🟢 EM DIA</span>';
-                    motivoDetalhado = `Matriz PCMSO em dia até ${formatSimpleDate(vencExame)}`;
+                    // Demais exames complementares do catálogo
+                    const cfg = Object.values(CATALOGO_EXAMES_COMPLEMENTARES || {}).find(cfgItem =>
+                        cfgItem && cfgItem.id !== 'matriz_geral' && nomeExameCorrespondeAoCatalogo(nomeEx, cfgItem)
+                    );
+
+                    let achouItem = null;
+                    let asoOrigem = null;
+                    for (const a of asosGerais) {
+                        if (Array.isArray(a.exames_detalhe)) {
+                            const item = a.exames_detalhe.find(ex => {
+                                if (ex.nome === nomeEx) return true;
+                                if (cfg && nomeExameCorrespondeAoCatalogo(ex.nome, cfg)) return true;
+                                const dLower = String(ex.nome || '').toLowerCase().trim();
+                                const exLower = String(nomeEx || '').toLowerCase().trim();
+                                return dLower === exLower;
+                            });
+                            if (item) {
+                                achouItem = item;
+                                asoOrigem = a;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (achouItem) {
+                        const dt = achouItem.data_avaliacao || achouItem.data_exame || asoOrigem.data_exame;
+                        if (dt && (!maiorDataExame || dt > maiorDataExame)) maiorDataExame = dt;
+                        const per = (exGhe.periodicidade !== undefined && exGhe.periodicidade !== null)
+                            ? exGhe.periodicidade
+                            : (cfg ? cfg.periodicidadeMeses : 12);
+
+                        if (per === null) {
+                            // Exame exclusivamente admissional realizado
+                            listaEmDia.push(nomeEx);
+                            detalheStatusExames.push(`${nomeEx}: REALIZADO (Admissional Único)`);
+                        } else {
+                            const venc = achouItem.data_vencimento || (dt ? addMeses(dt, per) : asoOrigem.data_vencimento);
+                            if (venc && (!menorVencimento || venc < menorVencimento)) menorVencimento = venc;
+
+                            if (venc && venc < hojeStr) {
+                                listaVencidos.push(nomeEx);
+                                detalheStatusExames.push(`${nomeEx}: VENCIDO (${formatSimpleDate(venc)})`);
+                            } else if (venc && venc <= dataLimiteVencendo) {
+                                listaVencendo.push(nomeEx);
+                                detalheStatusExames.push(`${nomeEx}: VENCE EM BREVE (${formatSimpleDate(venc)})`);
+                            } else {
+                                listaEmDia.push(nomeEx);
+                                detalheStatusExames.push(`${nomeEx}: EM DIA (${formatSimpleDate(venc)})`);
+                            }
+                        }
+                    } else {
+                        listaPendentes.push(nomeEx);
+                        detalheStatusExames.push(`${nomeEx}: PENDENTE DE REALIZAÇÃO`);
+                    }
                 }
-            } else {
-                temExame = false;
+            });
+
+            dataExame = maiorDataExame || (ultimoAso ? ultimoAso.data_exame : null);
+            vencExame = menorVencimento || (ultimoAso ? ultimoAso.data_vencimento : null);
+            temExame = !!(dataExame);
+            tipoAsoExame = ultimoAso ? ultimoAso.tipo_aso : 'GHE';
+            asoIdExame = ultimoAso ? ultimoAso.id : null;
+
+            const qtdOk = listaEmDia.length + listaVencendo.length;
+            const tooltipDetalhado = detalheStatusExames.join(' • ');
+
+            if (listaPendentes.length > 0) {
                 statusKey = 'PENDENTE';
-                statusLabel = '🔴 Pendente (Sem ASO Registrado)';
-                statusBadge = '<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🔴 PENDENTE</span>';
-                motivoDetalhado = 'Colaborador sem registro de ASO no sistema';
-            }
-        } else {
+                const exStr = listaPendentes.slice(0, 2).join(', ') + (listaPendentes.length > 2 ? ` +${listaPendentes.length - 2}` : '');
+                resumoMatrizHtml = `<div style="font-size:10.5px; color:#b91c1c; font-weight:700; margin-top:2px;" title="${escapeHTML(tooltipDetalhado)}">⚠️ ${qtdOk}/${totalExamesGhe} OK (Falta: ${escapeHTML(exStr)})</div>`;
+                statusLabel = `🔴 Pendente (${listaPendentes.length} ${listaPendentes.length === 1 ? 'Exame' : 'Exames'})`;
+                statusBadge = `<span style="background:#fee2e2; color:#b91c1c; border:1px solid #f87171; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;" title="${escapeHTML('Falta realizar: ' + listaPendentes.join(', '))}">🔴 PENDENTE (${listaPendentes.length})</span>`;
+                motivoDetalhado = `Pendência PCMSO: falta realizar ${listaPendentes.join(', ')}`;
+            } else if (listaVencidos.length > 0) {
+                statusKey = 'VENCIDO';
+                const exStr = listaVencidos.slice(0, 2).join(', ') + (listaVencidos.length > 2 ? ` +${listaVencidos.length - 2}` : '');
+                resumoMatrizHtml = `<div style="font-size:10.5px; color:#b91c1c; font-weight:700; margin-top:2px;" title="${escapeHTML(tooltipDetalhado)}">🔴 ${listaVencidos.length} Vencido(s) (${escapeHTML(exStr)})</div>`;
+                statusLabel = `🔴 VENCIDO (${listaVencidos.length} ${listaVencidos.length === 1 ? 'Exame' : 'Exames'})`;
+                statusBadge = `<span style="background:#fee2e2; color:#991b1b; border:1px solid #fecaca; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;" title="${escapeHTML('Vencidos: ' + listaVencidos.join(', '))}">🔴 VENCIDO (${listaVencidos.length})</span>`;
+                motivoDetalhado = `Renovação Periódica PCMSO Vencida: ${listaVencidos.join(', ')}`;
+            } else if (listaVencendo.length > 0) {
+                statusKey = 'VENCENDO';
+                resumoMatrizHtml = `<div style="font-size:10.5px; color:#b45309; font-weight:700; margin-top:2px;" title="${escapeHTML(tooltipDetalhado)}">🟡 ${totalExamesGhe}/${totalExamesGhe} Exames (Vence em ${formatSimpleDate(vencExame)})</div>`;
+                statusLabel = `🟡 VENCENDO EM BREVE (${formatSimpleDate(vencExame)})`;
+                statusBadge = `<span style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;" title="${escapeHTML('Vencendo: ' + listaVencendo.join(', '))}">🟡 VENCE EM ${formatSimpleDate(vencExame)}</span>`;
+                motivoDetalhado = `Renovação Periódica próxima para: ${listaVencendo.join(', ')}`;
+            } else {
+                statusKey = 'EM_DIA';
+                statusLabel = '🟢 EM DIA (PCMSO Regular)';
+                statusBadge = '<span style="background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;">🟢 EM DIA</span>';
+                resumoMatrizHtml = `<div style="font-size:10.5px; color:#047857; font-weight:700; margin-top:2px;" title="${escapeHTML(tooltipDetalhado)}">✅ ${totalExamesGhe}/${totalExamesGhe} Exames GHE OK</div>`;
+                motivoDetalhado = `Matriz PCMSO em dia${vencExame ? ' até ' + formatSimpleDate(vencExame) : ''}`;
+            } } else {
             // ==============================================================
             // EXAMES COMPLEMENTARES ESPECÍFICOS DO CATÁLOGO
             // (Audiometria, ECG, Espirometria, Acuidade, RX Coluna, RX Tórax, Glicose, Hemograma, IgE Abelha)

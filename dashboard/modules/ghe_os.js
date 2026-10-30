@@ -723,8 +723,11 @@ function renderConteudoSubtabDetalheRisco(r, idx, subtab) {
                     <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('epis_recomendados', this.value)" placeholder="Ex: Protetor auditivo concha CA 14470, Óculos de segurança CA 25714..." style="${campoMini}">${escapeHTML(r.epis_recomendados || '')}</textarea>
                 </div>
                 <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Número do CA Principal</label>
-                    <input type="text" value="${escapeHTML(r.epi_ca || '')}" oninput="atualizarCampoRiscoEmEdicao('epi_ca', this.value)" placeholder="Ex: 14470" style="${campoMini} margin-bottom:8px;">
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Número do CA Principal <span style="font-size:10px; font-weight:normal; color:var(--primary);">(pesquise pelo CA ou nome do EPI)</span></label>
+                    <div style="position:relative; margin-bottom:8px;">
+                        <input type="text" id="matrizRiscoInputCa" value="${escapeHTML(r.epi_ca || '')}" oninput="aoDigitarCaEpi(this)" onfocus="aoFocarCaEpi(this)" onblur="fecharMenuSugestoesCa()" autocomplete="off" placeholder="Digite o CA ou busque por descrição (ex: 14470, óculos, concha...)" style="${campoMini}">
+                        <div id="matrizRiscoCaSugestoesContainer" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:999; background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,0.18); margin-top:2px;"></div>
+                    </div>
                     <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Periodicidade de Troca / Higienização</label>
                     <input type="text" value="${escapeHTML(r.epi_periodicidade || '')}" oninput="atualizarCampoRiscoEmEdicao('epi_periodicidade', this.value)" placeholder="Ex: Semestral / Quando danificado" style="${campoMini}">
                 </div>
@@ -962,6 +965,188 @@ function aoMudarTipoAgenteRisco(idx, selectTipoEl) {
             idx
         );
     }
+}
+
+// ============================================
+// BUSCA E SUGESTÃO DE CAs DO CATÁLOGO DE EPIs
+// ============================================
+let _carregandoEpiCatalogoMatriz = null;
+let _erroCargaEpiCatalogo = null;
+
+async function garantirEpiCatalogoParaMatriz() {
+    if (Array.isArray(window.allEpiCatalogo) && window.allEpiCatalogo.length > 0) {
+        _erroCargaEpiCatalogo = null;
+        return window.allEpiCatalogo;
+    }
+    if (_carregandoEpiCatalogoMatriz) {
+        return _carregandoEpiCatalogoMatriz;
+    }
+    _carregandoEpiCatalogoMatriz = (async () => {
+        try {
+            _erroCargaEpiCatalogo = null;
+            if (typeof supabaseFetchCacheado === 'function') {
+                const dados = await supabaseFetchCacheado('epi_catalogo', '?select=*');
+                if (Array.isArray(dados)) {
+                    window.allEpiCatalogo = dados;
+                } else {
+                    throw new Error('Formato inválido retornado pelo catálogo');
+                }
+            } else if (typeof loadEpiData === 'function') {
+                await loadEpiData();
+            }
+        } catch (err) {
+            _erroCargaEpiCatalogo = (err && err.message) ? err.message : 'Falha na conexão';
+            console.error('Erro ao carregar catálogo de EPIs para a Matriz de Riscos:', err);
+        } finally {
+            _carregandoEpiCatalogoMatriz = null;
+        }
+        return window.allEpiCatalogo || [];
+    })();
+    return _carregandoEpiCatalogoMatriz;
+}
+
+function buscarSugestoesCaEpi(termo) {
+    const catalogo = Array.isArray(window.allEpiCatalogo) ? window.allEpiCatalogo : [];
+    const t = (termo || '').trim().toLowerCase();
+
+    // Filtra apenas ativos (ativo !== false) com CA preenchido
+    const comCa = catalogo.filter(c => c.ativo !== false && c.ca && String(c.ca).trim() !== '');
+
+    if (!t) {
+        return comCa.slice(0, 8);
+    }
+
+    return comCa.filter(c => {
+        const caStr = String(c.ca || '').toLowerCase();
+        const descStr = String(c.descricao || '').toLowerCase();
+        const marcaStr = String(c.marca || '').toLowerCase();
+        const idStr = String(c.id || '').toLowerCase();
+        return caStr.includes(t) || descStr.includes(t) || marcaStr.includes(t) || idStr.includes(t);
+    }).slice(0, 10);
+}
+
+async function aoDigitarCaEpi(inputEl) {
+    if (!inputEl) return;
+    const valor = inputEl.value;
+    atualizarCampoRiscoEmEdicao('epi_ca', valor);
+
+    await garantirEpiCatalogoParaMatriz();
+    renderizarMenuSugestoesCa(inputEl);
+}
+
+async function aoFocarCaEpi(inputEl) {
+    await garantirEpiCatalogoParaMatriz();
+    renderizarMenuSugestoesCa(inputEl);
+}
+
+function renderizarMenuSugestoesCa(inputEl) {
+    const container = document.getElementById('matrizRiscoCaSugestoesContainer');
+    if (!container || !inputEl) return;
+
+    // Configura listener delegado seguro sem interpolação de código em atributo inline
+    container.onmousedown = function(e) {
+        const item = e.target.closest('.matriz-ca-item-sugestao');
+        if (item) {
+            const ca = item.getAttribute('data-ca');
+            if (ca) {
+                selecionarCaEpiSugerido(ca);
+            }
+        }
+    };
+
+    if (_erroCargaEpiCatalogo && (!Array.isArray(window.allEpiCatalogo) || window.allEpiCatalogo.length === 0)) {
+        container.innerHTML = `
+            <div style="padding:8px 10px; font-size:11px; color:var(--danger, #ef4444); text-align:center;">
+                ⚠️ Não foi possível carregar o catálogo de EPIs (${escapeHTML(_erroCargaEpiCatalogo)}).
+                <div style="font-size:10px; color:var(--text-light); margin-top:2px;">(Você pode continuar digitando o número do CA manualmente)</div>
+            </div>
+        `;
+        container.style.display = 'block';
+        return;
+    }
+
+    const termo = inputEl.value;
+    const sugestoes = buscarSugestoesCaEpi(termo);
+
+    if (sugestoes.length === 0) {
+        container.innerHTML = `
+            <div style="padding:8px 10px; font-size:11px; color:var(--text-light); text-align:center;">
+                ${termo ? `Nenhum EPI encontrado com "${escapeHTML(termo)}" no catálogo.` : 'Nenhum EPI com CA ativo no catálogo.'}
+                <div style="font-size:10px; margin-top:2px;">(Você pode digitar o número do CA manualmente)</div>
+            </div>
+        `;
+        container.style.display = 'block';
+        return;
+    }
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    let html = `<div style="max-height:220px; overflow-y:auto; padding:4px 0;">`;
+    sugestoes.forEach(c => {
+        let statusValidade = '';
+        let corValidade = 'var(--text-light)';
+        if (c.ca_validade) {
+            const vDate = new Date(c.ca_validade + 'T00:00:00');
+            if (!isNaN(vDate.getTime())) {
+                const diffDias = Math.ceil((vDate.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+                const dataFmt = c.ca_validade.split('-').reverse().join('/');
+                if (diffDias < 0) {
+                    statusValidade = `⚠️ Vencido (${dataFmt})`;
+                    corValidade = 'var(--danger, #ef4444)';
+                } else if (diffDias <= 30) {
+                    statusValidade = `⏳ Vencendo em ${diffDias}d (${dataFmt})`;
+                    corValidade = '#f59e0b';
+                } else {
+                    statusValidade = `Val.: ${dataFmt}`;
+                    corValidade = 'var(--text-light)';
+                }
+            }
+        }
+
+        const caNum = String(c.ca).trim();
+        const desc = escapeHTML(c.descricao || 'EPI Sem Descrição');
+        const marca = c.marca ? ` • ${escapeHTML(c.marca)}` : '';
+        const tam = c.tamanho ? ` (Tam: ${escapeHTML(c.tamanho)})` : '';
+
+        html += `
+            <div class="db-list-item-hover matriz-ca-item-sugestao"
+                 data-ca="${escapeHTML(caNum)}"
+                 style="padding:6px 10px; cursor:pointer; border-bottom:1px solid var(--border); font-size:11px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <div style="min-width:0; flex:1;">
+                    <div style="font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                        🛡️ CA <span style="color:var(--primary); font-weight:800;">${escapeHTML(caNum)}</span> — ${desc}
+                    </div>
+                    <div style="font-size:10px; color:var(--text-light);">
+                        Cód. ${escapeHTML(c.id)}${marca}${tam}
+                    </div>
+                </div>
+                ${statusValidade ? `<span style="font-size:10px; font-weight:600; color:${corValidade}; white-space:nowrap;">${statusValidade}</span>` : ''}
+            </div>
+        `;
+    });
+    html += `</div>`;
+
+    container.innerHTML = html;
+    container.style.display = 'block';
+}
+
+function fecharMenuSugestoesCa() {
+    setTimeout(() => {
+        const container = document.getElementById('matrizRiscoCaSugestoesContainer');
+        if (container) container.style.display = 'none';
+    }, 250);
+}
+
+function selecionarCaEpiSugerido(caNumero) {
+    const inputEl = document.getElementById('matrizRiscoInputCa');
+    if (inputEl) {
+        inputEl.value = caNumero;
+    }
+    atualizarCampoRiscoEmEdicao('epi_ca', caNumero);
+
+    const container = document.getElementById('matrizRiscoCaSugestoesContainer');
+    if (container) container.style.display = 'none';
 }
 
 function recalcularRiscoAtivo(idx) {

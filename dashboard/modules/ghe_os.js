@@ -583,7 +583,7 @@ function renderRiscoAtivoDetalhesHtml(g, r, idx) {
                     </select>
                     <input type="text" id="riscoEdit_agente" value="${escapeHTML(r.agente || '')}" oninput="atualizarCampoRiscoEmEdicao('agente', this.value); if(this.value) { const s = document.getElementById('riscoEdit_agente_select'); if(s) s.value='__CUSTOM__'; const e = document.getElementById('riscoEdit_esocial'); if(e && !matrizRiscoEdicaoDraft?.esocial_codigo_manual) { e.value = ''; atualizarCampoRiscoEmEdicao('esocial_codigo', ''); } }" placeholder="Digite o agente..." style="${campoMini} flex:1; min-width:0; ${r.agente && !getEsocialOpcoesPorTipo(r.tipo_agente).some(a => a.nome === r.agente) ? '' : 'display:none;'}">
                 </div>
-                <small style="color:var(--text-light); font-size:10px; margin-top:2px; display:block;">${r.tipo_agente === 'Ergonômico' || r.tipo_agente === 'Acidentes' ? 'Fatores PGR (NR-01) — Sem enquadramento previdenciário no eSocial S-2240' : 'Tabela 24 eSocial: <b>' + getEsocialOpcoesPorTipo(r.tipo_agente).length + '</b> opções frequentes (lista parcial da Tabela 24 — use manual para outros agentes)'}</small>
+                <small id="riscoEdit_legenda_tipo" style="color:var(--text-light); font-size:10px; margin-top:2px; display:block;">${r.tipo_agente === 'Ergonômico' || r.tipo_agente === 'Acidentes' ? 'Fatores PGR (NR-01) — Sem enquadramento previdenciário no eSocial S-2240' : 'Tabela 24 eSocial: <b>' + getEsocialOpcoesPorTipo(r.tipo_agente).length + '</b> opções frequentes (lista parcial da Tabela 24 — use manual para outros agentes)'}</small>
             </div>
             <div>
                 <label style="font-size:11px; font-weight:700; color:var(--text-light); display:block; margin-bottom:4px;">Código eSocial (Tabela 24)</label>
@@ -898,6 +898,70 @@ function renderConteudoSubtabDetalheRisco(r, idx, subtab) {
 function atualizarCampoRiscoEmEdicao(campo, valor) {
     if (!matrizRiscoEdicaoDraft) return;
     matrizRiscoEdicaoDraft[campo] = valor;
+}
+
+function aoSelecionarAgenteCatalogo(idx, selectEl) {
+    if (!matrizRiscoEdicaoDraft || !selectEl) return;
+
+    const inputLivre = document.getElementById('riscoEdit_agente');
+    const inputEsocial = document.getElementById('riscoEdit_esocial');
+    const valor = selectEl.value;
+
+    if (valor === '__CUSTOM__') {
+        atualizarCampoRiscoEmEdicao('agente', '');
+        atualizarCampoRiscoEmEdicao('esocial_codigo', '');
+        matrizRiscoEdicaoDraft.esocial_codigo_manual = false;
+        if (inputLivre) {
+            inputLivre.value = '';
+            inputLivre.style.display = 'block';
+            inputLivre.focus();
+        }
+        if (inputEsocial) inputEsocial.value = '';
+        return;
+    }
+
+    if (!valor) {
+        atualizarCampoRiscoEmEdicao('agente', '');
+        atualizarCampoRiscoEmEdicao('esocial_codigo', '');
+        matrizRiscoEdicaoDraft.esocial_codigo_manual = false;
+        if (inputLivre) {
+            inputLivre.value = '';
+            inputLivre.style.display = 'none';
+        }
+        if (inputEsocial) inputEsocial.value = '';
+        return;
+    }
+
+    const opcao = selectEl.options[selectEl.selectedIndex];
+    const codigo = (opcao && opcao.dataset && opcao.dataset.codigo) ? opcao.dataset.codigo : (opcao ? (opcao.getAttribute('data-codigo') || '') : '');
+    atualizarCampoRiscoEmEdicao('agente', valor);
+    atualizarCampoRiscoEmEdicao('esocial_codigo', codigo);
+    matrizRiscoEdicaoDraft.esocial_codigo_manual = false;
+    if (inputLivre) {
+        inputLivre.value = valor;
+        inputLivre.style.display = 'none';
+    }
+    if (inputEsocial) inputEsocial.value = codigo;
+}
+
+function aoMudarTipoAgenteRisco(idx, selectTipoEl) {
+    if (!matrizRiscoEdicaoDraft || !selectTipoEl) return;
+
+    const novoTipo = selectTipoEl.value;
+    atualizarCampoRiscoEmEdicao('tipo_agente', novoTipo);
+    atualizarCampoRiscoEmEdicao('agente', '');
+    atualizarCampoRiscoEmEdicao('esocial_codigo', '');
+    matrizRiscoEdicaoDraft.esocial_codigo_manual = false;
+
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    const container = document.getElementById('matrizRiscoDetalhesContainer');
+    if (container && g) {
+        container.innerHTML = renderRiscoAtivoDetalhesHtml(
+            g,
+            matrizRiscoEdicaoDraft,
+            idx
+        );
+    }
 }
 
 function recalcularRiscoAtivo(idx) {

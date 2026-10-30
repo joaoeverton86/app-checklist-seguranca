@@ -20,7 +20,7 @@
         })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=232">
+    <link rel="stylesheet" href="dashboard.css?v=243">
 </head>
 <body>
 
@@ -176,7 +176,7 @@
                             <span class="db-nav-icon">🏆</span> Placar de Líderes
                         </button>
                         <button class="db-nav-item" id="navMatrizRisco" onclick="showDbPage('matrizrisco')">
-                            <span class="db-nav-icon">📐</span> Matriz de Risco
+                            <span class="db-nav-icon">🛡️</span> Avaliação de Riscos (AIHA)
                         </button>
                         <button class="db-nav-item" id="navPlanoAcao" onclick="showDbPage('planoacao')">
                             <span class="db-nav-icon">🎯</span> Plano de Ação (5W2H)
@@ -4741,12 +4741,29 @@
                 </div>
             </section>
 
-            <!-- Página: Matriz de Risco (metodologia AIHA, seção 16 do PGR) -->
+            <!-- Página: Avaliação de Riscos (metodologia AIHA / PGR / eSocial) -->
             <section class="db-page" id="page-matrizrisco">
-                <div style="margin-bottom:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <button class="db-apply-btn" onclick="recalcularClassificacaoRiscoGhe()">🔄 Recalcular Classificação (Tabela Oficial AIHA)</button>
-                    <span id="statusRecalcularRiscoGhe" style="font-size:12px; color:var(--text-light);"></span>
+                <!-- Barra Superior de Controle e Navegação da Matriz -->
+                <div class="db-filters" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <div class="db-filter-buttons">
+                        <button id="matrizSubtabBtn-geral" class="db-filter-btn active" onclick="showMatrizSubtab('geral')">📊 Visão Geral & Matriz de Calor</button>
+                        <button id="matrizSubtabBtn-setor" class="db-filter-btn" onclick="showMatrizSubtab('setor')">📋 Avaliação por Setor / GHE</button>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <label for="matrizRiscoGheSelect" style="font-size: 12px; font-weight: 700; color: var(--text-light); white-space: nowrap;">Setor / GHE:</label>
+                            <select id="matrizRiscoGheSelect" class="db-select" onchange="selecionarGheMatrizRisco(this.value)" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; font-weight: 600; min-width: 260px; max-width: 380px; background: var(--bg); color: var(--text);">
+                                <option value="">-- Selecione um Setor / GHE --</option>
+                            </select>
+                        </div>
+                        <button class="db-apply-btn" onclick="recalcularClassificacaoRiscoGhe()" title="Recalcular todos os riscos salvos com base na tabela 5x5 oficial da AIHA" style="font-size: 12px; padding: 7px 12px;">🔄 Recalcular AIHA</button>
+                        <button class="db-clear-btn" onclick="imprimirInventarioRiscosGheAtual()" title="Imprimir Inventário de Riscos do PGR" style="font-size: 12px; padding: 7px 12px;">🖨️ Imprimir Inventário PGR</button>
+                    </div>
                 </div>
+                <div id="statusRecalcularRiscoGhe" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px; display: none;"></div>
+
+                <!-- Visão 1: Painel Geral & Matriz de Calor AIHA -->
+                <div id="matrizViewGeral">
                 <div class="db-kpi-grid">
                     <div class="db-kpi-card db-kpi-primary">
                         <div class="db-kpi-value" id="kpiRiscoTotal">0</div>
@@ -4920,6 +4937,12 @@
                         </table>
                     </div>
                     <div style="font-size:12px; color:var(--text-light); margin-top:10px; font-style:italic;">O PGR não define uma correspondência formal entre o Nível de Risco (matriz acima) e esta Classificação de Prioridade — as duas tabelas aparecem lado a lado no documento, cada uma com seu próprio uso, sem uma fórmula de conversão entre elas.</div>
+                </div>
+                </div><!-- /#matrizViewGeral -->
+
+                <!-- Visão 2: Avaliação e Gestão de Riscos por Setor / GHE -->
+                <div id="matrizViewSetor" style="display: none;">
+                    <div id="matrizSetorConteudo"></div>
                 </div>
             </section>
 
@@ -10050,10 +10073,10 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js?v=232"></script>
     <script src="logo_cop_base64.js?v=232"></script>
-    <script src="dashboard.js?v=232"></script>
+    <script src="dashboard.js?v=243"></script>
     <script src="modules/treinamentos_ddsma.js?v=232"></script>
     <script src="modules/efetivo_ferias.js?v=232"></script>
-    <script src="modules/ghe_os.js?v=232"></script>
+    <script src="modules/ghe_os.js?v=243"></script>
     <script src="modules/relatorio_sms_nc.js?v=232"></script>
     <script src="modules/saude_psicossocial.js?v=232"></script>
     <script src="modules/epi_estoque.js?v=232"></script>

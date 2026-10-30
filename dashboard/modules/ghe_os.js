@@ -1,872 +1,102 @@
-// ==============================================================================
-// MODULO: GHE, MATRIZ DE RISCO AIHA, MATRIZ NR-6 E ORDENS DE SERVICO (NR-01)
-// Extraido de dashboard.js para arquitetura modular de alta performance
-// ==============================================================================
-
 // ============================================
-// GHE (Grupo Homogêneo de Exposição) - catálogo oficial importado do Quadro Funcional
-// da empresa (ver importarQuadroFuncionalXLS), comparado com a quantidade real de
-// colaboradores ativos hoje em colaboradores_efetivo.ghe. Mesmo raciocínio de
-// gerenciamento de Setores acima, só que "criar um grupo" não existe aqui - o catálogo
-// só nasce da importação da planilha oficial, nunca é criado manualmente. Independente
-// do GHE usado no PCMSO (PCMSO_SETOR_FUNCAO_GHE, mais acima), que resolve por
-// setor+função e não lê este campo.
+// CATÁLOGO ESOCIAL TABELA 24 — Agentes Principais e Frequentes
+// Base Normativa: eSocial v. S-1.3 (NT 07/2026) / Anexo I - Tabelas / RPS Decreto 3.048/1999 Anexo IV
+// NOTA TÉCNICA E NORMATIVA:
+// 1. Este catálogo reúne os agentes físicos, químicos e biológicos mais frequentes da Tabela 24 com rótulos
+//    operacionais padronizados. Para códigos ou subitens não listados, utiliza-se a opção "Outro (digitar manualmente)".
+// 2. No eSocial S-2240, riscos Ergonômicos e Acidentes não possuem enquadramento previdenciário (exclusivos PGR/NR-01).
 // ============================================
-
-var gheAtualGerenciado = null;
-
-// colaboradores_efetivo.ghe é texto livre - normaliza número solto ("1") pro mesmo
-// formato de 2 dígitos usado no catálogo ("01") antes de comparar.
-function normalizarGhe(v) {
-    const s = String(v || '').trim();
-    return /^\d+$/.test(s) ? s.padStart(2, '0') : s;
-}
-
-function contagemAtualPorGhe() {
-    const contagem = new Map();
-    allEfetivo.forEach(e => {
-        if (!colaboradorEstaAtivo(e) || !e.ghe) return;
-        const chave = normalizarGhe(e.ghe);
-        contagem.set(chave, (contagem.get(chave) || 0) + 1);
-    });
-    return contagem;
-}
-
-function renderGheLista() {
-    const container = document.getElementById('gheLista');
-    const resumo = document.getElementById('gheResumo');
-    if (!container) return;
-
-    if (allGheCatalogo.length === 0) {
-        container.innerHTML = '<div class="db-list-empty">Nenhum catálogo de GHE importado ainda. Envie o Quadro Funcional em Configurações.</div>';
-        if (resumo) resumo.textContent = '';
-        return;
-    }
-
-    const contagem = contagemAtualPorGhe();
-    const grupos = allGheCatalogo.slice().sort((a, b) => a.id.localeCompare(b.id));
-    const totalOficial = grupos.reduce((s, g) => s + (g.quantidade_oficial || 0), 0);
-    const totalAtual = Array.from(contagem.values()).reduce((s, v) => s + v, 0);
-    if (resumo) resumo.textContent = `${grupos.length} grupo(s) do quadro oficial — ${totalOficial} pessoa(s) no quadro, ${totalAtual} ativo(s) hoje classificado(s) por GHE`;
-
-    container.innerHTML = grupos.map(g => {
-        const atual = contagem.get(g.id) || 0;
-        const oficial = g.quantidade_oficial || 0;
-        const delta = atual - oficial;
-        let corDelta = 'var(--success)', textoDelta = '✓ bate com o quadro';
-        if (delta > 0) { corDelta = 'var(--text-light)'; textoDelta = `+${delta} a mais que o quadro`; }
-        else if (delta < 0) { corDelta = 'var(--danger)'; textoDelta = `${delta} a menos que o quadro`; }
-        return `<div class="db-list-item" style="cursor:pointer;" onclick="abrirGerenciarGhe('${escapeHTML(g.id)}')">
-            <div class="db-list-item-title">${escapeHTML(g.id)} — ${escapeHTML(g.nome)}</div>
-            <div class="db-list-item-sub">Oficial: ${oficial} — Atual: ${atual} — <span style="color:${corDelta}; font-weight:600;">${textoDelta}</span></div>
-        </div>`;
-    }).join('');
-}
-
-// Fonte: Mapa de Riscos oficial (Clínica ENGMED, PGR/NR-01), reconhecimento por GHE -
-// não é o mesmo dado da matriz P×S da APR (que é por tarefa/equipe, não por
-// função/setor). A maioria dos GHEs administrativos legitimamente não tem exposição
-// significativa segundo o laudo ("Não foram identificados riscos significativos") -
-// riscos=[] nesses casos reflete o próprio laudo, não é campo vazio por preguiça.
-function gravidadeGheEstilo(g) {
-    const n = parseInt(g, 10);
-    if (n <= 1) return { cor: '#1a7f4b', bg: '#e6f7ee' };
-    if (n === 2) return { cor: '#c2650a', bg: '#fef1e0' };
-    return { cor: '#c0392b', bg: '#fdf2f2' };
-}
-
-function renderGheMapaRiscosHtml(g) {
-    const riscos = Array.isArray(g.riscos) ? g.riscos : [];
-    const c = g.conclusoes || {};
-    const temConclusao = c.gfip_codigo || c.gfip_descricao || c.periculosidade || c.insalubridade;
-    const conclusaoHtml = temConclusao ? `
-        <div style="border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:10px; font-size:12px; background:var(--bg);">
-            <div style="font-weight:700; margin-bottom:4px;">📋 Conclusões</div>
-            ${(c.gfip_codigo || c.gfip_descricao) ? `<div><b>GFIP ${escapeHTML(c.gfip_codigo || '')}:</b> ${escapeHTML(c.gfip_descricao || '')}</div>` : ''}
-            ${c.periculosidade ? `<div><b>Periculosidade:</b> ${escapeHTML(c.periculosidade)}</div>` : ''}
-            ${c.insalubridade ? `<div><b>Insalubridade:</b> ${escapeHTML(c.insalubridade)}</div>` : ''}
-        </div>` : '';
-
-    if (riscos.length === 0) {
-        return conclusaoHtml + '<div class="db-list-empty">✅ Não foram identificados riscos significativos para este grupo (conforme laudo do Mapa de Riscos).</div>';
-    }
-    return conclusaoHtml + riscos.map(r => {
-        // Colore pelo gravidade_label (mesma fonte que KPIs/gráfico/lista de Riscos Altos
-        // usam), não mais só pelo número de gravidade - gravidadeGheEstilo() assumia uma
-        // escala pequena (1-3, do laudo original importado), que não bate mais com o valor
-        // de 1-25 (probabilidade × severidade) que um risco reclassificado pelos novos
-        // campos passa a ter. Cai pra gravidadeGheEstilo() só se o rótulo não for
-        // reconhecido (dado antigo sem gravidade_label).
-        const grav = NIVEIS_RISCO_COR[r.gravidade_label]
-            ? { cor: NIVEIS_RISCO_COR[r.gravidade_label], bg: NIVEIS_RISCO_COR[r.gravidade_label] + '22' }
-            : gravidadeGheEstilo(r.gravidade);
-        return `<div style="border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:8px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-                <div><b>${escapeHTML(r.tipo_agente || '')}</b> — ${escapeHTML(r.agente || '')}</div>
-                <span style="padding:3px 10px; border-radius:12px; background:${grav.bg}; color:${grav.cor}; font-weight:700; font-size:11px;">
-                    Gravidade ${escapeHTML(String(r.gravidade ?? ''))} - ${escapeHTML(r.gravidade_label || '')}
-                </span>
-            </div>
-            <div style="font-size:12px; color:var(--text-light); margin-bottom:4px;">${escapeHTML(r.descricao || '')}</div>
-            <div style="font-size:12px;"><b>Danos à saúde:</b> ${escapeHTML(r.danos_saude || '—')}</div>
-            <div style="font-size:12px;"><b>Fontes geradoras:</b> ${escapeHTML(r.fontes_geradoras || '—')}${r.tipo_tempo_exposicao ? ` · <b>Exposição:</b> ${escapeHTML(r.tipo_tempo_exposicao)}` : ''}</div>
-            <div style="font-size:12px;"><b>Medidas/sugestões:</b> ${escapeHTML(r.sugestoes || '—')}</div>
-            ${r.epis_recomendados ? `<div style="font-size:12px;"><b>EPIs recomendados:</b> ${escapeHTML(r.epis_recomendados)}</div>` : ''}
-            ${r.epcs_recomendados ? `<div style="font-size:12px;"><b>EPCs recomendados:</b> ${escapeHTML(r.epcs_recomendados)}</div>` : ''}
-            ${r.situacao_controle ? `<div style="font-size:11px; color:var(--text-light); margin-top:4px;">Situação de controle: ${escapeHTML(r.situacao_controle)}</div>` : ''}
-        </div>`;
-    }).join('');
-}
-
-// Expande em linha o painel de edição completo do cargo clicado (Cargo/Função/CBO,
-// Descrição das Atividades, Agentes, EPIs/EPCs, Recomendações etc.) - mesmo padrão de
-// expandir-em-linha já usado em Compras/APR, em vez de modal. Toda linha é clicável,
-// mesmo cargo recém-adicionado manualmente e ainda sem nenhum campo preenchido - antes
-// só abria quem já tinha descricao_atividade ou cbo (vindo da planilha oficial), o que
-// tornava impossível editar/criar um cargo à mão.
-var gheCargoExpandidoIdx = null;
-
-function toggleCargoGheDescricao(idx) {
-    gheCargoExpandidoIdx = gheCargoExpandidoIdx === idx ? null : idx;
-    const g = allGheCatalogo.find(x => x.id === gheAtualGerenciado);
-    if (g) document.getElementById('gheCargosOficiais').innerHTML = renderGheCargosHtml(g);
-}
-
-// Cargo em branco pro "+ Adicionar cargo" - mesmas chaves de um cargo vindo da
-// importação da planilha oficial, só que todas vazias pra preencher na hora.
-function cargoGheVazio() {
-    return {
-        cargo: '', funcao: '', cbo: '', quantidade: '', descricao_atividade: '',
-        agentes: { fisico: '', quimico: '', biologico: '', ergonomico: '', acidentes: '' },
-        epis_necessarios: [], epcs_necessarios: [], recomendacoes: '', procedimentos_acidentes: '', observacoes: ''
-    };
-}
-
-function adicionarCargoGhe() {
-    const g = allGheCatalogo.find(x => x.id === gheAtualGerenciado);
-    if (!g) return;
-    if (!Array.isArray(g.cargos)) g.cargos = [];
-    g.cargos.push(cargoGheVazio());
-    gheCargoExpandidoIdx = g.cargos.length - 1; // já abre expandido pra preencher na hora
-    document.getElementById('gheCargosOficiais').innerHTML = renderGheCargosHtml(g);
-    document.getElementById('gheCargosOficiais').scrollIntoView({ behavior: 'smooth', block: 'end' });
-}
-
-// Sugestões (datalist) coletadas de QUALQUER cargo de QUALQUER grupo de GHE - digitar
-// continua livre (datalist não trava a digitação, só sugere), mas reaproveitar o que já
-// existe evita duas entradas diferentes no sistema por causa de uma diferença mínima de
-// digitação (ex: "Capacete de Segurança" vs "Capacete Segurança"), que atrapalhava
-// qualquer contagem/padronização (achado real reportado pelo usuário).
-function coletarSugestoesGheCargos(extrair) {
-    const valores = new Set();
-    allGheCatalogo.forEach(g => (Array.isArray(g.cargos) ? g.cargos : []).forEach(c => {
-        const v = extrair(c);
-        (Array.isArray(v) ? v : [v]).forEach(item => { if (item && String(item).trim()) valores.add(String(item).trim()); });
-    }));
-    return Array.from(valores).sort((a, b) => a.localeCompare(b));
-}
-
-function optsDatalistGhe(valores) {
-    return valores.map(v => `<option value="${escapeHTML(v)}">`).join('');
-}
-
-// Lista de EPI/EPC de cada cargo em edição - array de strings por índice do cargo (não
-// mais textarea "um item por linha"), montada por adicionarGheCargoItem/
-// removerGheCargoItem e só vira epis_necessarios/epcs_necessarios de fato no momento de
-// salvarCargoAgentesEpi. Resemeada a partir do cargo salvo sempre que a linha (re)abre —
-// os 3 pontos que chamam renderGheCargosHtml com uma linha expandida (toggleCargoGheDescricao,
-// adicionarCargoGhe, salvarCargoAgentesEpi pós-salvar) - mesmo comportamento que os demais
-// campos já têm hoje (fecha sem salvar = perde a edição em andamento).
-var gheCargoEpisForm = {};
-var gheCargoEpcsForm = {};
-
-function htmlGheCargoItens(i, tipo) {
-    const estado = (tipo === 'epis' ? gheCargoEpisForm : gheCargoEpcsForm)[i] || [];
-    return estado.length === 0
-        ? '<div class="db-list-empty" style="padding:6px 0; font-size:11px;">Nenhum item adicionado.</div>'
-        : estado.map((item, idx) => `
-            <div class="db-list-item" style="display:flex; align-items:center; justify-content:space-between; gap:6px; padding:5px 8px;">
-                <span>${escapeHTML(item)}</span>
-                <button type="button" onclick="removerGheCargoItem(${i}, '${tipo}', ${idx})" title="Remover" style="border:none; background:none; color:var(--danger); cursor:pointer; font-size:13px;">✕</button>
-            </div>`).join('');
-}
-
-function renderGheCargoItemsLista(i, tipo) {
-    const container = document.getElementById(tipo === 'epis' ? `gheCargoEpisLista-${i}` : `gheCargoEpcsLista-${i}`);
-    if (container) container.innerHTML = htmlGheCargoItens(i, tipo);
-}
-
-function adicionarGheCargoItem(i, tipo) {
-    const input = document.getElementById(tipo === 'epis' ? `gheCargoEpiInput-${i}` : `gheCargoEpcInput-${i}`);
-    const valor = (input.value || '').trim();
-    if (!valor) return;
-    const estado = tipo === 'epis' ? gheCargoEpisForm : gheCargoEpcsForm;
-    if (!Array.isArray(estado[i])) estado[i] = [];
-    if (!estado[i].includes(valor)) estado[i].push(valor);
-    input.value = '';
-    renderGheCargoItemsLista(i, tipo);
-}
-
-function removerGheCargoItem(i, tipo, idx) {
-    const estado = tipo === 'epis' ? gheCargoEpisForm : gheCargoEpcsForm;
-    if (!Array.isArray(estado[i])) return;
-    estado[i].splice(idx, 1);
-    renderGheCargoItemsLista(i, tipo);
-}
-
-// Copia os campos preenchíveis (tudo, menos Cargo/Função/CBO/Qtd., que identificam ESTE
-// cargo) de outro cargo já cadastrado NO MESMO GRUPO pro formulário atual - só nos campos
-// (ainda não salvos), pra dar pra revisar/ajustar antes de "💾 Salvar". Motivado por um
-// caso real: GRUPO 16 tinha "Técnico de enfermagem em saúde ocupacional" completo, mas
-// "TEC. ENFERMEIRO DO TRABALHO" (a função real da colaboradora) ficou sem essas
-// informações - digitar tudo de novo na mão era o único jeito antes disso.
-function copiarCargoGhe(i) {
-    const g = allGheCatalogo.find(x => x.id === gheAtualGerenciado);
-    if (!g || !Array.isArray(g.cargos)) return;
-    const sel = document.getElementById(`gheCargoCopiarDe-${i}`);
-    const origemIdx = parseInt(sel?.value, 10);
-    const origem = g.cargos[origemIdx];
-    if (!origem) return;
-    const nomeOrigem = origem.cargo || origem.funcao || '(sem cargo)';
-    if (!confirm(`Copiar os dados de "${nomeOrigem}" pro formulário abaixo? Isso substitui o que estiver preenchido nos campos (ainda não salvos) - revise e clique em "💾 Salvar" pra confirmar.`)) return;
-
-    document.getElementById(`gheCargoDescricaoAtividade-${i}`).value = origem.descricao_atividade || '';
-    const ag = origem.agentes || {};
-    document.getElementById(`gheCargoFisico-${i}`).value = ag.fisico || '';
-    document.getElementById(`gheCargoQuimico-${i}`).value = ag.quimico || '';
-    document.getElementById(`gheCargoBiologico-${i}`).value = ag.biologico || '';
-    document.getElementById(`gheCargoErgonomico-${i}`).value = ag.ergonomico || '';
-    document.getElementById(`gheCargoAcidentes-${i}`).value = ag.acidentes || '';
-    document.getElementById(`gheCargoRecomendacoes-${i}`).value = origem.recomendacoes || '';
-    document.getElementById(`gheCargoProcedimentosAcidentes-${i}`).value = origem.procedimentos_acidentes || '';
-    document.getElementById(`gheCargoObservacoes-${i}`).value = origem.observacoes || '';
-    gheCargoEpisForm[i] = Array.isArray(origem.epis_necessarios) ? [...origem.epis_necessarios] : [];
-    gheCargoEpcsForm[i] = Array.isArray(origem.epcs_necessarios) ? [...origem.epcs_necessarios] : [];
-    renderGheCargoItemsLista(i, 'epis');
-    renderGheCargoItemsLista(i, 'epcs');
-}
-
-function renderGheCargosHtml(g) {
-    const cargos = Array.isArray(g.cargos) ? g.cargos : [];
-    if (cargos.length === 0) return '<div class="db-list-empty">Sem cargos cadastrados neste grupo ainda - use "+ Adicionar cargo" acima.</div>';
-    const campoMini = 'padding:5px 6px; border:1px solid var(--border); border-radius:6px; font-size:11px; width:100%; box-sizing:border-box;';
-    const sugestoesFisico = optsDatalistGhe(coletarSugestoesGheCargos(c => (c.agentes || {}).fisico));
-    const sugestoesQuimico = optsDatalistGhe(coletarSugestoesGheCargos(c => (c.agentes || {}).quimico));
-    const sugestoesBiologico = optsDatalistGhe(coletarSugestoesGheCargos(c => (c.agentes || {}).biologico));
-    const sugestoesErgonomico = optsDatalistGhe(coletarSugestoesGheCargos(c => (c.agentes || {}).ergonomico));
-    const sugestoesAcidentes = optsDatalistGhe(coletarSugestoesGheCargos(c => (c.agentes || {}).acidentes));
-    const sugestoesEpi = optsDatalistGhe(coletarSugestoesGheCargos(c => c.epis_necessarios));
-    const sugestoesEpc = optsDatalistGhe(coletarSugestoesGheCargos(c => c.epcs_necessarios));
-    return `<table style="width:100%; border-collapse:collapse; font-size:12px;">
-        <thead><tr style="text-align:left; color:var(--text-light);">
-            <th style="padding:4px 4px; width:18px;"></th><th style="padding:4px 8px;">Cargo</th><th style="padding:4px 8px;">Função</th><th style="padding:4px 8px;">CBO</th><th style="padding:4px 8px;">Qtd. oficial</th>
-        </tr></thead>
-        <tbody>${cargos.map((c, i) => {
-            const expandido = gheCargoExpandidoIdx === i;
-            const ag = c.agentes || {};
-            if (expandido) {
-                gheCargoEpisForm[i] = Array.isArray(c.epis_necessarios) ? [...c.epis_necessarios] : [];
-                gheCargoEpcsForm[i] = Array.isArray(c.epcs_necessarios) ? [...c.epcs_necessarios] : [];
-            }
-            const outrosCargos = cargos.map((c2, idx2) => [idx2, c2]).filter(([idx2]) => idx2 !== i);
-            const linhaDetalhe = expandido ? `<tr><td></td><td colspan="4" style="padding:4px 8px 14px;" onclick="event.stopPropagation()">
-                <div style="font-weight:600; font-size:11px; margin-bottom:4px;">Identificação do cargo</div>
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap:6px; margin-bottom:8px;">
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Cargo</label><input type="text" id="gheCargoCargo-${i}" value="${escapeHTML(c.cargo || '')}" style="${campoMini}"></div>
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Função (comparada com colaboradores_efetivo.funcao)</label><input type="text" id="gheCargoFuncao-${i}" value="${escapeHTML(c.funcao || '')}" style="${campoMini}"></div>
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">CBO</label><input type="text" id="gheCargoCbo-${i}" value="${escapeHTML(c.cbo || '')}" style="${campoMini}"></div>
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Qtd. oficial</label><input type="text" id="gheCargoQuantidade-${i}" value="${escapeHTML(String(c.quantidade ?? ''))}" style="${campoMini}"></div>
-                </div>
-                ${outrosCargos.length > 0 ? `<div style="display:flex; align-items:flex-end; gap:6px; margin-bottom:8px;">
-                    <div style="flex:1;"><label style="color:var(--text-light); font-size:10.5px; display:block;">Copiar de:</label>
-                        <select id="gheCargoCopiarDe-${i}" style="${campoMini}">
-                            ${outrosCargos.map(([idx2, c2]) => `<option value="${idx2}">${escapeHTML(c2.cargo || c2.funcao || '(sem cargo)')}</option>`).join('')}
-                        </select>
-                    </div>
-                    <button type="button" class="db-clear-btn" style="padding:5px 10px; font-size:11px; white-space:nowrap;" onclick="copiarCargoGhe(${i})">📋 Copiar</button>
-                </div>` : ''}
-                <div style="margin-bottom:8px;"><label style="color:var(--text-light); font-size:10.5px; display:block;">Descrição das Atividades</label><textarea id="gheCargoDescricaoAtividade-${i}" rows="2" style="${campoMini}">${escapeHTML(c.descricao_atividade || '')}</textarea></div>
-                <div style="font-weight:600; font-size:11px; margin-bottom:4px;">Agentes associados às atividades (usado na Ordem de Serviço)</div>
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap:6px; margin-bottom:8px;">
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Físico</label><input type="text" id="gheCargoFisico-${i}" list="gheAgenteFisicoSugestoes" value="${escapeHTML(ag.fisico || '')}" style="${campoMini}"></div>
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Químico</label><input type="text" id="gheCargoQuimico-${i}" list="gheAgenteQuimicoSugestoes" value="${escapeHTML(ag.quimico || '')}" style="${campoMini}"></div>
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Biológico</label><input type="text" id="gheCargoBiologico-${i}" list="gheAgenteBiologicoSugestoes" value="${escapeHTML(ag.biologico || '')}" style="${campoMini}"></div>
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Ergonômico</label><input type="text" id="gheCargoErgonomico-${i}" list="gheAgenteErgonomicoSugestoes" value="${escapeHTML(ag.ergonomico || '')}" style="${campoMini}"></div>
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Acidentes</label><input type="text" id="gheCargoAcidentes-${i}" list="gheAgenteAcidentesSugestoes" value="${escapeHTML(ag.acidentes || '')}" style="${campoMini}"></div>
-                </div>
-                <datalist id="gheAgenteFisicoSugestoes">${sugestoesFisico}</datalist>
-                <datalist id="gheAgenteQuimicoSugestoes">${sugestoesQuimico}</datalist>
-                <datalist id="gheAgenteBiologicoSugestoes">${sugestoesBiologico}</datalist>
-                <datalist id="gheAgenteErgonomicoSugestoes">${sugestoesErgonomico}</datalist>
-                <datalist id="gheAgenteAcidentesSugestoes">${sugestoesAcidentes}</datalist>
-                <datalist id="gheEpiSugestoes">${sugestoesEpi}</datalist>
-                <datalist id="gheEpcSugestoes">${sugestoesEpc}</datalist>
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap:6px; margin-bottom:8px;">
-                    <div>
-                        <label style="color:var(--text-light); font-size:10.5px; display:block;">EPIs necessários</label>
-                        <div style="display:flex; gap:6px; margin-bottom:4px;">
-                            <input type="text" id="gheCargoEpiInput-${i}" list="gheEpiSugestoes" placeholder="Digite ou selecione um EPI..." style="${campoMini}">
-                            <button type="button" class="db-clear-btn" style="padding:5px 10px; font-size:11px; white-space:nowrap;" onclick="adicionarGheCargoItem(${i}, 'epis')">+ Adicionar</button>
-                        </div>
-                        <div id="gheCargoEpisLista-${i}" style="display:flex; flex-direction:column; gap:4px; max-height:140px; overflow-y:auto;">${htmlGheCargoItens(i, 'epis')}</div>
-                    </div>
-                    <div>
-                        <label style="color:var(--text-light); font-size:10.5px; display:block;">EPCs necessários</label>
-                        <div style="display:flex; gap:6px; margin-bottom:4px;">
-                            <input type="text" id="gheCargoEpcInput-${i}" list="gheEpcSugestoes" placeholder="Digite ou selecione um EPC..." style="${campoMini}">
-                            <button type="button" class="db-clear-btn" style="padding:5px 10px; font-size:11px; white-space:nowrap;" onclick="adicionarGheCargoItem(${i}, 'epcs')">+ Adicionar</button>
-                        </div>
-                        <div id="gheCargoEpcsLista-${i}" style="display:flex; flex-direction:column; gap:4px; max-height:140px; overflow-y:auto;">${htmlGheCargoItens(i, 'epcs')}</div>
-                    </div>
-                </div>
-                <div style="font-weight:600; font-size:11px; margin-bottom:4px;">Demais seções da Ordem de Serviço</div>
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap:6px; margin-bottom:8px;">
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Recomendações</label><textarea id="gheCargoRecomendacoes-${i}" rows="2" style="${campoMini}">${escapeHTML(c.recomendacoes || '')}</textarea></div>
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Procedimentos em caso de acidentes</label><textarea id="gheCargoProcedimentosAcidentes-${i}" rows="2" style="${campoMini}">${escapeHTML(c.procedimentos_acidentes || '')}</textarea></div>
-                    <div><label style="color:var(--text-light); font-size:10.5px; display:block;">Observações</label><textarea id="gheCargoObservacoes-${i}" rows="2" style="${campoMini}">${escapeHTML(c.observacoes || '')}</textarea></div>
-                </div>
-                <button class="db-clear-btn" onclick="salvarCargoAgentesEpi(${i})">💾 Salvar</button>
-                <button class="db-clear-btn" style="color: var(--danger); border-color: var(--danger);" onclick="removerCargoGhe(${i})">🗑️ Remover cargo</button>
-                <span id="gheCargoStatus-${i}" style="font-size:11px; color:var(--text-light); margin-left:8px;"></span>
-            </td></tr>` : '';
-            return `<tr style="border-top:1px solid var(--border); cursor:pointer;" onclick="toggleCargoGheDescricao(${i})">
-                <td style="padding:4px 4px; color:var(--text-light);">${expandido ? '▾' : '▸'}</td>
-                <td style="padding:4px 8px;">${escapeHTML(c.cargo || '') || '<span style="color:var(--text-light);">(sem cargo)</span>'}</td>
-                <td style="padding:4px 8px;">${escapeHTML(c.funcao || '') || '<span style="color:var(--text-light);">(sem função)</span>'}</td>
-                <td style="padding:4px 8px;">${escapeHTML(c.cbo || '')}</td>
-                <td style="padding:4px 8px;">${escapeHTML(String(c.quantidade ?? ''))}</td>
-            </tr>${linhaDetalhe}`;
-        }).join('')}</tbody>
-    </table>`;
-}
-
-async function salvarCargoAgentesEpi(i) {
-    const g = allGheCatalogo.find(x => x.id === gheAtualGerenciado);
-    if (!g || !Array.isArray(g.cargos) || !g.cargos[i]) return;
-    const statusEl = document.getElementById(`gheCargoStatus-${i}`);
-    const cargo = { ...g.cargos[i] };
-    cargo.cargo = document.getElementById(`gheCargoCargo-${i}`).value.trim();
-    cargo.funcao = document.getElementById(`gheCargoFuncao-${i}`).value.trim();
-    cargo.cbo = document.getElementById(`gheCargoCbo-${i}`).value.trim();
-    const quantidadeRaw = document.getElementById(`gheCargoQuantidade-${i}`).value.trim();
-    cargo.quantidade = quantidadeRaw === '' ? '' : (Number.isNaN(Number(quantidadeRaw)) ? quantidadeRaw : Number(quantidadeRaw));
-    cargo.descricao_atividade = document.getElementById(`gheCargoDescricaoAtividade-${i}`).value.trim();
-    cargo.agentes = {
-        fisico: document.getElementById(`gheCargoFisico-${i}`).value.trim(),
-        quimico: document.getElementById(`gheCargoQuimico-${i}`).value.trim(),
-        biologico: document.getElementById(`gheCargoBiologico-${i}`).value.trim(),
-        ergonomico: document.getElementById(`gheCargoErgonomico-${i}`).value.trim(),
-        acidentes: document.getElementById(`gheCargoAcidentes-${i}`).value.trim()
-    };
-    cargo.epis_necessarios = Array.isArray(gheCargoEpisForm[i]) ? gheCargoEpisForm[i].slice() : [];
-    cargo.epcs_necessarios = Array.isArray(gheCargoEpcsForm[i]) ? gheCargoEpcsForm[i].slice() : [];
-    cargo.recomendacoes = document.getElementById(`gheCargoRecomendacoes-${i}`).value.trim();
-    cargo.procedimentos_acidentes = document.getElementById(`gheCargoProcedimentosAcidentes-${i}`).value.trim();
-    cargo.observacoes = document.getElementById(`gheCargoObservacoes-${i}`).value.trim();
-    const novoCargos = g.cargos.map((c, idx) => idx === i ? cargo : c);
-
-    if (statusEl) { statusEl.textContent = 'Salvando...'; statusEl.style.color = 'var(--text-light)'; }
-    try {
-        // Upsert precisa da linha inteira - mesmo cuidado de salvarMapaRiscosGhe.
-        await supabaseUpsert('ghe_catalogo', [{
-            id: g.id,
-            nome: g.nome,
-            cargos: novoCargos,
-            quantidade_oficial: g.quantidade_oficial,
-            riscos: g.riscos || [],
-            conclusoes: g.conclusoes || {},
-            updated_at: new Date().toISOString()
-        }]);
-        g.cargos = novoCargos;
-        // Reflete cargo/função/cbo/quantidade recém-salvos na linha colapsada da tabela.
-        document.getElementById('gheCargosOficiais').innerHTML = renderGheCargosHtml(g);
-        const statusReRenderizado = document.getElementById(`gheCargoStatus-${i}`);
-        if (statusReRenderizado) { statusReRenderizado.textContent = '✅ Salvo.'; statusReRenderizado.style.color = 'var(--success)'; }
-    } catch (err) {
-        console.error('Erro ao salvar agentes/EPI do cargo:', err);
-        if (statusEl) { statusEl.textContent = '❌ Falha: ' + err.message; statusEl.style.color = 'var(--danger)'; }
-    }
-}
-
-// Remove um cargo do grupo (por índice) - único jeito de desfazer um "+ Adicionar cargo"
-// feito sem querer ou um cargo de teste, já que antes não existia nenhuma forma de tirar
-// um cargo da tela depois de criado. Só sai da tela DEPOIS do upsert confirmar - se der
-// erro, a linha continua lá pra não passar a impressão de que a remoção funcionou.
-async function removerCargoGhe(i) {
-    const g = allGheCatalogo.find(x => x.id === gheAtualGerenciado);
-    if (!g || !Array.isArray(g.cargos) || !g.cargos[i]) return;
-    const cargo = g.cargos[i];
-    const nomeExibicao = cargo.cargo || cargo.funcao || '(sem cargo)';
-    if (!confirm(`Remover o cargo "${nomeExibicao}" deste grupo? Essa ação não pode ser desfeita.`)) return;
-
-    const statusEl = document.getElementById(`gheCargoStatus-${i}`);
-    if (statusEl) { statusEl.textContent = 'Removendo...'; statusEl.style.color = 'var(--text-light)'; }
-    const novoCargos = g.cargos.filter((c, idx) => idx !== i);
-
-    try {
-        // Upsert precisa da linha inteira - mesmo cuidado de salvarCargoAgentesEpi.
-        await supabaseUpsert('ghe_catalogo', [{
-            id: g.id,
-            nome: g.nome,
-            cargos: novoCargos,
-            quantidade_oficial: g.quantidade_oficial,
-            riscos: g.riscos || [],
-            conclusoes: g.conclusoes || {},
-            updated_at: new Date().toISOString()
-        }]);
-        g.cargos = novoCargos;
-        gheCargoExpandidoIdx = null;
-        document.getElementById('gheCargosOficiais').innerHTML = renderGheCargosHtml(g);
-        const gerenciarStatusEl = document.getElementById('gheGerenciarStatus');
-        if (gerenciarStatusEl) { gerenciarStatusEl.textContent = '🗑️ Cargo removido.'; gerenciarStatusEl.style.color = 'var(--success)'; }
-    } catch (err) {
-        console.error('Erro ao remover cargo:', err);
-        if (statusEl) { statusEl.textContent = '❌ Falha ao remover: ' + err.message; statusEl.style.color = 'var(--danger)'; }
-    }
-}
-
-// ============================================
-// RECOMENDAÇÕES POR CARGO (GHE) - revisão em lote, mesmo campo cargos[].recomendacoes
-// já editável um a um em "Gerenciar GHE" (salvarCargoAgentesEpi acima), só que aqui
-// achatado numa lista só com todos os cargos de todos os grupos, pra dar pra revisar
-// sistematicamente em vez de abrir grupo por grupo. Não reescreve texto nenhum sozinho -
-// só ajuda a achar rápido onde o texto está repetido (selo de duplicidade), quem edita
-// e decide o texto novo é o usuário.
-// ============================================
-
-function todasRecomendacoesGhe() {
-    const linhas = [];
-    allGheCatalogo.forEach(g => {
-        (Array.isArray(g.cargos) ? g.cargos : []).forEach((c, idx) => {
-            linhas.push({ grupoId: g.id, grupoNome: g.nome, cargoIndex: idx, cargo: c.cargo || c.funcao || '(sem nome)', recomendacoes: c.recomendacoes || '' });
-        });
-    });
-
-    const contagemPorTexto = {};
-    linhas.forEach(l => {
-        const norm = l.recomendacoes.trim().toLowerCase();
-        if (!norm) return;
-        contagemPorTexto[norm] = (contagemPorTexto[norm] || 0) + 1;
-    });
-    linhas.forEach(l => {
-        const norm = l.recomendacoes.trim().toLowerCase();
-        l.duplicados = norm && contagemPorTexto[norm] > 1 ? contagemPorTexto[norm] - 1 : 0;
-    });
-    return linhas;
-}
-
-function filterRecomendacoesGhe() {
-    const termo = document.getElementById('recomendacoesSearchInput')?.value || '';
-    const soDuplicados = document.getElementById('recomendacoesSoDuplicados')?.checked || false;
-    renderRecomendacoesGheLista(termo, soDuplicados);
-}
-
-function renderRecomendacoesGheLista(termo = '', soDuplicados = false) {
-    const container = document.getElementById('recomendacoesGheLista');
-    const resumoEl = document.getElementById('recomendacoesResumo');
-    if (!container) return;
-
-    const todas = todasRecomendacoesGhe();
-    const termoNorm = termo.trim().toLowerCase();
-    const filtradas = todas.filter(l => {
-        if (soDuplicados && l.duplicados === 0) return false;
-        if (!termoNorm) return true;
-        return (l.grupoNome || '').toLowerCase().includes(termoNorm) || (l.cargo || '').toLowerCase().includes(termoNorm) || (l.grupoId || '').toLowerCase().includes(termoNorm);
-    });
-
-    const totalDuplicados = todas.filter(l => l.duplicados > 0).length;
-    if (resumoEl) resumoEl.textContent = `${todas.length} cargo(s) no total, ${totalDuplicados} com recomendação repetida de outro cargo. Mostrando ${filtradas.length}.`;
-
-    if (filtradas.length === 0) {
-        container.innerHTML = '<div class="db-list-empty">Nenhum cargo encontrado com esse filtro.</div>';
-        return;
-    }
-
-    container.innerHTML = filtradas.map(l => {
-        const inputId = `recTextarea_${l.grupoId}_${l.cargoIndex}`;
-        const statusId = `recStatus_${l.grupoId}_${l.cargoIndex}`;
-        return `
-        <div style="border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:8px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-                <div><b>${escapeHTML(l.grupoId)}</b> — ${escapeHTML(l.grupoNome)} · <span style="color:var(--text-light);">${escapeHTML(l.cargo)}</span></div>
-                ${l.duplicados > 0 ? `<span style="padding:3px 10px; border-radius:12px; background:#fef1e0; color:#c2650a; font-weight:700; font-size:11px;">🔁 Igual a mais ${l.duplicados} cargo(s)</span>` : ''}
-            </div>
-            <textarea id="${inputId}" rows="2" style="width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box; font-family:inherit;">${escapeHTML(l.recomendacoes)}</textarea>
-            <div style="margin-top:6px; display:flex; align-items:center; gap:8px;">
-                <button class="db-clear-btn" onclick="salvarRecomendacaoCargo('${escapeHTML(l.grupoId)}', ${l.cargoIndex})">💾 Salvar</button>
-                <span id="${statusId}" style="font-size:11px; color:var(--text-light);"></span>
-            </div>
-        </div>`;
-    }).join('');
-}
-
-async function salvarRecomendacaoCargo(grupoId, cargoIndex) {
-    const g = allGheCatalogo.find(x => x.id === grupoId);
-    if (!g || !Array.isArray(g.cargos) || !g.cargos[cargoIndex]) return;
-    const inputId = `recTextarea_${grupoId}_${cargoIndex}`;
-    const statusId = `recStatus_${grupoId}_${cargoIndex}`;
-    const statusEl = document.getElementById(statusId);
-    const novoTexto = document.getElementById(inputId).value.trim();
-
-    const novoCargos = g.cargos.map((c, idx) => idx === cargoIndex ? { ...c, recomendacoes: novoTexto } : c);
-
-    if (statusEl) { statusEl.textContent = 'Salvando...'; statusEl.style.color = 'var(--text-light)'; }
-    try {
-        // Upsert precisa da linha inteira do grupo - mesmo cuidado de salvarCargoAgentesEpi.
-        await supabaseUpsert('ghe_catalogo', [{
-            id: g.id,
-            nome: g.nome,
-            cargos: novoCargos,
-            quantidade_oficial: g.quantidade_oficial,
-            riscos: g.riscos || [],
-            conclusoes: g.conclusoes || {},
-            updated_at: new Date().toISOString()
-        }]);
-        g.cargos = novoCargos;
-        if (statusEl) { statusEl.textContent = '✅ Salvo.'; statusEl.style.color = 'var(--success)'; }
-        // Espera dar pra ver a confirmação antes de re-renderizar a lista (recalcula os
-        // selos de duplicidade, que podem mudar pra essa e outras linhas).
-        setTimeout(filterRecomendacoesGhe, 700);
-    } catch (err) {
-        console.error('Erro ao salvar recomendação do cargo:', err);
-        if (statusEl) { statusEl.textContent = '❌ Falha: ' + err.message; statusEl.style.color = 'var(--danger)'; }
-    }
-}
-
-function abrirGerenciarGhe(id) {
-    const g = allGheCatalogo.find(x => x.id === id);
-    if (!g) return;
-    gheAtualGerenciado = id;
-    document.getElementById('gheGerenciarTitulo').textContent = `🧪 ${g.id} — ${g.nome}`;
-    document.getElementById('gheGerenciarStatus').textContent = '';
-    document.getElementById('gheAddColabInput').value = '';
-    document.getElementById('gheAddColabResults').innerHTML = '';
-
-    gheCargoExpandidoIdx = null;
-    document.getElementById('gheCargosOficiais').innerHTML = renderGheCargosHtml(g);
-    document.getElementById('gheMapaRiscosView').innerHTML = renderGheMapaRiscosHtml(g);
-    document.getElementById('gheMapaRiscosView').style.display = 'block';
-    document.getElementById('gheMapaRiscosEdit').style.display = 'none';
-    document.getElementById('gheBtnEditarRiscos').textContent = '✏️ Editar';
-
-    document.getElementById('gheGerenciarCard').style.display = 'block';
-    renderGheColabList();
-    document.getElementById('gheGerenciarCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
-// Troca entre visualização e edição do Mapa de Riscos + Conclusões do GHE aberto -
-// permite ao técnico preencher manualmente os outros 26 grupos (o Grupo 27 foi
-// pré-populado direto do laudo da ENGMED; os demais o laudo já concluiu "sem riscos
-// significativos", mas a estrutura fica pronta pra quando um novo laudo trouxer dados).
-var gheRiscosForm = [];
-
-function rowRiscoGheVazio() {
-    // probabilidade/severidade (1-5, vazios por padrão) alimentam nivelRiscoGhe() e
-    // calculam gravidade/gravidade_label automaticamente (ver atualizarGravidadeCalculadaGhe)
-    // - gravidade/gravidade_label continuam existindo como campos calculados, pra não
-    // quebrar quem já lê eles hoje (KPIs, gráfico e lista de Riscos Altos/Muito Altos da
-    // Matriz de Risco).
-    return { tipo_agente: '', agente: '', probabilidade: '', severidade: '', gravidade: '', gravidade_label: '', fontes_geradoras: '', tipo_tempo_exposicao: '', descricao: '', danos_saude: '', sugestoes: '', epis_recomendados: '', epcs_recomendados: '', situacao_controle: '' };
-}
-
-function toggleEdicaoGheMapaRiscos() {
-    const g = allGheCatalogo.find(x => x.id === gheAtualGerenciado);
-    if (!g) return;
-    const viewEl = document.getElementById('gheMapaRiscosView');
-    const editEl = document.getElementById('gheMapaRiscosEdit');
-    const editando = editEl.style.display !== 'none';
-    if (editando) {
-        editEl.style.display = 'none';
-        viewEl.style.display = 'block';
-        document.getElementById('gheBtnEditarRiscos').textContent = '✏️ Editar';
-        return;
-    }
-    gheRiscosForm = Array.isArray(g.riscos) ? g.riscos.map(r => ({ ...r })) : [];
-    renderRiscosGheForm();
-    const c = g.conclusoes || {};
-    document.getElementById('gheConclusaoGfipCodigo').value = c.gfip_codigo || '';
-    document.getElementById('gheConclusaoGfipDescricao').value = c.gfip_descricao || '';
-    document.getElementById('gheConclusaoPericulosidade').value = c.periculosidade || '';
-    document.getElementById('gheConclusaoInsalubridade').value = c.insalubridade || '';
-    document.getElementById('gheMapaRiscosStatus').textContent = '';
-    viewEl.style.display = 'none';
-    editEl.style.display = 'block';
-    document.getElementById('gheBtnEditarRiscos').textContent = '✕ Cancelar';
-}
-
-function adicionarRiscoGheForm() {
-    gheRiscosForm.push(rowRiscoGheVazio());
-    renderRiscosGheForm();
-}
-
-function removerRiscoGheForm(i) {
-    gheRiscosForm.splice(i, 1);
-    renderRiscosGheForm();
-}
-
-function renderRiscosGheForm() {
-    const container = document.getElementById('gheRiscosFormLista');
-    if (!container) return;
-    const campoEstilo = 'padding:6px; border:1px solid var(--border); border-radius:6px; font-size:11.5px; width:100%; box-sizing:border-box;';
-    if (gheRiscosForm.length === 0) {
-        container.innerHTML = '<div class="db-list-empty">Nenhum risco cadastrado — clique em "➕ Adicionar Risco".</div>';
-        return;
-    }
-    container.innerHTML = gheRiscosForm.map((r, i) => `
-        <div style="border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:10px; background:var(--bg);">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                <b style="font-size:12px;">Risco ${i + 1}</b>
-                <button onclick="removerRiscoGheForm(${i})" title="Remover" style="border:none; background:none; color:var(--danger); cursor:pointer; font-size:15px;">🗑️</button>
-            </div>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:6px; margin-bottom:6px;">
-                <input type="text" placeholder="Tipo de Agente (Físico/Químico/Biológico/Ergonômico/Acidentes)" value="${escapeHTML(r.tipo_agente)}" oninput="gheRiscosForm[${i}].tipo_agente=this.value" style="${campoEstilo}">
-                <input type="text" placeholder="Agente" value="${escapeHTML(r.agente)}" oninput="gheRiscosForm[${i}].agente=this.value" style="${campoEstilo}">
-            </div>
-            <div style="display:grid; grid-template-columns: 70px 70px 1fr; gap:6px; align-items:end; margin-bottom:6px;">
-                <div><label style="color:var(--text-light); font-size:10px; display:block;">Probabilidade</label>${selectProbSeverGhe(r.probabilidade, `gheRiscosForm[${i}].probabilidade=this.value; atualizarGravidadeCalculadaGhe(gheRiscosForm[${i}]); renderRiscosGheForm();`, GHE_ANCORAS_PROBABILIDADE)}</div>
-                <div><label style="color:var(--text-light); font-size:10px; display:block;">Severidade</label>${selectProbSeverGhe(r.severidade, `gheRiscosForm[${i}].severidade=this.value; atualizarGravidadeCalculadaGhe(gheRiscosForm[${i}]); renderRiscosGheForm();`, GHE_ANCORAS_EFEITO)}</div>
-                ${badgeGravidadeGhe(r)}
-            </div>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:6px; margin-bottom:6px;">
-                <input type="text" placeholder="Fontes Geradoras" value="${escapeHTML(r.fontes_geradoras)}" oninput="gheRiscosForm[${i}].fontes_geradoras=this.value" style="${campoEstilo}">
-                <input type="text" placeholder="Tipo/Tempo de Exposição" value="${escapeHTML(r.tipo_tempo_exposicao)}" oninput="gheRiscosForm[${i}].tipo_tempo_exposicao=this.value" style="${campoEstilo}">
-                <input type="text" placeholder="Situação de Controle" value="${escapeHTML(r.situacao_controle)}" oninput="gheRiscosForm[${i}].situacao_controle=this.value" style="${campoEstilo}">
-            </div>
-            <textarea placeholder="Descrição" oninput="gheRiscosForm[${i}].descricao=this.value" style="${campoEstilo} margin-bottom:6px;" rows="2">${escapeHTML(r.descricao)}</textarea>
-            <textarea placeholder="Danos à Saúde" oninput="gheRiscosForm[${i}].danos_saude=this.value" style="${campoEstilo} margin-bottom:6px;" rows="1">${escapeHTML(r.danos_saude)}</textarea>
-            <textarea placeholder="Sugestões / Medidas de Prevenção" oninput="gheRiscosForm[${i}].sugestoes=this.value" style="${campoEstilo} margin-bottom:6px;" rows="2">${escapeHTML(r.sugestoes)}</textarea>
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
-                <input type="text" placeholder="EPIs Recomendados" value="${escapeHTML(r.epis_recomendados)}" oninput="gheRiscosForm[${i}].epis_recomendados=this.value" style="${campoEstilo}">
-                <input type="text" placeholder="EPCs Recomendados" value="${escapeHTML(r.epcs_recomendados)}" oninput="gheRiscosForm[${i}].epcs_recomendados=this.value" style="${campoEstilo}">
-            </div>
-        </div>`).join('');
-}
-
-async function salvarMapaRiscosGhe() {
-    if (bloquearEdicaoSeNaoAutorizado('matrizrisco')) return;
-    const statusEl = document.getElementById('gheMapaRiscosStatus');
-    const g = allGheCatalogo.find(x => x.id === gheAtualGerenciado);
-    if (!g) return;
-
-    const riscosValidos = gheRiscosForm.filter(r => (r.agente || '').trim());
-    const conclusoes = {
-        gfip_codigo: document.getElementById('gheConclusaoGfipCodigo').value.trim() || null,
-        gfip_descricao: document.getElementById('gheConclusaoGfipDescricao').value.trim() || null,
-        periculosidade: document.getElementById('gheConclusaoPericulosidade').value.trim() || null,
-        insalubridade: document.getElementById('gheConclusaoInsalubridade').value.trim() || null
-    };
-
-    statusEl.textContent = 'Salvando...';
-    statusEl.style.color = 'var(--text-light)';
-    try {
-        // Upsert precisa da linha inteira - senão zera nome/cargos/quantidade_oficial
-        // que não fazem parte deste formulário.
-        await supabaseUpsert('ghe_catalogo', [{
-            id: g.id,
-            nome: g.nome,
-            cargos: g.cargos,
-            quantidade_oficial: g.quantidade_oficial,
-            riscos: riscosValidos,
-            conclusoes,
-            updated_at: new Date().toISOString()
-        }]);
-        g.riscos = riscosValidos;
-        g.conclusoes = conclusoes;
-        statusEl.textContent = '✅ Mapa de riscos salvo.';
-        statusEl.style.color = 'var(--success)';
-        document.getElementById('gheMapaRiscosView').innerHTML = renderGheMapaRiscosHtml(g);
-        toggleEdicaoGheMapaRiscos();
-    } catch (err) {
-        console.error('Erro ao salvar mapa de riscos do GHE:', err);
-        statusEl.textContent = '❌ Falha ao salvar: ' + err.message;
-        statusEl.style.color = 'var(--danger)';
-    }
-}
-
-function fecharGerenciarGhe() {
-    gheAtualGerenciado = null;
-    const card = document.getElementById('gheGerenciarCard');
-    if (card) card.style.display = 'none';
-}
-
-function renderGheColabList() {
-    const container = document.getElementById('gheColabList');
-    if (!container || !gheAtualGerenciado) return;
-    const equipe = allEfetivo.filter(e => colaboradorEstaAtivo(e) && normalizarGhe(e.ghe) === gheAtualGerenciado)
-        .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
-
-    if (equipe.length === 0) {
-        container.innerHTML = '<div class="db-list-empty">Nenhum colaborador classificado neste grupo ainda.</div>';
-        return;
-    }
-    container.innerHTML = equipe.map(e => `
-        <div class="db-list-item" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-            <div>
-                <div class="db-list-item-title">${escapeHTML(e.nome || '')}</div>
-                <div class="db-list-item-sub">${escapeHTML(e.funcao || '')} — Matrícula ${escapeHTML(e.id)}</div>
-            </div>
-            <div style="display:flex; gap:6px; flex-shrink:0;">
-                <button class="db-clear-btn" onclick="editarColaboradorDaEquipe('${escapeHTML(e.id)}')">✏️ Editar</button>
-                <button class="db-clear-btn" style="color:var(--danger); border-color:var(--danger);" onclick="removerDoGhe('${escapeHTML(e.id)}')">Remover</button>
-            </div>
-        </div>`).join('');
-}
-
-function filterGheAddColab(query) {
-    const container = document.getElementById('gheAddColabResults');
-    const q = (query || '').toLowerCase().trim();
-    if (q.length < 2) { container.innerHTML = ''; return; }
-
-    const matches = allEfetivo.filter(e =>
-        colaboradorEstaAtivo(e) && normalizarGhe(e.ghe) !== gheAtualGerenciado &&
-        ((e.nome && e.nome.toLowerCase().includes(q)) || (e.id && e.id.toLowerCase().includes(q)))
-    ).slice(0, 15);
-
-    if (matches.length === 0) {
-        container.innerHTML = '<div class="db-list-empty">Nenhum colaborador encontrado</div>';
-        return;
-    }
-    container.innerHTML = matches.map(e => `
-        <div class="db-list-item" style="cursor:pointer;" onclick="adicionarAoGhe('${escapeHTML(e.id)}')">
-            <div class="db-list-item-title">${escapeHTML(e.nome || '')}</div>
-            <div class="db-list-item-sub">${escapeHTML(e.funcao || '')} — Matrícula ${escapeHTML(e.id)}${e.ghe ? ' — atualmente em ' + escapeHTML(e.ghe) : ' — sem GHE definido'}</div>
-        </div>`).join('');
-}
-
-async function salvarGheColaborador(matricula, novoGhe) {
-    const statusEl = document.getElementById('gheGerenciarStatus');
-    const e = allEfetivo.find(x => x.id === matricula);
-    if (!e) return;
-    if (statusEl) { statusEl.textContent = 'Salvando...'; statusEl.style.color = 'var(--text-light)'; }
-    try {
-        await supabaseUpsert('colaboradores_efetivo', [{ id: matricula, ghe: novoGhe }]);
-        e.ghe = novoGhe;
-        if (statusEl) { statusEl.textContent = '✅ Atualizado.'; statusEl.style.color = 'var(--success)'; }
-        renderGheColabList();
-        renderGheLista();
-    } catch (err) {
-        console.error('Erro ao atualizar GHE do colaborador:', err);
-        if (statusEl) { statusEl.textContent = '❌ Falha: ' + err.message; statusEl.style.color = 'var(--danger)'; }
-    }
-}
-
-function adicionarAoGhe(matricula) {
-    if (!gheAtualGerenciado) return;
-    salvarGheColaborador(matricula, gheAtualGerenciado);
-    document.getElementById('gheAddColabInput').value = '';
-    document.getElementById('gheAddColabResults').innerHTML = '';
-}
-
-function removerDoGhe(matricula) {
-    if (!confirm('Remover este colaborador do grupo? Ele fica sem GHE definido até ser adicionado a outro.')) return;
-    salvarGheColaborador(matricula, null);
-}
-
-function popularGheCatalogoDatalist() {
-    const el = document.getElementById('gheCatalogoList');
-    if (!el) return;
-    el.innerHTML = allGheCatalogo.slice().sort((a, b) => a.id.localeCompare(b.id))
-        .map(g => `<option value="${escapeHTML(g.id)}">${escapeHTML(g.id)} — ${escapeHTML(g.nome)}</option>`).join('');
-}
-
-// Importa o Quadro Funcional (.xls/.xlsx real, exportado direto do sistema de GHE da
-// empresa) via SheetJS no navegador. Mesma lógica de detecção de blocos validada antes
-// contra o arquivo real no Node: uma linha onde a coluna B começa com "GRUPO " abre um
-// novo grupo; as linhas seguintes com a coluna A preenchida (e diferente do cabeçalho
-// "Cargo") são os cargos daquele grupo, até o próximo "GRUPO ".
-async function importarQuadroFuncionalXLS() {
-    const input = document.getElementById('gheFileInput');
-    const statusEl = document.getElementById('gheImportStatus');
-    if (!input.files || !input.files[0]) {
-        statusEl.textContent = '❌ Selecione um arquivo .xls/.xlsx primeiro.';
-        return;
-    }
-
-    statusEl.textContent = 'Lendo arquivo...';
-    try {
-        const file = input.files[0];
-        const buffer = await file.arrayBuffer();
-        const wb = XLSX.read(buffer, { type: 'array' });
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-
-        const grupos = [];
-        let atual = null;
-        rows.forEach(r => {
-            const c0 = String(r[0] || '').trim();
-            const c1 = String(r[1] || '').trim();
-            const m = c1.match(/^GRUPO\s+(\d+)/i);
-            if (m) {
-                atual = { id: m[1].padStart(2, '0'), nome: c1, cargos: [] };
-                grupos.push(atual);
-            } else if (atual && c0 && c0 !== 'Cargo') {
-                atual.cargos.push({ cargo: c0, funcao: String(r[1] || ''), cbo: String(r[3] || ''), quantidade: Number(r[4]) || 0 });
-            }
-        });
-
-        if (grupos.length === 0) {
-            statusEl.textContent = '❌ Nenhum grupo "GRUPO NN" encontrado nesse arquivo. Confirme se é o Quadro Funcional exportado do sistema de GHE.';
-            return;
-        }
-
-        const linhas = grupos.map(g => ({
-            id: g.id,
-            nome: g.nome,
-            cargos: g.cargos,
-            quantidade_oficial: g.cargos.reduce((s, c) => s + c.quantidade, 0),
-            updated_at: new Date().toISOString()
-        }));
-
-        statusEl.textContent = `Enviando ${linhas.length} grupo(s)...`;
-        await supabaseUpsert('ghe_catalogo', linhas);
-
-        const totalCargos = linhas.reduce((s, g) => s + g.cargos.length, 0);
-        const totalPessoas = linhas.reduce((s, g) => s + g.quantidade_oficial, 0);
-        statusEl.textContent = `✅ Importação concluída! ${linhas.length} grupo(s) de GHE e ${totalCargos} cargo(s) importados/atualizados, totalizando ${totalPessoas} pessoa(s) no quadro oficial.`;
-
-        allGheCatalogo = await supabaseFetch('ghe_catalogo', '?select=*');
-        popularGheCatalogoDatalist();
-        if (document.getElementById('efetivoSubtabBtn-ghe')?.classList.contains('active')) renderGheLista();
-    } catch (err) {
-        console.error('Erro ao importar Quadro Funcional (GHE):', err);
-        statusEl.textContent = '❌ Erro na importação: ' + err.message;
-    }
-}
-
-// ============================================
-// MATRIZ DE RISCO (metodologia AIHA, seção 16 do PGR) - painel 100% derivado de dado
-// que já existe (ghe_catalogo.riscos[].gravidade/gravidade_label, atribuído durante o
-// import original do PGR) + tabelas de referência estáticas transcritas das páginas
-// 82-87/300. Sem tabela nova no Supabase, sem CRUD - é leitura/visualização.
-// ============================================
-
-var matrizRiscoLoaded = false;
-var chartRiscoNivel = null;
-var chartRiscoTipoAgente = null;
-
-var NIVEIS_RISCO_ORDEM = ['Trivial', 'Baixo', 'Moderado', 'Alto', 'Muito Alto'];
-var NIVEIS_RISCO_COR = { 'Trivial': '#6aa84f', 'Baixo': '#f1c232', 'Moderado': '#e69138', 'Alto': '#cc0000', 'Muito Alto': '#990000' };
-
-// Âncoras da Probabilidade e do Efeito EXATAMENTE como a tabela 16.1 do PGR (mesmo texto
-// da tabela "📐 Metodologia AIHA — Referência Oficial" que já aparece na tela de Matriz de
-// Risco) - critério de EXPOSIÇÃO ao agente, diferente da escala de "Raro/Frequente" e
-// "Lesão leve/Fatalidade" que a APR usa (a APR é uma matriz de campo genérica; o GHE segue
-// um documento oficial específico, com critérios próprios). Pesos oficiais são 0-4;
-// somamos 1 pra guardar como 1-5 nos mesmos campos probabilidade/severidade de sempre.
-var GHE_ANCORAS_PROBABILIDADE = {
-    1: 'Não há exposição — nenhum contato com o agente ou contato improvável',
-    2: 'Exposição a níveis baixos — contatos não frequentes com o agente',
-    3: 'Exposição moderada — contato frequente a baixas concentrações ou não frequente a altas concentrações',
-    4: 'Exposição elevada — contato frequente com o agente a altas concentrações',
-    5: 'Exposição elevadíssima — contato frequente com o agente a concentrações elevadíssimas'
+var ESOCIAL_TABELA24 = window.ESOCIAL_TABELA24 || {
+    'Físico': [
+        { codigo: '02.01.001', nome: 'Ruído' },
+        { codigo: '02.01.002', nome: 'Vibrações localizadas (mãos e braços)' },
+        { codigo: '02.01.003', nome: 'Vibração de corpo inteiro (aren)' },
+        { codigo: '02.01.004', nome: 'Vibração de corpo inteiro (VDVR)' },
+        { codigo: '02.01.005', nome: 'Trabalhos com perfuratrizes e marteletes pneumáticos' },
+        { codigo: '02.01.006', nome: 'Radiações ionizantes' },
+        { codigo: '02.01.007', nome: 'Extração e beneficiamento de minerais radioativos' },
+        { codigo: '02.01.008', nome: 'Atividades em minerações com exposição ao radônio' },
+        { codigo: '02.01.009', nome: 'Manutenção e supervisão em unidades de minerais radioativos' },
+        { codigo: '02.01.010', nome: 'Operações com reatores nucleares ou com fontes radioativas' },
+        { codigo: '02.01.011', nome: 'Trabalhos com raios Alfa, Beta, Gama e X, nêutrons e substâncias radioativas' },
+        { codigo: '02.01.012', nome: 'Fabricação e manipulação de produtos radioativos' },
+        { codigo: '02.01.013', nome: 'Pesquisas e estudos com radiações ionizantes em laboratórios' },
+        { codigo: '02.01.014', nome: 'Calor acima dos limites de tolerância (NR-15)' },
+        { codigo: '02.01.015', nome: 'Pressão atmosférica anormal' },
+        { codigo: '02.01.016', nome: 'Trabalhos em caixões ou câmaras hiperbáricas' },
+        { codigo: '02.01.017', nome: 'Trabalhos em tubulões ou túneis sob ar comprimido' },
+        { codigo: '02.01.018', nome: 'Operações de mergulho com uso de escafandros ou outros equipamentos' }
+    ],
+    'Químico': [
+        { codigo: '01.01.001', nome: 'Arsênio e seus compostos' },
+        { codigo: '01.02.001', nome: 'Asbestos (ou amianto)' },
+        { codigo: '01.03.001', nome: 'Benzeno e seus compostos tóxicos' },
+        { codigo: '01.03.002', nome: 'Estireno (vinilbenzeno)' },
+        { codigo: '01.04.001', nome: 'Berílio e seus compostos tóxicos' },
+        { codigo: '01.05.001', nome: 'Bromo e seus compostos tóxicos' },
+        { codigo: '01.06.001', nome: 'Cádmio e seus compostos tóxicos' },
+        { codigo: '01.07.001', nome: 'Carvão mineral e seus derivados' },
+        { codigo: '01.08.001', nome: 'Chumbo e seus compostos tóxicos' },
+        { codigo: '01.09.001', nome: 'Cloro e seus compostos tóxicos' },
+        { codigo: '01.09.002', nome: 'Metileno-ortocloroanilina (MOCA / MBOCA)' },
+        { codigo: '01.10.001', nome: 'Cromo e seus compostos tóxicos' },
+        { codigo: '01.11.001', nome: 'Dissulfeto de carbono' },
+        { codigo: '01.12.001', nome: 'Fósforo e seus compostos tóxicos' },
+        { codigo: '01.13.001', nome: 'Iodo' },
+        { codigo: '01.14.001', nome: 'Manganês e seus compostos' },
+        { codigo: '01.15.001', nome: 'Mercúrio e seus compostos' },
+        { codigo: '01.16.001', nome: 'Níquel e seus compostos tóxicos' },
+        { codigo: '01.17.001', nome: 'Petróleo, xisto betuminoso, gás natural e seus derivados' },
+        { codigo: '01.18.001', nome: 'Sílica livre' },
+        { codigo: '01.19.001', nome: 'Butadieno-estireno' },
+        { codigo: '01.19.002', nome: 'Acrilonitrila' },
+        { codigo: '01.19.003', nome: '1-3-butadieno' },
+        { codigo: '01.19.004', nome: 'Mercaptanos (tióis)' },
+        { codigo: '01.19.005', nome: 'n-hexano' },
+        { codigo: '01.19.006', nome: 'Diisocianato de tolueno (TDI)' },
+        { codigo: '01.19.007', nome: 'Aminas aromáticas' },
+        { codigo: '01.19.008', nome: 'Aminobifenila (4-aminodifenil)' }
+    ],
+    'Biológico': [
+        { codigo: '03.01.001', nome: 'Trabalhos em estabelecimentos de saúde em contato com pacientes ou materiais contaminados' },
+        { codigo: '03.01.002', nome: 'Trabalhos com animais infectados para soro, vacinas e produtos' },
+        { codigo: '03.01.003', nome: 'Trabalhos em laboratórios de autópsia, anatomia e anátomo-histologia' },
+        { codigo: '03.01.004', nome: 'Exumação de corpos e manipulação de resíduos de animais deteriorados' },
+        { codigo: '03.01.005', nome: 'Trabalhos em galerias, fossas e tanques de esgoto' },
+        { codigo: '03.01.006', nome: 'Esvaziamento de biodigestores' },
+        { codigo: '03.01.007', nome: 'Coleta e industrialização do lixo' }
+    ],
+    'Ergonômico': [
+        { codigo: '', nome: 'Levantamento, transporte e descarga manual de pesos' },
+        { codigo: '', nome: 'Exigência de esforço físico intenso e estático' },
+        { codigo: '', nome: 'Posturas extremas ou estáticas prolongadas' },
+        { codigo: '', nome: 'Movimentos repetitivos de membros superiores' },
+        { codigo: '', nome: 'Mobiliário e postos de trabalho sem regulagem ergonômica' },
+        { codigo: '', nome: 'Ritmo excessivo de trabalho e metas de produtividade' },
+        { codigo: '', nome: 'Trabalho em turnos ou noturno com alteração circadiana' },
+        { codigo: '', nome: 'Monotonia, repetitividade e sobrecarga mental' }
+    ],
+    'Acidentes': [
+        { codigo: '', nome: 'Queda de pessoas com diferença de nível (trabalho em altura)' },
+        { codigo: '', nome: 'Queda de pessoas no mesmo nível (piso escorregadio/irregular)' },
+        { codigo: '', nome: 'Queda de materiais, ferramentas ou projeção de partículas' },
+        { codigo: '', nome: 'Choque elétrico, contato com partes energizadas ou arco elétrico' },
+        { codigo: '', nome: 'Incêndio e princípios de explosão' },
+        { codigo: '', nome: 'Atropelamento, colisão e movimentação de veículos e máquinas' },
+        { codigo: '', nome: 'Prensagem, aprisionamento ou esmagamento em partes móveis' },
+        { codigo: '', nome: 'Corte, perfuração ou laceração com ferramentas perfurocortantes' },
+        { codigo: '', nome: 'Contato com superfícies ou fluidos em temperaturas extremas' },
+        { codigo: '', nome: 'Trabalho em espaço confinado (risco de asfixia/intoxicação)' },
+        { codigo: '', nome: 'Animais peçonhentos e vetores biológicos agressivos' },
+        { codigo: '', nome: 'Desabamento, desmoronamento de taludes, valas ou estruturas' }
+    ]
 };
-var GHE_ANCORAS_EFEITO = {
-    1: 'Pouca importância — efeitos reversíveis de pouca importância, ou não conhecidos/apenas suspeitos',
-    2: 'Preocupantes — efeitos reversíveis preocupantes',
-    3: 'Severos — efeitos reversíveis severos e preocupantes',
-    4: 'Irreversíveis — efeitos irreversíveis preocupantes',
-    5: 'Ameaça — ameaça à vida ou doença/lesão incapacitante'
-};
+window.ESOCIAL_TABELA24 = ESOCIAL_TABELA24;
+
+function getEsocialOpcoesPorTipo(tipoAgente) {
+    return (window.ESOCIAL_TABELA24 && window.ESOCIAL_TABELA24[tipoAgente]) || [];
+}
+
 
 // Tabela 16.3 do PGR (Matriz para Determinação dos Níveis de Risco) transcrita ao pé da
 // letra - Efeito nas linhas (1 a 5), Probabilidade nas colunas (1 a 5). Substitui o
@@ -944,7 +174,974 @@ function todosRiscosGhe() {
     return out;
 }
 
+// ============================================
+// AVALIAÇÃO DE RISCOS (PGR / METODOLOGIA AIHA / eSocial) - FASE 1 (ESTADO TRANSACIONAL COM IDENTIDADE LEGADA GARANTIDA)
+// ============================================
+var matrizSubtabAtiva = 'geral';
+var matrizRiscoDetalheSubtabAtiva = 'avaliacao';
+
+var matrizGheSelecionadoId = null;
+var matrizRiscoSelecionadoIdx = 0;
+var matrizGheRiscosTrabalho = [];
+var matrizRiscoEdicaoOriginal = null;
+var matrizRiscoEdicaoDraft = null;
+
+function carregarRiscosTrabalhoDoGhe(g) {
+    if (!g || !Array.isArray(g.riscos)) {
+        matrizGheRiscosTrabalho = [];
+    } else {
+        matrizGheRiscosTrabalho = g.riscos.map((r, i) => {
+            const clone = JSON.parse(JSON.stringify(r));
+            clone._origIndex = i;
+            delete clone._isNovoNaoSalvo;
+            return clone;
+        });
+    }
+}
+
+function inicializarDraftRisco(r) {
+    if (!r) {
+        matrizRiscoEdicaoOriginal = null;
+        matrizRiscoEdicaoDraft = null;
+        return;
+    }
+    matrizRiscoEdicaoOriginal = JSON.parse(JSON.stringify(r));
+    matrizRiscoEdicaoDraft = JSON.parse(JSON.stringify(r));
+}
+
+function showMatrizSubtab(tab) {
+    matrizSubtabAtiva = tab;
+    const btnGeral = document.getElementById('matrizSubtabBtn-geral');
+    const btnSetor = document.getElementById('matrizSubtabBtn-setor');
+    const viewGeral = document.getElementById('matrizViewGeral');
+    const viewSetor = document.getElementById('matrizViewSetor');
+
+    if (btnGeral) btnGeral.classList.toggle('active', tab === 'geral');
+    if (btnSetor) btnSetor.classList.toggle('active', tab === 'setor');
+
+    if (tab === 'geral') {
+        // RESETAR ESTADO E DRAFTS AO VOLTAR PARA VISÃO GERAL
+        matrizGheSelecionadoId = null;
+        matrizRiscoSelecionadoIdx = 0;
+        matrizGheRiscosTrabalho = [];
+        matrizRiscoEdicaoOriginal = null;
+        matrizRiscoEdicaoDraft = null;
+        if (viewGeral) viewGeral.style.display = 'block';
+        if (viewSetor) viewSetor.style.display = 'none';
+        renderMatrizRiscoPanel();
+    } else {
+        if (viewGeral) viewGeral.style.display = 'none';
+        if (viewSetor) viewSetor.style.display = 'block';
+        if (!matrizGheSelecionadoId && allGheCatalogo.length > 0) {
+            matrizGheSelecionadoId = allGheCatalogo[0].id;
+            matrizRiscoSelecionadoIdx = 0;
+        }
+        const select = document.getElementById('matrizRiscoGheSelect');
+        if (select && matrizGheSelecionadoId) select.value = matrizGheSelecionadoId;
+
+        const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+        if (g) {
+            carregarRiscosTrabalhoDoGhe(g);
+            inicializarDraftRisco(matrizGheRiscosTrabalho[matrizRiscoSelecionadoIdx] || null);
+        } else {
+            inicializarDraftRisco(null);
+        }
+        renderMatrizViewSetor();
+    }
+}
+
+function popularMatrizRiscoGheSelect() {
+    const select = document.getElementById('matrizRiscoGheSelect');
+    if (!select) return;
+    const grupos = allGheCatalogo.slice().sort((a, b) => (a.id || '').localeCompare(b.id || ''));
+    let html = '<option value="">-- Selecione um Setor / GHE --</option>';
+    grupos.forEach(g => {
+        const idStr = escapeHTML(g.id || '');
+        const nomeStr = escapeHTML(g.nome || '');
+        const sel = String(g.id) === String(matrizGheSelecionadoId) ? 'selected' : '';
+        html += `<option value="${idStr}" ${sel}>${idStr} — ${nomeStr}</option>`;
+    });
+    select.innerHTML = html;
+}
+
+function selecionarGheMatrizRisco(gheId, riscoIdx) {
+    matrizRiscoDetalheSubtabAtiva = 'avaliacao';
+    if (!gheId) return;
+    matrizGheSelecionadoId = gheId;
+    if (riscoIdx !== undefined && riscoIdx !== null) {
+        matrizRiscoSelecionadoIdx = riscoIdx;
+    } else {
+        matrizRiscoSelecionadoIdx = 0;
+    }
+    const select = document.getElementById('matrizRiscoGheSelect');
+    if (select) select.value = gheId;
+
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (g) {
+        carregarRiscosTrabalhoDoGhe(g);
+        if (matrizGheRiscosTrabalho[matrizRiscoSelecionadoIdx]) {
+            inicializarDraftRisco(matrizGheRiscosTrabalho[matrizRiscoSelecionadoIdx]);
+        } else {
+            inicializarDraftRisco(null);
+        }
+    } else {
+        inicializarDraftRisco(null);
+    }
+
+    showMatrizSubtab('setor');
+}
+
+function renderMatrizViewSetor() {
+    const container = document.getElementById('matrizSetorConteudo');
+    if (!container) return;
+
+    if (!matrizGheSelecionadoId) {
+        container.innerHTML = '<div class="db-list-empty" style="padding:40px; text-align:center;">Selecione um Setor / GHE na barra superior para visualizar e gerenciar a Avaliação de Riscos.</div>';
+        return;
+    }
+
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (!g) {
+        container.innerHTML = `<div class="db-list-empty">Setor / GHE "${escapeHTML(matrizGheSelecionadoId)}" não encontrado no catálogo.</div>`;
+        return;
+    }
+
+    const colaboradores = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e) && normalizarGhe(e.ghe) === normalizarGhe(g.id));
+    const totalAtivos = colaboradores.length;
+    const cargos = Array.isArray(g.cargos) ? g.cargos : [];
+    const riscos = matrizGheRiscosTrabalho;
+
+    const dataElab = g.data_inicio ? formatSimpleDate(g.data_inicio) : (g.data_elaboracao ? formatSimpleDate(g.data_elaboracao) : 'Não informada');
+    const dataVal = g.data_validade ? formatSimpleDate(g.data_validade) : 'Não informada';
+
+    if (!matrizRiscoEdicaoDraft && riscos[matrizRiscoSelecionadoIdx]) {
+        inicializarDraftRisco(riscos[matrizRiscoSelecionadoIdx]);
+    }
+
+    let html = `
+    <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+        <!-- Cabeçalho Executivo do Setor / GHE (Padrão SGG Melhorado) -->
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; border-bottom:1px solid var(--border); padding-bottom:14px; margin-bottom:14px;">
+            <div style="flex:1; min-width:280px;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                    <span style="background:var(--primary, #4f46e5); color:#fff; font-size:11px; font-weight:700; padding:3px 8px; border-radius:6px; letter-spacing:0.5px;">GHE ${escapeHTML(g.id)}</span>
+                    <span style="font-size:12px; color:var(--text-light); font-weight:600;">${escapeHTML(EMPRESA_INFO?.razaoSocial || 'CONSORCIO OPERADOR RAMAL DO AGRESTE')}</span>
+                </div>
+                <h2 style="margin:0 0 6px 0; font-size:18px; font-weight:800; color:var(--text);">${escapeHTML(g.nome)}</h2>
+                <div style="display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--text-light);">
+                    <span>📅 <b>Elaboração:</b> ${escapeHTML(dataElab)}</span>
+                    <span>⏳ <b>Validade / Revisão PGR:</b> ${escapeHTML(dataVal)}</span>
+                    <span>👥 <b>Efetivo Atual:</b> <b style="color:var(--text); font-weight:700;">${totalAtivos} colaborador(es) ativo(s)</b> (Quadro Previsto: ${g.quantidade_oficial || 0})</span>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <button class="db-clear-btn" onclick="showMatrizSubtab('geral')" style="font-size:12px; padding:7px 12px;">⬅️ Voltar à Matriz Geral</button>
+                <button class="db-apply-btn" onclick="imprimirInventarioRiscosGheAtual()" style="font-size:12px; padding:7px 12px;">🖨️ Imprimir Inventário do Setor</button>
+            </div>
+        </div>
+
+        <!-- Cargos Vinculados ao Setor / GHE -->
+        <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:14px;">
+            <div style="font-weight:700; font-size:12.5px; color:var(--text); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                <span>👔 Cargos & Atividades do Grupo (${cargos.length} cargo${cargos.length === 1 ? '' : 's'})</span>
+                <span style="font-size:11px; color:var(--text-light);">Cargo :: Função :: CBO :: Lotação</span>
+            </div>
+            ${cargos.length === 0 ? '<div style="font-size:12px; color:var(--text-light);">Nenhum cargo vinculado a este GHE no catálogo.</div>' : `
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:8px;">
+                    ${cargos.map(c => `
+                        <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:6px; padding:8px 10px; font-size:12px;">
+                            <div style="font-weight:700; color:var(--text);">${escapeHTML(c.cargo || c.funcao || 'Cargo')} <span style="font-size:11px; font-weight:400; color:var(--text-light);">(CBO ${escapeHTML(c.cbo || '—')})</span></div>
+                            <div style="font-size:11.5px; color:var(--text-light); margin-top:2px;"><b>Função:</b> ${escapeHTML(c.funcao || '—')} · <b>Oficial:</b> ${c.quantidade || 0} vaga(s)</div>
+                            ${c.descricao_atividade ? `<div style="font-size:11px; color:var(--text-light); margin-top:4px; max-height:45px; overflow-y:auto; line-height:1.3;">${escapeHTML(c.descricao_atividade)}</div>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            `}
+        </div>
+
+        <!-- Alerta Informativo de Riscos Psicossociais (NR-01 GRO) -->
+        <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#1e40af;">
+                <span style="font-size:18px;">ℹ️</span>
+                <span><b>Gestão Integrada NR-01:</b> Fatores de Riscos Psicossociais e Ergonômicos devem ser monitorados periodicamente para este grupo operacional.</span>
+            </div>
+            <button class="db-clear-btn" onclick="showDbPage('psicossocial')" style="padding:4px 10px; font-size:11px; background:#fff; color:#1e40af; border-color:#93c5fd; white-space:nowrap;">Ver Painel Psicossocial</button>
+        </div>
+
+        <!-- Seção: Gestão de Riscos do Setor / GHE -->
+        <div style="border-top:1px solid var(--border); padding-top:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+                <div style="font-weight:800; font-size:14px; color:var(--text); display:flex; align-items:center; gap:6px;">
+                    <span>🛡️ Riscos Ambientais e Ocupacionais Identificados</span>
+                    <span style="background:var(--bg); border:1px solid var(--border); font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px; color:var(--text-light);">${riscos.length} cadastrado(s)</span>
+                </div>
+                <div style="display:flex; gap:6px;">
+                    <button class="db-apply-btn" onclick="adicionarNovoRiscoGheNaTela()" style="font-size:11.5px; padding:6px 12px;">➕ Novo Risco</button>
+                </div>
+            </div>
+
+            <!-- Chips de Riscos Navegáveis com Identificação Precisa -->
+            <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:8px; margin-bottom:14px; border-bottom:1px dashed var(--border);">
+                ${riscos.length === 0 ? '<div style="font-size:12px; color:var(--text-light); padding:8px 0;">Nenhum risco cadastrado para este grupo. Clique em "➕ Novo Risco" para começar.</div>' : riscos.map((r, idx) => {
+                    const ativo = idx === matrizRiscoSelecionadoIdx;
+                    const grav = NIVEIS_RISCO_COR[r.gravidade_label] || '#888888';
+                    const tipoIcone = {
+                        'Físico': '🔵',
+                        'Químico': '🔴',
+                        'Biológico': '🟤',
+                        'Ergonômico': '🟡',
+                        'Acidentes': '🟠'
+                    }[r.tipo_agente] || '⚠️';
+                    return `
+                        <div class="matriz-chip-wrap" style="display:inline-flex; align-items:center; border-radius:20px; overflow:hidden; border:${ativo ? '1.5px solid var(--primary)' : '1px solid var(--border)'}; background:${ativo ? 'var(--primary)' : 'var(--bg)'}; transition:all 0.2s ease; flex-shrink:0;">
+                            <button type="button" data-chip-select onclick="selecionarChipRiscoGhe(${idx})" style="border:none; background:transparent; padding:6px 12px; font-size:12px; font-weight:600; color:${ativo ? '#fff' : 'var(--text)'}; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                                <span>${tipoIcone} ${escapeHTML(r.agente || 'Risco ' + (idx + 1))}</span>
+                                <span style="font-size:10px; padding:2px 6px; border-radius:10px; background:${ativo ? 'rgba(255,255,255,0.25)' : grav + '22'}; color:${ativo ? '#fff' : grav}; font-weight:700;">
+                                    ${escapeHTML(r.gravidade_label || 'P×S ' + (r.gravidade || '—'))}
+                                </span>
+                                ${r._isNovoNaoSalvo ? '<span style="font-size:9px; background:#fef3c7; color:#92400e; padding:1px 5px; border-radius:6px; font-weight:700; margin-left:2px;">Novo</span>' : ''}
+                            </button>
+                            <button type="button" data-chip-remove onclick="removerRiscoGhePeloChip(${idx})" title="Remover Risco" style="border:none; border-left:1px solid ${ativo ? 'rgba(255,255,255,0.3)' : 'var(--border)'}; background:transparent; padding:6px 10px; font-size:11px; color:${ativo ? '#fff' : 'var(--danger)'}; cursor:pointer; opacity:0.85;">
+                                ✕
+                            </button>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+
+            <!-- Detalhamento e Edição do Risco Selecionado -->
+            <div id="matrizRiscoDetalhesContainer">
+                ${renderRiscoAtivoDetalhesHtml(g, matrizRiscoEdicaoDraft || riscos[matrizRiscoSelecionadoIdx], matrizRiscoSelecionadoIdx)}
+            </div>
+        </div>
+    </div>
+    `;
+
+    container.innerHTML = html;
+}
+
+function selecionarChipRiscoGhe(idx) {
+    matrizRiscoDetalheSubtabAtiva = 'avaliacao';
+    matrizRiscoSelecionadoIdx = idx;
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (!g) return;
+    const riscos = matrizGheRiscosTrabalho;
+    if (riscos[idx]) {
+        inicializarDraftRisco(riscos[idx]);
+    }
+    const container = document.getElementById('matrizRiscoDetalhesContainer');
+    if (container) {
+        container.innerHTML = renderRiscoAtivoDetalhesHtml(g, matrizRiscoEdicaoDraft || riscos[idx], idx);
+    }
+    document.querySelectorAll('#matrizSetorConteudo button[onclick^=selecionarChipRiscoGhe]').forEach((btn, i) => {
+        btn.style.border = i === idx ? '1px solid var(--primary)' : '1px solid var(--border)';
+        btn.style.background = i === idx ? 'var(--primary)' : 'var(--bg)';
+        btn.style.color = i === idx ? '#fff' : 'var(--text)';
+    });
+    document.querySelectorAll('.matriz-chip-wrap').forEach((wrap, i) => {
+        const ativo = (i === idx);
+        wrap.style.border = ativo ? '1.5px solid var(--primary)' : '1px solid var(--border)';
+        wrap.style.background = ativo ? 'var(--primary)' : 'var(--bg)';
+        const btnSelect = wrap.querySelector('button[data-chip-select]');
+        if (btnSelect) btnSelect.style.color = ativo ? '#fff' : 'var(--text)';
+        const btnRemove = wrap.querySelector('button[data-chip-remove]');
+        if (btnRemove) {
+            btnRemove.style.color = ativo ? '#fff' : 'var(--danger)';
+            btnRemove.style.borderLeftColor = ativo ? 'rgba(255,255,255,0.3)' : 'var(--border)';
+        }
+    });
+}
+
+function adicionarNovoRiscoGheNaTela() {
+    matrizRiscoDetalheSubtabAtiva = 'avaliacao';
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (!g) return;
+    const novo = rowRiscoGheVazio();
+    novo._isNovoNaoSalvo = true;
+    novo.tipo_agente = 'Físico';
+    novo.agente = 'Novo Fator de Risco';
+    novo.probabilidade = '2';
+    novo.severidade = '2';
+    atualizarGravidadeCalculadaGhe(novo);
+    matrizGheRiscosTrabalho.push(novo);
+    matrizRiscoSelecionadoIdx = matrizGheRiscosTrabalho.length - 1;
+    inicializarDraftRisco(novo);
+    renderMatrizViewSetor();
+}
+
+async function removerRiscoGhePeloChip(idx) {
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (!g || !matrizGheRiscosTrabalho[idx]) return;
+    const riscoAlvo = matrizGheRiscosTrabalho[idx];
+    const nome = riscoAlvo.agente || `Risco ${idx + 1}`;
+
+    if (!confirm(`Remover o risco "${nome}" deste GHE?`)) return;
+
+    if (riscoAlvo._isNovoNaoSalvo) {
+        matrizGheRiscosTrabalho.splice(idx, 1);
+        matrizRiscoDetalheSubtabAtiva = 'avaliacao';
+        if (matrizRiscoSelecionadoIdx >= matrizGheRiscosTrabalho.length) {
+            matrizRiscoSelecionadoIdx = Math.max(0, matrizGheRiscosTrabalho.length - 1);
+        }
+        inicializarDraftRisco(matrizGheRiscosTrabalho[matrizRiscoSelecionadoIdx] || null);
+        renderMatrizViewSetor();
+        return;
+    }
+
+    const statusEl = document.getElementById('matrizRiscoSaveStatus');
+    if (statusEl) { statusEl.textContent = 'Removendo...'; statusEl.style.color = 'var(--text-light)'; }
+
+    // Localiza com precisão o índice do risco legado no array persistido g.riscos
+    let indexNoBanco = -1;
+    if (typeof riscoAlvo._origIndex === 'number' && riscoAlvo._origIndex >= 0 && riscoAlvo._origIndex < (g.riscos || []).length) {
+        indexNoBanco = riscoAlvo._origIndex;
+    } else if (riscoAlvo.id && Array.isArray(g.riscos)) {
+        indexNoBanco = g.riscos.findIndex(r => r.id === riscoAlvo.id);
+    } else if (Array.isArray(g.riscos)) {
+        indexNoBanco = g.riscos.findIndex(r => r.agente === riscoAlvo.agente && r.tipo_agente === riscoAlvo.tipo_agente);
+    }
+
+    let riscosAtualizados;
+    if (indexNoBanco >= 0) {
+        riscosAtualizados = g.riscos.filter((_, i) => i !== indexNoBanco);
+    } else {
+        riscosAtualizados = Array.isArray(g.riscos) ? g.riscos.slice() : [];
+    }
+
+    try {
+        const payload = [{
+            id: g.id,
+            nome: g.nome,
+            cargos: g.cargos || [],
+            quantidade_oficial: g.quantidade_oficial || 0,
+            riscos: riscosAtualizados,
+            conclusoes: g.conclusoes || {},
+            updated_at: new Date().toISOString()
+        }];
+
+        await supabaseUpsert('ghe_catalogo', payload);
+
+        // Sucesso comprovado no banco: sincroniza memória oficial
+        g.riscos = riscosAtualizados;
+        matrizRiscoDetalheSubtabAtiva = 'avaliacao';
+        carregarRiscosTrabalhoDoGhe(g);
+        if (matrizRiscoSelecionadoIdx >= matrizGheRiscosTrabalho.length) {
+            matrizRiscoSelecionadoIdx = Math.max(0, matrizGheRiscosTrabalho.length - 1);
+        }
+        inicializarDraftRisco(matrizGheRiscosTrabalho[matrizRiscoSelecionadoIdx] || null);
+        renderMatrizViewSetor();
+    } catch (err) {
+        console.error('Erro ao remover risco do GHE:', err);
+        alert('Falha ao remover risco no banco: ' + err.message);
+        if (statusEl) { statusEl.textContent = '❌ Falha: ' + err.message; statusEl.style.color = 'var(--danger)'; }
+    }
+}
+
+function renderRiscoAtivoDetalhesHtml(g, r, idx) {
+    if (!r) {
+        return '<div class="db-list-empty" style="padding:20px;">Nenhum risco selecionado. Adicione um novo risco clicando em "➕ Novo Risco".</div>';
+    }
+
+    const campoMini = 'padding:7px 10px; border:1px solid var(--border); border-radius:6px; font-size:12px; width:100%; box-sizing:border-box; background:var(--bg); color:var(--text);';
+    const nivel = nivelRiscoGhe(r.probabilidade, r.severidade);
+    const corGrav = nivel.cor || '#888888';
+
+    return `
+    <div style="background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:14px; margin-top:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:8px; flex-wrap:wrap; gap:8px;">
+            <div style="font-weight:700; font-size:13px; color:var(--text);">
+                📝 Editando Risco ${idx + 1}: <span style="color:var(--primary);">${escapeHTML(r.agente || 'Sem Nome')}</span>
+                ${r._isNovoNaoSalvo ? '<span style="font-size:11px; background:#fef3c7; color:#92400e; padding:2px 8px; border-radius:10px; font-weight:700; margin-left:8px;">Rascunho Não Salvo</span>' : ''}
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span id="matrizRiscoSaveStatus" style="font-size:12px; color:var(--text-light);"></span>
+                <button type="button" class="db-clear-btn" onclick="cancelarEdicaoRiscoGhe(${idx})" style="font-size:12px; padding:6px 12px;">✕ Cancelar / Descartar</button>
+                <button type="button" class="db-apply-btn" onclick="salvarRiscoGheEmEdicao(${idx})" style="font-size:12px; padding:6px 14px;">💾 Salvar Alterações no GHE</button>
+            </div>
+        </div>
+
+        <!-- Linha 1: Tipo de Agente, Nome do Agente e Código eSocial -->
+        <div style="display:grid; grid-template-columns:180px 1fr 160px; gap:10px; margin-bottom:10px;">
+            <div>
+                <label style="font-size:11px; font-weight:700; color:var(--text-light); display:block; margin-bottom:4px;">Tipo de Agente *</label>
+                <select id="riscoEdit_tipo" onchange="aoMudarTipoAgenteRisco(${idx}, this)" style="${campoMini}">
+                    <option value="Físico" ${r.tipo_agente === 'Físico' ? 'selected' : ''}>🔵 Físico</option>
+                    <option value="Químico" ${r.tipo_agente === 'Químico' ? 'selected' : ''}>🔴 Químico</option>
+                    <option value="Biológico" ${r.tipo_agente === 'Biológico' ? 'selected' : ''}>🟤 Biológico</option>
+                    <option value="Ergonômico" ${r.tipo_agente === 'Ergonômico' ? 'selected' : ''}>🟡 Ergonômico</option>
+                    <option value="Acidentes" ${r.tipo_agente === 'Acidentes' ? 'selected' : ''}>🟠 Acidentes</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:11px; font-weight:700; color:var(--text-light); display:block; margin-bottom:4px;">Agente / Fator de Risco *</label>
+                <div style="display:flex; gap:6px;">
+                    <select id="riscoEdit_agente_select" onchange="aoSelecionarAgenteCatalogo(${idx}, this)" style="${campoMini} flex:1; min-width:0;" aria-label="Selecionar agente do catálogo eSocial">
+                        <option value="">-- Selecione no catálogo ou digite --</option>
+                        ${getEsocialOpcoesPorTipo(r.tipo_agente).map(a => `<option value="${escapeHTML(a.nome)}" data-codigo="${escapeHTML(a.codigo)}" ${r.agente === a.nome ? 'selected' : ''}>${escapeHTML(a.nome)}</option>`).join('')}
+                        <option value="__CUSTOM__" ${r.agente && !getEsocialOpcoesPorTipo(r.tipo_agente).some(a => a.nome === r.agente) ? 'selected' : ''}>➕ Outro (digitar manualmente)...</option>
+                    </select>
+                    <input type="text" id="riscoEdit_agente" value="${escapeHTML(r.agente || '')}" oninput="atualizarCampoRiscoEmEdicao('agente', this.value); if(this.value) { const s = document.getElementById('riscoEdit_agente_select'); if(s) s.value='__CUSTOM__'; const e = document.getElementById('riscoEdit_esocial'); if(e && !matrizRiscoEdicaoDraft?.esocial_codigo_manual) { e.value = ''; atualizarCampoRiscoEmEdicao('esocial_codigo', ''); } }" placeholder="Digite o agente..." style="${campoMini} flex:1; min-width:0; ${r.agente && !getEsocialOpcoesPorTipo(r.tipo_agente).some(a => a.nome === r.agente) ? '' : 'display:none;'}">
+                </div>
+                <small style="color:var(--text-light); font-size:10px; margin-top:2px; display:block;">${r.tipo_agente === 'Ergonômico' || r.tipo_agente === 'Acidentes' ? 'Fatores PGR (NR-01) — Sem enquadramento previdenciário no eSocial S-2240' : 'Tabela 24 eSocial: <b>' + getEsocialOpcoesPorTipo(r.tipo_agente).length + '</b> opções frequentes (lista parcial da Tabela 24 — use manual para outros agentes)'}</small>
+            </div>
+            <div>
+                <label style="font-size:11px; font-weight:700; color:var(--text-light); display:block; margin-bottom:4px;">Código eSocial (Tabela 24)</label>
+                <input type="text" id="riscoEdit_esocial" value="${escapeHTML(r.esocial_codigo || '')}" oninput="atualizarCampoRiscoEmEdicao('esocial_codigo', this.value)" placeholder="Ex: 01.01.001" style="${campoMini}">
+            </div>
+        </div>
+
+                <!-- Linha 2: Navegador de Sub-abas Técnicas da Avaliação -->
+        <div style="display:flex; gap:6px; margin:12px 0 10px 0; border-bottom:1px solid var(--border); padding-bottom:4px; overflow-x:auto;">
+            <button type="button" class="matriz-risco-subtab-btn" data-subtab="avaliacao" onclick="trocarSubtabDetalheRisco('avaliacao', ${idx})" style="padding:6px 12px; font-size:12px; cursor:pointer; background:transparent; border:none; border-bottom:${matrizRiscoDetalheSubtabAtiva === 'avaliacao' ? '2px solid var(--primary)' : '2px solid transparent'}; color:${matrizRiscoDetalheSubtabAtiva === 'avaliacao' ? 'var(--primary)' : 'var(--text-light)'}; font-weight:${matrizRiscoDetalheSubtabAtiva === 'avaliacao' ? '700' : '500'};">📐 Avaliação</button>
+            <button type="button" class="matriz-risco-subtab-btn" data-subtab="epis" onclick="trocarSubtabDetalheRisco('epis', ${idx})" style="padding:6px 12px; font-size:12px; cursor:pointer; background:transparent; border:none; border-bottom:${matrizRiscoDetalheSubtabAtiva === 'epis' ? '2px solid var(--primary)' : '2px solid transparent'}; color:${matrizRiscoDetalheSubtabAtiva === 'epis' ? 'var(--primary)' : 'var(--text-light)'}; font-weight:${matrizRiscoDetalheSubtabAtiva === 'epis' ? '700' : '500'};">🛡️ EPIs</button>
+            <button type="button" class="matriz-risco-subtab-btn" data-subtab="epcs" onclick="trocarSubtabDetalheRisco('epcs', ${idx})" style="padding:6px 12px; font-size:12px; cursor:pointer; background:transparent; border:none; border-bottom:${matrizRiscoDetalheSubtabAtiva === 'epcs' ? '2px solid var(--primary)' : '2px solid transparent'}; color:${matrizRiscoDetalheSubtabAtiva === 'epcs' ? 'var(--primary)' : 'var(--text-light)'}; font-weight:${matrizRiscoDetalheSubtabAtiva === 'epcs' ? '700' : '500'};">🏭 EPCs</button>
+            <button type="button" class="matriz-risco-subtab-btn" data-subtab="controles" onclick="trocarSubtabDetalheRisco('controles', ${idx})" style="padding:6px 12px; font-size:12px; cursor:pointer; background:transparent; border:none; border-bottom:${matrizRiscoDetalheSubtabAtiva === 'controles' ? '2px solid var(--primary)' : '2px solid transparent'}; color:${matrizRiscoDetalheSubtabAtiva === 'controles' ? 'var(--primary)' : 'var(--text-light)'}; font-weight:${matrizRiscoDetalheSubtabAtiva === 'controles' ? '700' : '500'};">⚙️ Medidas de Controle</button>
+            <button type="button" class="matriz-risco-subtab-btn" data-subtab="laudos" onclick="trocarSubtabDetalheRisco('laudos', ${idx})" style="padding:6px 12px; font-size:12px; cursor:pointer; background:transparent; border:none; border-bottom:${matrizRiscoDetalheSubtabAtiva === 'laudos' ? '2px solid var(--primary)' : '2px solid transparent'}; color:${matrizRiscoDetalheSubtabAtiva === 'laudos' ? 'var(--primary)' : 'var(--text-light)'}; font-weight:${matrizRiscoDetalheSubtabAtiva === 'laudos' ? '700' : '500'};">📋 Laudos</button>
+            <button type="button" class="matriz-risco-subtab-btn" data-subtab="danos" onclick="trocarSubtabDetalheRisco('danos', ${idx})" style="padding:6px 12px; font-size:12px; cursor:pointer; background:transparent; border:none; border-bottom:${matrizRiscoDetalheSubtabAtiva === 'danos' ? '2px solid var(--primary)' : '2px solid transparent'}; color:${matrizRiscoDetalheSubtabAtiva === 'danos' ? 'var(--primary)' : 'var(--text-light)'}; font-weight:${matrizRiscoDetalheSubtabAtiva === 'danos' ? '700' : '500'};">🏥 Danos à Saúde</button>
+        </div>
+
+        <div id="matrizRiscoSubtabContent">
+            ${renderConteudoSubtabDetalheRisco(r, idx, matrizRiscoDetalheSubtabAtiva)}
+        </div>
+    </div>
+    `;
+}
+
+
+function trocarSubtabDetalheRisco(subtab, idx) {
+    matrizRiscoDetalheSubtabAtiva = subtab;
+    const container = document.getElementById('matrizRiscoSubtabContent');
+    const botoes = document.querySelectorAll('.matriz-risco-subtab-btn');
+    botoes.forEach(b => {
+        const ativ = b.getAttribute('data-subtab') === subtab;
+        b.style.borderBottom = ativ ? '2px solid var(--primary)' : '2px solid transparent';
+        b.style.color = ativ ? 'var(--primary)' : 'var(--text-light)';
+        b.style.fontWeight = ativ ? '700' : '500';
+    });
+
+    if (container && matrizRiscoEdicaoDraft) {
+        container.innerHTML = renderConteudoSubtabDetalheRisco(matrizRiscoEdicaoDraft, idx, subtab);
+    }
+}
+
+function renderConteudoSubtabDetalheRisco(r, idx, subtab) {
+    const campoMini = 'padding:7px 10px; border:1px solid var(--border); border-radius:6px; font-size:12px; width:100%; box-sizing:border-box; background:var(--bg); color:var(--text);';
+    const nivel = nivelRiscoGhe(r.probabilidade, r.severidade);
+    const corGrav = nivel.cor || '#888888';
+
+    if (subtab === 'avaliacao') {
+        return `
+        <!-- Sub-aba 1: Avaliação Qualitativa (AIHA) & Quantitativa (NR-15/NHO) -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <!-- Qualitativa AIHA -->
+            <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
+                <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                    <span>📐 Metodologia AIHA (PGR Seção 16) *</span>
+                    <span style="font-size:11px; color:var(--text-light); font-weight:normal;">Qualitativo P×S</span>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+                    <div>
+                        <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Probabilidade (1 a 5)</label>
+                        ${selectProbSeverGhe(r.probabilidade, `atualizarCampoRiscoEmEdicao('probabilidade', this.value); recalcularRiscoAtivo(${idx});`, GHE_ANCORAS_PROBABILIDADE)}
+                    </div>
+                    <div>
+                        <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Severidade/Efeito (1 a 5)</label>
+                        ${selectProbSeverGhe(r.severidade, `atualizarCampoRiscoEmEdicao('severidade', this.value); recalcularRiscoAtivo(${idx});`, GHE_ANCORAS_EFEITO)}
+                    </div>
+                </div>
+                <div style="text-align:center; padding:10px; border-radius:8px; background:${corGrav}22; border:1px solid ${corGrav}; color:${corGrav}; font-weight:800; font-size:13px;">
+                    Gravidade ${nivel.valor !== null ? nivel.valor : (r.gravidade || '—')} — ${escapeHTML(nivel.label || r.gravidade_label || 'Pendente')}
+                </div>
+            </div>
+
+            <!-- Quantitativa NR-15 / NR-09 / NHO -->
+            <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
+                <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                    <span>📊 Avaliação Quantitativa (Higiene Ocupacional)</span>
+                    <span style="font-size:11px; color:var(--text-light); font-weight:normal;">NR-15 / NHO</span>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+                    <div>
+                        <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Valor Medido</label>
+                        <input type="text" value="${escapeHTML(r.quanti_valor || '')}" oninput="atualizarCampoRiscoEmEdicao('quanti_valor', this.value)" placeholder="Ex: 84.2, 0.45, 12..." style="${campoMini}">
+                    </div>
+                    <div>
+                        <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Unidade de Medida</label>
+                        <select onchange="atualizarCampoRiscoEmEdicao('quanti_unidade', this.value)" style="${campoMini}">
+                            <option value="">-- Selecione a unidade --</option>
+                            <option value="dB(A)" ${r.quanti_unidade === 'dB(A)' ? 'selected' : ''}>dB(A) (Ruído contínuo)</option>
+                            <option value="dB(C)" ${r.quanti_unidade === 'dB(C)' ? 'selected' : ''}>dB(C) (Ruído impacto)</option>
+                            <option value="m/s²" ${r.quanti_unidade === 'm/s²' ? 'selected' : ''}>m/s² (aren - Vibração)</option>
+                            <option value="m/s^1.75" ${r.quanti_unidade === 'm/s^1.75' ? 'selected' : ''}>m/s^1.75 (VDVR)</option>
+                            <option value="ppm" ${r.quanti_unidade === 'ppm' ? 'selected' : ''}>ppm (Gases/Vapores)</option>
+                            <option value="mg/m³" ${r.quanti_unidade === 'mg/m³' ? 'selected' : ''}>mg/m³ (Poeiras/Fumos)</option>
+                            <option value="°C" ${r.quanti_unidade === '°C' ? 'selected' : ''}>°C (IBUTG - Calor)</option>
+                            <option value="lx" ${r.quanti_unidade === 'lx' ? 'selected' : ''}>lx (Iluminamento)</option>
+                            <option value="Outro" ${r.quanti_unidade === 'Outro' ? 'selected' : ''}>Outro</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+                    <div>
+                        <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Limite de Tolerância (NR-15) / TLV (ACGIH)</label>
+                        <input type="text" value="${escapeHTML(r.quanti_limite || '')}" oninput="atualizarCampoRiscoEmEdicao('quanti_limite', this.value)" placeholder="Ex: 85 dB(A) (NR-15), 5.0 m/s²..." style="${campoMini}">
+                    </div>
+                    <div>
+                        <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Nível de Ação (NR-09)</label>
+                        <input type="text" value="${escapeHTML(r.quanti_nivel_acao || '')}" oninput="atualizarCampoRiscoEmEdicao('quanti_nivel_acao', this.value)" placeholder="Ex: 80 dB(A), 2.5 m/s²..." style="${campoMini}">
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <div>
+                        <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Método / Norma de Medição</label>
+                        <input type="text" value="${escapeHTML(r.quanti_metodo || '')}" oninput="atualizarCampoRiscoEmEdicao('quanti_metodo', this.value)" placeholder="Ex: NHO-01 Fundacentro, Dosimetria..." style="${campoMini}">
+                    </div>
+                    <div>
+                        <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Conclusão da Medição</label>
+                        <select onchange="atualizarCampoRiscoEmEdicao('quanti_conclusao', this.value)" style="${campoMini}">
+                            <option value="">-- Não avaliado quantitativamente --</option>
+                            <option value="Abaixo do Nível de Ação" ${r.quanti_conclusao === 'Abaixo do Nível de Ação' ? 'selected' : ''}>🟢 Abaixo do Nível de Ação (< NA)</option>
+                            <option value="Entre o Nível de Ação e o Limite" ${r.quanti_conclusao === 'Entre o Nível de Ação e o Limite' ? 'selected' : ''}>🟡 Entre o Nível de Ação e o Limite (NA a LT)</option>
+                            <option value="Acima do Limite de Tolerância" ${r.quanti_conclusao === 'Acima do Limite de Tolerância' ? 'selected' : ''}>🔴 Acima do Limite de Tolerância (> LT)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        `;
+    }
+
+    if (subtab === 'epis') {
+        return `
+        <!-- Sub-aba 2: EPIs -->
+        <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
+            <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:10px;">🛡️ Equipamentos de Proteção Individual (NR-06 / eSocial S-2240)</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">EPIs Recomendados (Texto Descritivo Geral)</label>
+                    <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('epis_recomendados', this.value)" placeholder="Ex: Protetor auditivo concha CA 14470, Óculos de segurança CA 25714..." style="${campoMini}">${escapeHTML(r.epis_recomendados || '')}</textarea>
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Número do CA Principal</label>
+                    <input type="text" value="${escapeHTML(r.epi_ca || '')}" oninput="atualizarCampoRiscoEmEdicao('epi_ca', this.value)" placeholder="Ex: 14470" style="${campoMini} margin-bottom:8px;">
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Periodicidade de Troca / Higienização</label>
+                    <input type="text" value="${escapeHTML(r.epi_periodicidade || '')}" oninput="atualizarCampoRiscoEmEdicao('epi_periodicidade', this.value)" placeholder="Ex: Semestral / Quando danificado" style="${campoMini}">
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; border-top:1px solid var(--border); padding-top:10px;">
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">EPI é Eficaz na Atenuação? (S-2240)</label>
+                    <select onchange="atualizarCampoRiscoEmEdicao('epi_eficaz', this.value)" style="${campoMini}">
+                        <option value="">-- Não informado / Em avaliação --</option>
+                        <option value="S" ${r.epi_eficaz === 'S' ? 'selected' : ''}>Sim (Eficaz)</option>
+                        <option value="N" ${r.epi_eficaz === 'N' ? 'selected' : ''}>Não (Ineficaz)</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Uso / Funcionamento Conforme Norma?</label>
+                    <select onchange="atualizarCampoRiscoEmEdicao('epi_conformidade', this.value)" style="${campoMini}">
+                        <option value="">-- Não informado / Em avaliação --</option>
+                        <option value="S" ${r.epi_conformidade === 'S' ? 'selected' : ''}>Sim (Atendido)</option>
+                        <option value="N" ${r.epi_conformidade === 'N' ? 'selected' : ''}>Não</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Treinamento de Uso Ministrado?</label>
+                    <select onchange="atualizarCampoRiscoEmEdicao('epi_treinamento', this.value)" style="${campoMini}">
+                        <option value="">-- Não informado / Em avaliação --</option>
+                        <option value="S" ${r.epi_treinamento === 'S' ? 'selected' : ''}>Sim (Comprovado)</option>
+                        <option value="N" ${r.epi_treinamento === 'N' ? 'selected' : ''}>Não</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        `;
+    }
+
+    if (subtab === 'epcs') {
+        return `
+        <!-- Sub-aba 3: EPCs -->
+        <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
+            <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:10px;">🏭 Equipamentos de Proteção Coletiva (NR-01 / NR-09)</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">EPCs Recomendados / Existentes</label>
+                    <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('epcs_recomendados', this.value)" placeholder="Ex: Enclausuramento acústico, Exaustor de solda, Guarda-corpo..." style="${campoMini}">${escapeHTML(r.epcs_recomendados || '')}</textarea>
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Status de Operação do EPC</label>
+                    <select onchange="atualizarCampoRiscoEmEdicao('epc_status', this.value)" style="${campoMini} margin-bottom:8px;">
+                        <option value="">-- Não informado / Em avaliação --</option>
+                        <option value="Operacional" ${r.epc_status === 'Operacional' ? 'selected' : ''}>🟢 Operacional / Em Funcionamento</option>
+                        <option value="Em Manutenção" ${r.epc_status === 'Em Manutenção' ? 'selected' : ''}>🟡 Em Manutenção / Ajuste</option>
+                        <option value="Recomendado" ${r.epc_status === 'Recomendado' ? 'selected' : ''}>🔵 Recomendado / Não Instalado</option>
+                        <option value="Não Aplicável" ${r.epc_status === 'Não Aplicável' ? 'selected' : ''}>⚪ Não Aplicável</option>
+                    </select>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Periodicidade de Inspeção Preventiva</label>
+                    <input type="text" value="${escapeHTML(r.epc_inspecao || '')}" oninput="atualizarCampoRiscoEmEdicao('epc_inspecao', this.value)" placeholder="Ex: Mensal / Trimestral" style="${campoMini}">
+                </div>
+            </div>
+        </div>
+        `;
+    }
+
+    if (subtab === 'controles') {
+        return `
+        <!-- Sub-aba 4: Medidas de Controle -->
+        <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
+            <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:10px;">⚙️ Hierarquia das Medidas de Prevenção (NR-01 GRO - Item 1.4.1)</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Fontes Geradoras</label>
+                    <input type="text" value="${escapeHTML(r.fontes_geradoras || '')}" oninput="atualizarCampoRiscoEmEdicao('fontes_geradoras', this.value)" placeholder="Ex: Motores, Ambiente externo, Tráfego..." style="${campoMini}">
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Tempo / Tipo de Exposição</label>
+                    <input type="text" value="${escapeHTML(r.tipo_tempo_exposicao || '')}" oninput="atualizarCampoRiscoEmEdicao('tipo_tempo_exposicao', this.value)" placeholder="Ex: Habitual e intermitente (8h/dia)" style="${campoMini}">
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Situação Atual de Controle</label>
+                    <input type="text" value="${escapeHTML(r.situacao_controle || '')}" oninput="atualizarCampoRiscoEmEdicao('situacao_controle', this.value)" placeholder="Ex: Controlado por EPI, Monitorado..." style="${campoMini}">
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Descrição Detalhada do Risco / Atividade</label>
+                    <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('descricao', this.value)" placeholder="Descrição das condições operacionais e tarefas de exposição..." style="${campoMini}">${escapeHTML(r.descricao || '')}</textarea>
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Medidas de Prevenção Administrativas / Treinamentos</label>
+                    <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('sugestoes', this.value)" placeholder="Ex: Treinamento NR-06, Procedimento Operacional Padrão (POP), pausas programadas..." style="${campoMini}">${escapeHTML(r.sugestoes || '')}</textarea>
+                </div>
+            </div>
+        </div>
+        `;
+    }
+
+    if (subtab === 'laudos') {
+        return `
+        <!-- Sub-aba 5: Laudos e Monitoramentos -->
+        <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
+            <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:10px;">📋 Conclusões Periciais e Enquadramentos de Laudos</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Insalubridade (NR-15)</label>
+                    <select onchange="atualizarCampoRiscoEmEdicao('laudo_insalubridade', this.value)" style="${campoMini}">
+                        <option value="">-- Em avaliação / Não informado --</option>
+                        <option value="Não Enseja" ${r.laudo_insalubridade === 'Não Enseja' ? 'selected' : ''}>Não Enseja Insalubridade</option>
+                        <option value="Grau Mínimo (10%)" ${r.laudo_insalubridade === 'Grau Mínimo (10%)' ? 'selected' : ''}>Grau Mínimo (10%)</option>
+                        <option value="Grau Médio (20%)" ${r.laudo_insalubridade === 'Grau Médio (20%)' ? 'selected' : ''}>Grau Médio (20%)</option>
+                        <option value="Grau Máximo (40%)" ${r.laudo_insalubridade === 'Grau Máximo (40%)' ? 'selected' : ''}>Grau Máximo (40%)</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Periculosidade (NR-16)</label>
+                    <select onchange="atualizarCampoRiscoEmEdicao('laudo_periculosidade', this.value)" style="${campoMini}">
+                        <option value="">-- Em avaliação / Não informado --</option>
+                        <option value="Não Enseja" ${r.laudo_periculosidade === 'Não Enseja' ? 'selected' : ''}>Não Enseja Periculosidade</option>
+                        <option value="Enseja Periculosidade (30%)" ${r.laudo_periculosidade === 'Enseja Periculosidade (30%)' ? 'selected' : ''}>Enseja Periculosidade (30%)</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Aposentadoria Especial (LTCAT / S-2240)</label>
+                    <select onchange="atualizarCampoRiscoEmEdicao('laudo_aposentadoria', this.value)" style="${campoMini}">
+                        <option value="">-- Em avaliação / Não informado --</option>
+                        <option value="Não Enseja" ${r.laudo_aposentadoria === 'Não Enseja' ? 'selected' : ''}>Não Enseja Aposentadoria Especial</option>
+                        <option value="Especial 15 Anos" ${r.laudo_aposentadoria === 'Especial 15 Anos' ? 'selected' : ''}>Especial 15 Anos</option>
+                        <option value="Especial 20 Anos" ${r.laudo_aposentadoria === 'Especial 20 Anos' ? 'selected' : ''}>Especial 20 Anos</option>
+                        <option value="Especial 25 Anos" ${r.laudo_aposentadoria === 'Especial 25 Anos' ? 'selected' : ''}>Especial 25 Anos</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Responsável Técnico pelo Laudo</label>
+                    <input type="text" value="${escapeHTML(r.laudo_responsavel || '')}" oninput="atualizarCampoRiscoEmEdicao('laudo_responsavel', this.value)" placeholder="Ex: Eng. João Everton - CREA 0522078320" style="${campoMini}">
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Data da Última Avaliação Pericial</label>
+                    <input type="date" value="${escapeHTML(r.laudo_data || '')}" oninput="atualizarCampoRiscoEmEdicao('laudo_data', this.value)" style="${campoMini}">
+                </div>
+            </div>
+        </div>
+        `;
+    }
+
+    if (subtab === 'danos') {
+        return `
+        <!-- Sub-aba 6: Danos à Saúde e PCMSO -->
+        <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
+            <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:10px;">🏥 Danos Potenciais à Saúde e Integração PCMSO (NR-07)</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Possíveis Agravos / Danos à Saúde</label>
+                    <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('danos_saude', this.value)" placeholder="Ex: Perda Auditiva Induzida por Ruído (PAIR), cefaleia, fadiga, lombalgia..." style="${campoMini}">${escapeHTML(r.danos_saude || '')}</textarea>
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Exames Médicos Complementares Indicados (PCMSO)</label>
+                    <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('exames_pcmso', this.value)" placeholder="Ex: Audiometria tonal/vocal, Espirometria, Hemograma completo, Acuidade visual..." style="${campoMini}">${escapeHTML(r.exames_pcmso || '')}</textarea>
+                </div>
+            </div>
+            <div>
+                <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Códigos CID-10 Relacionados (Opcional)</label>
+                <input type="text" value="${escapeHTML(r.cid10_relacionado || '')}" oninput="atualizarCampoRiscoEmEdicao('cid10_relacionado', this.value)" placeholder="Ex: H83.3 (PAIR), M54.5 (Lombalgia), Z57 (Exposição ocupacional)..." style="${campoMini}">
+            </div>
+        </div>
+        `;
+    }
+
+    return '';
+}
+
+
+function atualizarCampoRiscoEmEdicao(campo, valor) {
+    if (!matrizRiscoEdicaoDraft) return;
+    matrizRiscoEdicaoDraft[campo] = valor;
+}
+
+function recalcularRiscoAtivo(idx) {
+    if (!matrizRiscoEdicaoDraft) return;
+    atualizarGravidadeCalculadaGhe(matrizRiscoEdicaoDraft);
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    const container = document.getElementById('matrizRiscoDetalhesContainer');
+    if (container && g) {
+        container.innerHTML = renderRiscoAtivoDetalhesHtml(g, matrizRiscoEdicaoDraft, idx);
+    }
+}
+
+function cancelarEdicaoRiscoGhe(idx) {
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (!g) return;
+
+    const riscoAtual = matrizGheRiscosTrabalho[idx];
+    if (!riscoAtual) return;
+
+    if (riscoAtual._isNovoNaoSalvo) {
+        matrizGheRiscosTrabalho.splice(idx, 1);
+        matrizRiscoDetalheSubtabAtiva = 'avaliacao';
+        if (matrizRiscoSelecionadoIdx >= matrizGheRiscosTrabalho.length) {
+            matrizRiscoSelecionadoIdx = Math.max(0, matrizGheRiscosTrabalho.length - 1);
+        }
+        inicializarDraftRisco(matrizGheRiscosTrabalho[matrizRiscoSelecionadoIdx] || null);
+        renderMatrizViewSetor();
+        return;
+    }
+
+    if (matrizRiscoEdicaoOriginal) {
+        matrizRiscoEdicaoDraft = JSON.parse(JSON.stringify(matrizRiscoEdicaoOriginal));
+        matrizGheRiscosTrabalho[idx] = JSON.parse(JSON.stringify(matrizRiscoEdicaoOriginal));
+    }
+    const container = document.getElementById('matrizRiscoDetalhesContainer');
+    if (container && g) {
+        container.innerHTML = renderRiscoAtivoDetalhesHtml(g, matrizRiscoEdicaoDraft, idx);
+    }
+    const statusEl = document.getElementById('matrizRiscoSaveStatus');
+    if (statusEl) { statusEl.textContent = '↩️ Alterações descartadas.'; statusEl.style.color = 'var(--text-light)'; }
+}
+
+async function salvarRiscoGheEmEdicao(idx) {
+    const statusEl = document.getElementById('matrizRiscoSaveStatus');
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (!g) return;
+
+    if (!matrizRiscoEdicaoDraft) {
+        if (statusEl) { statusEl.textContent = '❌ Nenhum risco em edição.'; statusEl.style.color = 'var(--danger)'; }
+        return;
+    }
+
+    const tipo = (matrizRiscoEdicaoDraft.tipo_agente || '').trim();
+    const agente = (matrizRiscoEdicaoDraft.agente || '').trim();
+    if (!tipo) {
+        alert('Por favor, selecione o Tipo de Agente (Físico, Químico, Biológico, Ergonômico ou Acidentes).');
+        document.getElementById('riscoEdit_tipo')?.focus();
+        return;
+    }
+    if (!agente) {
+        alert('Por favor, informe o nome do Agente / Fator de Risco.');
+        document.getElementById('riscoEdit_agente')?.focus();
+        return;
+    }
+    if (!matrizRiscoEdicaoDraft.probabilidade || !matrizRiscoEdicaoDraft.severidade) {
+        alert('Por favor, defina a Probabilidade (1 a 5) e a Severidade/Efeito (1 a 5) da Metodologia AIHA.');
+        return;
+    }
+
+    if (statusEl) { statusEl.textContent = 'Salvando...'; statusEl.style.color = 'var(--text-light)'; }
+
+    atualizarGravidadeCalculadaGhe(matrizRiscoEdicaoDraft);
+    const riscoParaSalvar = JSON.parse(JSON.stringify(matrizRiscoEdicaoDraft));
+    const eraNovo = !!riscoParaSalvar._isNovoNaoSalvo;
+    delete riscoParaSalvar._isNovoNaoSalvo;
+    delete riscoParaSalvar._origIndex;
+
+    let riscosParaPersistir = Array.isArray(g.riscos) ? JSON.parse(JSON.stringify(g.riscos)) : [];
+
+    if (eraNovo) {
+        riscosParaPersistir.push(riscoParaSalvar);
+    } else {
+        let indexExistente = -1;
+        if (typeof matrizRiscoEdicaoDraft._origIndex === 'number' && matrizRiscoEdicaoDraft._origIndex >= 0 && matrizRiscoEdicaoDraft._origIndex < riscosParaPersistir.length) {
+            indexExistente = matrizRiscoEdicaoDraft._origIndex;
+        } else if (riscoParaSalvar.id) {
+            indexExistente = riscosParaPersistir.findIndex(r => r.id === riscoParaSalvar.id);
+        } else {
+            indexExistente = riscosParaPersistir.findIndex(r => r.agente === (matrizRiscoEdicaoOriginal?.agente || riscoParaSalvar.agente) && r.tipo_agente === (matrizRiscoEdicaoOriginal?.tipo_agente || riscoParaSalvar.tipo_agente));
+        }
+
+        if (indexExistente >= 0) {
+            riscosParaPersistir[indexExistente] = riscoParaSalvar;
+        } else {
+            riscosParaPersistir.push(riscoParaSalvar);
+        }
+    }
+
+    try {
+        const payload = [{
+            id: g.id,
+            nome: g.nome,
+            cargos: g.cargos || [],
+            quantidade_oficial: g.quantidade_oficial || 0,
+            riscos: riscosParaPersistir,
+            conclusoes: g.conclusoes || {},
+            updated_at: new Date().toISOString()
+        }];
+
+        await supabaseUpsert('ghe_catalogo', payload);
+
+        g.riscos = riscosParaPersistir;
+        carregarRiscosTrabalhoDoGhe(g);
+        if (matrizGheRiscosTrabalho[idx]) {
+            inicializarDraftRisco(matrizGheRiscosTrabalho[idx]);
+        }
+
+        if (statusEl) { statusEl.textContent = '✅ Salvo com sucesso!'; statusEl.style.color = 'var(--success)'; }
+        renderMatrizViewSetor();
+    } catch (err) {
+        console.error('Erro ao salvar risco do GHE:', err);
+        if (statusEl) { statusEl.textContent = '❌ Falha ao salvar: ' + err.message; statusEl.style.color = 'var(--danger)'; }
+    }
+}
+
+function imprimirInventarioRiscosGheAtual() {
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (!g) {
+        alert('Selecione um Setor / GHE para emitir o Inventário de Riscos.');
+        return;
+    }
+    const htmlDoc = gerarHtmlInventarioRiscosGhe(g);
+    abrirDocumentoHtmlParaImpressao(htmlDoc, `Inventário de Riscos - GHE ${g.id}`);
+}
+
+function gerarHtmlInventarioRiscosGhe(g) {
+    const riscos = Array.isArray(g.riscos) ? g.riscos : [];
+    const cargos = Array.isArray(g.cargos) ? g.cargos : [];
+    const dataElab = g.data_inicio ? formatSimpleDate(g.data_inicio) : (g.data_elaboracao ? formatSimpleDate(g.data_elaboracao) : 'Não informada');
+    const dataVal = g.data_validade ? formatSimpleDate(g.data_validade) : 'Não informada';
+
+    return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <title>Inventário Geral de Riscos Ocupacionais (PGR) — ${escapeHTML(g.id)}</title>
+        <style>
+            @page { size: A4 landscape; margin: 10mm; }
+            body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10pt; color: #1e293b; margin: 0; padding: 15px; }
+            .header-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; border: 1.5px solid #0f172a; }
+            .header-table td { padding: 6px 10px; font-size: 9pt; }
+            .title { font-size: 13pt; font-weight: 800; text-align: center; color: #0f172a; }
+            .sub-title { font-size: 9pt; text-align: center; color: #475569; font-weight: 600; }
+            .table-riscos { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 8.5pt; }
+            .table-riscos th, .table-riscos td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; vertical-align: top; }
+            .table-riscos th { background: #f1f5f9; font-weight: 700; color: #0f172a; }
+            .badge-grav { padding: 3px 6px; border-radius: 4px; font-weight: 700; font-size: 8pt; display: inline-block; }
+            .footer-assinaturas { margin-top: 25px; display: flex; justify-content: space-around; text-align: center; font-size: 8.5pt; }
+            .linha-ass { width: 220px; border-top: 1px solid #0f172a; padding-top: 4px; }
+        </style>
+    </head>
+    <body>
+        <table class="header-table">
+            <tr>
+                <td style="width: 20%; text-align: center; border-right: 1.5px solid #0f172a;">
+                    <img src="${LOGO_COP_BASE64}" alt="Logo" style="max-height: 40px;">
+                </td>
+                <td style="width: 60%; border-right: 1.5px solid #0f172a;">
+                    <div class="title">INVENTÁRIO GERAL DE RISCOS OCUPACIONAIS — PGR</div>
+                    <div class="sub-title">Programa de Gerenciamento de Riscos (NR-01 GRO) — Metodologia AIHA</div>
+                </td>
+                <td style="width: 20%;">
+                    <div><b>Vigência:</b> ${dataElab} a ${dataVal}</div>
+                    <div><b>Emissão:</b> ${formatSimpleDate(new Date())}</div>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="3" style="border-top: 1px solid #0f172a; background: #f8fafc;">
+                    <b>EMPRESA:</b> ${escapeHTML(EMPRESA_INFO?.razaoSocial || '')} &nbsp;|&nbsp; <b>CNPJ:</b> ${escapeHTML(EMPRESA_INFO?.cnpj || '')} &nbsp;|&nbsp; <b>SETOR / GHE:</b> ${escapeHTML(g.id)} — ${escapeHTML(g.nome)}
+                </td>
+            </tr>
+        </table>
+
+        <div style="font-size: 9pt; margin-bottom: 6px;">
+            <b>Cargos Abrangidos:</b> ${cargos.map(c => `${escapeHTML(c.cargo || c.funcao)} (CBO ${escapeHTML(c.cbo || '—')})`).join('; ') || 'Nenhum cargo especificado'}
+        </div>
+
+        <table class="table-riscos">
+            <thead>
+                <tr>
+                    <th style="width: 8%;">Tipo</th>
+                    <th style="width: 14%;">Agente / Fator de Risco</th>
+                    <th style="width: 8%;">Cód. eSocial</th>
+                    <th style="width: 14%;">Fonte Geradora / Exposição</th>
+                    <th style="width: 8%; text-align: center;">P × S (AIHA)</th>
+                    <th style="width: 10%; text-align: center;">Nível de Risco</th>
+                    <th style="width: 18%;">Possíveis Danos à Saúde</th>
+                    <th style="width: 20%;">Medidas de Prevenção / EPIs</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${riscos.length === 0 ? '<tr><td colspan="8" style="text-align:center; padding:15px;">Não foram identificados riscos significativos para este grupo.</td></tr>' : riscos.map(r => {
+                    const grav = NIVEIS_RISCO_COR[r.gravidade_label] || '#475569';
+                    return `
+                    <tr>
+                        <td><b>${escapeHTML(r.tipo_agente || '—')}</b></td>
+                        <td><b>${escapeHTML(r.agente || '—')}</b></td>
+                        <td>${escapeHTML(r.esocial_codigo || '—')}</td>
+                        <td>${escapeHTML(r.fontes_geradoras || '—')}<br><small style="color:#64748b;">${escapeHTML(r.tipo_tempo_exposicao || '')}</small></td>
+                        <td style="text-align:center;">${r.probabilidade || '—'} × ${r.severidade || '—'}</td>
+                        <td style="text-align:center;">
+                            <span class="badge-grav" style="background:${grav}22; color:${grav}; border:1px solid ${grav};">
+                                ${escapeHTML(r.gravidade_label || 'Trivial')}
+                            </span>
+                        </td>
+                        <td>${escapeHTML(r.danos_saude || '—')}</td>
+                        <td>
+                            ${r.sugestoes ? `<div><b>Prevenção:</b> ${escapeHTML(r.sugestoes)}</div>` : ''}
+                            ${r.epis_recomendados ? `<div style="margin-top:3px;"><b>EPI:</b> ${escapeHTML(r.epis_recomendados)}</div>` : ''}
+                        </td>
+                    </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+
+        <div class="footer-assinaturas">
+            <div class="linha-ass">
+                <b>JOÃO EVERTON DE SOUZA LIMEIRA</b><br>
+                Engenheiro de Segurança do Trabalho<br>
+                CREA: 0522078320
+            </div>
+            <div class="linha-ass">
+                <b>CONSORCIO OPERADOR RAMAL DO AGRESTE</b><br>
+                Diretoria / Gestão Operacional
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+}
 function renderMatrizRiscoPanel() {
+    if (typeof popularMatrizRiscoGheSelect === 'function') popularMatrizRiscoGheSelect();
     const riscos = todosRiscosGhe();
 
     document.getElementById('kpiRiscoTotal').textContent = riscos.length;
@@ -1015,10 +1212,8 @@ function renderMatrizRiscoPanel() {
     }
 }
 
-function irParaGheDaMatriz(gheId) {
-    showDbPage('efetivo');
-    showEfetivoSubtab('ghe');
-    abrirGerenciarGhe(gheId);
+function irParaGheDaMatriz(gheId, riscoIdx) {
+    selecionarGheMatrizRisco(gheId, riscoIdx);
 }
 
 // Recalcula gravidade/gravidade_label de TODOS os riscos de GHE já cadastrados usando a

@@ -207,6 +207,13 @@ function inicializarDraftRisco(r) {
     }
     matrizRiscoEdicaoOriginal = JSON.parse(JSON.stringify(r));
     matrizRiscoEdicaoDraft = JSON.parse(JSON.stringify(r));
+    // Normaliza sincronização ao abrir/carregar o draft: se houver coleções estruturadas com itens, alinha legados com o 1º item; se vazias, preserva legados
+    sincronizarEpiCaPrincipalLegado(false);
+    sincronizarEpcPrincipalLegado(false);
+    sincronizarMedicaoPrincipalLegada(false);
+    sincronizarExamesPcmsoLegado(false);
+    sincronizarCidsLegado(false);
+    sincronizarMedidasLegado(false);
 }
 
 function showMatrizSubtab(tab) {
@@ -622,6 +629,18 @@ function trocarSubtabDetalheRisco(subtab, idx) {
 
     if (container && matrizRiscoEdicaoDraft) {
         container.innerHTML = renderConteudoSubtabDetalheRisco(matrizRiscoEdicaoDraft, idx, subtab);
+        if (subtab === 'epis') {
+            configurarListenersTabelaEpis(idx);
+        } else if (subtab === 'epcs') {
+            configurarListenersTabelaEpcs(idx);
+        } else if (subtab === 'avaliacao') {
+            configurarListenersTabelaMedicoes(idx);
+        } else if (subtab === 'danos') {
+            configurarListenersTabelaExames(idx);
+            configurarListenersTabelaCids(idx);
+        } else if (subtab === 'controles') {
+            configurarListenersTabelaMedidas(idx);
+        }
     }
 }
 
@@ -631,9 +650,26 @@ function renderConteudoSubtabDetalheRisco(r, idx, subtab) {
     const corGrav = nivel.cor || '#888888';
 
     if (subtab === 'avaliacao') {
+        const medicoesLista = Array.isArray(r.medicoes_lista) ? r.medicoes_lista : [];
+        if (medicoesLista.length > 0) {
+            const itemRecente = ordenarMedicoesDecrescente(medicoesLista)[0];
+            if (itemRecente) {
+                r.quanti_valor = (itemRecente.valor || '').trim();
+                r.quanti_unidade = itemRecente.unidade === 'Outro' ? (itemRecente.unidade_custom || 'Outro') : (itemRecente.unidade || '').trim();
+                r.quanti_limite = (itemRecente.limite || '').trim();
+                r.quanti_nivel_acao = (itemRecente.nivel_acao || '').trim();
+                r.quanti_metodo = (itemRecente.metodo || '').trim();
+                r.quanti_conclusao = (itemRecente.conclusao || '').trim();
+            }
+        }
+        const temDadosLegadosQuanti = (r.quanti_valor || r.quanti_unidade || r.quanti_limite || r.quanti_nivel_acao || r.quanti_metodo || r.quanti_conclusao);
+        const ordenadas = ordenarMedicoesDecrescente(medicoesLista);
+        const unidadesPadrao = ['dB(A)', 'dB(C)', 'm/s²', 'm/s^1.75', 'ppm', 'mg/m³', '°C', 'lx', 'Outro'];
+        const conclusoesPadrao = ['', 'Abaixo do Nível de Ação', 'Entre o Nível de Ação e o Limite', 'Acima do Limite de Tolerância'];
+
         return `
         <!-- Sub-aba 1: Avaliação Qualitativa (AIHA) & Quantitativa (NR-15/NHO) -->
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
             <!-- Qualitativa AIHA -->
             <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
                 <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
@@ -655,12 +691,54 @@ function renderConteudoSubtabDetalheRisco(r, idx, subtab) {
                 </div>
             </div>
 
-            <!-- Quantitativa NR-15 / NR-09 / NHO -->
+            <!-- Síntese da Avaliação Quantitativa (Campos Legados / SGG) -->
             <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
-                <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                    <span>📊 Avaliação Quantitativa (Higiene Ocupacional)</span>
-                    <span style="font-size:11px; color:var(--text-light); font-weight:normal;">NR-15 / NHO</span>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+                    <div style="font-size:12px; font-weight:700; color:var(--text);">
+                        <span>📊 Síntese Quantitativa (Vigente / SGG)</span>
+                    </div>
+                    ${(temDadosLegadosQuanti && medicoesLista.length === 0) ? `
+                    <button type="button" class="db-clear-btn" onclick="importarMedicaoLegadaParaLista(${idx})" style="font-size:11px; padding:3px 8px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">
+                        📥 Importar medição atual para o histórico
+                    </button>
+                    ` : ''}
                 </div>
+
+                ${medicoesLista.length > 0 ? `
+                <div style="font-size:10px; color:var(--primary); font-weight:600; margin-bottom:6px;">
+                    🔗 Sincronizado automaticamente com a ${ordenadas[0]?.data ? 'medição mais recente' : 'medição de referência'} do histórico abaixo
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:6px;">
+                    <div>
+                        <label style="font-size:10px; color:var(--text-light); display:block;">Valor Medido</label>
+                        <input type="text" id="matrizRiscoInputQuantiValor" value="${escapeHTML(r.quanti_valor || '')}" readonly style="${campoMini} background:var(--card-bg, #f8fafc); cursor:not-allowed; opacity:0.85;">
+                    </div>
+                    <div>
+                        <label style="font-size:10px; color:var(--text-light); display:block;">Unidade</label>
+                        <input type="text" id="matrizRiscoInputQuantiUnidade" value="${escapeHTML(r.quanti_unidade || '')}" readonly style="${campoMini} background:var(--card-bg, #f8fafc); cursor:not-allowed; opacity:0.85;">
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:6px;">
+                    <div>
+                        <label style="font-size:10px; color:var(--text-light); display:block;">Limite (NR-15 / ACGIH)</label>
+                        <input type="text" id="matrizRiscoInputQuantiLimite" value="${escapeHTML(r.quanti_limite || '')}" readonly style="${campoMini} background:var(--card-bg, #f8fafc); cursor:not-allowed; opacity:0.85;">
+                    </div>
+                    <div>
+                        <label style="font-size:10px; color:var(--text-light); display:block;">Nível de Ação (NR-09)</label>
+                        <input type="text" id="matrizRiscoInputQuantiNA" value="${escapeHTML(r.quanti_nivel_acao || '')}" readonly style="${campoMini} background:var(--card-bg, #f8fafc); cursor:not-allowed; opacity:0.85;">
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                    <div>
+                        <label style="font-size:10px; color:var(--text-light); display:block;">Método / Norma</label>
+                        <input type="text" id="matrizRiscoInputQuantiMetodo" value="${escapeHTML(r.quanti_metodo || '')}" readonly style="${campoMini} background:var(--card-bg, #f8fafc); cursor:not-allowed; opacity:0.85;">
+                    </div>
+                    <div>
+                        <label style="font-size:10px; color:var(--text-light); display:block;">Conclusão Pericial</label>
+                        <input type="text" id="matrizRiscoInputQuantiConclusao" value="${escapeHTML(r.quanti_conclusao || '')}" readonly style="${campoMini} background:var(--card-bg, #f8fafc); cursor:not-allowed; opacity:0.85;">
+                    </div>
+                </div>
+                ` : `
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
                     <div>
                         <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Valor Medido</label>
@@ -679,6 +757,7 @@ function renderConteudoSubtabDetalheRisco(r, idx, subtab) {
                             <option value="°C" ${r.quanti_unidade === '°C' ? 'selected' : ''}>°C (IBUTG - Calor)</option>
                             <option value="lx" ${r.quanti_unidade === 'lx' ? 'selected' : ''}>lx (Iluminamento)</option>
                             <option value="Outro" ${r.quanti_unidade === 'Outro' ? 'selected' : ''}>Outro</option>
+                            ${(r.quanti_unidade && !unidadesPadrao.includes(r.quanti_unidade)) ? `<option value="${escapeHTML(r.quanti_unidade)}" selected>${escapeHTML(r.quanti_unidade)} (Personalizada)</option>` : ''}
                         </select>
                     </div>
                 </div>
@@ -704,7 +783,155 @@ function renderConteudoSubtabDetalheRisco(r, idx, subtab) {
                             <option value="Abaixo do Nível de Ação" ${r.quanti_conclusao === 'Abaixo do Nível de Ação' ? 'selected' : ''}>🟢 Abaixo do Nível de Ação (< NA)</option>
                             <option value="Entre o Nível de Ação e o Limite" ${r.quanti_conclusao === 'Entre o Nível de Ação e o Limite' ? 'selected' : ''}>🟡 Entre o Nível de Ação e o Limite (NA a LT)</option>
                             <option value="Acima do Limite de Tolerância" ${r.quanti_conclusao === 'Acima do Limite de Tolerância' ? 'selected' : ''}>🔴 Acima do Limite de Tolerância (> LT)</option>
+                            ${(r.quanti_conclusao && !conclusoesPadrao.includes(r.quanti_conclusao)) ? `<option value="${escapeHTML(r.quanti_conclusao)}" selected>${escapeHTML(r.quanti_conclusao)}</option>` : ''}
                         </select>
+                    </div>
+                </div>
+                `}
+            </div>
+        </div>
+
+        <!-- Tabela Estruturada de Histórico de Amostragens / Medições Quantitativas -->
+        <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                <div style="font-size:12px; font-weight:700; color:var(--text);">📊 Histórico de Amostragens / Medições Quantitativas (${medicoesLista.length})</div>
+                <div style="font-size:10.5px; color:var(--text-light);">A medição mais recente no topo sincroniza os campos de quantitativa da empresa</div>
+            </div>
+
+            <div style="margin-bottom:14px; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
+                ${ordenadas.length === 0 ? `
+                <div style="padding:14px; text-align:center; font-size:11.5px; color:var(--text-light); background:var(--card-bg, #fff);">
+                    Nenhuma medição estruturada registrada no histórico. Utilize o formulário abaixo para registrar novas dosimetrias ou amostragens.
+                </div>
+                ` : `
+                <div id="tabelaMedicoesContainer" style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+                        <thead>
+                            <tr style="background:var(--bg); color:var(--text-light); text-align:left; border-bottom:1px solid var(--border);">
+                                <th style="padding:6px 8px; width:125px;">Data Amostragem</th>
+                                <th style="padding:6px 8px; width:95px;">Valor</th>
+                                <th style="padding:6px 8px; width:125px;">Unidade</th>
+                                <th style="padding:6px 8px; width:130px;">Limite (LT) / NA</th>
+                                <th style="padding:6px 8px;">Método / Norma</th>
+                                <th style="padding:6px 8px; width:160px;">Conclusão Pericial</th>
+                                <th style="padding:6px 8px; width:140px;">Resp. Técnico / Laboratório / Aparelho</th>
+                                <th style="padding:6px 6px; width:40px; text-align:center;">Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${ordenadas.map((item, i) => `
+                            <tr data-uid="${escapeHTML(item.uid)}" style="border-bottom:1px solid var(--border); background:${i % 2 === 0 ? 'var(--card-bg, #fff)' : 'var(--bg)'};">
+                                <td style="padding:6px 8px;">
+                                    <input type="date" data-med-campo="data" class="med-item-field" value="${escapeHTML(item.data || '')}" style="${campoMini} font-weight:700;">
+                                    ${(i === 0 && item.data) ? '<span style="font-size:9.5px; color:var(--primary); display:block; margin-top:2px; font-weight:600;">★ Mais Recente</span>' : ''}
+                                    ${!item.data ? '<span style="font-size:9.5px; color:#b45309; display:block; margin-top:1px; font-weight:600;">⚠️ Data não informada (recência desconhecida)</span>' : ''}
+                                </td>
+                                <td style="padding:6px 8px;">
+                                    <input type="text" data-med-campo="valor" class="med-item-field" value="${escapeHTML(item.valor || '')}" placeholder="Ex: 84.2" style="${campoMini} font-weight:700;">
+                                </td>
+                                <td style="padding:6px 8px;">
+                                    <select data-med-campo="unidade" class="med-item-field" style="${campoMini}">
+                                        <option value="">-- Unidade --</option>
+                                        <option value="dB(A)" ${item.unidade === 'dB(A)' ? 'selected' : ''}>dB(A)</option>
+                                        <option value="dB(C)" ${item.unidade === 'dB(C)' ? 'selected' : ''}>dB(C)</option>
+                                        <option value="m/s²" ${item.unidade === 'm/s²' ? 'selected' : ''}>m/s²</option>
+                                        <option value="m/s^1.75" ${item.unidade === 'm/s^1.75' ? 'selected' : ''}>m/s^1.75</option>
+                                        <option value="ppm" ${item.unidade === 'ppm' ? 'selected' : ''}>ppm</option>
+                                        <option value="mg/m³" ${item.unidade === 'mg/m³' ? 'selected' : ''}>mg/m³</option>
+                                        <option value="°C" ${item.unidade === '°C' ? 'selected' : ''}>°C</option>
+                                        <option value="lx" ${item.unidade === 'lx' ? 'selected' : ''}>lx</option>
+                                        <option value="Outro" ${item.unidade === 'Outro' ? 'selected' : ''}>Outro...</option>
+                                        ${(item.unidade && !unidadesPadrao.includes(item.unidade)) ? `<option value="${escapeHTML(item.unidade)}" selected>${escapeHTML(item.unidade)}</option>` : ''}
+                                    </select>
+                                    <input type="text" data-med-campo="unidade_custom" class="med-item-field" value="${escapeHTML(item.unidade_custom || '')}" placeholder="Especifique a unidade..." style="${campoMini} margin-top:3px; display:${item.unidade === 'Outro' ? 'block' : 'none'};">
+                                </td>
+                                <td style="padding:6px 8px;">
+                                    <input type="text" data-med-campo="limite" class="med-item-field" value="${escapeHTML(item.limite || '')}" placeholder="LT (ex: 85 dB)" style="${campoMini} margin-bottom:2px;">
+                                    <input type="text" data-med-campo="nivel_acao" class="med-item-field" value="${escapeHTML(item.nivel_acao || '')}" placeholder="NA (ex: 80 dB)" style="${campoMini}">
+                                </td>
+                                <td style="padding:6px 8px;">
+                                    <input type="text" data-med-campo="metodo" class="med-item-field" value="${escapeHTML(item.metodo || '')}" placeholder="Ex: NHO-01 Fundacentro, Dosimetria..." style="${campoMini}">
+                                </td>
+                                <td style="padding:6px 8px;">
+                                    <select data-med-campo="conclusao" class="med-item-field" style="${campoMini}">
+                                        <option value="">-- Não avaliado --</option>
+                                        <option value="Abaixo do Nível de Ação" ${item.conclusao === 'Abaixo do Nível de Ação' ? 'selected' : ''}>🟢 < NA</option>
+                                        <option value="Entre o Nível de Ação e o Limite" ${item.conclusao === 'Entre o Nível de Ação e o Limite' ? 'selected' : ''}>🟡 NA a LT</option>
+                                        <option value="Acima do Limite de Tolerância" ${item.conclusao === 'Acima do Limite de Tolerância' ? 'selected' : ''}>🔴 > LT</option>
+                                        ${(item.conclusao && !conclusoesPadrao.includes(item.conclusao)) ? `<option value="${escapeHTML(item.conclusao)}" selected>${escapeHTML(item.conclusao)}</option>` : ''}
+                                    </select>
+                                </td>
+                                <td style="padding:6px 8px;">
+                                    <input type="text" data-med-campo="laboratorio" class="med-item-field" value="${escapeHTML(item.laboratorio || '')}" placeholder="Higienista / Aparelho / Lab..." style="${campoMini}">
+                                </td>
+                                <td style="padding:6px 6px; text-align:center;">
+                                    <button type="button" class="btn-remover-med-item" data-uid="${escapeHTML(item.uid)}" title="Remover esta medição" style="border:none; background:transparent; color:var(--danger); cursor:pointer; font-size:14px; padding:4px;">🗑️</button>
+                                </td>
+                            </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                `}
+
+                <!-- Card de Adição Rápida de Medição Responsivo -->
+                <div style="background:var(--bg); padding:10px; border-top:1px solid var(--border);">
+                    <div style="font-size:11px; font-weight:700; color:var(--text); margin-bottom:8px;">➕ Registrar Nova Medição / Amostragem:</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; margin-bottom:8px;">
+                        <div style="flex:1 1 125px; min-width:115px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Data da Amostragem</label>
+                            <input type="date" id="novaMed_data" style="${campoMini}">
+                        </div>
+                        <div style="flex:1 1 95px; min-width:85px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Valor Medido *</label>
+                            <input type="text" id="novaMed_valor" placeholder="Ex: 84.2" style="${campoMini} font-weight:700;">
+                        </div>
+                        <div style="flex:1 1 130px; min-width:115px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Unidade</label>
+                            <select id="novaMed_unidade" onchange="const el = document.getElementById('novaMed_unidade_custom'); if(el) { el.style.display = this.value === 'Outro' ? 'block' : 'none'; if(this.value !== 'Outro') el.value = ''; }" style="${campoMini}">
+                                <option value="">-- Selecione --</option>
+                                <option value="dB(A)">dB(A) (Ruído contínuo)</option>
+                                <option value="dB(C)">dB(C) (Ruído impacto)</option>
+                                <option value="m/s²">m/s² (aren - Vibração)</option>
+                                <option value="m/s^1.75">m/s^1.75 (VDVR)</option>
+                                <option value="ppm">ppm (Gases/Vapores)</option>
+                                <option value="mg/m³">mg/m³ (Poeiras/Fumos)</option>
+                                <option value="°C">°C (IBUTG - Calor)</option>
+                                <option value="lx">lx (Iluminamento)</option>
+                                <option value="Outro">Outro...</option>
+                            </select>
+                            <input type="text" id="novaMed_unidade_custom" placeholder="Especifique a unidade..." style="${campoMini} margin-top:3px; display:none;">
+                        </div>
+                        <div style="flex:1 1 120px; min-width:105px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Limite (NR-15/TLV)</label>
+                            <input type="text" id="novaMed_limite" placeholder="Ex: 85 dB(A)" style="${campoMini}">
+                        </div>
+                        <div style="flex:1 1 120px; min-width:105px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Nível de Ação (NR-09)</label>
+                            <input type="text" id="novaMed_nivel_acao" placeholder="Ex: 80 dB(A)" style="${campoMini}">
+                        </div>
+                        <div style="flex:1 1 150px; min-width:130px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Método / Norma</label>
+                            <input type="text" id="novaMed_metodo" placeholder="Ex: NHO-01 Fundacentro..." style="${campoMini}">
+                        </div>
+                        <div style="flex:1 1 150px; min-width:130px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Conclusão Pericial</label>
+                            <select id="novaMed_conclusao" style="${campoMini}">
+                                <option value="">-- Não informado --</option>
+                                <option value="Abaixo do Nível de Ação">🟢 Abaixo do Nível de Ação (< NA)</option>
+                                <option value="Entre o Nível de Ação e o Limite">🟡 Entre o Nível de Ação e o Limite (NA a LT)</option>
+                                <option value="Acima do Limite de Tolerância">🔴 Acima do Limite de Tolerância (> LT)</option>
+                            </select>
+                        </div>
+                        <div style="flex:1 1 150px; min-width:130px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Resp. Técnico / Lab / Aparelho</label>
+                            <input type="text" id="novaMed_laboratorio" placeholder="Higienista / Dosímetro..." style="${campoMini}">
+                        </div>
+                        <div style="flex:0 0 auto;">
+                            <button type="button" class="db-apply-btn" onclick="adicionarMedicaoNaListaRisco(${idx})" style="font-size:11.5px; padding:6px 14px; height:31px; white-space:nowrap;">
+                                ➕ Inserir Medição
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -713,49 +940,169 @@ function renderConteudoSubtabDetalheRisco(r, idx, subtab) {
     }
 
     if (subtab === 'epis') {
+        const episLista = Array.isArray(r.epis_lista) ? r.epis_lista : [];
+        if (episLista.length > 0) {
+            r.epi_ca = (episLista[0].ca || '').trim();
+        }
         return `
         <!-- Sub-aba 2: EPIs -->
         <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
-            <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:10px;">🛡️ Equipamentos de Proteção Individual (NR-06 / eSocial S-2240)</div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
-                <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">EPIs Recomendados (Texto Descritivo Geral)</label>
-                    <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('epis_recomendados', this.value)" placeholder="Ex: Protetor auditivo concha CA 14470, Óculos de segurança CA 25714..." style="${campoMini}">${escapeHTML(r.epis_recomendados || '')}</textarea>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                <div style="font-size:12px; font-weight:700; color:var(--text);">🛡️ Equipamentos de Proteção Individual (NR-06 / eSocial S-2240)</div>
+                ${(r.epi_ca && episLista.length === 0) ? `
+                <button type="button" class="db-clear-btn" onclick="importarEpiLegadoParaLista(${idx})" style="font-size:11px; padding:4px 10px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">
+                    📥 Importar CA principal legado (${escapeHTML(r.epi_ca)}) para a lista
+                </button>
+                ` : ''}
+            </div>
+
+            <!-- Tabela Estruturada de Múltiplos EPIs Vinculados -->
+            <div style="margin-bottom:14px; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
+                <div style="background:var(--bg); padding:8px 12px; font-size:11.5px; font-weight:700; color:var(--text); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+                    <span>📋 Relação Estruturada de EPIs vinculados a este Risco (${episLista.length})</span>
+                    <span style="font-size:10px; font-weight:normal; color:var(--text-light);">O primeiro item sincroniza o CA principal legado</span>
                 </div>
-                <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Número do CA Principal <span style="font-size:10px; font-weight:normal; color:var(--primary);">(pesquise pelo CA ou nome do EPI)</span></label>
-                    <div style="position:relative; margin-bottom:8px;">
-                        <input type="text" id="matrizRiscoInputCa" value="${escapeHTML(r.epi_ca || '')}" oninput="aoDigitarCaEpi(this)" onfocus="aoFocarCaEpi(this)" onblur="fecharMenuSugestoesCa()" autocomplete="off" placeholder="Digite o CA ou busque por descrição (ex: 14470, óculos, concha...)" style="${campoMini}">
-                        <div id="matrizRiscoCaSugestoesContainer" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:999; background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,0.18); margin-top:2px;"></div>
+
+                ${episLista.length === 0 ? `
+                <div style="padding:14px; text-align:center; font-size:11.5px; color:var(--text-light); background:var(--card-bg, #fff);">
+                    Nenhum EPI estruturado adicionado na lista. Utilize o formulário abaixo para vincular múltiplos EPIs com CAs individuais.
+                </div>
+                ` : `
+                <div id="tabelaEpisContainer" style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+                        <thead>
+                            <tr style="background:var(--bg); color:var(--text-light); text-align:left; border-bottom:1px solid var(--border);">
+                                <th style="padding:6px 8px; width:110px;">CA</th>
+                                <th style="padding:6px 8px;">Equipamento / Descrição</th>
+                                <th style="padding:6px 8px; width:120px;">Periodicidade</th>
+                                <th style="padding:6px 6px; width:110px;">Eficaz? (S-2240)</th>
+                                <th style="padding:6px 6px; width:110px;">Atende Norma?</th>
+                                <th style="padding:6px 6px; width:110px;">Treinado?</th>
+                                <th style="padding:6px 6px; width:40px; text-align:center;">Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${episLista.map((item, i) => `
+                            <tr data-uid="${escapeHTML(item.uid)}" style="border-bottom:1px solid var(--border); background:${i % 2 === 0 ? 'var(--card-bg, #fff)' : 'var(--bg)'};">
+                                <td style="padding:6px 8px;">
+                                    <input type="text" data-epi-campo="ca" class="epi-item-field" value="${escapeHTML(item.ca || '')}" placeholder="CA" style="${campoMini} font-weight:700;">
+                                    ${i === 0 ? '<span style="font-size:9.5px; color:var(--primary); display:block; margin-top:2px; font-weight:600;">★ Principal</span>' : ''}
+                                </td>
+                                <td style="padding:6px 8px;">
+                                    <input type="text" data-epi-campo="descricao" class="epi-item-field" value="${escapeHTML(item.descricao || '')}" placeholder="Descrição do EPI" style="${campoMini}">
+                                    ${item.epi_catalogo_id ? `<span style="font-size:9.5px; color:var(--text-light); display:block; margin-top:2px;">Cód. ${escapeHTML(item.epi_catalogo_id)}</span>` : ''}
+                                </td>
+                                <td style="padding:6px 8px;">
+                                    <input type="text" data-epi-campo="periodicidade" class="epi-item-field" value="${escapeHTML(item.periodicidade || '')}" placeholder="Ex: Semestral" style="${campoMini}">
+                                </td>
+                                <td style="padding:6px 6px;">
+                                    <select data-epi-campo="eficaz" class="epi-item-field" style="${campoMini}">
+                                        <option value="">--</option>
+                                        <option value="S" ${item.eficaz === 'S' ? 'selected' : ''}>Sim</option>
+                                        <option value="N" ${item.eficaz === 'N' ? 'selected' : ''}>Não</option>
+                                    </select>
+                                </td>
+                                <td style="padding:6px 6px;">
+                                    <select data-epi-campo="conformidade" class="epi-item-field" style="${campoMini}">
+                                        <option value="">--</option>
+                                        <option value="S" ${item.conformidade === 'S' ? 'selected' : ''}>Sim</option>
+                                        <option value="N" ${item.conformidade === 'N' ? 'selected' : ''}>Não</option>
+                                    </select>
+                                </td>
+                                <td style="padding:6px 6px;">
+                                    <select data-epi-campo="treinamento" class="epi-item-field" style="${campoMini}">
+                                        <option value="">--</option>
+                                        <option value="S" ${item.treinamento === 'S' ? 'selected' : ''}>Sim</option>
+                                        <option value="N" ${item.treinamento === 'N' ? 'selected' : ''}>Não</option>
+                                    </select>
+                                </td>
+                                <td style="padding:6px 6px; text-align:center;">
+                                    <button type="button" class="btn-remover-epi-item" data-uid="${escapeHTML(item.uid)}" title="Remover este EPI" style="border:none; background:transparent; color:var(--danger); cursor:pointer; font-size:14px; padding:4px;">🗑️</button>
+                                </td>
+                            </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                `}
+
+                <!-- Card de Adição Rápida com Busca de CA Responsivo -->
+                <div style="background:var(--bg); padding:10px; border-top:1px solid var(--border);">
+                    <div style="font-size:11px; font-weight:700; color:var(--text); margin-bottom:8px;">➕ Adicionar EPI a este Risco:</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; margin-bottom:8px;">
+                        <div style="position:relative; flex:1 1 130px; min-width:120px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Número do CA</label>
+                            <input type="text" id="novoEpi_ca" oninput="aoDigitarCaEpi(this, 'novo')" onfocus="aoFocarCaEpi(this, 'novo')" onblur="fecharMenuSugestoesCa('novo')" autocomplete="off" placeholder="Ex: 14470..." style="${campoMini}">
+                            <div id="novoEpiCaSugestoesContainer" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:999; width:100%; min-width:240px; max-width:320px; background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,0.18); margin-top:2px;"></div>
+                        </div>
+                        <div style="flex:2 1 200px; min-width:180px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Descrição do Equipamento</label>
+                            <input type="text" id="novoEpi_desc" placeholder="Ex: Protetor auditivo circum-auricular" style="${campoMini}">
+                            <input type="hidden" id="novoEpi_catalogo_id" value="">
+                        </div>
+                        <div style="flex:1 1 120px; min-width:110px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Periodicidade</label>
+                            <input type="text" id="novoEpi_period" placeholder="Ex: Semestral" style="${campoMini}">
+                        </div>
+                        <div style="flex:0 0 auto;">
+                            <button type="button" class="db-apply-btn" onclick="adicionarEpiNaListaRisco(${idx})" style="font-size:11.5px; padding:6px 14px; height:31px; white-space:nowrap;">
+                                ➕ Inserir EPI
+                            </button>
+                        </div>
                     </div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Periodicidade de Troca / Higienização</label>
-                    <input type="text" value="${escapeHTML(r.epi_periodicidade || '')}" oninput="atualizarCampoRiscoEmEdicao('epi_periodicidade', this.value)" placeholder="Ex: Semestral / Quando danificado" style="${campoMini}">
+                    <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                        <div style="flex:1 1 140px; min-width:130px;">
+                            <label style="font-size:10px; color:var(--text-light); display:block;">EPI é Eficaz? (S-2240)</label>
+                            <select id="novoEpi_eficaz" style="${campoMini} font-size:11px; padding:4px 6px;">
+                                <option value="">-- Não informado / Em avaliação --</option>
+                                <option value="S">Sim (Eficaz)</option>
+                                <option value="N">Não (Ineficaz)</option>
+                            </select>
+                        </div>
+                        <div style="flex:1 1 140px; min-width:130px;">
+                            <label style="font-size:10px; color:var(--text-light); display:block;">Uso Conforme Norma?</label>
+                            <select id="novoEpi_conf" style="${campoMini} font-size:11px; padding:4px 6px;">
+                                <option value="">-- Não informado / Em avaliação --</option>
+                                <option value="S">Sim (Atendido)</option>
+                                <option value="N">Não</option>
+                            </select>
+                        </div>
+                        <div style="flex:1 1 140px; min-width:130px;">
+                            <label style="font-size:10px; color:var(--text-light); display:block;">Treinamento Ministrado?</label>
+                            <select id="novoEpi_trein" style="${campoMini} font-size:11px; padding:4px 6px;">
+                                <option value="">-- Não informado / Em avaliação --</option>
+                                <option value="S">Sim (Comprovado)</option>
+                                <option value="N">Não</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; border-top:1px solid var(--border); padding-top:10px;">
-                <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">EPI é Eficaz na Atenuação? (S-2240)</label>
-                    <select onchange="atualizarCampoRiscoEmEdicao('epi_eficaz', this.value)" style="${campoMini}">
-                        <option value="">-- Não informado / Em avaliação --</option>
-                        <option value="S" ${r.epi_eficaz === 'S' ? 'selected' : ''}>Sim (Eficaz)</option>
-                        <option value="N" ${r.epi_eficaz === 'N' ? 'selected' : ''}>Não (Ineficaz)</option>
-                    </select>
+
+            <!-- Campos Legados Preservados (Compatibilidade PGR / SGG) -->
+            <div style="border-top:1px dashed var(--border); padding-top:10px; margin-top:10px;">
+                <div style="font-size:11px; font-weight:700; color:var(--text-light); margin-bottom:6px;">
+                    📝 Campos Gerais e Legados do Risco (PGR / SGG):
                 </div>
-                <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Uso / Funcionamento Conforme Norma?</label>
-                    <select onchange="atualizarCampoRiscoEmEdicao('epi_conformidade', this.value)" style="${campoMini}">
-                        <option value="">-- Não informado / Em avaliação --</option>
-                        <option value="S" ${r.epi_conformidade === 'S' ? 'selected' : ''}>Sim (Atendido)</option>
-                        <option value="N" ${r.epi_conformidade === 'N' ? 'selected' : ''}>Não</option>
-                    </select>
-                </div>
-                <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Treinamento de Uso Ministrado?</label>
-                    <select onchange="atualizarCampoRiscoEmEdicao('epi_treinamento', this.value)" style="${campoMini}">
-                        <option value="">-- Não informado / Em avaliação --</option>
-                        <option value="S" ${r.epi_treinamento === 'S' ? 'selected' : ''}>Sim (Comprovado)</option>
-                        <option value="N" ${r.epi_treinamento === 'N' ? 'selected' : ''}>Não</option>
-                    </select>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                    <div>
+                        <label style="font-size:10.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">EPIs Recomendados (Texto Descritivo Geral)</label>
+                        <textarea rows="2" oninput="atualizarCampoRiscoEmEdicao('epis_recomendados', this.value)" placeholder="Ex: Protetor auditivo concha CA 14470, Óculos de segurança..." style="${campoMini}">${escapeHTML(r.epis_recomendados || '')}</textarea>
+                    </div>
+                    <div>
+                        <label style="font-size:10.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Número do CA Principal Sincronizado</label>
+                        ${episLista.length > 0 ? `
+                        <div style="position:relative;">
+                            <input type="text" id="matrizRiscoInputCa" value="${escapeHTML(r.epi_ca || '')}" readonly placeholder="Sincronizado com o 1º EPI da lista..." style="${campoMini} background:var(--card-bg, #f8fafc); cursor:not-allowed; opacity:0.85;">
+                            <span style="font-size:10px; color:var(--primary); font-weight:600; display:block; margin-top:3px;">🔗 Sincronizado automaticamente com o 1º EPI da relação estruturada</span>
+                        </div>
+                        ` : `
+                        <div style="position:relative;">
+                            <input type="text" id="matrizRiscoInputCa" value="${escapeHTML(r.epi_ca || '')}" oninput="aoDigitarCaEpi(this, 'principal')" onfocus="aoFocarCaEpi(this, 'principal')" onblur="fecharMenuSugestoesCa('principal')" autocomplete="off" placeholder="Ex: 14470 (ou selecione no catálogo)..." style="${campoMini}">
+                            <div id="matrizRiscoCaSugestoesContainer" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:999; background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,0.18); margin-top:2px;"></div>
+                        </div>
+                        `}
+                    </div>
                 </div>
             </div>
         </div>
@@ -763,26 +1110,189 @@ function renderConteudoSubtabDetalheRisco(r, idx, subtab) {
     }
 
     if (subtab === 'epcs') {
+        const epcsLista = Array.isArray(r.epcs_lista) ? r.epcs_lista : [];
+        if (epcsLista.length > 0) {
+            r.epc_status = epcsLista[0].status || '';
+            r.epc_inspecao = epcsLista[0].inspecao || '';
+        }
+        const temDadosLegadosEpc = (r.epcs_recomendados || r.epc_status || r.epc_inspecao);
         return `
         <!-- Sub-aba 3: EPCs -->
         <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
-            <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:10px;">🏭 Equipamentos de Proteção Coletiva (NR-01 / NR-09)</div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
-                <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">EPCs Recomendados / Existentes</label>
-                    <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('epcs_recomendados', this.value)" placeholder="Ex: Enclausuramento acústico, Exaustor de solda, Guarda-corpo..." style="${campoMini}">${escapeHTML(r.epcs_recomendados || '')}</textarea>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                <div style="font-size:12px; font-weight:700; color:var(--text);">🏭 Equipamentos de Proteção Coletiva (NR-01 / NR-09)</div>
+                ${(temDadosLegadosEpc && epcsLista.length === 0) ? `
+                <button type="button" class="db-clear-btn" onclick="importarEpcLegadoParaLista(${idx})" style="font-size:11px; padding:4px 10px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">
+                    📥 Importar EPC legado para a lista
+                </button>
+                ` : ''}
+            </div>
+
+            <!-- Tabela Estruturada de Múltiplos EPCs Vinculados -->
+            <div style="margin-bottom:14px; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
+                <div style="background:var(--bg); padding:8px 12px; font-size:11.5px; font-weight:700; color:var(--text); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+                    <span>📋 Relação Estruturada de EPCs vinculados a este Risco (${epcsLista.length})</span>
+                    <span style="font-size:10px; font-weight:normal; color:var(--text-light);">O primeiro item sincroniza o status e inspeção legados</span>
                 </div>
-                <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Status de Operação do EPC</label>
-                    <select onchange="atualizarCampoRiscoEmEdicao('epc_status', this.value)" style="${campoMini} margin-bottom:8px;">
-                        <option value="">-- Não informado / Em avaliação --</option>
-                        <option value="Operacional" ${r.epc_status === 'Operacional' ? 'selected' : ''}>🟢 Operacional / Em Funcionamento</option>
-                        <option value="Em Manutenção" ${r.epc_status === 'Em Manutenção' ? 'selected' : ''}>🟡 Em Manutenção / Ajuste</option>
-                        <option value="Recomendado" ${r.epc_status === 'Recomendado' ? 'selected' : ''}>🔵 Recomendado / Não Instalado</option>
-                        <option value="Não Aplicável" ${r.epc_status === 'Não Aplicável' ? 'selected' : ''}>⚪ Não Aplicável</option>
-                    </select>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Periodicidade de Inspeção Preventiva</label>
-                    <input type="text" value="${escapeHTML(r.epc_inspecao || '')}" oninput="atualizarCampoRiscoEmEdicao('epc_inspecao', this.value)" placeholder="Ex: Mensal / Trimestral" style="${campoMini}">
+
+                ${epcsLista.length === 0 ? `
+                <div style="padding:14px; text-align:center; font-size:11.5px; color:var(--text-light); background:var(--card-bg, #fff);">
+                    Nenhum EPC estruturado adicionado na lista. Utilize o formulário abaixo para registrar os equipamentos de proteção coletiva.
+                </div>
+                ` : `
+                <div id="tabelaEpcsContainer" style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+                        <thead>
+                            <tr style="background:var(--bg); color:var(--text-light); text-align:left; border-bottom:1px solid var(--border);">
+                                <th style="padding:6px 8px;">Equipamento / Descrição do EPC</th>
+                                <th style="padding:6px 8px; width:170px;">Tipo / Categoria</th>
+                                <th style="padding:6px 8px; width:160px;">Status Operacional</th>
+                                <th style="padding:6px 8px; width:130px;">Inspeção Prev.</th>
+                                <th style="padding:6px 6px; width:110px;">Eficaz?</th>
+                                <th style="padding:6px 6px; width:40px; text-align:center;">Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${epcsLista.map((item, i) => `
+                            <tr data-uid="${escapeHTML(item.uid)}" style="border-bottom:1px solid var(--border); background:${i % 2 === 0 ? 'var(--card-bg, #fff)' : 'var(--bg)'};">
+                                <td style="padding:6px 8px;">
+                                    <input type="text" data-epc-campo="descricao" class="epc-item-field" value="${escapeHTML(item.descricao || '')}" placeholder="Descrição detalhada do EPC..." style="${campoMini}">
+                                    ${i === 0 ? '<span style="font-size:9.5px; color:var(--primary); display:block; margin-top:2px; font-weight:600;">★ Principal</span>' : ''}
+                                </td>
+                                <td style="padding:6px 8px;">
+                                    <select data-epc-campo="tipo" class="epc-item-field" style="${campoMini}">
+                                        <option value="">-- Categoria --</option>
+                                        <option value="Enclausuramento / Acústico" ${item.tipo === 'Enclausuramento / Acústico' ? 'selected' : ''}>Enclausuramento / Acústico</option>
+                                        <option value="Exaustão / Ventilação" ${item.tipo === 'Exaustão / Ventilação' ? 'selected' : ''}>Exaustão / Ventilação</option>
+                                        <option value="Proteção Contra Quedas" ${item.tipo === 'Proteção Contra Quedas' ? 'selected' : ''}>Proteção Contra Quedas</option>
+                                        <option value="Isolamento / Barreira Física" ${item.tipo === 'Isolamento / Barreira Física' ? 'selected' : ''}>Isolamento / Barreira Física</option>
+                                        <option value="Sinalização / Alerta" ${item.tipo === 'Sinalização / Alerta' ? 'selected' : ''}>Sinalização / Alerta</option>
+                                        <option value="Outro" ${item.tipo === 'Outro' ? 'selected' : ''}>Outro...</option>
+                                    </select>
+                                    <input type="text" data-epc-campo="tipo_custom" class="epc-item-field" value="${escapeHTML(item.tipo_custom || '')}" placeholder="Especifique a categoria..." style="${campoMini} margin-top:3px; display:${item.tipo === 'Outro' ? 'block' : 'none'};">
+                                </td>
+                                <td style="padding:6px 8px;">
+                                    <select data-epc-campo="status" class="epc-item-field" style="${campoMini}">
+                                        <option value="">-- Não informado --</option>
+                                        <option value="Operacional" ${item.status === 'Operacional' ? 'selected' : ''}>🟢 Operacional</option>
+                                        <option value="Em Manutenção" ${item.status === 'Em Manutenção' ? 'selected' : ''}>🟡 Em Manutenção</option>
+                                        <option value="Recomendado" ${item.status === 'Recomendado' ? 'selected' : ''}>🔵 Recomendado</option>
+                                        <option value="Desativado" ${item.status === 'Desativado' ? 'selected' : ''}>🔴 Desativado</option>
+                                        <option value="Não Aplicável" ${item.status === 'Não Aplicável' ? 'selected' : ''}>⚪ Não Aplicável</option>
+                                    </select>
+                                </td>
+                                <td style="padding:6px 8px;">
+                                    <input type="text" data-epc-campo="inspecao" class="epc-item-field" value="${escapeHTML(item.inspecao || '')}" placeholder="Ex: Mensal" style="${campoMini}">
+                                </td>
+                                <td style="padding:6px 6px;">
+                                    <select data-epc-campo="eficaz" class="epc-item-field" style="${campoMini}">
+                                        <option value="">--</option>
+                                        <option value="S" ${item.eficaz === 'S' ? 'selected' : ''}>Sim</option>
+                                        <option value="N" ${item.eficaz === 'N' ? 'selected' : ''}>Não</option>
+                                    </select>
+                                </td>
+                                <td style="padding:6px 6px; text-align:center;">
+                                    <button type="button" class="btn-remover-epc-item" data-uid="${escapeHTML(item.uid)}" title="Remover este EPC" style="border:none; background:transparent; color:var(--danger); cursor:pointer; font-size:14px; padding:4px;">🗑️</button>
+                                </td>
+                            </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                `}
+
+                <!-- Card de Adição Rápida de EPC Responsivo -->
+                <div style="background:var(--bg); padding:10px; border-top:1px solid var(--border);">
+                    <div style="font-size:11px; font-weight:700; color:var(--text); margin-bottom:8px;">➕ Adicionar EPC a este Risco:</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; margin-bottom:8px;">
+                        <div style="flex:2 1 220px; min-width:180px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Descrição do Equipamento Coletivo *</label>
+                            <input type="text" id="novoEpc_desc" placeholder="Ex: Enclausuramento acústico do compressor..." style="${campoMini}">
+                        </div>
+                        <div style="flex:1 1 160px; min-width:140px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Tipo / Categoria</label>
+                            <select id="novoEpc_tipo" onchange="const el = document.getElementById('novoEpc_tipo_custom'); if(el) { el.style.display = this.value === 'Outro' ? 'block' : 'none'; if(this.value !== 'Outro') el.value = ''; }" style="${campoMini}">
+                                <option value="">-- Selecione --</option>
+                                <option value="Enclausuramento / Acústico">Enclausuramento / Acústico</option>
+                                <option value="Exaustão / Ventilação">Exaustão / Ventilação</option>
+                                <option value="Proteção Contra Quedas">Proteção Contra Quedas</option>
+                                <option value="Isolamento / Barreira Física">Isolamento / Barreira Física</option>
+                                <option value="Sinalização / Alerta">Sinalização / Alerta</option>
+                                <option value="Outro">Outro...</option>
+                            </select>
+                            <input type="text" id="novoEpc_tipo_custom" placeholder="Especifique a categoria..." style="${campoMini} margin-top:3px; display:none;">
+                        </div>
+                        <div style="flex:1 1 140px; min-width:120px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Status Operacional</label>
+                            <select id="novoEpc_status" style="${campoMini}">
+                                <option value="">-- Não informado --</option>
+                                <option value="Operacional">🟢 Operacional</option>
+                                <option value="Em Manutenção">🟡 Em Manutenção</option>
+                                <option value="Recomendado">🔵 Recomendado</option>
+                                <option value="Desativado">🔴 Desativado</option>
+                                <option value="Não Aplicável">⚪ Não Aplicável</option>
+                            </select>
+                        </div>
+                        <div style="flex:1 1 120px; min-width:110px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Periodicidade</label>
+                            <input type="text" id="novoEpc_inspecao" placeholder="Ex: Mensal" style="${campoMini}">
+                        </div>
+                        <div style="flex:1 1 110px; min-width:90px;">
+                            <label style="font-size:10px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Eficaz?</label>
+                            <select id="novoEpc_eficaz" style="${campoMini}">
+                                <option value="">--</option>
+                                <option value="S">Sim (Eficaz)</option>
+                                <option value="N">Não</option>
+                            </select>
+                        </div>
+                        <div style="flex:0 0 auto;">
+                            <button type="button" class="db-apply-btn" onclick="adicionarEpcNaListaRisco(${idx})" style="font-size:11.5px; padding:6px 14px; height:31px; white-space:nowrap;">
+                                ➕ Inserir EPC
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Campos Legados Preservados (Compatibilidade PGR / SGG) -->
+            <div style="border-top:1px dashed var(--border); padding-top:10px; margin-top:10px;">
+                <div style="font-size:11px; font-weight:700; color:var(--text-light); margin-bottom:6px;">
+                    📝 Campos Gerais e Legados do Risco (PGR / SGG):
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                    <div>
+                        <label style="font-size:10.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">EPCs Recomendados / Existentes (Texto Descritivo Geral)</label>
+                        <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('epcs_recomendados', this.value)" placeholder="Ex: Enclausuramento acústico, Exaustor de solda, Guarda-corpo..." style="${campoMini}">${escapeHTML(r.epcs_recomendados || '')}</textarea>
+                    </div>
+                    <div>
+                        ${epcsLista.length > 0 ? `
+                        <div style="margin-bottom:8px;">
+                            <label style="font-size:10.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Status de Operação do EPC (Sincronizado)</label>
+                            <input type="text" id="matrizRiscoInputEpcStatus" value="${escapeHTML(r.epc_status || '')}" readonly placeholder="Sincronizado com o 1º EPC da lista..." style="${campoMini} background:var(--card-bg, #f8fafc); cursor:not-allowed; opacity:0.85;">
+                            <span style="font-size:10px; color:var(--primary); font-weight:600; display:block; margin-top:2px;">🔗 Sincronizado automaticamente com o 1º EPC da relação estruturada</span>
+                        </div>
+                        <div>
+                            <label style="font-size:10.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Periodicidade de Inspeção Preventiva (Sincronizada)</label>
+                            <input type="text" id="matrizRiscoInputEpcInspecao" value="${escapeHTML(r.epc_inspecao || '')}" readonly placeholder="Sincronizada com o 1º EPC da lista..." style="${campoMini} background:var(--card-bg, #f8fafc); cursor:not-allowed; opacity:0.85;">
+                        </div>
+                        ` : `
+                        <div style="margin-bottom:8px;">
+                            <label style="font-size:10.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Status de Operação do EPC</label>
+                            <select onchange="atualizarCampoRiscoEmEdicao('epc_status', this.value)" style="${campoMini}">
+                                <option value="">-- Não informado / Em avaliação --</option>
+                                <option value="Operacional" ${r.epc_status === 'Operacional' ? 'selected' : ''}>🟢 Operacional / Em Funcionamento</option>
+                                <option value="Em Manutenção" ${r.epc_status === 'Em Manutenção' ? 'selected' : ''}>🟡 Em Manutenção / Ajuste</option>
+                                <option value="Recomendado" ${r.epc_status === 'Recomendado' ? 'selected' : ''}>🔵 Recomendado / Não Instalado</option>
+                                <option value="Desativado" ${r.epc_status === 'Desativado' ? 'selected' : ''}>🔴 Inoperante / Desativado</option>
+                                <option value="Não Aplicável" ${r.epc_status === 'Não Aplicável' ? 'selected' : ''}>⚪ Não Aplicável</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:10.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:2px;">Periodicidade de Inspeção Preventiva</label>
+                            <input type="text" value="${escapeHTML(r.epc_inspecao || '')}" oninput="atualizarCampoRiscoEmEdicao('epc_inspecao', this.value)" placeholder="Ex: Mensal / Trimestral" style="${campoMini}">
+                        </div>
+                        `}
+                    </div>
                 </div>
             </div>
         </div>
@@ -790,34 +1300,173 @@ function renderConteudoSubtabDetalheRisco(r, idx, subtab) {
     }
 
     if (subtab === 'controles') {
+        const medidasLista = Array.isArray(r.medidas_lista) ? r.medidas_lista : [];
+        const temTextoSugestoesLegado = !!(r.sugestoes && r.sugestoes.trim());
+
+        const categoriasPadrao = [
+            'Eliminação do Fator de Risco',
+            'Proteção Coletiva (EPC)',
+            'Medida Administrativa / Organizacional',
+            'Capacitação / Treinamento / DDS',
+            'Proteção Individual (EPI)',
+            'Outro'
+        ];
+
+        const statusPadrao = [
+            { val: '', label: '-- Situação / Status (Neutro) --' },
+            { val: 'Planejada', label: '🟡 Planejada' },
+            { val: 'Em Implantação', label: '🔵 Em Implantação' },
+            { val: 'Implementada', label: '🟢 Implementada' },
+            { val: 'Contínua / Permanente', label: '🟣 Contínua / Permanente' }
+        ];
+
         return `
-        <!-- Sub-aba 4: Medidas de Controle -->
-        <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
-            <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:10px;">⚙️ Hierarquia das Medidas de Prevenção (NR-01 GRO - Item 1.4.1)</div>
-            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
-                <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Fontes Geradoras</label>
-                    <input type="text" value="${escapeHTML(r.fontes_geradoras || '')}" oninput="atualizarCampoRiscoEmEdicao('fontes_geradoras', this.value)" placeholder="Ex: Motores, Ambiente externo, Tráfego..." style="${campoMini}">
+        <!-- Sub-aba 4: Medidas de Controle e Prevenção (NR-01 GRO) -->
+        <div style="display:flex; flex-direction:column; gap:12px;">
+
+            <!-- Bloco 1: Contexto Operacional e Caracterização da Exposição -->
+            <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
+                <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:8px;">
+                    🏭 Contexto Operacional e Condições de Exposição ao Risco
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
+                    <div>
+                        <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Fontes Geradoras</label>
+                        <input type="text" value="${escapeHTML(r.fontes_geradoras || '')}" oninput="atualizarCampoRiscoEmEdicao('fontes_geradoras', this.value)" placeholder="Ex: Motores, Ambiente externo, Tráfego..." style="${campoMini}">
+                    </div>
+                    <div>
+                        <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Tempo / Tipo de Exposição</label>
+                        <input type="text" value="${escapeHTML(r.tipo_tempo_exposicao || '')}" oninput="atualizarCampoRiscoEmEdicao('tipo_tempo_exposicao', this.value)" placeholder="Ex: Habitual e intermitente (8h/dia)" style="${campoMini}">
+                    </div>
+                    <div>
+                        <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Situação Atual de Controle</label>
+                        <input type="text" value="${escapeHTML(r.situacao_controle || '')}" oninput="atualizarCampoRiscoEmEdicao('situacao_controle', this.value)" placeholder="Ex: Controlado, Monitorado..." style="${campoMini}">
+                    </div>
                 </div>
                 <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Tempo / Tipo de Exposição</label>
-                    <input type="text" value="${escapeHTML(r.tipo_tempo_exposicao || '')}" oninput="atualizarCampoRiscoEmEdicao('tipo_tempo_exposicao', this.value)" placeholder="Ex: Habitual e intermitente (8h/dia)" style="${campoMini}">
-                </div>
-                <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Situação Atual de Controle</label>
-                    <input type="text" value="${escapeHTML(r.situacao_controle || '')}" oninput="atualizarCampoRiscoEmEdicao('situacao_controle', this.value)" placeholder="Ex: Controlado por EPI, Monitorado..." style="${campoMini}">
+                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Descrição Detalhada do Risco / Atividade Operacional</label>
+                    <textarea rows="2" oninput="atualizarCampoRiscoEmEdicao('descricao', this.value)" placeholder="Condições operacionais, locais, processos e tarefas em que ocorre a exposição..." style="${campoMini}">${escapeHTML(r.descricao || '')}</textarea>
                 </div>
             </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Descrição Detalhada do Risco / Atividade</label>
-                    <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('descricao', this.value)" placeholder="Descrição das condições operacionais e tarefas de exposição..." style="${campoMini}">${escapeHTML(r.descricao || '')}</textarea>
+
+            <!-- Bloco 2: Gestão Estruturada de Medidas Preventivas e Plano de Ação -->
+            <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+                    <div>
+                        <div style="font-size:12px; font-weight:700; color:var(--text);">
+                            ⚙️ Medidas de Prevenção e Hierarquia de Controles (NR-01.4.1)
+                        </div>
+                        <div style="font-size:10.5px; color:var(--text-light);">
+                            Plano de medidas preventivas priorizando eliminação, controles coletivos (EPC), administrativos/organizacionais, capacitação e EPI.
+                        </div>
+                    </div>
+                    ${(temTextoSugestoesLegado && medidasLista.length === 0) ? `
+                    <button type="button" class="db-clear-btn" onclick="importarMedidasLegadoParaLista(${idx})" style="font-size:11px; padding:3px 8px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">
+                        📥 Importar medidas atuais para a lista
+                    </button>
+                    ` : ''}
                 </div>
-                <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Medidas de Prevenção Administrativas / Treinamentos</label>
-                    <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('sugestoes', this.value)" placeholder="Ex: Treinamento NR-06, Procedimento Operacional Padrão (POP), pausas programadas..." style="${campoMini}">${escapeHTML(r.sugestoes || '')}</textarea>
+
+                <!-- Síntese Legada de Medidas / Sugestões -->
+                <div style="margin-bottom:10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px 10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <span style="font-size:10.5px; font-weight:700; color:var(--text);">Síntese Consolidada de Prevenção (Campo Legado / Relatórios SGG):</span>
+                        ${medidasLista.length > 0 ? '<span style="font-size:9.5px; color:var(--primary); font-weight:600;">🔗 Sincronizado com as medidas estruturadas abaixo</span>' : ''}
+                    </div>
+                    <textarea id="matrizRiscoInputSugestoes" rows="2" ${medidasLista.length > 0 ? 'readonly style="' + campoMini + ' background:var(--card-bg, #f8fafc); cursor:not-allowed; opacity:0.85;"' : 'oninput="atualizarCampoRiscoEmEdicao(\'sugestoes\', this.value)" style="' + campoMini + '"'} placeholder="Ex: [Administrativa] Procedimento Operacional Padrão (POP); [Treinamento] DDS semanal...">${escapeHTML(r.sugestoes || '')}</textarea>
+                </div>
+
+                <!-- Tabela de Medidas Estruturadas -->
+                <div style="border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-bottom:10px;">
+                    <div style="padding:6px 10px; background:var(--bg); border-bottom:1px solid var(--border); font-size:11px; font-weight:700; color:var(--text); display:flex; justify-content:space-between; align-items:center;">
+                        <span>📋 Lista de Medidas Preventivas Estruturadas (${medidasLista.length})</span>
+                    </div>
+
+                    ${medidasLista.length === 0 ? `
+                    <div style="padding:14px; text-align:center; font-size:11.5px; color:var(--text-light); background:var(--card-bg, #fff);">
+                        Nenhuma medida preventiva estruturada vinculada a este risco. Adicione novas ações no formulário abaixo ou importe o texto legado existente.
+                    </div>
+                    ` : `
+                    <div id="tabelaMedidasContainer" style="overflow-x:auto;">
+                        <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+                            <thead>
+                                <tr style="background:var(--bg); color:var(--text-light); text-align:left; border-bottom:1px solid var(--border);">
+                                    <th style="padding:6px 8px; width:210px;">Nível Hierárquico / Categoria</th>
+                                    <th style="padding:6px 8px;">Descrição da Medida Preventiva / Ação</th>
+                                    <th style="padding:6px 8px; width:160px;">Situação / Status</th>
+                                    <th style="padding:6px 8px; width:170px;">Responsável / Prazo</th>
+                                    <th style="padding:6px 6px; width:40px; text-align:center;">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${medidasLista.map((item, i) => `
+                                <tr data-uid="${escapeHTML(item.uid)}" style="border-bottom:1px solid var(--border); background:${i % 2 === 0 ? 'var(--card-bg, #fff)' : 'var(--bg)'};">
+                                    <td style="padding:6px 8px;">
+                                        ${item.origem_legada ? '<span style="font-size:10px; color:#b45309; background:#fef3c7; border:1px solid #fde68a; padding:2px 6px; border-radius:4px; display:inline-block; font-weight:600; margin-bottom:4px;">📄 Origem: Texto Legado</span>' : ''}
+                                        <select data-medprev-campo="tipo" class="medprev-item-field" style="${campoMini}">
+                                            <option value="">-- Categoria Hierárquica --</option>
+                                            ${categoriasPadrao.map(opt => `<option value="${escapeHTML(opt)}" ${item.tipo === opt ? 'selected' : ''}>${escapeHTML(opt)}</option>`).join('')}
+                                            ${(item.tipo && !categoriasPadrao.includes(item.tipo)) ? `<option value="${escapeHTML(item.tipo)}" selected>${escapeHTML(item.tipo)}</option>` : ''}
+                                        </select>
+                                        <input type="text" data-medprev-campo="tipo_custom" class="medprev-item-field" value="${escapeHTML(item.tipo_custom || '')}" placeholder="Especifique a categoria..." style="${campoMini} margin-top:4px; display:${item.tipo === 'Outro' ? 'block' : 'none'};">
+                                    </td>
+                                    <td style="padding:6px 8px;">
+                                        <textarea rows="2" data-medprev-campo="descricao" class="medprev-item-field" placeholder="Descreva a medida preventiva específica..." style="${campoMini}">${escapeHTML(item.descricao || '')}</textarea>
+                                        ${item.origem_legada ? '<span style="font-size:9.5px; color:var(--text-light); display:block; margin-top:2px;">Original herdado do campo livre; classifique a categoria ou edite a ação</span>' : ''}
+                                    </td>
+                                    <td style="padding:6px 8px;">
+                                        <select data-medprev-campo="status" class="medprev-item-field" style="${campoMini}">
+                                            ${statusPadrao.map(opt => `<option value="${escapeHTML(opt.val)}" ${item.status === opt.val ? 'selected' : ''}>${escapeHTML(opt.label)}</option>`).join('')}
+                                            ${(item.status && !statusPadrao.some(s => s.val === item.status)) ? `<option value="${escapeHTML(item.status)}" selected>${escapeHTML(item.status)}</option>` : ''}
+                                        </select>
+                                    </td>
+                                    <td style="padding:6px 8px;">
+                                        <input type="text" data-medprev-campo="responsavel" class="medprev-item-field" value="${escapeHTML(item.responsavel || '')}" placeholder="Resp: SESMT, Obra..." style="${campoMini} margin-bottom:4px;">
+                                        <input type="text" data-medprev-campo="prazo" class="medprev-item-field" value="${escapeHTML(item.prazo || '')}" placeholder="Prazo: Ex: 30 dias / Contínuo..." style="${campoMini}">
+                                    </td>
+                                    <td style="padding:6px 6px; text-align:center;">
+                                        <button type="button" class="btn-remover-medprev-item" data-uid="${escapeHTML(item.uid)}" title="Remover medida" style="background:none; border:none; cursor:pointer; color:var(--danger); font-size:14px; padding:2px 6px;">✕</button>
+                                    </td>
+                                </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    `}
+                </div>
+
+                <!-- Formulário de Adição Rápida de Medida Preventiva -->
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:10px;">
+                    <div style="font-size:11px; font-weight:700; color:var(--text); margin-bottom:8px;">➕ Adicionar Nova Medida Preventiva ao Risco:</div>
+                    <div style="display:grid; grid-template-columns:210px 1fr 160px 170px auto; gap:8px; align-items:start;">
+                        <div>
+                            <select id="novaMedida_tipo" onchange="const c = document.getElementById('novaMedida_tipo_custom'); if(c) c.style.display = (this.value === 'Outro' ? 'block' : 'none');" style="${campoMini}">
+                                <option value="">-- Categoria Hierárquica --</option>
+                                ${categoriasPadrao.map(opt => `<option value="${escapeHTML(opt)}">${escapeHTML(opt)}</option>`).join('')}
+                            </select>
+                            <input type="text" id="novaMedida_tipo_custom" placeholder="Especifique a categoria..." style="${campoMini} margin-top:4px; display:none;">
+                        </div>
+                        <div>
+                            <input type="text" id="novaMedida_descricao" placeholder="Descreva a ação preventiva ou procedimento operacional..." style="${campoMini}">
+                        </div>
+                        <div>
+                            <select id="novaMedida_status" style="${campoMini}">
+                                ${statusPadrao.map(opt => `<option value="${escapeHTML(opt.val)}">${escapeHTML(opt.label)}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <input type="text" id="novaMedida_responsavel" placeholder="Responsável (ex: SESMT)" style="${campoMini} margin-bottom:4px;">
+                            <input type="text" id="novaMedida_prazo" placeholder="Prazo / periodicidade" style="${campoMini}">
+                        </div>
+                        <div>
+                            <button type="button" class="db-apply-btn" onclick="adicionarMedidaNaListaRisco(${idx})" style="padding:7px 14px; font-size:11.5px; height:34px; white-space:nowrap;">
+                                ➕ Incluir Ação
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
+
         </div>
         `;
     }
@@ -872,24 +1521,243 @@ function renderConteudoSubtabDetalheRisco(r, idx, subtab) {
     }
 
     if (subtab === 'danos') {
+        const examesLista = Array.isArray(r.exames_lista) ? r.exames_lista : [];
+        const cidsLista = Array.isArray(r.cids_lista) ? r.cids_lista : [];
+        const temTextoExamesLegado = !!(r.exames_pcmso && r.exames_pcmso.trim());
+        const temTextoCidLegado = !!(r.cid10_relacionado && r.cid10_relacionado.trim());
+
+        const examesPadrao = [
+            'Audiometria tonal/vocal', 'Espirometria', 'Acuidade visual',
+            'Eletrocardiograma (ECG)', 'Eletroencefalograma (EEG)', 'Hemograma completo',
+            'Raio-X de Tórax (padrão OIT)', 'Glicemia de jejum', 'Creatinina / Ureia',
+            'Exame Toxicológico', 'Avaliação Psicossocial', 'Outro'
+        ];
+
+        const periodicidadesPadrao = [
+            'Todos os ASOs', 'Admissional', 'Periódico', 'Demissional',
+            'Retorno ao Trabalho', 'Mudança de Riscos',
+            'Admissional e Periódico', 'Admissional, Periódico e Demissional', 'Outro'
+        ];
+
         return `
         <!-- Sub-aba 6: Danos à Saúde e PCMSO -->
-        <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
-            <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:10px;">🏥 Danos Potenciais à Saúde e Integração PCMSO (NR-07)</div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
-                <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Possíveis Agravos / Danos à Saúde</label>
-                    <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('danos_saude', this.value)" placeholder="Ex: Perda Auditiva Induzida por Ruído (PAIR), cefaleia, fadiga, lombalgia..." style="${campoMini}">${escapeHTML(r.danos_saude || '')}</textarea>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+
+            <!-- Bloco 1: Possíveis Agravos / Danos Qualitativos à Saúde (NR-07) -->
+            <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
+                <div style="font-size:12px; font-weight:700; color:var(--text); margin-bottom:6px;">
+                    🏥 Possíveis Agravos e Danos Potenciais à Saúde (NR-07)
                 </div>
-                <div>
-                    <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Exames Médicos Complementares Indicados (PCMSO)</label>
-                    <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('exames_pcmso', this.value)" placeholder="Ex: Audiometria tonal/vocal, Espirometria, Hemograma completo, Acuidade visual..." style="${campoMini}">${escapeHTML(r.exames_pcmso || '')}</textarea>
+                <div style="font-size:11px; color:var(--text-light); margin-bottom:8px;">
+                    Descrição clínica orientativa e qualitativa dos agravos, manifestações e efeitos esperados da exposição ao risco (campo livre sob responsabilidade da equipe de SST/PCMSO).
+                </div>
+                <textarea rows="3" oninput="atualizarCampoRiscoEmEdicao('danos_saude', this.value)" placeholder="Ex: Perda Auditiva Induzida por Ruído (PAIR), cefaleia, fadiga auditiva, estresse térmico, irritação de vias aéreas..." style="${campoMini}">${escapeHTML(r.danos_saude || '')}</textarea>
+            </div>
+
+            <!-- Bloco 2: Exames Médicos Complementares do PCMSO -->
+            <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+                    <div>
+                        <div style="font-size:12px; font-weight:700; color:var(--text);">
+                            🩺 Exames Médicos Complementares do PCMSO (NR-07)
+                        </div>
+                        <div style="font-size:10.5px; color:var(--text-light);">
+                            Planejamento ocupacional de exames por risco. Sugestões frequentes da NR-07 com indicação clínica a ser definida pelo Médico Coordenador do PCMSO.
+                        </div>
+                    </div>
+                    ${(temTextoExamesLegado && examesLista.length === 0) ? `
+                    <button type="button" class="db-clear-btn" onclick="importarExamesPcmsoLegadoParaLista(${idx})" style="font-size:11px; padding:3px 8px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">
+                        📥 Importar exames atuais para a lista
+                    </button>
+                    ` : ''}
+                </div>
+
+                <!-- Síntese Legada de Exames -->
+                <div style="margin-bottom:10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px 10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <span style="font-size:10.5px; font-weight:700; color:var(--text);">Síntese Consolidada de Exames (Campo Legado / Relatórios SGG):</span>
+                        ${examesLista.length > 0 ? '<span style="font-size:9.5px; color:var(--primary); font-weight:600;">🔗 Sincronizado com os exames estruturados abaixo</span>' : ''}
+                    </div>
+                    <textarea id="matrizRiscoInputExamesPcmso" rows="2" ${examesLista.length > 0 ? 'readonly style="' + campoMini + ' background:var(--card-bg, #f8fafc); cursor:not-allowed; opacity:0.85;"' : 'oninput="atualizarCampoRiscoEmEdicao(\'exames_pcmso\', this.value)" style="' + campoMini + '"'} placeholder="Ex: Audiometria tonal/vocal (Periódico, Admissional); Espirometria (Admissional)...">${escapeHTML(r.exames_pcmso || '')}</textarea>
+                </div>
+
+                <!-- Tabela de Exames Estruturados -->
+                <div style="border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-bottom:10px;">
+                    <div style="padding:6px 10px; background:var(--bg); border-bottom:1px solid var(--border); font-size:11px; font-weight:700; color:var(--text); display:flex; justify-content:space-between; align-items:center;">
+                        <span>📋 Lista de Exames Estruturados (${examesLista.length})</span>
+                    </div>
+
+                    ${examesLista.length === 0 ? `
+                    <div style="padding:14px; text-align:center; font-size:11.5px; color:var(--text-light); background:var(--card-bg, #fff);">
+                        Nenhum exame médico estruturado vinculado a este risco. Adicione novos exames no formulário abaixo ou importe o texto do PCMSO legado.
+                    </div>
+                    ` : `
+                    <div id="tabelaExamesContainer" style="overflow-x:auto;">
+                        <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+                            <thead>
+                                <tr style="background:var(--bg); color:var(--text-light); text-align:left; border-bottom:1px solid var(--border);">
+                                    <th style="padding:6px 8px; width:220px;">Exame Complementar</th>
+                                    <th style="padding:6px 8px; width:180px;">Periodicidade / ASO</th>
+                                    <th style="padding:6px 8px;">Critério / Justificativa Clínica</th>
+                                    <th style="padding:6px 6px; width:40px; text-align:center;">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${examesLista.map((item, i) => `
+                                <tr data-uid="${escapeHTML(item.uid)}" style="border-bottom:1px solid var(--border); background:${i % 2 === 0 ? 'var(--card-bg, #fff)' : 'var(--bg)'};">
+                                    <td style="padding:6px 8px;">
+                                        ${item.is_legado ? '<span style="font-size:10px; color:#b45309; background:#fef3c7; border:1px solid #fde68a; padding:2px 6px; border-radius:4px; display:inline-block; font-weight:600; margin-bottom:4px;">📄 Texto Legado</span>' : ''}
+                                        <select data-exame-campo="nome" class="exame-item-field" style="${campoMini}">
+                                            <option value="">-- Selecione o Exame --</option>
+                                            ${examesPadrao.map(opt => `<option value="${escapeHTML(opt)}" ${item.nome === opt ? 'selected' : ''}>${escapeHTML(opt)}</option>`).join('')}
+                                            ${(item.nome && !examesPadrao.includes(item.nome)) ? `<option value="${escapeHTML(item.nome)}" selected>${escapeHTML(item.nome)}</option>` : ''}
+                                        </select>
+                                        <input type="text" data-exame-campo="nome_custom" class="exame-item-field" value="${escapeHTML(item.nome_custom || '')}" placeholder="Descreva o exame específico..." style="${campoMini} margin-top:4px; display:${item.nome === 'Outro' ? 'block' : 'none'};">
+                                    </td>
+                                    <td style="padding:6px 8px;">
+                                        <select data-exame-campo="periodicidade" class="exame-item-field" style="${campoMini}">
+                                            <option value="">-- Periodicidade --</option>
+                                            ${periodicidadesPadrao.map(opt => `<option value="${escapeHTML(opt)}" ${item.periodicidade === opt ? 'selected' : ''}>${escapeHTML(opt)}</option>`).join('')}
+                                            ${(item.periodicidade && !periodicidadesPadrao.includes(item.periodicidade)) ? `<option value="${escapeHTML(item.periodicidade)}" selected>${escapeHTML(item.periodicidade)}</option>` : ''}
+                                        </select>
+                                        <input type="text" data-exame-campo="periodicidade_custom" class="exame-item-field" value="${escapeHTML(item.periodicidade_custom || '')}" placeholder="Outra modalidade..." style="${campoMini} margin-top:4px; display:${item.periodicidade === 'Outro' ? 'block' : 'none'};">
+                                    </td>
+                                    <td style="padding:6px 8px;">
+                                        <input type="text" data-exame-campo="criterio_indicacao" class="exame-item-field" value="${escapeHTML(item.criterio_indicacao || '')}" placeholder="Ex: Exposição a ruído acima do NA / Trabalho em Altura..." style="${campoMini}">
+                                    </td>
+                                    <td style="padding:6px 6px; text-align:center;">
+                                        <button type="button" class="btn-remover-exame-item" data-uid="${escapeHTML(item.uid)}" title="Remover exame" style="background:none; border:none; cursor:pointer; color:var(--danger); font-size:14px; padding:2px 6px;">✕</button>
+                                    </td>
+                                </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    `}
+                </div>
+
+                <!-- Formulário de Adição Rápida de Exame -->
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:10px;">
+                    <div style="font-size:11px; font-weight:700; color:var(--text); margin-bottom:8px;">➕ Adicionar Novo Exame Médico ao Planejamento PCMSO:</div>
+                    <div style="display:grid; grid-template-columns:220px 180px 1fr auto; gap:8px; align-items:start;">
+                        <div>
+                            <select id="novoExame_nome" onchange="const c = document.getElementById('novoExame_nome_custom'); if(c) c.style.display = (this.value === 'Outro' ? 'block' : 'none');" style="${campoMini}">
+                                <option value="">-- Selecione o Exame --</option>
+                                ${examesPadrao.map(opt => `<option value="${escapeHTML(opt)}">${escapeHTML(opt)}</option>`).join('')}
+                            </select>
+                            <input type="text" id="novoExame_nome_custom" placeholder="Descreva o exame específico..." style="${campoMini} margin-top:4px; display:none;">
+                        </div>
+                        <div>
+                            <select id="novoExame_periodicidade" onchange="const c = document.getElementById('novoExame_periodicidade_custom'); if(c) c.style.display = (this.value === 'Outro' ? 'block' : 'none');" style="${campoMini}">
+                                <option value="">-- Periodicidade / ASO --</option>
+                                ${periodicidadesPadrao.map(opt => `<option value="${escapeHTML(opt)}">${escapeHTML(opt)}</option>`).join('')}
+                            </select>
+                            <input type="text" id="novoExame_periodicidade_custom" placeholder="Outra modalidade..." style="${campoMini} margin-top:4px; display:none;">
+                        </div>
+                        <div>
+                            <input type="text" id="novoExame_criterio" placeholder="Critério / justificativa (Ex: Exposição a ruído acima do NA)..." style="${campoMini}">
+                        </div>
+                        <div>
+                            <button type="button" class="db-apply-btn" onclick="adicionarExameNaListaRisco(${idx})" style="padding:7px 14px; font-size:11.5px; height:34px; white-space:nowrap;">
+                                ➕ Incluir Exame
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div>
-                <label style="font-size:11px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Códigos CID-10 Relacionados (Opcional)</label>
-                <input type="text" value="${escapeHTML(r.cid10_relacionado || '')}" oninput="atualizarCampoRiscoEmEdicao('cid10_relacionado', this.value)" placeholder="Ex: H83.3 (PAIR), M54.5 (Lombalgia), Z57 (Exposição ocupacional)..." style="${campoMini}">
+
+            <!-- Bloco 3: Códigos CID-10 de Referência do Risco -->
+            <div style="background:var(--card-bg, #fff); border:1px solid var(--border); border-radius:8px; padding:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+                    <div>
+                        <div style="font-size:12px; font-weight:700; color:var(--text);">
+                            🏷️ Códigos CID-10 de Referência Técnica do Risco (NR-07)
+                        </div>
+                        <div style="font-size:10.5px; color:var(--text-light);">
+                            Códigos de patologias ocupacionais associadas ao risco para referência estatística e epidemiológica do PCMSO (não constitui diagnóstico individual de trabalhador).
+                        </div>
+                    </div>
+                    ${(temTextoCidLegado && cidsLista.length === 0) ? `
+                    <button type="button" class="db-clear-btn" onclick="importarCidsLegadoParaLista(${idx})" style="font-size:11px; padding:3px 8px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">
+                        📥 Importar CIDs atuais para a lista
+                    </button>
+                    ` : ''}
+                </div>
+
+                <!-- Síntese Legada de CIDs -->
+                <div style="margin-bottom:10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px 10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <span style="font-size:10.5px; font-weight:700; color:var(--text);">Síntese Consolidada de CIDs (Campo Legado / Relatórios SGG):</span>
+                        ${cidsLista.length > 0 ? '<span style="font-size:9.5px; color:var(--primary); font-weight:600;">🔗 Sincronizado com os CIDs estruturados abaixo</span>' : ''}
+                    </div>
+                    <input type="text" id="matrizRiscoInputCid10" value="${escapeHTML(r.cid10_relacionado || '')}" ${cidsLista.length > 0 ? 'readonly style="' + campoMini + ' background:var(--card-bg, #f8fafc); cursor:not-allowed; opacity:0.85;"' : 'oninput="atualizarCampoRiscoEmEdicao(\'cid10_relacionado\', this.value)" style="' + campoMini + '"'} placeholder="Ex: H83.3 (PAIR), M54.5 (Lombalgia), Z57 (Exposição ocupacional)...">
+                </div>
+
+                <!-- Tabela de CIDs Estruturados -->
+                <div style="border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-bottom:10px;">
+                    <div style="padding:6px 10px; background:var(--bg); border-bottom:1px solid var(--border); font-size:11px; font-weight:700; color:var(--text); display:flex; justify-content:space-between; align-items:center;">
+                        <span>📋 Lista de Códigos CID-10 Vinculados (${cidsLista.length})</span>
+                    </div>
+
+                    ${cidsLista.length === 0 ? `
+                    <div style="padding:14px; text-align:center; font-size:11.5px; color:var(--text-light); background:var(--card-bg, #fff);">
+                        Nenhum código CID-10 estruturado vinculado a este risco. Adicione novos códigos no formulário abaixo.
+                    </div>
+                    ` : `
+                    <div id="tabelaCidsContainer" style="overflow-x:auto;">
+                        <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+                            <thead>
+                                <tr style="background:var(--bg); color:var(--text-light); text-align:left; border-bottom:1px solid var(--border);">
+                                    <th style="padding:6px 8px; width:130px;">Código CID-10</th>
+                                    <th style="padding:6px 8px;">Patologia / Agravo Ocupacional Correlato</th>
+                                    <th style="padding:6px 6px; width:40px; text-align:center;">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${cidsLista.map((item, i) => `
+                                <tr data-uid="${escapeHTML(item.uid)}" style="border-bottom:1px solid var(--border); background:${i % 2 === 0 ? 'var(--card-bg, #fff)' : 'var(--bg)'};">
+                                    <td style="padding:6px 8px;">
+                                        ${item.is_legado ? `
+                                        <span style="font-size:10px; color:#b45309; background:#fef3c7; border:1px solid #fde68a; padding:2px 6px; border-radius:4px; display:inline-block; font-weight:600; margin-bottom:4px;">📄 Texto Legado</span>
+                                        <input type="text" data-cid-campo="codigo" class="cid-item-field" value="${escapeHTML(item.codigo || '')}" placeholder="Opcional..." style="${campoMini} font-weight:700;">
+                                        ` : `
+                                        <input type="text" data-cid-campo="codigo" class="cid-item-field" value="${escapeHTML(item.codigo || '')}" placeholder="Ex: H83.3" style="${campoMini} font-weight:700;">
+                                        `}
+                                    </td>
+                                    <td style="padding:6px 8px;">
+                                        <input type="text" data-cid-campo="descricao" class="cid-item-field" value="${escapeHTML(item.descricao || '')}" placeholder="Ex: Efeitos do ruído sobre o ouvido interno..." style="${campoMini}">
+                                        ${item.is_legado ? '<span style="font-size:9.5px; color:var(--text-light); display:block; margin-top:2px;">Texto original herdado do campo livre; editar para consolidar nova síntese estruturada</span>' : ''}
+                                    </td>
+                                    <td style="padding:6px 6px; text-align:center;">
+                                        <button type="button" class="btn-remover-cid-item" data-uid="${escapeHTML(item.uid)}" title="Remover CID" style="background:none; border:none; cursor:pointer; color:var(--danger); font-size:14px; padding:2px 6px;">✕</button>
+                                    </td>
+                                </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    `}
+                </div>
+
+                <!-- Formulário de Adição Rápida de CID -->
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:10px;">
+                    <div style="font-size:11px; font-weight:700; color:var(--text); margin-bottom:8px;">➕ Adicionar Novo Código CID-10:</div>
+                    <div style="display:grid; grid-template-columns:130px 1fr auto; gap:8px; align-items:start;">
+                        <div>
+                            <input type="text" id="novoCid_codigo" placeholder="Ex: H83.3, M54" style="${campoMini} font-weight:700;">
+                        </div>
+                        <div>
+                            <input type="text" id="novoCid_descricao" placeholder="Ex: Efeitos do ruído sobre o ouvido interno (PAIR)..." style="${campoMini}">
+                        </div>
+                        <div>
+                            <button type="button" class="db-apply-btn" onclick="adicionarCidNaListaRisco(${idx})" style="padding:7px 14px; font-size:11.5px; height:34px; white-space:nowrap;">
+                                ➕ Incluir CID-10
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
+
         </div>
         `;
     }
@@ -1025,32 +1893,39 @@ function buscarSugestoesCaEpi(termo) {
     }).slice(0, 10);
 }
 
-async function aoDigitarCaEpi(inputEl) {
+async function aoDigitarCaEpi(inputEl, alvo = 'principal') {
     if (!inputEl) return;
     const valor = inputEl.value;
-    atualizarCampoRiscoEmEdicao('epi_ca', valor);
+    if (alvo === 'principal') {
+        atualizarCampoRiscoEmEdicao('epi_ca', valor);
+    } else if (alvo === 'novo') {
+        // Limpa explicitamente o vínculo de catálogo anterior ao alterar o CA manualmente
+        const inputId = document.getElementById('novoEpi_catalogo_id');
+        if (inputId) inputId.value = '';
+    }
 
     await garantirEpiCatalogoParaMatriz();
-    renderizarMenuSugestoesCa(inputEl);
+    renderizarMenuSugestoesCa(inputEl, alvo);
 }
 
-async function aoFocarCaEpi(inputEl) {
+async function aoFocarCaEpi(inputEl, alvo = 'principal') {
     await garantirEpiCatalogoParaMatriz();
-    renderizarMenuSugestoesCa(inputEl);
+    renderizarMenuSugestoesCa(inputEl, alvo);
 }
 
-function renderizarMenuSugestoesCa(inputEl) {
-    const container = document.getElementById('matrizRiscoCaSugestoesContainer');
+function renderizarMenuSugestoesCa(inputEl, alvo = 'principal') {
+    const containerId = alvo === 'novo' ? 'novoEpiCaSugestoesContainer' : 'matrizRiscoCaSugestoesContainer';
+    const container = document.getElementById(containerId);
     if (!container || !inputEl) return;
 
     // Configura listener delegado seguro sem interpolação de código em atributo inline
     container.onmousedown = function(e) {
         const item = e.target.closest('.matriz-ca-item-sugestao');
         if (item) {
-            const ca = item.getAttribute('data-ca');
-            if (ca) {
-                selecionarCaEpiSugerido(ca);
-            }
+            const ca = item.getAttribute('data-ca') || '';
+            const id = item.getAttribute('data-id') || '';
+            const desc = item.getAttribute('data-desc') || '';
+            selecionarCaEpiSugerido(ca, id, desc, alvo);
         }
     };
 
@@ -1112,6 +1987,8 @@ function renderizarMenuSugestoesCa(inputEl) {
         html += `
             <div class="db-list-item-hover matriz-ca-item-sugestao"
                  data-ca="${escapeHTML(caNum)}"
+                 data-id="${escapeHTML(c.id)}"
+                 data-desc="${escapeHTML(c.descricao || '')}"
                  style="padding:6px 10px; cursor:pointer; border-bottom:1px solid var(--border); font-size:11px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
                 <div style="min-width:0; flex:1;">
                     <div style="font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
@@ -1131,14 +2008,27 @@ function renderizarMenuSugestoesCa(inputEl) {
     container.style.display = 'block';
 }
 
-function fecharMenuSugestoesCa() {
+function fecharMenuSugestoesCa(alvo = 'principal') {
     setTimeout(() => {
-        const container = document.getElementById('matrizRiscoCaSugestoesContainer');
+        const containerId = alvo === 'novo' ? 'novoEpiCaSugestoesContainer' : 'matrizRiscoCaSugestoesContainer';
+        const container = document.getElementById(containerId);
         if (container) container.style.display = 'none';
     }, 250);
 }
 
-function selecionarCaEpiSugerido(caNumero) {
+function selecionarCaEpiSugerido(caNumero, idCatalogo = '', descricao = '', alvo = 'principal') {
+    if (alvo === 'novo') {
+        const inputCa = document.getElementById('novoEpi_ca');
+        const inputDesc = document.getElementById('novoEpi_desc');
+        const inputId = document.getElementById('novoEpi_catalogo_id');
+        if (inputCa) inputCa.value = caNumero;
+        if (inputDesc) inputDesc.value = descricao || (caNumero ? `EPI CA ${caNumero}` : '');
+        if (inputId) inputId.value = idCatalogo || '';
+        const container = document.getElementById('novoEpiCaSugestoesContainer');
+        if (container) container.style.display = 'none';
+        return;
+    }
+
     const inputEl = document.getElementById('matrizRiscoInputCa');
     if (inputEl) {
         inputEl.value = caNumero;
@@ -1147,6 +2037,984 @@ function selecionarCaEpiSugerido(caNumero) {
 
     const container = document.getElementById('matrizRiscoCaSugestoesContainer');
     if (container) container.style.display = 'none';
+}
+
+// ============================================
+// GESTÃO ESTRUTURADA DE MÚLTIPLOS EPIs (FASE 3.1)
+// ============================================
+function sincronizarEpiCaPrincipalLegado(forcarLimpezaSeVazio = false) {
+    if (!matrizRiscoEdicaoDraft) return;
+    const lista = Array.isArray(matrizRiscoEdicaoDraft.epis_lista) ? matrizRiscoEdicaoDraft.epis_lista : [];
+    if (lista.length > 0) {
+        // O CA principal legado reflete com precisão o CA do primeiro item da lista (inclusive se estiver vazio)
+        matrizRiscoEdicaoDraft.epi_ca = (lista[0].ca || '').trim();
+    } else if (forcarLimpezaSeVazio) {
+        // Somente limpa o CA se for solicitado explicitamente (ex: remoção do último item da lista)
+        // Se for risco legado puro (lista vazia ou não criada), PRESERVA o epi_ca manual intacto!
+        matrizRiscoEdicaoDraft.epi_ca = '';
+    }
+
+    const inputCa = document.getElementById('matrizRiscoInputCa');
+    if (inputCa && lista.length > 0) {
+        inputCa.value = matrizRiscoEdicaoDraft.epi_ca || '';
+    }
+}
+
+function configurarListenersTabelaEpis(idx) {
+    const container = document.getElementById('tabelaEpisContainer');
+    if (!container) return;
+
+    // Listener delegado para remoção segura sem injeção inline de UID
+    container.onclick = function(e) {
+        const btnRemover = e.target.closest('.btn-remover-epi-item');
+        if (btnRemover) {
+            const uid = btnRemover.getAttribute('data-uid');
+            if (uid) {
+                removerEpiDaListaRisco(uid, idx);
+            }
+        }
+    };
+
+    // Listener delegado para inputs e selects sem injeção inline de UID
+    const handlerEdicao = function(e) {
+        const input = e.target.closest('.epi-item-field');
+        if (!input) return;
+        const tr = input.closest('tr[data-uid]');
+        if (!tr) return;
+        const uid = tr.getAttribute('data-uid');
+        const campo = input.getAttribute('data-epi-campo');
+        if (uid && campo) {
+            atualizarItemEpiLista(uid, campo, input.value);
+        }
+    };
+
+    container.oninput = handlerEdicao;
+    container.onchange = handlerEdicao;
+}
+
+function atualizarViewDetalhesRisco(idx) {
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    const container = document.getElementById('matrizRiscoDetalhesContainer');
+    if (container && g) {
+        container.innerHTML = renderRiscoAtivoDetalhesHtml(g, matrizRiscoEdicaoDraft, idx);
+        if (matrizRiscoDetalheSubtabAtiva === 'epis') {
+            configurarListenersTabelaEpis(idx);
+        } else if (matrizRiscoDetalheSubtabAtiva === 'epcs') {
+            configurarListenersTabelaEpcs(idx);
+        } else if (matrizRiscoDetalheSubtabAtiva === 'avaliacao') {
+            configurarListenersTabelaMedicoes(idx);
+        } else if (matrizRiscoDetalheSubtabAtiva === 'danos') {
+            configurarListenersTabelaExames(idx);
+            configurarListenersTabelaCids(idx);
+        } else if (matrizRiscoDetalheSubtabAtiva === 'controles') {
+            configurarListenersTabelaMedidas(idx);
+        }
+    }
+}
+
+function importarEpiLegadoParaLista(idx) {
+    if (!matrizRiscoEdicaoDraft) return;
+    if (!Array.isArray(matrizRiscoEdicaoDraft.epis_lista)) {
+        matrizRiscoEdicaoDraft.epis_lista = [];
+    }
+    const caLegado = (matrizRiscoEdicaoDraft.epi_ca || '').trim();
+    if (!caLegado && !matrizRiscoEdicaoDraft.epis_recomendados) return;
+
+    // Busca todas as correspondências por CA no catálogo
+    const matches = caLegado ? (window.allEpiCatalogo || []).filter(c => String(c.ca).trim() === caLegado) : [];
+
+    let catId = '';
+    let descricao = '';
+    // Apenas vincula ID e descrição do catálogo se houver correspondência ÚNICA (1)
+    if (matches.length === 1) {
+        catId = matches[0].id || '';
+        descricao = matches[0].descricao || '';
+    } else {
+        // Zero ou múltiplas correspondências: importa sem vínculo arbitrário e sem inventar descrição
+        catId = '';
+        descricao = matrizRiscoEdicaoDraft.epis_recomendados ? matrizRiscoEdicaoDraft.epis_recomendados.slice(0, 100) : (caLegado ? `EPI CA ${caLegado}` : '');
+    }
+
+    const novoItem = {
+        uid: 'epi_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        epi_catalogo_id: catId,
+        ca: caLegado,
+        descricao: descricao,
+        periodicidade: matrizRiscoEdicaoDraft.epi_periodicidade || '',
+        eficaz: matrizRiscoEdicaoDraft.epi_eficaz || '',
+        conformidade: matrizRiscoEdicaoDraft.epi_conformidade || '',
+        treinamento: matrizRiscoEdicaoDraft.epi_treinamento || ''
+    };
+
+    matrizRiscoEdicaoDraft.epis_lista.push(novoItem);
+    sincronizarEpiCaPrincipalLegado();
+    atualizarViewDetalhesRisco(idx);
+}
+
+function adicionarEpiNaListaRisco(idx) {
+    if (!matrizRiscoEdicaoDraft) return;
+    if (!Array.isArray(matrizRiscoEdicaoDraft.epis_lista)) {
+        matrizRiscoEdicaoDraft.epis_lista = [];
+    }
+
+    const inputCa = document.getElementById('novoEpi_ca');
+    const inputDesc = document.getElementById('novoEpi_desc');
+    const inputIdCat = document.getElementById('novoEpi_catalogo_id');
+    const inputPer = document.getElementById('novoEpi_period');
+    const selectEficaz = document.getElementById('novoEpi_eficaz');
+    const selectConf = document.getElementById('novoEpi_conf');
+    const selectTrein = document.getElementById('novoEpi_trein');
+
+    const ca = inputCa ? inputCa.value.trim() : '';
+    const desc = inputDesc ? inputDesc.value.trim() : '';
+
+    if (!ca && !desc) {
+        alert('Informe o Número do CA ou a Descrição do EPI para adicionar.');
+        if (inputCa) inputCa.focus();
+        return;
+    }
+
+    const novoItem = {
+        uid: 'epi_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        epi_catalogo_id: inputIdCat ? inputIdCat.value : '',
+        ca: ca,
+        descricao: desc || (ca ? `EPI CA ${ca}` : 'EPI Recomendado'),
+        periodicidade: inputPer ? inputPer.value.trim() : '',
+        eficaz: selectEficaz ? selectEficaz.value : '',
+        conformidade: selectConf ? selectConf.value : '',
+        treinamento: selectTrein ? selectTrein.value : ''
+    };
+
+    matrizRiscoEdicaoDraft.epis_lista.push(novoItem);
+    sincronizarEpiCaPrincipalLegado();
+    atualizarViewDetalhesRisco(idx);
+}
+
+function removerEpiDaListaRisco(uid, idx) {
+    if (!matrizRiscoEdicaoDraft || !Array.isArray(matrizRiscoEdicaoDraft.epis_lista)) return;
+    matrizRiscoEdicaoDraft.epis_lista = matrizRiscoEdicaoDraft.epis_lista.filter(item => item.uid !== uid);
+    // Ao remover itens, se a lista esvaziou, forcarLimpezaSeVazio = true limpa o CA legado
+    sincronizarEpiCaPrincipalLegado(matrizRiscoEdicaoDraft.epis_lista.length === 0);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function atualizarItemEpiLista(uid, campo, valor) {
+    if (!matrizRiscoEdicaoDraft || !Array.isArray(matrizRiscoEdicaoDraft.epis_lista)) return;
+    const item = matrizRiscoEdicaoDraft.epis_lista.find(x => x.uid === uid);
+    if (item) {
+        item[campo] = valor;
+        if (campo === 'ca') {
+            // Se editou o CA manualmente na tabela, limpa o vínculo do catálogo para evitar incompatibilidade
+            item.epi_catalogo_id = '';
+            // Se for o primeiro item, sincroniza com o campo legado
+            if (matrizRiscoEdicaoDraft.epis_lista[0]?.uid === uid) {
+                sincronizarEpiCaPrincipalLegado();
+            }
+        }
+    }
+}
+
+// ============================================
+// GESTÃO ESTRUTURADA DE MÚLTIPLOS EPCs (FASE 3.2)
+// ============================================
+function sincronizarEpcPrincipalLegado(forcarLimpezaSeVazio = false) {
+    if (!matrizRiscoEdicaoDraft) return;
+    const lista = Array.isArray(matrizRiscoEdicaoDraft.epcs_lista) ? matrizRiscoEdicaoDraft.epcs_lista : [];
+    if (lista.length > 0) {
+        // Se a lista de EPCs possui itens, os campos legados refletem com precisão o 1º EPC da coleção
+        matrizRiscoEdicaoDraft.epc_status = (lista[0].status || '').trim();
+        matrizRiscoEdicaoDraft.epc_inspecao = (lista[0].inspecao || '').trim();
+    } else if (forcarLimpezaSeVazio) {
+        // Somente limpa os campos legados se for solicitado explicitamente (ex: remoção do último item da lista)
+        // Se for risco legado puro (lista vazia ou não criada), PRESERVA os valores manuais intactos!
+        matrizRiscoEdicaoDraft.epc_status = '';
+        matrizRiscoEdicaoDraft.epc_inspecao = '';
+    }
+
+    const inputStatus = document.getElementById('matrizRiscoInputEpcStatus');
+    if (inputStatus && lista.length > 0) inputStatus.value = matrizRiscoEdicaoDraft.epc_status || '';
+    const inputInspecao = document.getElementById('matrizRiscoInputEpcInspecao');
+    if (inputInspecao && lista.length > 0) inputInspecao.value = matrizRiscoEdicaoDraft.epc_inspecao || '';
+}
+
+function configurarListenersTabelaEpcs(idx) {
+    const container = document.getElementById('tabelaEpcsContainer');
+    if (!container) return;
+
+    // Listener delegado para remoção segura sem injeção inline de UID
+    container.onclick = function(e) {
+        const btnRemover = e.target.closest('.btn-remover-epc-item');
+        if (btnRemover) {
+            const uid = btnRemover.getAttribute('data-uid');
+            if (uid) {
+                removerEpcDaListaRisco(uid, idx);
+            }
+        }
+    };
+
+    // Listener delegado para inputs e selects sem injeção inline de UID
+    const handlerEdicao = function(e) {
+        const input = e.target.closest('.epc-item-field');
+        if (!input) return;
+        const tr = input.closest('tr[data-uid]');
+        if (!tr) return;
+        const uid = tr.getAttribute('data-uid');
+        const campo = input.getAttribute('data-epc-campo');
+        if (uid && campo) {
+            atualizarItemEpcLista(uid, campo, input.value);
+            if (campo === 'tipo') {
+                const inputCustom = tr.querySelector('input[data-epc-campo="tipo_custom"]');
+                if (inputCustom) {
+                    inputCustom.style.display = (input.value === 'Outro' ? 'block' : 'none');
+                    if (input.value !== 'Outro') {
+                        inputCustom.value = '';
+                        atualizarItemEpcLista(uid, 'tipo_custom', '');
+                    }
+                }
+            }
+        }
+    };
+
+    container.oninput = handlerEdicao;
+    container.onchange = handlerEdicao;
+}
+
+function importarEpcLegadoParaLista(idx) {
+    if (!matrizRiscoEdicaoDraft) return;
+    if (!Array.isArray(matrizRiscoEdicaoDraft.epcs_lista)) {
+        matrizRiscoEdicaoDraft.epcs_lista = [];
+    }
+    const temDados = matrizRiscoEdicaoDraft.epcs_recomendados || matrizRiscoEdicaoDraft.epc_status || matrizRiscoEdicaoDraft.epc_inspecao;
+    if (!temDados) return;
+
+    const novoItem = {
+        uid: 'epc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        descricao: (matrizRiscoEdicaoDraft.epcs_recomendados || '').trim(),
+        tipo: 'Outro',
+        tipo_custom: '',
+        status: matrizRiscoEdicaoDraft.epc_status || '',
+        inspecao: matrizRiscoEdicaoDraft.epc_inspecao || '',
+        eficaz: '' // Neutro: eficácia não inferida automaticamente
+    };
+
+    matrizRiscoEdicaoDraft.epcs_lista.push(novoItem);
+    sincronizarEpcPrincipalLegado(false);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function adicionarEpcNaListaRisco(idx) {
+    if (!matrizRiscoEdicaoDraft) return;
+    if (!Array.isArray(matrizRiscoEdicaoDraft.epcs_lista)) {
+        matrizRiscoEdicaoDraft.epcs_lista = [];
+    }
+
+    const inputDesc = document.getElementById('novoEpc_desc');
+    const selectTipo = document.getElementById('novoEpc_tipo');
+    const inputTipoCustom = document.getElementById('novoEpc_tipo_custom');
+    const selectStatus = document.getElementById('novoEpc_status');
+    const inputInspecao = document.getElementById('novoEpc_inspecao');
+    const selectEficaz = document.getElementById('novoEpc_eficaz');
+
+    const desc = inputDesc ? inputDesc.value.trim() : '';
+    if (!desc) {
+        alert('Por favor, informe a descrição do Equipamento de Proteção Coletiva (EPC).');
+        if (inputDesc) inputDesc.focus();
+        return;
+    }
+
+    const tipo = selectTipo ? selectTipo.value : '';
+    const tipoCustom = (tipo === 'Outro' && inputTipoCustom) ? inputTipoCustom.value.trim() : '';
+
+    const novoItem = {
+        uid: 'epc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        descricao: desc,
+        tipo: tipo,
+        tipo_custom: tipoCustom,
+        status: selectStatus ? selectStatus.value : '',
+        inspecao: inputInspecao ? inputInspecao.value.trim() : '',
+        eficaz: selectEficaz ? selectEficaz.value : ''
+    };
+
+    matrizRiscoEdicaoDraft.epcs_lista.push(novoItem);
+    sincronizarEpcPrincipalLegado(false);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function removerEpcDaListaRisco(uid, idx) {
+    if (!matrizRiscoEdicaoDraft || !Array.isArray(matrizRiscoEdicaoDraft.epcs_lista)) return;
+    matrizRiscoEdicaoDraft.epcs_lista = matrizRiscoEdicaoDraft.epcs_lista.filter(item => item.uid !== uid);
+    // Ao remover itens, se a lista esvaziou, forcarLimpezaSeVazio = true limpa os campos legados
+    sincronizarEpcPrincipalLegado(matrizRiscoEdicaoDraft.epcs_lista.length === 0);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function atualizarItemEpcLista(uid, campo, valor) {
+    if (!matrizRiscoEdicaoDraft || !Array.isArray(matrizRiscoEdicaoDraft.epcs_lista)) return;
+    const item = matrizRiscoEdicaoDraft.epcs_lista.find(x => x.uid === uid);
+    if (item) {
+        item[campo] = valor;
+        // Se for o primeiro item e o campo for status ou inspecao, sincroniza imediatamente com os campos legados
+        if ((campo === 'status' || campo === 'inspecao') && matrizRiscoEdicaoDraft.epcs_lista[0]?.uid === uid) {
+            sincronizarEpcPrincipalLegado(false);
+        }
+    }
+}
+
+// ============================================
+// GESTÃO ESTRUTURADA DE MEDIÇÕES QUANTITATIVAS (FASE 3.3)
+// ============================================
+function ordenarMedicoesDecrescente(lista) {
+    if (!Array.isArray(lista)) return [];
+    return [...lista].sort((a, b) => {
+        const dataA = (a.data || '').trim();
+        const dataB = (b.data || '').trim();
+        if (dataA && dataB) {
+            if (dataA > dataB) return -1;
+            if (dataA < dataB) return 1;
+            return 0;
+        }
+        if (dataA && !dataB) return -1;
+        if (!dataA && dataB) return 1;
+        return 0;
+    });
+}
+
+function sincronizarMedicaoPrincipalLegada(forcarLimpezaSeVazio = false) {
+    if (!matrizRiscoEdicaoDraft) return;
+    const lista = Array.isArray(matrizRiscoEdicaoDraft.medicoes_lista) ? matrizRiscoEdicaoDraft.medicoes_lista : [];
+    if (lista.length > 0) {
+        // Ordena por data decrescente estável para garantir que o mais recente sempre seja o primeiro
+        const ordenadas = ordenarMedicoesDecrescente(lista);
+        const itemRecente = ordenadas[0];
+        matrizRiscoEdicaoDraft.quanti_valor = (itemRecente.valor || '').trim();
+        matrizRiscoEdicaoDraft.quanti_unidade = itemRecente.unidade === 'Outro' ? (itemRecente.unidade_custom || 'Outro') : (itemRecente.unidade || '').trim();
+        matrizRiscoEdicaoDraft.quanti_limite = (itemRecente.limite || '').trim();
+        matrizRiscoEdicaoDraft.quanti_nivel_acao = (itemRecente.nivel_acao || '').trim();
+        matrizRiscoEdicaoDraft.quanti_metodo = (itemRecente.metodo || '').trim();
+        matrizRiscoEdicaoDraft.quanti_conclusao = (itemRecente.conclusao || '').trim();
+    } else if (forcarLimpezaSeVazio) {
+        // Apenas limpa se for solicitado explicitamente (ex: remoção do último item)
+        // Se for risco legado puro (lista vazia ou ausente), PRESERVA os dados manuais legados existentes!
+        matrizRiscoEdicaoDraft.quanti_valor = '';
+        matrizRiscoEdicaoDraft.quanti_unidade = '';
+        matrizRiscoEdicaoDraft.quanti_limite = '';
+        matrizRiscoEdicaoDraft.quanti_nivel_acao = '';
+        matrizRiscoEdicaoDraft.quanti_metodo = '';
+        matrizRiscoEdicaoDraft.quanti_conclusao = '';
+    }
+
+    // Atualiza os inputs legados na tela se estiverem presentes
+    if (lista.length > 0) {
+        const elValor = document.getElementById('matrizRiscoInputQuantiValor');
+        if (elValor) elValor.value = matrizRiscoEdicaoDraft.quanti_valor || '';
+        const elUnidade = document.getElementById('matrizRiscoInputQuantiUnidade');
+        if (elUnidade) elUnidade.value = matrizRiscoEdicaoDraft.quanti_unidade || '';
+        const elLimite = document.getElementById('matrizRiscoInputQuantiLimite');
+        if (elLimite) elLimite.value = matrizRiscoEdicaoDraft.quanti_limite || '';
+        const elNA = document.getElementById('matrizRiscoInputQuantiNA');
+        if (elNA) elNA.value = matrizRiscoEdicaoDraft.quanti_nivel_acao || '';
+        const elMetodo = document.getElementById('matrizRiscoInputQuantiMetodo');
+        if (elMetodo) elMetodo.value = matrizRiscoEdicaoDraft.quanti_metodo || '';
+        const elConclusao = document.getElementById('matrizRiscoInputQuantiConclusao');
+        if (elConclusao) elConclusao.value = matrizRiscoEdicaoDraft.quanti_conclusao || '';
+    }
+}
+
+function configurarListenersTabelaMedicoes(idx) {
+    const container = document.getElementById('tabelaMedicoesContainer');
+    if (!container) return;
+
+    // Listener delegado para remoção segura sem injeção inline de UID
+    container.onclick = function(e) {
+        const btnRemover = e.target.closest('.btn-remover-med-item');
+        if (btnRemover) {
+            const uid = btnRemover.getAttribute('data-uid');
+            if (uid) {
+                removerMedicaoDaListaRisco(uid, idx);
+            }
+        }
+    };
+
+    // Listener delegado para inputs e selects sem injeção inline de UID
+    const handlerEdicao = function(e) {
+        const input = e.target.closest('.med-item-field');
+        if (!input) return;
+        const tr = input.closest('tr[data-uid]');
+        if (!tr) return;
+        const uid = tr.getAttribute('data-uid');
+        const campo = input.getAttribute('data-med-campo');
+        if (uid && campo) {
+            atualizarItemMedicaoLista(uid, campo, input.value, idx);
+            if (campo === 'unidade') {
+                const inputCustom = tr.querySelector('input[data-med-campo="unidade_custom"]');
+                if (inputCustom) {
+                    inputCustom.style.display = (input.value === 'Outro' ? 'block' : 'none');
+                    if (input.value !== 'Outro') {
+                        inputCustom.value = '';
+                        atualizarItemMedicaoLista(uid, 'unidade_custom', '', idx);
+                    }
+                }
+            }
+            if (campo === 'data' && e.type === 'change') {
+                atualizarViewDetalhesRisco(idx);
+                const elData = document.querySelector(`tr[data-uid="${uid}"] input[data-med-campo="data"]`);
+                if (elData) elData.focus();
+                return;
+            }
+        }
+    };
+
+    container.oninput = handlerEdicao;
+    container.onchange = handlerEdicao;
+}
+
+function importarMedicaoLegadaParaLista(idx) {
+    if (!matrizRiscoEdicaoDraft) return;
+    if (!Array.isArray(matrizRiscoEdicaoDraft.medicoes_lista)) {
+        matrizRiscoEdicaoDraft.medicoes_lista = [];
+    }
+    const temDados = (matrizRiscoEdicaoDraft.quanti_valor || matrizRiscoEdicaoDraft.quanti_unidade || matrizRiscoEdicaoDraft.quanti_limite || matrizRiscoEdicaoDraft.quanti_nivel_acao || matrizRiscoEdicaoDraft.quanti_metodo || matrizRiscoEdicaoDraft.quanti_conclusao);
+    if (!temDados) return;
+
+    // Detecta se unidade é padrão ou personalizada
+    const unidadesPadrao = ['dB(A)', 'dB(C)', 'm/s²', 'm/s^1.75', 'ppm', 'mg/m³', '°C', 'lx'];
+    const uLegada = (matrizRiscoEdicaoDraft.quanti_unidade || '').trim();
+    let uTipo = '';
+    let uCustom = '';
+    if (unidadesPadrao.includes(uLegada)) {
+        uTipo = uLegada;
+    } else if (uLegada) {
+        uTipo = 'Outro';
+        uCustom = uLegada;
+    }
+
+    const novoItem = {
+        uid: 'med_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        data: '', // Medição legada sem data conhecida mantém data vazia (não inventar data de hoje)
+        valor: matrizRiscoEdicaoDraft.quanti_valor || '',
+        unidade: uTipo,
+        unidade_custom: uCustom,
+        limite: matrizRiscoEdicaoDraft.quanti_limite || '',
+        nivel_acao: matrizRiscoEdicaoDraft.quanti_nivel_acao || '',
+        metodo: matrizRiscoEdicaoDraft.quanti_metodo || '',
+        conclusao: matrizRiscoEdicaoDraft.quanti_conclusao || '',
+        laboratorio: ''
+    };
+
+    matrizRiscoEdicaoDraft.medicoes_lista.push(novoItem);
+    matrizRiscoEdicaoDraft.medicoes_lista = ordenarMedicoesDecrescente(matrizRiscoEdicaoDraft.medicoes_lista);
+    sincronizarMedicaoPrincipalLegada(false);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function adicionarMedicaoNaListaRisco(idx) {
+    if (!matrizRiscoEdicaoDraft) return;
+    if (!Array.isArray(matrizRiscoEdicaoDraft.medicoes_lista)) {
+        matrizRiscoEdicaoDraft.medicoes_lista = [];
+    }
+
+    const inputData = document.getElementById('novaMed_data');
+    const inputValor = document.getElementById('novaMed_valor');
+    const selectUnidade = document.getElementById('novaMed_unidade');
+    const inputUnidadeCustom = document.getElementById('novaMed_unidade_custom');
+    const inputLimite = document.getElementById('novaMed_limite');
+    const inputNA = document.getElementById('novaMed_nivel_acao');
+    const inputMetodo = document.getElementById('novaMed_metodo');
+    const selectConclusao = document.getElementById('novaMed_conclusao');
+    const inputLab = document.getElementById('novaMed_laboratorio');
+
+    const valor = inputValor ? inputValor.value.trim() : '';
+    if (!valor) {
+        alert('Por favor, informe o valor medido da amostragem (ex: 84.2, 0.45).');
+        if (inputValor) inputValor.focus();
+        return;
+    }
+
+    const unidade = selectUnidade ? selectUnidade.value : '';
+    const unidadeCustom = (unidade === 'Outro' && inputUnidadeCustom) ? inputUnidadeCustom.value.trim() : '';
+
+    const novoItem = {
+        uid: 'med_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        data: inputData ? inputData.value.trim() : '',
+        valor: valor,
+        unidade: unidade,
+        unidade_custom: unidadeCustom,
+        limite: inputLimite ? inputLimite.value.trim() : '',
+        nivel_acao: inputNA ? inputNA.value.trim() : '',
+        metodo: inputMetodo ? inputMetodo.value.trim() : '',
+        conclusao: selectConclusao ? selectConclusao.value : '',
+        laboratorio: inputLab ? inputLab.value.trim() : ''
+    };
+
+    matrizRiscoEdicaoDraft.medicoes_lista.push(novoItem);
+    matrizRiscoEdicaoDraft.medicoes_lista = ordenarMedicoesDecrescente(matrizRiscoEdicaoDraft.medicoes_lista);
+    sincronizarMedicaoPrincipalLegada(false);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function removerMedicaoDaListaRisco(uid, idx) {
+    if (!matrizRiscoEdicaoDraft || !Array.isArray(matrizRiscoEdicaoDraft.medicoes_lista)) return;
+    matrizRiscoEdicaoDraft.medicoes_lista = matrizRiscoEdicaoDraft.medicoes_lista.filter(item => item.uid !== uid);
+    sincronizarMedicaoPrincipalLegada(matrizRiscoEdicaoDraft.medicoes_lista.length === 0);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function atualizarItemMedicaoLista(uid, campo, valor, idx) {
+    if (!matrizRiscoEdicaoDraft || !Array.isArray(matrizRiscoEdicaoDraft.medicoes_lista)) return;
+    const item = matrizRiscoEdicaoDraft.medicoes_lista.find(x => x.uid === uid);
+    if (item) {
+        item[campo] = valor;
+        if (campo === 'data') {
+            matrizRiscoEdicaoDraft.medicoes_lista = ordenarMedicoesDecrescente(matrizRiscoEdicaoDraft.medicoes_lista);
+        }
+        sincronizarMedicaoPrincipalLegada(false);
+    }
+}
+
+// ============================================
+// GESTÃO ESTRUTURADA DE EXAMES PCMSO E CIDS-10 (FASE 3.4)
+// ============================================
+
+function sincronizarExamesPcmsoLegado(forcarLimpezaSeVazio = false) {
+    if (!matrizRiscoEdicaoDraft) return;
+    const lista = Array.isArray(matrizRiscoEdicaoDraft.exames_lista) ? matrizRiscoEdicaoDraft.exames_lista : [];
+    if (lista.length > 0) {
+        if (lista.length === 1 && lista[0].is_legado) {
+            matrizRiscoEdicaoDraft.exames_pcmso = lista[0].nome_custom;
+        } else {
+            matrizRiscoEdicaoDraft.exames_pcmso = lista.map(item => {
+                const nomeExame = (item.nome === 'Outro' ? (item.nome_custom || 'Outro') : (item.nome || '')).trim();
+                const period = (item.periodicidade === 'Outro' ? (item.periodicidade_custom || 'Outro') : (item.periodicidade || '')).trim();
+                return period ? `${nomeExame} (${period})` : nomeExame;
+            }).filter(Boolean).join('; ');
+        }
+
+        const el = document.getElementById('matrizRiscoInputExamesPcmso');
+        if (el) el.value = matrizRiscoEdicaoDraft.exames_pcmso;
+    } else if (forcarLimpezaSeVazio) {
+        matrizRiscoEdicaoDraft.exames_pcmso = '';
+        const el = document.getElementById('matrizRiscoInputExamesPcmso');
+        if (el) el.value = '';
+    }
+}
+
+function sincronizarCidsLegado(forcarLimpezaSeVazio = false) {
+    if (!matrizRiscoEdicaoDraft) return;
+    const lista = Array.isArray(matrizRiscoEdicaoDraft.cids_lista) ? matrizRiscoEdicaoDraft.cids_lista : [];
+    if (lista.length > 0) {
+        if (lista.length === 1 && lista[0].is_legado) {
+            matrizRiscoEdicaoDraft.cid10_relacionado = lista[0].descricao;
+        } else {
+            matrizRiscoEdicaoDraft.cid10_relacionado = lista.map(item => {
+                const cod = (item.codigo || '').trim();
+                const desc = (item.descricao || '').trim();
+                if (cod && desc) return `${cod} (${desc})`;
+                return cod || desc;
+            }).filter(Boolean).join(', ');
+        }
+
+        const el = document.getElementById('matrizRiscoInputCid10');
+        if (el) el.value = matrizRiscoEdicaoDraft.cid10_relacionado;
+    } else if (forcarLimpezaSeVazio) {
+        matrizRiscoEdicaoDraft.cid10_relacionado = '';
+        const el = document.getElementById('matrizRiscoInputCid10');
+        if (el) el.value = '';
+    }
+}
+
+function configurarListenersTabelaExames(idx) {
+    const container = document.getElementById('tabelaExamesContainer');
+    if (!container) return;
+
+    container.onclick = function(e) {
+        const btnRemover = e.target.closest('.btn-remover-exame-item');
+        if (btnRemover) {
+            const uid = btnRemover.getAttribute('data-uid');
+            if (uid) removerExameDaListaRisco(uid, idx);
+        }
+    };
+
+    const handlerEdicao = function(e) {
+        const input = e.target.closest('.exame-item-field');
+        if (!input) return;
+        const tr = input.closest('tr[data-uid]');
+        if (!tr) return;
+        const uid = tr.getAttribute('data-uid');
+        const campo = input.getAttribute('data-exame-campo');
+        if (uid && campo) {
+            atualizarItemExameLista(uid, campo, input.value, idx);
+            if (campo === 'nome') {
+                const inputCustom = tr.querySelector('input[data-exame-campo="nome_custom"]');
+                if (inputCustom) {
+                    inputCustom.style.display = (input.value === 'Outro' ? 'block' : 'none');
+                    if (input.value !== 'Outro') {
+                        inputCustom.value = '';
+                        atualizarItemExameLista(uid, 'nome_custom', '', idx);
+                    }
+                }
+            }
+            if (campo === 'periodicidade') {
+                const inputCustom = tr.querySelector('input[data-exame-campo="periodicidade_custom"]');
+                if (inputCustom) {
+                    inputCustom.style.display = (input.value === 'Outro' ? 'block' : 'none');
+                    if (input.value !== 'Outro') {
+                        inputCustom.value = '';
+                        atualizarItemExameLista(uid, 'periodicidade_custom', '', idx);
+                    }
+                }
+            }
+        }
+    };
+
+    container.oninput = handlerEdicao;
+    container.onchange = handlerEdicao;
+}
+
+function configurarListenersTabelaCids(idx) {
+    const container = document.getElementById('tabelaCidsContainer');
+    if (!container) return;
+
+    container.onclick = function(e) {
+        const btnRemover = e.target.closest('.btn-remover-cid-item');
+        if (btnRemover) {
+            const uid = btnRemover.getAttribute('data-uid');
+            if (uid) removerCidDaListaRisco(uid, idx);
+        }
+    };
+
+    const handlerEdicao = function(e) {
+        const input = e.target.closest('.cid-item-field');
+        if (!input) return;
+        const tr = input.closest('tr[data-uid]');
+        if (!tr) return;
+        const uid = tr.getAttribute('data-uid');
+        const campo = input.getAttribute('data-cid-campo');
+        if (uid && campo) {
+            atualizarItemCidLista(uid, campo, input.value, idx);
+        }
+    };
+
+    container.oninput = handlerEdicao;
+    container.onchange = handlerEdicao;
+}
+
+function importarExamesPcmsoLegadoParaLista(idx) {
+    if (!matrizRiscoEdicaoDraft) return;
+    if (!Array.isArray(matrizRiscoEdicaoDraft.exames_lista)) {
+        matrizRiscoEdicaoDraft.exames_lista = [];
+    }
+    const textoOriginal = matrizRiscoEdicaoDraft.exames_pcmso;
+    if (!textoOriginal || typeof textoOriginal !== 'string' || !textoOriginal.trim()) return;
+
+    // Salvaguarda 3 & Auditoria v254: preserva exatamente a string original byte a byte sem .trim()
+    const novoItem = {
+        uid: 'ex_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        nome: 'Outro',
+        nome_custom: textoOriginal,
+        periodicidade: '',
+        periodicidade_custom: '',
+        criterio_indicacao: 'Texto original herdado do PCMSO legado',
+        is_legado: true
+    };
+
+    matrizRiscoEdicaoDraft.exames_lista.push(novoItem);
+    sincronizarExamesPcmsoLegado(false);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function importarCidsLegadoParaLista(idx) {
+    if (!matrizRiscoEdicaoDraft) return;
+    if (!Array.isArray(matrizRiscoEdicaoDraft.cids_lista)) {
+        matrizRiscoEdicaoDraft.cids_lista = [];
+    }
+    const textoOriginal = matrizRiscoEdicaoDraft.cid10_relacionado;
+    if (!textoOriginal || typeof textoOriginal !== 'string' || !textoOriginal.trim()) return;
+
+    // Salvaguarda 3 & Auditoria v254: preserva exatamente a string original byte a byte sem .trim() e sem prefixo sintético
+    const novoItem = {
+        uid: 'cid_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        codigo: '',
+        descricao: textoOriginal,
+        is_legado: true
+    };
+
+    matrizRiscoEdicaoDraft.cids_lista.push(novoItem);
+    sincronizarCidsLegado(false);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function adicionarExameNaListaRisco(idx) {
+    if (!matrizRiscoEdicaoDraft) return;
+    if (!Array.isArray(matrizRiscoEdicaoDraft.exames_lista)) {
+        matrizRiscoEdicaoDraft.exames_lista = [];
+    }
+
+    const selectNome = document.getElementById('novoExame_nome');
+    const inputNomeCustom = document.getElementById('novoExame_nome_custom');
+    const selectPeriodicidade = document.getElementById('novoExame_periodicidade');
+    const inputPeriodicidadeCustom = document.getElementById('novoExame_periodicidade_custom');
+    const inputCriterio = document.getElementById('novoExame_criterio');
+
+    const nome = selectNome ? selectNome.value : '';
+    const nomeCustom = (nome === 'Outro' && inputNomeCustom) ? inputNomeCustom.value.trim() : '';
+
+    if (!nome) {
+        alert('Por favor, selecione ou descreva o exame complementar.');
+        if (selectNome) selectNome.focus();
+        return;
+    }
+    if (nome === 'Outro' && !nomeCustom) {
+        alert('Por favor, descreva o nome do exame específico.');
+        if (inputNomeCustom) inputNomeCustom.focus();
+        return;
+    }
+
+    const periodicidade = selectPeriodicidade ? selectPeriodicidade.value : '';
+    const periodicidadeCustom = (periodicidade === 'Outro' && inputPeriodicidadeCustom) ? inputPeriodicidadeCustom.value.trim() : '';
+
+    const novoItem = {
+        uid: 'ex_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        nome: nome,
+        nome_custom: nomeCustom,
+        periodicidade: periodicidade,
+        periodicidade_custom: periodicidadeCustom,
+        criterio_indicacao: inputCriterio ? inputCriterio.value.trim() : ''
+    };
+
+    matrizRiscoEdicaoDraft.exames_lista.push(novoItem);
+    sincronizarExamesPcmsoLegado(false);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function removerExameDaListaRisco(uid, idx) {
+    if (!matrizRiscoEdicaoDraft || !Array.isArray(matrizRiscoEdicaoDraft.exames_lista)) return;
+    matrizRiscoEdicaoDraft.exames_lista = matrizRiscoEdicaoDraft.exames_lista.filter(item => item.uid !== uid);
+    sincronizarExamesPcmsoLegado(matrizRiscoEdicaoDraft.exames_lista.length === 0);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function atualizarItemExameLista(uid, campo, valor, idx) {
+    if (!matrizRiscoEdicaoDraft || !Array.isArray(matrizRiscoEdicaoDraft.exames_lista)) return;
+    const item = matrizRiscoEdicaoDraft.exames_lista.find(x => x.uid === uid);
+    if (item) {
+        item[campo] = valor;
+        item.is_legado = false;
+        sincronizarExamesPcmsoLegado(false);
+    }
+}
+
+function adicionarCidNaListaRisco(idx) {
+    if (!matrizRiscoEdicaoDraft) return;
+    if (!Array.isArray(matrizRiscoEdicaoDraft.cids_lista)) {
+        matrizRiscoEdicaoDraft.cids_lista = [];
+    }
+
+    const inputCodigo = document.getElementById('novoCid_codigo');
+    const inputDescricao = document.getElementById('novoCid_descricao');
+
+    const codigo = inputCodigo ? inputCodigo.value.trim() : '';
+    const descricao = inputDescricao ? inputDescricao.value.trim() : '';
+
+    if (!codigo && !descricao) {
+        alert('Por favor, informe o código CID-10 ou a patologia correlata.');
+        if (inputCodigo) inputCodigo.focus();
+        return;
+    }
+
+    const novoItem = {
+        uid: 'cid_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        codigo: codigo,
+        descricao: descricao
+    };
+
+    matrizRiscoEdicaoDraft.cids_lista.push(novoItem);
+    sincronizarCidsLegado(false);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function removerCidDaListaRisco(uid, idx) {
+    if (!matrizRiscoEdicaoDraft || !Array.isArray(matrizRiscoEdicaoDraft.cids_lista)) return;
+    matrizRiscoEdicaoDraft.cids_lista = matrizRiscoEdicaoDraft.cids_lista.filter(item => item.uid !== uid);
+    sincronizarCidsLegado(matrizRiscoEdicaoDraft.cids_lista.length === 0);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function atualizarItemCidLista(uid, campo, valor, idx) {
+    if (!matrizRiscoEdicaoDraft || !Array.isArray(matrizRiscoEdicaoDraft.cids_lista)) return;
+    const item = matrizRiscoEdicaoDraft.cids_lista.find(x => x.uid === uid);
+    if (item) {
+        item[campo] = valor;
+        item.is_legado = false;
+        sincronizarCidsLegado(false);
+    }
+}
+
+// ============================================
+// GESTÃO ESTRUTURADA DE MEDIDAS DE PREVENÇÃO (FASE 3.5 - NR-01 GRO)
+// ============================================
+
+function sincronizarMedidasLegado(forcarLimpezaSeVazio = false) {
+    if (!matrizRiscoEdicaoDraft) return;
+    const lista = Array.isArray(matrizRiscoEdicaoDraft.medidas_lista) ? matrizRiscoEdicaoDraft.medidas_lista : [];
+    if (lista.length > 0) {
+        // Se a lista contiver apenas 1 item legado não editado, preserva a string original exata byte a byte
+        if (lista.length === 1 && lista[0].is_legado) {
+            matrizRiscoEdicaoDraft.sugestoes = lista[0].descricao;
+        } else {
+            // Caso coexistam medidas novas ou o item legado tenha sido editado:
+            matrizRiscoEdicaoDraft.sugestoes = lista.map(item => {
+                // Se ainda for um item legado puro não editado:
+                if (item.is_legado) {
+                    return `[Texto Legado] ${(item.descricao || '').trim()}`;
+                }
+                // Se foi editado ou criado novo: NÃO usar "Texto Legado Herdado" como categoria
+                const cat = (item.tipo === 'Outro' ? (item.tipo_custom || 'Outro') : (item.tipo || '')).trim();
+                const desc = (item.descricao || '').trim();
+                const status = (item.status || '').trim();
+
+                let textoItem = '';
+                if (cat) {
+                    textoItem = `[${cat}] ${desc}`;
+                } else {
+                    textoItem = desc;
+                }
+                if (status) textoItem += ` (Status: ${status})`;
+                return textoItem;
+            }).filter(Boolean).join('; ');
+        }
+
+        const el = document.getElementById('matrizRiscoInputSugestoes');
+        if (el) el.value = matrizRiscoEdicaoDraft.sugestoes;
+    } else if (forcarLimpezaSeVazio) {
+        matrizRiscoEdicaoDraft.sugestoes = '';
+        const el = document.getElementById('matrizRiscoInputSugestoes');
+        if (el) el.value = '';
+    }
+}
+
+function configurarListenersTabelaMedidas(idx) {
+    const container = document.getElementById('tabelaMedidasContainer');
+    if (!container) return;
+
+    container.onclick = function(e) {
+        const btnRemover = e.target.closest('.btn-remover-medprev-item');
+        if (btnRemover) {
+            const uid = btnRemover.getAttribute('data-uid');
+            if (uid) removerMedidaDaListaRisco(uid, idx);
+        }
+    };
+
+    const handlerEdicao = function(e) {
+        const input = e.target.closest('.medprev-item-field');
+        if (!input) return;
+        const tr = input.closest('tr[data-uid]');
+        if (!tr) return;
+        const uid = tr.getAttribute('data-uid');
+        const campo = input.getAttribute('data-medprev-campo');
+        if (uid && campo) {
+            atualizarItemMedidaLista(uid, campo, input.value, idx);
+            if (campo === 'tipo') {
+                const inputCustom = tr.querySelector('input[data-medprev-campo="tipo_custom"]');
+                if (inputCustom) {
+                    inputCustom.style.display = (input.value === 'Outro' ? 'block' : 'none');
+                    if (input.value !== 'Outro') {
+                        inputCustom.value = '';
+                        atualizarItemMedidaLista(uid, 'tipo_custom', '', idx);
+                    }
+                }
+            }
+        }
+    };
+
+    container.oninput = handlerEdicao;
+    container.onchange = handlerEdicao;
+}
+
+function importarMedidasLegadoParaLista(idx) {
+    if (!matrizRiscoEdicaoDraft) return;
+    if (!Array.isArray(matrizRiscoEdicaoDraft.medidas_lista)) {
+        matrizRiscoEdicaoDraft.medidas_lista = [];
+    }
+    const textoOriginal = matrizRiscoEdicaoDraft.sugestoes;
+    if (!textoOriginal || typeof textoOriginal !== 'string' || !textoOriginal.trim()) return;
+
+    // Salvaguarda 3 & 4 (v257): não inventa tipo_custom sintético; mantém categoria vazia e registra origem legada
+    const novoItem = {
+        uid: 'medprev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        tipo: '',
+        tipo_custom: '',
+        descricao: textoOriginal,
+        status: '',
+        responsavel: '',
+        prazo: '',
+        is_legado: true,
+        origem_legada: true
+    };
+
+    matrizRiscoEdicaoDraft.medidas_lista.push(novoItem);
+    sincronizarMedidasLegado(false);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function adicionarMedidaNaListaRisco(idx) {
+    if (!matrizRiscoEdicaoDraft) return;
+    if (!Array.isArray(matrizRiscoEdicaoDraft.medidas_lista)) {
+        matrizRiscoEdicaoDraft.medidas_lista = [];
+    }
+
+    const selectTipo = document.getElementById('novaMedida_tipo');
+    const inputTipoCustom = document.getElementById('novaMedida_tipo_custom');
+    const inputDescricao = document.getElementById('novaMedida_descricao');
+    const selectStatus = document.getElementById('novaMedida_status');
+    const inputResponsavel = document.getElementById('novaMedida_responsavel');
+    const inputPrazo = document.getElementById('novaMedida_prazo');
+
+    const tipo = selectTipo ? selectTipo.value : '';
+    const tipoCustom = (tipo === 'Outro' && inputTipoCustom) ? inputTipoCustom.value.trim() : '';
+    const descricao = inputDescricao ? inputDescricao.value.trim() : '';
+
+    if (!descricao) {
+        alert('Por favor, informe a descrição da medida preventiva ou ação.');
+        if (inputDescricao) inputDescricao.focus();
+        return;
+    }
+    if (tipo === 'Outro' && !tipoCustom) {
+        alert('Por favor, especifique a categoria da medida.');
+        if (inputTipoCustom) inputTipoCustom.focus();
+        return;
+    }
+
+    const novoItem = {
+        uid: 'medprev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        tipo: tipo,
+        tipo_custom: tipoCustom,
+        descricao: descricao,
+        status: selectStatus ? selectStatus.value : '',
+        responsavel: inputResponsavel ? inputResponsavel.value.trim() : '',
+        prazo: inputPrazo ? inputPrazo.value.trim() : '',
+        is_legado: false
+    };
+
+    matrizRiscoEdicaoDraft.medidas_lista.push(novoItem);
+    sincronizarMedidasLegado(false);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function removerMedidaDaListaRisco(uid, idx) {
+    if (!matrizRiscoEdicaoDraft || !Array.isArray(matrizRiscoEdicaoDraft.medidas_lista)) return;
+    matrizRiscoEdicaoDraft.medidas_lista = matrizRiscoEdicaoDraft.medidas_lista.filter(item => item.uid !== uid);
+    sincronizarMedidasLegado(matrizRiscoEdicaoDraft.medidas_lista.length === 0);
+    atualizarViewDetalhesRisco(idx);
+}
+
+function atualizarItemMedidaLista(uid, campo, valor, idx) {
+    if (!matrizRiscoEdicaoDraft || !Array.isArray(matrizRiscoEdicaoDraft.medidas_lista)) return;
+    const item = matrizRiscoEdicaoDraft.medidas_lista.find(x => x.uid === uid);
+    if (item) {
+        item[campo] = valor;
+        item.is_legado = false;
+        sincronizarMedidasLegado(false);
+    }
 }
 
 function recalcularRiscoAtivo(idx) {
@@ -1218,6 +3086,13 @@ async function salvarRiscoGheEmEdicao(idx) {
 
     if (statusEl) { statusEl.textContent = 'Salvando...'; statusEl.style.color = 'var(--text-light)'; }
 
+    // Normaliza determinismo dos campos legados antes de salvar caso haja listas estruturadas vinculadas
+    sincronizarEpiCaPrincipalLegado(false);
+    sincronizarEpcPrincipalLegado(false);
+    sincronizarMedicaoPrincipalLegada(false);
+    sincronizarExamesPcmsoLegado(false);
+    sincronizarCidsLegado(false);
+    sincronizarMedidasLegado(false);
     atualizarGravidadeCalculadaGhe(matrizRiscoEdicaoDraft);
     const riscoParaSalvar = JSON.parse(JSON.stringify(matrizRiscoEdicaoDraft));
     const eraNovo = !!riscoParaSalvar._isNovoNaoSalvo;

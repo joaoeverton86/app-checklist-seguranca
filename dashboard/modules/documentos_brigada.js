@@ -1428,24 +1428,38 @@ async function salvarFatoresPsicossociaisGhe() {
         // Atualiza memória oficial do catálogo de GHEs (preservando demais campos intactos)
         gheOriginal.conclusoes = JSON.parse(JSON.stringify(conclusoesBaseParaMerge));
         gheOriginal.updated_at = novoUpdatedAt;
-        if (typeof psicoGheBaseUpdatedAt !== 'undefined') psicoGheBaseUpdatedAt = novoUpdatedAt;
-        if (typeof psicoGheBaseConclusoesJson !== 'undefined') psicoGheBaseConclusoesJson = JSON.stringify(conclusoesBaseParaMerge);
 
-        // Só atualiza o draft/UI se o usuário continuar na mesma sessão e no mesmo GHE
+        // Só atualiza a versão-base ativa e o draft/UI se o usuário continuar na mesma sessão e no mesmo GHE
         if (psicoGheSessionId === saveSessionId && String(psicoGheAtivoId) === String(targetGheId)) {
-            psicoGheDraftFatores = fatoresSnapshot.map(item => normalizarFatorPsicoGheItem(JSON.parse(JSON.stringify(item))));
-            psicoGheDirty = false;
-            renderGestaoPsicossocialGhe();
-            const novoStatusEl = document.getElementById('psicoGheFormStatus');
-            if (novoStatusEl) {
-                novoStatusEl.textContent = '✅ Fatores psicossociais e ergonômicos (NR-01 GRO) salvos com sucesso no GHE.';
-                novoStatusEl.style.color = 'var(--success)';
+            if (typeof psicoGheBaseUpdatedAt !== 'undefined') psicoGheBaseUpdatedAt = novoUpdatedAt;
+            if (typeof psicoGheBaseConclusoesJson !== 'undefined') psicoGheBaseConclusoesJson = JSON.stringify(conclusoesBaseParaMerge);
+            const draftAtualNormalizado = Array.isArray(psicoGheDraftFatores)
+                ? psicoGheDraftFatores.map(item => normalizarFatorPsicoGheItem(JSON.parse(JSON.stringify(item))))
+                : [];
+            const houveEdicaoDuranteSaveGhe = JSON.stringify(draftAtualNormalizado) !== JSON.stringify(fatoresSnapshot);
+            if (houveEdicaoDuranteSaveGhe) {
+                psicoGheDirty = true;
+                renderGestaoPsicossocialGhe();
+                const novoStatusEl = document.getElementById('psicoGheFormStatus');
+                if (novoStatusEl) {
+                    novoStatusEl.textContent = '⚠️ A versão anterior foi salva no GHE, mas houve novas alterações durante o envio. Revise o rascunho mantido na tela e clique em Salvar novamente.';
+                    novoStatusEl.style.color = 'var(--warning, #d97706)';
+                }
+            } else {
+                psicoGheDraftFatores = fatoresSnapshot.map(item => normalizarFatorPsicoGheItem(JSON.parse(JSON.stringify(item))));
+                psicoGheDirty = false;
+                renderGestaoPsicossocialGhe();
+                const novoStatusEl = document.getElementById('psicoGheFormStatus');
+                if (novoStatusEl) {
+                    novoStatusEl.textContent = '✅ Fatores psicossociais e ergonômicos (NR-01 GRO) salvos com sucesso no GHE.';
+                    novoStatusEl.style.color = 'var(--success)';
+                }
             }
         }
         return true;
     } catch (err) {
         console.error('Erro ao salvar fatores psicossociais do GHE:', err);
-        if (statusEl) {
+        if (statusEl && psicoGheSessionId === saveSessionId && String(psicoGheAtivoId) === String(targetGheId)) {
             statusEl.textContent = '❌ Falha ao salvar fatores do GHE: ' + (err.message || err);
             statusEl.style.color = 'var(--danger)';
         }
@@ -1457,10 +1471,12 @@ async function salvarFatoresPsicossociaisGhe() {
         if (typeof psicoGheSalvandoGheId !== 'undefined' && String(psicoGheSalvandoGheId) === String(targetGheId)) {
             psicoGheSalvandoGheId = null;
         }
-        const btnAtual = document.getElementById('btnSalvarFatoresPsicoGhe');
-        if (btnAtual) {
-            btnAtual.disabled = false;
-            btnAtual.textContent = '💾 Salvar Fatores deste GHE';
+        if (!psicoGheSalvandoSessionId || psicoGheSessionId === saveSessionId) {
+            const btnAtual = document.getElementById('btnSalvarFatoresPsicoGhe');
+            if (btnAtual) {
+                btnAtual.disabled = false;
+                btnAtual.textContent = '💾 Salvar Fatores deste GHE';
+            }
         }
     }
 }

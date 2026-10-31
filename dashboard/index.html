@@ -6317,11 +6317,38 @@
                 </div>
 
                 <div id="psicossocialSubtab-visao">
-                    <div id="psicossocialSeletorWrap" style="display:none; margin-bottom: 14px;">
-                        <select id="psicossocialSeletorAplicacao" onchange="onPsicossocialAplicacaoChange(this.value)" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;"></select>
+                    <!-- Banner de Referência Técnica SST / NR-01 -->
+                    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; margin-bottom:14px; display:flex; align-items:center; gap:10px; font-size:12.5px; color:#1e40af;">
+                        <span style="font-size:18px;">ℹ️</span>
+                        <div>
+                            <b>Resultados Agregados Corporativos (COPSOQ II — Versão Curta):</b>
+                            Os indicadores refletem a percepção estatística global coletada via questionário padronizado. Os limiares de destaque visual são parâmetros orientativos de gestão de SST e não constituem diagnósticos individuais nem limites de tolerância de NR.
+                        </div>
+                    </div>
+
+                    <!-- Barra de Controle: Seletor de Rodada e Ações Rápidas -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; background:var(--bg-card); padding:8px 12px; border-radius:8px; border:1px solid var(--border);">
+                        <div id="psicossocialSeletorWrap" style="display:none; align-items:center; gap:8px;">
+                            <span style="font-size:12.5px; font-weight:700; color:var(--text);">Aplicação Ativa:</span>
+                            <select id="psicossocialSeletorAplicacao" onchange="onPsicossocialAplicacaoChange(this.value)" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;"></select>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-left:auto;">
+                            <button id="btnEditarAplicacaoPsicoAtiva" class="db-apply-btn" onclick="editarAplicacaoPsicossocialAtiva()" style="font-size:12px; padding:6px 12px; background:var(--primary); display:none;">✏️ Editar Aplicação Ativa</button>
+                            <button class="db-apply-btn" onclick="abrirFormNovaAplicacaoPsicossocial()" style="font-size:12px; padding:6px 12px; background:var(--success);">➕ Nova Aplicação</button>
+                        </div>
                     </div>
 
                     <div id="psicossocialConteudo">
+                        <!-- Estado Vazio Seguro (Idempotente, preserva o DOM de KPIs/Gráficos) -->
+                        <div id="psicossocialConteudoVazio" style="display:none; text-align:center; padding:32px 16px; background:var(--bg-card); border:1px dashed var(--border); border-radius:8px; margin-bottom:16px;">
+                            <div style="font-size:32px; margin-bottom:8px;">🧠</div>
+                            <div style="font-size:14px; font-weight:700; color:var(--text); margin-bottom:6px;">Nenhuma aplicação do questionário COPSOQ II cadastrada ainda</div>
+                            <div style="font-size:12.5px; color:var(--text-light); margin-bottom:16px;">Cadastre uma nova rodada com as datas do período, taxa de adesão e resultados das escalas.</div>
+                            <button class="db-apply-btn" onclick="abrirFormNovaAplicacaoPsicossocial()" style="font-size:12.5px; padding:7px 16px; background:var(--success);">➕ Cadastrar Primeira Aplicação</button>
+                        </div>
+
+                        <!-- Estrutura de KPIs e Gráficos da Aplicação -->
+                        <div id="psicossocialConteudoAtivo">
                         <div class="db-kpi-grid">
                             <div class="db-kpi-card db-kpi-primary">
                                 <div class="db-kpi-value" id="kpiPsicoParticipacao">0%</div>
@@ -6329,15 +6356,15 @@
                             </div>
                             <div class="db-kpi-card db-kpi-danger">
                                 <div class="db-kpi-value" id="kpiPsicoCriticas">0</div>
-                                <div class="db-kpi-label">Escalas em Risco Crítico (≥40%)</div>
+                                <div class="db-kpi-label" id="lblKpiPsicoCriticas">Escalas em Risco Crítico (≥40%)</div>
                             </div>
                             <div class="db-kpi-card db-kpi-warning">
                                 <div class="db-kpi-value" id="kpiPsicoAtencao">0</div>
-                                <div class="db-kpi-label">Escalas em Atenção (20-40% risco)</div>
+                                <div class="db-kpi-label" id="lblKpiPsicoAtencao">Escalas em Atenção (20-40% risco)</div>
                             </div>
                             <div class="db-kpi-card db-kpi-success">
                                 <div class="db-kpi-value" id="kpiPsicoFortes">0</div>
-                                <div class="db-kpi-label">Pontos Fortes (≥90% favorável)</div>
+                                <div class="db-kpi-label" id="lblKpiPsicoFortes">Pontos Fortes (≥90% favorável)</div>
                             </div>
                         </div>
 
@@ -6361,6 +6388,7 @@
                         <div class="db-chart-card" style="margin-top: 16px;">
                             <button id="btnTogglePerguntasPsico" class="db-filter-btn" onclick="togglePerguntasPsicossociais()">▼ Ver as 41 perguntas detalhadas</button>
                             <div id="psicoPerguntasLista" class="db-list" style="display:none; margin-top: 12px;"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -6378,7 +6406,7 @@
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
                             <div class="db-chart-title" id="psicoFormTitle" style="margin-bottom: 0;">+ Nova Aplicação</div>
                             <div style="display:flex; gap:8px;">
-                                <button class="db-apply-btn" style="background: var(--danger);" onclick="excluirAplicacaoPsicossocial()">🗑️ Excluir</button>
+                                <button id="btnExcluirAplicacaoPsico" class="db-apply-btn" style="background: var(--danger);" onclick="excluirAplicacaoPsicossocial()">🗑️ Excluir</button>
                                 <button class="db-apply-btn" style="background: var(--text-light);" onclick="fecharFormAplicacaoPsicossocial()">Cancelar</button>
                             </div>
                         </div>
@@ -6405,7 +6433,7 @@
                         <div style="font-weight:600; font-size: 13px; margin-bottom: 8px;">Perguntas Detalhadas</div>
                         <div id="psicoFormPerguntasWrap" style="max-height: 320px; overflow-y: auto; margin-bottom: 16px;"></div>
 
-                        <button class="db-apply-btn" onclick="salvarAplicacaoPsicossocial()">💾 Salvar Aplicação</button>
+                        <button id="btnSalvarAplicacaoPsico" class="db-apply-btn" onclick="salvarAplicacaoPsicossocial()">💾 Salvar Aplicação</button>
                         <div id="psicoAplicacaoFormStatus" style="margin-top: 8px; font-size: 12.5px;"></div>
                     </div>
                 </div>
@@ -10082,7 +10110,7 @@
     <script src="modules/epi_estoque.js?v=232"></script>
     <script src="modules/ambiental_compras_hht.js?v=232"></script>
     <script src="modules/apr_cipa.js?v=232"></script>
-    <script src="modules/documentos_brigada.js?v=232"></script>
+    <script src="modules/documentos_brigada.js?v=258"></script>
     <script src="modules/ergonomia_periculosidade_pgr.js?v=232"></script>
     <script src="placar_lideres.js?v=232"></script>
 <script>

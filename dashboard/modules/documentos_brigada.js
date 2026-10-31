@@ -314,17 +314,37 @@ async function loadPsicossocialData() {
             supabaseFetch('avaliacoes_psicossociais_escalas', '?select=*'),
             supabaseFetch('avaliacoes_psicossociais_perguntas', '?select=*')
         ]);
-        allAvaliacoesPsicossociais = aplicacoes;
-        allEscalasPsicossociais = escalas;
-        allPerguntasPsicossociais = perguntas;
-        if (!psicossocialAplicacaoAtivaId || !aplicacoes.some(a => a.id === psicossocialAplicacaoAtivaId)) {
-            const ordenadas = aplicacoes.slice().sort((a, b) => (b.periodo_inicio || '').localeCompare(a.periodo_inicio || ''));
+        allAvaliacoesPsicossociais = Array.isArray(aplicacoes) ? aplicacoes : [];
+        allEscalasPsicossociais = Array.isArray(escalas) ? escalas : [];
+        allPerguntasPsicossociais = Array.isArray(perguntas) ? perguntas : [];
+        psicossocialLoaded = true;
+
+        if (!psicossocialAplicacaoAtivaId || !allAvaliacoesPsicossociais.some(a => a.id === psicossocialAplicacaoAtivaId)) {
+            const ordenadas = allAvaliacoesPsicossociais.slice().sort((a, b) => (b.periodo_inicio || '').localeCompare(a.periodo_inicio || ''));
             psicossocialAplicacaoAtivaId = ordenadas[0]?.id || null;
         }
         renderPsicossocialPanel();
         renderListaAplicacoesPsicossociais();
+        return true;
     } catch (err) {
         console.error('Erro ao carregar avaliação psicossocial:', err);
+        psicossocialLoaded = false;
+        const conteudo = document.getElementById('psicossocialConteudo');
+        const conteudoVazio = document.getElementById('psicossocialConteudoVazio');
+        const conteudoAtivo = document.getElementById('psicossocialConteudoAtivo');
+        if (allAvaliacoesPsicossociais.length === 0) {
+            if (conteudoVazio) {
+                conteudoVazio.style.display = 'block';
+                conteudoVazio.innerHTML = `
+                    <div style="font-size:32px; margin-bottom:8px;">⚠️</div>
+                    <div style="font-size:14px; font-weight:700; color:var(--danger); margin-bottom:6px;">Falha ao carregar dados psicossociais</div>
+                    <div style="font-size:12.5px; color:var(--text-light); margin-bottom:14px;">${escapeHTML(err.message || String(err))}</div>
+                    <button class="db-apply-btn" onclick="loadPsicossocialData()" style="font-size:12px; padding:6px 14px;">🔄 Tentar Novamente</button>
+                `;
+            }
+            if (conteudoAtivo) conteudoAtivo.style.display = 'none';
+        }
+        return false;
     }
 }
 
@@ -336,7 +356,13 @@ function showPsicossocialSubtab(tab) {
         if (btn) btn.classList.toggle('active', t === tab);
     });
     if (tab === 'visao') renderPsicossocialPanel();
-    if (tab === 'gerenciar') { fecharFormAplicacaoPsicossocial(); renderListaAplicacoesPsicossociais(); }
+    if (tab === 'gerenciar') {
+        const form = document.getElementById('psicoAplicacaoFormCard');
+        if (!form || form.style.display !== 'block') {
+            fecharFormAplicacaoPsicossocial();
+        }
+        renderListaAplicacoesPsicossociais();
+    }
 }
 
 function onPsicossocialAplicacaoChange(id) {
@@ -344,46 +370,90 @@ function onPsicossocialAplicacaoChange(id) {
     renderPsicossocialPanel();
 }
 
+function editarAplicacaoPsicossocialAtiva() {
+    if (!psicossocialAplicacaoAtivaId) return;
+    showPsicossocialSubtab('gerenciar');
+    abrirFormAplicacaoPsicossocial(psicossocialAplicacaoAtivaId);
+}
+
+function abrirFormNovaAplicacaoPsicossocial() {
+    showPsicossocialSubtab('gerenciar');
+    abrirFormAplicacaoPsicossocial(null);
+}
+
 function renderPsicossocialPanel() {
     const seletorWrap = document.getElementById('psicossocialSeletorWrap');
     const seletor = document.getElementById('psicossocialSeletorAplicacao');
-    if (!seletorWrap || !seletor) return;
+    const btnEditar = document.getElementById('btnEditarAplicacaoPsicoAtiva');
+    const conteudoVazio = document.getElementById('psicossocialConteudoVazio');
+    const conteudoAtivo = document.getElementById('psicossocialConteudoAtivo');
 
     if (allAvaliacoesPsicossociais.length > 1) {
-        seletorWrap.style.display = '';
-        const ordenadas = allAvaliacoesPsicossociais.slice().sort((a, b) => (b.periodo_inicio || '').localeCompare(a.periodo_inicio || ''));
-        seletor.innerHTML = ordenadas.map(a => `<option value="${escapeHTML(a.id)}" ${a.id === psicossocialAplicacaoAtivaId ? 'selected' : ''}>${formatarPeriodoPsicossocial(a)}</option>`).join('');
+        if (seletorWrap) seletorWrap.style.display = 'flex';
+        if (seletor) {
+            const ordenadas = allAvaliacoesPsicossociais.slice().sort((a, b) => (b.periodo_inicio || '').localeCompare(a.periodo_inicio || ''));
+            seletor.innerHTML = ordenadas.map(a => `<option value="${escapeHTML(a.id)}" ${a.id === psicossocialAplicacaoAtivaId ? 'selected' : ''}>${formatarPeriodoPsicossocial(a)}</option>`).join('');
+        }
+    } else if (allAvaliacoesPsicossociais.length === 1) {
+        if (seletorWrap) seletorWrap.style.display = 'flex';
+        if (seletor) {
+            seletor.innerHTML = `<option value="${escapeHTML(allAvaliacoesPsicossociais[0].id)}" selected>${formatarPeriodoPsicossocial(allAvaliacoesPsicossociais[0])}</option>`;
+        }
     } else {
-        seletorWrap.style.display = 'none';
+        if (seletorWrap) seletorWrap.style.display = 'none';
     }
 
     const aplicacao = allAvaliacoesPsicossociais.find(a => a.id === psicossocialAplicacaoAtivaId);
-    const conteudo = document.getElementById('psicossocialConteudo');
     if (!aplicacao) {
-        if (conteudo) conteudo.innerHTML = '<div class="db-list-empty">Nenhuma aplicação do questionário cadastrada ainda.</div>';
+        if (conteudoVazio) conteudoVazio.style.display = 'block';
+        if (conteudoAtivo) conteudoAtivo.style.display = 'none';
+        if (btnEditar) btnEditar.style.display = 'none';
         return;
     }
+
+    if (conteudoVazio) conteudoVazio.style.display = 'none';
+    if (conteudoAtivo) conteudoAtivo.style.display = 'block';
+    if (btnEditar) btnEditar.style.display = 'inline-flex';
 
     const escalas = allEscalasPsicossociais.filter(e => e.aplicacao_id === psicossocialAplicacaoAtivaId);
     const perguntas = allPerguntasPsicossociais.filter(p => p.aplicacao_id === psicossocialAplicacaoAtivaId).sort((a, b) => a.numero - b.numero);
 
-    document.getElementById('kpiPsicoParticipacao').textContent = fmtPct(aplicacao.taxa_participacao);
-    const criticas = escalas.filter(e => Number(e.pct_risco) >= PSICO_LIMIAR_RISCO_CRITICO).sort((a, b) => Number(b.pct_risco) - Number(a.pct_risco));
-    const atencao = escalas.filter(e => Number(e.pct_risco) >= 20 && Number(e.pct_risco) < PSICO_LIMIAR_RISCO_CRITICO);
-    const fortes = escalas.filter(e => Number(e.pct_favoravel) >= PSICO_LIMIAR_FAVORAVEL_FORTE).sort((a, b) => Number(b.pct_favoravel) - Number(a.pct_favoravel));
-    document.getElementById('kpiPsicoCriticas').textContent = criticas.length;
-    document.getElementById('kpiPsicoAtencao').textContent = atencao.length;
-    document.getElementById('kpiPsicoFortes').textContent = fortes.length;
+    const kpiPart = document.getElementById('kpiPsicoParticipacao');
+    if (kpiPart) kpiPart.textContent = fmtPct(aplicacao.taxa_participacao);
+
+    const limiarCritico = (typeof PSICO_LIMIAR_RISCO_CRITICO !== 'undefined') ? PSICO_LIMIAR_RISCO_CRITICO : 40;
+    const limiarForte = (typeof PSICO_LIMIAR_FAVORAVEL_FORTE !== 'undefined') ? PSICO_LIMIAR_FAVORAVEL_FORTE : 90;
+
+    const criticas = escalas.filter(e => e.pct_risco != null && Number(e.pct_risco) >= limiarCritico).sort((a, b) => Number(b.pct_risco) - Number(a.pct_risco));
+    const atencao = escalas.filter(e => e.pct_risco != null && Number(e.pct_risco) >= 20 && Number(e.pct_risco) < limiarCritico);
+    const fortes = escalas.filter(e => e.pct_favoravel != null && Number(e.pct_favoravel) >= limiarForte).sort((a, b) => Number(b.pct_favoravel) - Number(a.pct_favoravel));
+
+    const elCriticas = document.getElementById('kpiPsicoCriticas');
+    const elAtencao = document.getElementById('kpiPsicoAtencao');
+    const elFortes = document.getElementById('kpiPsicoFortes');
+    if (elCriticas) elCriticas.textContent = criticas.length;
+    if (elAtencao) elAtencao.textContent = atencao.length;
+    if (elFortes) elFortes.textContent = fortes.length;
+
+    // Rótulos dinâmicos vinculados estritamente aos limiares configurados
+    const lblCriticas = document.getElementById('lblKpiPsicoCriticas');
+    const lblAtencao = document.getElementById('lblKpiPsicoAtencao');
+    const lblFortes = document.getElementById('lblKpiPsicoFortes');
+    if (lblCriticas) lblCriticas.textContent = `Escalas em Risco Crítico (≥${limiarCritico}%)`;
+    if (lblAtencao) lblAtencao.textContent = `Escalas em Atenção (20–${limiarCritico}% risco)`;
+    if (lblFortes) lblFortes.textContent = `Pontos Fortes (≥${limiarForte}% favorável)`;
 
     renderPsicoCards('psicoCardsCriticas', criticas, 'risco');
     renderPsicoCards('psicoCardsFortes', fortes, 'favoravel');
 
     const resumoEl = document.getElementById('psicossocialResumo');
-    if (aplicacao.resumo_analise) {
-        resumoEl.style.display = 'block';
-        resumoEl.textContent = aplicacao.resumo_analise;
-    } else {
-        resumoEl.style.display = 'none';
+    if (resumoEl) {
+        if (aplicacao.resumo_analise) {
+            resumoEl.style.display = 'block';
+            resumoEl.textContent = aplicacao.resumo_analise;
+        } else {
+            resumoEl.style.display = 'none';
+        }
     }
 
     renderChartEscalasPsicossociais(escalas);
@@ -409,8 +479,20 @@ function renderChartEscalasPsicossociais(escalas) {
     const canvasId = 'chartPsicoEscalas';
     const ctx = document.getElementById(canvasId);
     if (!ctx) return;
-    const ordenadas = escalas.slice().sort((a, b) => Number(b.pct_risco) - Number(a.pct_risco));
-    const labels = ordenadas.map(e => wrapChartLabel(e.escala));
+
+    // Ordenação segura: escalas com dados válidos de risco ordenadas por risco decrescente; dados ausentes no fim
+    const ordenadas = escalas.slice().sort((a, b) => {
+        const valA = a.pct_risco != null ? Number(a.pct_risco) : -1;
+        const valB = b.pct_risco != null ? Number(b.pct_risco) : -1;
+        return valB - valA;
+    });
+
+    const labels = ordenadas.map(e => {
+        const preenchidos = [e.pct_favoravel != null, e.pct_intermediario != null, e.pct_risco != null].filter(Boolean).length;
+        if (preenchidos === 0) return wrapChartLabel(e.escala + ' (Sem dados)');
+        if (preenchidos < 3) return wrapChartLabel(e.escala + ' (Incompleta)');
+        return wrapChartLabel(e.escala);
+    });
     ajustarAlturaBarrasHorizontais(canvasId, labels);
 
     if (chartPsicoEscalas) chartPsicoEscalas.destroy();
@@ -419,9 +501,21 @@ function renderChartEscalasPsicossociais(escalas) {
         data: {
             labels,
             datasets: [
-                { label: 'Situação Favorável', data: ordenadas.map(e => Number(e.pct_favoravel)), backgroundColor: '#10b981' },
-                { label: 'Intermediário', data: ordenadas.map(e => Number(e.pct_intermediario)), backgroundColor: '#f59e0b' },
-                { label: 'Risco para a Saúde', data: ordenadas.map(e => Number(e.pct_risco)), backgroundColor: '#ef4444' }
+                {
+                    label: 'Situação Favorável',
+                    data: ordenadas.map(e => e.pct_favoravel != null ? Number(e.pct_favoravel) : null),
+                    backgroundColor: '#10b981'
+                },
+                {
+                    label: 'Intermediário',
+                    data: ordenadas.map(e => e.pct_intermediario != null ? Number(e.pct_intermediario) : null),
+                    backgroundColor: '#f59e0b'
+                },
+                {
+                    label: 'Risco para a Saúde',
+                    data: ordenadas.map(e => e.pct_risco != null ? Number(e.pct_risco) : null),
+                    backgroundColor: '#ef4444'
+                }
             ]
         },
         options: {
@@ -434,7 +528,14 @@ function renderChartEscalasPsicossociais(escalas) {
             },
             plugins: {
                 legend: { position: 'bottom' },
-                tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.x.toFixed(1)}%` } }
+                tooltip: {
+                    callbacks: {
+                        label: ctx => {
+                            if (ctx.parsed.x == null || isNaN(ctx.parsed.x)) return `${ctx.dataset.label}: Não informado`;
+                            return `${ctx.dataset.label}: ${ctx.parsed.x.toFixed(1)}%`;
+                        }
+                    }
+                }
             }
         }
     });
@@ -483,10 +584,65 @@ function renderListaAplicacoesPsicossociais() {
     }).join('');
 }
 
+function gerarIdPsicossocial(periodoInicio) {
+    const prefixo = (periodoInicio && periodoInicio.length >= 7) ? periodoInicio.slice(0, 7) : new Date().toISOString().slice(0, 7);
+    let uuid = '';
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        uuid = crypto.randomUUID();
+    } else if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        uuid = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    } else {
+        uuid = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 12);
+    }
+    return `${prefixo}_${uuid}`;
+}
+
+function gerarSessionIdPsicossocial() {
+    let token = '';
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        token = crypto.randomUUID();
+    } else {
+        token = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+    }
+    return 'sess_' + token;
+}
+
+async function tentarRecarregarAposSave(id, sessionId) {
+    const statusEl = document.getElementById('psicoAplicacaoFormStatus');
+    if (statusEl) {
+        statusEl.textContent = 'Recarregando visualização...';
+        statusEl.style.color = 'var(--text-light)';
+    }
+    const ok = await loadPsicossocialData();
+    if (ok !== false) {
+        if (statusEl) {
+            statusEl.textContent = '✅ Visualização atualizada com sucesso.';
+            statusEl.style.color = 'var(--success)';
+        }
+        const form = document.getElementById('psicoAplicacaoFormCard');
+        if (form && form.dataset.sessionId === sessionId && form.dataset.id === id) {
+            psicossocialAplicacaoAtivaId = id;
+            fecharFormAplicacaoPsicossocial(id, sessionId);
+            showPsicossocialSubtab('visao');
+        }
+    } else if (statusEl) {
+        statusEl.innerHTML = `❌ Falha persistente ao atualizar tela.<br>
+        <button type="button" class="db-apply-btn" onclick="tentarRecarregarAposSave('${id}', '${sessionId}')" style="margin-top:4px; font-size:12px; padding:4px 10px;">🔄 Tentar Novamente</button>`;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
 function abrirFormAplicacaoPsicossocial(id) {
     const form = document.getElementById('psicoAplicacaoFormCard');
     document.getElementById('psicoAplicacaoFormStatus').textContent = '';
     form.dataset.id = id || '';
+    // Token de sessão único para identificar o ciclo de vida desta edição específica
+    form.dataset.sessionId = typeof gerarSessionIdPsicossocial === 'function' ? gerarSessionIdPsicossocial() : ('sess_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8));
+
+    const btnExcluir = document.getElementById('btnExcluirAplicacaoPsico');
+    if (btnExcluir) btnExcluir.style.display = id ? 'inline-flex' : 'none';
 
     const aplicacao = id ? allAvaliacoesPsicossociais.find(a => a.id === id) : null;
     document.getElementById('psicoFormTitle').textContent = aplicacao ? `✏️ Editar Aplicação (${formatarPeriodoPsicossocial(aplicacao)})` : '+ Nova Aplicação';
@@ -536,80 +692,214 @@ function abrirFormAplicacaoPsicossocial(id) {
             </div>
         </div>`).join('');
 
+    // Snapshot fiel do modelo carregado nesta edicao (evita fallback cruzado ao salvar)
+    form.dataset.perguntasSnapshot = JSON.stringify(perguntasTemplate);
+
     form.style.display = 'block';
     form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function fecharFormAplicacaoPsicossocial() {
+function fecharFormAplicacaoPsicossocial(idParaFechar, sessionIdParaFechar) {
     const form = document.getElementById('psicoAplicacaoFormCard');
-    if (form) form.style.display = 'none';
+    if (form) {
+        // Se sessionIdParaFechar for informado, não fecha se uma nova sessão de edição já tiver sido aberta
+        if (sessionIdParaFechar && form.dataset.sessionId !== sessionIdParaFechar) return;
+        // Se idParaFechar for informado, não fecha se o form pertencer a outra aplicação
+        if (idParaFechar && form.dataset.id !== idParaFechar) return;
+
+        form.style.display = 'none';
+        form.dataset.id = '';
+        form.dataset.sessionId = '';
+    }
 }
 
 async function salvarAplicacaoPsicossocial() {
     const form = document.getElementById('psicoAplicacaoFormCard');
+    if (!form) return;
+    const saveSessionId = form.dataset.sessionId || ('sess_' + Date.now().toString(36));
+
+    // Guarda lógica de envio concorrente no handler (evita submissão dupla na mesma sessão)
+    if (form.dataset.salvandoSessionId && form.dataset.salvandoSessionId === saveSessionId) {
+        if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+            console.warn('Gravação já em andamento para esta sessão.');
+        }
+        return;
+    }
     const idExistente = form.dataset.id;
     const periodoInicio = document.getElementById('psicoFormPeriodoInicio').value;
     const periodoFim = document.getElementById('psicoFormPeriodoFim').value;
     const taxa = document.getElementById('psicoFormTaxaParticipacao').value;
     const resumo = document.getElementById('psicoFormResumo').value;
     const statusEl = document.getElementById('psicoAplicacaoFormStatus');
+    const btnSalvar = document.getElementById('btnSalvarAplicacaoPsico');
 
+    const restaurarBotao = () => {
+        if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.textContent = '💾 Salvar Aplicação'; }
+    };
+
+    // 1. Validação de período
     if (!periodoInicio || !periodoFim) {
-        statusEl.textContent = 'Informe o período (início e fim).';
+        statusEl.textContent = 'Informe o período completo (data de início e término).';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+    if (periodoInicio > periodoFim) {
+        statusEl.textContent = 'A data de início não pode ser posterior à data de término.';
         statusEl.style.color = 'var(--danger)';
         return;
     }
 
-    const id = idExistente || periodoInicio.slice(0, 7);
+    // 2. Validação da taxa de participação (finito entre 0 e 100)
+    let taxaNum = null;
+    if (taxa !== '' && taxa != null) {
+        taxaNum = parseFloat(taxa);
+        if (isNaN(taxaNum) || !isFinite(taxaNum) || taxaNum < 0 || taxaNum > 100) {
+            statusEl.textContent = 'A taxa de participação deve ser um número válido entre 0% e 100%.';
+            statusEl.style.color = 'var(--danger)';
+            return;
+        }
+    }
 
-    try {
-        await supabaseUpsert('avaliacoes_psicossociais', [{
-            id, periodo_inicio: periodoInicio, periodo_fim: periodoFim,
-            taxa_participacao: taxa === '' ? null : parseFloat(taxa),
-            resumo_analise: resumo || null
-        }]);
+    // 3. Fixação imediata do ID no draft (estabilidade em retry e ID collision-resistant com timestamp e random)
+    const id = idExistente || (typeof gerarIdPsicossocial === 'function'
+        ? gerarIdPsicossocial(periodoInicio)
+        : (periodoInicio.slice(0, 7) + '_' + ((typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : (Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10))))
+    );
+    form.dataset.id = id;
 
-        const nomesEscalas = JSON.parse(form.dataset.escalaNomes || '[]');
-        const escalaRows = nomesEscalas.map(nome => {
-            const slug = slugPsico(nome);
-            const fav = document.getElementById(`psicoEscala_${slug}_fav`)?.value;
-            const int = document.getElementById(`psicoEscala_${slug}_int`)?.value;
-            const risco = document.getElementById(`psicoEscala_${slug}_risco`)?.value;
-            return {
-                id: `${id}_${slug}`, aplicacao_id: id, escala: nome,
-                pct_favoravel: fav === '' || fav == null ? null : parseFloat(fav),
-                pct_intermediario: int === '' || int == null ? null : parseFloat(int),
-                pct_risco: risco === '' || risco == null ? null : parseFloat(risco)
-            };
-        });
-        if (escalaRows.length > 0) await supabaseUpsert('avaliacoes_psicossociais_escalas', escalaRows);
+    // 4. Validação e congelamento das escalas COPSOQ II em snapshot imutável ANTES de qualquer await
+    const nomesEscalas = JSON.parse(form.dataset.escalaNomes || '[]');
+    const escalaRows = [];
+    for (const nome of nomesEscalas) {
+        const slug = slugPsico(nome);
+        const favVal = document.getElementById(`psicoEscala_${slug}_fav`)?.value ?? '';
+        const intVal = document.getElementById(`psicoEscala_${slug}_int`)?.value ?? '';
+        const riscoVal = document.getElementById(`psicoEscala_${slug}_risco`)?.value ?? '';
 
-        const opcaoInputs = form.querySelectorAll('.psico-pergunta-opcao');
-        if (opcaoInputs.length > 0) {
-            const porPergunta = {};
-            opcaoInputs.forEach(inp => {
-                const numero = inp.dataset.pergunta;
-                const opcao = inp.dataset.opcao;
-                if (!porPergunta[numero]) porPergunta[numero] = {};
-                porPergunta[numero][opcao] = parseFloat(inp.value) || 0;
-            });
-            const perguntaRows = Object.entries(porPergunta).map(([numero, opcoes]) => {
-                let original = allPerguntasPsicossociais.find(p => p.aplicacao_id === id && String(p.numero) === numero);
-                if (!original) original = allPerguntasPsicossociais.find(p => String(p.numero) === numero);
-                return { id: `${id}_q${numero}`, aplicacao_id: id, numero: parseInt(numero, 10), pergunta: original?.pergunta || '', opcoes };
-            });
-            if (perguntaRows.length > 0) await supabaseUpsert('avaliacoes_psicossociais_perguntas', perguntaRows);
+        const validarPct = (v) => {
+            if (v === '' || v == null) return true;
+            const n = parseFloat(v);
+            return !isNaN(n) && isFinite(n) && n >= 0 && n <= 100;
+        };
+        if (!validarPct(favVal) || !validarPct(intVal) || !validarPct(riscoVal)) {
+            statusEl.textContent = `Os percentuais da escala "${nome}" devem ser números válidos entre 0% e 100%.`;
+            statusEl.style.color = 'var(--danger)';
+            return;
         }
 
-        statusEl.textContent = '✅ Salvo com sucesso.';
+        const preenchidos = [favVal !== '', intVal !== '', riscoVal !== ''].filter(Boolean).length;
+        if (preenchidos > 0 && preenchidos < 3) {
+            statusEl.textContent = `A escala "${nome}" está parcialmente preenchida. Preencha as três categorias (Favorável, Intermediário e Risco) somando 100%, ou deixe todas vazias.`;
+            statusEl.style.color = 'var(--danger)';
+            return;
+        }
+
+        if (preenchidos === 3) {
+            const soma = parseFloat(favVal) + parseFloat(intVal) + parseFloat(riscoVal);
+            if (Math.abs(soma - 100) > 1.0) {
+                statusEl.textContent = `A soma dos percentuais da escala "${nome}" totaliza ${soma.toFixed(1)}% (deve totalizar 100% ±1%). Ajuste os valores.`;
+                statusEl.style.color = 'var(--danger)';
+                return;
+            }
+        }
+
+        // Snapshot congelado da escala
+        escalaRows.push({
+            id: `${id}_${slug}`,
+            aplicacao_id: id,
+            escala: nome,
+            pct_favoravel: (favVal === '' || favVal == null) ? null : parseFloat(favVal),
+            pct_intermediario: (intVal === '' || intVal == null) ? null : parseFloat(intVal),
+            pct_risco: (riscoVal === '' || riscoVal == null) ? null : parseFloat(riscoVal)
+        });
+    }
+
+    // 5. Validação e congelamento das perguntas detalhadas em snapshot imutável ANTES de qualquer await
+    const opcaoInputs = form.querySelectorAll('.psico-pergunta-opcao');
+    const porPergunta = {};
+    for (const inp of opcaoInputs) {
+        const v = inp.value;
+        if (v !== '' && v != null) {
+            const n = parseFloat(v);
+            if (isNaN(n) || !isFinite(n) || n < 0 || n > 100) {
+                statusEl.textContent = 'Os percentuais das perguntas devem ser números válidos entre 0% e 100%.';
+                statusEl.style.color = 'var(--danger)';
+                return;
+            }
+        }
+        const numero = inp.dataset.pergunta;
+        const opcao = inp.dataset.opcao;
+        if (!porPergunta[numero]) porPergunta[numero] = {};
+        porPergunta[numero][opcao] = (v === '' || v == null) ? null : parseFloat(v);
+    }
+
+    const perguntasSnapshot = JSON.parse(form.dataset.perguntasSnapshot || '[]');
+    const perguntaRows = Object.entries(porPergunta).map(([numero, opcoes]) => {
+        let modelo = perguntasSnapshot.find(p => String(p.numero) === numero);
+        if (!modelo) modelo = allPerguntasPsicossociais.find(p => p.aplicacao_id === id && String(p.numero) === numero);
+        return {
+            id: `${id}_q${numero}`,
+            aplicacao_id: id,
+            numero: parseInt(numero, 10),
+            pergunta: modelo?.pergunta || '',
+            opcoes
+        };
+    });
+
+    // 6. Preparação do payload da aplicação principal (imutável)
+    const aplicacaoRow = {
+        id,
+        periodo_inicio: periodoInicio,
+        periodo_fim: periodoFim,
+        taxa_participacao: taxaNum,
+        resumo_analise: resumo || null
+    };
+
+    // 7. Disparo seguro das gravações usando estritamente os payloads congelados
+    form.dataset.salvandoSessionId = saveSessionId;
+    if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.textContent = '💾 Gravando...'; }
+    statusEl.textContent = 'Gravando aplicação no banco de dados...';
+    statusEl.style.color = 'var(--text-light)';
+
+    try {
+        await supabaseUpsert('avaliacoes_psicossociais', [aplicacaoRow]);
+
+        if (escalaRows.length > 0) {
+            await supabaseUpsert('avaliacoes_psicossociais_escalas', escalaRows);
+        }
+
+        if (perguntaRows.length > 0) {
+            await supabaseUpsert('avaliacoes_psicossociais_perguntas', perguntaRows);
+        }
+
+        const recargaOk = await loadPsicossocialData();
+        if (recargaOk === false) {
+            statusEl.innerHTML = `⚠️ <b>Aplicação gravada no banco de dados com sucesso</b>, mas ocorreu uma falha ao atualizar a visualização.<br>
+            <span style="font-size:12px; color:var(--text-light);">Os dados foram persistidos com segurança. Você pode tentar atualizar a tela diretamente sem gravar novamente.</span><br>
+            <button type="button" class="db-apply-btn" onclick="tentarRecarregarAposSave('${id}', '${saveSessionId}')" style="margin-top:6px; font-size:12px; padding:4px 10px;">🔄 Atualizar Visualização</button>`;
+            statusEl.style.color = 'var(--warning, #d97706)';
+            return;
+        }
+
+        statusEl.textContent = '✅ Aplicação salva com sucesso.';
         statusEl.style.color = 'var(--success)';
-        await loadPsicossocialData();
-        psicossocialAplicacaoAtivaId = id;
-        renderPsicossocialPanel();
+        // Só fecha e transita se o formulário ainda for da mesma sessão e aplicação
+        if (form.dataset.sessionId === saveSessionId && form.dataset.id === id) {
+            psicossocialAplicacaoAtivaId = id;
+            fecharFormAplicacaoPsicossocial(id, saveSessionId);
+            showPsicossocialSubtab('visao');
+        } else if (!psicossocialAplicacaoAtivaId) {
+            psicossocialAplicacaoAtivaId = id;
+        }
     } catch (err) {
         console.error('Erro ao salvar aplicação psicossocial:', err);
-        statusEl.textContent = 'Falha ao salvar: ' + err.message;
+        statusEl.textContent = 'Falha ao salvar: ' + (err.message || err);
         statusEl.style.color = 'var(--danger)';
+    } finally {
+        if (form && form.dataset.salvandoSessionId === saveSessionId) {
+            delete form.dataset.salvandoSessionId;
+        }
+        restaurarBotao();
     }
 }
 

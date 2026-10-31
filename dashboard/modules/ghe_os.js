@@ -367,13 +367,16 @@ function renderMatrizViewSetor() {
             `}
         </div>
 
-        <!-- Alerta Informativo de Riscos Psicossociais (NR-01 GRO) -->
+                <!-- Alerta Informativo de Riscos Psicossociais (NR-01 GRO) -->
         <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
             <div style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#1e40af;">
                 <span style="font-size:18px;">ℹ️</span>
-                <span><b>Gestão Integrada NR-01:</b> Fatores de Riscos Psicossociais e Ergonômicos devem ser monitorados periodicamente para este grupo operacional.</span>
+                <span><b>Gestão Integrada NR-01:</b> Fatores de Riscos Psicossociais e Ergonômicos devem ser monitorados periodicamente para este grupo operacional (<b>${Array.isArray(g.conclusoes?.fatores_psicossociais_nr01) ? g.conclusoes.fatores_psicossociais_nr01.length : 0}</b> fator(es) monitorado(s) no GHE).</span>
             </div>
-            <button class="db-clear-btn" onclick="showDbPage('psicossocial')" style="padding:4px 10px; font-size:11px; background:#fff; color:#1e40af; border-color:#93c5fd; white-space:nowrap;">Ver Painel Psicossocial</button>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button class="db-apply-btn" data-ghe-id="${escapeHTML(g.id)}" onclick="abrirGestaoPsicossocialPorGhe(this.dataset.gheId)" style="padding:5px 12px; font-size:11.5px; background:#2563eb; color:#fff; white-space:nowrap;">🛡️ Gerenciar Fatores NR-01 deste GHE</button>
+                <button class="db-clear-btn" onclick="showDbPage('psicossocial'); showPsicossocialSubtab('visao');" style="padding:4px 10px; font-size:11px; background:#fff; color:#1e40af; border-color:#93c5fd; white-space:nowrap;">📊 Ver COPSOQ II Global</button>
+            </div>
         </div>
 
         <!-- Seção: Gestão de Riscos do Setor / GHE -->

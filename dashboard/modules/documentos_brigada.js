@@ -349,7 +349,7 @@ async function loadPsicossocialData() {
 }
 
 function showPsicossocialSubtab(tab) {
-    ['visao', 'gerenciar'].forEach(t => {
+    ['visao', 'gerenciar', 'ghe'].forEach(t => {
         const content = document.getElementById('psicossocialSubtab-' + t);
         const btn = document.getElementById('psicossocialSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -362,6 +362,9 @@ function showPsicossocialSubtab(tab) {
             fecharFormAplicacaoPsicossocial();
         }
         renderListaAplicacoesPsicossociais();
+    }
+    if (tab === 'ghe') {
+        garantirDadosGestaoPsicoGhe();
     }
 }
 
@@ -917,6 +920,627 @@ async function excluirAplicacaoPsicossocial() {
         alert('Falha ao excluir: ' + err.message);
     }
 }
+
+// ============================================
+// INCREMENTO 17.2: GESTÃO INTEGRADA NR-01 GRO POR GHE (FATORES PSICOSSOCIAIS E ERGONÔMICOS)
+// Mantém separação estrita dos dados agregados corporativos do COPSOQ II e armazena os fatores
+// preventivos por GHE em ghe_catalogo.conclusoes.fatores_psicossociais_nr01.
+// ============================================
+
+const PSICO_DIMENSOES_NR01_PADRAO = [
+    'Exigências Quantitativas e Ritmo de Trabalho',
+    'Exigências Cognitivas e Emocionais',
+    'Organização e Horários / Turnos de Trabalho',
+    'Autonomia e Controle sobre o Trabalho',
+    'Clareza e Conflito de Papéis Operacionais',
+    'Apoio Social, Liderança e Comunicação',
+    'Relacionamento Interpessoal e Clima Organizacional',
+    'Interface Trabalho-Indivíduo / Condições Ergonômicas',
+    'Outro'
+];
+
+const PSICO_STATUS_NR01_OPCOES = [
+    'Não Avaliado',
+    'Controlado',
+    'Monitoramento Preventivo',
+    'Atenção / Intervenção Recomendada',
+    'Ação Prioritária'
+];
+
+let psicoGheAtivoId = null;
+let psicoGheSessionId = '';
+let psicoGheSalvandoSessionId = null;
+let psicoGheDraftFatores = [];
+let psicoGheDirty = false;
+let psicoGheDelegatedBound = false;
+
+function gerarUidFatorPsicoGhe() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return 'fator_' + crypto.randomUUID();
+    }
+    return 'fator_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+}
+
+function normalizarFatorPsicoGheItem(item) {
+    const obj = (item && typeof item === 'object') ? item : {};
+    let dimensao = String(obj.dimensao || PSICO_DIMENSOES_NR01_PADRAO[0]);
+    let dimensaoCustom = String(obj.dimensao_custom || '');
+    if (!PSICO_DIMENSOES_NR01_PADRAO.includes(dimensao)) {
+        dimensaoCustom = dimensao;
+        dimensao = 'Outro';
+    }
+    const statusRaw = String(obj.status_avaliacao || 'Não Avaliado');
+    const status = PSICO_STATUS_NR01_OPCOES.includes(statusRaw) ? statusRaw : 'Não Avaliado';
+
+    return {
+        uid: String(obj.uid || gerarUidFatorPsicoGhe()),
+        dimensao,
+        dimensao_custom: dimensao === 'Outro' ? dimensaoCustom : '',
+        fator_descricao: String(obj.fator_descricao || ''),
+        fonte_geradora: String(obj.fonte_geradora || ''),
+        status_avaliacao: status,
+        medidas_prevencao: String(obj.medidas_prevencao || ''),
+        responsavel: String(obj.responsavel || ''),
+        data_avaliacao: String(obj.data_avaliacao || ''),
+        proxima_reavaliacao: String(obj.proxima_reavaliacao || '')
+    };
+}
+
+function carregarDraftFatoresDoGhe(gheId) {
+    const ghe = (typeof allGheCatalogo !== 'undefined' && Array.isArray(allGheCatalogo))
+        ? allGheCatalogo.find(g => String(g.id) === String(gheId))
+        : null;
+    const listaPersistida = Array.isArray(ghe?.conclusoes?.fatores_psicossociais_nr01)
+        ? ghe.conclusoes.fatores_psicossociais_nr01
+        : [];
+    psicoGheDraftFatores = listaPersistida.map(item => normalizarFatorPsicoGheItem(JSON.parse(JSON.stringify(item))));
+    psicoGheSessionId = typeof gerarSessionIdPsicossocial === 'function'
+        ? gerarSessionIdPsicossocial()
+        : ('sess_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10));
+    psicoGheDirty = false;
+}
+
+async function garantirDadosGestaoPsicoGhe(forcarRecarga = false) {
+    const container = document.getElementById('psicoGestaoGheContainer');
+    try {
+        if (forcarRecarga || !Array.isArray(allGheCatalogo) || allGheCatalogo.length === 0) {
+            if (container) {
+                container.innerHTML = '<div class="db-chart-card"><div class="db-list-empty">Carregando catálogo de Setores / GHEs...</div></div>';
+            }
+            const rows = await supabaseFetch('ghe_catalogo', '?select=*');
+            allGheCatalogo = Array.isArray(rows) ? rows : [];
+        }
+        const ordenados = allGheCatalogo.slice().sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
+        if (!psicoGheAtivoId || !ordenados.some(g => String(g.id) === String(psicoGheAtivoId))) {
+            psicoGheAtivoId = ordenados[0]?.id || null;
+            if (psicoGheAtivoId) {
+                carregarDraftFatoresDoGhe(psicoGheAtivoId);
+            } else {
+                psicoGheDraftFatores = [];
+                psicoGheDirty = false;
+            }
+        } else if (!psicoGheSessionId) {
+            carregarDraftFatoresDoGhe(psicoGheAtivoId);
+        }
+        renderGestaoPsicossocialGhe();
+        return true;
+    } catch (err) {
+        console.error('Erro ao carregar GHEs na gestão psicossocial NR-01:', err);
+        if (container) {
+            container.innerHTML = `
+                <div class="db-chart-card" style="text-align:center; padding:24px;">
+                    <div style="font-size:32px; margin-bottom:8px;">⚠️</div>
+                    <div style="font-size:14px; font-weight:700; color:var(--danger); margin-bottom:6px;">Falha ao carregar catálogo de GHEs</div>
+                    <div style="font-size:12.5px; color:var(--text-light); margin-bottom:14px;">${escapeHTML(err.message || String(err))}</div>
+                    <button class="db-apply-btn" onclick="garantirDadosGestaoPsicoGhe(true)" style="font-size:12px; padding:6px 14px;">🔄 Tentar Novamente</button>
+                </div>
+            `;
+        }
+        return false;
+    }
+}
+
+async function abrirGestaoPsicossocialPorGhe(gheId) {
+    if (psicoGheDirty && psicoGheAtivoId && String(psicoGheAtivoId) !== String(gheId)) {
+        if (typeof confirm === 'function' && !confirm('Existem alterações não salvas nos fatores NR-01 do GHE atual. Deseja descartá-las e abrir outro GHE?')) {
+            return false;
+        }
+    }
+    if (typeof showDbPage === 'function') {
+        showDbPage('psicossocial');
+    }
+    psicoGheAtivoId = gheId || psicoGheAtivoId;
+    psicoGheSessionId = ''; // Força inicialização limpa do draft para o GHE solicitado
+    showPsicossocialSubtab('ghe');
+    return true;
+}
+
+function selecionarGheGestaoPsicossocial(novoGheId) {
+    if (!novoGheId || String(novoGheId) === String(psicoGheAtivoId)) return true;
+    if (psicoGheDirty) {
+        if (typeof confirm === 'function' && !confirm('Existem alterações não salvas no rascunho deste GHE. Deseja descartá-las e trocar de GHE?')) {
+            const sel = document.getElementById('psicoGheSeletor');
+            if (sel) sel.value = psicoGheAtivoId || '';
+            return false;
+        }
+    }
+    psicoGheAtivoId = novoGheId;
+    carregarDraftFatoresDoGhe(novoGheId);
+    renderGestaoPsicossocialGhe();
+    return true;
+}
+
+function voltarParaMatrizRiscoDoGhe(gheId) {
+    if (psicoGheDirty) {
+        if (typeof confirm === 'function' && !confirm('Existem alterações não salvas nos fatores NR-01 deste GHE. Deseja descartá-las e voltar para a Matriz de Riscos?')) {
+            return false;
+        }
+        psicoGheDirty = false;
+    }
+    if (typeof showDbPage === 'function') {
+        showDbPage('matrizrisco');
+    }
+    if (typeof selecionarGheMatrizRisco === 'function' && gheId) {
+        selecionarGheMatrizRisco(gheId);
+    }
+    return true;
+}
+
+function adicionarFatorPsicossocialGheDraft() {
+    if (!psicoGheAtivoId) return;
+    psicoGheDraftFatores.push({
+        uid: gerarUidFatorPsicoGhe(),
+        dimensao: PSICO_DIMENSOES_NR01_PADRAO[0],
+        dimensao_custom: '',
+        fator_descricao: '',
+        fonte_geradora: '',
+        status_avaliacao: 'Não Avaliado',
+        medidas_prevencao: '',
+        responsavel: '',
+        data_avaliacao: '',
+        proxima_reavaliacao: ''
+    });
+    psicoGheDirty = true;
+    renderGestaoPsicossocialGhe();
+}
+
+function removerFatorPsicossocialGheDraft(uid) {
+    const idx = psicoGheDraftFatores.findIndex(f => String(f.uid) === String(uid));
+    if (idx === -1) return;
+    psicoGheDraftFatores.splice(idx, 1);
+    psicoGheDirty = true;
+    renderGestaoPsicossocialGhe();
+}
+
+function atualizarCampoFatorPsicossocialGheDraft(uid, campo, valor) {
+    const item = psicoGheDraftFatores.find(f => String(f.uid) === String(uid));
+    if (!item) return;
+    item[campo] = valor;
+    if (campo === 'dimensao' && valor !== 'Outro') {
+        item.dimensao_custom = '';
+    }
+    psicoGheDirty = true;
+    if (campo === 'dimensao' || campo === 'status_avaliacao') {
+        renderGestaoPsicossocialGhe();
+    } else {
+        const badgeDirty = document.getElementById('psicoGheDirtyBadge');
+        if (badgeDirty) badgeDirty.style.display = 'inline-flex';
+    }
+}
+
+function cancelarEdicaoFatoresPsicossociaisGhe() {
+    if (!psicoGheAtivoId) return;
+    carregarDraftFatoresDoGhe(psicoGheAtivoId);
+    renderGestaoPsicossocialGhe();
+    const statusEl = document.getElementById('psicoGheFormStatus');
+    if (statusEl) {
+        statusEl.textContent = '↩️ Alterações descartadas. Dados originais do GHE restaurados.';
+        statusEl.style.color = 'var(--text-light)';
+    }
+}
+
+async function salvarFatoresPsicossociaisGhe() {
+    if (typeof bloquearEdicaoSeNaoAutorizado === 'function' && bloquearEdicaoSeNaoAutorizado('psicossocial')) return false;
+    const statusEl = document.getElementById('psicoGheFormStatus');
+    const btnSalvar = document.getElementById('btnSalvarFatoresPsicoGhe');
+    const targetGheId = psicoGheAtivoId;
+    const saveSessionId = psicoGheSessionId || ('sess_' + Date.now().toString(36));
+
+    // Guarda lógica de concorrência por sessão
+    if (psicoGheSalvandoSessionId && psicoGheSalvandoSessionId === saveSessionId) {
+        if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+            console.warn('Gravação de fatores psicossociais do GHE já em andamento para esta sessão.');
+        }
+        return false;
+    }
+
+    const gheOriginal = (typeof allGheCatalogo !== 'undefined' && Array.isArray(allGheCatalogo))
+        ? allGheCatalogo.find(g => String(g.id) === String(targetGheId))
+        : null;
+    if (!gheOriginal) {
+        if (statusEl) {
+            statusEl.textContent = '❌ Selecione um GHE válido antes de salvar.';
+            statusEl.style.color = 'var(--danger)';
+        }
+        return false;
+    }
+
+    // Validação síncrona estrita e congelamento do snapshot ANTES de qualquer await
+    const fatoresSnapshot = [];
+    for (let i = 0; i < psicoGheDraftFatores.length; i++) {
+        const f = psicoGheDraftFatores[i];
+        const numItem = i + 1;
+        const desc = String(f.fator_descricao || '').trim();
+        if (!desc) {
+            if (statusEl) {
+                statusEl.textContent = `❌ O Fator #${numItem} precisa ter a descrição da condição/exigência preenchida.`;
+                statusEl.style.color = 'var(--danger)';
+            }
+            return false;
+        }
+        const dim = PSICO_DIMENSOES_NR01_PADRAO.includes(f.dimensao) ? f.dimensao : 'Outro';
+        const dimCustom = dim === 'Outro' ? String(f.dimensao_custom || '').trim() : '';
+        if (dim === 'Outro' && !dimCustom) {
+            if (statusEl) {
+                statusEl.textContent = `❌ Informe a especificação da dimensão personalizada no Fator #${numItem}.`;
+                statusEl.style.color = 'var(--danger)';
+            }
+            return false;
+        }
+        const st = PSICO_STATUS_NR01_OPCOES.includes(f.status_avaliacao) ? f.status_avaliacao : 'Não Avaliado';
+        const dtAval = String(f.data_avaliacao || '').trim();
+        const dtProx = String(f.proxima_reavaliacao || '').trim();
+        if (dtAval && dtProx && dtAval > dtProx) {
+            if (statusEl) {
+                statusEl.textContent = `❌ No Fator #${numItem}, a data da avaliação (${dtAval}) não pode ser posterior à próxima reavaliação (${dtProx}).`;
+                statusEl.style.color = 'var(--danger)';
+            }
+            return false;
+        }
+
+        fatoresSnapshot.push({
+            uid: String(f.uid || gerarUidFatorPsicoGhe()),
+            dimensao: dim,
+            dimensao_custom: dimCustom,
+            fator_descricao: desc,
+            fonte_geradora: String(f.fonte_geradora || '').trim(),
+            status_avaliacao: st,
+            medidas_prevencao: String(f.medidas_prevencao || '').trim(),
+            responsavel: String(f.responsavel || '').trim(),
+            data_avaliacao: dtAval,
+            proxima_reavaliacao: dtProx
+        });
+    }
+
+    const conclusoesClone = (gheOriginal.conclusoes && typeof gheOriginal.conclusoes === 'object' && !Array.isArray(gheOriginal.conclusoes))
+        ? JSON.parse(JSON.stringify(gheOriginal.conclusoes))
+        : {};
+    conclusoesClone.fatores_psicossociais_nr01 = fatoresSnapshot;
+
+    const gheRowSnapshot = {
+        id: gheOriginal.id,
+        nome: gheOriginal.nome,
+        cargos: Array.isArray(gheOriginal.cargos) ? JSON.parse(JSON.stringify(gheOriginal.cargos)) : [],
+        quantidade_oficial: gheOriginal.quantidade_oficial || 0,
+        riscos: Array.isArray(gheOriginal.riscos) ? JSON.parse(JSON.stringify(gheOriginal.riscos)) : [],
+        conclusoes: conclusoesClone,
+        updated_at: new Date().toISOString()
+    };
+
+    psicoGheSalvandoSessionId = saveSessionId;
+    if (btnSalvar) {
+        btnSalvar.disabled = true;
+        btnSalvar.textContent = '💾 Gravando...';
+    }
+    if (statusEl) {
+        statusEl.textContent = 'Gravando fatores psicossociais do GHE no banco de dados...';
+        statusEl.style.color = 'var(--text-light)';
+    }
+
+    try {
+        await supabaseUpsert('ghe_catalogo', [gheRowSnapshot]);
+
+        // Atualiza memória oficial do catálogo de GHEs
+        gheOriginal.conclusoes = JSON.parse(JSON.stringify(conclusoesClone));
+        gheOriginal.updated_at = gheRowSnapshot.updated_at;
+
+        // Só atualiza o draft/UI se o usuário continuar na mesma sessão e no mesmo GHE
+        if (psicoGheSessionId === saveSessionId && String(psicoGheAtivoId) === String(targetGheId)) {
+            psicoGheDraftFatores = fatoresSnapshot.map(item => normalizarFatorPsicoGheItem(JSON.parse(JSON.stringify(item))));
+            psicoGheDirty = false;
+            renderGestaoPsicossocialGhe();
+            const novoStatusEl = document.getElementById('psicoGheFormStatus');
+            if (novoStatusEl) {
+                novoStatusEl.textContent = '✅ Fatores psicossociais e ergonômicos (NR-01 GRO) salvos com sucesso no GHE.';
+                novoStatusEl.style.color = 'var(--success)';
+            }
+        }
+        return true;
+    } catch (err) {
+        console.error('Erro ao salvar fatores psicossociais do GHE:', err);
+        if (statusEl) {
+            statusEl.textContent = '❌ Falha ao salvar fatores do GHE: ' + (err.message || err);
+            statusEl.style.color = 'var(--danger)';
+        }
+        return false;
+    } finally {
+        if (psicoGheSalvandoSessionId === saveSessionId) {
+            psicoGheSalvandoSessionId = null;
+        }
+        const btnAtual = document.getElementById('btnSalvarFatoresPsicoGhe');
+        if (btnAtual) {
+            btnAtual.disabled = false;
+            btnAtual.textContent = '💾 Salvar Fatores deste GHE';
+        }
+    }
+}
+
+function vincularListenersDelegadosPsicoGhe() {
+    if (psicoGheDelegatedBound || typeof document === 'undefined') return;
+    const container = document.getElementById('psicoGestaoGheContainer');
+    if (!container || typeof container.addEventListener !== 'function') return;
+
+    container.addEventListener('input', (e) => {
+        const el = e.target;
+        if (!el || !el.dataset || !el.dataset.psicoGheUid || !el.dataset.psicoGheField) return;
+        const field = el.dataset.psicoGheField;
+        if (field === 'dimensao' || field === 'status_avaliacao') return;
+        atualizarCampoFatorPsicossocialGheDraft(el.dataset.psicoGheUid, field, el.value);
+    });
+
+    container.addEventListener('change', (e) => {
+        const el = e.target;
+        if (!el) return;
+        if (el.id === 'psicoGheSeletor') {
+            selecionarGheGestaoPsicossocial(el.value);
+            return;
+        }
+        if (el.dataset && el.dataset.psicoGheUid && el.dataset.psicoGheField) {
+            atualizarCampoFatorPsicossocialGheDraft(el.dataset.psicoGheUid, el.dataset.psicoGheField, el.value);
+        }
+    });
+
+    container.addEventListener('click', (e) => {
+        const btnRemover = e.target.closest ? e.target.closest('[data-psico-ghe-remove-uid]') : null;
+        if (btnRemover && btnRemover.dataset.psicoGheRemoveUid) {
+            removerFatorPsicossocialGheDraft(btnRemover.dataset.psicoGheRemoveUid);
+            return;
+        }
+        const btnVoltar = e.target.closest ? e.target.closest('[data-psico-ghe-voltar]') : null;
+        if (btnVoltar && btnVoltar.dataset.psicoGheVoltar) {
+            voltarParaMatrizRiscoDoGhe(btnVoltar.dataset.psicoGheVoltar);
+        }
+    });
+
+    psicoGheDelegatedBound = true;
+}
+
+function corBadgeStatusPsicoNr01(status) {
+    switch (status) {
+        case 'Controlado':
+            return { bg: '#dcfce7', color: '#166534', border: '#86efac', icon: '🟢' };
+        case 'Monitoramento Preventivo':
+            return { bg: '#dbeafe', color: '#1e40af', border: '#93c5fd', icon: '🔵' };
+        case 'Atenção / Intervenção Recomendada':
+            return { bg: '#fef3c7', color: '#92400e', border: '#fcd34d', icon: '🟡' };
+        case 'Ação Prioritária':
+            return { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5', icon: '🔴' };
+        default:
+            return { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1', icon: '⚪' };
+    }
+}
+
+function renderGestaoPsicossocialGhe() {
+    const container = document.getElementById('psicoGestaoGheContainer');
+    if (!container) return;
+    vincularListenersDelegadosPsicoGhe();
+
+    const grupos = (typeof allGheCatalogo !== 'undefined' && Array.isArray(allGheCatalogo))
+        ? allGheCatalogo.slice().sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')))
+        : [];
+
+    if (grupos.length === 0) {
+        container.innerHTML = `
+            <div class="db-chart-card">
+                <div class="db-list-empty">Nenhum GHE cadastrado no catálogo.</div>
+            </div>
+        `;
+        return;
+    }
+
+    const ghe = grupos.find(g => String(g.id) === String(psicoGheAtivoId)) || grupos[0];
+    if (String(psicoGheAtivoId) !== String(ghe.id)) {
+        psicoGheAtivoId = ghe.id;
+        carregarDraftFatoresDoGhe(ghe.id);
+    }
+
+    const cargos = Array.isArray(ghe.cargos) ? ghe.cargos : [];
+    const riscosErgonomicosMatriz = (Array.isArray(ghe.riscos) ? ghe.riscos : []).filter(r => {
+        const tipo = String(r.tipo || '').toLowerCase();
+        return tipo.includes('ergon') || tipo.includes('psico');
+    });
+
+    const totalFatores = psicoGheDraftFatores.length;
+    const qtdPrioritarios = psicoGheDraftFatores.filter(f => f.status_avaliacao === 'Ação Prioritária' || f.status_avaliacao === 'Atenção / Intervenção Recomendada').length;
+    const qtdControlados = psicoGheDraftFatores.filter(f => f.status_avaliacao === 'Controlado' || f.status_avaliacao === 'Monitoramento Preventivo').length;
+    const qtdNaoAvaliados = psicoGheDraftFatores.filter(f => !f.status_avaliacao || f.status_avaliacao === 'Não Avaliado').length;
+
+    container.innerHTML = `
+        <!-- Banner de Diretriz Técnica NR-01 GRO / Anonimato COPSOQ II -->
+        <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:flex-start; gap:10px; font-size:12.5px; color:#1e40af;">
+            <span style="font-size:18px; line-height:1;">🛡️</span>
+            <div>
+                <b>Gestão Preventiva de Fatores Psicossociais e Organizacionais por GHE (NR-01 GRO / NR-17):</b>
+                Este painel registra a avaliação organizacional e as medidas preventivas específicas do Grupo Homogêneo de Exposição (GHE) selecionado.
+                Em respeito à confidencialidade ética e validade estatística, os resultados do questionário anônimo <b>COPSOQ II Global</b> permanecem agregados corporativamente e não são atribuídos individualmente nem retroativamente aos GHEs.
+            </div>
+        </div>
+
+        <!-- Barra de Seleção de GHE e Navegação Cruzada -->
+        <div class="db-chart-card" style="margin-bottom:16px; padding:14px 16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; min-width:260px;">
+                    <label for="psicoGheSeletor" style="font-size:13px; font-weight:700; color:var(--text); white-space:nowrap;">Setor / GHE Ativo:</label>
+                    <select id="psicoGheSeletor" style="padding:8px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px; font-weight:600; min-width:260px; flex:1; max-width:460px;">
+                        ${grupos.map(g => `<option value="${escapeHTML(g.id)}" ${String(g.id) === String(ghe.id) ? 'selected' : ''}>GHE ${escapeHTML(g.id)} — ${escapeHTML(g.nome || '')}</option>`).join('')}
+                    </select>
+                    <span id="psicoGheDirtyBadge" style="display:${psicoGheDirty ? 'inline-flex' : 'none'}; align-items:center; gap:4px; background:#fef3c7; color:#92400e; border:1px solid #fcd34d; font-size:11px; font-weight:700; padding:3px 8px; border-radius:12px;">
+                        ⚠️ Alterações não salvas
+                    </span>
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="db-clear-btn" data-psico-ghe-voltar="${escapeHTML(ghe.id)}" style="font-size:12px; padding:7px 12px;">
+                        ⬅️ Voltar à Matriz de Riscos do GHE ${escapeHTML(ghe.id)}
+                    </button>
+                    <button type="button" class="db-apply-btn" onclick="adicionarFatorPsicossocialGheDraft()" style="font-size:12px; padding:7px 14px; background:#2563eb;">
+                        ➕ Adicionar Fator NR-01 ao GHE
+                    </button>
+                </div>
+            </div>
+
+            <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border); display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--text-light);">
+                <span><b>GHE:</b> ${escapeHTML(ghe.id)} — ${escapeHTML(ghe.nome || '')}</span>
+                <span><b>Cargos vinculados:</b> ${cargos.length > 0 ? cargos.map(c => escapeHTML(c.cargo || c.funcao || '')).join(', ') : 'Nenhum cargo listado'}</span>
+                <span><b>Riscos Ergonômicos na Matriz PGR:</b> ${riscosErgonomicosMatriz.length} identificado(s)</span>
+            </div>
+        </div>
+
+        <!-- KPIs do GHE Selecionado -->
+        <div class="db-kpi-grid" style="grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); margin-bottom:16px;">
+            <div class="db-kpi-card db-kpi-primary">
+                <div class="db-kpi-value">${totalFatores}</div>
+                <div class="db-kpi-label">Fatores NR-01 no GHE</div>
+            </div>
+            <div class="db-kpi-card db-kpi-danger">
+                <div class="db-kpi-value">${qtdPrioritarios}</div>
+                <div class="db-kpi-label">Atenção / Ação Prioritária</div>
+            </div>
+            <div class="db-kpi-card db-kpi-success">
+                <div class="db-kpi-value">${qtdControlados}</div>
+                <div class="db-kpi-label">Controlados / Monitorados</div>
+            </div>
+            <div class="db-kpi-card db-kpi-warning">
+                <div class="db-kpi-value">${qtdNaoAvaliados}</div>
+                <div class="db-kpi-label">Não Avaliados (Pendentes)</div>
+            </div>
+        </div>
+
+        <!-- Resumo de Riscos Ergonômicos já constantes na Matriz do GHE -->
+        ${riscosErgonomicosMatriz.length > 0 ? `
+        <div class="db-chart-card" style="margin-bottom:16px; padding:12px 16px; background:var(--bg);">
+            <div style="font-size:12.5px; font-weight:700; color:var(--text); margin-bottom:6px;">
+                🦾 Riscos Ergonômicos / Organizacionais já Mapeados no Inventário PGR deste GHE (${riscosErgonomicosMatriz.length})
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                ${riscosErgonomicosMatriz.map(r => `
+                    <span style="background:var(--bg-card, #fff); border:1px solid var(--border); border-radius:6px; padding:4px 10px; font-size:11.5px; color:var(--text);">
+                        <b>${escapeHTML(r.agente || 'Agente')}:</b> ${escapeHTML(r.fonte_geradora || 'Sem fonte informada')}
+                        ${r.classe_risco ? ` · <span style="color:var(--text-light);">Classe ${escapeHTML(r.classe_risco)}</span>` : ''}
+                    </span>
+                `).join('')}
+            </div>
+        </div>
+        ` : ''}
+
+        <!-- Lista de Fatores Psicossociais e Organizacionais do GHE -->
+        <div class="db-chart-card" style="margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+                <div class="db-chart-title" style="margin-bottom:0;">📋 Inventário de Fatores Psicossociais e Organizacionais do GHE ${escapeHTML(ghe.id)}</div>
+                <button type="button" class="db-apply-btn" onclick="adicionarFatorPsicossocialGheDraft()" style="font-size:12px; padding:6px 12px;">+ Novo Fator</button>
+            </div>
+
+            ${psicoGheDraftFatores.length === 0 ? `
+                <div class="db-list-empty" style="padding:28px 16px;">
+                    <div style="font-size:28px; margin-bottom:6px;">🛡️</div>
+                    <div style="font-weight:700; color:var(--text); margin-bottom:4px;">Nenhum fator psicossocial/organizacional registrado para o GHE ${escapeHTML(ghe.id)}</div>
+                    <div style="font-size:12px; color:var(--text-light); margin-bottom:12px;">Clique em <b>"+ Novo Fator"</b> para parametrizar dimensões da NR-01 GRO (ritmo, carga cognitiva, turnos, autonomia, apoio social e medidas preventivas) para este grupo operacional.</div>
+                    <button type="button" class="db-apply-btn" onclick="adicionarFatorPsicossocialGheDraft()" style="font-size:12px; padding:7px 14px;">➕ Cadastrar Primeiro Fator deste GHE</button>
+                </div>
+            ` : psicoGheDraftFatores.map((f, idx) => {
+                const badge = corBadgeStatusPsicoNr01(f.status_avaliacao);
+                return `
+                <div style="border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:12px; background:var(--bg);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--border);">
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <span style="font-weight:800; font-size:13px; color:var(--text);">Fator #${idx + 1}</span>
+                            <span style="background:${badge.bg}; color:${badge.color}; border:1px solid ${badge.border}; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px;">
+                                ${badge.icon} ${escapeHTML(f.status_avaliacao || 'Não Avaliado')}
+                            </span>
+                        </div>
+                        <button type="button" class="db-clear-btn" data-psico-ghe-remove-uid="${escapeHTML(f.uid)}" style="color:var(--danger); border-color:var(--danger); font-size:11.5px; padding:4px 10px;">
+                            🗑️ Remover Fator
+                        </button>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-bottom:10px;">
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Dimensão NR-01 / Ergonômica<br>
+                            <select data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="dimensao" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                                ${PSICO_DIMENSOES_NR01_PADRAO.map(d => `<option value="${escapeHTML(d)}" ${f.dimensao === d ? 'selected' : ''}>${escapeHTML(d)}</option>`).join('')}
+                            </select>
+                        </label>
+
+                        ${f.dimensao === 'Outro' ? `
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Especificar Dimensão Personalizada *<br>
+                            <input type="text" value="${escapeHTML(f.dimensao_custom || '')}" placeholder="Descreva a dimensão..." data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="dimensao_custom" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                        </label>
+                        ` : ''}
+
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Status Preventivo GRO / NR-01<br>
+                            <select data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="status_avaliacao" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                                ${PSICO_STATUS_NR01_OPCOES.map(st => `<option value="${escapeHTML(st)}" ${f.status_avaliacao === st ? 'selected' : ''}>${escapeHTML(st)}</option>`).join('')}
+                            </select>
+                        </label>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:10px; margin-bottom:10px;">
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Condição / Exigência Observada na Atividade *<br>
+                            <input type="text" value="${escapeHTML(f.fator_descricao || '')}" placeholder="Ex: Atendimento simultâneo de demandas operacionais sob pressão de tempo" data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="fator_descricao" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                        </label>
+
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Fonte Organizacional / Processo<br>
+                            <input type="text" value="${escapeHTML(f.fonte_geradora || '')}" placeholder="Ex: Regime de turno, pico operacional, interface com terceiros" data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="fonte_geradora" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                        </label>
+                    </div>
+
+                    <div style="margin-bottom:10px;">
+                        <label style="font-size:12px; font-weight:600; color:var(--text); display:block;">Medidas Preventivas e Controles Organizacionais (NR-01 / NR-17)<br>
+                            <textarea rows="2" placeholder="Descreva pausas, rodízio, dimensionamento de equipe, treinamento de liderança, canais de apoio..." data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="medidas_prevencao" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box; font-family:inherit;">${escapeHTML(f.medidas_prevencao || '')}</textarea>
+                        </label>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Responsável pelo Acompanhamento<br>
+                            <input type="text" value="${escapeHTML(f.responsavel || '')}" placeholder="Ex: Engenharia SST / Liderança Operacional" data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="responsavel" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                        </label>
+
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Data da Avaliação (opcional)<br>
+                            <input type="date" value="${escapeHTML(f.data_avaliacao || '')}" data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="data_avaliacao" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                        </label>
+
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Próxima Reavaliação / Monitoramento<br>
+                            <input type="date" value="${escapeHTML(f.proxima_reavaliacao || '')}" data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="proxima_reavaliacao" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                        </label>
+                    </div>
+                </div>
+                `;
+            }).join('')}
+
+            <!-- Barra de Ações Transacionais do GHE -->
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+                <div id="psicoGheFormStatus" style="font-size:12.5px; font-weight:600;"></div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="db-clear-btn" onclick="cancelarEdicaoFatoresPsicossociaisGhe()" style="padding:8px 14px; font-size:12.5px;">
+                        ↩️ Cancelar / Restaurar GHE
+                    </button>
+                    <button type="button" id="btnSalvarFatoresPsicoGhe" class="db-apply-btn" onclick="salvarFatoresPsicossociaisGhe()" style="padding:8px 16px; font-size:12.5px;">
+                        💾 Salvar Fatores deste GHE
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 
 // ============================================
 // CONFIGURAÇÕES GERAIS DO SISTEMA (2026-09-21) - itens que antes ficavam fixos no

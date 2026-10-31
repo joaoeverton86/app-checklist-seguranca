@@ -774,7 +774,22 @@ async function salvarAplicacaoPsicossocial() {
 
     const restaurarBotao = () => {
         if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.textContent = '💾 Salvar Aplicação'; }
+        habilitarInputsFormulario(form);
     };
+
+    // Funções para desabilitar/habilitar todos os inputs do formulário durante save
+    function desabilitarInputsFormulario(f) {
+        if (!f) return;
+        f.querySelectorAll('input, select, textarea, button').forEach(el => {
+            if (el.type !== 'hidden') el.disabled = true;
+        });
+    }
+    function habilitarInputsFormulario(f) {
+        if (!f) return;
+        f.querySelectorAll('input, select, textarea, button').forEach(el => {
+            if (el.type !== 'hidden') el.disabled = false;
+        });
+    }
 
     // 1. Validação de período
     if (!periodoInicio || !periodoFim) {
@@ -893,9 +908,28 @@ async function salvarAplicacaoPsicossocial() {
         resumo_analise: resumo || null
     };
 
-    if (typeof capturarSnapshotInputsFormPsico === 'function') {
-        form.dataset.initialSnapshot = capturarSnapshotInputsFormPsico();
-    }
+    const lerSnapshotInputsFormLocal = () => {
+        if (typeof capturarSnapshotInputsFormPsico === 'function') {
+            return capturarSnapshotInputsFormPsico();
+        }
+        const pIni = document.getElementById('psicoFormPeriodoInicio')?.value ?? '';
+        const pFim = document.getElementById('psicoFormPeriodoFim')?.value ?? '';
+        const tx = document.getElementById('psicoFormTaxaParticipacao')?.value ?? '';
+        const res = document.getElementById('psicoFormResumo')?.value ?? '';
+        const esc = nomesEscalas.map(nome => {
+            const slug = slugPsico(nome);
+            return [
+                document.getElementById(`psicoEscala_${slug}_fav`)?.value ?? '',
+                document.getElementById(`psicoEscala_${slug}_int`)?.value ?? '',
+                document.getElementById(`psicoEscala_${slug}_risco`)?.value ?? ''
+            ].join(':');
+        }).join('|');
+        const ops = typeof form.querySelectorAll === 'function' ? Array.from(form.querySelectorAll('.psico-pergunta-opcao')) : [];
+        const perg = ops.map(inp => `${inp.dataset?.pergunta}_${inp.dataset?.opcao}=${inp.value ?? ''}`).join('|');
+        return JSON.stringify({ pIni, pFim, taxa: tx, resumo: res, escalasVals: esc, perguntasVals: perg });
+    };
+    const snapshotSalvo = lerSnapshotInputsFormLocal();
+    form.dataset.initialSnapshot = snapshotSalvo;
 
     // 7. Fila de serialização por registro (per-ID queue) + geração monotônica (sem mutação retroativa em voo)
     // Garante que uma gravação anterior em andamento para o mesmo ID termine antes de iniciar a próxima escrita.
@@ -950,9 +984,16 @@ async function salvarAplicacaoPsicossocial() {
 
         statusEl.textContent = '✅ Aplicação salva com sucesso.';
         statusEl.style.color = 'var(--success)';
-        // Só fecha e transita se o formulário ainda for da mesma sessão e aplicação
+        // Só fecha e transita se o formulário ainda for da mesma sessão, mesma aplicação E sem novas edições feitas durante o envio
         if (form.dataset.sessionId === saveSessionId && form.dataset.id === id) {
             psicossocialAplicacaoAtivaId = id;
+            const snapshotPosSave = lerSnapshotInputsFormLocal();
+            if (snapshotPosSave !== snapshotSalvo) {
+                form.dataset.initialSnapshot = snapshotSalvo;
+                statusEl.textContent = '⚠️ A versão anterior foi salva com sucesso, mas houve novas alterações durante o envio. Revise o rascunho mantido na tela e clique em Salvar novamente.';
+                statusEl.style.color = 'var(--warning, #d97706)';
+                return true;
+            }
             fecharFormAplicacaoPsicossocial(id, saveSessionId);
             showPsicossocialSubtab('visao');
         } else if (!psicossocialAplicacaoAtivaId) {

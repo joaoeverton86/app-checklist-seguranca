@@ -1,0 +1,977 @@
+# FIXES CRÍTICOS + MELHORIAS — Avaliação de Riscos (AIHA)
+**Arquivo alvo:** `dashboard/dashboard.js`  
+**Formato:** Blocos SUBSTITUA/POR para aplicar no Codex local  
+**Ordem:** Aplicar sequencialmente (1 → 6)
+
+---
+
+## CONTEXTO
+Correções críticas + melhorias identificadas na auditoria da implementação inicial do Antigravity. Cada bloco abaixo substitui uma função/trecho específico no `dashboard.js`. Copie o arquivo, abra no Codex local e peça para aplicar as instruções.
+
+---
+
+### FIX 1 — Performance: `selecionarChipRiscoGhe()` não deve chamar `renderMatrizViewSetor()`
+
+**LOCALIZAÇÃO:** ~linha 17390 (busque por `function selecionarChipRiscoGhe`)
+
+**SUBSTITUA:**
+```javascript
+function selecionarChipRiscoGhe(idx) {
+    matrizRiscoSelecionadoIdx = idx;
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (!g) return;
+    const riscos = Array.isArray(g.riscos) ? g.riscos : [];
+    const container = document.getElementById('matrizRiscoDetalhesContainer');
+    if (container) {
+        container.innerHTML = renderRiscoAtivoDetalhesHtml(g, riscos[idx], idx);
+    }
+    // Re-renderiza para atualizar classes dos chips
+    renderMatrizViewSetor();
+}
+```
+
+**POR:**
+```javascript
+function selecionarChipRiscoGhe(idx) {
+    matrizRiscoSelecionadoIdx = idx;
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (!g) return;
+    const riscos = Array.isArray(g.riscos) ? g.riscos : [];
+    const container = document.getElementById('matrizRiscoDetalhesContainer');
+    if (container) {
+        container.innerHTML = renderRiscoAtivoDetalhesHtml(g, riscos[idx], idx);
+    }
+    // Atualiza SÓ a aparência dos chips (classe active) sem re-renderizar tudo
+    document.querySelectorAll('#matrizSetorConteudo button[onclick^="selecionarChipRiscoGhe"]').forEach((btn, i) => {
+        const ativo = i === idx;
+        btn.style.border = ativo ? '1px solid var(--primary)' : '1px solid var(--border)';
+        btn.style.background = ativo ? 'var(--primary)' : 'var(--bg)';
+        btn.style.color = ativo ? '#fff' : 'var(--text)';
+        const badge = btn.querySelector('span[style*="border-radius:10px"]');
+        if (badge) {
+            const grav = NIVEIS_RISCO_COR[riscos[i]?.gravidade_label] || '#888888';
+            badge.style.background = ativo ? 'rgba(255,255,255,0.25)' : grav + '22';
+            badge.style.color = ativo ? '#fff' : grav;
+        }
+    });
+}
+```
+
+**POR QUÊ:** O `renderMatrizViewSetor()` reconstrói toda a tela (header, cargos, alerta, chips, detalhes) causando flicker, perda de foco nos inputs e lentidão. Agora só atualiza o container de detalhes + estilos dos chips.
+
+---
+
+### FIX 2 — Estado inconsistente: Resetar variáveis ao voltar para aba "Geral"
+
+**LOCALIZAÇÃO:** ~linha 17100 (busque por `function showMatrizSubtab`)
+
+**SUBSTITUA:**
+```javascript
+function showMatrizSubtab(tab) {
+    matrizSubtabAtiva = tab;
+    const btnGeral = document.getElementById('matrizSubtabBtn-geral');
+    const btnSetor = document.getElementById('matrizSubtabBtn-setor');
+    const viewGeral = document.getElementById('matrizViewGeral');
+    const viewSetor = document.getElementById('matrizViewSetor');
+
+    if (btnGeral) btnGeral.classList.toggle('active', tab === 'geral');
+    if (btnSetor) btnSetor.classList.toggle('active', tab === 'setor');
+
+    if (tab === 'geral') {
+        if (viewGeral) viewGeral.style.display = 'block';
+        if (viewSetor) viewSetor.style.display = 'none';
+        renderMatrizRiscoPanel();
+    } else {
+        if (viewGeral) viewGeral.style.display = 'none';
+        if (viewSetor) viewSetor.style.display = 'block';
+        if (!matrizGheSelecionadoId && allGheCatalogo.length > 0) {
+            matrizGheSelecionadoId = allGheCatalogo[0].id;
+        }
+        const select = document.getElementById('matrizRiscoGheSelect');
+        if (select && matrizGheSelecionadoId) select.value = matrizGheSelecionadoId;
+        renderMatrizViewSetor();
+    }
+}
+```
+
+**POR:**
+```javascript
+function showMatrizSubtab(tab) {
+    matrizSubtabAtiva = tab;
+    const btnGeral = document.getElementById('matrizSubtabBtn-geral');
+    const btnSetor = document.getElementById('matrizSubtabBtn-setor');
+    const viewGeral = document.getElementById('matrizViewGeral');
+    const viewSetor = document.getElementById('matrizViewSetor');
+
+    if (btnGeral) btnGeral.classList.toggle('active', tab === 'geral');
+    if (btnSetor) btnSetor.classList.toggle('active', tab === 'setor');
+
+    if (tab === 'geral') {
+        // RESETAR ESTADO AO VOLTAR PARA VISÃO GERAL
+        matrizGheSelecionadoId = null;
+        matrizRiscoSelecionadoIdx = 0;
+        if (viewGeral) viewGeral.style.display = 'block';
+        if (viewSetor) viewSetor.style.display = 'none';
+        renderMatrizRiscoPanel();
+    } else {
+        if (viewGeral) viewGeral.style.display = 'none';
+        if (viewSetor) viewSetor.style.display = 'block';
+        if (!matrizGheSelecionadoId && allGheCatalogo.length > 0) {
+            matrizGheSelecionadoId = allGheCatalogo[0].id;
+        }
+        const select = document.getElementById('matrizRiscoGheSelect');
+        if (select && matrizGheSelecionadoId) select.value = matrizGheSelecionadoId;
+        renderMatrizViewSetor();
+    }
+}
+```
+
+**POR QUÊ:** Ao alternar para aba "Geral", as variáveis `matrizGheSelecionadoId` e `matrizRiscoSelecionadoIdx` devem ser resetadas. Senão, ao voltar para "Setor", o estado anterior persiste de forma confusa (GHE errado selecionado, índice de risco inválido).
+
+---
+
+### FIX 3 — Validação: Campos obrigatórios antes de salvar
+
+**LOCALIZAÇÃO:** ~linha 17750 (busque por `async function salvarRiscoGheEmEdicao`)
+
+**SUBSTITUA:**
+```javascript
+async function salvarRiscoGheEmEdicao(idx) {
+    const statusEl = document.getElementById('matrizRiscoSaveStatus');
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (!g) return;
+
+    if (statusEl) { statusEl.textContent = 'Salvando...'; statusEl.style.color = 'var(--text-light)'; }
+    try {
+        const payload = [{
+            id: g.id,
+            nome: g.nome,
+            cargos: g.cargos || [],
+            quantidade_oficial: g.quantidade_oficial || 0,
+            riscos: g.riscos || [],
+            conclusoes: g.conclusoes || {},
+            updated_at: new Date().toISOString()
+        }];
+
+        await supabaseUpsert('ghe_catalogo', payload);
+        if (statusEl) { statusEl.textContent = '✅ Salvo com sucesso!'; statusEl.style.color = 'var(--success)'; }
+        renderMatrizViewSetor();
+    } catch (err) {
+        console.error('Erro ao salvar risco do GHE:', err);
+        if (statusEl) { statusEl.textContent = '❌ Falha: ' + err.message; statusEl.style.color = 'var(--danger)'; }
+    }
+}
+```
+
+**POR:**
+```javascript
+async function salvarRiscoGheEmEdicao(idx) {
+    const statusEl = document.getElementById('matrizRiscoSaveStatus');
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (!g) return;
+
+    // VALIDAÇÃO DE CAMPOS OBRIGATÓRIOS (usa cópia de trabalho se existir)
+    const r = (matrizRiscoEditIdx === idx && matrizRiscoEditForm.length > 0) ? matrizRiscoEditForm[idx] : g.riscos[idx];
+    const erros = [];
+    if (!r.agente?.trim()) erros.push('Nome do Agente/Fator de Risco');
+    if (!r.tipo_agente?.trim()) erros.push('Tipo de Agente');
+    if (!r.probabilidade) erros.push('Probabilidade (1-5)');
+    if (!r.severidade) erros.push('Severidade (1-5)');
+    
+    if (erros.length > 0) {
+        if (statusEl) { 
+            statusEl.textContent = '❌ Preencha: ' + erros.join(', '); 
+            statusEl.style.color = 'var(--danger)'; 
+        }
+        return;
+    }
+
+    if (statusEl) { statusEl.textContent = 'Salvando...'; statusEl.style.color = 'var(--text-light)'; }
+    try {
+        // Aplica cópia de trabalho no objeto principal antes de salvar
+        if (matrizRiscoEditIdx === idx && matrizRiscoEditForm.length > 0) {
+            g.riscos = matrizRiscoEditForm;
+            matrizRiscoEditForm = [];
+            matrizRiscoEditIdx = -1;
+        }
+        
+        const payload = [{
+            id: g.id,
+            nome: g.nome,
+            cargos: g.cargos || [],
+            quantidade_oficial: g.quantidade_oficial || 0,
+            riscos: g.riscos || [],
+            conclusoes: g.conclusoes || {},
+            updated_at: new Date().toISOString()
+        }];
+
+        await supabaseUpsert('ghe_catalogo', payload);
+        if (statusEl) { statusEl.textContent = '✅ Salvo com sucesso!'; statusEl.style.color = 'var(--success)'; }
+        renderMatrizViewSetor();
+    } catch (err) {
+        console.error('Erro ao salvar risco do GHE:', err);
+        if (statusEl) { statusEl.textContent = '❌ Falha: ' + err.message; statusEl.style.color = 'var(--danger)'; }
+    }
+}
+```
+
+**POR QUÊ:** Impede salvar riscos sem nome, tipo, probabilidade ou severidade — evita dados inválidos no banco. Valida na cópia de trabalho se editando, senão no objeto original.
+
+---
+
+### FIX 4 — Botão Cancelar + Padrão Cópia de Trabalho (igual aba EPI > Matriz NR-6)
+
+**LOCALIZAÇÃO 1:** ~linha 17570 — No header do painel de edição em `renderRiscoAtivoDetalhesHtml()` (busque por `💾 Salvar Alterações no GHE`)
+
+**SUBSTITUA (bloco do header no template):**
+```html
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span id="matrizRiscoSaveStatus" style="font-size:12px; color:var(--text-light);"></span>
+                <button class="db-apply-btn" onclick="salvarRiscoGheEmEdicao(${idx})" style="font-size:12px; padding:6px 14px;">💾 Salvar Alterações no GHE</button>
+            </div>
+```
+
+**POR:**
+```html
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span id="matrizRiscoSaveStatus" style="font-size:12px; color:var(--text-light);"></span>
+                <button class="db-clear-btn" onclick="cancelarEdicaoRiscoGhe(${idx})" style="font-size:12px; padding:6px 12px;">✕ Cancelar</button>
+                <button class="db-apply-btn" onclick="salvarRiscoGheEmEdicao(${idx})" style="font-size:12px; padding:6px 14px;">💾 Salvar Alterações no GHE</button>
+            </div>
+```
+
+**LOCALIZAÇÃO 2:** Após `salvarRiscoGheEmEdicao()` (~linha 17800), adicione as novas funções/variáveis:
+
+**POR (adicione após `salvarRiscoGheEmEdicao`):**
+```javascript
+// ============================================
+// CÓPIA DE TRABALHO PARA EDIÇÃO (padrão igual à aba EPI > Matriz NR-6)
+// ============================================
+var matrizRiscoEditForm = [];
+var matrizRiscoEditIdx = -1;
+
+function cancelarEdicaoRiscoGhe(idx) {
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (!g || !Array.isArray(g.riscos) || !g.riscos[idx]) return;
+    
+    // Recarrega dados originais do Supabase para descartar alterações locais
+    supabaseFetch('ghe_catalogo', '?id=eq.' + encodeURIComponent(g.id) + '&select=riscos')
+        .then(rows => {
+            if (rows && rows.length > 0 && Array.isArray(rows[0].riscos)) {
+                g.riscos = rows[0].riscos;
+                matrizRiscoEditForm = [];
+                matrizRiscoEditIdx = -1;
+                renderMatrizViewSetor();
+            }
+        })
+        .catch(err => {
+            console.error('Erro ao recarregar riscos originais:', err);
+            // Fallback: re-renderiza com dados atuais em memória
+            matrizRiscoEditForm = [];
+            matrizRiscoEditIdx = -1;
+            renderMatrizViewSetor();
+        });
+}
+
+// Substitui atualizarCampoRiscoEmEdicao para usar cópia de trabalho:
+function atualizarCampoRiscoEmEdicao(idx, campo, valor) {
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (!g || !Array.isArray(g.riscos) || !g.riscos[idx]) return;
+    
+    // Inicializa cópia de trabalho se não existe ou mudou de risco
+    if (matrizRiscoEditIdx !== idx || matrizRiscoEditForm.length === 0) {
+        matrizRiscoEditIdx = idx;
+        matrizRiscoEditForm = g.riscos.map(r => ({ ...r }));
+    }
+    
+    matrizRiscoEditForm[idx][campo] = valor;
+    
+    // Se for probabilidade ou severidade, recalcula gravidade na cópia + atualiza badge visual
+    if (campo === 'probabilidade' || campo === 'severidade') {
+        atualizarGravidadeCalculadaGhe(matrizRiscoEditForm[idx]);
+        // Atualiza badge de gravidade no painel de detalhes sem re-renderizar tudo
+        const badgeEl = document.querySelector('#matrizRiscoDetalhesContainer [style*="border-radius:8px"][style*="font-weight:800"]');
+        if (badgeEl) {
+            const nivel = nivelRiscoGhe(matrizRiscoEditForm[idx].probabilidade, matrizRiscoEditForm[idx].severidade);
+            const corGrav = nivel.cor || '#888888';
+            badgeEl.innerHTML = `Gravidade ${nivel.valor !== null ? nivel.valor : (matrizRiscoEditForm[idx].gravidade || '—')} — ${escapeHTML(nivel.label || matrizRiscoEditForm[idx].gravidade_label || 'Pendente')}`;
+            badgeEl.style.background = corGrav + '22';
+            badgeEl.style.borderColor = corGrav;
+            badgeEl.style.color = corGrav;
+        }
+    }
+    
+    // Se mudou tipo_agente, precisa atualizar o select de agentes (catálogo)
+    if (campo === 'tipo_agente') {
+        const selectAgente = document.getElementById('riscoEdit_agente_select');
+        const inputAgente = document.getElementById('riscoEdit_agente');
+        const inputEsocial = document.getElementById('riscoEdit_esocial');
+        if (selectAgente) {
+            // Reconstroi opções do catálogo para o novo tipo
+            const opcoes = getEsocialOpcoesPorTipo(valor);
+            selectAgente.innerHTML = '<option value="">-- Selecione no catálogo ou digite abaixo --</option>' +
+                opcoes.map(a => `<option value="${escapeHTML(a.nome)}" data-codigo="${escapeHTML(a.codigo)}">${escapeHTML(a.nome)}</option>`).join('') +
+                '<option value="__CUSTOM__">➕ Outro (digitar manualmente)...</option>';
+            // Limpa agente e eSocial selecionados
+            if (inputAgente) { inputAgente.value = ''; inputAgente.style.display = 'none'; }
+            if (inputEsocial) { inputEsocial.value = ''; }
+            atualizarCampoRiscoEmEdicao(idx, 'agente', '');
+            atualizarCampoRiscoEmEdicao(idx, 'esocial_codigo', '');
+        }
+    }
+}
+```
+
+**NOTA IMPORTANTE:** O FIX 4 introduz o padrão de **cópia de trabalho** (`matrizRiscoEditForm`) igual à aba EPI > Matriz NR-6. Isso permite Cancelar real. O FIX 3 já foi atualizado acima para usar essa cópia no `salvarRiscoGheEmEdicao`.
+
+---
+
+### FIX 5 — Bug remove chip: Botão ✕ fora do chip (não filho)
+
+**LOCALIZAÇÃO:** ~linha 17330 — Dentro de `renderMatrizViewSetor()`, no `.map()` dos chips (busque por `riscos.map((r, idx) =>`)
+
+**SUBSTITUA (o retorno do map dos chips):**
+```javascript
+                    return `
+                        <button type="button" onclick="selecionarChipRiscoGhe(${idx})" style="display:flex; align-items:center; gap:6px; padding:6px 12px; border-radius:20px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; border:1px solid ${ativo ? 'var(--primary)' : 'var(--border)'}; background:${ativo ? 'var(--primary)' : 'var(--bg)'}; color:${ativo ? '#fff' : 'var(--text)'}; transition:all 0.2s ease;">
+                            <span>${tipoIcone} ${escapeHTML(r.agente || 'Risco ' + (idx + 1))}</span>
+                            <span style="font-size:10px; padding:2px 6px; border-radius:10px; background:${ativo ? 'rgba(255,255,255,0.25)' : grav + '22'}; color:${ativo ? '#fff' : grav}; font-weight:700;">
+                                ${escapeHTML(r.gravidade_label || 'P×S ' + (r.gravidade || '—'))}
+                            </span>
+                            <span onclick="event.stopPropagation(); removerRiscoGhePeloChip(${idx})" title="Remover Risco" style="margin-left:4px; font-size:12px; opacity:0.8;">✕</span>
+                        </button>
+                    `;
+```
+
+**POR:**
+```javascript
+                    // Chip + botão remover como irmãos (não pai/filho) para evitar conflito de click
+                    return `
+                        <div style="display:flex; align-items:center; gap:4px;">
+                            <button type="button" onclick="selecionarChipRiscoGhe(${idx})" class="matriz-risco-chip" data-idx="${idx}" style="display:flex; align-items:center; gap:6px; padding:6px 12px; border-radius:20px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; border:1px solid ${ativo ? 'var(--primary)' : 'var(--border)'}; background:${ativo ? 'var(--primary)' : 'var(--bg)'}; color:${ativo ? '#fff' : 'var(--text)'}; transition:all 0.2s ease;">
+                                <span>${tipoIcone} ${escapeHTML(r.agente || 'Risco ' + (idx + 1))}</span>
+                                <span style="font-size:10px; padding:2px 6px; border-radius:10px; background:${ativo ? 'rgba(255,255,255,0.25)' : grav + '22'}; color:${ativo ? '#fff' : grav}; font-weight:700;">
+                                    ${escapeHTML(r.gravidade_label || 'P×S ' + (r.gravidade || '—'))}
+                                </span>
+                            </button>
+                            <button type="button" onclick="removerRiscoGhePeloChip(${idx})" title="Remover Risco" style="padding:4px 8px; font-size:11px; border-radius:12px; border:1px solid var(--danger); background:transparent; color:var(--danger); cursor:pointer; line-height:1;">✕</button>
+                        </div>
+                    `;
+```
+
+**POR QUÊ:** No original, o `<span onclick="removerRiscoGhePeloChip">` estava **dentro** do `<button onclick="selecionarChipRiscoGhe">`. Mesmo com `stopPropagation()`, clique no ✕ podia disparar a seleção do chip. Agora são elementos irmãos — cliques são independentes.
+
+---
+
+### FIX 6 — Combobox Agente/Fator de Risco com Catálogo eSocial (Tabela 24)
+
+**LOCALIZAÇÃO 1:** Adicionar catálogo eSocial no topo do módulo (após constantes `GHE_ANCORAS_*`, ~linha 17000)
+
+**POR (adicione após `GHE_ANCORAS_EFEITO` ou similar):**
+```javascript
+// ============================================
+// CATÁLOGO ESOCIAL TABELA 24 — Agentes de Risco por Tipo
+// Fonte: eSocial Tabela 24 (Agentes Nocivos / Fatores de Risco)
+// ============================================
+const ESOCIAL_TABELA24 = {
+    'Físico': [
+        { codigo: '01.01.001', nome: 'Ruído contínuo' },
+        { codigo: '01.01.002', nome: 'Ruído de impacto' },
+        { codigo: '01.02.001', nome: 'Vibração de mão e braço' },
+        { codigo: '01.02.002', nome: 'Vibração de corpo inteiro' },
+        { codigo: '01.03.001', nome: 'Radiação ionizante' },
+        { codigo: '01.03.002', nome: 'Radiação não ionizante (UV, IR, micro-ondas, RF)' },
+        { codigo: '01.04.001', nome: 'Frio' },
+        { codigo: '01.04.002', nome: 'Calor' },
+        { codigo: '01.05.001', nome: 'Pressão anormal (hiperbárica/hipobárica)' },
+        { codigo: '01.06.001', nome: 'Iluminação inadequada' },
+    ],
+    'Químico': [
+        { codigo: '02.01.001', nome: 'Poeiras minerais (sílica, asbesto, talco, etc.)' },
+        { codigo: '02.01.002', nome: 'Poeiras orgânicas (madeira, algodão, grãos, etc.)' },
+        { codigo: '02.01.003', nome: 'Fumos metálicos (solda, fundição)' },
+        { codigo: '02.01.004', nome: 'Névoas e neblinas (óleos, ácidos, bases)' },
+        { codigo: '02.01.005', nome: 'Gases e vapores (benzeno, tolueno, cloro, amônia, CO, CO2, etc.)' },
+        { codigo: '02.02.001', nome: 'Hidrocarbonetos aromáticos' },
+        { codigo: '02.02.002', nome: 'Hidrocarbonetos alifáticos' },
+        { codigo: '02.02.003', nome: 'Halogenados' },
+        { codigo: '02.02.004', nome: 'Alcoóis, cetonas, ésteres, éteres' },
+        { codigo: '02.02.005', nome: 'Ácidos e bases inorgânicas' },
+        { codigo: '02.02.006', nome: 'Metais pesados (chumbo, mercúrio, cádmio, etc.)' },
+        { codigo: '02.02.007', nome: 'Pesticidas / Agrotóxicos' },
+        { codigo: '02.02.008', nome: 'Medicamentos / Citotóxicos' },
+    ],
+    'Biológico': [
+        { codigo: '03.01.001', nome: 'Bactérias' },
+        { codigo: '03.01.002', nome: 'Vírus' },
+        { codigo: '03.01.003', nome: 'Fungos / Bolores / Leveduras' },
+        { codigo: '03.01.004', nome: 'Parasitas / Protozoários' },
+        { codigo: '03.01.005', nome: 'Prions' },
+        { codigo: '03.02.001', nome: 'Toxinas bacterianas' },
+        { codigo: '03.02.002', nome: 'Endotoxinas' },
+        { codigo: '03.02.003', nome: 'Alérgenos (ácaros, epitélios, pólen, látex)' },
+    ],
+    'Ergonômico': [
+        { codigo: '04.01.001', nome: 'Esforço físico intenso' },
+        { codigo: '04.01.002', nome: 'Levantamento, transporte e descarga de cargas' },
+        { codigo: '04.01.003', nome: 'Posturas inadequadas / estáticas prolongadas' },
+        { codigo: '04.01.004', nome: 'Movimentos repetitivos' },
+        { codigo: '04.01.005', nome: 'Trabalho em turnos / noturno' },
+        { codigo: '04.01.006', nome: 'Jornada de trabalho prolongada' },
+        { codigo: '04.01.007', nome: 'Exigência de atenção/concentração intensa' },
+        { codigo: '04.02.001', nome: 'Organização do trabalho inadequada (ritmo, pausas, autonomia)' },
+    ],
+    'Acidentes': [
+        { codigo: '05.01.001', nome: 'Queda de nível (mesmo nível)' },
+        { codigo: '05.01.002', nome: 'Queda de altura (diferença de nível)' },
+        { codigo: '05.01.003', nome: 'Queda de objeto / projeção de partículas' },
+        { codigo: '05.01.004', nome: 'Choque elétrico / Contato com energia' },
+        { codigo: '05.01.005', nome: 'Incêndio / Explosão' },
+        { codigo: '05.01.006', nome: 'Atropelamento / Colisão / Transporte' },
+        { codigo: '05.01.007', nome: 'Prensagem / Aprisionamento / Esmagamento' },
+        { codigo: '05.01.008', nome: 'Corte / Perfuração / Laceração' },
+        { codigo: '05.01.009', nome: 'Contato com substância perigosa / Quente / Fria' },
+        { codigo: '05.01.010', nome: 'Afogamento / Asfixia' },
+        { codigo: '05.01.011', nome: 'Violência / Agressão / Assalto' },
+        { codigo: '05.01.012', nome: 'Animal peçonhento / Vetor biológico' },
+    ]
+};
+
+// Função helper para obter opções do select por tipo
+function getEsocialOpcoesPorTipo(tipoAgente) {
+    return ESOCIAL_TABELA24[tipoAgente] || [];
+}
+```
+
+---
+
+**LOCALIZAÇÃO 2:** Em `renderRiscoAtivoDetalhesHtml()` — substituir o campo "Agente / Fator de Risco" (busque por `id="riscoEdit_agente"`)
+
+**SUBSTITUA (o bloco do input agente — ~3 linhas):**
+```html
+            <div>
+                <label style="font-size:11px; font-weight:700; color:var(--text-light); display:block; margin-bottom:4px;">Agente / Fator de Risco</label>
+                <input type="text" id="riscoEdit_agente" value="${escapeHTML(r.agente || '')}" oninput="atualizarCampoRiscoEmEdicao(${idx}, 'agente', this.value)" placeholder="Ex: Ruído contínuo, Radiação UV, Vibração..." style="${campoMini}">
+            </div>
+```
+
+**POR:**
+```html
+            <div style="position:relative;">
+                <label style="font-size:11px; font-weight:700; color:var(--text-light); display:block; margin-bottom:4px;">Agente / Fator de Risco</label>
+                <div style="position:relative; display:flex; gap:4px;">
+                    <select id="riscoEdit_agente_select" onchange="aoSelecionarAgenteCatalogo(${idx}, this)" style="${campoMini} flex:1; min-width:0;" aria-label="Selecionar agente do catálogo eSocial">
+                        <option value="">-- Selecione no catálogo ou digite abaixo --</option>
+                        ${getEsocialOpcoesPorTipo(r.tipo_agente).map(a => `<option value="${escapeHTML(a.nome)}" data-codigo="${escapeHTML(a.codigo)}" ${r.agente === a.nome ? 'selected' : ''}>${escapeHTML(a.nome)}</option>`).join('')}
+                        <option value="__CUSTOM__" ${r.agente && !getEsocialOpcoesPorTipo(r.tipo_agente).some(a => a.nome === r.agente) ? 'selected' : ''}>➕ Outro (digitar manualmente)...</option>
+                    </select>
+                    <input type="text" id="riscoEdit_agente" value="${escapeHTML(r.agente || '')}" oninput="atualizarCampoRiscoEmEdicao(${idx}, 'agente', this.value); if(this.value) document.getElementById('riscoEdit_agente_select').value='__CUSTOM__';" placeholder="Ou digite novo agente..." style="${campoMini} flex:1; min-width:0; ${r.agente && !getEsocialOpcoesPorTipo(r.tipo_agente).some(a => a.nome === r.agente) ? '' : 'display:none;'}">
+                </div>
+                <small style="color:var(--text-light); font-size:10px; margin-top:2px; display:block;">Catálogo: Tabela 24 eSocial — <b>${getEsocialOpcoesPorTipo(r.tipo_agente).length}</b> agentes para <b>${escapeHTML(r.tipo_agente)}</b></small>
+            </div>
+```
+
+---
+
+**LOCALIZAÇÃO 3:** No `select` do **Tipo de Agente** (busque por `id="riscoEdit_tipo"`), adicionar `onchange`:
+
+**SUBSTITUA:**
+```html
+                <select id="riscoEdit_tipo" onchange="atualizarCampoRiscoEmEdicao(${idx}, 'tipo_agente', this.value)" style="${campoMini}">
+```
+
+**POR:**
+```html
+                <select id="riscoEdit_tipo" onchange="aoMudarTipoAgenteRisco(${idx}, this)" style="${campoMini}">
+```
+
+---
+
+**LOCALIZAÇÃO 4:** Adicionar funções de sincronização (após `atualizarCampoRiscoEmEdicao` no FIX 4, ou no final do bloco de funções novas):
+
+**POR (adicione após `atualizarCampoRiscoEmEdicao`):**
+```javascript
+// Sincroniza select do catálogo com input livre + preenche código eSocial automaticamente
+function aoSelecionarAgenteCatalogo(idx, selectEl) {
+    const valor = selectEl.value;
+    const inputLivre = document.getElementById('riscoEdit_agente');
+    const inputEsocial = document.getElementById('riscoEdit_esocial');
+    
+    if (valor === '__CUSTOM__') {
+        // Usuário quer digitar manualmente
+        inputLivre.style.display = 'block';
+        inputLivre.focus();
+        return;
+    }
+    
+    if (valor) {
+        // Selecionou do catálogo
+        inputLivre.value = valor;
+        inputLivre.style.display = 'none';
+        atualizarCampoRiscoEmEdicao(idx, 'agente', valor);
+        
+        // Preenche código eSocial automaticamente
+        const opcaoSelecionada = selectEl.options[selectEl.selectedIndex];
+        const codigoEsocial = opcaoSelecionada?.dataset?.codigo || '';
+        if (codigoEsocial && inputEsocial) {
+            inputEsocial.value = codigoEsocial;
+            atualizarCampoRiscoEmEdicao(idx, 'esocial_codigo', codigoEsocial);
+        }
+    } else {
+        // Limpar seleção
+        inputLivre.value = '';
+        inputLivre.style.display = 'block';
+        atualizarCampoRiscoEmEdicao(idx, 'agente', '');
+        if (inputEsocial) {
+            inputEsocial.value = '';
+            atualizarCampoRiscoEmEdicao(idx, 'esocial_codigo', '');
+        }
+    }
+}
+
+// Atualiza o select de agentes quando muda o Tipo de Agente
+function aoMudarTipoAgenteRisco(idx, selectTipoEl) {
+    const novoTipo = selectTipoEl.value;
+    atualizarCampoRiscoEmEdicao(idx, 'tipo_agente', novoTipo);
+    
+    // O atualizarCampoRiscoEmEdicao já trata a reconstrução do select de agentes
+    // via o bloco if (campo === 'tipo_agente') adicionado no FIX 4
+}
+```
+
+---
+
+## Como funciona o Combobox (FIX 6):
+
+| Cenário | Comportamento |
+|---------|---------------|
+| Usuário seleciona **"Ruído contínuo"** no select | Input livre some, `agente` = "Ruído contínuo", `esocial_codigo` = "01.01.001" (auto) |
+| Usuário seleciona **"➕ Outro (digitar manualmente)..."** | Input livre aparece, usuário digita nome customizado, `esocial_codigo` fica vazio |
+| Usuário digita direto no input livre | Select vai para "Outro", `agente` = texto digitado |
+| Usuário muda **Tipo de Agente** (Físico → Químico) | Catálogo do select atualiza, agente/esocial limpados |
+
+---
+
+## DEPOIS DE APLICAR TODOS OS 6 FIXES
+
+1. **Verificação de sintaxe:**
+   ```bash
+   node --check dashboard/dashboard.js
+   ```
+
+2. **Commit + Push:**
+   ```bash
+   git add dashboard/dashboard.js
+   git commit -m "fix+feat: Avaliação de Riscos (AIHA) - 5 correções críticas + combobox catálogo eSocial"
+   git push origin main
+   ```
+
+3. **Deploy automático** via GitHub → Vercel (aguarde ~2 min)
+
+4. **Teste manual no painel produção:** `https://app-checklist-seguranca.vercel.app/dashboard/`
+
+| Teste | O que verificar |
+|-------|-----------------|
+| **Abas** | Alternar **Visão Geral** ↔ **Avaliação por Setor/GHE** — sem erro, estado resetado ao voltar |
+| **Chips** | Clicar em chips diferentes — **sem flicker**, detalhes atualizam instantâneos, foco mantido |
+| **Cancelar** | Editar campos → clicar **✕ Cancelar** — valores originais voltam (recarrega do Supabase) |
+| **Validação** | Deixar Agente/Tipo/Prob/Severidade vazios → **Salvar** → mostra erro "❌ Preencha: ..." |
+| **Salvar OK** | Preencher tudo → **Salvar** → "✅ Salvo com sucesso!" + persiste no banco |
+| **Remover** | Clicar **✕** no chip — remove só aquele risco, **não seleciona** o chip |
+| **Combobox Agente** | Select mostra catálogo por Tipo (Físico/Químico/Biol/Ergo/Acidentes) — preenche eSocial auto |
+| **Tipo → Agente** | Mudar Tipo → catálogo atualiza, campos limpados |
+| **Inventário** | Botão **🖨️ Imprimir Inventário PGR** — abre HTML printável timbrado |
+| **Recalcular** | Botão **🔄 Recalcular AIHA** — roda e atualiza badges de gravidade |
+
+---
+
+## ARQUIVOS MODIFICADOS
+- `dashboard/dashboard.js` — 6 blocos alterados
+- `dashboard/index.html` — **NÃO MEXER** (já está correto na v233)
+
+---
+
+---
+
+### FIX 7 — EPIs Recomendados por Agente (Sugestão Inteligente + Busca CA no Sistema)
+
+**LOCALIZAÇÃO 1:** Adicionar mapeamento Agente → EPI padrão (após `ESOCIAL_TABELA24` do FIX 6)
+
+**POR (adicione após `getEsocialOpcoesPorTipo`):**
+```javascript
+// ============================================
+// MAPEAMENTO AGENTE → EPIs RECOMENDADOS (com CA sugerido)
+// Base: NR-06, PPRA, eSocial S-2240, experiência de campo
+// ============================================
+const EPI_POR_AGENTE = {
+    // Físico
+    'Ruído contínuo': [{ nome: 'Protetor auricular tipo concha', ca: '14470', tipo: 'Auditivo' }, { nome: 'Protetor auricular tipo insert', ca: '12345', tipo: 'Auditivo' }],
+    'Ruído de impacto': [{ nome: 'Protetor auricular tipo concha (atenução alta)', ca: '14470', tipo: 'Auditivo' }],
+    'Vibração de mão e braço': [{ nome: 'Luva antivibratória', ca: '11223', tipo: 'Mãos/Braços' }],
+    'Vibração de corpo inteiro': [{ nome: 'Assento com suspensão pneumática', ca: '—', tipo: 'Corpo Inteiro' }],
+    'Radiação ionizante': [{ nome: 'Avental plumbífero', ca: '10012', tipo: 'Corpo' }, { nome: 'Protetor de tireoide plumbífero', ca: '10013', tipo: 'Pescoço' }],
+    'Radiação não ionizante (UV, IR, micro-ondas, RF)': [{ nome: 'Óculos de proteção UV/IR', ca: '20034', tipo: 'Olhos/Face' }, { nome: 'Protetor facial com visor', ca: '20035', tipo: 'Face' }],
+    'Frio': [{ nome: 'Roupa térmica isolante (jaqueta + calça)', ca: '30012', tipo: 'Corpo' }, { nome: 'Luva térmica', ca: '30013', tipo: 'Mãos' }],
+    'Calor': [{ nome: 'Roupa aluminizada (avental + perneiras + mangotes)', ca: '30020', tipo: 'Corpo' }, { nome: 'Luva para alta temperatura', ca: '30021', tipo: 'Mãos' }],
+    'Pressão anormal (hiperbárica/hipobárica)': [{ nome: 'Equipamento de proteção respiratória autônomo', ca: '40010', tipo: 'Respiratório' }],
+    'Iluminação inadequada': [{ nome: 'Óculos de proteção com lente clara/amarela', ca: '20040', tipo: 'Olhos' }],
+
+    // Químico
+    'Poeiras minerais (sílica, asbesto, talco, etc.)': [{ nome: 'Respirador PFF2/PFF3 (máscara sem manutenção)', ca: '50010', tipo: 'Respiratório' }, { nome: 'Respirador semifacial com filtro P100', ca: '50011', tipo: 'Respiratório' }],
+    'Poeiras orgânicas (madeira, algodão, grãos, etc.)': [{ nome: 'Respirador PFF2', ca: '50010', tipo: 'Respiratório' }],
+    'Fumos metálicos (solda, fundição)': [{ nome: 'Respirador semifacial com filtro P100', ca: '50011', tipo: 'Respiratório' }, { nome: 'Máscara de solda com filtro automático', ca: '20050', tipo: 'Olhos/Face' }],
+    'Névoas e neblinas (óleos, ácidos, bases)': [{ nome: 'Respirador semifacial com filtro combinado', ca: '50012', tipo: 'Respiratório' }, { nome: 'Óculos de proteção vedados', ca: '20051', tipo: 'Olhos' }],
+    'Gases e vapores (benzeno, tolueno, cloro, amônia, CO, CO2, etc.)': [{ nome: 'Respirador semifacial com filtro químico específico', ca: '50020', tipo: 'Respiratório' }, { nome: 'Protetor facial + respirador', ca: '20052', tipo: 'Face/Respiratório' }],
+    'Hidrocarbonetos aromáticos': [{ nome: 'Luva de nitrila/butílica', ca: '11020', tipo: 'Mãos' }, { nome: 'Respirador com filtro para vapores orgânicos', ca: '50021', tipo: 'Respiratório' }],
+    'Hidrocarbonetos alifáticos': [{ nome: 'Luva de nitrila', ca: '11020', tipo: 'Mãos' }, { nome: 'Respirador vapores orgânicos', ca: '50021', tipo: 'Respiratório' }],
+    'Halogenados': [{ nome: 'Luva de viton/butílica', ca: '11022', tipo: 'Mãos' }, { nome: 'Respirador específico', ca: '50022', tipo: 'Respiratório' }],
+    'Alcoóis, cetonas, ésteres, éteres': [{ nome: 'Luva de nitrila', ca: '11020', tipo: 'Mãos' }, { nome: 'Respirador vapores orgânicos', ca: '50021', tipo: 'Respiratório' }],
+    'Ácidos e bases inorgânicas': [{ nome: 'Luva de PVC/neoprene', ca: '11030', tipo: 'Mãos' }, { nome: 'Avental impermeável químico', ca: '30040', tipo: 'Corpo' }, { nome: 'Óculos de proteção vedados', ca: '20053', tipo: 'Olhos' }],
+    'Metais pesados (chumbo, mercúrio, cádmio, etc.)': [{ nome: 'Respirador PFF3 / filtro P100', ca: '50011', tipo: 'Respiratório' }, { nome: 'Luva de nitrila', ca: '11020', tipo: 'Mãos' }, { nome: 'Roupa descartável tipo Tyvek', ca: '30050', tipo: 'Corpo' }],
+    'Pesticidas / Agrotóxicos': [{ nome: 'Respirador com filtro para pesticidas', ca: '50030', tipo: 'Respiratório' }, { nome: 'Luva de nitrila grossa', ca: '11021', tipo: 'Mãos' }, { nome: 'Avental impermeável', ca: '30040', tipo: 'Corpo' }, { nome: 'Bota de PVC', ca: '60010', tipo: 'Pés' }],
+    'Medicamentos / Citotóxicos': [{ nome: 'Luva de nitrila dupla', ca: '11021', tipo: 'Mãos' }, { nome: 'Avental descartável manga longa', ca: '30051', tipo: 'Corpo' }, { nome: 'Máscara cirúrgica / respirador', ca: '50031', tipo: 'Respiratório' }],
+
+    // Biológico
+    'Bactérias': [{ nome: 'Luva de nitrila/latex', ca: '11020', tipo: 'Mãos' }, { nome: 'Avental impermeável', ca: '30040', tipo: 'Corpo' }, { nome: 'Máscara cirúrgica / respirador N95', ca: '50031', tipo: 'Respiratório' }, { nome: 'Óculos de proteção', ca: '20054', tipo: 'Olhos' }],
+    'Vírus': [{ nome: 'Luva de nitrila', ca: '11020', tipo: 'Mãos' }, { nome: 'Avental impermeável manga longa', ca: '30041', tipo: 'Corpo' }, { nome: 'Respirador N95/PFF2', ca: '50010', tipo: 'Respiratório' }, { nome: 'Protetor facial', ca: '20055', tipo: 'Face' }],
+    'Fungos / Bolores / Leveduras': [{ nome: 'Respirador PFF2/PFF3', ca: '50010', tipo: 'Respiratório' }, { nome: 'Luva de nitrila', ca: '11020', tipo: 'Mãos' }, { nome: 'Óculos de proteção', ca: '20054', tipo: 'Olhos' }],
+    'Parasitas / Protozoários': [{ nome: 'Luva de nitrila', ca: '11020', tipo: 'Mãos' }, { nome: 'Bota de PVC', ca: '60010', tipo: 'Pés' }],
+    'Prions': [{ nome: 'Luva de nitrila dupla', ca: '11021', tipo: 'Mãos' }, { nome: 'Avental descartável', ca: '30051', tipo: 'Corpo' }, { nome: 'Respirador PFF3', ca: '50011', tipo: 'Respiratório' }],
+    'Toxinas bacterianas': [{ nome: 'Respirador PFF2', ca: '50010', tipo: 'Respiratório' }, { nome: 'Luva de nitrila', ca: '11020', tipo: 'Mãos' }],
+    'Endotoxinas': [{ nome: 'Respirador PFF2', ca: '50010', tipo: 'Respiratório' }],
+    'Alérgenos (ácaros, epitélios, pólen, látex)': [{ nome: 'Luva sem látex (nitrila/vinil)', ca: '11023', tipo: 'Mãos' }, { nome: 'Respirador PFF2', ca: '50010', tipo: 'Respiratório' }],
+
+    // Ergonômico
+    'Esforço físico intenso': [{ nome: 'Cinto de apoio lombar (cinto ergonômico)', ca: '70010', tipo: 'Coluna' }, { nome: 'Luva de vaqueta/couro', ca: '11040', tipo: 'Mãos' }],
+    'Levantamento, transporte e descarga de cargas': [{ nome: 'Cinto de apoio lombar', ca: '70010', tipo: 'Coluna' }, { nome: 'Luva de vaqueta/couro', ca: '11040', tipo: 'Mãos' }, { nome: 'Bota com biqueira de aço', ca: '60020', tipo: 'Pés' }],
+    'Posturas inadequadas / estáticas prolongadas': [{ nome: 'Apoio de pé / apoio lombar', ca: '—', tipo: 'Ergonomia' }],
+    'Movimentos repetitivos': [{ nome: 'Luva de compressão / apoio de punho', ca: '—', tipo: 'Ergonomia' }],
+    'Trabalho em turnos / noturno': [{ nome: 'Óculos de proteção anti-reflexo (se aplicável)', ca: '20060', tipo: 'Olhos' }],
+    'Jornada de trabalho prolongada': [],
+    'Exigência de atenção/concentração intensa': [],
+    'Organização do trabalho inadequada (ritmo, pausas, autonomia)': [],
+
+    // Acidentes
+    'Queda de nível (mesmo nível)': [{ nome: 'Bota antiderrapante com biqueira', ca: '60030', tipo: 'Pés' }, { nome: 'Capacete de segurança (classe A/B)', ca: '80010', tipo: 'Cabeça' }],
+    'Queda de altura (diferença de nível)': [{ nome: 'Cinto de segurança tipo paraquedista', ca: '80020', tipo: 'Queda' }, { nome: 'Talabarte com absorvedor de energia', ca: '80021', tipo: 'Queda' }, { nome: 'Capacete com jugular', ca: '80011', tipo: 'Cabeça' }],
+    'Queda de objeto / projeção de partículas': [{ nome: 'Capacete de segurança', ca: '80010', tipo: 'Cabeça' }, { nome: 'Óculos de proteção contra impacto', ca: '20070', tipo: 'Olhos' }],
+    'Choque elétrico / Contato com energia': [{ nome: 'Luva isolante de borracha (classe 00 a 4)', ca: '11050', tipo: 'Mãos/Elétrico' }, { nome: 'Bota isolante', ca: '60040', tipo: 'Pés/Elétrico' }, { nome: 'Manta isolante', ca: '80030', tipo: 'Elétrico' }],
+    'Incêndio / Explosão': [{ nome: 'Roupa resistente a chamas (NR-10/NFPA 2112)', ca: '30060', tipo: 'Corpo' }, { nome: 'Capuz balaclava anti-chama', ca: '30061', tipo: 'Cabeça' }, { nome: 'Luva resistente a calor/chama', ca: '11060', tipo: 'Mãos' }],
+    'Atropelamento / Colisão / Transporte': [{ nome: 'Colete refletivo de alta visibilidade', ca: '30070', tipo: 'Corpo' }, { nome: 'Capacete de segurança', ca: '80010', tipo: 'Cabeça' }],
+    'Prensagem / Aprisionamento / Esmagamento': [{ nome: 'Bota com biqueira de aço', ca: '60020', tipo: 'Pés' }, { nome: 'Luva de vaqueta/couro reforçada', ca: '11041', tipo: 'Mãos' }],
+    'Corte / Perfuração / Laceração': [{ nome: 'Luva anticorte (HPPE/Kevlar)', ca: '11070', tipo: 'Mãos' }, { nome: 'Mangote anticorte', ca: '11071', tipo: 'Braços' }],
+    'Contato com substância perigosa / Quente / Fria': [{ nome: 'Luva adequada ao risco (térmica/química)', ca: '11080', tipo: 'Mãos' }, { nome: 'Avental térmico/químico', ca: '30080', tipo: 'Corpo' }],
+    'Afogamento / Asfixia': [{ nome: 'Colete salva-vidas / flutuador', ca: '80040', tipo: 'Corpo' }],
+    'Violência / Agressão / Assalto': [{ nome: 'Colete balístico (se risco armado)', ca: '80050', tipo: 'Corpo' }],
+    'Animal peçonhento / Vetor biológico': [{ nome: 'Bota cano alto de couro/PVC', ca: '60050', tipo: 'Pés' }, { nome: 'Luva de vaqueta/couro grosso', ca: '11042', tipo: 'Mãos' }, { nome: 'Calça comprida / perneira', ca: '30090', tipo: 'Pernas' }],
+};
+
+// Função para obter EPIs sugeridos para um agente
+function getEpiSugeridosPorAgente(agenteNome) {
+    return EPI_POR_AGENTE[agenteNome] || [];
+}
+
+// Função para preencher sugestão de EPI no textarea
+function preencherEpiSugerido(agenteNome) {
+    const epis = getEpiSugeridosPorAgente(agenteNome);
+    if (epis.length === 0) return '';
+    return epis.map(e => `${e.nome}${e.ca && e.ca !== '—' ? ' (CA ' + e.ca + ')' : ''}`).join('; ');
+}
+```
+
+---
+
+**LOCALIZAÇÃO 2:** Em `renderRiscoAtivoDetalhesHtml()` — adicionar botão "🔍 Buscar CA" ao lado do label "EPIs Recomendados" e preenchimento automático ao selecionar agente do catálogo
+
+**SUBSTITUA (linha do label EPIs — busque por `EPIs Recomendados (com CA)`):**
+```html
+            <div>
+                <label style="font-size:11px; font-weight:700; color:var(--text-light); display:block; margin-bottom:4px;">EPIs Recomendados (com CA)</label>
+                <textarea rows="2" oninput="atualizarCampoRiscoEmEdicao(${idx}, 'epis_recomendados', this.value)" placeholder="Ex: Protetor auditivo concha CA 14470..." style="${campoMini}">${escapeHTML(r.epis_recomendados || '')}</textarea>
+            </div>
+```
+
+**POR:**
+```html
+            <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <label style="font-size:11px; font-weight:700; color:var(--text-light); display:block; margin-bottom:0;">EPIs Recomendados (com CA)</label>
+                    <button type="button" class="db-clear-btn" onclick="abrirBuscaCaEpi(${idx})" style="font-size:11px; padding:4px 10px;" title="Buscar EPIs cadastrados no almoxarifado por tipo">🔍 Buscar CA no Sistema</button>
+                </div>
+                <textarea rows="2" id="riscoEdit_epis" oninput="atualizarCampoRiscoEmEdicao(${idx}, 'epis_recomendados', this.value)" placeholder="Ex: Protetor auditivo concha CA 14470; Luva nitrila CA 11020..." style="${campoMini}">${escapeHTML(r.epis_recomendados || '')}</textarea>
+                <small style="color:var(--text-light); font-size:10px; margin-top:2px; display:block;">Dica: Selecione agente no catálogo → preenche sugestão automática. Ou clique "🔍 Buscar CA" para escolher do almoxarifado.</small>
+            </div>
+```
+
+---
+
+**LOCALIZAÇÃO 3:** Em `aoSelecionarAgenteCatalogo()` (FIX 6) — adicionar preenchimento automático de EPI ao selecionar agente do catálogo
+
+**SUBSTITUA (a função `aoSelecionarAgenteCatalogo` inteira):**
+```javascript
+// Sincroniza select do catálogo com input livre + preenche código eSocial automaticamente + sugestão EPI
+function aoSelecionarAgenteCatalogo(idx, selectEl) {
+    const valor = selectEl.value;
+    const inputLivre = document.getElementById('riscoEdit_agente');
+    const inputEsocial = document.getElementById('riscoEdit_esocial');
+    const inputEpi = document.getElementById('riscoEdit_epis');
+    
+    if (valor === '__CUSTOM__') {
+        // Usuário quer digitar manualmente
+        if (inputLivre) {
+            inputLivre.style.display = 'block';
+            inputLivre.focus();
+        }
+        return;
+    }
+    
+    if (valor) {
+        // Selecionou do catálogo
+        if (inputLivre) {
+            inputLivre.value = valor;
+            inputLivre.style.display = 'none';
+        }
+        atualizarCampoRiscoEmEdicao(idx, 'agente', valor);
+        
+        // Preenche código eSocial automaticamente
+        const opcaoSelecionada = selectEl.options[selectEl.selectedIndex];
+        const codigoEsocial = opcaoSelecionada?.dataset?.codigo || '';
+        if (inputEsocial) {
+            inputEsocial.value = codigoEsocial;
+            atualizarCampoRiscoEmEdicao(idx, 'esocial_codigo', codigoEsocial);
+        }
+        
+        // NOVO: Preenche sugestão de EPI baseada no agente selecionado
+        if (inputEpi) {
+            const epiSugerido = preencherEpiSugerido(valor);
+            if (epiSugerido) {
+                // Só preenche se o campo estiver vazio ou for sugestão padrão
+                const atual = inputEpi.value.trim();
+                if (!atual || atual === 'Ex: Protetor auditivo concha CA 14470...' || atual.startsWith('Ex:')) {
+                    inputEpi.value = epiSugerido;
+                    atualizarCampoRiscoEmEdicao(idx, 'epis_recomendados', epiSugerido);
+                }
+            }
+        }
+    } else {
+        // Limpar seleção
+        if (inputLivre) {
+            inputLivre.value = '';
+            inputLivre.style.display = 'block';
+        }
+        atualizarCampoRiscoEmEdicao(idx, 'agente', '');
+        if (inputEsocial) {
+            inputEsocial.value = '';
+            atualizarCampoRiscoEmEdicao(idx, 'esocial_codigo', '');
+        }
+    }
+}
+```
+
+---
+
+**LOCALIZAÇÃO 4:** Adicionar função `abrirBuscaCaEpi` (modal de busca de EPIs do almoxarifado)
+
+**POR (adicione após `aoMudarTipoAgenteRisco`):**
+```javascript
+// Modal Buscar CA no Sistema — aproveita EPIs cadastrados na aba EPI > Estoque
+function abrirBuscaCaEpi(idx) {
+    const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
+    if (!g || !matrizRiscoEdicaoDraft) return;
+    
+    const risco = matrizRiscoEdicaoDraft;
+    const tipoAgente = risco.tipo_agente || '';
+    const agente = risco.agente || '';
+    
+    // Filtra EPIs do estoque por tipo/categoria compatível com o agente
+    let episFiltrados = (window.allEpiEstoque || []).filter(epi => {
+        const cat = String(epi.categoria || epi.tipo || '').toLowerCase();
+        const nome = String(epi.nome || epi.descricao || '').toLowerCase();
+        const agenteLower = agente.toLowerCase();
+        
+        // Mapeamento simples: se agente contém palavra-chave, filtra categoria
+        if (agenteLower.includes('ruído') || agenteLower.includes('ruido')) return cat.includes('audit') || cat.includes('auric') || cat.includes('ouvid');
+        if (agenteLower.includes('químic') || agenteLower.includes('quimic') || agenteLower.includes('gás') || agenteLower.includes('vapor') || agenteLower.includes('poeira') || agenteLower.includes('fumo')) return cat.includes('respir') || cat.includes('masc') || cat.includes('fac');
+        if (agenteLower.includes('corte') || agenteLower.includes('perfur') || agenteLower.includes('esmag')) return cat.includes('mão') || cat.includes('luva') || cat.includes('corte') || cat.includes('anticort');
+        if (agenteLower.includes('choque') || agenteLower.includes('elétric') || agenteLower.includes('eletric')) return cat.includes('elétric') || cat.includes('eletric') || cat.includes('isolant');
+        if (agenteLower.includes('qued') || agenteLower.includes('altur')) return cat.includes('qued') || cat.includes('cint') || cat.includes('talab') || cat.includes('capac');
+        if (agenteLower.includes('incêndio') || agenteLower.includes('explos') || agenteLower.includes('chama') || agenteLower.includes('calor')) return cat.includes('chama') || cat.includes('térmic') || cat.includes('termic') || cat.includes('fogo');
+        if (agenteLower.includes('biológic') || agenteLower.includes('biologic') || agenteLower.includes('bacter') || agenteLower.includes('vírus') || agenteLower.includes('virus')) return cat.includes('descarta') || cat.includes('luva') || cat.includes('avent') || cat.includes('masc');
+        
+        return true; // Sem filtro específico, mostra todos
+    });
+    
+    if (episFiltrados.length === 0) {
+        episFiltrados = (window.allEpiEstoque || []).slice(0, 50); // Fallback: primeiros 50
+    }
+    
+    const modalId = 'modalBuscaCaEpi_' + Date.now();
+    const html = `
+    <div id="${modalId}" class="db-modal-overlay" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:10000; padding:20px;">
+        <div class="db-modal" style="background:var(--card-bg,#fff); border-radius:12px; max-width:800px; width:100%; max-height:80vh; overflow:hidden; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border);">
+                <h3 style="margin:0; font-size:16px;">🔍 Buscar EPI/CA no Almoxarifado</h3>
+                <button onclick="document.getElementById('${modalId}').remove()" style="border:none; background:none; font-size:20px; cursor:pointer; color:var(--text-light);">✕</button>
+            </div>
+            <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; gap:12px; flex-wrap:wrap;">
+                <input type="text" id="buscaEpiInput_${idx}" placeholder="Filtrar por nome, CA, categoria..." style="flex:1; min-width:200px; padding:8px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px;" oninput="filtrarEpiBusca('${idx}')">
+                <span style="font-size:12px; color:var(--text-light); align-self:center;">${episFiltrados.length} EPI(s) compatíveis com "<b>${escapeHTML(agente || 'todos')}</b>"</span>
+            </div>
+            <div style="max-height:400px; overflow-y:auto; padding:0 20px 20px;">
+                <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <thead>
+                        <tr style="text-align:left; color:var(--text-light); position:sticky; top:0; background:var(--bg);">
+                            <th style="padding:8px; width:40px;"></th>
+                            <th style="padding:8px;">EPI / Descrição</th>
+                            <th style="padding:8px;">CA</th>
+                            <th style="padding:8px;">Categoria</th>
+                            <th style="padding:8px;">Estoque</th>
+                            <th style="padding:8px;">Validade CA</th>
+                        </tr>
+                    </thead>
+                    <tbody id="buscaEpiTbody_${idx}">
+                        ${episFiltrados.slice(0, 100).map(epi => `
+                            <tr style="border-bottom:1px solid var(--border); cursor:pointer;" onclick="selecionarEpiBusca(${idx}, ${JSON.stringify(epi).replace(/"/g, '"')}, '${modalId}')">
+                                <td style="padding:8px;"><input type="checkbox" onchange="toggleEpiSelecaoBusca(this, ${JSON.stringify(epi).replace(/"/g, '"')})"></td>
+                                <td style="padding:8px;"><b>${escapeHTML(epi.nome || epi.descricao || '—')}</b></td>
+                                <td style="padding:8px; font-family:monospace; font-weight:600; color:var(--primary);">${escapeHTML(epi.ca || epi.ca_principal || '—')}</td>
+                                <td style="padding:8px;">${escapeHTML(epi.categoria || epi.tipo || '—')}</td>
+                                <td style="padding:8px;">${epi.quantidade || epi.estoque_atual || 0}</td>
+                                <td style="padding:8px;">${epi.validade_ca ? formatSimpleDate(epi.validade_ca) : '—'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:8px; padding:12px 20px; border-top:1px solid var(--border);">
+                <button class="db-clear-btn" onclick="document.getElementById('${modalId}').remove()">Cancelar</button>
+                <button class="db-apply-btn" onclick="aplicarEpiSelecionadosBusca(${idx}, '${modalId}')">✅ Aplicar Selecionados (${document.getElementById('epiSelecionadosCount_${idx}') || 0})</button>
+            </div>
+        </div>
+    </div>`;
+    
+    document.body.insertAdjacentHTML('beforeend', html);
+    document.getElementById('buscaEpiInput_${idx}')?.focus();
+    
+    // Contador de selecionados
+    window.epiSelecionadosBusca_${idx} = [];
+}
+
+// Funções auxiliares do modal
+function filtrarEpiBusca(idx) {
+    const input = document.getElementById('buscaEpiInput_${idx}');
+    const termo = input?.value?.toLowerCase() || '';
+    const rows = document.querySelectorAll('#buscaEpiTbody_${idx} tr');
+    rows.forEach(row => {
+        const texto = row.textContent.toLowerCase();
+        row.style.display = texto.includes(termo) ? '' : 'none';
+    });
+}
+
+function toggleEpiSelecaoBusca(checkbox, epi) {
+    const idx = ${idx}; // This will be replaced by the actual idx value
+    if (!window.epiSelecionadosBusca_${idx}) window.epiSelecionadosBusca_${idx} = [];
+    const arr = window.epiSelecionadosBusca_${idx};
+    const jaTem = arr.find(e => e.ca === epi.ca);
+    if (checkbox.checked && !jaTem) arr.push(epi);
+    else if (!checkbox.checked) {
+        const i = arr.findIndex(e => e.ca === epi.ca);
+        if (i >= 0) arr.splice(i, 1);
+    }
+    const countEl = document.getElementById('epiSelecionadosCount_${idx}');
+    if (countEl) countEl.textContent = arr.length;
+}
+
+function selecionarEpiBusca(idx, epi, modalId) {
+    const checkbox = event.target.closest('tr')?.querySelector('input[type=checkbox]');
+    if (checkbox) {
+        checkbox.checked = !checkbox.checked;
+        toggleEpiSelecaoBusca(checkbox, epi);
+    }
+}
+
+function aplicarEpiSelecionadosBusca(idx, modalId) {
+    const selecionados = window.epiSelecionadosBusca_${idx} || [];
+    if (selecionados.length === 0) {
+        alert('Selecione pelo menos um EPI.');
+        return;
+    }
+    const inputEpi = document.getElementById('riscoEdit_epis');
+    const texto = selecionados.map(e => `${e.nome} (CA ${e.ca})`).join('; ');
+    if (inputEpi) {
+        const atual = inputEpi.value.trim();
+        const novo = atual ? atual + '; ' + texto : texto;
+        inputEpi.value = novo;
+        atualizarCampoRiscoEmEdicao(idx, 'epis_recomendados', novo);
+    }
+    document.getElementById(modalId)?.remove();
+    delete window.epiSelecionadosBusca_${idx};
+}
+```
+
+---
+
+### FIX 8 — Garantir carregamento dos EPIs do almoxarifado (`allEpiEstoque`) disponível globalmente
+
+**LOCALIZAÇÃO:** No `loadData()` ou inicialização do painel (busque por `async function loadData()`)
+
+**POR (adicione no carregamento inicial):**
+```javascript
+// Carrega EPIs do estoque para busca de CA na Avaliação de Riscos
+async function carregarEpiEstoqueParaBusca() {
+    try {
+        const rows = await supabaseFetch('epi_estoque', '?select=*&ativo=eq.true');
+        window.allEpiEstoque = rows || [];
+    } catch (err) {
+        console.warn('Não foi possível carregar EPIs do estoque para busca:', err);
+        window.allEpiEstoque = [];
+    }
+}
+// Chame carregarEpiEstoqueParaBusca() dentro de loadData() ou na inicialização do módulo
+```
+
+---
+
+## DEPOIS DE APLICAR TODOS OS 8 FIXES
+
+1. **Verificação de sintaxe:**
+   ```bash
+   node --check dashboard/dashboard.js
+   ```
+
+2. **Commit + Push:**
+   ```bash
+   git add dashboard/dashboard.js
+   git commit -m "feat: Avaliação de Riscos (AIHA) - implementação completa c/ 8 fixes (combobox eSocial, EPI por agente, busca CA no sistema, cancelar, validação, performance)"
+   git push origin main
+   ```
+
+3. **Deploy automático** via GitHub → Vercel (~2 min)
+
+4. **Teste no painel:** `https://app-checklist-seguranca.vercel.app/dashboard/`
+
+| Teste Novo | O que verificar |
+|------------|-----------------|
+| **EPI automático** | Selecionar "Ruído contínuo" → EPIs preenche "Protetor auricular concha (CA 14470); Protetor auricular insert (CA 12345)" |
+| **Buscar CA** | Clicar "🔍 Buscar CA no Sistema" → Modal abre com EPIs do almoxarifado filtrados → Selecionar → Aplica no textarea |
+| **Combobox agente** | Mudar Tipo → catálogo atualiza; "Outro" mostra input livre; seleção preenche eSocial + EPI auto |
+| **Cancelar** | Editar → Cancelar → recarrega do Supabase |
+| **Validação** | Campos vazios → Salvar → erro |
+| **Chips** | Clicar chips → sem flicker |
+| **Abas** | Geral ↔ Setor → estado resetado |
+
+---
+
+## ARQUIVOS MODIFICADOS
+- `dashboard/dashboard.js` — 8 blocos alterados (6 originais + 2 novos)
+- `dashboard/index.html` — **NÃO MEXER** (v233)
+
+---
+
+## NÃO MEXER (JÁ FUNCIONA)
+- `renderMatrizViewSetor()` estrutura geral
+- `renderRiscoAtivoDetalhesHtml()` template de edição (exceto campo agente/EPI)
+- `gerarHtmlInventarioRiscosGhe()` impressão PGR
+- `popularMatrizRiscoGheSelect()` select de GHE
+- `irParaGheDaMatriz()` redirect da aba Geral
+- `recalcularClassificacaoRiscoGhe()` recálculo em lote

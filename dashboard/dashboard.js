@@ -21648,7 +21648,7 @@ async function garantirDadosSecoes23RelSms() {
     const tarefas = [];
     if (!efetivoLoaded) { efetivoLoaded = true; tarefas.push(loadEfetivoData()); }
     if (!saudeLoaded) { saudeLoaded = true; tarefas.push(loadSaudeData()); }
-    if (!psicossocialLoaded) { psicossocialLoaded = true; tarefas.push(loadPsicossocialData()); }
+    if (!psicossocialLoaded) { tarefas.push(loadPsicossocialData()); }
     await Promise.all(tarefas);
 }
 
@@ -22800,7 +22800,7 @@ async function garantirDadosCompletosRelatorioMensalSms() {
     if (!cipaLoaded) { cipaLoaded = true; tarefas.push(loadCipaData()); }
     if (!efetivoLoaded) { efetivoLoaded = true; tarefas.push(loadEfetivoData()); }
     if (!saudeLoaded) { saudeLoaded = true; tarefas.push(loadSaudeData()); }
-    if (!psicossocialLoaded) { psicossocialLoaded = true; tarefas.push(loadPsicossocialData()); }
+    if (!psicossocialLoaded) { tarefas.push(loadPsicossocialData()); }
     if (!ambientalLoaded) { ambientalLoaded = true; tarefas.push(loadAmbientalData()); }
     if (!ergonomiaLoaded) { ergonomiaLoaded = true; tarefas.push(loadErgonomiaData()); }
     if (!periculosidadeLoaded) { periculosidadeLoaded = true; tarefas.push(loadPericulosidadeData()); }

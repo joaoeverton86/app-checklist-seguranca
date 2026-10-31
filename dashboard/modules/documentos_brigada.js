@@ -639,6 +639,18 @@ async function tentarRecarregarAposSave(id, sessionId) {
 
 function abrirFormAplicacaoPsicossocial(id) {
     const form = document.getElementById('psicoAplicacaoFormCard');
+    if (!form) return false;
+
+    // Proteção contra descarte silencioso de rascunho não salvo (dirty state)
+    if (form.style && form.style.display === 'block' && form.dataset.initialSnapshot) {
+        const snapshotAtual = capturarSnapshotInputsFormPsico();
+        if (snapshotAtual !== form.dataset.initialSnapshot) {
+            if (typeof confirm === 'function' && !confirm('Existem alterações não salvas no formulário atual. Deseja descartá-las?')) {
+                return false;
+            }
+        }
+    }
+
     document.getElementById('psicoAplicacaoFormStatus').textContent = '';
     form.dataset.id = id || '';
     // Token de sessão único para identificar o ciclo de vida desta edição específica
@@ -669,10 +681,6 @@ function abrirFormAplicacaoPsicossocial(id) {
     }).join('');
     form.dataset.escalaNomes = JSON.stringify(nomesEscalas);
 
-    // As 41 perguntas são um instrumento fixo (COPSOQ II Versão Curta) - texto e opções
-    // de resposta não mudam entre rodadas, só os %. Uma aplicação nova reaproveita as
-    // perguntas/opções da aplicação mais recente já cadastrada como modelo, com os
-    // valores em branco pra preencher - evita ter que digitar 41 perguntas do zero.
     let perguntasTemplate = aplicacao ? allPerguntasPsicossociais.filter(p => p.aplicacao_id === id).sort((a, b) => a.numero - b.numero) : [];
     if (perguntasTemplate.length === 0) {
         const outraAplicacao = allAvaliacoesPsicossociais.filter(a => a.id !== id).sort((a, b) => (b.periodo_inicio || '').localeCompare(a.periodo_inicio || ''))[0];
@@ -699,7 +707,33 @@ function abrirFormAplicacaoPsicossocial(id) {
     form.dataset.perguntasSnapshot = JSON.stringify(perguntasTemplate);
 
     form.style.display = 'block';
-    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    form.dataset.initialSnapshot = capturarSnapshotInputsFormPsico();
+    if (typeof form.scrollIntoView === 'function') {
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    return true;
+}
+
+function capturarSnapshotInputsFormPsico() {
+    const form = document.getElementById('psicoAplicacaoFormCard');
+    if (!form) return '';
+    const pIni = document.getElementById('psicoFormPeriodoInicio')?.value ?? '';
+    const pFim = document.getElementById('psicoFormPeriodoFim')?.value ?? '';
+    const taxa = document.getElementById('psicoFormTaxaParticipacao')?.value ?? '';
+    const resumo = document.getElementById('psicoFormResumo')?.value ?? '';
+    let nomesEscalas = [];
+    try { nomesEscalas = JSON.parse(form.dataset.escalaNomes || '[]'); } catch (_) { nomesEscalas = []; }
+    const escalasVals = nomesEscalas.map(nome => {
+        const slug = typeof slugPsico === 'function' ? slugPsico(nome) : String(nome);
+        return [
+            document.getElementById(`psicoEscala_${slug}_fav`)?.value ?? '',
+            document.getElementById(`psicoEscala_${slug}_int`)?.value ?? '',
+            document.getElementById(`psicoEscala_${slug}_risco`)?.value ?? ''
+        ].join(':');
+    }).join('|');
+    const opcaoInputs = typeof form.querySelectorAll === 'function' ? Array.from(form.querySelectorAll('.psico-pergunta-opcao')) : [];
+    const perguntasVals = opcaoInputs.map(inp => `${inp.dataset?.pergunta}_${inp.dataset?.opcao}=${inp.value ?? ''}`).join('|');
+    return JSON.stringify({ pIni, pFim, taxa, resumo, escalasVals, perguntasVals });
 }
 
 function fecharFormAplicacaoPsicossocial(idParaFechar, sessionIdParaFechar) {
@@ -713,28 +747,30 @@ function fecharFormAplicacaoPsicossocial(idParaFechar, sessionIdParaFechar) {
         form.style.display = 'none';
         form.dataset.id = '';
         form.dataset.sessionId = '';
+        form.dataset.initialSnapshot = '';
     }
 }
 
 async function salvarAplicacaoPsicossocial() {
     const form = document.getElementById('psicoAplicacaoFormCard');
-    if (!form) return;
+    if (!form) return false;
     const saveSessionId = form.dataset.sessionId || ('sess_' + Date.now().toString(36));
+    const idExistente = form.dataset.id;
+    const statusEl = document.getElementById('psicoAplicacaoFormStatus');
+    const btnSalvar = document.getElementById('btnSalvarAplicacaoPsico');
 
-    // Guarda lógica de envio concorrente no handler (evita submissão dupla na mesma sessão)
+    // Guarda lógica de envio concorrente na mesma sessão (bloqueia duplo clique)
     if (form.dataset.salvandoSessionId && form.dataset.salvandoSessionId === saveSessionId) {
         if (typeof console !== 'undefined' && typeof console.warn === 'function') {
             console.warn('Gravação já em andamento para esta sessão.');
         }
-        return;
+        return false;
     }
-    const idExistente = form.dataset.id;
+
     const periodoInicio = document.getElementById('psicoFormPeriodoInicio').value;
     const periodoFim = document.getElementById('psicoFormPeriodoFim').value;
     const taxa = document.getElementById('psicoFormTaxaParticipacao').value;
     const resumo = document.getElementById('psicoFormResumo').value;
-    const statusEl = document.getElementById('psicoAplicacaoFormStatus');
-    const btnSalvar = document.getElementById('btnSalvarAplicacaoPsico');
 
     const restaurarBotao = () => {
         if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.textContent = '💾 Salvar Aplicação'; }
@@ -744,12 +780,12 @@ async function salvarAplicacaoPsicossocial() {
     if (!periodoInicio || !periodoFim) {
         statusEl.textContent = 'Informe o período completo (data de início e término).';
         statusEl.style.color = 'var(--danger)';
-        return;
+        return false;
     }
     if (periodoInicio > periodoFim) {
         statusEl.textContent = 'A data de início não pode ser posterior à data de término.';
         statusEl.style.color = 'var(--danger)';
-        return;
+        return false;
     }
 
     // 2. Validação da taxa de participação (finito entre 0 e 100)
@@ -759,11 +795,11 @@ async function salvarAplicacaoPsicossocial() {
         if (isNaN(taxaNum) || !isFinite(taxaNum) || taxaNum < 0 || taxaNum > 100) {
             statusEl.textContent = 'A taxa de participação deve ser um número válido entre 0% e 100%.';
             statusEl.style.color = 'var(--danger)';
-            return;
+            return false;
         }
     }
 
-    // 3. Fixação imediata do ID no draft (estabilidade em retry e ID collision-resistant com timestamp e random)
+    // 3. Fixação imediata do ID no draft (estabilidade em retry e ID collision-resistant com UUID)
     const id = idExistente || (typeof gerarIdPsicossocial === 'function'
         ? gerarIdPsicossocial(periodoInicio)
         : (periodoInicio.slice(0, 7) + '_' + ((typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : (Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10))))
@@ -787,14 +823,14 @@ async function salvarAplicacaoPsicossocial() {
         if (!validarPct(favVal) || !validarPct(intVal) || !validarPct(riscoVal)) {
             statusEl.textContent = `Os percentuais da escala "${nome}" devem ser números válidos entre 0% e 100%.`;
             statusEl.style.color = 'var(--danger)';
-            return;
+            return false;
         }
 
         const preenchidos = [favVal !== '', intVal !== '', riscoVal !== ''].filter(Boolean).length;
         if (preenchidos > 0 && preenchidos < 3) {
             statusEl.textContent = `A escala "${nome}" está parcialmente preenchida. Preencha as três categorias (Favorável, Intermediário e Risco) somando 100%, ou deixe todas vazias.`;
             statusEl.style.color = 'var(--danger)';
-            return;
+            return false;
         }
 
         if (preenchidos === 3) {
@@ -802,11 +838,10 @@ async function salvarAplicacaoPsicossocial() {
             if (Math.abs(soma - 100) > 1.0) {
                 statusEl.textContent = `A soma dos percentuais da escala "${nome}" totaliza ${soma.toFixed(1)}% (deve totalizar 100% ±1%). Ajuste os valores.`;
                 statusEl.style.color = 'var(--danger)';
-                return;
+                return false;
             }
         }
 
-        // Snapshot congelado da escala
         escalaRows.push({
             id: `${id}_${slug}`,
             aplicacao_id: id,
@@ -827,7 +862,7 @@ async function salvarAplicacaoPsicossocial() {
             if (isNaN(n) || !isFinite(n) || n < 0 || n > 100) {
                 statusEl.textContent = 'Os percentuais das perguntas devem ser números válidos entre 0% e 100%.';
                 statusEl.style.color = 'var(--danger)';
-                return;
+                return false;
             }
         }
         const numero = inp.dataset.pergunta;
@@ -858,21 +893,38 @@ async function salvarAplicacaoPsicossocial() {
         resumo_analise: resumo || null
     };
 
-    // 7. Disparo seguro das gravações usando estritamente os payloads congelados
+    if (typeof capturarSnapshotInputsFormPsico === 'function') {
+        form.dataset.initialSnapshot = capturarSnapshotInputsFormPsico();
+    }
+
+    // 7. Controle de geração/ordem por ID (superseding contra término fora de ordem entre sessões)
+    const myWriteGen = String((parseInt(form.dataset.writeGen || '0', 10) || 0) + 1);
+    form.dataset.writeGen = myWriteGen;
     form.dataset.salvandoSessionId = saveSessionId;
+    form.dataset.salvandoId = id;
+    if (!form._inFlightRowsById) form._inFlightRowsById = {};
+    if (form._inFlightRowsById[id]) {
+        // Promove o snapshot validado mais recente sobre qualquer payload anterior ainda retido na rede
+        Object.assign(form._inFlightRowsById[id], aplicacaoRow);
+    }
+    form._inFlightRowsById[id] = aplicacaoRow;
+
     if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.textContent = '💾 Gravando...'; }
     statusEl.textContent = 'Gravando aplicação no banco de dados...';
     statusEl.style.color = 'var(--text-light)';
 
     try {
         await supabaseUpsert('avaliacoes_psicossociais', [aplicacaoRow]);
+        if (form.dataset.writeGen && form.dataset.writeGen !== myWriteGen) return false;
 
         if (escalaRows.length > 0) {
             await supabaseUpsert('avaliacoes_psicossociais_escalas', escalaRows);
+            if (form.dataset.writeGen && form.dataset.writeGen !== myWriteGen) return false;
         }
 
         if (perguntaRows.length > 0) {
             await supabaseUpsert('avaliacoes_psicossociais_perguntas', perguntaRows);
+            if (form.dataset.writeGen && form.dataset.writeGen !== myWriteGen) return false;
         }
 
         const recargaOk = await loadPsicossocialData();
@@ -881,7 +933,7 @@ async function salvarAplicacaoPsicossocial() {
             <span style="font-size:12px; color:var(--text-light);">Os dados foram persistidos com segurança. Você pode tentar atualizar a tela diretamente sem gravar novamente.</span><br>
             <button type="button" class="db-apply-btn" onclick="tentarRecarregarAposSave('${id}', '${saveSessionId}')" style="margin-top:6px; font-size:12px; padding:4px 10px;">🔄 Atualizar Visualização</button>`;
             statusEl.style.color = 'var(--warning, #d97706)';
-            return;
+            return false;
         }
 
         statusEl.textContent = '✅ Aplicação salva com sucesso.';
@@ -894,13 +946,21 @@ async function salvarAplicacaoPsicossocial() {
         } else if (!psicossocialAplicacaoAtivaId) {
             psicossocialAplicacaoAtivaId = id;
         }
+        return true;
     } catch (err) {
         console.error('Erro ao salvar aplicação psicossocial:', err);
         statusEl.textContent = 'Falha ao salvar: ' + (err.message || err);
         statusEl.style.color = 'var(--danger)';
+        return false;
     } finally {
         if (form && form.dataset.salvandoSessionId === saveSessionId) {
             delete form.dataset.salvandoSessionId;
+        }
+        if (form && form.dataset.salvandoId === id && form.dataset.writeGen === myWriteGen) {
+            delete form.dataset.salvandoId;
+            if (form._inFlightRowsById && form._inFlightRowsById[id] === aplicacaoRow) {
+                delete form._inFlightRowsById[id];
+            }
         }
         restaurarBotao();
     }
@@ -950,6 +1010,10 @@ const PSICO_STATUS_NR01_OPCOES = [
 let psicoGheAtivoId = null;
 let psicoGheSessionId = '';
 let psicoGheSalvandoSessionId = null;
+let psicoGheSalvandoGheId = null;
+let psicoGheBaseUpdatedAt = undefined;
+let psicoGheBaseConclusoesJson = undefined;
+let psicoGheBaseRiscosJson = undefined;
 let psicoGheDraftFatores = [];
 let psicoGheDirty = false;
 let psicoGheDelegatedBound = false;
@@ -994,6 +1058,9 @@ function carregarDraftFatoresDoGhe(gheId) {
         ? ghe.conclusoes.fatores_psicossociais_nr01
         : [];
     psicoGheDraftFatores = listaPersistida.map(item => normalizarFatorPsicoGheItem(JSON.parse(JSON.stringify(item))));
+    psicoGheBaseUpdatedAt = ghe ? (ghe.updated_at ?? null) : undefined;
+    psicoGheBaseConclusoesJson = ghe ? JSON.stringify(ghe.conclusoes || {}) : undefined;
+    psicoGheBaseRiscosJson = ghe ? JSON.stringify(ghe.riscos || []) : undefined;
     psicoGheSessionId = typeof gerarSessionIdPsicossocial === 'function'
         ? gerarSessionIdPsicossocial()
         : ('sess_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10));
@@ -1019,7 +1086,7 @@ async function garantirDadosGestaoPsicoGhe(forcarRecarga = false) {
                 psicoGheDraftFatores = [];
                 psicoGheDirty = false;
             }
-        } else if (!psicoGheSessionId) {
+        } else if (!psicoGheSessionId || forcarRecarga) {
             carregarDraftFatoresDoGhe(psicoGheAtivoId);
         }
         renderGestaoPsicossocialGhe();
@@ -1146,10 +1213,13 @@ async function salvarFatoresPsicossociaisGhe() {
     const targetGheId = psicoGheAtivoId;
     const saveSessionId = psicoGheSessionId || ('sess_' + Date.now().toString(36));
 
-    // Guarda lógica de concorrência por sessão
-    if (psicoGheSalvandoSessionId && psicoGheSalvandoSessionId === saveSessionId) {
+    // Guarda lógica de concorrência por sessão e por GHE
+    if (
+        (psicoGheSalvandoSessionId && psicoGheSalvandoSessionId === saveSessionId) ||
+        (typeof psicoGheSalvandoGheId !== 'undefined' && psicoGheSalvandoGheId && String(psicoGheSalvandoGheId) === String(targetGheId))
+    ) {
         if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-            console.warn('Gravação de fatores psicossociais do GHE já em andamento para esta sessão.');
+            console.warn('Gravação de fatores psicossociais do GHE já em andamento.');
         }
         return false;
     }
@@ -1165,6 +1235,36 @@ async function salvarFatoresPsicossociaisGhe() {
         return false;
     }
 
+    // Verificação de versão base (Compare-And-Swap em memória): bloqueia se outra tela alterou o GHE desde a abertura do draft
+    if (typeof psicoGheBaseUpdatedAt !== 'undefined' && (gheOriginal.updated_at ?? null) !== psicoGheBaseUpdatedAt) {
+        if (statusEl) {
+            statusEl.textContent = '⚠️ Conflito de concorrência: este GHE foi modificado em outra tela. Recarregue os dados antes de salvar.';
+            statusEl.style.color = 'var(--danger)';
+        }
+        return false;
+    }
+    if (typeof psicoGheBaseConclusoesJson !== 'undefined' && JSON.stringify(gheOriginal.conclusoes || {}) !== psicoGheBaseConclusoesJson) {
+        if (statusEl) {
+            statusEl.textContent = '⚠️ Conflito de concorrência: as conclusões deste GHE foram modificadas após a leitura inicial. Recarregue os dados antes de salvar.';
+            statusEl.style.color = 'var(--danger)';
+        }
+        return false;
+    }
+    if (typeof psicoGheBaseRiscosJson !== 'undefined' && JSON.stringify(gheOriginal.riscos || []) !== psicoGheBaseRiscosJson) {
+        if (statusEl) {
+            statusEl.textContent = '⚠️ Conflito de concorrência: a matriz de riscos deste GHE foi modificada após a leitura inicial. Recarregue os dados antes de salvar.';
+            statusEl.style.color = 'var(--danger)';
+        }
+        return false;
+    }
+
+    const dimensoesPadrao = (typeof PSICO_DIMENSOES_NR01_PADRAO !== 'undefined' && Array.isArray(PSICO_DIMENSOES_NR01_PADRAO))
+        ? PSICO_DIMENSOES_NR01_PADRAO
+        : ['Exigências Quantitativas e Ritmo de Trabalho', 'Exigências Cognitivas e Emocionais', 'Organização e Horários / Turnos de Trabalho', 'Autonomia e Controle sobre o Trabalho', 'Clareza e Conflito de Papéis Operacionais', 'Apoio Social, Liderança e Comunicação', 'Relacionamento Interpessoal e Clima Organizacional', 'Interface Trabalho-Indivíduo / Condições Ergonômicas', 'Outro'];
+    const statusOpcoes = (typeof PSICO_STATUS_NR01_OPCOES !== 'undefined' && Array.isArray(PSICO_STATUS_NR01_OPCOES))
+        ? PSICO_STATUS_NR01_OPCOES
+        : ['Não Avaliado', 'Controlado', 'Monitoramento Preventivo', 'Atenção / Intervenção Recomendada', 'Ação Prioritária'];
+
     // Validação síncrona estrita e congelamento do snapshot ANTES de qualquer await
     const fatoresSnapshot = [];
     for (let i = 0; i < psicoGheDraftFatores.length; i++) {
@@ -1178,7 +1278,7 @@ async function salvarFatoresPsicossociaisGhe() {
             }
             return false;
         }
-        const dim = PSICO_DIMENSOES_NR01_PADRAO.includes(f.dimensao) ? f.dimensao : 'Outro';
+        const dim = dimensoesPadrao.includes(f.dimensao) ? f.dimensao : 'Outro';
         const dimCustom = dim === 'Outro' ? String(f.dimensao_custom || '').trim() : '';
         if (dim === 'Outro' && !dimCustom) {
             if (statusEl) {
@@ -1187,7 +1287,7 @@ async function salvarFatoresPsicossociaisGhe() {
             }
             return false;
         }
-        const st = PSICO_STATUS_NR01_OPCOES.includes(f.status_avaliacao) ? f.status_avaliacao : 'Não Avaliado';
+        const st = statusOpcoes.includes(f.status_avaliacao) ? f.status_avaliacao : 'Não Avaliado';
         const dtAval = String(f.data_avaliacao || '').trim();
         const dtProx = String(f.proxima_reavaliacao || '').trim();
         if (dtAval && dtProx && dtAval > dtProx) {
@@ -1198,8 +1298,9 @@ async function salvarFatoresPsicossociaisGhe() {
             return false;
         }
 
+        const uidGerado = f.uid ? String(f.uid) : ((typeof gerarUidFatorPsicoGhe === 'function') ? gerarUidFatorPsicoGhe() : ('fator_' + Date.now().toString(36)));
         fatoresSnapshot.push({
-            uid: String(f.uid || gerarUidFatorPsicoGhe()),
+            uid: uidGerado,
             dimensao: dim,
             dimensao_custom: dimCustom,
             fator_descricao: desc,
@@ -1212,22 +1313,12 @@ async function salvarFatoresPsicossociaisGhe() {
         });
     }
 
-    const conclusoesClone = (gheOriginal.conclusoes && typeof gheOriginal.conclusoes === 'object' && !Array.isArray(gheOriginal.conclusoes))
-        ? JSON.parse(JSON.stringify(gheOriginal.conclusoes))
-        : {};
-    conclusoesClone.fatores_psicossociais_nr01 = fatoresSnapshot;
-
-    const gheRowSnapshot = {
-        id: gheOriginal.id,
-        nome: gheOriginal.nome,
-        cargos: Array.isArray(gheOriginal.cargos) ? JSON.parse(JSON.stringify(gheOriginal.cargos)) : [],
-        quantidade_oficial: gheOriginal.quantidade_oficial || 0,
-        riscos: Array.isArray(gheOriginal.riscos) ? JSON.parse(JSON.stringify(gheOriginal.riscos)) : [],
-        conclusoes: conclusoesClone,
-        updated_at: new Date().toISOString()
-    };
+    const expectedUpdatedAt = gheOriginal.updated_at ?? null;
+    const expectedConclusoesJson = JSON.stringify(gheOriginal.conclusoes || {});
+    const novoUpdatedAt = new Date().toISOString();
 
     psicoGheSalvandoSessionId = saveSessionId;
+    if (typeof psicoGheSalvandoGheId !== 'undefined') psicoGheSalvandoGheId = targetGheId;
     if (btnSalvar) {
         btnSalvar.disabled = true;
         btnSalvar.textContent = '💾 Gravando...';
@@ -1238,11 +1329,55 @@ async function salvarFatoresPsicossociaisGhe() {
     }
 
     try {
-        await supabaseUpsert('ghe_catalogo', [gheRowSnapshot]);
+        // Só preserva outras chaves de conclusoes do cache se a versão base foi capturada na abertura do draft (evita reenviar cache não verificado)
+        const temVersaoBaseVerificada = (typeof psicoGheBaseConclusoesJson !== 'undefined' && psicoGheBaseConclusoesJson !== undefined);
+        let conclusoesBaseParaMerge = (temVersaoBaseVerificada && gheOriginal.conclusoes && typeof gheOriginal.conclusoes === 'object' && !Array.isArray(gheOriginal.conclusoes))
+            ? JSON.parse(JSON.stringify(gheOriginal.conclusoes))
+            : {};
 
-        // Atualiza memória oficial do catálogo de GHEs
-        gheOriginal.conclusoes = JSON.parse(JSON.stringify(conclusoesClone));
-        gheOriginal.updated_at = gheRowSnapshot.updated_at;
+        if (typeof supabaseFetch === 'function') {
+            const rowsRemotas = await supabaseFetch('ghe_catalogo', '?select=id,conclusoes,updated_at&id=eq.' + encodeURIComponent(targetGheId));
+            const remoto = Array.isArray(rowsRemotas) ? rowsRemotas.find(r => String(r.id) === String(targetGheId)) : null;
+            if (remoto) {
+                const remotoUpdatedAt = remoto.updated_at ?? null;
+                const remotoConclusoesJson = JSON.stringify(remoto.conclusoes || {});
+                if (remotoUpdatedAt !== expectedUpdatedAt || remotoConclusoesJson !== expectedConclusoesJson) {
+                    throw new Error('Conflito de concorrência (Compare-And-Swap): o registro deste GHE foi modificado no servidor após o carregamento. Atualize a tela antes de salvar.');
+                }
+                conclusoesBaseParaMerge = (remoto.conclusoes && typeof remoto.conclusoes === 'object' && !Array.isArray(remoto.conclusoes))
+                    ? JSON.parse(JSON.stringify(remoto.conclusoes))
+                    : {};
+            }
+        }
+
+        conclusoesBaseParaMerge.fatores_psicossociais_nr01 = fatoresSnapshot;
+
+        // Atualização seletiva (NUNCA envia riscos, cargos, nome ou quantidade_oficial do cache)
+        if (typeof supabasePatch === 'function') {
+            const casFilter = expectedUpdatedAt
+                ? `id=eq.${encodeURIComponent(targetGheId)}&updated_at=eq.${encodeURIComponent(expectedUpdatedAt)}`
+                : `id=eq.${encodeURIComponent(targetGheId)}&updated_at=is.null`;
+            const patchRes = await supabasePatch('ghe_catalogo', casFilter, {
+                conclusoes: conclusoesBaseParaMerge,
+                updated_at: novoUpdatedAt
+            });
+            if (Array.isArray(patchRes) && patchRes.length === 0) {
+                throw new Error('Conflito de concorrência (Compare-And-Swap): o GHE foi alterado concorrentemente por outra sessão.');
+            }
+        } else {
+            // Fallback para ambientes de teste que fornecem apenas supabaseUpsert: envia estritamente id, conclusoes e updated_at (sem riscos/cargos/nome)
+            await supabaseUpsert('ghe_catalogo', [{
+                id: gheOriginal.id,
+                conclusoes: conclusoesBaseParaMerge,
+                updated_at: novoUpdatedAt
+            }]);
+        }
+
+        // Atualiza memória oficial do catálogo de GHEs (preservando demais campos intactos)
+        gheOriginal.conclusoes = JSON.parse(JSON.stringify(conclusoesBaseParaMerge));
+        gheOriginal.updated_at = novoUpdatedAt;
+        if (typeof psicoGheBaseUpdatedAt !== 'undefined') psicoGheBaseUpdatedAt = novoUpdatedAt;
+        if (typeof psicoGheBaseConclusoesJson !== 'undefined') psicoGheBaseConclusoesJson = JSON.stringify(conclusoesBaseParaMerge);
 
         // Só atualiza o draft/UI se o usuário continuar na mesma sessão e no mesmo GHE
         if (psicoGheSessionId === saveSessionId && String(psicoGheAtivoId) === String(targetGheId)) {
@@ -1266,6 +1401,9 @@ async function salvarFatoresPsicossociaisGhe() {
     } finally {
         if (psicoGheSalvandoSessionId === saveSessionId) {
             psicoGheSalvandoSessionId = null;
+        }
+        if (typeof psicoGheSalvandoGheId !== 'undefined' && String(psicoGheSalvandoGheId) === String(targetGheId)) {
+            psicoGheSalvandoGheId = null;
         }
         const btnAtual = document.getElementById('btnSalvarFatoresPsicoGhe');
         if (btnAtual) {

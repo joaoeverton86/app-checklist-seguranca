@@ -4380,7 +4380,7 @@ function showDbPage(pageId) {
         else if (document.getElementById('saudeSubtabBtn-visao')?.classList.contains('active')) renderSaudePanel();
     }
     if (pageId === 'psicossocial') {
-        if (!psicossocialLoaded) { psicossocialLoaded = true; loadPsicossocialData(); }
+        if (!psicossocialLoaded) { loadPsicossocialData(); }
         else if (document.getElementById('psicossocialSubtabBtn-visao')?.classList.contains('active')) renderPsicossocialPanel();
     }
     if (pageId === 'epi') {

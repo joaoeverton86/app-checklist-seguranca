@@ -884,7 +884,7 @@ async function salvarAplicacaoPsicossocial() {
         };
     });
 
-    // 6. Preparação do payload da aplicação principal (imutável)
+    // 6. Preparação do payload da aplicação principal (snapshot imutável)
     const aplicacaoRow = {
         id,
         periodo_inicio: periodoInicio,
@@ -897,34 +897,46 @@ async function salvarAplicacaoPsicossocial() {
         form.dataset.initialSnapshot = capturarSnapshotInputsFormPsico();
     }
 
-    // 7. Controle de geração/ordem por ID (superseding contra término fora de ordem entre sessões)
-    const myWriteGen = String((parseInt(form.dataset.writeGen || '0', 10) || 0) + 1);
-    form.dataset.writeGen = myWriteGen;
+    // 7. Fila de serialização por registro (per-ID queue) + geração monotônica (sem mutação retroativa em voo)
+    // Garante que uma gravação anterior em andamento para o mesmo ID termine antes de iniciar a próxima escrita.
+    if (!form._saveQueueById) form._saveQueueById = {};
+    if (!form._latestGenById) form._latestGenById = {};
+    const myWriteGen = (form._latestGenById[id] || 0) + 1;
+    form._latestGenById[id] = myWriteGen;
+    form.dataset.writeGen = String(myWriteGen);
     form.dataset.salvandoSessionId = saveSessionId;
     form.dataset.salvandoId = id;
-    if (!form._inFlightRowsById) form._inFlightRowsById = {};
-    if (form._inFlightRowsById[id]) {
-        // Promove o snapshot validado mais recente sobre qualquer payload anterior ainda retido na rede
-        Object.assign(form._inFlightRowsById[id], aplicacaoRow);
-    }
-    form._inFlightRowsById[id] = aplicacaoRow;
+
+    const previousTask = form._saveQueueById[id];
+    let releaseCurrentTask;
+    const currentTask = new Promise(resolve => { releaseCurrentTask = resolve; });
+    const myQueuedTask = previousTask
+        ? previousTask.then(() => currentTask, () => currentTask)
+        : currentTask;
+    form._saveQueueById[id] = myQueuedTask;
 
     if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.textContent = '💾 Gravando...'; }
     statusEl.textContent = 'Gravando aplicação no banco de dados...';
     statusEl.style.color = 'var(--text-light)';
 
     try {
+        if (previousTask) {
+            await previousTask;
+        }
+        // Se uma sessão ainda mais recente para o mesmo ID entrou na fila enquanto aguardávamos, cede a vez sem enviar payload obsoleto
+        if (form._latestGenById[id] !== myWriteGen) return false;
+
         await supabaseUpsert('avaliacoes_psicossociais', [aplicacaoRow]);
-        if (form.dataset.writeGen && form.dataset.writeGen !== myWriteGen) return false;
+        if (form._latestGenById[id] !== myWriteGen) return false;
 
         if (escalaRows.length > 0) {
             await supabaseUpsert('avaliacoes_psicossociais_escalas', escalaRows);
-            if (form.dataset.writeGen && form.dataset.writeGen !== myWriteGen) return false;
+            if (form._latestGenById[id] !== myWriteGen) return false;
         }
 
         if (perguntaRows.length > 0) {
             await supabaseUpsert('avaliacoes_psicossociais_perguntas', perguntaRows);
-            if (form.dataset.writeGen && form.dataset.writeGen !== myWriteGen) return false;
+            if (form._latestGenById[id] !== myWriteGen) return false;
         }
 
         const recargaOk = await loadPsicossocialData();
@@ -953,16 +965,21 @@ async function salvarAplicacaoPsicossocial() {
         statusEl.style.color = 'var(--danger)';
         return false;
     } finally {
+        if (typeof releaseCurrentTask === 'function') {
+            releaseCurrentTask();
+        }
+        if (form && form._saveQueueById && form._saveQueueById[id] === myQueuedTask) {
+            delete form._saveQueueById[id];
+        }
         if (form && form.dataset.salvandoSessionId === saveSessionId) {
             delete form.dataset.salvandoSessionId;
         }
-        if (form && form.dataset.salvandoId === id && form.dataset.writeGen === myWriteGen) {
+        if (form && form.dataset.salvandoId === id && form._latestGenById && form._latestGenById[id] === myWriteGen) {
             delete form.dataset.salvandoId;
-            if (form._inFlightRowsById && form._inFlightRowsById[id] === aplicacaoRow) {
-                delete form._inFlightRowsById[id];
-            }
         }
-        restaurarBotao();
+        if (form && (!form.dataset.salvandoSessionId || form.dataset.sessionId === saveSessionId)) {
+            restaurarBotao();
+        }
     }
 }
 
@@ -1352,25 +1369,19 @@ async function salvarFatoresPsicossociaisGhe() {
 
         conclusoesBaseParaMerge.fatores_psicossociais_nr01 = fatoresSnapshot;
 
-        // Atualização seletiva (NUNCA envia riscos, cargos, nome ou quantidade_oficial do cache)
-        if (typeof supabasePatch === 'function') {
-            const casFilter = expectedUpdatedAt
-                ? `id=eq.${encodeURIComponent(targetGheId)}&updated_at=eq.${encodeURIComponent(expectedUpdatedAt)}`
-                : `id=eq.${encodeURIComponent(targetGheId)}&updated_at=is.null`;
-            const patchRes = await supabasePatch('ghe_catalogo', casFilter, {
-                conclusoes: conclusoesBaseParaMerge,
-                updated_at: novoUpdatedAt
-            });
-            if (Array.isArray(patchRes) && patchRes.length === 0) {
-                throw new Error('Conflito de concorrência (Compare-And-Swap): o GHE foi alterado concorrentemente por outra sessão.');
-            }
-        } else {
-            // Fallback para ambientes de teste que fornecem apenas supabaseUpsert: envia estritamente id, conclusoes e updated_at (sem riscos/cargos/nome)
-            await supabaseUpsert('ghe_catalogo', [{
-                id: gheOriginal.id,
-                conclusoes: conclusoesBaseParaMerge,
-                updated_at: novoUpdatedAt
-            }]);
+        // Atualização seletiva estrita via Compare-And-Swap (NUNCA envia riscos, cargos, nome ou quantidade_oficial do cache e sem fallback desprotegido)
+        if (typeof supabasePatch !== 'function') {
+            throw new Error('Operação condicional supabasePatch obrigatória para salvar fatores do GHE com Compare-And-Swap.');
+        }
+        const casFilter = expectedUpdatedAt
+            ? `id=eq.${encodeURIComponent(targetGheId)}&updated_at=eq.${encodeURIComponent(expectedUpdatedAt)}`
+            : `id=eq.${encodeURIComponent(targetGheId)}&updated_at=is.null`;
+        const patchRes = await supabasePatch('ghe_catalogo', casFilter, {
+            conclusoes: conclusoesBaseParaMerge,
+            updated_at: novoUpdatedAt
+        });
+        if (!Array.isArray(patchRes) || patchRes.length === 0) {
+            throw new Error('Conflito de concorrência (Compare-And-Swap): o GHE foi alterado concorrentemente por outra sessão.');
         }
 
         // Atualiza memória oficial do catálogo de GHEs (preservando demais campos intactos)

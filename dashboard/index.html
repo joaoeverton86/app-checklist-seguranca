@@ -4748,16 +4748,18 @@
                     <div class="db-filter-buttons">
                         <button id="matrizSubtabBtn-geral" class="db-filter-btn active" onclick="showMatrizSubtab('geral')">📊 Visão Geral & Matriz de Calor</button>
                         <button id="matrizSubtabBtn-setor" class="db-filter-btn" onclick="showMatrizSubtab('setor')">📋 Avaliação por Setor / GHE</button>
+                        <button id="matrizSubtabBtn-docbase" class="db-filter-btn" onclick="showMatrizSubtab('docbase')">📘 Documento-Base & Auditoria PGR</button>
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <div style="display: flex; align-items: center; gap: 6px;">
-                            <label for="matrizRiscoGheSelect" style="font-size: 12px; font-weight: 700; color: var(--text-light); white-space: nowrap;">Setor / GHE:</label>
+                            <label id="matrizRiscoGheSelectLabel" for="matrizRiscoGheSelect" style="font-size: 12px; font-weight: 700; color: var(--text-light); white-space: nowrap;">Setor / GHE:</label>
                             <select id="matrizRiscoGheSelect" class="db-select" onchange="selecionarGheMatrizRisco(this.value)" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; font-weight: 600; min-width: 260px; max-width: 380px; background: var(--bg); color: var(--text);">
                                 <option value="">-- Selecione um Setor / GHE --</option>
                             </select>
                         </div>
-                        <button class="db-apply-btn" onclick="recalcularClassificacaoRiscoGhe()" title="Recalcular todos os riscos salvos com base na tabela 5x5 oficial da AIHA" style="font-size: 12px; padding: 7px 12px;">🔄 Recalcular AIHA</button>
-                        <button class="db-clear-btn" onclick="imprimirInventarioRiscosGheAtual()" title="Imprimir Inventário de Riscos do PGR" style="font-size: 12px; padding: 7px 12px;">🖨️ Imprimir Inventário PGR</button>
+                        <button id="btnRecalcularAihaTop" class="db-apply-btn" onclick="recalcularClassificacaoRiscoGhe()" title="Recalcular todos os riscos salvos com base na tabela 5x5 oficial da AIHA" style="font-size: 12px; padding: 7px 12px;">🔄 Recalcular AIHA</button>
+                        <button id="btnImprimirInventarioTop" class="db-clear-btn" onclick="imprimirInventarioRiscosGheAtual()" title="Imprimir Inventário de Riscos do PGR" style="font-size: 12px; padding: 7px 12px;">🖨️ Imprimir Inventário PGR</button>
+                        <button id="btnImprimirPgrCompletoTop" class="db-apply-btn" onclick="imprimirDocumentoCompletoPgr()" title="Emitir Documento Oficial Completo do PGR (NR-01) com todas as seções, GHEs e anexos" style="font-size: 12px; padding: 7px 14px; background: linear-gradient(135deg, #1e40af, #2563eb); border-color: #1d4ed8; color: #fff; font-weight: 700;">📘 Emitir PGR Completo</button>
                     </div>
                 </div>
                 <div id="statusRecalcularRiscoGhe" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px; display: none;"></div>
@@ -4943,6 +4945,11 @@
                 <!-- Visão 2: Avaliação e Gestão de Riscos por Setor / GHE -->
                 <div id="matrizViewSetor" style="display: none;">
                     <div id="matrizSetorConteudo"></div>
+                </div>
+
+                <!-- Visão 3: Documento-Base do PGR (NR-01 GRO) & Auditoria Assistida de GHEs -->
+                <div id="matrizViewDocBase" style="display: none;">
+                    <div id="matrizDocBaseConteudo"></div>
                 </div>
             </section>
 
@@ -10109,7 +10116,7 @@
     <script src="dashboard.js?v=250"></script>
     <script src="modules/treinamentos_ddsma.js?v=232"></script>
     <script src="modules/efetivo_ferias.js?v=232"></script>
-    <script src="modules/ghe_os.js?v=263"></script>
+    <script src="modules/ghe_os.js?v=265"></script>
     <script src="modules/relatorio_sms_nc.js?v=232"></script>
     <script src="modules/saude_psicossocial.js?v=232"></script>
     <script src="modules/epi_estoque.js?v=232"></script>

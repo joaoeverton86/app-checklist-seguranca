@@ -185,6 +185,7 @@ var matrizRiscoSelecionadoIdx = 0;
 var matrizGheRiscosTrabalho = [];
 var matrizRiscoEdicaoOriginal = null;
 var matrizRiscoEdicaoDraft = null;
+var matrizRiscoEdicaoBaselineJson = null;
 
 function carregarRiscosTrabalhoDoGhe(g) {
     if (!g || !Array.isArray(g.riscos)) {
@@ -203,6 +204,7 @@ function inicializarDraftRisco(r) {
     if (!r) {
         matrizRiscoEdicaoOriginal = null;
         matrizRiscoEdicaoDraft = null;
+        matrizRiscoEdicaoBaselineJson = null;
         return;
     }
     matrizRiscoEdicaoOriginal = JSON.parse(JSON.stringify(r));
@@ -214,17 +216,78 @@ function inicializarDraftRisco(r) {
     sincronizarExamesPcmsoLegado(false);
     sincronizarCidsLegado(false);
     sincronizarMedidasLegado(false);
+    matrizRiscoEdicaoBaselineJson = JSON.stringify(matrizRiscoEdicaoDraft);
+}
+
+function isMatrizSetorRiscoDraftDirty() {
+    if (Array.isArray(matrizGheRiscosTrabalho) && matrizGheRiscosTrabalho.some(r => r && r._isNovoNaoSalvo)) {
+        return true;
+    }
+    if (!matrizRiscoEdicaoDraft) return false;
+    if (matrizRiscoEdicaoDraft._isNovoNaoSalvo) return true;
+    const baseJson = matrizRiscoEdicaoBaselineJson || (matrizRiscoEdicaoOriginal ? JSON.stringify(matrizRiscoEdicaoOriginal) : null);
+    if (!baseJson) return false;
+    return JSON.stringify(matrizRiscoEdicaoDraft) !== baseJson;
+}
+
+function atualizarControlesContextoTopoMatriz(tab) {
+    const ocultar = (tab === 'docbase');
+    const idsParaAlternar = [
+        'matrizRiscoGheSelectLabel',
+        'matrizRiscoGheSelect',
+        'btnRecalcularAihaTop',
+        'btnImprimirInventarioTop',
+        'statusRecalcularRiscoGhe'
+    ];
+    idsParaAlternar.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = ocultar ? 'none' : '';
+    });
+    // O botão de emitir o PGR completo permanece sempre visível e acessível em todas as sub-abas
+    const btnPgrComp = document.getElementById('btnImprimirPgrCompletoTop');
+    if (btnPgrComp) btnPgrComp.style.display = '';
 }
 
 function showMatrizSubtab(tab) {
+    if (matrizSubtabAtiva === 'docbase' && tab !== 'docbase') {
+        if (typeof isPgrDocBaseDirty === 'function' && isPgrDocBaseDirty()) {
+            const confirmarSaida = (typeof confirm === 'function')
+                ? confirm('Existem alterações não salvas no Documento-Base do PGR. Deseja descartá-las e sair desta aba?')
+                : true;
+            if (!confirmarSaida) {
+                const select = document.getElementById('matrizRiscoGheSelect');
+                if (select) select.value = matrizGheSelecionadoId || '';
+                return false;
+            }
+            if (typeof restaurarDraftPgrDocBaseParaUltimoSalvo === 'function') {
+                restaurarDraftPgrDocBaseParaUltimoSalvo();
+            }
+        }
+    }
+
+    if (matrizSubtabAtiva === 'setor' && tab === 'docbase') {
+        if (typeof isMatrizSetorRiscoDraftDirty === 'function' && isMatrizSetorRiscoDraftDirty()) {
+            const confirmarSaidaSetor = (typeof confirm === 'function')
+                ? confirm('Existem alterações não salvas na Avaliação de Riscos deste Setor/GHE. Deseja descartá-las e abrir o Documento-Base do PGR?')
+                : true;
+            if (!confirmarSaidaSetor) {
+                return false;
+            }
+        }
+    }
+
     matrizSubtabAtiva = tab;
     const btnGeral = document.getElementById('matrizSubtabBtn-geral');
     const btnSetor = document.getElementById('matrizSubtabBtn-setor');
+    const btnDocBase = document.getElementById('matrizSubtabBtn-docbase');
     const viewGeral = document.getElementById('matrizViewGeral');
     const viewSetor = document.getElementById('matrizViewSetor');
+    const viewDocBase = document.getElementById('matrizViewDocBase');
 
     if (btnGeral) btnGeral.classList.toggle('active', tab === 'geral');
     if (btnSetor) btnSetor.classList.toggle('active', tab === 'setor');
+    if (btnDocBase) btnDocBase.classList.toggle('active', tab === 'docbase');
+    atualizarControlesContextoTopoMatriz(tab);
 
     if (tab === 'geral') {
         // RESETAR ESTADO E DRAFTS AO VOLTAR PARA VISÃO GERAL
@@ -235,10 +298,25 @@ function showMatrizSubtab(tab) {
         matrizRiscoEdicaoDraft = null;
         if (viewGeral) viewGeral.style.display = 'block';
         if (viewSetor) viewSetor.style.display = 'none';
+        if (viewDocBase) viewDocBase.style.display = 'none';
         renderMatrizRiscoPanel();
+    } else if (tab === 'docbase') {
+        // RESETAR DRAFTS TRANSITÓRIOS DE SETOR AO ENTRAR EM DOCUMENTO-BASE
+        matrizGheSelecionadoId = null;
+        matrizRiscoSelecionadoIdx = 0;
+        matrizGheRiscosTrabalho = [];
+        matrizRiscoEdicaoOriginal = null;
+        matrizRiscoEdicaoDraft = null;
+        if (viewGeral) viewGeral.style.display = 'none';
+        if (viewSetor) viewSetor.style.display = 'none';
+        if (viewDocBase) viewDocBase.style.display = 'block';
+        if (typeof abrirSubtabPgrDocBase === 'function') {
+            abrirSubtabPgrDocBase();
+        }
     } else {
         if (viewGeral) viewGeral.style.display = 'none';
         if (viewSetor) viewSetor.style.display = 'block';
+        if (viewDocBase) viewDocBase.style.display = 'none';
         if (!matrizGheSelecionadoId && allGheCatalogo.length > 0) {
             matrizGheSelecionadoId = allGheCatalogo[0].id;
             matrizRiscoSelecionadoIdx = 0;
@@ -255,6 +333,7 @@ function showMatrizSubtab(tab) {
         }
         renderMatrizViewSetor();
     }
+    return true;
 }
 
 function popularMatrizRiscoGheSelect() {
@@ -272,8 +351,22 @@ function popularMatrizRiscoGheSelect() {
 }
 
 function selecionarGheMatrizRisco(gheId, riscoIdx) {
-    matrizRiscoDetalheSubtabAtiva = 'avaliacao';
     if (!gheId) return;
+    if (matrizSubtabAtiva === 'docbase' && typeof isPgrDocBaseDirty === 'function' && isPgrDocBaseDirty()) {
+        const confirmarSaida = (typeof confirm === 'function')
+            ? confirm('Existem alterações não salvas no Documento-Base do PGR. Deseja descartá-las e abrir o GHE selecionado?')
+            : true;
+        if (!confirmarSaida) {
+            const select = document.getElementById('matrizRiscoGheSelect');
+            if (select) select.value = matrizGheSelecionadoId || '';
+            return false;
+        }
+        if (typeof restaurarDraftPgrDocBaseParaUltimoSalvo === 'function') {
+            restaurarDraftPgrDocBaseParaUltimoSalvo();
+        }
+    }
+
+    matrizRiscoDetalheSubtabAtiva = 'avaliacao';
     matrizGheSelecionadoId = gheId;
     if (riscoIdx !== undefined && riscoIdx !== null) {
         matrizRiscoSelecionadoIdx = riscoIdx;
@@ -296,6 +389,7 @@ function selecionarGheMatrizRisco(gheId, riscoIdx) {
     }
 
     showMatrizSubtab('setor');
+    return true;
 }
 
 function renderMatrizViewSetor() {
@@ -3154,17 +3248,689 @@ function imprimirInventarioRiscosGheAtual() {
     const g = allGheCatalogo.find(x => String(x.id) === String(matrizGheSelecionadoId));
     if (!g) {
         alert('Selecione um Setor / GHE para emitir o Inventário de Riscos.');
-        return;
+        return false;
     }
-    const htmlDoc = gerarHtmlInventarioRiscosGhe(g);
-    abrirDocumentoHtmlParaImpressao(htmlDoc, `Inventário de Riscos - GHE ${g.id}`);
+    try {
+        const htmlDoc = gerarHtmlInventarioRiscosGhe(g);
+        abrirDocumentoHtmlParaImpressao(htmlDoc, `Inventário de Riscos - GHE ${g.id}`);
+        return true;
+    } catch (err) {
+        const msg = (err && err.message) ? err.message : 'Erro ao gerar Inventário de Riscos para impressão.';
+        if (typeof alert === 'function') alert(msg);
+        return false;
+    }
+}
+
+function formatarMedidasPreventivasRiscoPgr(r) {
+    if (!r) return '<span style="color:#94a3b8; font-style:italic;">Nenhuma medida cadastrada</span>';
+    const blocos = [];
+
+    // 1. Equipamentos de Proteção Coletiva (EPC - lista estruturada ou legado)
+    const epcsEstruturados = Array.isArray(r.epcs_lista) ? r.epcs_lista.filter(x => x && (x.descricao || x.tipo)) : [];
+    if (epcsEstruturados.length > 0) {
+        epcsEstruturados.forEach(epc => {
+            const desc = (epc.descricao || epc.nome || 'EPC').trim();
+            const extra = [epc.tipo, epc.status].filter(Boolean).map(s => String(s).trim()).filter(Boolean).join(' - ');
+            blocos.push(`<div><b>EPC:</b> ${escapeHTML(desc)}${extra ? ` <small style="color:#475569;">(${escapeHTML(extra)})</small>` : ''}</div>`);
+        });
+    } else if (r.epcs_recomendados && String(r.epcs_recomendados).trim()) {
+        const desc = String(r.epcs_recomendados).trim();
+        const extra = [r.epc_status, r.epc_inspecao].filter(Boolean).map(s => String(s).trim()).filter(Boolean).join(' - ');
+        blocos.push(`<div><b>EPC:</b> ${escapeHTML(desc)}${extra ? ` <small style="color:#475569;">(${escapeHTML(extra)})</small>` : ''}</div>`);
+    }
+
+    // 2. Equipamentos de Proteção Individual (EPI - lista estruturada ou legado)
+    const episEstruturados = Array.isArray(r.epis_lista) ? r.epis_lista.filter(x => x && (x.descricao || x.ca)) : [];
+    if (episEstruturados.length > 0) {
+        episEstruturados.forEach(epi => {
+            const desc = (epi.descricao || epi.equipamento || 'EPI').trim();
+            const caStr = (epi.ca && String(epi.ca).trim()) ? `CA: ${String(epi.ca).trim()}` : 'CA não informado';
+            const extra = [caStr, epi.periodicidade].filter(Boolean).map(s => String(s).trim()).filter(Boolean).join(', ');
+            blocos.push(`<div style="margin-top:2px;"><b>EPI:</b> ${escapeHTML(desc)} <small style="color:#1e40af;">(${escapeHTML(extra)})</small></div>`);
+        });
+    } else if ((r.epis_recomendados && String(r.epis_recomendados).trim()) || (r.epi_ca && String(r.epi_ca).trim())) {
+        const desc = (r.epis_recomendados && String(r.epis_recomendados).trim()) ? String(r.epis_recomendados).trim() : 'EPI recomendado';
+        const caStr = (r.epi_ca && String(r.epi_ca).trim()) ? `CA: ${String(r.epi_ca).trim()}` : 'CA não informado';
+        blocos.push(`<div style="margin-top:2px;"><b>EPI:</b> ${escapeHTML(desc)} <small style="color:#1e40af;">(${escapeHTML(caStr)})</small></div>`);
+    }
+
+    // 3. Medidas de Prevenção / Administrativas (lista estruturada ou legado)
+    const medidasEstruturadas = Array.isArray(r.medidas_lista) ? r.medidas_lista.filter(x => x && (x.descricao || x.categoria)) : [];
+    if (medidasEstruturadas.length > 0) {
+        medidasEstruturadas.forEach(m => {
+            const desc = (m.descricao || '').trim();
+            const extra = [m.categoria, m.status].filter(Boolean).map(s => String(s).trim()).filter(Boolean).join(' - ');
+            blocos.push(`<div style="margin-top:2px;"><b>Controle:</b> ${escapeHTML(desc)}${extra ? ` <small style="color:#64748b;">[${escapeHTML(extra)}]</small>` : ''}</div>`);
+        });
+    } else if (r.medidas_controle || r.sugestoes) {
+        const desc = String(r.medidas_controle || r.sugestoes).trim();
+        if (desc) {
+            blocos.push(`<div style="margin-top:2px;"><b>Controle:</b> ${escapeHTML(desc)}</div>`);
+        }
+    }
+
+    if (blocos.length === 0) {
+        return '<span style="color:#94a3b8; font-style:italic;">Nenhuma medida cadastrada</span>';
+    }
+    return blocos.join('');
+}
+
+async function garantirFontesEmissaoPgrCompleto() {
+    const pendencias = [];
+
+    // 1. Garantir Documento-Base
+    if (typeof pgrDocBaseSavedSnapshotJson === 'undefined' || pgrDocBaseSavedSnapshotJson === null) {
+        if (typeof loadPgrDocumentoBase === 'function') {
+            try {
+                await loadPgrDocumentoBase(false);
+            } catch (err) {
+                console.warn('Aviso: falha ao carregar Documento-Base na emissão:', err);
+            }
+        }
+    }
+    if (typeof pgrDocBaseSavedSnapshotJson === 'undefined' || pgrDocBaseSavedSnapshotJson === null) {
+        pendencias.push('Documento-Base não sincronizado com o banco');
+    }
+
+    // 2. Garantir Quadro de Efetivo
+    const precisaEfetivo = (typeof efetivoLoaded !== 'undefined')
+        ? !efetivoLoaded
+        : (!Array.isArray(allEfetivo) || allEfetivo.length === 0);
+    if (precisaEfetivo && typeof loadEfetivoData === 'function') {
+        try {
+            await loadEfetivoData();
+        } catch (err) {
+            console.warn('Aviso: falha ao carregar Quadro de Efetivo na emissão:', err);
+        }
+    }
+    const efetivoSucesso = (typeof efetivoLoaded !== 'undefined' && efetivoLoaded) || (Array.isArray(allEfetivo) && allEfetivo.length > 0);
+    if (!efetivoSucesso) {
+        pendencias.push('Quadro de Efetivo não sincronizado com o banco');
+    }
+
+    // 3. Consultar a fonte diretamente: o loader de tela captura erros internamente.
+    // Array vazio só significa ausência de ações após resposta válida do servidor.
+    try {
+        if (typeof supabaseFetch !== 'function') {
+            throw new Error('Serviço de leitura indisponível');
+        }
+        const rowsPlanoEmissao = await supabaseFetch('pgr_plano_acao', '?select=*&order=created_at.desc');
+        if (!Array.isArray(rowsPlanoEmissao)) {
+            throw new Error('Resposta inválida da base de ações');
+        }
+        allPlanoAcaoPgr = rowsPlanoEmissao;
+        if (typeof planoAcaoPgrLoaded !== 'undefined') planoAcaoPgrLoaded = true;
+    } catch (err) {
+        console.warn('Aviso: falha ao consultar Plano de Ação na emissão:', err);
+        pendencias.push('Base de Ações 5W2H (pgr_plano_acao) não sincronizada; dados locais não confirmados');
+    }
+
+    return { ok: pendencias.length === 0, pendencias };
+}
+
+async function imprimirDocumentoCompletoPgr() {
+    const btn = document.getElementById('btnImprimirPgrCompletoTop');
+    const txtOriginal = btn ? btn.textContent : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Sincronizando fontes...';
+    }
+    try {
+        const resGarantia = await garantirFontesEmissaoPgrCompleto();
+        if (!resGarantia.ok) {
+            console.warn('Aviso: fontes essenciais pendentes na emissão do PGR:', resGarantia.pendencias);
+        }
+        const htmlDoc = gerarHtmlDocumentoCompletoPgr(resGarantia);
+        const titulo = 'Programa de Gerenciamento de Riscos (PGR - NR-01) — Consórcio Ramal do Agreste';
+        abrirDocumentoHtmlParaImpressao(htmlDoc, titulo);
+        return true;
+    } catch (err) {
+        const msg = (err && err.message) ? err.message : 'Erro ao gerar Documento Completo do PGR para impressão.';
+        if (typeof alert === 'function') alert(msg);
+        return false;
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = txtOriginal || '📘 Emitir PGR Completo';
+        }
+    }
+}
+
+function gerarHtmlDocumentoCompletoPgr(statusFontes) {
+    const fontesOk = !(statusFontes && statusFontes.ok === false);
+    const estadoDocBase = (typeof obterPgrDocBaseVigenteParaImpressao === 'function')
+        ? obterPgrDocBaseVigenteParaImpressao()
+        : { confirmado_oficial: false, motivo_nao_oficial: 'Função de validação indisponível', doc: null };
+
+    // Só é oficial se o Documento-Base for oficial E todas as fontes essenciais estiverem sincronizadas sem erro
+    let oficial = Boolean(estadoDocBase && estadoDocBase.confirmado_oficial && estadoDocBase.doc);
+    let motivoNaoOficial = estadoDocBase ? estadoDocBase.motivo_nao_oficial : 'Documento-Base não confirmado';
+
+    if (oficial && !fontesOk) {
+        oficial = false;
+        motivoNaoOficial = `Fontes essenciais não sincronizadas (${(statusFontes.pendencias || []).join('; ')})`;
+    }
+
+    const doc = oficial ? estadoDocBase.doc : normalizarPgrDocBase(obterPgrDocBaseDefaults());
+
+    const empRazao = (typeof EMPRESA_INFO !== 'undefined' && EMPRESA_INFO.razaoSocial) ? EMPRESA_INFO.razaoSocial : 'CONSORCIO OPERADOR RAMAL DO AGRESTE';
+    const empCnpj = (typeof EMPRESA_INFO !== 'undefined' && EMPRESA_INFO.cnpj) ? EMPRESA_INFO.cnpj : '55.623.017/0001-97';
+    const empCnae = (typeof EMPRESA_INFO !== 'undefined' && EMPRESA_INFO.cnaePrincipal) ? EMPRESA_INFO.cnaePrincipal : '71.12-0-00 - Serviços de engenharia';
+    const empGr = (typeof EMPRESA_INFO !== 'undefined' && EMPRESA_INFO.grauRisco) ? EMPRESA_INFO.grauRisco : '1';
+
+    const codigoDoc = (doc.codigo_documento && doc.codigo_documento.trim()) ? doc.codigo_documento.trim() : (oficial ? 'Não informado' : 'Rascunho (Não informado)');
+    const localOperacao = (doc.cidade_uf && doc.cidade_uf.trim()) ? doc.cidade_uf.trim() : (oficial ? 'Não informado' : 'Rascunho (Não informado)');
+    const revAtual = doc.revisao_atual || '00';
+    const dataElabStr = oficial ? (doc.data_elaboracao ? formatSimpleDate(doc.data_elaboracao) : 'Não informada') : 'Rascunho (Não confirmada)';
+    const dataValStr = oficial ? (doc.data_validade ? formatSimpleDate(doc.data_validade) : 'Não informada') : 'Rascunho (Não confirmada)';
+    const dataEmissaoStr = formatSimpleDate(new Date());
+
+    const avalPrincipal = (oficial && Array.isArray(doc.avaliadores) && doc.avaliadores[0]) ? doc.avaliadores[0] : null;
+    const respPrincipal = (oficial && Array.isArray(doc.responsaveis_empresa) && doc.responsaveis_empresa[0]) ? doc.responsaveis_empresa[0] : null;
+
+    const bannerRascunhoHtml = oficial ? '' : `
+        <div style="margin-bottom:15px; padding:12px 16px; border:2px dashed #b45309; background:#fef3c7; color:#92400e; font-size:10pt; font-weight:700; text-align:center;">
+            ⚠️ RASCUNHO TÉCNICO SEM VALOR OFICIAL — ${escapeHTML(motivoNaoOficial || 'Documento-Base não confirmado no banco de dados')}.<br>
+            Nenhuma revisão, vigência ou assinatura técnica é atribuída até que o Documento-Base do PGR seja preenchido e salvo no painel com status "pronto_emissao".
+        </div>`;
+
+    // 1. Capa Institucional
+    const secaoCapaHtml = `
+        <div class="pagina-a4 capa-pgr">
+            <div style="text-align: center; margin-top: 40px; margin-bottom: 30px;">
+                <img src="${LOGO_COP_BASE64}" alt="Logo Consórcio" style="max-height: 85px; max-width: 280px;">
+            </div>
+            <div style="text-align: center; border-top: 3px solid #1e3a8a; border-bottom: 3px solid #1e3a8a; padding: 30px 20px; margin: 40px 0;">
+                <div style="font-size: 24pt; font-weight: 900; color: #0f172a; letter-spacing: 0.5px;">${escapeHTML(doc.titulo_programa || 'PROGRAMA DE GERENCIAMENTO DE RISCOS (PGR)')}</div>
+                <div style="font-size: 13pt; font-weight: 700; color: #1e40af; margin-top: 10px;">${escapeHTML(doc.enquadramento_normativo || 'NR-01 — GERENCIAMENTO DE RISCOS OCUPACIONAIS (GRO)')}</div>
+                <div style="font-size: 11pt; color: #475569; margin-top: 6px;">Metodologia Quali-Quantitativa AIHA (American Industrial Hygiene Association)</div>
+            </div>
+
+            <div style="margin: 30px auto; max-width: 600px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 20px; font-size: 10.5pt; line-height: 1.6;">
+                <div><b>Razão Social:</b> ${escapeHTML(empRazao)}</div>
+                <div><b>CNPJ:</b> ${escapeHTML(empCnpj)} &nbsp;|&nbsp; <b>Grau de Risco:</b> ${escapeHTML(empGr)}</div>
+                <div><b>CNAE Principal:</b> ${escapeHTML(empCnae)}</div>
+                <div><b>Código do Documento:</b> ${escapeHTML(codigoDoc)} &nbsp;|&nbsp; <b>Revisão:</b> ${escapeHTML(revAtual)}</div>
+                <div><b>Vigência do Programa:</b> ${dataElabStr} a ${dataValStr}</div>
+                <div><b>Data de Emissão do Laudo:</b> ${dataEmissaoStr}</div>
+                <div><b>Local da Operação:</b> ${escapeHTML(localOperacao)}</div>
+            </div>
+
+            <div style="margin-top: 60px; text-align: center;">
+                <div style="display: flex; justify-content: space-around; gap: 30px; margin-top: 40px;">
+                    <div style="width: 250px; border-top: 1.5px solid #0f172a; padding-top: 6px; font-size: 9pt;">
+                        <b>${escapeHTML((avalPrincipal && avalPrincipal.nome) || (oficial ? '' : 'RESPONSÁVEL TÉCNICO NÃO CONFIRMADO'))}</b><br>
+                        ${escapeHTML((avalPrincipal && avalPrincipal.qualificacao) || '')}<br>
+                        ${escapeHTML((avalPrincipal && avalPrincipal.registro_conselho) || '')}
+                    </div>
+                    <div style="width: 250px; border-top: 1.5px solid #0f172a; padding-top: 6px; font-size: 9pt;">
+                        <b>${escapeHTML((respPrincipal && respPrincipal.nome) || (oficial ? '' : 'REPRESENTANTE LEGAL NÃO CONFIRMADO'))}</b><br>
+                        ${escapeHTML((respPrincipal && respPrincipal.cargo) || 'Representante Legal')}<br>
+                        ${escapeHTML(empRazao)}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+    // 2. Histórico de Revisões
+    const revisoes = Array.isArray(doc.historico_revisoes) ? doc.historico_revisoes : [];
+    const secaoHistoricoHtml = `
+        <div class="pagina-a4">
+            <h2 class="secao-titulo">1. HISTÓRICO DE REVISÕES DO DOCUMENTO</h2>
+            <div class="secao-desc">Controle de alterações normativas, técnicas e operacionais conforme item 1.5.4.4.6 da NR-01.</div>
+            <table class="tabela-pgr">
+                <thead>
+                    <tr>
+                        <th style="width: 10%;">Revisão</th>
+                        <th style="width: 15%;">Data</th>
+                        <th style="width: 50%;">Descrição das Modificações / Motivo</th>
+                        <th style="width: 25%;">Responsável Técnico</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${revisoes.length === 0 ? '<tr><td colspan="4" style="text-align:center; padding:12px; color:#64748b;">Nenhuma revisão histórica cadastrada (emissão inicial do programa).</td></tr>' : revisoes.map(r => `
+                        <tr>
+                            <td style="text-align:center; font-weight:700;">${escapeHTML(r.revisao || '—')}</td>
+                            <td style="text-align:center;">${escapeHTML(r.data ? formatSimpleDate(r.data) : '—')}</td>
+                            <td>${escapeHTML(r.descricao || '—')}</td>
+                            <td>${escapeHTML(r.responsavel || '—')}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>`;
+
+    // 3. Documento-Base Corporativo
+    const secaoDocBaseHtml = `
+        <div class="pagina-a4">
+            <h2 class="secao-titulo">2. DOCUMENTO-BASE — DIRETRIZES E METODOLOGIA DO GRO/PGR</h2>
+
+            <h3 class="subsecao-titulo">2.1 Objetivos e Apresentação Institucional</h3>
+            <div class="texto-paragrafo">${doc.texto_apresentacao_objetivos ? escapeHTML(doc.texto_apresentacao_objetivos).replace(/\n/g, '<br>') : 'O presente Programa de Gerenciamento de Riscos (PGR) tem por objetivo estabelecer as diretrizes e requisitos para o gerenciamento de riscos ocupacionais e as medidas de prevenção em Segurança e Saúde no Trabalho (SST) no âmbito do Consórcio Operador do Ramal do Agreste.'}</div>
+
+            <h3 class="subsecao-titulo">2.2 Metodologia de Avaliação Quali-Quantitativa de Riscos (AIHA)</h3>
+            <div class="texto-paragrafo">A identificação de perigos e a avaliação de riscos ocupacionais são estruturadas sob a metodologia internacional da American Industrial Hygiene Association (AIHA), cruzando a matriz bidimensional de <b>Probabilidade de Exposição (Escala 1 a 5)</b> com a <b>Severidade dos Possíveis Danos (Escala 1 a 5)</b>, gerando os níveis de ação: <b>Trivial</b>, <b>Baixo</b>, <b>Moderado</b>, <b>Alto</b> e <b>Muito Alto</b>. Riscos pendentes de avaliação permanecem destacados como não classificados.</div>
+
+            <h3 class="subsecao-titulo">2.3 Critérios e Diretrizes para Proteção Coletiva (EPC) e Individual (EPI)</h3>
+            <div class="texto-paragrafo">${doc.texto_protecoes_coletivas_epc_epi ? escapeHTML(doc.texto_protecoes_coletivas_epc_epi).replace(/\n/g, '<br>') : 'Em obediência à hierarquia das medidas de prevenção (item 1.4.1 da NR-01), prioriza-se a eliminação de fatores de risco e a implementação de Medidas de Proteção Coletiva (EPC). As especificações de EPIs e respectivos Certificados de Aprovação (CA) aplicáveis a cada GHE são descritas no inventário de riscos, cabendo à gestão a conferência contínua de validade dos CAs perante o Ministério do Trabalho e o fornecimento de treinamentos de uso e conservação.'}</div>
+
+            <h3 class="subsecao-titulo">2.4 Sistemática de Inspeções de SST e Acompanhamento de Campo</h3>
+            <div class="texto-paragrafo">${doc.texto_sistematica_inspecoes ? escapeHTML(doc.texto_sistematica_inspecoes).replace(/\n/g, '<br>') : 'Diretriz normativa para inspeções de segurança do trabalho no âmbito do Ramal do Agreste, articulando rondas de campo, Diálogos Diários de Segurança (DDS) e checklists operacionais pelo SESMT e lideranças operacionais.'}</div>
+
+            <h3 class="subsecao-titulo">2.5 Instrumentos de Medição e Certificados de Calibração</h3>
+            <table class="tabela-pgr">
+                <thead>
+                    <tr>
+                        <th style="width: 25%;">Equipamento / Modelo</th>
+                        <th style="width: 20%;">Nº de Série</th>
+                        <th style="width: 25%;">Agente Avaliado / Técnica</th>
+                        <th style="width: 15%;">Data Calibração</th>
+                        <th style="width: 15%;">Validade Calibração</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${(doc.instrumentos || []).length === 0 ? '<tr><td colspan="5" style="text-align:center; padding:10px; color:#64748b;">Nenhum instrumento quantitativo específico cadastrado no momento (avaliações qualitativas e de inspeção direta).</td></tr>' : doc.instrumentos.map(inst => `
+                        <tr>
+                            <td><b>${escapeHTML(inst.identificacao || inst.marca || '—')}</b><br><small>${escapeHTML(inst.modelo || '')}</small></td>
+                            <td>${escapeHTML(inst.numero_serie || '—')}</td>
+                            <td>${escapeHTML(inst.agentes_analisados || inst.tecnica_utilizada || '—')}</td>
+                            <td style="text-align:center;">${escapeHTML(inst.data_calibracao ? formatSimpleDate(inst.data_calibracao) : '—')}</td>
+                            <td style="text-align:center;">${escapeHTML(inst.validade_calibracao ? formatSimpleDate(inst.validade_calibracao) : '—')}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>`;
+
+    // 4. Visão Panorâmica Consolidada dos 27 GHEs
+    const ghes = Array.isArray(allGheCatalogo) ? allGheCatalogo.slice().sort((a,b) => String(a.id).localeCompare(String(b.id))) : [];
+    let totalRiscosGeral = 0;
+    let totalNaoClassificados = 0;
+    const contagemNiveis = { 'Trivial': 0, 'Baixo': 0, 'Moderado': 0, 'Alto': 0, 'Muito Alto': 0 };
+    const contagemAgentes = {};
+
+    ghes.forEach(g => {
+        (g.riscos || []).forEach(r => {
+            totalRiscosGeral++;
+            const rawGrav = (r.gravidade_label && String(r.gravidade_label).trim()) ? String(r.gravidade_label).trim() : '';
+            if (rawGrav && contagemNiveis[rawGrav] !== undefined) {
+                contagemNiveis[rawGrav]++;
+            } else {
+                totalNaoClassificados++;
+            }
+            const ag = r.tipo_agente || 'Outros';
+            contagemAgentes[ag] = (contagemAgentes[ag] || 0) + 1;
+        });
+    });
+
+    const secaoPanoramicaHtml = `
+        <div class="pagina-a4">
+            <h2 class="secao-titulo">3. VISÃO PANORÂMICA E MATRIZ DE RISCO CONSOLIDADA (AIHA)</h2>
+            <div class="secao-desc">Classificação quantitativa de todos os riscos ocupacionais identificados no conjunto de setores da operação.</div>
+
+            <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:90px; border:1px solid #cbd5e1; border-radius:6px; padding:10px; background:#f8fafc; text-align:center;">
+                    <div style="font-size:18pt; font-weight:800; color:#0f172a;">${ghes.length}</div>
+                    <div style="font-size:8pt; font-weight:700; color:#64748b;">Grupos (GHEs)</div>
+                </div>
+                <div style="flex:1; min-width:90px; border:1px solid #cbd5e1; border-radius:6px; padding:10px; background:#f8fafc; text-align:center;">
+                    <div style="font-size:18pt; font-weight:800; color:#2563eb;">${totalRiscosGeral}</div>
+                    <div style="font-size:8pt; font-weight:700; color:#64748b;">Riscos Mapeados</div>
+                </div>
+                <div style="flex:1; min-width:90px; border:1px solid #6aa84f; border-radius:6px; padding:10px; background:#6aa84f11; text-align:center;">
+                    <div style="font-size:18pt; font-weight:800; color:#6aa84f;">${contagemNiveis['Trivial']}</div>
+                    <div style="font-size:8pt; font-weight:700; color:#6aa84f;">Trivial</div>
+                </div>
+                <div style="flex:1; min-width:90px; border:1px solid #f1c232; border-radius:6px; padding:10px; background:#f1c23211; text-align:center;">
+                    <div style="font-size:18pt; font-weight:800; color:#d97706;">${contagemNiveis['Baixo']}</div>
+                    <div style="font-size:8pt; font-weight:700; color:#d97706;">Baixo</div>
+                </div>
+                <div style="flex:1; min-width:90px; border:1px solid #e69138; border-radius:6px; padding:10px; background:#e6913811; text-align:center;">
+                    <div style="font-size:18pt; font-weight:800; color:#ea580c;">${contagemNiveis['Moderado']}</div>
+                    <div style="font-size:8pt; font-weight:700; color:#ea580c;">Moderado</div>
+                </div>
+                <div style="flex:1; min-width:90px; border:1px solid #cc0000; border-radius:6px; padding:10px; background:#cc000011; text-align:center;">
+                    <div style="font-size:18pt; font-weight:800; color:#dc2626;">${contagemNiveis['Alto']}</div>
+                    <div style="font-size:8pt; font-weight:700; color:#dc2626;">Alto</div>
+                </div>
+                <div style="flex:1; min-width:90px; border:1px solid #990000; border-radius:6px; padding:10px; background:#99000011; text-align:center;">
+                    <div style="font-size:18pt; font-weight:800; color:#991b1b;">${contagemNiveis['Muito Alto']}</div>
+                    <div style="font-size:8pt; font-weight:700; color:#991b1b;">Muito Alto</div>
+                </div>
+                ${totalNaoClassificados > 0 ? `
+                <div style="flex:1; min-width:90px; border:1px solid #64748b; border-radius:6px; padding:10px; background:#f1f5f9; text-align:center;">
+                    <div style="font-size:18pt; font-weight:800; color:#475569;">${totalNaoClassificados}</div>
+                    <div style="font-size:8pt; font-weight:700; color:#475569;">Não Classificados</div>
+                </div>
+                ` : ''}
+            </div>
+
+            <h3 class="subsecao-titulo">Distribuição de Riscos por Tipo de Agente Ocupacional</h3>
+            <table class="tabela-pgr">
+                <thead>
+                    <tr>
+                        <th>Tipo de Agente</th>
+                        <th style="width: 25%; text-align:center;">Total de Riscos</th>
+                        <th style="width: 25%; text-align:center;">% Sobre o Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${Object.keys(contagemAgentes).map(tipo => `
+                        <tr>
+                            <td><b>${escapeHTML(tipo)}</b></td>
+                            <td style="text-align:center; font-weight:700;">${contagemAgentes[tipo]}</td>
+                            <td style="text-align:center;">${totalRiscosGeral > 0 ? Math.round((contagemAgentes[tipo] / totalRiscosGeral) * 100) : 0}%</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>`;
+
+    // 5. Inventário Geral Detalhado por GHE (GHE 01 a 27)
+    const efetivoConsultado = (typeof efetivoLoaded !== 'undefined') ? efetivoLoaded : (Array.isArray(allEfetivo) && allEfetivo.length > 0);
+    const secoesGhesHtml = ghes.map(g => {
+        const cargos = Array.isArray(g.cargos) ? g.cargos : [];
+        const riscosGhe = Array.isArray(g.riscos) ? g.riscos : [];
+        const colabs = (typeof allEfetivo !== 'undefined' && Array.isArray(allEfetivo))
+            ? allEfetivo.filter(e => colaboradorEstaAtivo(e) && normalizarGhe(e.ghe) === normalizarGhe(g.id))
+            : [];
+        const textoEfetivo = efetivoConsultado ? `${colabs.length} colaborador(es)` : 'Não consultado (pendente de sincronização)';
+
+        return `
+        <div class="pagina-a4 secao-ghe">
+            <div class="cabecalho-ghe">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <div>
+                        <div style="font-size:13pt; font-weight:800; color:#0f172a;">${escapeHTML(g.id)} — ${escapeHTML(g.nome)}</div>
+                        <div style="font-size:9pt; color:#475569; margin-top:2px;"><b>Ambiente/Local:</b> ${escapeHTML(g.ambiente || g.local || 'Instalações Operacionais do Ramal do Agreste')}</div>
+                    </div>
+                    <div style="text-align:right; font-size:9pt;">
+                        <div><b>Efetivo Ativo:</b> ${textoEfetivo}</div>
+                        <div><b>Cargos:</b> ${cargos.length} função(ões)</div>
+                    </div>
+                </div>
+                <div style="font-size:8.5pt; color:#334155; margin-top:6px; border-top:1px dashed #cbd5e1; padding-top:4px;">
+                    <b>Cargos Abrangidos:</b> ${cargos.map(c => `${escapeHTML(c.cargo || c.funcao)} (CBO ${escapeHTML(c.cbo || '—')})`).join('; ') || 'Nenhum cargo especificado'}
+                </div>
+            </div>
+
+            <table class="tabela-pgr" style="margin-top:10px;">
+                <thead>
+                    <tr>
+                        <th style="width: 8%;">Tipo</th>
+                        <th style="width: 14%;">Fator de Risco / Agente</th>
+                        <th style="width: 8%;">eSocial</th>
+                        <th style="width: 14%;">Fonte Geradora / Exposição</th>
+                        <th style="width: 8%; text-align:center;">P × S</th>
+                        <th style="width: 10%; text-align:center;">Nível AIHA</th>
+                        <th style="width: 18%;">Possíveis Danos à Saúde</th>
+                        <th style="width: 20%;">Medidas Preventivas (EPC / EPI com CA)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${riscosGhe.length === 0 ? '<tr><td colspan="8" style="text-align:center; padding:12px; color:#64748b;">Nenhum risco ocupacional registrado no inventário deste GHE até o momento (pendente de avaliação/revisão técnica).</td></tr>' : riscosGhe.map(r => {
+                        const gravLabel = (r.gravidade_label && String(r.gravidade_label).trim()) ? String(r.gravidade_label).trim() : 'Pendente / Não classificado';
+                        const corGrav = NIVEIS_RISCO_COR[gravLabel] || '#64748b';
+                        const medidasCellHtml = formatarMedidasPreventivasRiscoPgr(r);
+                        return `
+                        <tr class="linha-risco-pgr">
+                            <td><b>${escapeHTML(r.tipo_agente || '—')}</b></td>
+                            <td>
+                                <b>${escapeHTML(r.agente || '—')}</b>
+                                <div style="font-size:7.5pt; color:#64748b; margin-top:2px;">GHE ${escapeHTML(g.id)}</div>
+                            </td>
+                            <td>${escapeHTML(r.esocial_codigo || r.codigo_esocial || '—')}</td>
+                            <td>
+                                <div style="font-size:7.5pt; font-weight:700; color:#1e3a8a; margin-bottom:2px;">[${escapeHTML(r.agente || 'Agente')} — GHE ${escapeHTML(g.id)}]</div>
+                                ${escapeHTML(r.fontes_geradoras || '—')}<br><small style="color:#64748b;">${escapeHTML(r.tipo_tempo_exposicao || '')}</small>
+                            </td>
+                            <td style="text-align:center;">${r.probabilidade || '—'} × ${r.severidade || '—'}</td>
+                            <td style="text-align:center;">
+                                <span class="badge-grav" style="background:${corGrav}22; color:${corGrav}; border:1px solid ${corGrav};">
+                                    ${escapeHTML(gravLabel)}
+                                </span>
+                            </td>
+                            <td>${escapeHTML(r.danos_saude || '—')}</td>
+                            <td>
+                                <div style="font-size:7.5pt; font-weight:700; color:#1e3a8a; margin-bottom:2px;">[${escapeHTML(r.agente || 'Agente')} — GHE ${escapeHTML(g.id)}]</div>
+                                ${medidasCellHtml}
+                            </td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>`;
+    }).join('');
+
+    // 6. Plano de Ação 5W2H (Integrado NR-01)
+    const planoAcoes = (typeof allPlanoAcaoPgr !== 'undefined' && Array.isArray(allPlanoAcaoPgr)) ? allPlanoAcaoPgr : [];
+    const planoFalhou = Boolean(statusFontes && Array.isArray(statusFontes.pendencias) && statusFontes.pendencias.some(p => p.includes('pgr_plano_acao')));
+    const msgPlanoVazio = planoFalhou
+        ? 'Plano de Ação 5W2H (pgr_plano_acao) não sincronizado com o banco de dados no momento da emissão.'
+        : 'Nenhuma ação específica vinculada em pgr_plano_acao no momento.';
+    const secaoPlanoAcaoHtml = `
+        <div class="pagina-a4">
+            <h2 class="secao-titulo">4. PLANO DE AÇÃO INTEGRADO (METODOLOGIA 5W2H — NR-01)</h2>
+            <div class="secao-desc">Ações de controle, mitigação e melhoria contínua de SST extraídas dinamicamente de pgr_plano_acao (item 1.5.5.2 da NR-01). Campos não definidos são mantidos como neutros.</div>
+
+            <table class="tabela-pgr">
+                <thead>
+                    <tr>
+                        <th style="width: 18%;">O Quê (Ação 5W2H)</th>
+                        <th style="width: 14%;">Por Quê (Motivo / Risco)</th>
+                        <th style="width: 12%;">Onde (Setor / GHE)</th>
+                        <th style="width: 12%;">Quem (Responsável)</th>
+                        <th style="width: 10%; text-align:center;">Quando (Prazo)</th>
+                        <th style="width: 16%;">Como (Método / Procedimento)</th>
+                        <th style="width: 9%; text-align:right;">Quanto (Custo)</th>
+                        <th style="width: 9%; text-align:center;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${planoAcoes.length === 0 ? `<tr><td colspan="8" style="text-align:center; padding:12px; color:#64748b;">${escapeHTML(msgPlanoVazio)}</td></tr>` : planoAcoes.map(a => {
+                        const custoNum = typeof a.how_much_custo === 'number' ? a.how_much_custo : parseFloat(a.how_much_custo);
+                        const custoFmt = (!isNaN(custoNum) && custoNum > 0) ? `R$ ${custoNum.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+                        const prazoFmt = a.when_prazo ? formatSimpleDate(a.when_prazo) : (a.prazo ? formatSimpleDate(a.prazo) : '—');
+                        return `
+                        <tr>
+                            <td><b>${escapeHTML(a.what_acao || a.acao || '—')}</b>${a.grau_prioridade ? `<br><small style="color:#64748b;">Prioridade: ${escapeHTML(a.grau_prioridade)}</small>` : ''}</td>
+                            <td>${escapeHTML(a.why_motivo || a.risco || '—')}</td>
+                            <td>${escapeHTML(a.where_local || a.setor || 'Geral')}</td>
+                            <td>${escapeHTML(a.who_responsavel || a.responsavel || '—')}</td>
+                            <td style="text-align:center;">${escapeHTML(prazoFmt)}</td>
+                            <td>${escapeHTML(a.how_metodo || '— (não especificado)')}</td>
+                            <td style="text-align:right;">${escapeHTML(custoFmt)}</td>
+                            <td style="text-align:center; font-weight:700;">${escapeHTML(a.status || 'Pendente')}</td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>`;
+
+    // 7. Anexos Normativos (AEP NR-17 e Psicossocial NR-01)
+    const secaoAnexosHtml = `
+        <div class="pagina-a4">
+            <h2 class="secao-titulo">5. ANEXOS TÉCNICOS E COMPLEMENTARES</h2>
+
+            <h3 class="subsecao-titulo">5.1 Anexo I — Diretrizes da Avaliação Ergonômica Preliminar (AEP — NR-17)</h3>
+            <div class="texto-paragrafo">Conforme preconiza o subitem 17.3 da NR-17, o gerenciamento de riscos ergonômicos contempla a realização de Avaliações Ergonômicas Preliminares (AEP) para identificação de exigências biomecânicas e organizacionais. As diretrizes e análises ergonômicas específicas são integradas ao sistema via módulo de Ergonomia; na ausência de laudo conclusivo homologado ou registros consolidados vinculados, as atividades operacionais devem observar as diretrizes preventivas gerais e pausas ergonômicas definidas neste programa.</div>
+            <div style="margin-top:6px; margin-bottom:12px; padding:6px 10px; background:#f8fafc; border-left:3px solid #2563eb; font-size:8.5pt; color:#475569;">
+                <b>Nota Técnica de Integração:</b> Diretrizes normativas vigentes registradas. A consolidação analítica e a integração dos laudos ergonômicos específicos com o inventário analítico do PGR constituem a Etapa 4 do cronograma de desenvolvimento do sistema.
+            </div>
+
+            <h3 class="subsecao-titulo">5.2 Anexo II — Diretrizes de Gestão de Fatores Psicossociais (NR-01 / COPSOQ II)</h3>
+            <div class="texto-paragrafo">A abordagem de fatores psicossociais relacionados ao trabalho estrutura-se conforme as diretrizes da NR-01 (GRO) e referências conceituais como o COPSOQ II. Esta seção consolida as diretrizes institucionais de prevenção, comunicação assertiva, clareza funcional e combate ao assédio e estresse ocupacional. Para salvaguardar integralmente o sigilo ético e impossibilitar a reidentificação de trabalhadores, não são emitidos diagnósticos nem escores individualizados ou por grupos com efetivo reduzido; eventuais diagnósticos agregados da empresa dependem de homologação de pesquisa censitária específica.</div>
+            <div style="margin-top:6px; margin-bottom:12px; padding:6px 10px; background:#f8fafc; border-left:3px solid #2563eb; font-size:8.5pt; color:#475569;">
+                <b>Nota Técnica de Integração:</b> Diretrizes normativas e salvaguardas de sigilo ético registradas. Os resultados diagnósticos censitários agregados da empresa serão consolidados e vinculados após aplicação e homologação de instrumento psicossocial específico (Etapa 4).
+            </div>
+
+            <div style="margin-top: 60px; border-top: 2px solid #0f172a; padding-top: 15px; text-align: center;">
+                <div style="font-weight: 800; font-size: 11pt; color: #0f172a;">TERMO DE ENCERRAMENTO E VALIDAÇÃO TÉCNICA DO PGR</div>
+                <div style="font-size: 9pt; color: #475569; margin-top: 4px;">O presente documento consolida o Programa de Gerenciamento de Riscos (PGR) em atendimento às diretrizes da Norma Regulamentadora nº 01 (NR-01 - Portaria MTP nº 6.730/2020), registrando os fatores de risco identificados, critérios avaliativos e diretrizes preventivas para as frentes e setores operacionais do Consórcio Ramal do Agreste.</div>
+
+                <div style="display:flex; justify-content:space-around; margin-top: 50px;">
+                    <div style="width: 250px; border-top: 1.5px solid #0f172a; padding-top: 6px; font-size: 9pt;">
+                        <b>${escapeHTML((avalPrincipal && avalPrincipal.nome) || (oficial ? '' : 'RESPONSÁVEL TÉCNICO NÃO CONFIRMADO'))}</b><br>
+                        ${escapeHTML((avalPrincipal && avalPrincipal.qualificacao) || '')}<br>
+                        ${escapeHTML((avalPrincipal && avalPrincipal.registro_conselho) || '')}
+                    </div>
+                    <div style="width: 250px; border-top: 1.5px solid #0f172a; padding-top: 6px; font-size: 9pt;">
+                        <b>${escapeHTML((respPrincipal && respPrincipal.nome) || (oficial ? '' : 'REPRESENTANTE LEGAL NÃO CONFIRMADO'))}</b><br>
+                        ${escapeHTML((respPrincipal && respPrincipal.cargo) || 'Representante Legal')}<br>
+                        ${escapeHTML(empRazao)}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+    return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <title>PGR Oficial Completo — ${escapeHTML(empRazao)} (Rev. ${escapeHTML(revAtual)})</title>
+        <style>
+            @page { size: A4 landscape; margin: 10mm; }
+            body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 9.5pt; color: #1e293b; margin: 0; padding: 10px; background: #fff; }
+            .pagina-a4 { page-break-after: always; padding: 10px 0; }
+            .pagina-a4:last-child { page-break-after: avoid; }
+            .secao-titulo { font-size: 13pt; font-weight: 800; color: #0f172a; border-bottom: 2px solid #1e3a8a; padding-bottom: 4px; margin-top: 0; margin-bottom: 4px; page-break-after: avoid; break-after: avoid; }
+            .secao-desc { font-size: 9pt; color: #64748b; margin-bottom: 12px; page-break-after: avoid; break-after: avoid; }
+            .subsecao-titulo { font-size: 10.5pt; font-weight: 700; color: #1e40af; margin-top: 12px; margin-bottom: 4px; page-break-after: avoid; break-after: avoid; }
+            .texto-paragrafo { font-size: 9.5pt; line-height: 1.5; color: #334155; text-align: justify; margin-bottom: 8px; }
+            .tabela-pgr { width: 100%; border-collapse: collapse; font-size: 8.5pt; margin-bottom: 10px; }
+            .tabela-pgr thead { display: table-header-group; }
+            .tabela-pgr tbody { display: table-row-group; }
+            .tabela-pgr tr { page-break-inside: avoid; break-inside: avoid; }
+            .tabela-pgr th, .tabela-pgr td { border: 1px solid #cbd5e1; padding: 5px 7px; text-align: left; vertical-align: top; word-break: break-word; }
+            .tabela-pgr th { background: #f1f5f9; font-weight: 700; color: #0f172a; }
+            .cabecalho-ghe { background: #f8fafc; border: 1.5px solid #0f172a; border-radius: 6px; padding: 8px 12px; margin-bottom: 8px; page-break-inside: avoid; break-inside: avoid; page-break-after: avoid; break-after: avoid; }
+            .badge-grav { padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 8pt; display: inline-block; white-space: nowrap; }
+            @media print {
+                body { padding: 0; }
+                .pagina-a4 { page-break-after: always; }
+                .tabela-pgr tr { page-break-inside: avoid; break-inside: avoid; }
+                .cabecalho-ghe { page-break-inside: avoid; break-inside: avoid; page-break-after: avoid; break-after: avoid; }
+            }
+        </style>
+    </head>
+    <body>
+        ${bannerRascunhoHtml}
+        ${secaoCapaHtml}
+        ${secaoHistoricoHtml}
+        ${secaoDocBaseHtml}
+        ${secaoPanoramicaHtml}
+        ${secoesGhesHtml}
+        ${secaoPlanoAcaoHtml}
+        ${secaoAnexosHtml}
+    </body>
+    </html>`;
+}
+
+
+function obterPgrDocBaseVigenteParaImpressao() {
+    // Se houver snapshot salvo em memória, faz parse estrito SEM engolir erro silenciosamente (P2 #4)
+    if (pgrDocBaseSavedSnapshotJson !== null && pgrDocBaseSavedSnapshotJson !== undefined && pgrDocBaseSavedSnapshotJson !== '') {
+        let parsed = null;
+        try {
+            parsed = JSON.parse(pgrDocBaseSavedSnapshotJson);
+        } catch (err) {
+            throw new Error('Falha de integridade no Documento-Base do PGR: o estado salvo está corrompido ou em formato JSON inválido. Recarregue e valide o Documento-Base antes de imprimir.');
+        }
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('Falha de integridade no Documento-Base do PGR: estrutura salva inválida. Recarregue e valide o Documento-Base antes de imprimir.');
+        }
+        const docNorm = normalizarPgrDocBase(parsed);
+        const prontidao = (typeof avaliarProntidaoEmissaoPgrDocBase === 'function')
+            ? avaliarProntidaoEmissaoPgrDocBase(docNorm)
+            : { pronto_para_emissao: false, pendencias: ['Validação de prontidão indisponível.'] };
+
+        if (pgrDocBaseRemotoExiste && prontidao.pronto_para_emissao) {
+            return {
+                confirmado_oficial: true,
+                motivo_nao_oficial: null,
+                doc: docNorm
+            };
+        }
+        return {
+            confirmado_oficial: false,
+            motivo_nao_oficial: pgrDocBaseRemotoExiste
+                ? `Documento-Base salvo como rascunho incompleto (${prontidao.pendencias[0] || 'pendências obrigatórias'})`
+                : 'Documento-Base do PGR ainda não confirmado/salvo no banco de dados',
+            doc: docNorm
+        };
+    }
+
+    return {
+        confirmado_oficial: false,
+        motivo_nao_oficial: 'Documento-Base do PGR ainda não confirmado/salvo no banco de dados',
+        doc: null
+    };
 }
 
 function gerarHtmlInventarioRiscosGhe(g) {
     const riscos = Array.isArray(g.riscos) ? g.riscos : [];
     const cargos = Array.isArray(g.cargos) ? g.cargos : [];
-    const dataElab = g.data_inicio ? formatSimpleDate(g.data_inicio) : (g.data_elaboracao ? formatSimpleDate(g.data_elaboracao) : 'Não informada');
-    const dataVal = g.data_validade ? formatSimpleDate(g.data_validade) : 'Não informada';
+    const estadoDocBase = obterPgrDocBaseVigenteParaImpressao();
+    const oficial = Boolean(estadoDocBase && estadoDocBase.confirmado_oficial && estadoDocBase.doc);
+    const docBase = oficial ? estadoDocBase.doc : null;
+
+    // Quando o Documento-Base não está confirmado oficialmente (rascunho), NUNCA usar datas legadas do GHE
+    // como se fossem "Vigência" oficial do PGR (P2 #1 do parecer 2253).
+    const rawElab = oficial ? (docBase.data_elaboracao || '') : '';
+    const rawVal = oficial ? (docBase.data_validade || '') : '';
+    const dataElab = oficial
+        ? (rawElab ? formatSimpleDate(rawElab) : 'Não informada')
+        : 'Rascunho (Não confirmada)';
+    const dataVal = oficial
+        ? (rawVal ? formatSimpleDate(rawVal) : 'Não informada')
+        : 'Rascunho (Não confirmada)';
+
+    const codigoRevStr = oficial
+        ? `${escapeHTML(docBase.codigo_documento || 'PGR')} (Rev. ${escapeHTML(docBase.revisao_atual)})`
+        : 'RASCUNHO NÃO OFICIAL (Sem revisão confirmada)';
+
+    const subTituloStr = oficial
+        ? escapeHTML(docBase.enquadramento_normativo || 'Programa de Gerenciamento de Riscos (NR-01 GRO) — Metodologia AIHA')
+        : 'RASCUNHO TÉCNICO PARA CONFERÊNCIA — DOCUMENTO-BASE NÃO HOMOLOGADO';
+
+    const avalPrincipal = (oficial && Array.isArray(docBase.avaliadores) && docBase.avaliadores[0])
+        ? docBase.avaliadores[0]
+        : null;
+    const respPrincipal = (oficial && Array.isArray(docBase.responsaveis_empresa) && docBase.responsaveis_empresa[0])
+        ? docBase.responsaveis_empresa[0]
+        : null;
+
+    const bannerNaoOficialHtml = oficial
+        ? ''
+        : `<div style="margin-bottom:10px; padding:8px 12px; border:2px dashed #b45309; background:#fef3c7; color:#92400e; font-size:9pt; font-weight:700; text-align:center;">
+            ⚠️ RASCUNHO TÉCNICO SEM VALOR OFICIAL — ${escapeHTML((estadoDocBase && estadoDocBase.motivo_nao_oficial) || 'Documento-Base não confirmado')}.<br>
+            Nenhuma revisão, vigência ou assinatura técnica é atribuída até que o Documento-Base do PGR seja confirmado e salvo com todos os campos obrigatórios.
+           </div>`;
+
+    const blocoAssinaturasHtml = oficial
+        ? `<div class="footer-assinaturas">
+            <div class="linha-ass">
+                <b>${escapeHTML((avalPrincipal && avalPrincipal.nome) || '')}</b><br>
+                ${escapeHTML((avalPrincipal && avalPrincipal.qualificacao) || '')}<br>
+                ${escapeHTML((avalPrincipal && avalPrincipal.registro_conselho) || '')}
+            </div>
+            <div class="linha-ass">
+                <b>${escapeHTML((respPrincipal && respPrincipal.nome) || (EMPRESA_INFO?.razaoSocial || ''))}</b><br>
+                ${escapeHTML((respPrincipal && respPrincipal.cargo) || 'Representante Legal')}<br>
+                ${escapeHTML(EMPRESA_INFO?.razaoSocial || '')}
+            </div>
+           </div>`
+        : `<div class="footer-assinaturas">
+            <div class="linha-ass" style="color:#64748b;">
+                <b>RESPONSÁVEL TÉCNICO NÃO CONFIRMADO</b><br>
+                Configure e salve o Documento-Base do PGR para emissão oficial
+            </div>
+            <div class="linha-ass" style="color:#64748b;">
+                <b>REPRESENTANTE LEGAL NÃO CONFIRMADO</b><br>
+                Documento emitido apenas para conferência de rascunho
+            </div>
+           </div>`;
 
     return `
     <!DOCTYPE html>
@@ -3188,6 +3954,7 @@ function gerarHtmlInventarioRiscosGhe(g) {
         </style>
     </head>
     <body>
+        ${bannerNaoOficialHtml}
         <table class="header-table">
             <tr>
                 <td style="width: 20%; text-align: center; border-right: 1.5px solid #0f172a;">
@@ -3195,9 +3962,10 @@ function gerarHtmlInventarioRiscosGhe(g) {
                 </td>
                 <td style="width: 60%; border-right: 1.5px solid #0f172a;">
                     <div class="title">INVENTÁRIO GERAL DE RISCOS OCUPACIONAIS — PGR</div>
-                    <div class="sub-title">Programa de Gerenciamento de Riscos (NR-01 GRO) — Metodologia AIHA</div>
+                    <div class="sub-title">${subTituloStr}</div>
                 </td>
                 <td style="width: 20%;">
+                    <div><b>Código/Rev.:</b> ${codigoRevStr}</div>
                     <div><b>Vigência:</b> ${dataElab} a ${dataVal}</div>
                     <div><b>Emissão:</b> ${formatSimpleDate(new Date())}</div>
                 </td>
@@ -3227,7 +3995,7 @@ function gerarHtmlInventarioRiscosGhe(g) {
                 </tr>
             </thead>
             <tbody>
-                ${riscos.length === 0 ? '<tr><td colspan="8" style="text-align:center; padding:15px;">Não foram identificados riscos significativos para este grupo.</td></tr>' : riscos.map(r => {
+                ${riscos.length === 0 ? '<tr><td colspan="8" style="text-align:center; padding:15px;">Nenhum risco ocupacional registrado no inventário deste GHE até o momento (pendente de avaliação/revisão técnica).</td></tr>' : riscos.map(r => {
                     const grav = NIVEIS_RISCO_COR[r.gravidade_label] || '#475569';
                     return `
                     <tr>
@@ -3252,17 +4020,7 @@ function gerarHtmlInventarioRiscosGhe(g) {
             </tbody>
         </table>
 
-        <div class="footer-assinaturas">
-            <div class="linha-ass">
-                <b>JOÃO EVERTON DE SOUZA LIMEIRA</b><br>
-                Engenheiro de Segurança do Trabalho<br>
-                CREA: 0522078320
-            </div>
-            <div class="linha-ass">
-                <b>CONSORCIO OPERADOR RAMAL DO AGRESTE</b><br>
-                Diretoria / Gestão Operacional
-            </div>
-        </div>
+        ${blocoAssinaturasHtml}
     </body>
     </html>
     `;
@@ -3915,7 +4673,7 @@ function gerarExcelEfetivo() {
 function abrirModalRelatorioEquipeEncarregado() {
     const modal = document.getElementById('modalRelatorioEquipeEncarregado');
     if (!modal) return;
-    
+
     // Garante carregamento assíncrono de ASO e efetivo se ainda não disponíveis
     if (typeof allAsoExames === 'undefined' || !allAsoExames || allAsoExames.length === 0) {
         if (typeof supabaseFetchCacheado === 'function') {
@@ -5626,7 +6384,7 @@ function popularSelectSetorGheOs() {
     if (!sel) return;
     const valAtual = sel.value;
     const setoresGhe = new Set();
-    
+
     (allEfetivo || []).filter(e => colaboradorEstaAtivo(e)).forEach(e => {
         const item = e.setor ? (e.ghe ? `${e.setor} | ${e.ghe}` : e.setor) : (e.ghe || '');
         if (item) setoresGhe.add(item.trim());
@@ -5649,7 +6407,7 @@ async function renderControleOrdensServico() {
         allGheCatalogo = await supabaseFetch('ghe_catalogo', '?select=*');
     }
     await garantirDocumentosControleCarregados();
-    
+
     const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
     const totalAtivos = ativos.length;
     const totalAssinadas = ativos.filter(e => e.os_status === 'entregue').length;
@@ -5671,8 +6429,8 @@ async function renderControleOrdensServico() {
 
     const kpiPendentesPct = document.getElementById('kpiOsPendentesPct');
     if (kpiPendentesPct) {
-        kpiPendentesPct.textContent = totalPendentes > 0 
-            ? `${totalPendentes} aguardando coleta física` 
+        kpiPendentesPct.textContent = totalPendentes > 0
+            ? `${totalPendentes} aguardando coleta física`
             : '✅ 100% regular (sem pendências)';
     }
 
@@ -5770,8 +6528,8 @@ function renderTabelaControleOs() {
         const anexosOs = typeof anexosDoRegistro === 'function' ? anexosDoRegistro('ordens_servico', e.id) : [];
         const temAnexo = anexosOs.length > 0;
 
-        let dataEntregaFormatada = e.os_data_entrega 
-            ? formatSimpleDate(e.os_data_entrega) 
+        let dataEntregaFormatada = e.os_data_entrega
+            ? formatSimpleDate(e.os_data_entrega)
             : `<span style="color:var(--text-light); font-size:11.5px;">—</span>`;
 
         if (temAnexo) {
@@ -5781,7 +6539,7 @@ function renderTabelaControleOs() {
         }
 
         const versaoTxt = e.os_versao || 'Rev. 00';
-        const setorGheTxt = e.setor 
+        const setorGheTxt = e.setor
             ? (e.ghe ? `${escapeHTML(e.setor)} <span style="font-size:11px; color:var(--text-light); font-weight:600;">[${escapeHTML(e.ghe)}]</span>` : escapeHTML(e.setor))
             : (e.ghe ? escapeHTML(e.ghe) : '<span style="color:var(--text-light);">—</span>');
 
@@ -6291,8 +7049,8 @@ function renderTabelaAuditoriaOs(matriculaFoco) {
                     <span>📊</span> Status de Correspondência: <strong>${totalCompativel} de ${ativos.length} compatíveis (${pctCompativel}%)</strong>
                 </div>
                 <div style="font-size: 12px; color: var(--text-light); margin-top: 4px;">
-                    ${inconsistencias.length > 0 
-                        ? `Restam <strong>${inconsistencias.length} inconsistências</strong> que impedem a emissão automática completa da OS.` 
+                    ${inconsistencias.length > 0
+                        ? `Restam <strong>${inconsistencias.length} inconsistências</strong> que impedem a emissão automática completa da OS.`
                         : '🎉 Parabéns! 100% dos colaboradores ativos possuem correspondência com os cargos do catálogo.'}
                 </div>
             </div>
@@ -6792,4 +7550,1646 @@ function popularRelatorioMensalDefaults() {
     if (segEl && !segEl.value) segEl.value = cfg.get('turmas_seguranca') ?? '';
     if (ddsEl && !ddsEl.value) ddsEl.value = cfg.get('turmas_ddsms') ?? (allDdsFrentesConfig.length || '');
     if (adicEl && !adicEl.value) adicEl.value = cfg.get('turmas_adicionais') ?? '';
+}
+
+// ==============================================================================
+// ETAPA 2 DO PGR PRÓPRIO DINÂMICO (NR-01 GRO):
+// PARAMETRIZAÇÃO DO DOCUMENTO-BASE E AUDITORIA ASSISTIDA DE GHEs
+// ==============================================================================
+
+var pgrDocBaseLoaded = false;
+var pgrDocBaseLoading = false;
+var pgrDocBaseLoadError = null;
+var pgrDocBaseRemotoExiste = false;
+var pgrDocBaseBaseAtualizadoEm = null;
+var pgrDocBaseBaseValorJson = null;
+var pgrDocBaseSavedSnapshotJson = null;
+var pgrDocBaseBaselineDraftJson = null;
+var pgrDocBaseDraft = null;
+var pgrDocBaseDirty = false;
+var pgrDocBaseSessionId = '';
+var pgrDocBaseSavingSessionId = null;
+var pgrDocBaseSaveQueue = Promise.resolve();
+var pgrDocBaseLatestGen = 0;
+var pgrDocBaseUidCounter = 0;
+
+function gerarUidPgrDocBase(prefixo) {
+    const pref = String(prefixo || 'pgr');
+    pgrDocBaseUidCounter += 1;
+    if (typeof crypto !== 'undefined') {
+        if (typeof crypto.randomUUID === 'function') {
+            return `${pref}_${crypto.randomUUID()}`;
+        }
+        if (typeof crypto.getRandomValues === 'function') {
+            const arr = new Uint32Array(2);
+            crypto.getRandomValues(arr);
+            return `${pref}_${Date.now().toString(36)}_${arr[0].toString(36)}${arr[1].toString(36)}_${pgrDocBaseUidCounter}`;
+        }
+    }
+    return `${pref}_${Date.now().toString(36)}_${pgrDocBaseUidCounter}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// Estrutura inicial neutra (P1 #2): não pré-preenche nomes, CREA, revisões, datas,
+// instrumentos ou afirmações de práticas operacionais não confirmadas pelo responsável técnico.
+function obterPgrDocBaseDefaults() {
+    return {
+        codigo_documento: '',
+        titulo_programa: 'PROGRAMA DE GERENCIAMENTO DE RISCOS — PGR (NR-01 / GRO)',
+        enquadramento_normativo: 'NR-01 — Disposições Gerais e Gerenciamento de Riscos Ocupacionais',
+        revisao_atual: '',
+        data_elaboracao: '',
+        data_validade: '',
+        cidade_uf: '',
+        abrangencia_operacional: '',
+        responsaveis_empresa: [],
+        avaliadores: [],
+        historico_revisoes: [],
+        instrumentos: [],
+        texto_apresentacao_objetivos: '',
+        texto_sistematica_inspecoes: '',
+        texto_protecoes_coletivas_epc_epi: ''
+    };
+}
+
+function normalizarPgrDocBase(raw) {
+    const def = obterPgrDocBaseDefaults();
+    const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+
+    const normStr = (val, fallback) => {
+        if (val === undefined || val === null) return String(fallback || '').trim();
+        return String(val).trim();
+    };
+
+    const respOrig = Array.isArray(src.responsaveis_empresa) ? src.responsaveis_empresa : def.responsaveis_empresa;
+    const avalOrig = Array.isArray(src.avaliadores) ? src.avaliadores : def.avaliadores;
+    const revOrig = Array.isArray(src.historico_revisoes) ? src.historico_revisoes : def.historico_revisoes;
+    const instOrig = Array.isArray(src.instrumentos) ? src.instrumentos : def.instrumentos;
+
+    return {
+        codigo_documento: normStr(src.codigo_documento, def.codigo_documento),
+        titulo_programa: normStr(src.titulo_programa, def.titulo_programa),
+        enquadramento_normativo: normStr(src.enquadramento_normativo, def.enquadramento_normativo),
+        revisao_atual: normStr(src.revisao_atual, def.revisao_atual),
+        data_elaboracao: normStr(src.data_elaboracao, def.data_elaboracao),
+        data_validade: normStr(src.data_validade, def.data_validade),
+        cidade_uf: normStr(src.cidade_uf, def.cidade_uf),
+        abrangencia_operacional: normStr(src.abrangencia_operacional, def.abrangencia_operacional),
+        responsaveis_empresa: respOrig.map((item, idx) => ({
+            uid: String((item && item.uid) || `resp_emp_${idx + 1}`),
+            nome: String((item && item.nome) || '').trim(),
+            cargo: String((item && item.cargo) || '').trim(),
+            documento: String((item && item.documento) || '').trim()
+        })),
+        avaliadores: avalOrig.map((item, idx) => ({
+            uid: String((item && item.uid) || `aval_${idx + 1}`),
+            nome: String((item && item.nome) || '').trim(),
+            qualificacao: String((item && item.qualificacao) || '').trim(),
+            registro_conselho: String((item && item.registro_conselho) || '').trim(),
+            atribuicao: String((item && item.atribuicao) || '').trim()
+        })),
+        historico_revisoes: revOrig.map((item, idx) => ({
+            uid: String((item && item.uid) || `rev_${idx + 1}`),
+            revisao: String((item && item.revisao) || '').trim(),
+            data: String((item && item.data) || '').trim(),
+            descricao: String((item && item.descricao) || '').trim(),
+            responsavel: String((item && item.responsavel) || '').trim()
+        })),
+        instrumentos: instOrig.map((item, idx) => ({
+            uid: String((item && item.uid) || `inst_${idx + 1}`),
+            identificacao: String((item && item.identificacao) || '').trim(),
+            marca: String((item && item.marca) || '').trim(),
+            modelo: String((item && item.modelo) || '').trim(),
+            numero_serie: String((item && item.numero_serie) || '').trim(),
+            tecnica_utilizada: String((item && item.tecnica_utilizada) || '').trim(),
+            unidade_medida: String((item && item.unidade_medida) || '').trim(),
+            agentes_analisados: String((item && item.agentes_analisados) || '').trim(),
+            calibrador_certificado: String((item && item.calibrador_certificado) || '').trim(),
+            data_calibracao: String((item && item.data_calibracao) || '').trim(),
+            validade_calibracao: String((item && item.validade_calibracao) || '').trim()
+        })),
+        texto_apresentacao_objetivos: normStr(src.texto_apresentacao_objetivos, def.texto_apresentacao_objetivos),
+        texto_sistematica_inspecoes: normStr(src.texto_sistematica_inspecoes, def.texto_sistematica_inspecoes),
+        texto_protecoes_coletivas_epc_epi: normStr(src.texto_protecoes_coletivas_epc_epi, def.texto_protecoes_coletivas_epc_epi)
+    };
+}
+
+function isPgrDocBaseDirty() {
+    if (!pgrDocBaseLoaded || !pgrDocBaseDraft || !pgrDocBaseBaselineDraftJson) return false;
+    return JSON.stringify(normalizarPgrDocBase(pgrDocBaseDraft)) !== pgrDocBaseBaselineDraftJson;
+}
+
+function restaurarDraftPgrDocBaseParaUltimoSalvo() {
+    pgrDocBaseSessionId = gerarUidPgrDocBase('pgr_sess');
+    if (pgrDocBaseBaselineDraftJson) {
+        pgrDocBaseDraft = JSON.parse(pgrDocBaseBaselineDraftJson);
+    } else {
+        pgrDocBaseDraft = normalizarPgrDocBase(obterPgrDocBaseDefaults());
+        pgrDocBaseBaselineDraftJson = JSON.stringify(pgrDocBaseDraft);
+    }
+    pgrDocBaseDirty = false;
+}
+
+function abrirSubtabPgrDocBase() {
+    if (!pgrDocBaseSessionId) {
+        pgrDocBaseSessionId = gerarUidPgrDocBase('pgr_sess');
+    }
+    if (!pgrDocBaseLoaded && !pgrDocBaseLoading) {
+        loadPgrDocumentoBase(false);
+    } else {
+        renderMatrizViewDocBase();
+    }
+}
+
+async function loadPgrDocumentoBase(forcarRecarga) {
+    if (pgrDocBaseLoading) return false;
+    if (forcarRecarga && isPgrDocBaseDirty()) {
+        const confirmarDescarte = (typeof confirm === 'function')
+            ? confirm('Existem alterações não salvas no Documento-Base do PGR. Deseja descartá-las e recarregar os dados do servidor?')
+            : true;
+        if (!confirmarDescarte) return false;
+    }
+
+    pgrDocBaseLoading = true;
+    pgrDocBaseLoadError = null;
+    const loadSessionId = gerarUidPgrDocBase('pgr_sess');
+    pgrDocBaseSessionId = loadSessionId;
+    renderMatrizViewDocBase();
+
+    try {
+        if (typeof supabaseFetch !== 'function') {
+            throw new Error('Serviço de leitura (supabaseFetch) indisponível no momento. Não foi possível verificar o Documento-Base no servidor.');
+        }
+        const rows = await supabaseFetch('configuracoes_sistema', '?select=id,valor,atualizado_em&id=eq.pgr_documento_base&limit=1');
+
+        if (pgrDocBaseSessionId !== loadSessionId) {
+            pgrDocBaseLoading = false;
+            return false;
+        }
+
+        if (Array.isArray(rows) && rows.length > 0 && rows[0]) {
+            pgrDocBaseRemotoExiste = true;
+            pgrDocBaseBaseAtualizadoEm = rows[0].atualizado_em ?? null;
+            const norm = normalizarPgrDocBase(rows[0].valor);
+            pgrDocBaseBaseValorJson = JSON.stringify(norm);
+            pgrDocBaseSavedSnapshotJson = pgrDocBaseBaseValorJson;
+            pgrDocBaseBaselineDraftJson = pgrDocBaseBaseValorJson;
+            pgrDocBaseDraft = JSON.parse(pgrDocBaseBaselineDraftJson);
+        } else {
+            pgrDocBaseRemotoExiste = false;
+            pgrDocBaseBaseAtualizadoEm = null;
+            const norm = normalizarPgrDocBase(obterPgrDocBaseDefaults());
+            pgrDocBaseBaseValorJson = null;
+            // Quando não há registro salvo no banco, pgrDocBaseSavedSnapshotJson permanece null
+            // para impedir que valores não confirmados alimentem impressão como documento oficial (P1 #2).
+            pgrDocBaseSavedSnapshotJson = null;
+            pgrDocBaseBaselineDraftJson = JSON.stringify(norm);
+            pgrDocBaseDraft = JSON.parse(pgrDocBaseBaselineDraftJson);
+        }
+
+        pgrDocBaseLoaded = true;
+        pgrDocBaseDirty = false;
+        pgrDocBaseLoading = false;
+        renderMatrizViewDocBase();
+        return true;
+    } catch (err) {
+        console.error('Erro ao carregar Documento-Base do PGR:', err);
+        if (pgrDocBaseSessionId === loadSessionId) {
+            pgrDocBaseLoaded = false;
+            pgrDocBaseLoading = false;
+            pgrDocBaseLoadError = (err && err.message) ? err.message : 'Falha de comunicação ao consultar configuracoes_sistema.';
+            renderMatrizViewDocBase();
+        }
+        return false;
+    }
+}
+
+function atualizarIndicadorDirtyPgrDocBase() {
+    pgrDocBaseDirty = isPgrDocBaseDirty();
+    const badgeEl = document.getElementById('pgrDocBaseDirtyBadge');
+    if (!badgeEl) return;
+    if (pgrDocBaseDirty) {
+        badgeEl.textContent = '● Rascunho com alterações não salvas';
+        badgeEl.style.background = 'rgba(245, 158, 11, 0.14)';
+        badgeEl.style.color = '#b45309';
+        badgeEl.style.borderColor = 'rgba(245, 158, 11, 0.35)';
+    } else if (pgrDocBaseRemotoExiste) {
+        badgeEl.textContent = '✓ Sincronizado com o banco de dados';
+        badgeEl.style.background = 'rgba(22, 163, 74, 0.12)';
+        badgeEl.style.color = '#15803d';
+        badgeEl.style.borderColor = 'rgba(22, 163, 74, 0.3)';
+    } else {
+        badgeEl.textContent = 'ℹ️ Rascunho inicial não confirmado (preencha e clique em Salvar)';
+        badgeEl.style.background = 'rgba(2, 132, 199, 0.12)';
+        badgeEl.style.color = '#0369a1';
+        badgeEl.style.borderColor = 'rgba(2, 132, 199, 0.3)';
+    }
+}
+
+function atualizarCampoSimplesPgrDocBase(campo, valor) {
+    if (!pgrDocBaseLoaded || !pgrDocBaseDraft || !campo) return;
+    pgrDocBaseDraft[campo] = String(valor ?? '');
+    atualizarIndicadorDirtyPgrDocBase();
+}
+
+function atualizarItemColecaoPgrDocBase(colecao, uid, campo, valor) {
+    if (!pgrDocBaseLoaded || !pgrDocBaseDraft) return;
+    const arr = pgrDocBaseDraft[colecao];
+    if (!Array.isArray(arr)) return;
+    const item = arr.find(x => String(x.uid) === String(uid));
+    if (!item) return;
+    item[campo] = String(valor ?? '');
+    atualizarIndicadorDirtyPgrDocBase();
+}
+
+function adicionarItemColecaoPgrDocBase(colecao) {
+    if (!pgrDocBaseLoaded || !pgrDocBaseDraft) return;
+    if (!Array.isArray(pgrDocBaseDraft[colecao])) pgrDocBaseDraft[colecao] = [];
+
+    if (colecao === 'responsaveis_empresa') {
+        pgrDocBaseDraft.responsaveis_empresa.push({
+            uid: gerarUidPgrDocBase('resp_emp'),
+            nome: '',
+            cargo: '',
+            documento: ''
+        });
+    } else if (colecao === 'avaliadores') {
+        pgrDocBaseDraft.avaliadores.push({
+            uid: gerarUidPgrDocBase('aval'),
+            nome: '',
+            qualificacao: '',
+            registro_conselho: '',
+            atribuicao: ''
+        });
+    } else if (colecao === 'historico_revisoes') {
+        pgrDocBaseDraft.historico_revisoes.push({
+            uid: gerarUidPgrDocBase('rev'),
+            revisao: '',
+            data: '',
+            descricao: '',
+            responsavel: ''
+        });
+    } else if (colecao === 'instrumentos') {
+        pgrDocBaseDraft.instrumentos.push({
+            uid: gerarUidPgrDocBase('inst'),
+            identificacao: '',
+            marca: '',
+            modelo: '',
+            numero_serie: '',
+            tecnica_utilizada: '',
+            unidade_medida: '',
+            agentes_analisados: '',
+            calibrador_certificado: '',
+            data_calibracao: '',
+            validade_calibracao: ''
+        });
+    }
+
+    pgrDocBaseDirty = isPgrDocBaseDirty();
+    renderMatrizViewDocBase();
+}
+
+function removerItemColecaoPgrDocBase(colecao, uid) {
+    if (!pgrDocBaseLoaded || !pgrDocBaseDraft) return;
+    const arr = pgrDocBaseDraft[colecao];
+    if (!Array.isArray(arr)) return;
+    pgrDocBaseDraft[colecao] = arr.filter(x => String(x.uid) !== String(uid));
+    pgrDocBaseDirty = isPgrDocBaseDirty();
+    renderMatrizViewDocBase();
+}
+
+function descartarAlteracoesPgrDocBase() {
+    if (!pgrDocBaseLoaded || !pgrDocBaseDraft) return false;
+    if (isPgrDocBaseDirty()) {
+        const ok = (typeof confirm === 'function')
+            ? confirm('Deseja descartar todas as alterações não salvas do Documento-Base e restaurar a última versão salva?')
+            : true;
+        if (!ok) return false;
+    }
+    restaurarDraftPgrDocBaseParaUltimoSalvo();
+    renderMatrizViewDocBase();
+    const statusEl = document.getElementById('pgrDocBaseFormStatus');
+    if (statusEl) {
+        statusEl.textContent = '↩️ Alterações não salvas descartadas.';
+        statusEl.style.color = 'var(--text-light)';
+    }
+    return true;
+}
+
+function validarErrosCriticosSavePgrDocBase(snap) {
+    if (!snap || typeof snap !== 'object') {
+        return 'Dados do Documento-Base inválidos.';
+    }
+    if (snap.data_elaboracao && snap.data_validade && snap.data_elaboracao > snap.data_validade) {
+        return `A Data de Elaboração (${snap.data_elaboracao}) não pode ser posterior à Data de Validade (${snap.data_validade}).`;
+    }
+    for (let i = 0; i < (snap.instrumentos || []).length; i++) {
+        const inst = snap.instrumentos[i];
+        const rotuloInst = inst.identificacao || `#${i + 1}`;
+        if (inst.data_calibracao && inst.validade_calibracao && inst.data_calibracao > inst.validade_calibracao) {
+            return `No Instrumento "${rotuloInst}", a data de calibração (${inst.data_calibracao}) não pode ser posterior à validade (${inst.validade_calibracao}).`;
+        }
+    }
+    return null;
+}
+
+function avaliarProntidaoEmissaoPgrDocBase(snap) {
+    const pendencias = [];
+    const erroCritico = validarErrosCriticosSavePgrDocBase(snap);
+    if (erroCritico) {
+        pendencias.push(erroCritico);
+    }
+    if (!snap || typeof snap !== 'object') {
+        return {
+            pronto_para_emissao: false,
+            status_prontidao: 'rascunho_incompleto',
+            pendencias
+        };
+    }
+    if (!snap.titulo_programa) {
+        pendencias.push('Informe o Título Oficial do Programa (PGR).');
+    }
+    if (!snap.revisao_atual) {
+        pendencias.push('Informe o código/número da Revisão Atual do PGR.');
+    }
+    if (!snap.data_elaboracao) {
+        pendencias.push('Informe a Data de Elaboração/Emissão do PGR.');
+    }
+    if (!snap.data_validade) {
+        pendencias.push('Informe a Data de Validade/Revisão Programada do PGR.');
+    }
+    if (!Array.isArray(snap.avaliadores) || snap.avaliadores.length === 0) {
+        pendencias.push('Cadastre ao menos 1 Engenheiro / Avaliador Responsável pelo PGR.');
+    } else {
+        for (let i = 0; i < snap.avaliadores.length; i++) {
+            if (!snap.avaliadores[i].nome) {
+                pendencias.push(`Preencha o nome do Avaliador #${i + 1}.`);
+            }
+            if (!snap.avaliadores[i].registro_conselho) {
+                pendencias.push(`Preencha o registro de conselho (CREA/CRM/MTE) do Avaliador #${i + 1}.`);
+            }
+        }
+    }
+    if (!Array.isArray(snap.responsaveis_empresa) || snap.responsaveis_empresa.length === 0) {
+        pendencias.push('Cadastre ao menos 1 Responsável Legal da Empresa pelo PGR.');
+    } else {
+        for (let i = 0; i < snap.responsaveis_empresa.length; i++) {
+            if (!snap.responsaveis_empresa[i].nome) {
+                pendencias.push(`Preencha o nome do Responsável Legal #${i + 1} (ou remova a linha em branco).`);
+            }
+        }
+    }
+    for (let i = 0; i < (snap.historico_revisoes || []).length; i++) {
+        const r = snap.historico_revisoes[i];
+        if (!r.revisao || !r.descricao) {
+            pendencias.push(`Na Revisão #${i + 1}, preencha o código da revisão e a descrição da alteração.`);
+        }
+    }
+    for (let i = 0; i < (snap.instrumentos || []).length; i++) {
+        const inst = snap.instrumentos[i];
+        if (!inst.identificacao) {
+            pendencias.push(`No Instrumento #${i + 1}, informe a identificação do equipamento (ou remova a linha em branco).`);
+        }
+    }
+    return {
+        pronto_para_emissao: pendencias.length === 0,
+        status_prontidao: pendencias.length === 0 ? 'pronto_emissao' : 'rascunho_incompleto',
+        pendencias
+    };
+}
+
+function validarSnapshotPgrDocBase(snap) {
+    const prontidao = avaliarProntidaoEmissaoPgrDocBase(snap);
+    return prontidao.pendencias.length > 0 ? prontidao.pendencias[0] : null;
+}
+
+async function salvarPgrDocumentoBase() {
+    if (typeof bloquearEdicaoSeNaoAutorizado === 'function' && bloquearEdicaoSeNaoAutorizado('matrizrisco')) {
+        return false;
+    }
+
+    const statusEl = document.getElementById('pgrDocBaseFormStatus');
+    const btnSalvar = document.getElementById('btnSalvarPgrDocBase');
+
+    if (!pgrDocBaseLoaded || !pgrDocBaseDraft) {
+        if (statusEl) {
+            statusEl.textContent = '❌ Não é possível salvar: os dados do Documento-Base ainda não foram carregados do servidor. Clique em Recarregar.';
+            statusEl.style.color = 'var(--danger)';
+        }
+        return false;
+    }
+
+    // Congela e valida erros críticos (ex.: datas invertidas) ANTES de qualquer await;
+    // campos obrigatórios ainda em preenchimento (ex.: avaliador sem nome) permitem salvar como rascunho incompleto com aviso visível.
+    const snapshotCongelado = JSON.parse(JSON.stringify(normalizarPgrDocBase(pgrDocBaseDraft)));
+    const erroCriticoSave = validarErrosCriticosSavePgrDocBase(snapshotCongelado);
+    if (erroCriticoSave) {
+        if (statusEl) {
+            statusEl.textContent = '❌ ' + erroCriticoSave;
+            statusEl.style.color = 'var(--danger)';
+        }
+        return false;
+    }
+    const prontidaoSnapshot = avaliarProntidaoEmissaoPgrDocBase(snapshotCongelado);
+
+    const snapshotCongeladoJson = JSON.stringify(snapshotCongelado);
+    const saveSessionId = pgrDocBaseSessionId || gerarUidPgrDocBase('pgr_sess');
+    pgrDocBaseSessionId = saveSessionId;
+
+    pgrDocBaseLatestGen += 1;
+    const myGen = pgrDocBaseLatestGen;
+
+    pgrDocBaseSavingSessionId = saveSessionId;
+    if (btnSalvar) {
+        btnSalvar.disabled = true;
+        btnSalvar.textContent = '💾 Gravando...';
+    }
+    if (statusEl) {
+        statusEl.textContent = '⏳ Salvando Documento-Base do PGR no banco de dados...';
+        statusEl.style.color = 'var(--text-light)';
+    }
+
+    const executarEscritaEnfileirada = async () => {
+        if (myGen < pgrDocBaseLatestGen) {
+            return true;
+        }
+
+        const expectedExiste = pgrDocBaseRemotoExiste;
+        const expectedAtualizadoEm = pgrDocBaseBaseAtualizadoEm;
+        const expectedValorJson = pgrDocBaseBaseValorJson;
+        const novoAtualizadoEm = new Date().toISOString();
+        const autor = (typeof usuarioDashboardAtual === 'function' && usuarioDashboardAtual()) || 'painel';
+
+        if (typeof supabaseFetch !== 'function') {
+            throw new Error('Serviço de leitura (supabaseFetch) indisponível para verificação Compare-And-Swap.');
+        }
+        const rowsRemotas = await supabaseFetch('configuracoes_sistema', '?select=id,valor,atualizado_em&id=eq.pgr_documento_base&limit=1');
+        const remoto = Array.isArray(rowsRemotas) && rowsRemotas.length > 0 ? rowsRemotas[0] : null;
+
+        if (expectedExiste) {
+            if (!remoto) {
+                throw new Error('Conflito de concorrência (Compare-And-Swap): o registro remoto de pgr_documento_base foi removido por outra sessão.');
+            }
+            const remAt = remoto.atualizado_em ?? null;
+            const remValJson = JSON.stringify(normalizarPgrDocBase(remoto.valor));
+            if (remAt !== expectedAtualizadoEm || (expectedValorJson !== null && remValJson !== expectedValorJson)) {
+                throw new Error('Conflito de concorrência (Compare-And-Swap): o Documento-Base do PGR foi alterado no servidor por outra sessão. Recarregue antes de salvar.');
+            }
+        } else if (remoto) {
+            throw new Error('Conflito de concorrência (Compare-And-Swap): o Documento-Base do PGR já foi criado no servidor por outra sessão. Recarregue antes de salvar.');
+        }
+
+        if (myGen < pgrDocBaseLatestGen) {
+            return true;
+        }
+
+        const payloadRow = {
+            valor: {
+                ...snapshotCongelado,
+                status_prontidao: prontidaoSnapshot.status_prontidao
+            },
+            descricao: 'Parâmetros e diretrizes do Documento-Base do PGR (NR-01 GRO).',
+            atualizado_em: novoAtualizadoEm,
+            atualizado_por: autor
+        };
+
+        if (expectedExiste) {
+            if (typeof supabasePatch !== 'function') {
+                throw new Error('Operação condicional supabasePatch obrigatória para atualizar Documento-Base do PGR com Compare-And-Swap.');
+            }
+            const casFilter = expectedAtualizadoEm
+                ? `id=eq.pgr_documento_base&atualizado_em=eq.${encodeURIComponent(expectedAtualizadoEm)}`
+                : `id=eq.pgr_documento_base&atualizado_em=is.null`;
+            const patchRes = await supabasePatch('configuracoes_sistema', casFilter, payloadRow);
+            if (!Array.isArray(patchRes) || patchRes.length === 0) {
+                throw new Error('Conflito de concorrência (Compare-And-Swap): o Documento-Base do PGR foi modificado concorrentemente por outra sessão.');
+            }
+        } else {
+            // Criação inicial atômica (P1 #3): utiliza exclusivamente supabaseInsert (POST puro sem on_conflict/merge-duplicates).
+            // Se outra sessão inserir id='pgr_documento_base' concorrentemente entre o SELECT prévio e o INSERT,
+            // a PK/unique constraint do banco rejeita a segunda requisição (HTTP 409 / 23505), impedindo sobrescrita silenciosa.
+            if (typeof supabaseInsert !== 'function') {
+                throw new Error('Operação atômica supabaseInsert obrigatória para criar o Documento-Base inicial sem sobrescrever outra sessão.');
+            }
+            try {
+                await supabaseInsert('configuracoes_sistema', [{
+                    id: 'pgr_documento_base',
+                    ...payloadRow
+                }]);
+                if (typeof invalidarCacheTabela === 'function') {
+                    invalidarCacheTabela('configuracoes_sistema');
+                }
+            } catch (insertErr) {
+                const msg = String((insertErr && insertErr.message) || insertErr || '');
+                if (msg.includes('409') || msg.includes('23505') || msg.toLowerCase().includes('duplicate') || msg.toLowerCase().includes('conflict')) {
+                    throw new Error('Conflito de concorrência (Compare-And-Swap): o Documento-Base do PGR foi criado simultaneamente por outra sessão. Recarregue antes de salvar.');
+                }
+                throw insertErr;
+            }
+        }
+
+        if (typeof registrarAuditLogDashboard === 'function') {
+            registrarAuditLogDashboard(
+                expectedExiste ? 'update' : 'create',
+                'configuracoes_sistema',
+                'pgr_documento_base',
+                `Documento-Base do PGR atualizado (${snapshotCongelado.codigo_documento} Rev. ${snapshotCongelado.revisao_atual} | ${prontidaoSnapshot.status_prontidao})`
+            );
+        }
+
+        pgrDocBaseRemotoExiste = true;
+        pgrDocBaseBaseAtualizadoEm = novoAtualizadoEm;
+        pgrDocBaseBaseValorJson = snapshotCongeladoJson;
+        pgrDocBaseSavedSnapshotJson = snapshotCongeladoJson;
+        pgrDocBaseBaselineDraftJson = snapshotCongeladoJson;
+
+        if (pgrDocBaseSessionId === saveSessionId && myGen === pgrDocBaseLatestGen) {
+            const draftAtualJson = JSON.stringify(normalizarPgrDocBase(pgrDocBaseDraft));
+            const houveEdicaoDuranteSave = draftAtualJson !== snapshotCongeladoJson;
+            if (houveEdicaoDuranteSave) {
+                pgrDocBaseDirty = true;
+                renderMatrizViewDocBase();
+                const novoStatusEl = document.getElementById('pgrDocBaseFormStatus');
+                if (novoStatusEl) {
+                    novoStatusEl.textContent = '⚠️ A versão anterior foi salva, mas houve novas alterações durante o envio. Revise o rascunho mantido na tela e clique em Salvar novamente.';
+                    novoStatusEl.style.color = 'var(--warning, #d97706)';
+                }
+            } else {
+                pgrDocBaseDraft = JSON.parse(snapshotCongeladoJson);
+                pgrDocBaseDirty = false;
+                renderMatrizViewDocBase();
+                const novoStatusEl = document.getElementById('pgrDocBaseFormStatus');
+                if (novoStatusEl) {
+                    if (prontidaoSnapshot.pronto_para_emissao) {
+                        novoStatusEl.textContent = '✅ Documento-Base do PGR (NR-01 GRO) salvo com sucesso e pronto para emissão oficial!';
+                        novoStatusEl.style.color = 'var(--success)';
+                    } else {
+                        novoStatusEl.textContent = `⚠️ Rascunho salvo no banco com pendências para emissão oficial (${prontidaoSnapshot.pendencias.length}): ${prontidaoSnapshot.pendencias[0]}`;
+                        novoStatusEl.style.color = 'var(--warning, #d97706)';
+                    }
+                }
+            }
+        }
+        return true;
+    };
+
+    const promessaAtual = pgrDocBaseSaveQueue.then(executarEscritaEnfileirada, executarEscritaEnfileirada);
+    pgrDocBaseSaveQueue = promessaAtual.catch(() => {});
+
+    try {
+        return await promessaAtual;
+    } catch (err) {
+        console.error('Erro ao salvar Documento-Base do PGR:', err);
+        if (pgrDocBaseSessionId === saveSessionId && myGen === pgrDocBaseLatestGen) {
+            pgrDocBaseDirty = isPgrDocBaseDirty();
+            atualizarIndicadorDirtyPgrDocBase();
+            const novoStatusEl = document.getElementById('pgrDocBaseFormStatus');
+            if (novoStatusEl) {
+                novoStatusEl.textContent = '❌ Falha ao salvar: ' + ((err && err.message) ? err.message : String(err));
+                novoStatusEl.style.color = 'var(--danger)';
+            }
+        }
+        return false;
+    } finally {
+        if (pgrDocBaseSavingSessionId === saveSessionId && myGen === pgrDocBaseLatestGen) {
+            pgrDocBaseSavingSessionId = null;
+            const btnAtual = document.getElementById('btnSalvarPgrDocBase');
+            if (btnAtual) {
+                btnAtual.disabled = false;
+                btnAtual.textContent = '💾 Salvar Documento-Base do PGR';
+            }
+        }
+    }
+}
+
+// ==============================================================================
+// VARREDURA E DIAGNÓSTICO ASSISTIDO (READ-ONLY) DO CATÁLOGO DE GHEs
+// ==============================================================================
+
+var PADROES_CONTAMINACAO_SGG = [
+    {
+        termo: 'portaria 344/98',
+        motivo: 'Texto de farmácia/drogaria (controle de medicamentos especiais Portaria 344/98) incompatível com O&M do Ramal do Agreste.'
+    },
+    {
+        termo: 'receitas médicas',
+        motivo: 'Texto de balconista de farmácia (leitura de receitas médicas e dispensação de remédios) herdado de template externo.'
+    },
+    {
+        termo: 'prescrições médicas',
+        motivo: 'Texto de validação de prescrições médicas farmacêuticas herdado de template externo.'
+    },
+    {
+        termo: 'perfuração de lóbulo auricular',
+        motivo: 'Descrição de serviço farmacêutico (aplicação de injetáveis e perfuração de lóbulo auricular) incompatível com o GHE.'
+    },
+    {
+        termo: 'salas dos apartamentos',
+        motivo: 'Template genérico de construção vertical residencial ("escora metálica nas salas dos apartamentos").'
+    },
+    {
+        termo: 'inserir imagens próprias',
+        motivo: 'Placeholder de modelo não preenchido ("Inserir imagens próprias para cada empresa/local de trabalho").'
+    },
+    {
+        termo: 'sistemática: criar',
+        motivo: 'Placeholder de texto inacabado ("seguirá a seguinte sistemática: CRIAR").'
+    }
+];
+
+var propostasSaneamentoCamposGhe = {};
+
+var ESCOPOS_VARREDURA_TEXTUAL_GHE = [
+    'GHE (nome, descricao, ambiente, local e demais campos textuais raiz)',
+    'Conclusões GHE (laudos/pareceres/observações)',
+    'Cargos (cargo, funcao, cbo, setor, lotacao, descricao_atividade, observacoes e demais strings)',
+    'Riscos — todos os campos escalares (tipo_agente, agente, codigo_esocial, esocial_codigo, descricao, fontes_geradoras, meio_propagacao, tipo_tempo_exposicao, situacao_controle, danos_saude, sugestoes, medidas_controle, epis_recomendados, epi_ca, epcs_recomendados, epc_status, epc_inspecao, exames_pcmso, cid10_relacionado, tecnica_avaliacao, laudo_responsavel, observacoes e demais strings)',
+    'Riscos — listas estruturadas (epis_lista, epcs_lista, medicoes_lista, exames_lista, cids_lista, medidas_lista e todas as suas propriedades textuais)',
+    'Fatores Psicossociais NR-01 (dimensao, fator_descricao, fontes_exigencias, possiveis_efeitos, medidas_prevencao, responsavel, observacoes e demais strings)'
+];
+
+function diagnosticarTextosGheCatalogo() {
+    // Se allGheCatalogo não for um array válido, estiver marcado com falha de carga, ou estiver vazio ([]),
+    // tratamos como "Não foi possível verificar" (nunca como 0 GHEs ou "nenhum achado encontrado").
+    const catalogoDisponivel = typeof allGheCatalogo !== 'undefined'
+        && Array.isArray(allGheCatalogo)
+        && allGheCatalogo._loadError !== true
+        && allGheCatalogo.length > 0;
+    const grupos = catalogoDisponivel
+        ? allGheCatalogo.slice().sort((a, b) => String((a && a.id) || '').localeCompare(String((b && b.id) || '')))
+        : [];
+
+    // Se allEfetivo não for um array válido, estiver marcado com falha de carga, ou estiver vazio ([]),
+    // tratamos como "Não foi possível verificar" (nunca como 0 efetivo ativo).
+    const efetivoVerificavel = typeof allEfetivo !== 'undefined'
+        && Array.isArray(allEfetivo)
+        && allEfetivo._loadError !== true
+        && allEfetivo.length > 0;
+
+    const efetivoAtivo = efetivoVerificavel
+        ? allEfetivo.filter(c => c && ((typeof colaboradorEstaAtivo === 'function') ? colaboradorEstaAtivo(c) : (String(c.status || '').toUpperCase() === 'ATIVO')))
+        : [];
+
+    const achadosTexto = [];
+    const resumoGhes = [];
+    let totalCamposInspecionados = 0;
+
+    const inspecionarCampo = (ghe, metaCampo, valorTexto) => {
+        if (valorTexto === undefined || valorTexto === null) return;
+        if (typeof valorTexto !== 'string') return;
+        totalCamposInspecionados += 1;
+        if (!valorTexto) return;
+        const lower = valorTexto.toLowerCase();
+        PADROES_CONTAMINACAO_SGG.forEach(p => {
+            if (lower.includes(p.termo)) {
+                const subKey = metaCampo.sublista_alvo
+                    ? `__${metaCampo.sublista_alvo}_${metaCampo.subindice_alvo}`
+                    : '';
+                const achadoKey = `${String(ghe.id || '')}__${metaCampo.tipo_alvo}__${metaCampo.indice_alvo !== null ? metaCampo.indice_alvo : 'root'}${subKey}__${metaCampo.campo_alvo}__${p.termo}`;
+                achadosTexto.push({
+                    achado_key: achadoKey,
+                    ghe_id: String(ghe.id || ''),
+                    ghe_nome: String(ghe.nome || ''),
+                    escopo: metaCampo.escopo,
+                    localizacao: metaCampo.localizacao,
+                    contexto_objeto: metaCampo.contexto_objeto || '',
+                    tipo_alvo: metaCampo.tipo_alvo,
+                    indice_alvo: metaCampo.indice_alvo,
+                    sublista_alvo: metaCampo.sublista_alvo || null,
+                    subindice_alvo: (typeof metaCampo.subindice_alvo === 'number') ? metaCampo.subindice_alvo : null,
+                    campo_alvo: metaCampo.campo_alvo,
+                    risco_idx: (typeof metaCampo.risco_idx === 'number') ? metaCampo.risco_idx : null,
+                    termo_detectado: p.termo,
+                    justificativa: p.motivo,
+                    trecho_original: valorTexto,
+                    proposta_acao: 'Revisar e comparar o texto original antes de confirmar qualquer alteração individual no GHE.'
+                });
+            }
+        });
+    };
+
+    const unirChavesTexto = (listaPrioritaria, obj, chavesIgnoradas) => {
+        const ignorar = new Set(chavesIgnoradas || []);
+        const vistas = new Set();
+        const resultado = [];
+        (listaPrioritaria || []).forEach(k => {
+            if (!ignorar.has(k) && !vistas.has(k)) {
+                vistas.add(k);
+                resultado.push(k);
+            }
+        });
+        if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+            Object.keys(obj).forEach(k => {
+                if (!ignorar.has(k) && !vistas.has(k) && typeof obj[k] === 'string') {
+                    vistas.add(k);
+                    resultado.push(k);
+                }
+            });
+        }
+        return resultado;
+    };
+
+    const camposRaizGhe = ['nome', 'descricao', 'ambiente', 'local'];
+    const camposCargo = ['cargo', 'funcao', 'cbo', 'setor', 'lotacao', 'descricao_atividade', 'observacoes'];
+    const camposRiscoEscalares = [
+        'tipo_agente', 'agente', 'codigo_esocial', 'esocial_codigo', 'descricao',
+        'fontes_geradoras', 'meio_propagacao', 'tipo_tempo_exposicao', 'situacao_controle',
+        'danos_saude', 'sugestoes', 'medidas_controle', 'epis_recomendados', 'epi_ca',
+        'epcs_recomendados', 'epc_status', 'epc_inspecao', 'exames_pcmso', 'cid10_relacionado',
+        'tecnica_avaliacao', 'laudo_responsavel', 'observacoes'
+    ];
+    const sublistasRiscoConfig = [
+        { prop: 'epis_lista', rotulo: 'EPI estruturado', campos: ['descricao', 'ca', 'periodicidade'] },
+        { prop: 'epcs_lista', rotulo: 'EPC estruturado', campos: ['descricao', 'tipo', 'tipo_custom', 'status', 'inspecao'] },
+        { prop: 'medicoes_lista', rotulo: 'Medição estruturada', campos: ['instrumento', 'tecnica', 'unidade', 'observacao', 'valor', 'limite_tolerancia'] },
+        { prop: 'exames_lista', rotulo: 'Exame PCMSO estruturado', campos: ['nome', 'nome_custom', 'periodicidade', 'periodicidade_custom', 'criterio_indicacao'] },
+        { prop: 'cids_lista', rotulo: 'CID estruturado', campos: ['codigo', 'descricao', 'justificativa'] },
+        { prop: 'medidas_lista', rotulo: 'Medida de controle estruturada', campos: ['descricao', 'tipo', 'responsavel', 'prazo', 'status', 'observacao'] }
+    ];
+    const camposFatorPsico = ['dimensao', 'fator_descricao', 'fontes_exigencias', 'possiveis_efeitos', 'medidas_prevencao', 'responsavel', 'observacoes'];
+
+    grupos.forEach(g => {
+        if (!g || typeof g !== 'object') return;
+        const gheId = String(g.id || '');
+        const cargosFormatoValido = Array.isArray(g.cargos);
+        const riscosFormatoValido = Array.isArray(g.riscos);
+        const conclusoesObjetoValido = g.conclusoes === undefined || g.conclusoes === null || (typeof g.conclusoes === 'object' && !Array.isArray(g.conclusoes));
+        const conclusoes = (conclusoesObjetoValido && g.conclusoes) ? g.conclusoes : {};
+        const fatoresPsicoFormatoValido = conclusoesObjetoValido && (
+            conclusoes.fatores_psicossociais_nr01 === undefined
+            || conclusoes.fatores_psicossociais_nr01 === null
+            || Array.isArray(conclusoes.fatores_psicossociais_nr01)
+        );
+
+        const cargos = cargosFormatoValido ? g.cargos : [];
+        const riscos = riscosFormatoValido ? g.riscos : [];
+        const fatoresPsico = (fatoresPsicoFormatoValido && Array.isArray(conclusoes.fatores_psicossociais_nr01))
+            ? conclusoes.fatores_psicossociais_nr01
+            : [];
+
+        unirChavesTexto(camposRaizGhe, g, ['id', 'updated_at', 'created_at', 'data_inicio', 'data_elaboracao', 'data_validade']).forEach(campoGhe => {
+            inspecionarCampo(g, {
+                escopo: 'GHE',
+                localizacao: `GHE -> ${campoGhe}`,
+                contexto_objeto: `GHE ${gheId}`,
+                tipo_alvo: 'ghe',
+                indice_alvo: null,
+                campo_alvo: campoGhe,
+                risco_idx: null
+            }, g[campoGhe]);
+        });
+
+        Object.keys(conclusoes).forEach(kConc => {
+            if (kConc === 'fatores_psicossociais_nr01') return;
+            if (typeof conclusoes[kConc] === 'string') {
+                inspecionarCampo(g, {
+                    escopo: 'Conclusões GHE',
+                    localizacao: `conclusoes -> ${kConc}`,
+                    contexto_objeto: `Conclusões Técnicas do GHE ${gheId}`,
+                    tipo_alvo: 'conclusao_ghe',
+                    indice_alvo: null,
+                    campo_alvo: kConc,
+                    risco_idx: null
+                }, conclusoes[kConc]);
+            }
+        });
+
+        cargos.forEach((c, cIdx) => {
+            if (!c || typeof c !== 'object') return;
+            const rotuloCargo = c.cargo || c.funcao || `Cargo #${cIdx + 1}`;
+            const contextoCargo = `Cargo: ${rotuloCargo}${c.cbo ? ' (CBO ' + c.cbo + ')' : ''}`;
+            unirChavesTexto(camposCargo, c, ['id', 'uid']).forEach(campoC => {
+                inspecionarCampo(g, {
+                    escopo: 'Cargo',
+                    localizacao: `${rotuloCargo} -> ${campoC}`,
+                    contexto_objeto: contextoCargo,
+                    tipo_alvo: 'cargo',
+                    indice_alvo: cIdx,
+                    campo_alvo: campoC,
+                    risco_idx: null
+                }, c[campoC]);
+            });
+        });
+
+        let riscosComEpiSemCa = 0;
+        riscos.forEach((r, rIdx) => {
+            if (!r || typeof r !== 'object') return;
+            const rotuloRisco = `Risco #${rIdx + 1} (${r.tipo_agente || 'Agente'}: ${r.agente || 'Sem nome'})`;
+            const contextoRisco = `${rotuloRisco} · P×S: ${r.probabilidade || '—'}×${r.severidade || '—'} (${r.gravidade_label || r.gravidade || '—'})`;
+            unirChavesTexto(camposRiscoEscalares, r, ['id', 'uid', '_origIndex']).forEach(campoRisco => {
+                inspecionarCampo(g, {
+                    escopo: 'Risco',
+                    localizacao: `${rotuloRisco} -> ${campoRisco}`,
+                    contexto_objeto: contextoRisco,
+                    tipo_alvo: 'risco',
+                    indice_alvo: rIdx,
+                    campo_alvo: campoRisco,
+                    risco_idx: rIdx
+                }, r[campoRisco]);
+            });
+
+            sublistasRiscoConfig.forEach(subCfg => {
+                const subArr = Array.isArray(r[subCfg.prop]) ? r[subCfg.prop] : [];
+                subArr.forEach((subItem, subIdx) => {
+                    if (!subItem || typeof subItem !== 'object') return;
+                    unirChavesTexto(subCfg.campos, subItem, ['id', 'uid']).forEach(subCampo => {
+                        inspecionarCampo(g, {
+                            escopo: `Risco (${subCfg.rotulo})`,
+                            localizacao: `${rotuloRisco} -> ${subCfg.prop}[${subIdx}].${subCampo}`,
+                            contexto_objeto: `${contextoRisco} · ${subCfg.rotulo} #${subIdx + 1}`,
+                            tipo_alvo: 'risco_sublista',
+                            indice_alvo: rIdx,
+                            sublista_alvo: subCfg.prop,
+                            subindice_alvo: subIdx,
+                            campo_alvo: subCampo,
+                            risco_idx: rIdx
+                        }, subItem[subCampo]);
+                    });
+                });
+            });
+
+            const temEpiRec = Boolean((r.epis_recomendados && String(r.epis_recomendados).trim() && String(r.epis_recomendados).trim().toUpperCase() !== 'N.A.') || (Array.isArray(r.epis_lista) && r.epis_lista.length > 0));
+            const temCa = Boolean((r.epi_ca && String(r.epi_ca).trim() && String(r.epi_ca).trim().toUpperCase() !== 'N.A.') || (Array.isArray(r.epis_lista) && r.epis_lista.some(item => item && item.ca && String(item.ca).trim())));
+            if (temEpiRec && !temCa) {
+                riscosComEpiSemCa += 1;
+            }
+        });
+
+        fatoresPsico.forEach((f, fIdx) => {
+            if (!f || typeof f !== 'object') return;
+            const rotuloFator = `Fator Psicossocial #${fIdx + 1} (${f.dimensao || 'Dimensão'})`;
+            unirChavesTexto(camposFatorPsico, f, ['id', 'uid']).forEach(campoFator => {
+                inspecionarCampo(g, {
+                    escopo: 'Fator Psicossocial',
+                    localizacao: `${rotuloFator} -> ${campoFator}`,
+                    contexto_objeto: rotuloFator,
+                    tipo_alvo: 'fator_psico',
+                    indice_alvo: fIdx,
+                    campo_alvo: campoFator,
+                    risco_idx: null
+                }, f[campoFator]);
+            });
+        });
+
+        const gheIdNorm = (typeof normalizarGhe === 'function')
+            ? normalizarGhe(gheId)
+            : (/^\d+$/.test(gheId.trim()) ? gheId.trim().padStart(2, '0') : gheId.trim());
+        const qtdEfetivoAtivo = efetivoVerificavel
+            ? efetivoAtivo.filter(c => {
+                const gColab = String(c.ghe || '').trim();
+                const gColabNorm = (typeof normalizarGhe === 'function')
+                    ? normalizarGhe(gColab)
+                    : (/^\d+$/.test(gColab) ? gColab.padStart(2, '0') : gColab);
+                return gColabNorm === gheIdNorm
+                    || gColab === gheId
+                    || gColab === `${gheId} - ${g.nome}`
+                    || gColab.startsWith(gheId + ' ');
+            }).length
+            : null;
+
+        resumoGhes.push({
+            id: gheId,
+            nome: String(g.nome || ''),
+            cargos_verificavel: cargosFormatoValido,
+            qtd_cargos: cargosFormatoValido ? cargos.length : null,
+            efetivo_verificavel: efetivoVerificavel,
+            qtd_efetivo_ativo: qtdEfetivoAtivo,
+            status_efetivo: efetivoVerificavel ? `${qtdEfetivoAtivo} ativo(s)` : 'Não foi possível verificar (efetivo não carregado)',
+            qtd_oficial_legado: Number(g.quantidade_oficial || 0),
+            riscos_verificavel: riscosFormatoValido,
+            qtd_riscos: riscosFormatoValido ? riscos.length : null,
+            status_riscos: !riscosFormatoValido
+                ? 'Não foi possível verificar (formato inválido/nulo)'
+                : (riscos.length > 0 ? `${riscos.length} risco(s) cadastrado(s)` : 'Sem riscos cadastrados (pendente de revisão técnica)'),
+            fatores_psico_verificavel: fatoresPsicoFormatoValido,
+            qtd_fatores_psico: fatoresPsicoFormatoValido ? fatoresPsico.length : null,
+            status_fatores_psico: !fatoresPsicoFormatoValido
+                ? 'Não foi possível verificar (formato inválido)'
+                : `${fatoresPsico.length} fator(es)`,
+            riscos_epi_sem_ca: riscosFormatoValido ? riscosComEpiSemCa : null
+        });
+    });
+
+    return {
+        catalogo_verificavel: catalogoDisponivel,
+        status_catalogo: catalogoDisponivel
+            ? `${grupos.length} GHE(s) carregado(s)`
+            : 'Não foi possível verificar (catálogo de GHEs ainda não carregado ou indisponível)',
+        efetivo_verificavel: efetivoVerificavel,
+        total_ghes: catalogoDisponivel ? grupos.length : null,
+        total_campos_inspecionados: catalogoDisponivel ? totalCamposInspecionados : null,
+        escopos_inspecionados: ESCOPOS_VARREDURA_TEXTUAL_GHE.slice(),
+        ghes_com_riscos: catalogoDisponivel ? resumoGhes.filter(x => x.riscos_verificavel && x.qtd_riscos > 0).length : null,
+        ghes_sem_riscos: catalogoDisponivel ? resumoGhes.filter(x => x.riscos_verificavel && x.qtd_riscos === 0).length : null,
+        ghes_riscos_nao_verificaveis: catalogoDisponivel ? resumoGhes.filter(x => !x.riscos_verificavel).length : null,
+        achados_texto: achadosTexto,
+        resumo_ghes: resumoGhes
+    };
+}
+
+function atualizarPropostaSaneamentoCampoGhe(achadoKey, novoTexto) {
+    if (!achadoKey) return;
+    propostasSaneamentoCamposGhe[String(achadoKey)] = String(novoTexto ?? '');
+}
+
+function lerCampoAlvoEmRegistroGhe(gheRow, achado) {
+    if (!gheRow || !achado) return undefined;
+    if (achado.tipo_alvo === 'ghe') {
+        return gheRow[achado.campo_alvo];
+    }
+    if (achado.tipo_alvo === 'conclusao_ghe') {
+        if (!gheRow.conclusoes || typeof gheRow.conclusoes !== 'object') return undefined;
+        return gheRow.conclusoes[achado.campo_alvo];
+    }
+    if (achado.tipo_alvo === 'cargo') {
+        if (!Array.isArray(gheRow.cargos) || !gheRow.cargos[achado.indice_alvo]) return undefined;
+        return gheRow.cargos[achado.indice_alvo][achado.campo_alvo];
+    }
+    if (achado.tipo_alvo === 'risco') {
+        if (!Array.isArray(gheRow.riscos) || !gheRow.riscos[achado.indice_alvo]) return undefined;
+        return gheRow.riscos[achado.indice_alvo][achado.campo_alvo];
+    }
+    if (achado.tipo_alvo === 'risco_sublista') {
+        if (!Array.isArray(gheRow.riscos) || !gheRow.riscos[achado.indice_alvo]) return undefined;
+        const subArr = gheRow.riscos[achado.indice_alvo][achado.sublista_alvo];
+        if (!Array.isArray(subArr) || !subArr[achado.subindice_alvo]) return undefined;
+        return subArr[achado.subindice_alvo][achado.campo_alvo];
+    }
+    if (achado.tipo_alvo === 'fator_psico') {
+        const arr = gheRow.conclusoes && Array.isArray(gheRow.conclusoes.fatores_psicossociais_nr01)
+            ? gheRow.conclusoes.fatores_psicossociais_nr01
+            : null;
+        if (!arr || !arr[achado.indice_alvo]) return undefined;
+        return arr[achado.indice_alvo][achado.campo_alvo];
+    }
+    return undefined;
+}
+
+async function aplicarSaneamentoIndividualCampoGhe(achadoKey) {
+    if (typeof bloquearEdicaoSeNaoAutorizado === 'function' && bloquearEdicaoSeNaoAutorizado('matrizrisco')) {
+        return false;
+    }
+    const diag = diagnosticarTextosGheCatalogo();
+    const achado = diag.achados_texto.find(a => String(a.achado_key) === String(achadoKey));
+    if (!achado) {
+        return false;
+    }
+
+    const textoPropostoRaw = Object.prototype.hasOwnProperty.call(propostasSaneamentoCamposGhe, achado.achado_key)
+        ? propostasSaneamentoCamposGhe[achado.achado_key]
+        : achado.trecho_original;
+    const textoProposto = String(textoPropostoRaw ?? '').trim();
+
+    if (!textoProposto) {
+        if (typeof alert === 'function') {
+            alert('Informe o novo texto revisado antes de confirmar a alteração individual do campo.');
+        }
+        return false;
+    }
+    if (textoProposto === String(achado.trecho_original || '').trim()) {
+        if (typeof alert === 'function') {
+            alert('O texto proposto é idêntico ao trecho original. Edite a proposta no campo de revisão antes de confirmar.');
+        }
+        return false;
+    }
+
+    const confirmarSaneamento = (typeof confirm === 'function')
+        ? confirm(
+            `Confirma a revisão assistida APENAS deste campo em ghe_catalogo?\n\n` +
+            `• GHE: ${achado.ghe_id} — ${achado.ghe_nome}\n` +
+            `• Campo: ${achado.localizacao}\n` +
+            `• Original: "${achado.trecho_original}"\n` +
+            `• Novo Texto Aprovado: "${textoProposto}"\n\n` +
+            `Todos os demais elementos dos arrays JSONB e campos legados serão preservados intactos.`
+        )
+        : true;
+    if (!confirmarSaneamento) return false;
+
+    const gheLocal = Array.isArray(allGheCatalogo)
+        ? allGheCatalogo.find(x => String(x.id) === String(achado.ghe_id))
+        : null;
+    if (!gheLocal) return false;
+
+    const expectedUpdatedAt = gheLocal.updated_at ?? null;
+
+    if (typeof supabaseFetch !== 'function' || typeof supabasePatch !== 'function') {
+        throw new Error('Funções supabaseFetch e supabasePatch são obrigatórias para saneamento assistido com Compare-And-Swap.');
+    }
+
+    const rowsRemotas = await supabaseFetch('ghe_catalogo', `?select=*&id=eq.${encodeURIComponent(achado.ghe_id)}&limit=1`);
+    const remoto = Array.isArray(rowsRemotas) && rowsRemotas.length > 0 ? rowsRemotas[0] : null;
+    if (!remoto) {
+        throw new Error(`GHE ${achado.ghe_id} não encontrado no servidor durante verificação CAS.`);
+    }
+
+    const remUpdatedAt = remoto.updated_at ?? null;
+    if (remUpdatedAt !== expectedUpdatedAt) {
+        throw new Error(`Conflito de concorrência (CAS): o GHE ${achado.ghe_id} foi modificado no servidor por outra operação (updated_at divergente). Recarregue antes de aplicar.`);
+    }
+
+    const valorAtualRemoto = lerCampoAlvoEmRegistroGhe(remoto, achado);
+    if (String(valorAtualRemoto ?? '') !== String(achado.trecho_original ?? '')) {
+        throw new Error(`Conflito de concorrência (CAS): o campo "${achado.localizacao}" do GHE ${achado.ghe_id} foi alterado concorrentemente.`);
+    }
+
+    const novoUpdatedAt = new Date().toISOString();
+    const patchPayload = { updated_at: novoUpdatedAt };
+
+    if (achado.tipo_alvo === 'ghe') {
+        patchPayload[achado.campo_alvo] = textoProposto;
+    } else if (achado.tipo_alvo === 'conclusao_ghe') {
+        const conclusoesClonadas = JSON.parse(JSON.stringify(remoto.conclusoes || {}));
+        conclusoesClonadas[achado.campo_alvo] = textoProposto;
+        patchPayload.conclusoes = conclusoesClonadas;
+    } else if (achado.tipo_alvo === 'cargo') {
+        const cargosClonados = JSON.parse(JSON.stringify(remoto.cargos));
+        cargosClonados[achado.indice_alvo][achado.campo_alvo] = textoProposto;
+        patchPayload.cargos = cargosClonados;
+    } else if (achado.tipo_alvo === 'risco') {
+        const riscosClonados = JSON.parse(JSON.stringify(remoto.riscos));
+        riscosClonados[achado.indice_alvo][achado.campo_alvo] = textoProposto;
+        patchPayload.riscos = riscosClonados;
+    } else if (achado.tipo_alvo === 'risco_sublista') {
+        const riscosClonados = JSON.parse(JSON.stringify(remoto.riscos));
+        riscosClonados[achado.indice_alvo][achado.sublista_alvo][achado.subindice_alvo][achado.campo_alvo] = textoProposto;
+        patchPayload.riscos = riscosClonados;
+    } else if (achado.tipo_alvo === 'fator_psico') {
+        const conclusoesClonadas = JSON.parse(JSON.stringify(remoto.conclusoes || {}));
+        conclusoesClonadas.fatores_psicossociais_nr01[achado.indice_alvo][achado.campo_alvo] = textoProposto;
+        patchPayload.conclusoes = conclusoesClonadas;
+    }
+
+    const casFilter = expectedUpdatedAt
+        ? `id=eq.${encodeURIComponent(achado.ghe_id)}&updated_at=eq.${encodeURIComponent(expectedUpdatedAt)}`
+        : `id=eq.${encodeURIComponent(achado.ghe_id)}&updated_at=is.null`;
+
+    const patchRes = await supabasePatch('ghe_catalogo', casFilter, patchPayload);
+    if (!Array.isArray(patchRes) || patchRes.length === 0) {
+        throw new Error(`Conflito de concorrência (CAS): nenhuma linha atualizada para o GHE ${achado.ghe_id}.`);
+    }
+
+    Object.assign(gheLocal, patchPayload);
+    delete propostasSaneamentoCamposGhe[achado.achado_key];
+
+    if (typeof registrarAuditLogDashboard === 'function') {
+        registrarAuditLogDashboard(
+            'update',
+            'ghe_catalogo',
+            achado.ghe_id,
+            `Revisão assistida de campo (${achado.localizacao}) confirmada pelo usuário.`
+        );
+    }
+
+    renderMatrizViewDocBase();
+    return true;
+}
+
+function exportarBackupGheCatalogoJson() {
+    const grupos = Array.isArray(allGheCatalogo) ? allGheCatalogo : [];
+    const payload = {
+        exportado_em: new Date().toISOString(),
+        origem: 'Backup preventivo ghe_catalogo (Etapa 2 PGR NR-01 GRO)',
+        total_registros: grupos.length,
+        registros: grupos
+    };
+    const jsonStr = JSON.stringify(payload, null, 2);
+    if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+        const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `backup_ghe_catalogo_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    return payload;
+}
+
+function abrirGheRiscoParaRevisaoDesdeDocBase(gheId, riscoIdx) {
+    if (!gheId) return false;
+    const idx = (riscoIdx !== undefined && riscoIdx !== null && riscoIdx !== '') ? parseInt(riscoIdx, 10) : 0;
+    return selecionarGheMatrizRisco(String(gheId), isNaN(idx) ? 0 : idx);
+}
+
+function vincularEventosDelegadosPgrDocBase(container) {
+    if (!container || container._pgrDocBaseBound) return;
+    container._pgrDocBaseBound = true;
+
+    const handleFieldChange = (ev) => {
+        const t = ev.target;
+        if (!t) return;
+        const simpleField = t.getAttribute('data-pgr-docbase-field');
+        if (simpleField) {
+            atualizarCampoSimplesPgrDocBase(simpleField, t.value);
+            return;
+        }
+        const col = t.getAttribute('data-pgr-docbase-col');
+        const uid = t.getAttribute('data-pgr-docbase-uid');
+        const itemField = t.getAttribute('data-pgr-docbase-item-field');
+        if (col && uid && itemField) {
+            atualizarItemColecaoPgrDocBase(col, uid, itemField, t.value);
+            return;
+        }
+        const achadoKey = t.getAttribute('data-pgr-saneamento-key');
+        if (achadoKey) {
+            atualizarPropostaSaneamentoCampoGhe(achadoKey, t.value);
+        }
+    };
+
+    container.addEventListener('input', handleFieldChange);
+    container.addEventListener('change', handleFieldChange);
+
+    container.addEventListener('click', (ev) => {
+        const btn = ev.target && typeof ev.target.closest === 'function'
+            ? ev.target.closest('[data-pgr-docbase-action]')
+            : null;
+        if (!btn) return;
+        const action = btn.getAttribute('data-pgr-docbase-action');
+        if (action === 'salvar') {
+            salvarPgrDocumentoBase();
+        } else if (action === 'descartar') {
+            descartarAlteracoesPgrDocBase();
+        } else if (action === 'recarregar') {
+            loadPgrDocumentoBase(true);
+        } else if (action === 'add-item') {
+            const col = btn.getAttribute('data-pgr-docbase-col');
+            if (col) adicionarItemColecaoPgrDocBase(col);
+        } else if (action === 'remove-item') {
+            const col = btn.getAttribute('data-pgr-docbase-col');
+            const uid = btn.getAttribute('data-pgr-docbase-uid');
+            if (col && uid) removerItemColecaoPgrDocBase(col, uid);
+        } else if (action === 'exportar-backup-ghe') {
+            exportarBackupGheCatalogoJson();
+        } else if (action === 'aplicar-saneamento-campo') {
+            const achadoKey = btn.getAttribute('data-achado-key');
+            if (achadoKey) {
+                aplicarSaneamentoIndividualCampoGhe(achadoKey).catch(err => {
+                    if (typeof alert === 'function') {
+                        alert('Falha ao aplicar revisão assistida: ' + ((err && err.message) ? err.message : String(err)));
+                    }
+                });
+            }
+        } else if (action === 'abrir-ghe-revisao') {
+            const gheId = btn.getAttribute('data-ghe-id');
+            const riscoIdx = btn.getAttribute('data-risco-idx');
+            abrirGheRiscoParaRevisaoDesdeDocBase(gheId, riscoIdx);
+        } else if (action === 'abrir-psico-ghe') {
+            const gheId = btn.getAttribute('data-ghe-id');
+            if (gheId && typeof navegarParaAvaliacaoPsicossocialDoGhe === 'function') {
+                if (isPgrDocBaseDirty()) {
+                    const ok = (typeof confirm === 'function')
+                        ? confirm('Existem alterações não salvas no Documento-Base do PGR. Deseja descartá-las e ir para os Fatores Psicossociais do GHE?')
+                        : true;
+                    if (!ok) return;
+                    restaurarDraftPgrDocBaseParaUltimoSalvo();
+                }
+                navegarParaAvaliacaoPsicossocialDoGhe(gheId);
+            }
+        }
+    });
+}
+
+function renderMatrizViewDocBase() {
+    const container = document.getElementById('matrizDocBaseConteudo');
+    if (!container) return;
+    vincularEventosDelegadosPgrDocBase(container);
+
+    const diag = diagnosticarTextosGheCatalogo();
+    const empRazao = (typeof EMPRESA_INFO !== 'undefined' && EMPRESA_INFO.razaoSocial) ? EMPRESA_INFO.razaoSocial : 'CONSORCIO OPERADOR RAMAL DO AGRESTE';
+    const empCnpj = (typeof EMPRESA_INFO !== 'undefined' && EMPRESA_INFO.cnpj) ? EMPRESA_INFO.cnpj : '55.623.017/0001-97';
+    const empCnae = (typeof EMPRESA_INFO !== 'undefined' && EMPRESA_INFO.cnaePrincipal) ? EMPRESA_INFO.cnaePrincipal : '71.12-0-00 - Serviços de engenharia';
+    const empGr = (typeof EMPRESA_INFO !== 'undefined' && EMPRESA_INFO.grauRisco) ? EMPRESA_INFO.grauRisco : '1';
+
+    let blocoFormularioHtml = '';
+
+    if (pgrDocBaseLoading) {
+        blocoFormularioHtml = `
+            <div class="db-chart-card" style="padding: 28px; text-align: center; margin-bottom: 18px;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--primary);">⏳ Carregando parâmetros do Documento-Base do PGR...</div>
+                <div style="font-size: 12px; color: var(--text-light); margin-top: 6px;">Consultando <code>configuracoes_sistema</code> (registro <code>pgr_documento_base</code>).</div>
+            </div>`;
+    } else if (!pgrDocBaseLoaded || pgrDocBaseLoadError) {
+        blocoFormularioHtml = `
+            <div class="db-chart-card" style="padding: 20px; border-left: 4px solid var(--danger); margin-bottom: 18px;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--danger);">❌ Falha ao carregar Documento-Base do PGR do servidor</div>
+                <div style="font-size: 12.5px; color: var(--text-light); margin: 8px 0 12px;">
+                    ${escapeHTML(pgrDocBaseLoadError || 'Não foi possível verificar o registro remoto.')}
+                    <br>Por segurança, a gravação está bloqueada até que a versão remota seja verificada, evitando sobrescrever dados existentes no banco.
+                </div>
+                <button type="button" class="db-apply-btn" data-pgr-docbase-action="recarregar" style="font-size: 12.5px; padding: 7px 14px;">🔄 Tentar Carregar Novamente</button>
+            </div>`;
+    } else {
+        const d = pgrDocBaseDraft || normalizarPgrDocBase(obterPgrDocBaseDefaults());
+        const prontidao = avaliarProntidaoEmissaoPgrDocBase(d);
+        const inputStyle = 'width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; background:var(--bg); color:var(--text); box-sizing:border-box;';
+        const labelStyle = 'display:block; font-size:11.5px; font-weight:700; color:var(--text-light); margin-bottom:4px;';
+
+        const bannerProntidaoHtml = prontidao.pronto_para_emissao
+            ? `<div id="pgrDocBaseProntidaoBanner" style="margin-bottom:12px; padding:8px 12px; border-radius:8px; background:rgba(22,163,74,0.1); border:1px solid rgba(22,163,74,0.28); color:#15803d; font-size:12px; font-weight:600;">
+                ✅ <b>Pronto para Emissão Oficial do PGR:</b> Todos os metadados obrigatórios (título, revisão vigente e equipe avaliadora) estão preenchidos.
+               </div>`
+            : `<div id="pgrDocBaseProntidaoBanner" style="margin-bottom:12px; padding:10px 12px; border-radius:8px; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.35); color:#b45309; font-size:12px;">
+                ⚠️ <b>Rascunho em Preenchimento (Salvamento Permitido / Emissão Oficial Bloqueada):</b> Você pode salvar este rascunho parcialmente no banco, mas para emitir o PGR oficial complete:
+                <ul style="margin:4px 0 0 18px; padding:0;">
+                    ${prontidao.pendencias.map(p => `<li>${escapeHTML(p)}</li>`).join('')}
+                </ul>
+               </div>`;
+
+        const linhasRespEmpresa = (d.responsaveis_empresa || []).map((item, idx) => `
+            <div style="display:grid; grid-template-columns: 1.4fr 1.2fr 1fr auto; gap:8px; align-items:end; margin-bottom:8px; padding:8px; background:var(--bg); border:1px solid var(--border); border-radius:8px;">
+                <div>
+                    <label style="${labelStyle}">Nome do Representante Legal #${idx + 1} *</label>
+                    <input type="text" value="${escapeHTML(item.nome)}" data-pgr-docbase-col="responsaveis_empresa" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="nome" placeholder="Ex.: Devair Osvaldo Pereira" style="${inputStyle}">
+                </div>
+                <div>
+                    <label style="${labelStyle}">Cargo / Papel Institucional</label>
+                    <input type="text" value="${escapeHTML(item.cargo)}" data-pgr-docbase-col="responsaveis_empresa" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="cargo" placeholder="Ex.: Representante Legal / Diretoria" style="${inputStyle}">
+                </div>
+                <div>
+                    <label style="${labelStyle}">Registro / Identificação (opcional)</label>
+                    <input type="text" value="${escapeHTML(item.documento)}" data-pgr-docbase-col="responsaveis_empresa" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="documento" placeholder="Opcional" style="${inputStyle}">
+                </div>
+                <div>
+                    <button type="button" class="db-clear-btn" data-pgr-docbase-action="remove-item" data-pgr-docbase-col="responsaveis_empresa" data-pgr-docbase-uid="${escapeHTML(item.uid)}" title="Remover representante" style="padding:7px 10px; color:var(--danger); border-color:rgba(220,38,38,0.3);">🗑️</button>
+                </div>
+            </div>`).join('');
+
+        const linhasAvaliadores = (d.avaliadores || []).map((item, idx) => `
+            <div style="display:grid; grid-template-columns: 1.3fr 1.1fr 0.9fr 1.2fr auto; gap:8px; align-items:end; margin-bottom:8px; padding:8px; background:var(--bg); border:1px solid var(--border); border-radius:8px;">
+                <div>
+                    <label style="${labelStyle}">Profissional / Avaliador #${idx + 1} *</label>
+                    <input type="text" value="${escapeHTML(item.nome)}" data-pgr-docbase-col="avaliadores" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="nome" placeholder="Nome completo" style="${inputStyle}">
+                </div>
+                <div>
+                    <label style="${labelStyle}">Qualificação Profissional</label>
+                    <input type="text" value="${escapeHTML(item.qualificacao)}" data-pgr-docbase-col="avaliadores" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="qualificacao" placeholder="Ex.: Engenheiro de Segurança do Trabalho" style="${inputStyle}">
+                </div>
+                <div>
+                    <label style="${labelStyle}">Registro no Conselho (CREA/MTE)</label>
+                    <input type="text" value="${escapeHTML(item.registro_conselho)}" data-pgr-docbase-col="avaliadores" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="registro_conselho" placeholder="Ex.: CREA 0522078320" style="${inputStyle}">
+                </div>
+                <div>
+                    <label style="${labelStyle}">Atribuição no PGR</label>
+                    <input type="text" value="${escapeHTML(item.atribuicao)}" data-pgr-docbase-col="avaliadores" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="atribuicao" placeholder="Ex.: Coordenação Técnica do GRO / PGR" style="${inputStyle}">
+                </div>
+                <div>
+                    <button type="button" class="db-clear-btn" data-pgr-docbase-action="remove-item" data-pgr-docbase-col="avaliadores" data-pgr-docbase-uid="${escapeHTML(item.uid)}" title="Remover avaliador" style="padding:7px 10px; color:var(--danger); border-color:rgba(220,38,38,0.3);">🗑️</button>
+                </div>
+            </div>`).join('');
+
+        const linhasRevisoes = (d.historico_revisoes || []).map((item, idx) => `
+            <div style="display:grid; grid-template-columns: 90px 145px 1.6fr 1fr auto; gap:8px; align-items:end; margin-bottom:8px; padding:8px; background:var(--bg); border:1px solid var(--border); border-radius:8px;">
+                <div>
+                    <label style="${labelStyle}">Rev. #${idx + 1} *</label>
+                    <input type="text" value="${escapeHTML(item.revisao)}" data-pgr-docbase-col="historico_revisoes" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="revisao" placeholder="Ex.: 02" style="${inputStyle}">
+                </div>
+                <div>
+                    <label style="${labelStyle}">Data</label>
+                    <input type="date" value="${escapeHTML(item.data)}" data-pgr-docbase-col="historico_revisoes" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="data" style="${inputStyle}">
+                </div>
+                <div>
+                    <label style="${labelStyle}">Motivo / Descrição da Alteração *</label>
+                    <input type="text" value="${escapeHTML(item.descricao)}" data-pgr-docbase-col="historico_revisoes" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="descricao" placeholder="Descreva o escopo da revisão" style="${inputStyle}">
+                </div>
+                <div>
+                    <label style="${labelStyle}">Responsável</label>
+                    <input type="text" value="${escapeHTML(item.responsavel)}" data-pgr-docbase-col="historico_revisoes" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="responsavel" placeholder="Responsável técnico" style="${inputStyle}">
+                </div>
+                <div>
+                    <button type="button" class="db-clear-btn" data-pgr-docbase-action="remove-item" data-pgr-docbase-col="historico_revisoes" data-pgr-docbase-uid="${escapeHTML(item.uid)}" title="Remover revisão" style="padding:7px 10px; color:var(--danger); border-color:rgba(220,38,38,0.3);">🗑️</button>
+                </div>
+            </div>`).join('');
+
+        const linhasInstrumentos = (d.instrumentos || []).map((item, idx) => `
+            <div style="margin-bottom:10px; padding:10px; background:var(--bg); border:1px solid var(--border); border-radius:8px;">
+                <div style="display:grid; grid-template-columns: 1.2fr 0.8fr 0.8fr 0.9fr 0.6fr auto; gap:8px; align-items:end; margin-bottom:8px;">
+                    <div>
+                        <label style="${labelStyle}">Instrumento #${idx + 1} (Identificação) *</label>
+                        <input type="text" value="${escapeHTML(item.identificacao)}" data-pgr-docbase-col="instrumentos" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="identificacao" placeholder="Ex.: Dosimax - 22051301601B" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Marca</label>
+                        <input type="text" value="${escapeHTML(item.marca)}" data-pgr-docbase-col="instrumentos" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="marca" placeholder="Ex.: Inlite" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Modelo</label>
+                        <input type="text" value="${escapeHTML(item.modelo)}" data-pgr-docbase-col="instrumentos" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="modelo" placeholder="Ex.: DOSEMAX" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Nº de Série</label>
+                        <input type="text" value="${escapeHTML(item.numero_serie)}" data-pgr-docbase-col="instrumentos" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="numero_serie" placeholder="Ex.: 22051301601B" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Unidade</label>
+                        <input type="text" value="${escapeHTML(item.unidade_medida)}" data-pgr-docbase-col="instrumentos" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="unidade_medida" placeholder="Ex.: dB(A)" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <button type="button" class="db-clear-btn" data-pgr-docbase-action="remove-item" data-pgr-docbase-col="instrumentos" data-pgr-docbase-uid="${escapeHTML(item.uid)}" title="Remover instrumento" style="padding:7px 10px; color:var(--danger); border-color:rgba(220,38,38,0.3);">🗑️</button>
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns: 1.2fr 1.2fr 1.2fr 135px 135px; gap:8px; align-items:end;">
+                    <div>
+                        <label style="${labelStyle}">Técnica / Norma Utilizada</label>
+                        <input type="text" value="${escapeHTML(item.tecnica_utilizada)}" data-pgr-docbase-col="instrumentos" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="tecnica_utilizada" placeholder="Ex.: Dosimetria (NR-15 Anexo 1 / NHO-01)" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Agentes Analisados</label>
+                        <input type="text" value="${escapeHTML(item.agentes_analisados)}" data-pgr-docbase-col="instrumentos" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="agentes_analisados" placeholder="Ex.: Ruído contínuo/intermitente (02.01.001)" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Calibrador / Certificado de Calibração</label>
+                        <input type="text" value="${escapeHTML(item.calibrador_certificado)}" data-pgr-docbase-col="instrumentos" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="calibrador_certificado" placeholder="Ex.: Calibrador Calpro Nº Série 20050161" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Data Calibração</label>
+                        <input type="date" value="${escapeHTML(item.data_calibracao)}" data-pgr-docbase-col="instrumentos" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="data_calibracao" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Validade Calibração</label>
+                        <input type="date" value="${escapeHTML(item.validade_calibracao)}" data-pgr-docbase-col="instrumentos" data-pgr-docbase-uid="${escapeHTML(item.uid)}" data-pgr-docbase-item-field="validade_calibracao" style="${inputStyle}">
+                    </div>
+                </div>
+            </div>`).join('');
+
+        blocoFormularioHtml = `
+            <div class="db-chart-card" style="margin-bottom: 18px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--border);">
+                    <div>
+                        <div class="db-chart-title" style="margin-bottom:2px;">📘 Parâmetros Oficiais do Documento-Base do PGR (NR-01 GRO)</div>
+                        <div style="font-size:12px; color:var(--text-light);">
+                            Configure capa, enquadramento normativo, responsáveis legais, equipe técnica avaliadora, histórico de revisões, instrumentos de higiene ocupacional e textos operacionais reais do <b>${escapeHTML(empRazao)}</b> (CNPJ ${escapeHTML(empCnpj)} · CNAE ${escapeHTML(empCnae)} · Grau de Risco ${escapeHTML(empGr)}).
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <span id="pgrDocBaseDirtyBadge" style="font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px; border:1px solid transparent;"></span>
+                        <button type="button" class="db-clear-btn" data-pgr-docbase-action="recarregar" style="font-size:12px; padding:6px 11px;">🔄 Recarregar</button>
+                        <button type="button" class="db-clear-btn" data-pgr-docbase-action="descartar" style="font-size:12px; padding:6px 11px;">↩️ Descartar Rascunho</button>
+                        <button type="button" id="btnSalvarPgrDocBase" class="db-apply-btn" data-pgr-docbase-action="salvar" style="font-size:12.5px; padding:7px 14px;">💾 Salvar Documento-Base do PGR</button>
+                    </div>
+                </div>
+                ${bannerProntidaoHtml}
+                <div id="pgrDocBaseFormStatus" style="font-size:12.5px; font-weight:600; margin-bottom:12px; min-height:18px;"></div>
+
+                <!-- 1. Identificação e Vigência -->
+                <div style="font-weight:700; font-size:13px; color:var(--primary); margin-bottom:8px;">1. Identificação do Programa, Enquadramento Normativo e Vigência</div>
+                <div style="display:grid; grid-template-columns: 140px 1.6fr 110px 145px 145px 160px; gap:10px; margin-bottom:10px;">
+                    <div>
+                        <label style="${labelStyle}">Código Documental</label>
+                        <input type="text" value="${escapeHTML(d.codigo_documento)}" data-pgr-docbase-field="codigo_documento" placeholder="Ex.: PGR.SMS.001" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Título Oficial na Capa *</label>
+                        <input type="text" value="${escapeHTML(d.titulo_programa)}" data-pgr-docbase-field="titulo_programa" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Revisão Vigente *</label>
+                        <input type="text" value="${escapeHTML(d.revisao_atual)}" data-pgr-docbase-field="revisao_atual" placeholder="Ex.: 02" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Data de Emissão</label>
+                        <input type="date" value="${escapeHTML(d.data_elaboracao)}" data-pgr-docbase-field="data_elaboracao" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Vigência / Validade</label>
+                        <input type="date" value="${escapeHTML(d.data_validade)}" data-pgr-docbase-field="data_validade" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Município / UF Base</label>
+                        <input type="text" value="${escapeHTML(d.cidade_uf)}" data-pgr-docbase-field="cidade_uf" placeholder="Ex.: Arcoverde - PE" style="${inputStyle}">
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1.3fr; gap:10px; margin-bottom:18px;">
+                    <div>
+                        <label style="${labelStyle}">Enquadramento Normativo Principal (substitui a menção incorreta à NR-18 na capa antiga)</label>
+                        <input type="text" value="${escapeHTML(d.enquadramento_normativo)}" data-pgr-docbase-field="enquadramento_normativo" style="${inputStyle}">
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Abrangência Operacional do Estabelecimento</label>
+                        <input type="text" value="${escapeHTML(d.abrangencia_operacional)}" data-pgr-docbase-field="abrangencia_operacional" style="${inputStyle}">
+                    </div>
+                </div>
+
+                <!-- 2. Responsáveis Legais da Empresa -->
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <div style="font-weight:700; font-size:13px; color:var(--primary);">2. Representantes / Responsáveis Legais da Empresa</div>
+                    <button type="button" class="db-clear-btn" data-pgr-docbase-action="add-item" data-pgr-docbase-col="responsaveis_empresa" style="font-size:11.5px; padding:4px 10px;">➕ Adicionar Representante</button>
+                </div>
+                <div style="margin-bottom:18px;">
+                    ${linhasRespEmpresa || '<div class="db-list-empty" style="padding:10px;">Nenhum representante legal informado.</div>'}
+                </div>
+
+                <!-- 3. Equipe Técnica / Avaliadores Responsáveis -->
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <div style="font-weight:700; font-size:13px; color:var(--primary);">3. Equipe Técnica / Engenheiro(s) e Avaliadores Responsáveis pelo PGR</div>
+                    <button type="button" class="db-clear-btn" data-pgr-docbase-action="add-item" data-pgr-docbase-col="avaliadores" style="font-size:11.5px; padding:4px 10px;">➕ Adicionar Avaliador</button>
+                </div>
+                <div style="margin-bottom:18px;">
+                    ${linhasAvaliadores || '<div class="db-list-empty" style="padding:10px;">Adicione ao menos 1 responsável técnico.</div>'}
+                </div>
+
+                <!-- 4. Histórico de Revisões -->
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <div style="font-weight:700; font-size:13px; color:var(--primary);">4. Controle e Histórico de Revisões do PGR (Seção 1 do Documento)</div>
+                    <button type="button" class="db-clear-btn" data-pgr-docbase-action="add-item" data-pgr-docbase-col="historico_revisoes" style="font-size:11.5px; padding:4px 10px;">➕ Adicionar Revisão</button>
+                </div>
+                <div style="margin-bottom:18px;">
+                    ${linhasRevisoes || '<div class="db-list-empty" style="padding:10px;">Nenhuma revisão cadastrada no histórico.</div>'}
+                </div>
+
+                <!-- 5. Instrumentos de Medição Ambiental -->
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <div style="font-weight:700; font-size:13px; color:var(--primary);">5. Instrumentos Utilizados nas Avaliações Quantitativas e Certificados de Calibração (Seções 17 e 18)</div>
+                    <button type="button" class="db-clear-btn" data-pgr-docbase-action="add-item" data-pgr-docbase-col="instrumentos" style="font-size:11.5px; padding:4px 10px;">➕ Adicionar Instrumento</button>
+                </div>
+                <div style="margin-bottom:18px;">
+                    ${linhasInstrumentos || '<div class="db-list-empty" style="padding:10px;">Nenhum instrumento quantitativo cadastrado.</div>'}
+                </div>
+
+                <!-- 6. Diretrizes Técnicas e Operacionais -->
+                <div style="font-weight:700; font-size:13px; color:var(--primary); margin-bottom:8px;">6. Diretrizes Operacionais do GRO / PGR (Substituição dos Templates Genéricos e Placeholders do SGG)</div>
+                <div style="display:grid; grid-template-columns: 1fr; gap:12px;">
+                    <div>
+                        <label style="${labelStyle}">Apresentação, Objetivos e Hierarquia de Controles (NR-01 item 1.4.1 / 1.5)</label>
+                        <textarea rows="4" data-pgr-docbase-field="texto_apresentacao_objetivos" style="${inputStyle}; resize:vertical;">${escapeHTML(d.texto_apresentacao_objetivos)}</textarea>
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Sistemática de Inspeções de SST e Operação de Campo (substitui o placeholder "sistemática: CRIAR" da pág. 20 do SGG)</label>
+                        <textarea rows="4" data-pgr-docbase-field="texto_sistematica_inspecoes" style="${inputStyle}; resize:vertical;">${escapeHTML(d.texto_sistematica_inspecoes)}</textarea>
+                    </div>
+                    <div>
+                        <label style="${labelStyle}">Diretrizes de Proteção Coletiva (EPC) e Individual (EPI) no Ramal do Agreste (substitui os textos de "salas dos apartamentos / inserir imagens próprias" das págs. 48–50 do SGG)</label>
+                        <textarea rows="4" data-pgr-docbase-field="texto_protecoes_coletivas_epc_epi" style="${inputStyle}; resize:vertical;">${escapeHTML(d.texto_protecoes_coletivas_epc_epi)}</textarea>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    // Painel de Auditoria e Saneamento Assistido (Read-Only por padrão, com revisão individual comparada e CAS)
+    const qtdAchados = diag.catalogo_verificavel ? diag.achados_texto.length : null;
+    const escoposInspecionadosTexto = Array.isArray(diag.escopos_inspecionados) ? diag.escopos_inspecionados.join(', ') : '';
+    const linhasAchadosHtml = !diag.catalogo_verificavel
+        ? `<div style="padding:14px; border-radius:8px; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.35); color:#b45309; font-size:12.5px; font-weight:600;">
+            ⚠️ Não foi possível verificar ocorrências de texto contaminado: o catálogo de GHEs (<code>ghe_catalogo</code>) ainda não foi carregado em memória ou está indisponível.
+           </div>`
+        : (qtdAchados === 0
+            ? `<div style="padding:14px; border-radius:8px; background:rgba(22,163,74,0.08); border:1px solid rgba(22,163,74,0.28); color:#15803d; font-size:12.5px; font-weight:600;">
+                ✅ Nenhuma ocorrência de texto contaminado do SGG (<i>Portaria 344/98</i>, <i>receitas médicas</i>, <i>perfuração de lóbulo auricular</i>, <i>salas dos apartamentos</i>, <i>Inserir imagens próprias</i> ou <i>sistemática: CRIAR</i>) foi encontrada nos registros atualmente carregados em memória de <code>ghe_catalogo</code> (${diag.total_ghes} GHEs e ${diag.total_campos_inspecionados || 0} campos textuais inspecionados).
+                <div style="font-size:11px; font-weight:400; color:#166534; margin-top:4px;">Escopo varrido: ${escapeHTML(escoposInspecionadosTexto)}.</div>
+               </div>`
+            : `<div style="margin-bottom:10px; padding:10px 12px; border-radius:8px; background:rgba(220,38,38,0.08); border:1px solid rgba(220,38,38,0.28); color:#b91c1c; font-size:12px;">
+                ⚠️ Foram identificados <b>${qtdAchados}</b> trecho(s) suspeito(s) de contaminação de template nos registros atualmente carregados de <code>ghe_catalogo</code> (${diag.total_ghes} GHEs e ${diag.total_campos_inspecionados || 0} campos textuais inspecionados). <b>Nenhuma substituição automática ou em lote é executada:</b> exporte o backup JSON, compare o valor original com o contexto do GHE e edite/confirme apenas o campo desejado (ou abra no editor completo do GHE).
+                <div style="font-size:11px; margin-top:4px;">Escopo varrido: ${escapeHTML(escoposInspecionadosTexto)}.</div>
+               </div>
+               <div class="table-wrap" style="overflow-x:auto;">
+                <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <thead>
+                        <tr style="background:var(--bg); border-bottom:2px solid var(--border); text-align:left;">
+                            <th style="padding:8px;">GHE & Contexto</th>
+                            <th style="padding:8px;">Campo & Termo Suspeito</th>
+                            <th style="padding:8px;">Valor Original (Somente Leitura)</th>
+                            <th style="padding:8px;">Proposta Editável para Comparação</th>
+                            <th style="padding:8px; text-align:right;">Revisão Assistida</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${diag.achados_texto.map(a => {
+                            const valProposto = Object.prototype.hasOwnProperty.call(propostasSaneamentoCamposGhe, a.achado_key)
+                                ? propostasSaneamentoCamposGhe[a.achado_key]
+                                : a.trecho_original;
+                            return `
+                            <tr style="border-bottom:1px solid var(--border); vertical-align:top;">
+                                <td style="padding:8px;">
+                                    <div style="font-weight:700;">${escapeHTML(a.ghe_id)} — ${escapeHTML(a.ghe_nome)}</div>
+                                    <div style="font-size:11px; color:var(--text-light); margin-top:2px;">${escapeHTML(a.contexto_objeto)}</div>
+                                </td>
+                                <td style="padding:8px;">
+                                    <div style="font-weight:600; margin-bottom:4px;">${escapeHTML(a.localizacao)}</div>
+                                    <span style="background:rgba(220,38,38,0.12); color:#dc2626; padding:2px 6px; border-radius:4px; font-weight:700; font-size:11px;">${escapeHTML(a.termo_detectado)}</span>
+                                    <div style="font-size:11px; color:var(--text-light); margin-top:3px;">${escapeHTML(a.justificativa)}</div>
+                                </td>
+                                <td style="padding:8px; font-size:11.5px; max-width:280px; background:rgba(100,116,139,0.06);">${escapeHTML(a.trecho_original)}</td>
+                                <td style="padding:8px; min-width:240px;">
+                                    <textarea rows="3" data-pgr-saneamento-key="${escapeHTML(a.achado_key)}" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:11.5px; box-sizing:border-box;">${escapeHTML(valProposto)}</textarea>
+                                </td>
+                                <td style="padding:8px; text-align:right; white-space:nowrap;">
+                                    <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
+                                        <button type="button" class="db-apply-btn" data-pgr-docbase-action="aplicar-saneamento-campo" data-achado-key="${escapeHTML(a.achado_key)}" style="font-size:11px; padding:5px 10px;">✅ Confirmar Campo (CAS)</button>
+                                        <button type="button" class="db-clear-btn" data-pgr-docbase-action="abrir-ghe-revisao" data-ghe-id="${escapeHTML(a.ghe_id)}" data-risco-idx="${a.risco_idx !== null ? a.risco_idx : ''}" style="font-size:11px; padding:4px 9px;">🔍 Abrir no Editor do GHE</button>
+                                    </div>
+                                </td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+               </div>`);
+
+    const linhasResumoGhesHtml = diag.resumo_ghes.map(g => {
+        const celulaCargosHtml = g.cargos_verificavel
+            ? String(g.qtd_cargos)
+            : `<span style="color:#b45309; font-weight:600; font-size:11px;">⚠️ Não foi possível verificar</span>`;
+
+        const celulaEfetivoHtml = g.efetivo_verificavel
+            ? `<b>${g.qtd_efetivo_ativo}</b> <span style="color:var(--text-light); font-size:11px;">(laudo ant.: ${g.qtd_oficial_legado})</span>`
+            : `<span style="color:#b45309; font-weight:600; font-size:11px;" title="A tabela auxiliar colaboradores_efetivo ainda não foi carregada ou falhou.">⚠️ Não foi possível verificar</span> <span style="color:var(--text-light); font-size:11px;">(laudo ant.: ${g.qtd_oficial_legado})</span>`;
+
+        const statusRiscosHtml = !g.riscos_verificavel
+            ? `<span style="background:rgba(245,158,11,0.15); color:#b45309; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">⚠️ Não foi possível verificar (formato inválido/nulo)</span>`
+            : (g.qtd_riscos > 0
+                ? `<span style="background:rgba(22,163,74,0.12); color:#15803d; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">✅ ${g.qtd_riscos} risco(s) cadastrado(s)</span>`
+                : `<span style="background:rgba(100,116,139,0.14); color:#475569; padding:2px 8px; border-radius:999px; font-weight:600; font-size:11px;" title="A ausência de registros em riscos=[] não equivale automaticamente à inexistência de exposição ocupacional; requer avaliação/declaração técnica explícita.">⚪ Sem riscos cadastrados (pendente de revisão técnica)</span>`);
+
+        const alertaCaHtml = !g.riscos_verificavel
+            ? `<span style="color:#b45309; font-size:11px;">Não foi possível verificar</span>`
+            : (g.riscos_epi_sem_ca > 0
+                ? `<span style="background:rgba(245,158,11,0.15); color:#b45309; padding:2px 7px; border-radius:4px; font-weight:700; font-size:11px;">⚠️ ${g.riscos_epi_sem_ca} s/ CA</span>`
+                : (g.qtd_riscos > 0 ? '<span style="color:#15803d; font-size:11.5px; font-weight:600;">✓ CAs informados / N.A.</span>' : '—'));
+
+        const celulaPsicoHtml = !g.fatores_psico_verificavel
+            ? `<span style="color:#b45309; font-weight:600; font-size:11px;">⚠️ Não foi possível verificar</span>`
+            : (g.qtd_fatores_psico > 0
+                ? `<span style="color:#7c3aed; font-weight:700;">${g.qtd_fatores_psico} fator(es)</span>`
+                : '<span style="color:var(--text-light);">0 (nenhum cadastrado)</span>');
+
+        return `
+            <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:7px 8px; font-weight:700; color:var(--primary); white-space:nowrap;">${escapeHTML(g.id)}</td>
+                <td style="padding:7px 8px; font-weight:600;">${escapeHTML(g.nome)}</td>
+                <td style="padding:7px 8px; text-align:center;">${celulaCargosHtml}</td>
+                <td style="padding:7px 8px; text-align:center;">${celulaEfetivoHtml}</td>
+                <td style="padding:7px 8px;">${statusRiscosHtml}</td>
+                <td style="padding:7px 8px; text-align:center;">${alertaCaHtml}</td>
+                <td style="padding:7px 8px; text-align:center;">${celulaPsicoHtml}</td>
+                <td style="padding:7px 8px; text-align:right; white-space:nowrap;">
+                    <button type="button" class="db-clear-btn" data-pgr-docbase-action="abrir-ghe-revisao" data-ghe-id="${escapeHTML(g.id)}" data-risco-idx="0" style="font-size:11px; padding:4px 8px; margin-right:4px;">📋 Inventário GHE</button>
+                    <button type="button" class="db-clear-btn" data-pgr-docbase-action="abrir-psico-ghe" data-ghe-id="${escapeHTML(g.id)}" style="font-size:11px; padding:4px 8px; color:#7c3aed; border-color:rgba(124,58,237,0.35);">🧠 Fatores NR-01</button>
+                </td>
+            </tr>`;
+    }).join('');
+
+    const kpiIndisponivelHtml = '<span style="font-size:13px; color:#b45309;">⚠️ Indisponível</span>';
+    const blocoAuditoriaHtml = `
+        <div class="db-chart-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+                <div>
+                    <div class="db-chart-title" style="margin-bottom:2px;">🔍 Diagnóstico e Auditoria Assistida do Catálogo de GHEs (<code>ghe_catalogo</code>)</div>
+                    <div style="font-size:12px; color:var(--text-light);">
+                        ${diag.catalogo_verificavel
+                            ? `Inspeção somente leitura dos ${diag.total_ghes} grupos atualmente carregados em memória (${diag.total_campos_inspecionados || 0} campos textuais varridos), verificando textos contaminados do antigo SGG, cobertura do inventário de riscos e cruzamento com o efetivo carregado.`
+                            : `⚠️ Catálogo de GHEs (<code>ghe_catalogo</code>) ainda não carregado em memória ou indisponível — não foi possível verificar a contagem de GHEs nem ocorrências textuais.`}
+                    </div>
+                </div>
+                <button type="button" class="db-clear-btn" data-pgr-docbase-action="exportar-backup-ghe" style="font-size:12px; padding:6px 12px; color:#0284c7; border-color:#38bdf8;">📥 Exportar Backup JSON (<code>ghe_catalogo</code>)</button>
+            </div>
+
+            <div class="db-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom:14px;">
+                <div class="db-kpi-card db-kpi-primary">
+                    <div class="db-kpi-value">${diag.catalogo_verificavel ? diag.total_ghes : kpiIndisponivelHtml}</div>
+                    <div class="db-kpi-label">GHEs Cadastrados no Banco</div>
+                </div>
+                <div class="db-kpi-card" style="border-top-color:#16a34a;">
+                    <div class="db-kpi-value" style="color:#16a34a;">${diag.catalogo_verificavel ? diag.ghes_com_riscos : kpiIndisponivelHtml}</div>
+                    <div class="db-kpi-label">GHEs com Riscos Avaliados</div>
+                </div>
+                <div class="db-kpi-card" style="border-top-color:#64748b;">
+                    <div class="db-kpi-value" style="color:#475569;">${diag.catalogo_verificavel ? diag.ghes_sem_riscos : kpiIndisponivelHtml}</div>
+                    <div class="db-kpi-label">GHEs com <code>riscos = []</code> (Pendentes/Sem Reg.)</div>
+                </div>
+                <div class="db-kpi-card" style="border-top-color:${!diag.catalogo_verificavel ? '#f59e0b' : (qtdAchados > 0 ? '#dc2626' : '#16a34a')};">
+                    <div class="db-kpi-value" style="color:${!diag.catalogo_verificavel ? '#b45309' : (qtdAchados > 0 ? '#dc2626' : '#16a34a')};">${diag.catalogo_verificavel ? qtdAchados : kpiIndisponivelHtml}</div>
+                    <div class="db-kpi-label">Trechos Contaminados SGG no Banco</div>
+                </div>
+            </div>
+
+            <div style="font-weight:700; font-size:12.5px; margin-bottom:6px;">A. Verificação de Textos Contaminados / Placeholders do SGG nos GHEs</div>
+            <div style="margin-bottom:16px;">
+                ${linhasAchadosHtml}
+            </div>
+
+            <div style="font-weight:700; font-size:12.5px; margin-bottom:6px;">B. Cobertura Dinâmica dos GHEs Cadastrados (Efetivo Ativo × Inventário de Riscos × Fatores NR-01)</div>
+            <div class="table-wrap" style="overflow-x:auto;">
+                <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <thead>
+                        <tr style="background:var(--bg); border-bottom:2px solid var(--border); text-align:left;">
+                            <th style="padding:8px;">Código</th>
+                            <th style="padding:8px;">Setor / Nome do GHE</th>
+                            <th style="padding:8px; text-align:center;">Cargos</th>
+                            <th style="padding:8px; text-align:center;">Efetivo Ativo Hoje</th>
+                            <th style="padding:8px;">Status no Inventário de Riscos</th>
+                            <th style="padding:8px; text-align:center;">Vínculo de CAs (NR-06)</th>
+                            <th style="padding:8px; text-align:center;">Fatores Psicossociais</th>
+                            <th style="padding:8px; text-align:right;">Acesso Direto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${linhasResumoGhesHtml || '<tr><td colspan="8" style="padding:14px; text-align:center; color:#b45309; font-weight:600;">⚠️ Não foi possível verificar: catálogo de GHEs (<code>ghe_catalogo</code>) ainda não carregado em memória ou indisponível.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
+
+    container.innerHTML = blocoFormularioHtml + blocoAuditoriaHtml;
+    if (pgrDocBaseLoaded && !pgrDocBaseLoading) {
+        atualizarIndicadorDirtyPgrDocBase();
+    }
 }

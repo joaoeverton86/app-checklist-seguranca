@@ -3315,6 +3315,148 @@ function formatarMedidasPreventivasRiscoPgr(r) {
     return blocos.join('');
 }
 
+let allErgonomiaAepPgr = [];
+let allErgonomiaPlanoAcaoPgr = [];
+let allAvaliacoesPsicossociaisPgr = [];
+let allAvaliacoesPsicossociaisEscalasPgr = [];
+let _pgrHistoricoEscritaLock = Promise.resolve();
+
+async function registrarEmissaoHistoricoPgr(dadosEmissao) {
+    if (typeof supabaseFetch !== 'function') return false;
+    if (!dadosEmissao || !dadosEmissao.id_emissao) return false;
+
+    // 1. Leitura inicial concorrente permitida (múltiplas sessões leem simultaneamente)
+    let listaInicial = [];
+    let atualizadoEmRemoto = null;
+    let registroExiste = false;
+
+    try {
+        const rows = await supabaseFetch('configuracoes_sistema', '?id=eq.pgr_emissoes_historico');
+        if (Array.isArray(rows)) {
+            const regHistorico = rows.find(r => r && r.id === 'pgr_emissoes_historico')
+                || (rows.length > 0 && rows[0] && Array.isArray(rows[0].valor) ? rows[0] : null);
+            if (regHistorico) {
+                registroExiste = true;
+                atualizadoEmRemoto = regHistorico.atualizado_em ?? null;
+                if (Array.isArray(regHistorico.valor)) {
+                    listaInicial = regHistorico.valor.slice();
+                } else {
+                    throw new Error('Formato corrompido no histórico de emissões');
+                }
+            } else {
+                registroExiste = false;
+                listaInicial = [];
+            }
+        } else {
+            throw new Error('Resposta inválida na leitura do histórico de emissões');
+        }
+    } catch (fetchErr) {
+        console.warn('Falha na leitura do histórico prévio de emissões; abortando gravação para preservar dados:', fetchErr);
+        return false;
+    }
+
+    if (listaInicial.some(x => x && x.id_emissao === dadosEmissao.id_emissao)) {
+        return true;
+    }
+
+    // 2. Fase de persistência e reconciliação atômica serializada
+    const executarPersistenciaComLock = async () => {
+        const maxTentativas = 5;
+        for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+            let lista = listaInicial.slice();
+
+            // Re-leitura fresca para reconciliação CAS com o banco
+            try {
+                const freshRows = await supabaseFetch('configuracoes_sistema', '?id=eq.pgr_emissoes_historico');
+                if (!Array.isArray(freshRows)) {
+                    throw new Error('Resposta inválida na releitura fresca do histórico');
+                }
+                const regFresco = freshRows.find(r => r && r.id === 'pgr_emissoes_historico')
+                    || (freshRows.length > 0 && freshRows[0] && Array.isArray(freshRows[0].valor) ? freshRows[0] : null);
+                if (regFresco) {
+                    registroExiste = true;
+                    atualizadoEmRemoto = regFresco.atualizado_em ?? null;
+                    if (!Array.isArray(regFresco.valor)) {
+                        throw new Error('Formato corrompido na releitura fresca do histórico');
+                    }
+                    const listaRemotaAtual = regFresco.valor;
+                    const itensNovos = listaRemotaAtual.filter(itemRemoto =>
+                        itemRemoto && itemRemoto.id_emissao &&
+                        !lista.some(itemLocal => itemLocal && itemLocal.id_emissao === itemRemoto.id_emissao)
+                    );
+                    if (itensNovos.length > 0) {
+                        lista.push(...itensNovos);
+                    }
+                }
+            } catch (freshErr) {
+                console.warn(`Tentativa ${tentativa}: falha na releitura fresca do histórico:`, freshErr);
+                if (tentativa === maxTentativas) return false;
+                await new Promise(r => (typeof setTimeout === 'function' ? setTimeout(r, 30 * tentativa) : r()));
+                continue;
+            }
+
+            if (lista.some(x => x && x.id_emissao === dadosEmissao.id_emissao)) {
+                return true;
+            }
+
+            lista.unshift(dadosEmissao);
+            const tsAnterior = atualizadoEmRemoto ? Date.parse(atualizadoEmRemoto) : 0;
+            const tsBase = Number.isNaN(tsAnterior) ? 0 : tsAnterior;
+            const tsNovo = Math.max(Date.now(), tsBase + 1);
+            const novoAtualizadoEm = new Date(tsNovo).toISOString();
+            const usuario = (typeof usuarioDashboardAtual === 'function' ? usuarioDashboardAtual() : null) || 'sistema_pgr';
+            const payloadRow = {
+                id: 'pgr_emissoes_historico',
+                valor: lista,
+                descricao: 'Histórico cronológico de emissões e rastreabilidade normativa do PGR (NR-01 item 1.5.4.4.6).',
+                atualizado_em: novoAtualizadoEm,
+                atualizado_por: usuario
+            };
+
+            try {
+                if (registroExiste) {
+                    if (typeof supabasePatch === 'function') {
+                        const casFilter = atualizadoEmRemoto
+                            ? `id=eq.pgr_emissoes_historico&atualizado_em=eq.${encodeURIComponent(atualizadoEmRemoto)}`
+                            : `id=eq.pgr_emissoes_historico&atualizado_em=is.null`;
+                        const patchRes = await supabasePatch('configuracoes_sistema', casFilter, payloadRow);
+                        if (!Array.isArray(patchRes) || patchRes.length === 0) {
+                            console.warn(`Conflito CAS no histórico (tentativa ${tentativa}/${maxTentativas}); recarregando...`);
+                            await new Promise(r => (typeof setTimeout === 'function' ? setTimeout(r, 30 * tentativa) : r()));
+                            continue;
+                        }
+                        return true;
+                    } else {
+                        console.warn('Serviço supabasePatch indisponível para CAS no histórico');
+                        return false;
+                    }
+                } else {
+                    if (typeof supabaseInsert === 'function') {
+                        const insertRes = await supabaseInsert('configuracoes_sistema', [payloadRow]);
+                        const insertSucesso = Boolean(insertRes) && (!Array.isArray(insertRes) || insertRes.length > 0);
+                        if (!insertSucesso) {
+                            throw new Error('Falha na criação inicial do histórico de emissões');
+                        }
+                        return true;
+                    } else {
+                        console.warn('Serviço supabaseInsert indisponível para inserção atômica no histórico');
+                        return false;
+                    }
+                }
+            } catch (upsertErr) {
+                console.warn(`Falha na persistência do histórico na tentativa ${tentativa}:`, upsertErr);
+                if (tentativa === maxTentativas) return false;
+                await new Promise(r => (typeof setTimeout === 'function' ? setTimeout(r, 30 * tentativa) : r()));
+            }
+        }
+        return false;
+    };
+
+    const proxima = _pgrHistoricoEscritaLock.then(executarPersistenciaComLock, executarPersistenciaComLock);
+    _pgrHistoricoEscritaLock = proxima;
+    return proxima;
+}
+
 async function garantirFontesEmissaoPgrCompleto() {
     const pendencias = [];
 
@@ -3332,24 +3474,64 @@ async function garantirFontesEmissaoPgrCompleto() {
         pendencias.push('Documento-Base não sincronizado com o banco');
     }
 
-    // 2. Garantir Quadro de Efetivo
-    const precisaEfetivo = (typeof efetivoLoaded !== 'undefined')
-        ? !efetivoLoaded
-        : (!Array.isArray(allEfetivo) || allEfetivo.length === 0);
-    if (precisaEfetivo && typeof loadEfetivoData === 'function') {
+    // 2. Garantir Quadro de Efetivo (Resolução P1 Copilot e Codex)
+    if (typeof loadEfetivoData === 'function') {
         try {
             await loadEfetivoData();
         } catch (err) {
-            console.warn('Aviso: falha ao carregar Quadro de Efetivo na emissão:', err);
+            console.warn('Aviso: falha em loadEfetivoData na emissão:', err);
         }
     }
-    const efetivoSucesso = (typeof efetivoLoaded !== 'undefined' && efetivoLoaded) || (Array.isArray(allEfetivo) && allEfetivo.length > 0);
-    if (!efetivoSucesso) {
-        pendencias.push('Quadro de Efetivo não sincronizado com o banco');
+
+    if (typeof supabaseFetch === 'function') {
+        try {
+            const rowsEfetivo = await supabaseFetch('colaboradores_efetivo', '?select=*');
+            if (Array.isArray(rowsEfetivo)) {
+                if (rowsEfetivo.length > 0) {
+                    allEfetivo = rowsEfetivo;
+                    if (typeof efetivoLoaded !== 'undefined') efetivoLoaded = true;
+                } else {
+                    allEfetivo = [];
+                    if (typeof efetivoLoaded !== 'undefined') efetivoLoaded = false;
+                    pendencias.push('Quadro de Efetivo (colaboradores_efetivo) sem colaboradores cadastrados no banco');
+                }
+            }
+        } catch (err) {
+            console.warn('Aviso: falha ao consultar Quadro de Efetivo na emissão:', err);
+            // Se a consulta direta ao banco falhou, descarta cache antigo para não mascarar erro de rede
+            allEfetivo = [];
+            if (typeof efetivoLoaded !== 'undefined') efetivoLoaded = false;
+            pendencias.push('Quadro de Efetivo (colaboradores_efetivo) não sincronizado com o banco de dados; dados locais não confirmados');
+        }
+    } else {
+        if (!Array.isArray(allEfetivo) || allEfetivo.length === 0) {
+            pendencias.push('Serviço de consulta de efetivo indisponível');
+        }
     }
 
-    // 3. Consultar a fonte diretamente: o loader de tela captura erros internamente.
-    // Array vazio só significa ausência de ações após resposta válida do servidor.
+    // 3. Garantir Catálogo de GHEs e Inventário de Riscos (Resolução P1 Codex e Copilot)
+    // Usa ?select=* pois a coluna riscos é JSONB na própria ghe_catalogo (sem relação inexistente)
+    const precisaCatalogo = (typeof allGheCatalogo === 'undefined' || !Array.isArray(allGheCatalogo) || allGheCatalogo.length === 0);
+    if (precisaCatalogo && typeof supabaseFetch === 'function') {
+        try {
+            const rowsGhe = await supabaseFetch('ghe_catalogo', '?select=*&order=id.asc');
+            if (Array.isArray(rowsGhe) && rowsGhe.length > 0) {
+                allGheCatalogo = rowsGhe;
+            }
+        } catch (err) {
+            console.warn('Aviso: falha ao carregar Catálogo de GHEs na emissão:', err);
+        }
+    }
+    if (typeof allGheCatalogo === 'undefined' || !Array.isArray(allGheCatalogo) || allGheCatalogo.length === 0) {
+        pendencias.push('Catálogo de GHEs não carregado ou sem registros ativos no banco');
+    } else {
+        const ghesComRiscosInvalidos = allGheCatalogo.filter(g => !g || !Array.isArray(g.riscos));
+        if (ghesComRiscosInvalidos.length > 0) {
+            pendencias.push(`Inconsistência no catálogo de GHEs: lista de riscos ausente ou nula em ${ghesComRiscosInvalidos.length} GHE(s)`);
+        }
+    }
+
+    // 4. Consultar a fonte de Plano de Ação 5W2H diretamente
     try {
         if (typeof supabaseFetch !== 'function') {
             throw new Error('Serviço de leitura indisponível');
@@ -3365,10 +3547,129 @@ async function garantirFontesEmissaoPgrCompleto() {
         pendencias.push('Base de Ações 5W2H (pgr_plano_acao) não sincronizada; dados locais não confirmados');
     }
 
+    // 5. Consultar a fonte de Ergonomia AEP e Plano de Ação Ergonômico (NR-17)
+    // Falha bloqueia oficialização e limpa cache desatualizado
+    try {
+        if (typeof supabaseFetch !== 'function') throw new Error('Serviço de leitura indisponível');
+        const rowsAep = await supabaseFetch('ergonomia_aep', '?select=*&order=codigo.asc');
+        if (!Array.isArray(rowsAep)) throw new Error('Resposta inválida de ergonomia_aep');
+        allErgonomiaAepPgr = rowsAep;
+
+        const rowsErgoPlano = await supabaseFetch('ergonomia_plano_acao', '?select=*&order=created_at.desc');
+        if (!Array.isArray(rowsErgoPlano)) throw new Error('Resposta inválida de ergonomia_plano_acao');
+        allErgonomiaPlanoAcaoPgr = rowsErgoPlano;
+    } catch (err) {
+        console.warn('Aviso: falha ao consultar base de Ergonomia AEP na emissão:', err);
+        allErgonomiaAepPgr = [];
+        allErgonomiaPlanoAcaoPgr = [];
+        pendencias.push('Base de Ergonomia (AEP / Plano de Ação NR-17) não sincronizada com o banco de dados; dados locais não confirmados');
+    }
+
+    // 6. Consultar a fonte de Avaliações Psicossociais e Escalas COPSOQ II (NR-01)
+    // Falha bloqueia oficialização e limpa cache desatualizado
+    try {
+        if (typeof supabaseFetch !== 'function') throw new Error('Serviço de leitura indisponível');
+        const rowsPsico = await supabaseFetch('avaliacoes_psicossociais', '?select=*&order=periodo_fim.desc&limit=1');
+        if (!Array.isArray(rowsPsico)) throw new Error('Resposta inválida de avaliacoes_psicossociais');
+        allAvaliacoesPsicossociaisPgr = rowsPsico;
+
+        if (rowsPsico.length > 0 && rowsPsico[0] && rowsPsico[0].id) {
+            const aplicacaoId = rowsPsico[0].id;
+            const rowsEscalas = await supabaseFetch('avaliacoes_psicossociais_escalas', `?aplicacao_id=eq.${encodeURIComponent(aplicacaoId)}&order=pct_risco.desc`);
+            if (!Array.isArray(rowsEscalas)) throw new Error('Resposta inválida de avaliacoes_psicossociais_escalas');
+            allAvaliacoesPsicossociaisEscalasPgr = rowsEscalas;
+        } else {
+            allAvaliacoesPsicossociaisEscalasPgr = [];
+        }
+    } catch (err) {
+        console.warn('Aviso: falha ao consultar base de Avaliações Psicossociais na emissão:', err);
+        allAvaliacoesPsicossociaisPgr = [];
+        allAvaliacoesPsicossociaisEscalasPgr = [];
+        pendencias.push('Base de Avaliações Psicossociais (COPSOQ II) não sincronizada com o banco de dados; dados locais não confirmados');
+    }
+
     return { ok: pendencias.length === 0, pendencias };
 }
 
-async function imprimirDocumentoCompletoPgr() {
+const CADERNOS_PGR_VALIDOS = Object.freeze(['completo', 'docbase', 'inventario', 'plano_acao', 'epis', 'anexos']);
+let _emissaoPgrEmAndamento = false;
+
+function normalizarValidarOpcoesEmissaoPgr(options, catalogoGhe) {
+    if (!options || typeof options !== 'object' || Array.isArray(options)) {
+        options = {};
+    }
+    const cadernoRaw = String(options.caderno || 'completo').trim().toLowerCase();
+    if (!CADERNOS_PGR_VALIDOS.includes(cadernoRaw)) {
+        throw new Error(`Caderno do PGR inválido ou não suportado: "${options.caderno}". Selecione um dos cadernos válidos: ${CADERNOS_PGR_VALIDOS.join(', ')}.`);
+    }
+
+    const caderno = cadernoRaw;
+    let gheFiltro = (options.ghe_filtro != null && options.ghe_filtro !== '') ? String(options.ghe_filtro).trim() : null;
+    if (gheFiltro && (gheFiltro.toLowerCase() === 'todos' || gheFiltro === '--' || gheFiltro === '0')) {
+        gheFiltro = null;
+    }
+
+    // Filtro de GHE só é aplicável a 'inventario' e 'epis'. Para outros cadernos ou 'completo', normaliza para null
+    if (caderno !== 'inventario' && caderno !== 'epis') {
+        if (gheFiltro) {
+            console.warn(`Aviso: filtro de GHE ("${gheFiltro}") ignorado pois o caderno "${caderno}" possui escopo corporativo integral.`);
+            gheFiltro = null;
+        }
+    }
+
+    // Se houver gheFiltro informado, DEVE existir no catálogo da empresa de forma unívoca (sem ambiguidade)
+    if (gheFiltro) {
+        if (!Array.isArray(catalogoGhe) || catalogoGhe.length === 0) {
+            throw new Error(`Catálogo de GHEs indisponível no momento para validar o filtro de GHE "${gheFiltro}".`);
+        }
+
+        const correspondenciasExatas = catalogoGhe.filter(g => g && String(g.id).trim() === gheFiltro);
+        let gheEncontrado = null;
+
+        if (correspondenciasExatas.length === 1) {
+            gheEncontrado = correspondenciasExatas[0];
+            // Verifica se no catálogo existem outros GHEs que colidem por normalização (ex.: '1' e '01')
+            const fNorm = typeof normalizarGhe === 'function' ? normalizarGhe(gheFiltro) : gheFiltro;
+            const correspondenciasNorm = catalogoGhe.filter(g => g && (typeof normalizarGhe === 'function' ? normalizarGhe(g.id) : String(g.id).trim()) === fNorm);
+            if (correspondenciasNorm.length > 1) {
+                const idsColidindo = correspondenciasNorm.map(x => `"${x.id}"`).join(', ');
+                throw new Error(`Ambiguidade no catálogo de GHEs: múltiplos grupos coincidem com o identificador "${gheFiltro}" após normalização (${idsColidindo}). Corrija a duplicidade de identificadores no cadastro de GHEs.`);
+            }
+        } else if (correspondenciasExatas.length > 1) {
+            throw new Error(`Ambiguidade cadastral: mais de um GHE possui exatamente o identificador "${gheFiltro}". Corrija o catálogo.`);
+        } else {
+            // Tenta busca por normalização (ex.: usuário digitou '1' e no catálogo está '01')
+            const fNorm = typeof normalizarGhe === 'function' ? normalizarGhe(gheFiltro) : gheFiltro;
+            const correspondenciasNorm = catalogoGhe.filter(g => g && (typeof normalizarGhe === 'function' ? normalizarGhe(g.id) : String(g.id).trim()) === fNorm);
+            if (correspondenciasNorm.length > 1) {
+                const idsColidindo = correspondenciasNorm.map(x => `"${x.id}"`).join(', ');
+                throw new Error(`Ambiguidade no catálogo de GHEs: múltiplos grupos coincidem com o filtro "${gheFiltro}" após normalização (${idsColidindo}). Especifique o identificador canônico exato.`);
+            } else if (correspondenciasNorm.length === 1) {
+                gheEncontrado = correspondenciasNorm[0];
+            } else {
+                throw new Error(`GHE "${gheFiltro}" não localizado no catálogo da empresa. Emissão abortada por inconsistência de filtro.`);
+            }
+        }
+
+        gheFiltro = String(gheEncontrado.id).trim();
+    }
+
+    return Object.freeze({
+        caderno,
+        ghe_filtro: gheFiltro
+    });
+}
+
+async function imprimirDocumentoCompletoPgr(options) {
+    if (_emissaoPgrEmAndamento) {
+        console.warn('Emissão do PGR já em processamento; aguarde a conclusão da solicitação anterior.');
+        return false;
+    }
+    _emissaoPgrEmAndamento = true;
+
+    // Snapshot defensivo imediato das opções antes de qualquer await (P1 2)
+    const optionsSnapshotInicial = Object.assign({}, options);
+
     const btn = document.getElementById('btnImprimirPgrCompletoTop');
     const txtOriginal = btn ? btn.textContent : '';
     if (btn) {
@@ -3380,15 +3681,88 @@ async function imprimirDocumentoCompletoPgr() {
         if (!resGarantia.ok) {
             console.warn('Aviso: fontes essenciais pendentes na emissão do PGR:', resGarantia.pendencias);
         }
-        const htmlDoc = gerarHtmlDocumentoCompletoPgr(resGarantia);
-        const titulo = 'Programa de Gerenciamento de Riscos (PGR - NR-01) — Consórcio Ramal do Agreste';
+
+        // Validação estrita das opções com snapshot imutável pós-sincronização (P1 1 & P1 2)
+        let snapshotOpts;
+        try {
+            snapshotOpts = normalizarValidarOpcoesEmissaoPgr(optionsSnapshotInicial, allGheCatalogo);
+        } catch (valErr) {
+            console.error('Seleção de caderno/GHE inválida na emissão do PGR:', valErr.message);
+            if (typeof alert === 'function') alert(`Erro na emissão do PGR: ${valErr.message}`);
+            return false;
+        }
+
+        const caderno = snapshotOpts.caderno;
+        const gheFiltro = snapshotOpts.ghe_filtro;
+
+        const codigoRastreabilidade = 'PGR-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+        resGarantia.codigoRastreabilidade = codigoRastreabilidade;
+
+        const estadoDocBase = (typeof obterPgrDocBaseVigenteParaImpressao === 'function')
+            ? obterPgrDocBaseVigenteParaImpressao()
+            : null;
+        const oficial = Boolean(estadoDocBase && estadoDocBase.confirmado_oficial && resGarantia.ok);
+        const docBaseObj = (estadoDocBase && estadoDocBase.doc) || {};
+
+        // Contagens consistentes com o escopo do caderno emitido (P1 3)
+        const totalCatalogo = (typeof allGheCatalogo !== 'undefined' && Array.isArray(allGheCatalogo)) ? allGheCatalogo.length : 0;
+        let totalGhesEscopo = 0;
+        if (caderno === 'completo') {
+            totalGhesEscopo = totalCatalogo;
+        } else if (caderno === 'inventario' || caderno === 'epis') {
+            totalGhesEscopo = gheFiltro ? 1 : totalCatalogo;
+        } else {
+            totalGhesEscopo = 0;
+        }
+
+        let gravacaoOk = false;
+        const temServicoEscrita = (typeof supabasePatch === 'function' || typeof supabaseInsert === 'function');
+        if (temServicoEscrita) {
+            try {
+                gravacaoOk = await registrarEmissaoHistoricoPgr({
+                    id_emissao: codigoRastreabilidade,
+                    caderno: caderno,
+                    ghe_filtro: gheFiltro,
+                    data_hora: new Date().toISOString(),
+                    codigo_documento: docBaseObj.codigo_documento || 'PGR-2026',
+                    revisao: docBaseObj.revisao_atual || '00',
+                    oficial: oficial,
+                    motivo_rascunho: oficial ? null : ((resGarantia.pendencias || []).join('; ') || 'Pendente de homologação'),
+                    total_ghes: totalGhesEscopo,
+                    total_ghes_catalogo: totalCatalogo,
+                    total_acoes_5w2h: (typeof allPlanoAcaoPgr !== 'undefined' && Array.isArray(allPlanoAcaoPgr)) ? allPlanoAcaoPgr.length : 0,
+                    total_laudos_aep: (typeof allErgonomiaAepPgr !== 'undefined' && Array.isArray(allErgonomiaAepPgr)) ? allErgonomiaAepPgr.length : 0,
+                    responsavel_tecnico: (docBaseObj.avaliadores && docBaseObj.avaliadores[0] && docBaseObj.avaliadores[0].nome) || 'Não informado'
+                });
+            } catch (histErr) {
+                console.warn('Falha ao registrar histórico de emissão:', histErr);
+                gravacaoOk = false;
+            }
+        } else {
+            console.warn('Serviço de escrita do Supabase indisponível no ambiente de emissão');
+            gravacaoOk = false;
+        }
+
+        resGarantia.registroBancoConfirmado = Boolean(gravacaoOk);
+        const htmlDoc = gerarHtmlDocumentoCompletoPgr(resGarantia, snapshotOpts);
+
+        const titulosCadernoMap = {
+            completo: 'Programa de Gerenciamento de Riscos (PGR - NR-01) — Consórcio Ramal do Agreste',
+            docbase: 'PGR Caderno 1 (Documento-Base & Diretrizes) — Consórcio Ramal do Agreste',
+            inventario: `PGR Caderno 2 (Inventário de Riscos${gheFiltro ? ' - GHE ' + gheFiltro : ''}) — Consórcio Ramal do Agreste`,
+            plano_acao: 'PGR Caderno 3 (Plano de Ação 5W2H - NR-01) — Consórcio Ramal do Agreste',
+            epis: `PGR Caderno 4 (Matriz de Proteções e EPIs${gheFiltro ? ' - GHE ' + gheFiltro : ''} - NR-06) — Consórcio Ramal do Agreste`,
+            anexos: 'PGR Caderno 5 (Anexos Analíticos AEP e COPSOQ II) — Consórcio Ramal do Agreste'
+        };
+        const titulo = titulosCadernoMap[caderno] || titulosCadernoMap.completo;
         abrirDocumentoHtmlParaImpressao(htmlDoc, titulo);
         return true;
     } catch (err) {
-        const msg = (err && err.message) ? err.message : 'Erro ao gerar Documento Completo do PGR para impressão.';
+        const msg = (err && err.message) ? err.message : 'Erro ao gerar Documento do PGR para impressão.';
         if (typeof alert === 'function') alert(msg);
         return false;
     } finally {
+        _emissaoPgrEmAndamento = false;
         if (btn) {
             btn.disabled = false;
             btn.textContent = txtOriginal || '📘 Emitir PGR Completo';
@@ -3396,22 +3770,105 @@ async function imprimirDocumentoCompletoPgr() {
     }
 }
 
-function gerarHtmlDocumentoCompletoPgr(statusFontes) {
+function abrirModalCadernosPgr() {
+    const modal = document.getElementById('modalCadernosPgr');
+    if (!modal) return;
+
+    const selGhe = document.getElementById('selectCadernoGheFiltro');
+    let catalogo = (typeof allGheCatalogo !== 'undefined' && Array.isArray(allGheCatalogo)) ? allGheCatalogo : [];
+    if (catalogo.length === 0) {
+        const selectTela = document.getElementById('matrizRiscoGheSelect');
+        if (selectTela && selectTela.options && selectTela.options.length > 1) {
+            catalogo = Array.from(selectTela.options)
+                .filter(opt => opt.value)
+                .map(opt => ({ id: opt.value, nome: opt.text.replace(/^[0-9A-Za-z_-]+\s*[—–-]\s*/, '') }));
+        }
+    }
+    const esc = (typeof escapeHTML === 'function') ? escapeHTML : (s => (s == null ? '' : String(s)));
+    if (selGhe && catalogo.length > 0) {
+        const valAtual = selGhe.value;
+        const opts = ['<option value="">-- Todos os GHEs (Geral) --</option>'];
+        const ghesOrdenados = catalogo.slice().sort((a, b) => String(a.id || '').localeCompare(String(b.id || ''), undefined, { numeric: true }));
+        ghesOrdenados.forEach(g => {
+            opts.push(`<option value="${esc(g.id)}">${esc(g.id)} — ${esc(g.nome || '')}</option>`);
+        });
+        selGhe.innerHTML = opts.join('');
+        if (valAtual) selGhe.value = valAtual;
+    }
+
+    const radioCompleto = document.querySelector('input[name="cadernoPgrTipo"][value="completo"]');
+    if (radioCompleto && !document.querySelector('input[name="cadernoPgrTipo"]:checked')) {
+        radioCompleto.checked = true;
+    }
+
+    const cadernoSel = (document.querySelector('input[name="cadernoPgrTipo"]:checked')?.value) || 'completo';
+    alternarVisibilidadeFiltroGheCaderno(cadernoSel);
+
+    modal.style.display = 'flex';
+}
+
+function fecharModalCadernosPgr() {
+    const modal = document.getElementById('modalCadernosPgr');
+    if (modal) modal.style.display = 'none';
+}
+
+function alternarVisibilidadeFiltroGheCaderno(caderno) {
+    const boxFiltro = document.getElementById('boxCadernoGheFiltro');
+    if (!boxFiltro) return;
+    if (caderno === 'inventario' || caderno === 'epis') {
+        boxFiltro.style.display = 'block';
+    } else {
+        boxFiltro.style.display = 'none';
+    }
+}
+
+async function executarEmissaoCadernoSelecionado() {
+    const radio = document.querySelector('input[name="cadernoPgrTipo"]:checked');
+    const caderno = radio ? radio.value : 'completo';
+    const selGhe = document.getElementById('selectCadernoGheFiltro');
+    const gheFiltro = selGhe ? selGhe.value : '';
+
+    fecharModalCadernosPgr();
+    await imprimirDocumentoCompletoPgr({
+        caderno: caderno,
+        ghe_filtro: (caderno === 'inventario' || caderno === 'epis') ? gheFiltro : null
+    });
+}
+
+if (typeof window !== 'undefined') {
+    window.abrirModalCadernosPgr = abrirModalCadernosPgr;
+    window.fecharModalCadernosPgr = fecharModalCadernosPgr;
+    window.alternarVisibilidadeFiltroGheCaderno = alternarVisibilidadeFiltroGheCaderno;
+    window.executarEmissaoCadernoSelecionado = executarEmissaoCadernoSelecionado;
+}
+
+function gerarHtmlDocumentoCompletoPgr(statusFontes, options) {
+    const catalogoRef = (typeof allGheCatalogo !== 'undefined' && Array.isArray(allGheCatalogo)) ? allGheCatalogo : [];
+    const snapshotOpts = normalizarValidarOpcoesEmissaoPgr(options, catalogoRef);
+    const caderno = snapshotOpts.caderno;
+    const gheFiltro = snapshotOpts.ghe_filtro;
+
     const fontesOk = !(statusFontes && statusFontes.ok === false);
     const estadoDocBase = (typeof obterPgrDocBaseVigenteParaImpressao === 'function')
         ? obterPgrDocBaseVigenteParaImpressao()
         : { confirmado_oficial: false, motivo_nao_oficial: 'Função de validação indisponível', doc: null };
 
-    // Só é oficial se o Documento-Base for oficial E todas as fontes essenciais estiverem sincronizadas sem erro
+    // Só é oficial se o Documento-Base for oficial E todas as fontes essenciais estiverem sincronizadas sem erro E o registro em banco for confirmado
     let oficial = Boolean(estadoDocBase && estadoDocBase.confirmado_oficial && estadoDocBase.doc);
     let motivoNaoOficial = estadoDocBase ? estadoDocBase.motivo_nao_oficial : 'Documento-Base não confirmado';
 
     if (oficial && !fontesOk) {
         oficial = false;
         motivoNaoOficial = `Fontes essenciais não sincronizadas (${(statusFontes.pendencias || []).join('; ')})`;
+    } else if (oficial && statusFontes && statusFontes.registroBancoConfirmado === false) {
+        oficial = false;
+        motivoNaoOficial = 'Registro da emissão no histórico normativo (NR-01 item 1.5.4.4.6) não confirmado no banco de dados';
     }
 
     const doc = oficial ? estadoDocBase.doc : normalizarPgrDocBase(obterPgrDocBaseDefaults());
+    const codigoRastreabilidade = (statusFontes && statusFontes.codigoRastreabilidade)
+        ? statusFontes.codigoRastreabilidade
+        : ('PGR-RAST-' + Date.now().toString(36).toUpperCase());
 
     const empRazao = (typeof EMPRESA_INFO !== 'undefined' && EMPRESA_INFO.razaoSocial) ? EMPRESA_INFO.razaoSocial : 'CONSORCIO OPERADOR RAMAL DO AGRESTE';
     const empCnpj = (typeof EMPRESA_INFO !== 'undefined' && EMPRESA_INFO.cnpj) ? EMPRESA_INFO.cnpj : '55.623.017/0001-97';
@@ -3428,44 +3885,71 @@ function gerarHtmlDocumentoCompletoPgr(statusFontes) {
     const avalPrincipal = (oficial && Array.isArray(doc.avaliadores) && doc.avaliadores[0]) ? doc.avaliadores[0] : null;
     const respPrincipal = (oficial && Array.isArray(doc.responsaveis_empresa) && doc.responsaveis_empresa[0]) ? doc.responsaveis_empresa[0] : null;
 
+    let tituloCaderno = doc.titulo_programa || 'PROGRAMA DE GERENCIAMENTO DE RISCOS (PGR)';
+    let subTituloCaderno = doc.enquadramento_normativo || 'NR-01 — GERENCIAMENTO DE RISCOS OCUPACIONAIS (GRO)';
+    let rotuloCaderno = 'DOCUMENTO OFICIAL COMPLETO';
+
+    if (caderno === 'docbase') {
+        rotuloCaderno = 'CADERNO 1 — DOCUMENTO-BASE & DIRETRIZES GERAIS';
+        subTituloCaderno = 'Diretrizes, Metodologia AIHA e Instrumentos de Medição (NR-01 GRO)';
+    } else if (caderno === 'inventario') {
+        const complementoGhe = gheFiltro ? ` — GHE ${gheFiltro}` : ' — TODOS OS GHES';
+        rotuloCaderno = `CADERNO 2 — INVENTÁRIO GERAL DE RISCOS OCUPACIONAIS${complementoGhe}`;
+        subTituloCaderno = 'Inventário de Perigos, Fatores de Risco e Classificação AIHA 5×5 (NR-01)';
+    } else if (caderno === 'plano_acao') {
+        rotuloCaderno = 'CADERNO 3 — PLANO DE AÇÃO 5W2H (NR-01)';
+        subTituloCaderno = 'Cronograma, Medidas Preventivas, Responsáveis e Prazos (NR-01 item 1.5.7.1)';
+    } else if (caderno === 'epis') {
+        rotuloCaderno = 'CADERNO 4 — MATRIZ DE EQUIPAMENTOS DE PROTEÇÃO (EPI / EPC — NR-06)';
+        subTituloCaderno = 'Equipamentos de Proteção Coletiva e Individual com Certificados de Aprovação (CA)';
+    } else if (caderno === 'anexos') {
+        rotuloCaderno = 'CADERNO 5 — ANEXOS ANALÍTICOS (AEP NR-17 & COPSOQ II)';
+        subTituloCaderno = 'Laudos Ergonômicos Preliminares e Censo Psicossocial Corporativo';
+    }
+
     const bannerRascunhoHtml = oficial ? '' : `
-        <div style="margin-bottom:15px; padding:12px 16px; border:2px dashed #b45309; background:#fef3c7; color:#92400e; font-size:10pt; font-weight:700; text-align:center;">
-            ⚠️ RASCUNHO TÉCNICO SEM VALOR OFICIAL — ${escapeHTML(motivoNaoOficial || 'Documento-Base não confirmado no banco de dados')}.<br>
-            Nenhuma revisão, vigência ou assinatura técnica é atribuída até que o Documento-Base do PGR seja preenchido e salvo no painel com status "pronto_emissao".
+        <div style="margin-bottom:8px; padding:6px 12px; border:1.5px dashed #b45309; background:#fef3c7; color:#92400e; font-size:8.5pt; font-weight:700; text-align:center; border-radius:4px;">
+            ⚠️ RASCUNHO TÉCNICO SEM VALOR OFICIAL — ${escapeHTML(motivoNaoOficial || 'Documento-Base não confirmado no banco de dados')}.
         </div>`;
 
-    // 1. Capa Institucional
+    // 1. Capa Institucional Padronizada (PGR Completo ou Caderno Modular)
     const secaoCapaHtml = `
         <div class="pagina-a4 capa-pgr">
-            <div style="text-align: center; margin-top: 40px; margin-bottom: 30px;">
-                <img src="${LOGO_COP_BASE64}" alt="Logo Consórcio" style="max-height: 85px; max-width: 280px;">
+            ${bannerRascunhoHtml}
+            <div style="text-align: center; margin-top: ${oficial ? '14px' : '4px'}; margin-bottom: 8px;">
+                <img src="${LOGO_COP_BASE64}" alt="Logo Consórcio" style="max-height: 55px; max-width: 220px;">
             </div>
-            <div style="text-align: center; border-top: 3px solid #1e3a8a; border-bottom: 3px solid #1e3a8a; padding: 30px 20px; margin: 40px 0;">
-                <div style="font-size: 24pt; font-weight: 900; color: #0f172a; letter-spacing: 0.5px;">${escapeHTML(doc.titulo_programa || 'PROGRAMA DE GERENCIAMENTO DE RISCOS (PGR)')}</div>
-                <div style="font-size: 13pt; font-weight: 700; color: #1e40af; margin-top: 10px;">${escapeHTML(doc.enquadramento_normativo || 'NR-01 — GERENCIAMENTO DE RISCOS OCUPACIONAIS (GRO)')}</div>
-                <div style="font-size: 11pt; color: #475569; margin-top: 6px;">Metodologia Quali-Quantitativa AIHA (American Industrial Hygiene Association)</div>
+            <div style="text-align: center; border-top: 2.5px solid #1e3a8a; border-bottom: 2.5px solid #1e3a8a; padding: 8px 12px; margin: 8px 0;">
+                <div style="font-size: 20pt; font-weight: 900; color: #0f172a; letter-spacing: 0.5px; line-height: 1.15;">${escapeHTML(tituloCaderno)}</div>
+                ${caderno !== 'completo' ? `<div style="font-size: 12pt; font-weight: 800; color: #1e3a8a; margin-top: 3px;">${escapeHTML(rotuloCaderno)}</div>` : ''}
+                <div style="font-size: 11pt; font-weight: 700; color: #1e40af; margin-top: 3px;">${escapeHTML(subTituloCaderno)}</div>
+                <div style="font-size: 9pt; color: #475569; margin-top: 2px;">Metodologia Quali-Quantitativa AIHA (American Industrial Hygiene Association)</div>
             </div>
 
-            <div style="margin: 30px auto; max-width: 600px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 20px; font-size: 10.5pt; line-height: 1.6;">
+            <div style="margin: 8px auto; max-width: 900px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 16px; font-size: 9pt; line-height: 1.45; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px;">
                 <div><b>Razão Social:</b> ${escapeHTML(empRazao)}</div>
+                <div><b>Segmento do Documento:</b> ${escapeHTML(rotuloCaderno)}</div>
                 <div><b>CNPJ:</b> ${escapeHTML(empCnpj)} &nbsp;|&nbsp; <b>Grau de Risco:</b> ${escapeHTML(empGr)}</div>
-                <div><b>CNAE Principal:</b> ${escapeHTML(empCnae)}</div>
                 <div><b>Código do Documento:</b> ${escapeHTML(codigoDoc)} &nbsp;|&nbsp; <b>Revisão:</b> ${escapeHTML(revAtual)}</div>
+                <div><b>CNAE Principal:</b> ${escapeHTML(empCnae)}</div>
                 <div><b>Vigência do Programa:</b> ${dataElabStr} a ${dataValStr}</div>
-                <div><b>Data de Emissão do Laudo:</b> ${dataEmissaoStr}</div>
                 <div><b>Local da Operação:</b> ${escapeHTML(localOperacao)}</div>
+                <div><b>Data de Emissão do Laudo:</b> ${dataEmissaoStr}</div>
+                <div style="grid-column: 1 / -1; margin-top: 4px; border-top: 1px dashed #cbd5e1; padding-top: 4px; font-size: 8pt; color: #475569;">
+                    <b>Rastreabilidade Normativa:</b> ${escapeHTML(codigoRastreabilidade)} &nbsp;|&nbsp; <b>Registro NR-01:</b> item 1.5.4.4.6 &nbsp;|&nbsp; <b>Segmento:</b> ${escapeHTML(caderno)}
+                </div>
             </div>
 
-            <div style="margin-top: 60px; text-align: center;">
-                <div style="display: flex; justify-content: space-around; gap: 30px; margin-top: 40px;">
-                    <div style="width: 250px; border-top: 1.5px solid #0f172a; padding-top: 6px; font-size: 9pt;">
+            <div style="margin-top: 16px; text-align: center;">
+                <div style="display: flex; justify-content: space-around; gap: 30px; margin-top: 10px;">
+                    <div style="width: 250px; border-top: 1.5px solid #0f172a; padding-top: 4px; font-size: 8.5pt; line-height: 1.25;">
                         <b>${escapeHTML((avalPrincipal && avalPrincipal.nome) || (oficial ? '' : 'RESPONSÁVEL TÉCNICO NÃO CONFIRMADO'))}</b><br>
                         ${escapeHTML((avalPrincipal && avalPrincipal.qualificacao) || '')}<br>
                         ${escapeHTML((avalPrincipal && avalPrincipal.registro_conselho) || '')}
                     </div>
-                    <div style="width: 250px; border-top: 1.5px solid #0f172a; padding-top: 6px; font-size: 9pt;">
+                    <div style="width: 250px; border-top: 1.5px solid #0f172a; padding-top: 4px; font-size: 8.5pt; line-height: 1.25;">
                         <b>${escapeHTML((respPrincipal && respPrincipal.nome) || (oficial ? '' : 'REPRESENTANTE LEGAL NÃO CONFIRMADO'))}</b><br>
-                        ${escapeHTML((respPrincipal && respPrincipal.cargo) || 'Representante Legal')}<br>
+                        ${escapeHTML((respPrincipal && respPrincipal.cargo) ? (String(respPrincipal.cargo).includes('Representante Legal') ? respPrincipal.cargo : (respPrincipal.cargo + ' / Representante Legal')) : 'Representante Legal')}<br>
                         ${escapeHTML(empRazao)}
                     </div>
                 </div>
@@ -3542,14 +4026,18 @@ function gerarHtmlDocumentoCompletoPgr(statusFontes) {
             </table>
         </div>`;
 
-    // 4. Visão Panorâmica Consolidada dos 27 GHEs
-    const ghes = Array.isArray(allGheCatalogo) ? allGheCatalogo.slice().sort((a,b) => String(a.id).localeCompare(String(b.id))) : [];
+    // 4. Visão Panorâmica da Matriz de Risco (GHE filtrado ou Geral)
+    const ghes = Array.isArray(allGheCatalogo) ? allGheCatalogo.slice().sort((a,b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true })) : [];
+    const ghesPanoramica = gheFiltro
+        ? ghes.filter(g => g && String(g.id).trim() === gheFiltro)
+        : ghes;
+
     let totalRiscosGeral = 0;
     let totalNaoClassificados = 0;
     const contagemNiveis = { 'Trivial': 0, 'Baixo': 0, 'Moderado': 0, 'Alto': 0, 'Muito Alto': 0 };
     const contagemAgentes = {};
 
-    ghes.forEach(g => {
+    ghesPanoramica.forEach(g => {
         (g.riscos || []).forEach(r => {
             totalRiscosGeral++;
             const rawGrav = (r.gravidade_label && String(r.gravidade_label).trim()) ? String(r.gravidade_label).trim() : '';
@@ -3563,15 +4051,23 @@ function gerarHtmlDocumentoCompletoPgr(statusFontes) {
         });
     });
 
+    const tituloPanoramica = gheFiltro
+        ? `3. VISÃO PANORÂMICA E MATRIZ DE RISCO — GHE ${escapeHTML(gheFiltro)}`
+        : '3. VISÃO PANORÂMICA E MATRIZ DE RISCO CONSOLIDADA (AIHA)';
+    const descPanoramica = gheFiltro
+        ? `Classificação dos riscos ocupacionais identificados no GHE ${escapeHTML(gheFiltro)}${ghesPanoramica[0]?.nome ? ' (' + escapeHTML(ghesPanoramica[0].nome) + ')' : ''} no âmbito da operação.`
+        : 'Classificação quantitativa de todos os riscos ocupacionais identificados no conjunto de setores da operação.';
+    const rotuloGhesBox = gheFiltro ? 'GHE Filtrado' : 'Grupos (GHEs)';
+
     const secaoPanoramicaHtml = `
         <div class="pagina-a4">
-            <h2 class="secao-titulo">3. VISÃO PANORÂMICA E MATRIZ DE RISCO CONSOLIDADA (AIHA)</h2>
-            <div class="secao-desc">Classificação quantitativa de todos os riscos ocupacionais identificados no conjunto de setores da operação.</div>
+            <h2 class="secao-titulo">${tituloPanoramica}</h2>
+            <div class="secao-desc">${descPanoramica}</div>
 
             <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
                 <div style="flex:1; min-width:90px; border:1px solid #cbd5e1; border-radius:6px; padding:10px; background:#f8fafc; text-align:center;">
-                    <div style="font-size:18pt; font-weight:800; color:#0f172a;">${ghes.length}</div>
-                    <div style="font-size:8pt; font-weight:700; color:#64748b;">Grupos (GHEs)</div>
+                    <div style="font-size:18pt; font-weight:800; color:#0f172a;">${ghesPanoramica.length}</div>
+                    <div style="font-size:8pt; font-weight:700; color:#64748b;">${rotuloGhesBox}</div>
                 </div>
                 <div style="flex:1; min-width:90px; border:1px solid #cbd5e1; border-radius:6px; padding:10px; background:#f8fafc; text-align:center;">
                     <div style="font-size:18pt; font-weight:800; color:#2563eb;">${totalRiscosGeral}</div>
@@ -3628,7 +4124,13 @@ function gerarHtmlDocumentoCompletoPgr(statusFontes) {
 
     // 5. Inventário Geral Detalhado por GHE (GHE 01 a 27)
     const efetivoConsultado = (typeof efetivoLoaded !== 'undefined') ? efetivoLoaded : (Array.isArray(allEfetivo) && allEfetivo.length > 0);
-    const secoesGhesHtml = ghes.map(g => {
+    const ghesFiltrados = (caderno === 'inventario' && gheFiltro)
+        ? ghes.filter(g => g && String(g.id).trim() === gheFiltro)
+        : ghes;
+
+    const secoesGhesHtml = ghesFiltrados.length === 0
+        ? `<div class="pagina-a4"><div style="padding: 30px; text-align:center; color:#64748b; font-size:11pt; border:1px dashed #cbd5e1; border-radius:8px;">Nenhum GHE localizado no catálogo com o identificador "${escapeHTML(gheFiltro)}".</div></div>`
+        : ghesFiltrados.map(g => {
         const cargos = Array.isArray(g.cargos) ? g.cargos : [];
         const riscosGhe = Array.isArray(g.riscos) ? g.riscos : [];
         const colabs = (typeof allEfetivo !== 'undefined' && Array.isArray(allEfetivo))
@@ -3748,52 +4250,366 @@ function gerarHtmlDocumentoCompletoPgr(statusFontes) {
         </div>`;
 
     // 7. Anexos Normativos (AEP NR-17 e Psicossocial NR-01)
+    const rawAepList = (typeof allErgonomiaAepPgr !== 'undefined' && Array.isArray(allErgonomiaAepPgr)) ? allErgonomiaAepPgr : [];
+    const aepList = rawAepList.filter(a => a && (a.status === 'concluida' || a.status === 'homologada' || !a.status));
+    const ergoPlanoList = (typeof allErgonomiaPlanoAcaoPgr !== 'undefined' && Array.isArray(allErgonomiaPlanoAcaoPgr)) ? allErgonomiaPlanoAcaoPgr : [];
+    const psicoList = (typeof allAvaliacoesPsicossociaisPgr !== 'undefined' && Array.isArray(allAvaliacoesPsicossociaisPgr)) ? allAvaliacoesPsicossociaisPgr : [];
+    const psicoCenso = psicoList.length > 0 ? psicoList[0] : null;
+    const escalasPsico = (typeof allAvaliacoesPsicossociaisEscalasPgr !== 'undefined' && Array.isArray(allAvaliacoesPsicossociaisEscalasPgr)) ? allAvaliacoesPsicossociaisEscalasPgr : [];
+
     const secaoAnexosHtml = `
         <div class="pagina-a4">
             <h2 class="secao-titulo">5. ANEXOS TÉCNICOS E COMPLEMENTARES</h2>
 
-            <h3 class="subsecao-titulo">5.1 Anexo I — Diretrizes da Avaliação Ergonômica Preliminar (AEP — NR-17)</h3>
-            <div class="texto-paragrafo">Conforme preconiza o subitem 17.3 da NR-17, o gerenciamento de riscos ergonômicos contempla a realização de Avaliações Ergonômicas Preliminares (AEP) para identificação de exigências biomecânicas e organizacionais. As diretrizes e análises ergonômicas específicas são integradas ao sistema via módulo de Ergonomia; na ausência de laudo conclusivo homologado ou registros consolidados vinculados, as atividades operacionais devem observar as diretrizes preventivas gerais e pausas ergonômicas definidas neste programa.</div>
-            <div style="margin-top:6px; margin-bottom:12px; padding:6px 10px; background:#f8fafc; border-left:3px solid #2563eb; font-size:8.5pt; color:#475569;">
-                <b>Nota Técnica de Integração:</b> Diretrizes normativas vigentes registradas. A consolidação analítica e a integração dos laudos ergonômicos específicos com o inventário analítico do PGR constituem a Etapa 4 do cronograma de desenvolvimento do sistema.
+            <h3 class="subsecao-titulo">5.1 Anexo I — Avaliações Ergonômicas Preliminares (AEP — NR-17) e Plano de Ação Ergonômico</h3>
+            <div class="texto-paragrafo">Conforme preconiza o subitem 17.3 da NR-17 (Portaria MTP nº 423/2021), a organização realizou Avaliações Ergonômicas Preliminares (AEP) visando a identificação precoce de perigos e sobrecargas biomecânicas, cognitivas e organizacionais nas frentes de trabalho. Abaixo são discriminados os laudos técnicos de AEP homologados pela Engenharia de Segurança e as respectivas ações de melhoria ergonômica planejadas e em execução.</div>
+
+            <div style="font-weight:700; color:#1e40af; margin-top:8px; margin-bottom:4px; font-size:9pt;">Quadro Consolidado de Laudos de AEP Homologados (${aepList.length} laudos registrados)</div>
+            <table class="tabela-pgr">
+                <thead>
+                    <tr>
+                        <th style="width: 10%;">Código / Data</th>
+                        <th style="width: 20%;">Posto de Trabalho / Setor</th>
+                        <th style="width: 14%;">GHE / Função</th>
+                        <th style="width: 6%; text-align:center;">Efetivo</th>
+                        <th style="width: 18%;">Fatores de Risco Avaliados</th>
+                        <th style="width: 8%; text-align:center;">Nível Risco</th>
+                        <th style="width: 6%; text-align:center;">AET?</th>
+                        <th style="width: 18%;">Parecer Conclusivo Técnico</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${aepList.length === 0 ? '<tr><td colspan="8" style="text-align:center; padding:12px; color:#64748b;">Nenhuma Avaliação Ergonômica Preliminar (AEP) com laudo concluído no momento. As atividades devem observar as diretrizes preventivas gerais e pausas ergonômicas da NR-17.</td></tr>' : aepList.map(a => {
+                        const nivelUpper = String(a.nivel_risco_global || '').toUpperCase();
+                        let badgeColor = '#64748b';
+                        let badgeBg = '#f1f5f9';
+                        if (nivelUpper === 'ALTO') { badgeBg = '#fee2e2'; badgeColor = '#991b1b'; }
+                        else if (nivelUpper === 'MEDIO' || nivelUpper === 'MÉDIO') { badgeBg = '#fef3c7'; badgeColor = '#92400e'; }
+                        else if (nivelUpper === 'BAIXO') { badgeBg = '#dcfce7'; badgeColor = '#166534'; }
+
+                        const fatoresTxt = [
+                            a.obs_levantamento_carga ? `• <b>Cargas:</b> ${escapeHTML(a.obs_levantamento_carga)}` : '',
+                            a.obs_posturas_repetitividade ? `• <b>Posturas:</b> ${escapeHTML(a.obs_posturas_repetitividade)}` : '',
+                            a.obs_mobiliario_equipamentos ? `• <b>Mobiliário:</b> ${escapeHTML(a.obs_mobiliario_equipamentos)}` : '',
+                            a.obs_condicoes_ambientais ? `• <b>Ambiente:</b> ${escapeHTML(a.obs_condicoes_ambientais)}` : '',
+                            a.obs_organizacao_trabalho ? `• <b>Organização:</b> ${escapeHTML(a.obs_organizacao_trabalho)}` : ''
+                        ].filter(Boolean).join('<br>');
+
+                        const aetTxt = a.necessidade_aet === true ? 'SIM' : (a.necessidade_aet === false ? 'NÃO' : 'Pendente');
+                        const aetCor = a.necessidade_aet === true ? '#dc2626' : (a.necessidade_aet === false ? '#16a34a' : '#d97706');
+                        const numTrabTxt = (a.num_trabalhadores != null && a.num_trabalhadores !== '') ? String(a.num_trabalhadores) : 'Não informado';
+                        const avaliadorNomeTxt = a.avaliador_nome ? a.avaliador_nome : 'Não informado';
+
+                        return `
+                        <tr>
+                            <td><b>${escapeHTML(a.codigo || a.id)}</b><br><small style="color:#64748b;">${escapeHTML(a.data_avaliacao ? formatSimpleDate(a.data_avaliacao) : '—')}</small></td>
+                            <td><b>${escapeHTML(a.posto_trabalho || '—')}</b><br><small style="color:#64748b;">${escapeHTML(a.setor || '—')}</small></td>
+                            <td>${escapeHTML(a.ghe || '—')}<br><small style="color:#64748b;">${escapeHTML(a.funcao_avaliada || '—')}</small></td>
+                            <td style="text-align:center; font-weight:700;">${escapeHTML(numTrabTxt)}</td>
+                            <td style="font-size:8pt; line-height:1.3;">${fatoresTxt || 'Avaliação qualitativa preliminar de rotina.'}</td>
+                            <td style="text-align:center;"><span style="display:inline-block; padding:2px 6px; border-radius:4px; font-weight:700; font-size:7.5pt; background:${badgeBg}; color:${badgeColor};">${escapeHTML(a.nivel_risco_global || '—')}</span></td>
+                            <td style="text-align:center; font-weight:700; color:${aetCor};">${escapeHTML(aetTxt)}</td>
+                            <td style="font-size:8pt; line-height:1.3;">${escapeHTML(a.parecer_conclusivo || 'Conclusão registrada pelo avaliador.')}<br><small style="color:#64748b;">Avaliador: ${escapeHTML(avaliadorNomeTxt)}</small></td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+
+            ${ergoPlanoList.length > 0 ? `
+            <div style="font-weight:700; color:#1e40af; margin-top:10px; margin-bottom:4px; font-size:9pt;">Plano de Ações Ergonômicas Específicas (NR-17 — ${ergoPlanoList.length} ações cadastradas)</div>
+            <table class="tabela-pgr">
+                <thead>
+                    <tr>
+                        <th style="width: 25%;">Posto / Vínculo AEP</th>
+                        <th style="width: 32%;">Ação de Melhoria Ergonômica</th>
+                        <th style="width: 11%;">Tipo</th>
+                        <th style="width: 14%;">Responsável</th>
+                        <th style="width: 9%; text-align:center;">Prazo</th>
+                        <th style="width: 9%; text-align:center;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${ergoPlanoList.map(ep => `
+                        <tr>
+                            <td><b>${escapeHTML(ep.posto_trabalho || 'Geral')}</b><br><small style="color:#64748b;">Laudo AEP: ${escapeHTML(ep.aep_id ? String(ep.aep_id) : (ep.aep_codigo || 'Geral / Não vinculado'))} &nbsp;|&nbsp; ${escapeHTML(ep.fator_ergonomico || 'Biomecânico')}</small></td>
+                            <td>${escapeHTML(ep.acao_proposta || '—')}</td>
+                            <td style="text-transform:capitalize;">${escapeHTML(ep.tipo_medida || '—')}</td>
+                            <td>${escapeHTML(ep.responsavel || '—')}</td>
+                            <td style="text-align:center;">${escapeHTML(ep.prazo ? formatSimpleDate(ep.prazo) : '—')}</td>
+                            <td style="text-align:center; font-weight:700;">${escapeHTML(ep.status || 'Pendente')}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>` : ''}
+
+            <h3 class="subsecao-titulo" style="margin-top:18px;">5.2 Anexo II — Gestão de Riscos Psicossociais no Trabalho (NR-01 GRO / Metodologia COPSOQ II)</h3>
+            <div class="texto-paragrafo">Em cumprimento aos itens 1.5.3.1 e 1.5.4.1 da NR-01 (Portaria MTP nº 6.730/2020), o Consórcio Operador do Ramal do Agreste integra a gestão de fatores psicossociais relacionados ao trabalho. A metodologia adota parâmetros conceituais do Copenhagen Psychosocial Questionnaire (COPSOQ II), mapeando exigências emocionais, organização do trabalho, liderança e suporte social. Para salvaguardar o sigilo ético e impossibilitar a reidentificação de trabalhadores, não são emitidos diagnósticos nem escores individualizados ou por grupos com efetivo reduzido; eventuais diagnósticos agregados da empresa dependem de homologação de pesquisa censitária específica.</div>
+
+            <div style="margin-top:6px; margin-bottom:10px; padding:6px 10px; background:#eff6ff; border-left:3px solid #2563eb; font-size:8.5pt; color:#1e3a8a;">
+                <b>Salvaguarda Ética e Anonimato Absoluto:</b> Conforme preceitos éticos e diretrizes normativas da NR-01, as avaliações psicossociais são apuradas em nível agregado corporativo, vedando a emissão de escores individuais ou segmentações por frentes menores com potencial de quebra de sigilo.
             </div>
 
-            <h3 class="subsecao-titulo">5.2 Anexo II — Diretrizes de Gestão de Fatores Psicossociais (NR-01 / COPSOQ II)</h3>
-            <div class="texto-paragrafo">A abordagem de fatores psicossociais relacionados ao trabalho estrutura-se conforme as diretrizes da NR-01 (GRO) e referências conceituais como o COPSOQ II. Esta seção consolida as diretrizes institucionais de prevenção, comunicação assertiva, clareza funcional e combate ao assédio e estresse ocupacional. Para salvaguardar integralmente o sigilo ético e impossibilitar a reidentificação de trabalhadores, não são emitidos diagnósticos nem escores individualizados ou por grupos com efetivo reduzido; eventuais diagnósticos agregados da empresa dependem de homologação de pesquisa censitária específica.</div>
-            <div style="margin-top:6px; margin-bottom:12px; padding:6px 10px; background:#f8fafc; border-left:3px solid #2563eb; font-size:8.5pt; color:#475569;">
-                <b>Nota Técnica de Integração:</b> Diretrizes normativas e salvaguardas de sigilo ético registradas. Os resultados diagnósticos censitários agregados da empresa serão consolidados e vinculados após aplicação e homologação de instrumento psicossocial específico (Etapa 4).
+            ${psicoCenso ? `
+            <div style="display:flex; gap:12px; margin-bottom:10px;">
+                <div style="flex:1; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:8px 12px; font-size:8.5pt;">
+                    <b>Período Censitário:</b> ${formatSimpleDate(psicoCenso.periodo_inicio)} a ${formatSimpleDate(psicoCenso.periodo_fim)} &nbsp;|&nbsp;
+                    <b>Taxa de Participação Efetiva:</b> <span style="font-weight:700; color:#16a34a;">${escapeHTML(String(psicoCenso.taxa_participacao != null ? psicoCenso.taxa_participacao : '—'))}%</span> (Representatividade censitária)<br>
+                    <b>População Abrangida:</b> Efetivo total do canteiro de obras e setores administrativos &nbsp;|&nbsp; <b>Base de Escalas:</b> avaliacoes_psicossociais_escalas (${escalasPsico.length} dimensões apuradas)
+                </div>
             </div>
 
-            <div style="margin-top: 60px; border-top: 2px solid #0f172a; padding-top: 15px; text-align: center;">
-                <div style="font-weight: 800; font-size: 11pt; color: #0f172a;">TERMO DE ENCERRAMENTO E VALIDAÇÃO TÉCNICA DO PGR</div>
-                <div style="font-size: 9pt; color: #475569; margin-top: 4px;">O presente documento consolida o Programa de Gerenciamento de Riscos (PGR) em atendimento às diretrizes da Norma Regulamentadora nº 01 (NR-01 - Portaria MTP nº 6.730/2020), registrando os fatores de risco identificados, critérios avaliativos e diretrizes preventivas para as frentes e setores operacionais do Consórcio Ramal do Agreste.</div>
+            ${psicoCenso.resumo_analise ? `
+            <div style="background:#fff; border:1px solid #cbd5e1; border-radius:6px; padding:8px 12px; margin-bottom:10px;">
+                <b style="color:#0f172a; font-size:9pt;">Síntese do Diagnóstico Censitário e Parecer Psicossocial:</b>
+                <div style="font-size:8.5pt; color:#334155; margin-top:4px; line-height:1.4;">
+                    ${escapeHTML(psicoCenso.resumo_analise).replace(/\n/g, '<br>')}
+                </div>
+            </div>` : ''}
 
-                <div style="display:flex; justify-content:space-around; margin-top: 50px;">
-                    <div style="width: 250px; border-top: 1.5px solid #0f172a; padding-top: 6px; font-size: 9pt;">
+            ${escalasPsico.length > 0 ? `
+            <div style="font-weight:700; color:#1e40af; margin-top:8px; margin-bottom:4px; font-size:9pt;">Quadro Consolidado de Dimensões Psicossociais COPSOQ II (${escalasPsico.length} escalas apuradas)</div>
+            <table class="tabela-pgr">
+                <thead>
+                    <tr>
+                        <th style="width: 40%;">Dimensão / Escala COPSOQ II</th>
+                        <th style="width: 20%; text-align:center;">Favorável (%)</th>
+                        <th style="width: 20%; text-align:center;">Intermediário (%)</th>
+                        <th style="width: 20%; text-align:center;">Risco (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${escalasPsico.map(esc => {
+                        const temFav = esc.pct_favoravel != null && !isNaN(Number(esc.pct_favoravel));
+                        const temInter = esc.pct_intermediario != null && !isNaN(Number(esc.pct_intermediario));
+                        const temRisco = esc.pct_risco != null && !isNaN(Number(esc.pct_risco));
+
+                        const favNum = temFav ? Number(esc.pct_favoravel) : null;
+                        const interNum = temInter ? Number(esc.pct_intermediario) : null;
+                        const riscoNum = temRisco ? Number(esc.pct_risco) : null;
+
+                        const favTxt = temFav ? `${favNum.toFixed(1)}%` : '—';
+                        const interTxt = temInter ? `${interNum.toFixed(1)}%` : '—';
+                        const riscoTxt = temRisco ? `${riscoNum.toFixed(1)}%` : '—';
+                        const corRisco = (temRisco && riscoNum >= 25) ? '#dc2626' : ((temRisco && riscoNum >= 10) ? '#d97706' : '#16a34a');
+
+                        return `
+                        <tr>
+                            <td><b>${escapeHTML(esc.escala || '—')}</b></td>
+                            <td style="text-align:center; color:#16a34a; font-weight:700;">${favTxt}</td>
+                            <td style="text-align:center; color:#d97706;">${interTxt}</td>
+                            <td style="text-align:center; color:${corRisco}; font-weight:700;">${riscoTxt}</td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>` : `
+            <div style="padding:8px 12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; font-size:8.5pt; color:#64748b; text-align:center; margin-bottom:10px;">
+                Escalas analíticas individuais pendentes de detalhamento nesta rodada censitária.
+            </div>`}
+
+            <div style="background:#fff; border:1px solid #cbd5e1; border-radius:6px; padding:8px 12px; margin-bottom:10px;">
+                <b style="color:#0f172a; font-size:9pt;">Plano Preventivo Psicossocial Integrado ao PGR (Diretrizes Gerais Corporativas NR-01):</b>
+                <div style="font-size:8pt; color:#64748b; margin-top:2px; margin-bottom:4px;">Diretrizes organizacionais complementares aplicáveis permanentemente ao canteiro de obras, independentemente dos resultados censitários específicos de cada rodada:</div>
+                <div style="font-size:8.5pt; color:#334155; margin-top:4px; line-height:1.4;">
+                    <b>1. Comunicação Transparente de Desmobilização:</b> Reuniões periódicas sobre cronogramas da obra e oportunidades de remanejamento para outras frentes do consórcio, reduzindo a ansiedade sobre estabilidade funcional.<br>
+                    <b>2. Gestão Participativa em SST:</b> Espaço estruturado nos Diálogos Diários de Segurança (DDS) para sugestões operacionais de campo, fortalecendo a influência dos trabalhadores.<br>
+                    <b>3. Pausas Estratégicas para Funções Críticas:</b> Organização de revezamento de tarefas mentais complexas e monitoramento do bem-estar e qualidade do sono pelo SESMT.
+                </div>
+            </div>
+            ` : `
+            <div style="padding:10px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; font-size:8.5pt; color:#64748b; text-align:center;">
+                Diagnóstico censitário psicossocial pendente de homologação na base de dados. Aplicam-se as diretrizes de escuta ativa, DDS participativo e combate ao assédio da NR-01.
+            </div>`}
+        </div>`;
+
+    // 8. Matriz de Equipamentos de Proteção Coletiva e Individual (EPI / EPC — NR-06)
+    const ghesEpis = (gheFiltro)
+        ? ghes.filter(g => g && String(g.id).trim() === gheFiltro)
+        : ghes;
+
+    const secaoEpisHtml = `
+        <div class="pagina-a4">
+            <h2 class="secao-titulo">${caderno === 'epis' ? 'MATRIZ DE EQUIPAMENTOS DE PROTEÇÃO COLETIVA E INDIVIDUAL (EPI / EPC — NR-06)' : '4.1 MATRIZ DE EQUIPAMENTOS DE PROTEÇÃO (EPI / EPC — NR-06)'}</h2>
+            <div class="secao-desc">Consolidação de medidas de proteção coletiva (EPC) e equipamentos de proteção individual (EPI com Certificado de Aprovação - CA) aplicáveis aos Grupos Homogêneos de Exposição conforme diretrizes da NR-06 e NR-01.</div>
+
+            <table class="tabela-pgr">
+                <thead>
+                    <tr>
+                        <th style="width: 15%;">GHE / Setor</th>
+                        <th style="width: 25%;">Funções / Cargos Abrangidos</th>
+                        <th style="width: 28%;">Equipamentos de Proteção Coletiva (EPC)</th>
+                        <th style="width: 32%;">Equipamentos de Proteção Individual (EPI e CA)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${ghesEpis.length === 0 ? '<tr><td colspan="4" style="text-align:center; padding:12px; color:#64748b;">Nenhum GHE localizado para emissão da matriz de EPIs.</td></tr>' : ghesEpis.map(g => {
+                        const riscosGhe = Array.isArray(g.riscos) ? g.riscos : [];
+                        const cargosGhe = Array.isArray(g.cargos) ? g.cargos : [];
+                        const cargosTxt = cargosGhe.map(c => c.funcao || c.cargo).filter(Boolean).join(', ') || 'Cargos operacionais';
+
+                        const epcsMap = new Map();
+                        const episMap = new Map();
+
+                        riscosGhe.forEach(r => {
+                            if (!r) return;
+                            if (Array.isArray(r.epcs_lista) && r.epcs_lista.length > 0) {
+                                r.epcs_lista.forEach(epc => {
+                                    if (epc && (epc.descricao || epc.nome || epc.tipo)) {
+                                        const desc = (epc.descricao || epc.nome || epc.tipo || 'EPC').trim();
+                                        const key = desc.toLowerCase();
+                                        if (!epcsMap.has(key)) {
+                                            epcsMap.set(key, { desc, extra: epc.tipo || epc.status || '' });
+                                        }
+                                    }
+                                });
+                            }
+                            if (r.epcs_recomendados && String(r.epcs_recomendados).trim()) {
+                                const desc = String(r.epcs_recomendados).trim();
+                                const key = desc.toLowerCase();
+                                if (!epcsMap.has(key)) epcsMap.set(key, { desc, extra: r.epc_status || '' });
+                            }
+
+                            if (Array.isArray(r.epis_lista) && r.epis_lista.length > 0) {
+                                r.epis_lista.forEach(epi => {
+                                    if (epi && (epi.descricao || epi.equipamento || epi.nome || epi.ca)) {
+                                        const desc = (epi.descricao || epi.equipamento || epi.nome || 'EPI').trim();
+                                        const caStr = (epi.ca && String(epi.ca).trim()) ? String(epi.ca).trim() : null;
+                                        const key = `${desc.toLowerCase()}::${caStr || ''}`;
+                                        if (!episMap.has(key)) {
+                                            episMap.set(key, {
+                                                desc,
+                                                ca: caStr,
+                                                periodicidade: epi.periodicidade || ''
+                                            });
+                                        }
+                                    }
+                                });
+                            }
+                            if ((r.epis_recomendados && String(r.epis_recomendados).trim()) || (r.epi_ca && String(r.epi_ca).trim())) {
+                                const desc = (r.epis_recomendados && String(r.epis_recomendados).trim()) ? String(r.epis_recomendados).trim() : 'EPI recomendado';
+                                const caStr = (r.epi_ca && String(r.epi_ca).trim()) ? String(r.epi_ca).trim() : null;
+                                const key = `${desc.toLowerCase()}::${caStr || ''}`;
+                                if (!episMap.has(key)) {
+                                    episMap.set(key, { desc, ca: caStr, periodicidade: '' });
+                                }
+                            }
+                        });
+
+                        const epcsList = Array.from(epcsMap.values());
+                        const episList = Array.from(episMap.values());
+
+                        return `
+                        <tr>
+                            <td>
+                                <b>${escapeHTML(g.id)}</b><br>
+                                <span style="font-size:8pt; color:#475569;">${escapeHTML(g.nome || '')}</span>
+                            </td>
+                            <td>
+                                <div style="font-size:8.5pt; color:#334155;">${escapeHTML(cargosTxt)}</div>
+                            </td>
+                            <td>
+                                ${epcsList.length === 0 ? '<span style="color:#94a3b8; font-style:italic;">Medidas administrativas / sem EPC específico</span>' : epcsList.map(e => `• <b>${escapeHTML(e.desc)}</b>${e.extra ? ` <small style="color:#64748b;">(${escapeHTML(e.extra)})</small>` : ''}`).join('<br>')}
+                            </td>
+                            <td>
+                                ${episList.length === 0 ? '<span style="color:#94a3b8; font-style:italic;">Sem indicação de EPI específico</span>' : episList.map(e => `• <b>${escapeHTML(e.desc)}</b> &nbsp; <span style="color:#1e40af; font-weight:700;">[CA ${escapeHTML(e.ca || 'Não informado')}]</span>${e.periodicidade ? ` <small style="color:#64748b;">(${escapeHTML(e.periodicidade)})</small>` : ''}`).join('<br>')}
+                            </td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>`;
+
+    // 9. Termo de Encerramento e Assinaturas Técnicas Padronizado
+    const secaoTermoEncerramentoHtml = `
+        <div class="pagina-a4">
+            <div style="margin-top: 20px; border-top: 2px solid #0f172a; padding-top: 16px; text-align: center;">
+                <div style="font-weight: 800; font-size: 12pt; color: #0f172a;">TERMO DE ENCERRAMENTO E VALIDAÇÃO TÉCNICA DO PGR</div>
+                <div style="font-size: 9pt; color: #475569; margin-top: 6px; line-height: 1.5; max-width: 850px; margin-left: auto; margin-right: auto;">
+                    O presente documento consolida ${caderno === 'completo' ? 'o Programa de Gerenciamento de Riscos (PGR integral)' : ('o ' + escapeHTML(rotuloCaderno))} em estrito atendimento às diretrizes da Norma Regulamentadora nº 01 (NR-01 - Portaria MTP nº 6.730/2020), registrando os fatores de risco identificados, critérios avaliativos e diretrizes preventivas para as frentes e setores operacionais do Consórcio Ramal do Agreste.
+                </div>
+
+                <div style="display:flex; justify-content:space-around; margin-top: 35px;">
+                    <div style="width: 280px; border-top: 1.5px solid #0f172a; padding-top: 6px; font-size: 8.5pt; line-height: 1.25;">
                         <b>${escapeHTML((avalPrincipal && avalPrincipal.nome) || (oficial ? '' : 'RESPONSÁVEL TÉCNICO NÃO CONFIRMADO'))}</b><br>
                         ${escapeHTML((avalPrincipal && avalPrincipal.qualificacao) || '')}<br>
                         ${escapeHTML((avalPrincipal && avalPrincipal.registro_conselho) || '')}
                     </div>
-                    <div style="width: 250px; border-top: 1.5px solid #0f172a; padding-top: 6px; font-size: 9pt;">
+                    <div style="width: 280px; border-top: 1.5px solid #0f172a; padding-top: 6px; font-size: 8.5pt; line-height: 1.25;">
                         <b>${escapeHTML((respPrincipal && respPrincipal.nome) || (oficial ? '' : 'REPRESENTANTE LEGAL NÃO CONFIRMADO'))}</b><br>
-                        ${escapeHTML((respPrincipal && respPrincipal.cargo) || 'Representante Legal')}<br>
+                        ${escapeHTML((respPrincipal && respPrincipal.cargo) ? (String(respPrincipal.cargo).includes('Representante Legal') ? respPrincipal.cargo : (respPrincipal.cargo + ' / Representante Legal')) : 'Representante Legal')}<br>
                         ${escapeHTML(empRazao)}
                     </div>
                 </div>
+
+                <div style="margin-top: 25px; font-size: 8pt; color: #64748b; text-align: center;">
+                    Rastreabilidade Normativa: <b>${escapeHTML(codigoRastreabilidade)}</b> &nbsp;|&nbsp; ${(statusFontes && statusFontes.registroBancoConfirmado) ? 'Registro em banco conforme NR-01 subitem 1.5.4.4.6' : 'Emissão local (registro em banco pendente de confirmação)'} &nbsp;|&nbsp; Emissão via App SST
+                </div>
             </div>
         </div>`;
+
+    let corpoDocumentoHtml = '';
+    if (caderno === 'docbase') {
+        corpoDocumentoHtml = `
+            ${secaoCapaHtml}
+            ${secaoHistoricoHtml}
+            ${secaoDocBaseHtml}
+            ${secaoTermoEncerramentoHtml}`;
+    } else if (caderno === 'inventario') {
+        corpoDocumentoHtml = `
+            ${secaoCapaHtml}
+            ${secaoPanoramicaHtml}
+            ${secoesGhesHtml}
+            ${secaoTermoEncerramentoHtml}`;
+    } else if (caderno === 'plano_acao') {
+        corpoDocumentoHtml = `
+            ${secaoCapaHtml}
+            ${secaoPlanoAcaoHtml}
+            ${secaoTermoEncerramentoHtml}`;
+    } else if (caderno === 'epis') {
+        corpoDocumentoHtml = `
+            ${secaoCapaHtml}
+            ${secaoEpisHtml}
+            ${secaoTermoEncerramentoHtml}`;
+    } else if (caderno === 'anexos') {
+        corpoDocumentoHtml = `
+            ${secaoCapaHtml}
+            ${secaoAnexosHtml}
+            ${secaoTermoEncerramentoHtml}`;
+    } else {
+        // 'completo' (default)
+        corpoDocumentoHtml = `
+            ${secaoCapaHtml}
+            ${secaoHistoricoHtml}
+            ${secaoDocBaseHtml}
+            ${secaoPanoramicaHtml}
+            ${secoesGhesHtml}
+            ${secaoPlanoAcaoHtml}
+            ${secaoEpisHtml}
+            ${secaoAnexosHtml}
+            ${secaoTermoEncerramentoHtml}`;
+    }
+
+    const titulosJanelaMap = {
+        completo: `PGR Oficial Completo — ${empRazao} (Rev. ${revAtual})`,
+        docbase: `PGR Caderno 1 (Documento-Base) — ${empRazao}`,
+        inventario: `PGR Caderno 2 (Inventário de Riscos${gheFiltro ? ' - GHE ' + gheFiltro : ''}) — ${empRazao}`,
+        plano_acao: `PGR Caderno 3 (Plano de Ação 5W2H) — ${empRazao}`,
+        epis: `PGR Caderno 4 (Matriz de EPIs/CAs) — ${empRazao}`,
+        anexos: `PGR Caderno 5 (Anexos Analíticos) — ${empRazao}`
+    };
+    const tituloJanela = titulosJanelaMap[caderno] || titulosJanelaMap.completo;
 
     return `
     <!DOCTYPE html>
     <html lang="pt-BR">
     <head>
         <meta charset="UTF-8">
-        <title>PGR Oficial Completo — ${escapeHTML(empRazao)} (Rev. ${escapeHTML(revAtual)})</title>
+        <title>${escapeHTML(tituloJanela)}</title>
         <style>
-            @page { size: A4 landscape; margin: 10mm; }
-            body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 9.5pt; color: #1e293b; margin: 0; padding: 10px; background: #fff; }
-            .pagina-a4 { page-break-after: always; padding: 10px 0; }
-            .pagina-a4:last-child { page-break-after: avoid; }
+            @page { size: A4 landscape; margin: 8mm 10mm; }
+            body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 9.5pt; color: #1e293b; margin: 0; padding: 0; background: #fff; }
+            .pagina-a4 { page-break-after: always; break-after: page; padding: 4px 0; box-sizing: border-box; }
+            .pagina-a4:last-child { page-break-after: avoid; break-after: avoid; }
+            .capa-pgr { page-break-inside: avoid; break-inside: avoid; box-sizing: border-box; }
             .secao-titulo { font-size: 13pt; font-weight: 800; color: #0f172a; border-bottom: 2px solid #1e3a8a; padding-bottom: 4px; margin-top: 0; margin-bottom: 4px; page-break-after: avoid; break-after: avoid; }
             .secao-desc { font-size: 9pt; color: #64748b; margin-bottom: 12px; page-break-after: avoid; break-after: avoid; }
             .subsecao-titulo { font-size: 10.5pt; font-weight: 700; color: #1e40af; margin-top: 12px; margin-bottom: 4px; page-break-after: avoid; break-after: avoid; }
@@ -3808,21 +4624,16 @@ function gerarHtmlDocumentoCompletoPgr(statusFontes) {
             .badge-grav { padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 8pt; display: inline-block; white-space: nowrap; }
             @media print {
                 body { padding: 0; }
-                .pagina-a4 { page-break-after: always; }
+                .pagina-a4 { page-break-after: always; break-after: page; }
+                .pagina-a4:last-child { page-break-after: avoid; break-after: avoid; }
+                .capa-pgr { page-break-inside: avoid; break-inside: avoid; }
                 .tabela-pgr tr { page-break-inside: avoid; break-inside: avoid; }
                 .cabecalho-ghe { page-break-inside: avoid; break-inside: avoid; page-break-after: avoid; break-after: avoid; }
             }
         </style>
     </head>
     <body>
-        ${bannerRascunhoHtml}
-        ${secaoCapaHtml}
-        ${secaoHistoricoHtml}
-        ${secaoDocBaseHtml}
-        ${secaoPanoramicaHtml}
-        ${secoesGhesHtml}
-        ${secaoPlanoAcaoHtml}
-        ${secaoAnexosHtml}
+        ${corpoDocumentoHtml}
     </body>
     </html>`;
 }

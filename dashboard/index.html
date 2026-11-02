@@ -4760,6 +4760,7 @@
                         <button id="btnRecalcularAihaTop" class="db-apply-btn" onclick="recalcularClassificacaoRiscoGhe()" title="Recalcular todos os riscos salvos com base na tabela 5x5 oficial da AIHA" style="font-size: 12px; padding: 7px 12px;">🔄 Recalcular AIHA</button>
                         <button id="btnImprimirInventarioTop" class="db-clear-btn" onclick="imprimirInventarioRiscosGheAtual()" title="Imprimir Inventário de Riscos do PGR" style="font-size: 12px; padding: 7px 12px;">🖨️ Imprimir Inventário PGR</button>
                         <button id="btnImprimirPgrCompletoTop" class="db-apply-btn" onclick="imprimirDocumentoCompletoPgr()" title="Emitir Documento Oficial Completo do PGR (NR-01) com todas as seções, GHEs e anexos" style="font-size: 12px; padding: 7px 14px; background: linear-gradient(135deg, #1e40af, #2563eb); border-color: #1d4ed8; color: #fff; font-weight: 700;">📘 Emitir PGR Completo</button>
+                        <button id="btnCadernosPgrModalTop" class="db-apply-btn" onclick="abrirModalCadernosPgr()" title="Emitir Cadernos Modulares Segmentados do PGR (Documento-Base, Inventário, Plano de Ação, EPIs ou Anexos)" style="font-size: 12px; padding: 7px 12px; background: #0f766e; border-color: #0d9488; color: #fff; font-weight: 700;">📑 Cadernos do PGR</button>
                     </div>
                 </div>
                 <div id="statusRecalcularRiscoGhe" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px; display: none;"></div>
@@ -5313,7 +5314,8 @@
                         </div>
                     </div>
                 </div>
-            </section>
+
+                </section>
 
             <!-- Página: Acidentabilidade (NR-01 / NBR 14280) -->
             <section class="db-page" id="page-acidentes">
@@ -10116,7 +10118,7 @@
     <script src="dashboard.js?v=250"></script>
     <script src="modules/treinamentos_ddsma.js?v=232"></script>
     <script src="modules/efetivo_ferias.js?v=232"></script>
-    <script src="modules/ghe_os.js?v=265"></script>
+    <script src="modules/ghe_os.js?v=268"></script>
     <script src="modules/relatorio_sms_nc.js?v=232"></script>
     <script src="modules/saude_psicossocial.js?v=232"></script>
     <script src="modules/epi_estoque.js?v=232"></script>
@@ -11886,6 +11888,93 @@ function filterMatrizEpi(q) {
                     💾 Salvar Regras
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Emissão de Cadernos Modulares do PGR (NR-01 GRO) -->
+<div id="modalCadernosPgr" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 10000; justify-content: center; align-items: center; padding: 16px; overflow-y: auto;">
+    <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 12px; width: 100%; max-width: 680px; max-height: 90vh; overflow-y: auto; padding: 22px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+            <div>
+                <div style="font-size: 17px; font-weight: 800; color: #0f172a;" id="modalCadernosPgrTitulo">📑 Emissão de Cadernos Modulares do PGR</div>
+                <div style="font-size: 12px; color: var(--text-light); margin-top: 2px;">NR-01 — Gerenciamento de Riscos Ocupacionais (GRO)</div>
+            </div>
+            <button onclick="fecharModalCadernosPgr()" style="background: transparent; border: none; font-size: 20px; cursor: pointer; color: var(--text-light); font-weight: 700;">✕</button>
+        </div>
+
+        <div style="font-size: 12.5px; color: var(--text); margin-bottom: 16px; line-height: 1.4;">
+            Selecione o formato de emissão técnica desejado. Cada caderno modular gerado possui capa institucional padronizada, termo de encerramento com assinaturas e rastreabilidade normativa da NR-01.
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px;">
+            <!-- Opção Completo -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--card-bg, #fff); transition: all 0.2s ease;">
+                <input type="radio" name="cadernoPgrTipo" value="completo" checked onchange="alternarVisibilidadeFiltroGheCaderno(this.value)" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13.5px; color: #1e3a8a;">📘 PGR Oficial Completo (Integral)</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Documento-Base, Histórico, Inventário de todos os 27 GHEs, Plano de Ação 5W2H, Matriz de EPIs/CAs e Anexos Analíticos (AEP NR-17 e COPSOQ II).</div>
+                </div>
+            </label>
+
+            <!-- Opção Caderno 1: DocBase -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--card-bg, #fff); transition: all 0.2s ease;">
+                <input type="radio" name="cadernoPgrTipo" value="docbase" onchange="alternarVisibilidadeFiltroGheCaderno(this.value)" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13.5px; color: #0f172a;">📋 Caderno 1 — Documento-Base & Diretrizes Gerais</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Diretrizes institucionais, enquadramento normativo, matriz AIHA 5×5, critérios de probabilidade e severidade, instrumentos de medição e calibração.</div>
+                </div>
+            </label>
+
+            <!-- Opção Caderno 2: Inventário -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--card-bg, #fff); transition: all 0.2s ease;">
+                <input type="radio" name="cadernoPgrTipo" value="inventario" onchange="alternarVisibilidadeFiltroGheCaderno(this.value)" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13.5px; color: #0f172a;">🔍 Caderno 2 — Inventário de Riscos Ocupacionais</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Visão panorâmica dos agentes e matriz detalhada de perigos, fatores de risco, códigos eSocial, fontes geradoras, níveis AIHA e medidas preventivas.</div>
+                </div>
+            </label>
+
+            <!-- Opção Caderno 3: Plano de Ação -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--card-bg, #fff); transition: all 0.2s ease;">
+                <input type="radio" name="cadernoPgrTipo" value="plano_acao" onchange="alternarVisibilidadeFiltroGheCaderno(this.value)" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13.5px; color: #0f172a;">🎯 Caderno 3 — Plano de Ação 5W2H (NR-01)</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Cronograma estruturado de ações preventivas, corretivas e de melhoria contínua (What, Why, Where, Who, When, How, How Much, Status).</div>
+                </div>
+            </label>
+
+            <!-- Opção Caderno 4: Matriz EPI/EPC -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--card-bg, #fff); transition: all 0.2s ease;">
+                <input type="radio" name="cadernoPgrTipo" value="epis" onchange="alternarVisibilidadeFiltroGheCaderno(this.value)" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13.5px; color: #0f172a;">🛡️ Caderno 4 — Matriz de Proteções e EPIs (NR-06)</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Quadro consolidado de Equipamentos de Proteção Coletiva (EPC) e Individual (EPI com Certificado de Aprovação - CA) por GHE e função abrangida.</div>
+                </div>
+            </label>
+
+            <!-- Opção Caderno 5: Anexos -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--card-bg, #fff); transition: all 0.2s ease;">
+                <input type="radio" name="cadernoPgrTipo" value="anexos" onchange="alternarVisibilidadeFiltroGheCaderno(this.value)" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13.5px; color: #0f172a;">📊 Caderno 5 — Anexos Analíticos (AEP NR-17 & COPSOQ II)</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Laudos homologados de Avaliações Ergonômicas Preliminares (AEP) e resultados consolidados do Diagnóstico Psicossocial Corporativo.</div>
+                </div>
+            </label>
+        </div>
+
+        <!-- Filtro de GHE (Visível para Inventário ou EPIs) -->
+        <div id="boxCadernoGheFiltro" style="display: none; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 14px; margin-bottom: 18px;">
+            <label for="selectCadernoGheFiltro" style="font-size: 12px; font-weight: 700; color: #0f172a; display: block; margin-bottom: 5px;">Filtrar GHE Específico (Opcional):</label>
+            <select id="selectCadernoGheFiltro" class="db-select" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; font-weight: 600; background: #fff; color: #0f172a;">
+                <option value="">-- Todos os GHEs (Geral) --</option>
+            </select>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">Deixe em "-- Todos os GHEs (Geral) --" para emitir o caderno abrangendo todo o canteiro operacional.</div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px;">
+            <button class="db-clear-btn" onclick="fecharModalCadernosPgr()">Cancelar</button>
+            <button class="db-apply-btn" style="background: linear-gradient(135deg, #0f766e, #0d9488); border-color: #0d9488; font-weight: 700;" onclick="executarEmissaoCadernoSelecionado()">🖨️ Emitir Caderno Selecionado</button>
         </div>
     </div>
 </div>

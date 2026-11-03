@@ -5767,6 +5767,7 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
                         <div class="db-chart-title" style="margin-bottom: 0;">🩺 Exames ASO</div>
                         <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button type="button" class="db-clear-btn" onclick="saudeAbrirPrestadores()">Clínicas e médicos parceiros</button>
                             <button type="button" class="db-clear-btn" onclick="abrirModeloAsoCop(false)">🖨️ Modelo ASO em branco</button>
                             <button class="db-apply-btn" onclick="abrirFormAso()">+ Novo Exame</button>
                         </div>
@@ -5839,6 +5840,7 @@
                         <button class="db-apply-btn" onclick="salvarAso()">💾 Salvar</button>
                         <button class="db-clear-btn" onclick="fecharFormAso()">Cancelar</button>
                         <button type="button" class="db-clear-btn" onclick="abrirModeloAsoCop(true)">🖨️ Modelo ASO deste colaborador</button>
+                        <button type="button" class="db-clear-btn" onclick="saudePrepararAsoParceiro()">ASO com clínica / examinador</button>
                         <button id="asoForm_btnAnexos" type="button" class="db-clear-btn" style="display:none;" onclick="abrirAnexosAsoAtual()">📎 Anexar Ficha Clínica / ASO</button>
                         <button id="asoForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirAsoAtual()">🗑️ Excluir</button>
                         <span id="asoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
@@ -10155,8 +10157,9 @@
     <script src="modules/efetivo_ferias.js?v=232"></script>
     <script src="modules/ghe_os.js?v=268"></script>
     <script src="modules/relatorio_sms_nc.js?v=232"></script>
-    <script src="modules/saude_psicossocial.js?v=279"></script>
+    <script src="modules/saude_psicossocial.js?v=280"></script>
     <script src="modules/pcmso.js?v=278"></script>
+    <script src="modules/saude_prestadores.js?v=280"></script>
     <script src="modules/epi_estoque.js?v=232"></script>
     <script src="modules/ambiental_compras_hht.js?v=232"></script>
     <script src="modules/apr_cipa.js?v=232"></script>

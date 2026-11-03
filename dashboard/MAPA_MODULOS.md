@@ -1,4 +1,6 @@
 # MAPA OFICIAL DE MÓDULOS — DASHBOARD GERENCIAL SST
+
+Atualização pontual de 03/11/2026: `modules/saude_prestadores.js` concentra o cadastro administrativo de estabelecimentos parceiros e médicos examinadores, com seleção para a prévia do ASO. Carrega após `saude_psicossocial.js` e `pcmso.js`; reutiliza `configuracoes_sistema` e preserva a separação entre coordenador e examinador. Detalhes em `ASO_MODELO.md`. As contagens históricas abaixo devem ser confirmadas no código atual.
 *Arquitetura Modular de Alta Performance (Versão v198)*
 
 O monólito original de 52.062 linhas foi integralmente refatorado e desacoplado em **10 módulos independentes** dentro de `dashboard/modules/`, mantendo no `dashboard/dashboard.js` apenas o Núcleo/Core do sistema (4.233 linhas).

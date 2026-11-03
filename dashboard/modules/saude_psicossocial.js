@@ -7172,8 +7172,11 @@ function gerarPdfSaude() {
 
 // Modelo físico: não emite conclusão médica, não altera exames nem validade do efetivo.
 // NR-07, 7.5.19 a 7.5.19.3; identificação complementar: CFM 2.381/2024.
-function gerarHtmlModeloAsoCop(empresa = {}, colaborador = {}, tipo = '') {
+function gerarHtmlModeloAsoCop(empresa = {}, colaborador = {}, tipo = '', atendimento = {}) {
     const e = valor => escapeHTML(String(valor || ''));
+    const coordenador = atendimento.coordenador || {};
+    const examinador = atendimento.examinador || {};
+    const clinica = atendimento.clinica || {};
     const campo = (rotulo, valor = '', classe = '') => `<div class="campo ${classe}"><b>${rotulo}</b><div class="valor" contenteditable="true" role="textbox" aria-label="${rotulo}">${e(valor)}</div></div>`;
     const tipos = [
         ['admissional', 'Admissional'], ['periodico', 'Periódico'],
@@ -7187,8 +7190,8 @@ function gerarHtmlModeloAsoCop(empresa = {}, colaborador = {}, tipo = '') {
 main{max-width:190mm;margin:auto}header{border-bottom:3px solid #164e63;padding:0 0 8px;display:flex;gap:12px;align-items:center}
 header img{width:64px;max-height:48px;object-fit:contain}h1{font-size:19px;margin:0 0 4px}h2{font-size:11px;background:#e9f0f3;padding:4px 7px;margin:4px 0 0;border:1px solid #98a9b1}
 .grade{display:grid;grid-template-columns:1fr 1fr;border-left:1px solid #98a9b1}.campo{border-right:1px solid #98a9b1;border-bottom:1px solid #98a9b1;padding:2px 7px;min-width:0}.inteiro{grid-column:1/-1}
-b{font-size:10px}.valor{min-height:14px;white-space:pre-wrap;overflow-wrap:anywhere;padding-top:2px;outline-offset:2px}.alto .valor{min-height:36px}
-table{width:100%;border-collapse:collapse}th,td{border:1px solid #98a9b1;padding:3px 7px;text-align:left}th{background:#f1f5f7;font-size:10px}td{height:21px;overflow-wrap:anywhere}
+b{font-size:10px}.valor{min-height:14px;white-space:pre-wrap;overflow-wrap:anywhere;padding-top:2px;outline-offset:2px}.alto .valor{min-height:28px}
+table{width:100%;border-collapse:collapse}th,td{border:1px solid #98a9b1;padding:3px 7px;text-align:left}th{background:#f1f5f7;font-size:10px}td{height:19px;overflow-wrap:anywhere}
 td:first-child{width:73%}label{display:inline-block;margin:2px 7px 2px 0}input{margin:0 2px 0 0;vertical-align:middle;accent-color:#172033}
 .nota{font-size:9px;line-height:1.3;margin:4px 0}.assinatura{min-height:36px;padding-top:23px;text-align:center;border-bottom:1px solid #98a9b1}
 section{break-inside:avoid}.acoes{background:#e9f0f3;padding:12px;margin-bottom:14px;font-size:13px;line-height:1.5}.acoes button{padding:8px 14px;cursor:pointer}
@@ -7219,16 +7222,17 @@ ${Array.from({ length: 5 }, () => '<tr><td contenteditable="true" aria-label="No
 ${campo('Outras atividades específicas / aptidão expressa / orientações funcionais, quando aplicável', '', 'inteiro')}
 </div></section>
 <section><h2>6. IDENTIFICAÇÃO MÉDICA E EMISSÃO</h2><div class="grade">
-${campo('Médico responsável pelo PCMSO, se houver')}${campo('CRM / UF do responsável pelo PCMSO')}
-${campo('Médico examinador — nome completo')}${campo('CRM / UF do examinador e RQE, quando houver')}
-${campo('Contato profissional do examinador (telefone ou e-mail)')}${campo('Endereço do examinador (preferencialmente profissional)')}
+${atendimento.clinica ? campo('Estabelecimento de atendimento / CNPJ', [clinica.nome, clinica.cnpj].filter(Boolean).join(' — '), 'inteiro') : ''}
+${campo('Médico responsável pelo PCMSO, se houver', coordenador.nome)}${campo('CRM / UF do responsável pelo PCMSO', coordenador.crm)}
+${campo('Médico examinador — nome completo', examinador.nome)}${campo('CRM / UF do examinador e RQE, quando houver', [examinador.crm, examinador.uf, examinador.rqe ? 'RQE ' + examinador.rqe : ''].filter(Boolean).join(' / '))}
+${campo('Contato profissional do examinador (telefone ou e-mail)', examinador.contato)}${campo('Endereço do examinador (preferencialmente profissional)', examinador.endereco)}
 ${campo('Local de emissão')}${campo('Data de emissão')}
 </div><div class="assinatura">Assinatura do médico examinador e carimbo ou identificação CRM/UF</div>
 <div class="nota">Emissão exclusivamente médica após exame clínico. Em papel: assinatura manuscrita. Documento eletrônico: assinatura qualificada do médico. Este formulário não aplica assinatura eletrônica.</div></section>
 <section><h2>7. COMPROVANTE DE DISPONIBILIZAÇÃO AO TRABALHADOR</h2><div class="grade"><div class="campo inteiro">Recebi / tive acesso a este ASO. Via física será fornecida quando solicitada.</div>
 ${campo('Data e meio de entrega / disponibilização')}${campo('Assinatura do trabalhador / referência do comprovante')}
 </div></section>
-<footer>Modelo COP • revisão 01 — 03/11/2026 • NR-07, itens 7.5.19 a 7.5.19.3; identificação médica conforme Resolução CFM nº 2.381/2024. Preenchimento, conclusão e assinatura sob responsabilidade do médico. Aptidão não substitui capacitação e autorização para atividades específicas.</footer>
+<footer>Modelo COP • revisão 02 — 03/11/2026 • NR-07, itens 7.5.19 a 7.5.19.3; identificação médica conforme Resolução CFM nº 2.381/2024. Preenchimento, conclusão e assinatura sob responsabilidade do médico. Aptidão não substitui capacitação e autorização para atividades específicas.</footer>
 </main></body></html>`;
 }
 

@@ -7170,6 +7170,85 @@ function gerarPdfSaude() {
     statusEl.style.color = 'var(--success)';
 }
 
+// Modelo físico: não emite conclusão médica, não altera exames nem validade do efetivo.
+// NR-07, 7.5.19 a 7.5.19.3; identificação complementar: CFM 2.381/2024.
+function gerarHtmlModeloAsoCop(empresa = {}, colaborador = {}, tipo = '') {
+    const e = valor => escapeHTML(String(valor || ''));
+    const campo = (rotulo, valor = '', classe = '') => `<div class="campo ${classe}"><b>${rotulo}</b><div class="valor" contenteditable="true" role="textbox" aria-label="${rotulo}">${e(valor)}</div></div>`;
+    const tipos = [
+        ['admissional', 'Admissional'], ['periodico', 'Periódico'],
+        ['retorno_trabalho', 'Retorno ao trabalho'], ['mudanca_risco', 'Mudança de riscos ocupacionais'],
+        ['demissional', 'Demissional']
+    ];
+    const opcoes = (nome, itens) => itens.map((texto, i) => `<label><input type="radio" name="${nome}" value="${i}"> ${texto}</label>`).join(' ');
+    return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>ASO — formulário COP</title><style>
+@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box}body{font:10px Arial,sans-serif;color:#172033;margin:0}
+main{max-width:190mm;margin:auto}header{border-bottom:3px solid #164e63;padding:0 0 8px;display:flex;gap:12px;align-items:center}
+header img{width:64px;max-height:48px;object-fit:contain}h1{font-size:19px;margin:0 0 4px}h2{font-size:11px;background:#e9f0f3;padding:4px 7px;margin:4px 0 0;border:1px solid #98a9b1}
+.grade{display:grid;grid-template-columns:1fr 1fr;border-left:1px solid #98a9b1}.campo{border-right:1px solid #98a9b1;border-bottom:1px solid #98a9b1;padding:2px 7px;min-width:0}.inteiro{grid-column:1/-1}
+b{font-size:10px}.valor{min-height:14px;white-space:pre-wrap;overflow-wrap:anywhere;padding-top:2px;outline-offset:2px}.alto .valor{min-height:36px}
+table{width:100%;border-collapse:collapse}th,td{border:1px solid #98a9b1;padding:3px 7px;text-align:left}th{background:#f1f5f7;font-size:10px}td{height:21px;overflow-wrap:anywhere}
+td:first-child{width:73%}label{display:inline-block;margin:2px 7px 2px 0}input{margin:0 2px 0 0;vertical-align:middle;accent-color:#172033}
+.nota{font-size:9px;line-height:1.3;margin:4px 0}.assinatura{min-height:36px;padding-top:23px;text-align:center;border-bottom:1px solid #98a9b1}
+section{break-inside:avoid}.acoes{background:#e9f0f3;padding:12px;margin-bottom:14px;font-size:13px;line-height:1.5}.acoes button{padding:8px 14px;cursor:pointer}
+footer{font-size:8px;border-top:1px solid #98a9b1;margin-top:9px;padding-top:5px}
+@media print{.acoes{display:none}body{color:#000}.valor:empty:after{content:' ';display:block}input{appearance:none;width:10px;height:10px;border:1px solid #000}input:checked:after{content:'X';font:9px Arial;display:block;text-align:center}h2,th{print-color-adjust:exact}}
+</style></head><body><main>
+<div class="acoes"><strong>Formulário para preenchimento e emissão pelo médico.</strong> Confira a identidade e os dados cadastrais. Clique nos campos para preencher ou imprima em branco. As edições desta aba não são salvas no sistema. A impressão ou o PDF sem assinatura não constitui ASO emitido.<br>
+Não inclua diagnósticos, CID ou resultados clínicos neste formulário administrativo. Para exame complementar sem exame clínico, utilize recibo de entrega de resultados (NR-07, 7.5.19.3).<br>
+<button type="button" onclick="window.print()">Imprimir / Salvar como PDF</button></div>
+<header>${typeof LOGO_COP_BASE64 !== 'undefined' ? `<img src="${e(LOGO_COP_BASE64)}" alt="COP">` : ''}<div><h1>ATESTADO DE SAÚDE OCUPACIONAL</h1><div>ASO • Programa de Controle Médico de Saúde Ocupacional — NR-07</div></div></header>
+<section><h2>1. ORGANIZAÇÃO E TRABALHADOR</h2><div class="grade">
+${campo('Razão social', empresa.razaoSocial, 'inteiro')}${campo('CNPJ ou CAEPF', empresa.cnpj)}${campo('Unidade / estabelecimento')}
+${campo('Nome completo do trabalhador', colaborador.nome, 'inteiro')}${campo('CPF', colaborador.cpf)}${campo('Matrícula', colaborador.matricula)}
+${campo('Função', colaborador.funcao)}${campo('Setor / GHE', colaborador.setor)}
+</div></section>
+<section><h2>2. EXAME OCUPACIONAL</h2><div class="grade"><div class="campo inteiro">${tipos.map(([chave, texto]) => `<label><input type="radio" name="tipo" ${tipo === chave ? 'checked' : ''}> ${texto}</label>`).join('')}</div></div></section>
+<section><h2>3. PERIGOS / FATORES DE RISCO QUE EXIGEM CONTROLE MÉDICO</h2><div class="grade">
+${campo('Descrição conforme PGR e controle previsto no PCMSO', '', 'inteiro alto')}
+<div class="campo inteiro"><label><input type="checkbox"> Declaração médica de inexistência de perigos ou fatores de risco que necessitem de controle médico previsto no PCMSO.</label></div>
+${campo('Referência / revisão do PGR')}${campo('Referência / revisão do PCMSO')}
+</div></section>
+<section><h2>4. EXAMES EFETIVAMENTE REALIZADOS</h2><table><thead><tr><th>Exame clínico e exames complementares (indicar individualmente)</th><th>Data de realização</th></tr></thead><tbody>
+<tr><td>Exame clínico ocupacional</td><td contenteditable="true" aria-label="Data do exame clínico"></td></tr>
+${Array.from({ length: 5 }, () => '<tr><td contenteditable="true" aria-label="Nome do exame complementar"></td><td contenteditable="true" aria-label="Data do exame complementar"></td></tr>').join('')}
+</tbody></table><div class="nota">Preencher cada data real de realização. A previsão de exames e a data do cadastro não comprovam sua realização. Se necessário, anexar continuação identificada e assinada pelo médico.</div></section>
+<section><h2>5. CONCLUSÃO MÉDICA</h2><div class="grade"><div class="campo inteiro"><b>Para a função acima:</b> ${opcoes('aptidao', ['APTO', 'INAPTO'])}</div>
+<div class="campo inteiro"><b>Trabalho em altura (NR-35):</b> ${opcoes('altura', ['Apto', 'Inapto', 'Não se aplica'])}<br><b>Espaço confinado (NR-33):</b> ${opcoes('confinado', ['Apto', 'Inapto', 'Não se aplica'])}</div>
+${campo('Outras atividades específicas / aptidão expressa / orientações funcionais, quando aplicável', '', 'inteiro')}
+</div></section>
+<section><h2>6. IDENTIFICAÇÃO MÉDICA E EMISSÃO</h2><div class="grade">
+${campo('Médico responsável pelo PCMSO, se houver')}${campo('CRM / UF do responsável pelo PCMSO')}
+${campo('Médico examinador — nome completo')}${campo('CRM / UF do examinador e RQE, quando houver')}
+${campo('Contato profissional do examinador (telefone ou e-mail)')}${campo('Endereço do examinador (preferencialmente profissional)')}
+${campo('Local de emissão')}${campo('Data de emissão')}
+</div><div class="assinatura">Assinatura do médico examinador e carimbo ou identificação CRM/UF</div>
+<div class="nota">Emissão exclusivamente médica após exame clínico. Em papel: assinatura manuscrita. Documento eletrônico: assinatura qualificada do médico. Este formulário não aplica assinatura eletrônica.</div></section>
+<section><h2>7. COMPROVANTE DE DISPONIBILIZAÇÃO AO TRABALHADOR</h2><div class="grade"><div class="campo inteiro">Recebi / tive acesso a este ASO. Via física será fornecida quando solicitada.</div>
+${campo('Data e meio de entrega / disponibilização')}${campo('Assinatura do trabalhador / referência do comprovante')}
+</div></section>
+<footer>Modelo COP • revisão 01 — 03/11/2026 • NR-07, itens 7.5.19 a 7.5.19.3; identificação médica conforme Resolução CFM nº 2.381/2024. Preenchimento, conclusão e assinatura sob responsabilidade do médico. Aptidão não substitui capacitação e autorização para atividades específicas.</footer>
+</main></body></html>`;
+}
+
+function abrirModeloAsoCop(usarColaborador) {
+    let colab = {};
+    let tipo = '';
+    if (usarColaborador) {
+        const selecao = buscarColaboradorPorInput('asoForm_matricula');
+        if (!selecao.colab) {
+            const status = document.getElementById('asoFormStatus');
+            status.textContent = 'Selecione um colaborador da lista para preparar seu modelo de ASO.';
+            status.style.color = 'var(--danger)';
+            return;
+        }
+        colab = { ...selecao.colab, matricula: selecao.matricula };
+        tipo = document.getElementById('asoForm_tipo').value;
+    }
+    abrirDocumentoHtmlParaImpressao(gerarHtmlModeloAsoCop(EMPRESA_INFO, colab, tipo), 'Modelo ASO COP');
+}
+
 // ---- CRUD: Exames ASO ----
 
 function renderAsoResumo() {

@@ -6968,7 +6968,7 @@ window.aoMudarFiltroStatusTriagem = aoMudarFiltroStatusTriagem;
 window.filtrarTabelaConvocacaoPsicossocial = renderTabelaConvocacaoPsicossocial;
 
 function showSaudeSubtab(tab) {
-    ['visao', 'aso', 'atestado', 'pressao', 'previsao', 'recomendacoes', 'relatorio'].forEach(t => {
+    ['visao', 'aso', 'atestado', 'pressao', 'previsao', 'recomendacoes', 'relatorio', 'docbase'].forEach(t => {
         const content = document.getElementById('saudeSubtab-' + t);
         const btn = document.getElementById('saudeSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -6986,6 +6986,15 @@ function showSaudeSubtab(tab) {
     // (com o período que já estava selecionado) pra garantir que o relatório nunca fique
     // com números desatualizados, mesmo que o usuário nunca tenha clicado em "Visão Geral".
     if (tab === 'relatorio') { renderSaudePanel(); renderSaudeRelatorioChecklist(); }
+    if (tab === 'docbase') {
+        if (typeof window.pcmsoOnAbrirAbaDocBase === 'function') {
+            window.pcmsoOnAbrirAbaDocBase();
+        } else if (typeof pcmsoCarregarDocBase === 'function') {
+            pcmsoCarregarDocBase();
+        } else if (typeof renderPcmsoDocBaseView === 'function') {
+            renderPcmsoDocBaseView();
+        }
+    }
 }
 
 // ============================================

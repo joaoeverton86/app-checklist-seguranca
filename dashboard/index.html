@@ -5660,6 +5660,7 @@
                         <button id="saudeSubtabBtn-pressao" class="db-filter-btn" onclick="showSaudeSubtab('pressao')">💉 Pressão Arterial</button>
                         <button id="saudeSubtabBtn-previsao" class="db-filter-btn" onclick="showSaudeSubtab('previsao')">📅 Previsão de Exames</button>
                         <button id="saudeSubtabBtn-recomendacoes" class="db-filter-btn" onclick="showSaudeSubtab('recomendacoes')">🩺 Recomendações e Exames (PCMSO)</button>
+                        <button id="saudeSubtabBtn-docbase" class="db-filter-btn" style="border: 1px solid rgba(15, 118, 110, 0.4); font-weight: 700; color: #0f766e;" onclick="showSaudeSubtab('docbase')">📘 Documento-Base & Emissão PCMSO</button>
                         <button id="saudeSubtabBtn-relatorio" class="db-filter-btn" onclick="showSaudeSubtab('relatorio')">📄 Relatório</button>
                     </div>
                 </div>
@@ -6285,7 +6286,6 @@
                     </div>
                 </div>
                 </div>
-            </section>
 
             <!-- Modal do Relatório para Líderes (Previsão de Exames) - fica fora do fluxo normal
                  da página (position:fixed) então a localização no HTML não importa pro layout. -->
@@ -6310,6 +6310,37 @@
                     <div id="relatorioLideresConteudo" style="display:flex; flex-direction:column; gap:12px;"></div>
                 </div>
             </div>
+
+            <!-- Subaba: Documento-Base e Emissão do PCMSO (NR-07) -->
+                <div id="saudeSubtab-docbase" style="display:none;">
+                    <div class="db-chart-card" style="margin-bottom: 16px; padding: 16px 20px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                            <div>
+                                <div class="db-chart-title" style="margin-bottom: 4px;">📘 Parâmetros Oficiais do Documento-Base do PCMSO (NR-07)</div>
+                                <div style="font-size: 12px; color: var(--text-light);">
+                                    Configure identificação, médico coordenador (Dr. Cícero / CRM 19464-PE), representantes legais, diretrizes clínicas e cronograma de saúde do CONSÓRCIO OPERADOR RAMAL DO AGRESTE.
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                <button type="button" class="db-clear-btn" onclick="pcmsoDescartarRascunho()" style="font-size: 12px; padding: 6px 12px;">📑 Descartar Rascunho</button>
+                                <button type="button" class="db-clear-btn" onclick="pcmsoCarregarDocBase()" style="font-size: 12px; padding: 6px 12px;">🔄 Recarregar</button>
+                                <button type="button" class="db-apply-btn" onclick="pcmsoSalvarDocBase()" style="background: #0f766e; font-size: 12.5px; font-weight: 700; padding: 7px 16px;">💾 Salvar Documento-Base</button>
+                            </div>
+                        </div>
+                        <div style="margin-top: 10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                            <span id="pcmsoDocBaseFormStatus" style="font-size: 12px; font-weight: 600;"></span>
+                            <div style="display:flex; gap:8px;">
+                                <button type="button" class="db-apply-btn" onclick="abrirModalCadernosPcmso()" style="background: #0f766e; font-size: 12px; font-weight: 700; padding: 6px 14px;">📑 Cadernos do PCMSO</button>
+                                <button type="button" id="btnEmitirPcmsoCompleto" class="db-apply-btn" style="background: #2563eb; font-size: 12px; font-weight: 700; padding: 6px 14px;" onclick="pcmsoEmitirDocumentoCompleto();">🖨️ Emitir PCMSO Completo (Consolidado)</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="pcmsoDocBaseFormWrap">
+                        <!-- O formulário oficial é renderizado dinamicamente por renderPcmsoDocBaseView() -->
+                    </div>
+                </div>
+            </section>
 
             <!-- Página: Avaliação Psicossocial (COPSOQ II) -->
             <section class="db-page" id="page-psicossocial">
@@ -10120,7 +10151,8 @@
     <script src="modules/efetivo_ferias.js?v=232"></script>
     <script src="modules/ghe_os.js?v=268"></script>
     <script src="modules/relatorio_sms_nc.js?v=232"></script>
-    <script src="modules/saude_psicossocial.js?v=232"></script>
+    <script src="modules/saude_psicossocial.js?v=269"></script>
+    <script src="modules/pcmso.js?v=278"></script>
     <script src="modules/epi_estoque.js?v=232"></script>
     <script src="modules/ambiental_compras_hht.js?v=232"></script>
     <script src="modules/apr_cipa.js?v=232"></script>
@@ -11975,6 +12007,80 @@ function filterMatrizEpi(q) {
         <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px;">
             <button class="db-clear-btn" onclick="fecharModalCadernosPgr()">Cancelar</button>
             <button class="db-apply-btn" style="background: linear-gradient(135deg, #0f766e, #0d9488); border-color: #0d9488; font-weight: 700;" onclick="executarEmissaoCadernoSelecionado()">🖨️ Emitir Caderno Selecionado</button>
+        </div>
+    </div>
+</div>
+
+
+<!-- Modal: Emissão de Cadernos Modulares do PCMSO (NR-07) -->
+<div id="modalCadernosPcmso" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 10000; justify-content: center; align-items: center; padding: 16px; overflow-y: auto;">
+    <div style="background: var(--card, #fff); border-radius: 12px; max-width: 640px; width: 100%; padding: 22px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25); border: 1px solid var(--border);">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;">
+            <div style="font-size: 16px; font-weight: 800; color: #0f172a;">📑 Emissão de Cadernos Modulares do PCMSO (NR-07)</div>
+            <button class="db-clear-btn" onclick="fecharModalCadernosPcmso()" style="font-size: 16px; padding: 2px 8px; cursor: pointer;">✕</button>
+        </div>
+
+        <div style="background: #fef3c7; border: 1px solid #f59e0b; color: #92400e; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; margin-bottom: 16px;">
+            📋 <b>MINUTA TÉCNICA DE TRABALHO:</b> Os cadernos abaixo são gerados como minutas técnicas para conferência e homologação pelo Médico Coordenador Dr. Cícero Henrique (CRM 19464-PE).
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px;">
+            <!-- Opção 1: PCMSO Completo Consolidado -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--bg);">
+                <input type="radio" name="cadernoPcmsoTipo" value="completo" checked onchange="document.getElementById('boxCadernoPcmsoGhe').style.display='none';" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13px; color: #0f172a;">📘 Caderno 1 — PCMSO Completo Consolidado</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Capa oficial, identificação, corpo médico, diretrizes clínicas, protocolos específicos, quadro geral dos 27 GHEs, cronograma anual e termos de encerramento.</div>
+                </div>
+            </label>
+
+            <!-- Opção 2: Protocolos Médicos Específicos -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--bg);">
+                <input type="radio" name="cadernoPcmsoTipo" value="protocolos" onchange="document.getElementById('boxCadernoPcmsoGhe').style.display='none';" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13px; color: #0f172a;">🩺 Caderno 2 — Protocolos e Diretrizes Clínicas Ocupacionais</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">PCA Ruído (NR-07 Anexo II), Vigilância Respiratória (Anexo III), Atividades Críticas Altura/Confinado (NR-35/NR-33) e Alimentos/Saneamento.</div>
+                </div>
+            </label>
+
+            <!-- Opção 3: Matriz Geral de Exames -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--bg);">
+                <input type="radio" name="cadernoPcmsoTipo" value="matriz" onchange="document.getElementById('boxCadernoPcmsoGhe').style.display='none';" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13px; color: #0f172a;">🧬 Caderno 3 — Matriz Geral de Exames por GHE (A4 Paisagem)</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Tabela panorâmica articulada com os 27 GHEs, riscos físicos/químicos/biológicos e periodicidades de exames.</div>
+                </div>
+            </label>
+
+            <!-- Opção 4: Caderno Individual por GHE -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--bg);">
+                <input type="radio" name="cadernoPcmsoTipo" value="individual_ghe" onchange="document.getElementById('boxCadernoPcmsoGhe').style.display='block';" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13px; color: #0f172a;">👤 Caderno 4 — Ficha Específica de Saúde Ocupacional por GHE</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Ficha individual detalhada com cargos abrangidos, ambiente, riscos e condutas clínicas do GHE selecionado.</div>
+                </div>
+            </label>
+
+            <!-- Opção 5: Relatório Analítico Anual (NR-07 item 7.6.2) -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--bg);">
+                <input type="radio" name="cadernoPcmsoTipo" value="relatorio_anual" onchange="document.getElementById('boxCadernoPcmsoGhe').style.display='none';" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13px; color: #0f172a;">📊 Caderno 5 — Minuta do Relatório Analítico Anual do PCMSO (NR-07 item 7.6.2 / 7.6.4)</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Estatística de exames clínicos por tipo, vigilância por GHE, indicador de acidentabilidade, absenteísmo e parecer conclusivo do médico coordenador.</div>
+                </div>
+            </label>
+        </div>
+
+        <!-- Seletor de GHE para opção individual -->
+        <div id="boxCadernoPcmsoGhe" style="display:none; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+            <label for="pcmsoCadernoSelectGhe" style="font-size: 12px; font-weight: 700; color: #0f172a; display: block; margin-bottom: 5px;">Selecione o GHE para Emissão:</label>
+            <select id="pcmsoCadernoSelectGhe" class="db-select" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; font-weight: 600; background: #fff; color: #0f172a;">
+            </select>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px;">
+            <button class="db-clear-btn" onclick="fecharModalCadernosPcmso()">Cancelar</button>
+            <button class="db-apply-btn" style="background: #0f766e; font-weight: 700;" onclick="executarEmissaoCadernoPcmsoSelecionado()">🖨️ Emitir Caderno Selecionado</button>
         </div>
     </div>
 </div>

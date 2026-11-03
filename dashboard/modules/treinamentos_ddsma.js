@@ -11565,6 +11565,28 @@ function catFormPreencherProximoCodigo() {
  * Especialmente desenvolvido para o Consórcio Operador do Ramal do Agreste (PISF)
  * Em estrita conformidade com as Normas Regulamentadoras (MTE), PCMSO, PGR/GRO (SGG) e ESG.
  */
+// Referência mínima do curso básico: NR-10, Anexo III, redação vigente até 31/05/2027.
+// Texto padronizado para sugestão editável; conferir o conteúdo efetivamente ministrado.
+// Fonte: MTE, nr-10-atualizada-2019-1.pdf. Não antecipa a redação com vigência em 01/06/2027.
+var CONTEUDO_PROGRAMATICO_NR10_BASICO_40H = [
+    '1. Introdução à segurança com eletricidade.',
+    '2. Riscos elétricos: choque (mecanismos e efeitos); arcos, queimaduras e quedas; campos eletromagnéticos.',
+    '3. Técnicas de análise de risco.',
+    '4. Controle do risco elétrico: desenergização; aterramento funcional (TN/TT/IT), de proteção e temporário; equipotencialização; seccionamento automático; dispositivos a corrente de fuga; extra baixa tensão; barreiras/invólucros; bloqueios/impedimentos; obstáculos/anteparos; isolamento de partes vivas; isolação dupla/reforçada; colocação fora de alcance; separação elétrica.',
+    '5. Normas técnicas ABNT: NBR-5410, NBR 14039 e outras.',
+    '6. Regulamentações do MTE: NRs; NR-10; qualificação, habilitação, capacitação e autorização.',
+    '7. Equipamentos de proteção coletiva.',
+    '8. Equipamentos de proteção individual.',
+    '9. Rotinas/procedimentos: instalações desenergizadas; liberação para serviços; sinalização; inspeções de áreas, serviços, ferramental e equipamento.',
+    '10. Documentação de instalações elétricas.',
+    '11. Riscos adicionais: altura; ambientes confinados; áreas classificadas; umidade; condições atmosféricas.',
+    '12. Proteção e combate a incêndios: noções básicas; medidas preventivas; métodos de extinção; prática.',
+    '13. Acidentes elétricos: causas diretas/indiretas e discussão de casos.',
+    '14. Primeiros socorros: lesões; priorização; respiração artificial; massagem cardíaca; remoção/transporte de acidentados; práticas.',
+    '15. Responsabilidades.'
+].join('\n');
+window.CONTEUDO_PROGRAMATICO_NR10_BASICO_40H = CONTEUDO_PROGRAMATICO_NR10_BASICO_40H;
+
 function gerarDadosSstPorTema(nomeOriginal, codigo) {
     const n = (nomeOriginal || '').trim().toUpperCase();
 
@@ -11837,7 +11859,8 @@ function catFormGerarIaObjetivoEConteudo() {
     
     if (objEl) objEl.value = res.objetivo;
     if (contEl) contEl.value = res.conteudo_programatico;
-    if (chEl && !chEl.value) chEl.value = '2';
+    const usaReferenciaNr10 = res.conteudo_programatico === CONTEUDO_PROGRAMATICO_NR10_BASICO_40H;
+    if (chEl && !chEl.value && !usaReferenciaNr10) chEl.value = '2';
 
     // Destaque visual suave nos campos preenchidos
     [objEl, contEl].forEach(el => {
@@ -11853,7 +11876,9 @@ function catFormGerarIaObjetivoEConteudo() {
 
     const statusEl = document.getElementById('catalogoFormStatus');
     if (statusEl) {
-        statusEl.innerHTML = '✨ <strong>Objetivo e Conteúdo Programático gerados com sucesso</strong> com base nas NRs e diretrizes de SST!';
+        statusEl.innerHTML = usaReferenciaNr10
+            ? 'Referência da programação mínima do curso básico NR-10 preenchida. Carga mínima: 40 horas. Confira o tipo de capacitação, a carga horária e o conteúdo efetivamente ministrado antes de salvar.'
+            : '✨ <strong>Objetivo e Conteúdo Programático gerados com sucesso</strong> com base nas NRs e diretrizes de SST!';
         statusEl.style.color = 'var(--primary)';
         setTimeout(() => { if (statusEl.textContent.includes('gerados com sucesso')) statusEl.textContent = ''; }, 4000);
     }

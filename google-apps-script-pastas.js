@@ -1,82 +1,54 @@
 function doGet(e) {
-  return ContentService.createTextOutput(JSON.stringify({
-    status: 'online',
-    servico: 'Automacao de Pastas de SST (Cronograma e Evidencias)',
-    acoesDisponiveis: ['criarEstruturaCronograma', 'criar_pasta_fotos', 'listarFotosSubpastas'],
-    mensagem: 'Web App ativo e pronto para receber requisicoes POST.',
-    timestamp: new Date().toISOString()
-  })).setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify({ status: "ok" })).setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) {
-      return ContentService.createTextOutput(JSON.stringify({
-        status: 'erro',
-        message: 'Nenhum dado recebido no corpo da requisicao POST.'
-      })).setMimeType(ContentService.MimeType.JSON);
+      return ContentService.createTextOutput(JSON.stringify({ status: "erro", message: "Sem dados" })).setMimeType(ContentService.MimeType.JSON);
     }
+    var data = JSON.parse(e.postData.contents);
+    var action = String(data.action || "").trim();
 
-    const data = JSON.parse(e.postData.contents);
-    const action = String(data.action || '').trim();
-
-    if (action === 'listarFotosSubpastas' || action === 'extrairFotosDaPasta') {
+    if (action === "listarFotosSubpastas" || action === "extrairFotosDaPasta") {
       return listarFotosSubpastas(data);
     }
-
-    if (action === 'criarEstruturaCronograma' || (Array.isArray(data.temas) && data.temas.length > 0)) {
+    if (action === "criarEstruturaCronograma" || (Array.isArray(data.temas) && data.temas.length > 0)) {
       return criarEstruturaCronograma(data);
     }
-
     return criarPastaEvidenciasFotos(data);
-
   } catch (error) {
-    Logger.log('Erro geral no doPost: ' + error.toString());
-    return ContentService.createTextOutput(JSON.stringify({
-      status: 'erro',
-      message: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ status: "erro", message: String(error) })).setMimeType(ContentService.MimeType.JSON);
   }
 }
 
 function listarFotosSubpastas(data) {
-  let pastaId = extrairIdPasta(data.pastaId || data.pastaRaizId || data.folderId);
+  var pastaId = extrairIdPasta(data.pastaId || data.pastaRaizId || data.folderId);
   if (!pastaId) {
-    return ContentService.createTextOutput(JSON.stringify({
-      status: 'erro',
-      message: 'ID da pasta nao informado.'
-    })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ status: "erro", message: "ID invalido" })).setMimeType(ContentService.MimeType.JSON);
   }
-
-  let pastaMae;
+  var pastaMae;
   try {
     pastaMae = DriveApp.getFolderById(pastaId);
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({
-      status: 'erro',
-      message: 'Nao foi possivel acessar a pasta no Drive: ' + err.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ status: "erro", message: String(err) })).setMimeType(ContentService.MimeType.JSON);
   }
 
-  const subpastas = pastaMae.getFolders();
-  const resultado = [];
+  var subpastas = pastaMae.getFolders();
+  var resultado = [];
 
   while (subpastas.hasNext()) {
-    const sub = subpastas.next();
-    const subNome = sub.getName();
-    const subId = sub.getId();
-
-    const arquivos = sub.getFiles();
-    const fotos = [];
+    var sub = subpastas.next();
+    var arquivos = sub.getFiles();
+    var fotos = [];
 
     while (arquivos.hasNext()) {
-      const arq = arquivos.next();
-      const mime = arq.getMimeType();
-      if (mime.indexOf('image/') === 0 || mime === 'application/vnd.google-apps.photo') {
+      var arq = arquivos.next();
+      var mime = arq.getMimeType();
+      if (mime.indexOf("image/") === 0 || mime === "application/vnd.google-apps.photo") {
         try {
           arq.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
         } catch (_) {}
-
         fotos.push({
           id: arq.getId(),
           nome: arq.getName(),
@@ -87,18 +59,18 @@ function listarFotosSubpastas(data) {
     }
 
     resultado.push({
-      pastaId: subId,
-      pastaNome: subNome,
+      pastaId: sub.getId(),
+      pastaNome: sub.getName(),
       fotos: fotos
     });
   }
 
   resultado.sort(function(a, b) {
-    return a.pastaNome.localeCompare(b.pastaNome, 'pt-BR');
+    return a.pastaNome.localeCompare(b.pastaNome, "pt-BR");
   });
 
   return ContentService.createTextOutput(JSON.stringify({
-    status: 'sucesso',
+    status: "sucesso",
     pastaMaeNome: pastaMae.getName(),
     pastaMaeId: pastaMae.getId(),
     totalSubpastas: resultado.length,
@@ -108,12 +80,12 @@ function listarFotosSubpastas(data) {
 }
 
 function criarEstruturaCronograma(data) {
-  let rootFolderId = extrairIdPasta(data.pastaRaizId || data.rootFolderId || data.folderId);
-  const ano = String(data.ano || new Date().getFullYear());
-  let mes = normalizarNomeMes(data.mes || (new Date().getMonth() + 1));
-  const temas = Array.isArray(data.temas) ? data.temas : [];
+  var rootFolderId = extrairIdPasta(data.pastaRaizId || data.rootFolderId || data.folderId);
+  var ano = String(data.ano || new Date().getFullYear());
+  var mes = normalizarNomeMes(data.mes || (new Date().getMonth() + 1));
+  var temas = Array.isArray(data.temas) ? data.temas : [];
 
-  let pastaRaiz;
+  var pastaRaiz;
   if (rootFolderId) {
     try {
       pastaRaiz = DriveApp.getFolderById(rootFolderId);
@@ -124,34 +96,34 @@ function criarEstruturaCronograma(data) {
     pastaRaiz = DriveApp.getRootFolder();
   }
 
-  const pastaAno = getOrCreateSubFolder(pastaRaiz, String(ano));
-  const pastaMes = getOrCreateSubFolder(pastaAno, String(mes));
-  const pastasResultado = [];
+  var pastaAno = getOrCreateSubFolder(pastaRaiz, String(ano));
+  var pastaMes = getOrCreateSubFolder(pastaAno, String(mes));
+  var pastasResultado = [];
 
-  for (let i = 0; i < temas.length; i++) {
-    const t = temas[i];
-    const diaRaw = String(t.dia || '').trim();
-    const codRaw = String(t.codigo || t.cod || '').trim();
-    const temaRaw = String(t.tema || t.nome || '').trim();
+  for (var i = 0; i < temas.length; i++) {
+    var t = temas[i];
+    var diaRaw = String(t.dia || "").trim();
+    var codRaw = String(t.codigo || t.cod || "").trim();
+    var temaRaw = String(t.tema || t.nome || "").trim();
 
-    const matchNumMes = String(mes).match(/^(\d{2})/);
-    const numMesPadrao = matchNumMes ? matchNumMes[1] : String(new Date().getMonth() + 1).padStart(2, '0');
+    var matchNumMes = String(mes).match(/^(\d{2})/);
+    var numMesPadrao = matchNumMes ? matchNumMes[1] : String(new Date().getMonth() + 1).padStart(2, "0");
 
-    let prefixoData = diaRaw;
+    var prefixoData = diaRaw;
     if (prefixoData) {
-      if (prefixoData.includes('-') && prefixoData.length >= 8) {
-        const partes = prefixoData.split('-');
-        prefixoData = partes[2] + '/' + partes[1];
-      } else if (!prefixoData.includes('/') && !prefixoData.includes('-')) {
-        prefixoData = prefixoData.padStart(2, '0') + '/' + numMesPadrao;
+      if (prefixoData.includes("-") && prefixoData.length >= 8) {
+        var partes = prefixoData.split("-");
+        prefixoData = partes[2] + "/" + partes[1];
+      } else if (!prefixoData.includes("/") && !prefixoData.includes("-")) {
+        prefixoData = prefixoData.padStart(2, "0") + "/" + numMesPadrao;
       }
     } else {
-      prefixoData = '01/' + numMesPadrao;
+      prefixoData = "01/" + numMesPadrao;
     }
 
-    let nomePastaTema = codRaw ? ('[' + prefixoData + '] ' + codRaw + ' - ' + temaRaw) : ('[' + prefixoData + '] ' + temaRaw);
-    const prefixoAlt = prefixoData.replace('/', '-');
-    const pastaTema = getOrCreateTemaFolder(pastaMes, nomePastaTema, '[' + prefixoData + ']', '[' + prefixoAlt + ']', codRaw, temaRaw);
+    var nomePastaTema = codRaw ? ("[" + prefixoData + "] " + codRaw + " - " + temaRaw) : ("[" + prefixoData + "] " + temaRaw);
+    var prefixoAlt = prefixoData.replace("/", "-");
+    var pastaTema = getOrCreateTemaFolder(pastaMes, nomePastaTema, "[" + prefixoData + "]", "[" + prefixoAlt + "]", codRaw, temaRaw);
 
     try {
       pastaTema.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
@@ -165,12 +137,12 @@ function criarEstruturaCronograma(data) {
       nomePasta: pastaTema.getName(),
       folderId: pastaTema.getId(),
       folderUrl: pastaTema.getUrl(),
-      caminho: ano + ' / ' + mes + ' / ' + pastaTema.getName()
+      caminho: ano + " / " + mes + " / " + pastaTema.getName()
     });
   }
 
   return ContentService.createTextOutput(JSON.stringify({
-    status: 'sucesso',
+    status: "sucesso",
     ano: ano,
     mes: mes,
     pastaMesId: pastaMes.getId(),
@@ -182,13 +154,13 @@ function criarEstruturaCronograma(data) {
 }
 
 function criarPastaEvidenciasFotos(data) {
-  let rootFolderId = extrairIdPasta(data.rootFolderId || data.folderId || data.pastaRaizId);
-  const ano = String(data.ano || new Date().getFullYear());
-  const mes = data.mes || data.mesPasta || formatarMesPadrao(new Date());
-  const categoria = data.categoria || data.categoriaPasta || '01_Treinamentos';
-  const nomePastaFinal = data.nomePastaFinal || data.subpasta || data.subpastaFinal || 'Evidencias';
+  var rootFolderId = extrairIdPasta(data.rootFolderId || data.folderId || data.pastaRaizId);
+  var ano = String(data.ano || new Date().getFullYear());
+  var mes = data.mes || data.mesPasta || formatarMesPadrao(new Date());
+  var categoria = data.categoria || data.categoriaPasta || "01_Treinamentos";
+  var nomePastaFinal = data.nomePastaFinal || data.subpasta || data.subpastaFinal || "Evidencias";
 
-  let pastaAtual;
+  var pastaAtual;
   if (rootFolderId) {
     try {
       pastaAtual = DriveApp.getFolderById(rootFolderId);
@@ -202,38 +174,38 @@ function criarPastaEvidenciasFotos(data) {
   pastaAtual = getOrCreateSubFolder(pastaAtual, String(ano));
   pastaAtual = getOrCreateSubFolder(pastaAtual, mes);
   pastaAtual = getOrCreateSubFolder(pastaAtual, categoria);
-  const pastaFinal = getOrCreateSubFolder(pastaAtual, nomePastaFinal);
+  var pastaFinal = getOrCreateSubFolder(pastaAtual, nomePastaFinal);
 
   try {
     pastaFinal.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   } catch (_) {}
 
   return ContentService.createTextOutput(JSON.stringify({
-    status: 'sucesso',
+    status: "sucesso",
     folderId: pastaFinal.getId(),
     folderUrl: pastaFinal.getUrl(),
-    caminho: ano + ' / ' + mes + ' / ' + categoria + ' / ' + nomePastaFinal,
+    caminho: ano + " / " + mes + " / " + categoria + " / " + nomePastaFinal,
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
 function getOrCreateSubFolder(parentFolder, folderName) {
-  const folders = parentFolder.getFoldersByName(folderName);
+  var folders = parentFolder.getFoldersByName(folderName);
   if (folders.hasNext()) return folders.next();
   return parentFolder.createFolder(folderName);
 }
 
 function getOrCreateTemaFolder(parentFolder, folderName, prefixo1, prefixo2, cod, tema) {
-  const exact = parentFolder.getFoldersByName(folderName);
+  var exact = parentFolder.getFoldersByName(folderName);
   if (exact.hasNext()) return exact.next();
 
-  const all = parentFolder.getFolders();
-  const tNorm = tema ? tema.toUpperCase().trim() : '';
-  const codNorm = cod ? cod.toUpperCase().trim() : '';
+  var all = parentFolder.getFolders();
+  var tNorm = tema ? tema.toUpperCase().trim() : "";
+  var codNorm = cod ? cod.toUpperCase().trim() : "";
 
   while (all.hasNext()) {
-    const f = all.next();
-    const fName = f.getName().trim().toUpperCase();
+    var f = all.next();
+    var fName = f.getName().trim().toUpperCase();
     if (prefixo1 && fName.indexOf(prefixo1.toUpperCase()) === 0) return f;
     if (prefixo2 && fName.indexOf(prefixo2.toUpperCase()) === 0) return f;
     if (codNorm && tNorm && fName.includes(codNorm) && fName.includes(tNorm.substring(0, 10))) return f;
@@ -243,29 +215,29 @@ function getOrCreateTemaFolder(parentFolder, folderName, prefixo1, prefixo2, cod
 }
 
 function normalizarNomeMes(mesValor) {
-  const meses = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-  const str = String(mesValor || '').trim();
+  var meses = ["Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  var str = String(mesValor || "").trim();
   if (/^\d{2}\s*-\s*[A-Za-z]+/.test(str)) return str;
   if (/^\d{1,2}$/.test(str)) {
-    let num = parseInt(str, 10);
-    if (num >= 0 && num <= 11 && str === '0') num = 1;
-    if (num >= 1 && num <= 12) return String(num).padStart(2, '0') + ' - ' + meses[num - 1];
+    var num = parseInt(str, 10);
+    if (num >= 0 && num <= 11 && str === "0") num = 1;
+    if (num >= 1 && num <= 12) return String(num).padStart(2, "0") + " - " + meses[num - 1];
   }
-  for (let i = 0; i < meses.length; i++) {
-    if (str.toLowerCase().includes(meses[i].toLowerCase())) return String(i + 1).padStart(2, '0') + ' - ' + meses[i];
+  for (var i = 0; i < meses.length; i++) {
+    if (str.toLowerCase().includes(meses[i].toLowerCase())) return String(i + 1).padStart(2, "0") + " - " + meses[i];
   }
   return formatarMesPadrao(new Date());
 }
 
 function formatarMesPadrao(d) {
-  const meses = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-  return String(d.getMonth() + 1).padStart(2, '0') + ' - ' + meses[d.getMonth()];
+  var meses = ["Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  return String(d.getMonth() + 1).padStart(2, "0") + " - " + meses[d.getMonth()];
 }
 
 function extrairIdPasta(urlOuId) {
-  if (!urlOuId) return '';
-  const str = String(urlOuId).trim();
-  const match = str.match(/folders\/([a-zA-Z0-9_-]+)/);
+  if (!urlOuId) return "";
+  var str = String(urlOuId).trim();
+  var match = str.match(/folders\/([a-zA-Z0-9_-]+)/);
   if (match && match[1]) return match[1];
   return str;
 }

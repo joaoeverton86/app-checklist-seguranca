@@ -1058,6 +1058,7 @@ function construirSecao1RelSms(dados, mes, ano, fiscalizacao, graficoHhtBuffer) 
                                     spacing: { before: 180, after: 120 },
                                     children: [
                                         new docx.ImageRun({
+                                            type: 'png',
                                             data: graficoHhtBuffer.buffer,
                                             transformation: {
                                                 width: 500,
@@ -1777,6 +1778,7 @@ function relSmsCelulaRegistroFotoReal(foto) {
             spacing: { before: 80, after: 60 },
             children: [
                 new docx.ImageRun({
+                    type: relSmsTipoImagemBufferDocx(foto.img.buffer),
                     data: foto.img.buffer,
                     transformation: {
                         width: Math.min(foto.img.width || 280, 280),
@@ -2060,7 +2062,20 @@ function construirSecaoPericulosidadeDocx(dados) {
 // Monta o Document completo (capa + índice + sumário + Seções 1 a 7 + Anexos) pro
 // mês/ano/versão escolhidos. Só a lib docx carregada globalmente via CDN (window.docx) -
 // ver comentário no topo desta seção.
+function relSmsTipoImagemBufferDocx(buffer) {
+    const bytes = new Uint8Array(buffer);
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'png';
+    if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'jpg';
+    if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'gif';
+    if (bytes[0] === 0x42 && bytes[1] === 0x4d) return 'bmp';
+    throw new Error('Formato de imagem não suportado no Word. Use JPEG, PNG, GIF ou BMP.');
+}
+
 async function montarDocRelSms(mes, ano, fiscalizacao) {
+    const fotosSelecionadas = await relSmsFotosPreparar(mes, ano, (atual, total) => {
+        const status = document.getElementById('relSmsStatus');
+        if (status) status.textContent = `Preparando fotos selecionadas: ${atual}/${total}…`;
+    });
     if (typeof garantirDocumentosControleCarregados === 'function') {
         await garantirDocumentosControleCarregados();
     }
@@ -2084,6 +2099,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
             spacing: { before: 160, after: 360 },
             children: [
                 new docx.ImageRun({
+                    type: 'png',
                     data: logoCopBuffer,
                     transformation: { width: 170, height: 55 }
                 })
@@ -2157,8 +2173,8 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
 
     const secao4 = construirSecao4RelSms(dadosSecao1, dadosSecoes23, dadosMeioAmbiente, mes, ano, fiscalizacao);
 
-    const dadosFase4 = coletarDadosFase4RelSms(mes, ano);
-    const secao5 = await construirSecao5RelSms(dadosFase4, mes, ano);
+    const dadosFase4 = fotosSelecionadas ? null : coletarDadosFase4RelSms(mes, ano);
+    const secao5 = fotosSelecionadas ? relSmsFotosDocx(fotosSelecionadas) : await construirSecao5RelSms(dadosFase4, mes, ano);
     const anexos = construirAnexosRelSms(mes, ano);
 
     // Cabeçalho institucional com Logo do COP redimensionado e identificação corporativa
@@ -2173,6 +2189,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
                     alignment: docx.AlignmentType.LEFT,
                     children: [
                         new docx.ImageRun({
+                            type: 'png',
                             data: logoCopBuffer,
                             transformation: { width: 116, height: 38 }
                         })
@@ -2289,6 +2306,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
 // pop-up).
 async function gerarRelatorioMensalSms() {
     const statusEl = document.getElementById('relSmsStatus');
+    if (relSmsFotosEstado.gerando) { if (statusEl) statusEl.textContent = 'Aguarde a geração que já está em andamento.'; return; }
     const mes = parseInt(document.getElementById('relSmsMes').value);
     const ano = parseInt(document.getElementById('relSmsAno').value);
     const fiscalizacao = document.getElementById('relSmsFiscalizacao').checked;
@@ -2299,6 +2317,7 @@ async function gerarRelatorioMensalSms() {
     }
     if (statusEl) statusEl.textContent = '⏳ Carregando dados e gerando Word... pode levar até 1 minuto.';
     try {
+        relSmsFotosEstado.gerando = true;
         const doc = await montarDocRelSms(mes, ano, fiscalizacao);
         const blob = await docx.Packer.toBlob(doc);
         const nomeMes = NOMES_MESES[mes];
@@ -2317,6 +2336,8 @@ async function gerarRelatorioMensalSms() {
     } catch (e) {
         console.error('Erro ao gerar Relatório Mensal SMS:', e);
         if (statusEl) statusEl.textContent = '❌ Erro ao gerar o relatório: ' + (e?.message || e);
+    } finally {
+        relSmsFotosEstado.gerando = false;
     }
 }
 
@@ -4130,6 +4151,7 @@ async function carregarEVisualizarRelatorioSmsPainel() {
 // Abre via abrirDocumentoHtmlParaImpressao() (imune a bloqueador de popups).
 async function imprimirRelatorioMensalSms() {
     const statusEl = document.getElementById('relSmsStatus');
+    if (relSmsFotosEstado.gerando) { if (statusEl) statusEl.textContent = 'Aguarde a geração que já está em andamento.'; return; }
     const mes = parseInt(document.getElementById('relSmsMes').value);
     const ano = parseInt(document.getElementById('relSmsAno').value);
     const fiscalizacao = document.getElementById('relSmsFiscalizacao').checked;
@@ -4137,6 +4159,10 @@ async function imprimirRelatorioMensalSms() {
     if (statusEl) statusEl.innerHTML = '<span style="color:var(--text-light);"><i class="fa-solid fa-spinner fa-spin"></i> Carregando dados completos de todos os módulos e preparando impressão A4...</span>';
 
     try {
+        relSmsFotosEstado.gerando = true;
+        const fotosSelecionadas = await relSmsFotosPreparar(mes, ano, (atual, total) => {
+            if (statusEl) statusEl.textContent = `Preparando fotos selecionadas: ${atual}/${total}…`;
+        });
         await garantirDadosCompletosRelatorioMensalSms();
         const dados = coletarDadosCompletosRelatorioMensalSms(mes, ano);
 
@@ -4144,7 +4170,7 @@ async function imprimirRelatorioMensalSms() {
         renderRelSmsPainel(dados, fiscalizacao);
 
         // Gera o HTML oficial calibrado para impressão A4
-        const html = construirHtmlDossieOficialRelSms(dados, fiscalizacao);
+        const html = relSmsFotosInserirHtml(construirHtmlDossieOficialRelSms(dados, fiscalizacao), fotosSelecionadas);
 
         const nomeMes = NOMES_MESES[mes];
         abrirDocumentoHtmlParaImpressao(html, `Relatorio_Mensal_SMS_${nomeMes}_${ano}`);
@@ -4155,6 +4181,8 @@ async function imprimirRelatorioMensalSms() {
     } catch (err) {
         console.error('Erro ao gerar visualização do Relatório Mensal SMS:', err);
         if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444; font-weight:600;">❌ Erro ao gerar documento de impressão: ${escapeHTML(err?.message || String(err))}</span>`;
+    } finally {
+        relSmsFotosEstado.gerando = false;
     }
 }
 

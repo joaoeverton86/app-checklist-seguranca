@@ -68,8 +68,9 @@ async function encontrarPastaPorNome(nome, idPai, token) {
     const chaveCache = `${idPai}_${nome}`;
     if (cacheRaizesDinamicas[chaveCache]) return cacheRaizesDinamicas[chaveCache];
     const nomeEscapado = nome.replace(/'/g, "\\'");
-    const q = `name='${nomeEscapado}' and mimeType='application/vnd.google-apps.folder' and '${idPai}' in parents and trashed=false`;
-    const busca = await chamarDrive('files', { q, fields: 'files(id,name)' }, token);
+    const q = `name='${nomeEscapado}' and mimeType='application/vnd.google-apps.folder'${idPai ? ` and '${idPai}' in parents` : ''} and trashed=false`;
+    const busca = await chamarDrive('files', { q, fields: 'files(id,name)', ...(!idPai ? { pageSize: 2 } : {}) }, token);
+    if (!idPai && busca.files && busca.files.length > 1) throw new Error('Há mais de uma pasta de fotos com esse nome. Configure GOOGLE_DRIVE_FOTOS_ROOT_ID para identificar a pasta oficial.');
     if (busca.files && busca.files.length > 0) {
         cacheRaizesDinamicas[chaveCache] = busca.files[0].id;
         return busca.files[0].id;
@@ -77,7 +78,7 @@ async function encontrarPastaPorNome(nome, idPai, token) {
     return null;
 }
 
-async function pastaEhPermitida(pastaId, raizesValidas, token) {
+async function pastaEhPermitida(pastaId, raizesValidas, token, somentePais = false) {
     const raizes = Array.isArray(raizesValidas) ? raizesValidas.filter(Boolean) : [raizesValidas].filter(Boolean);
     if (!pastaId || raizes.includes(pastaId)) return true;
 
@@ -95,6 +96,8 @@ async function pastaEhPermitida(pastaId, raizesValidas, token) {
         // Segue para a validação descendo caso o campo parents não esteja exposto
     }
 
+    // O seletor mensal nunca varre o acervo inteiro para validar uma pasta.
+    if (somentePais) return false;
     // 2. Validação descendo a partir das raízes (até 6 níveis)
     const MAX_PROFUNDIDADE = 6;
     let nivelAtual = raizes.slice();
@@ -147,6 +150,8 @@ export default async function handler(req, res) {
                 if (!raizId) {
                     raizId = await encontrarPastaPorNome('Checklists', 'root', accessToken);
                 }
+            } else if (categoria === 'fotos') {
+                raizId = process.env.GOOGLE_DRIVE_FOTOS_ROOT_ID || await encontrarPastaPorNome('SST - Fotos & Evidências', null, accessToken);
             } else if (categoria === 'sms_cop' || categoria === 'documentos') {
                 raizId = await encontrarPastaPorNome('SMS_COP', 'root', accessToken);
             }
@@ -166,7 +171,7 @@ export default async function handler(req, res) {
 
         const idAlvo = pastaId || raizId;
         if (!raizesValidas.includes(idAlvo)) {
-            const permitida = await pastaEhPermitida(idAlvo, raizesValidas, tokenParaUsar);
+            const permitida = await pastaEhPermitida(idAlvo, raizesValidas, tokenParaUsar, categoria === 'fotos');
             if (!permitida) {
                 res.status(403).json({ erro: 'Pasta fora do acervo permitido.' });
                 return;
@@ -174,7 +179,7 @@ export default async function handler(req, res) {
         }
 
         let usuarioDrive = null;
-        if (accessToken) {
+        if (accessToken && categoria !== 'fotos') {
             try {
                 const about = await chamarDrive('about', { fields: 'user(displayName,emailAddress)' }, accessToken);
                 if (about && about.user) {
@@ -197,12 +202,13 @@ export default async function handler(req, res) {
             // Ignora falha em obter nome específico da pasta
         }
 
-        const q = `'${idAlvo}' in parents and trashed = false`;
+        const q = `'${idAlvo}' in parents and trashed = false` + (categoria === 'fotos'
+            ? " and (mimeType contains 'image/' or mimeType = 'application/vnd.google-apps.folder')" : '');
         const dados = await chamarDrive('files', {
             q,
             fields: 'nextPageToken,files(id,name,mimeType,size,webViewLink,modifiedTime)',
             orderBy: 'folder,name desc',
-            pageSize: 100,
+            pageSize: categoria === 'fotos' ? 30 : 100,
             pageToken
         }, tokenParaUsar);
 

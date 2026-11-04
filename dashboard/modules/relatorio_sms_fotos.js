@@ -522,15 +522,18 @@ async function relSmsFotosImportarDaPastaAutomatico() {
             if (fotosValidas.length === 0) continue;
 
             const nomeLimpo = sub.pastaNome.trim();
-            const matchData = nomeLimpo.match(/\[?(\d{2})[\/\.-](\d{2})\]?/);
+            if (/^\d{4}$/.test(nomeLimpo)) continue;
+
+            const matchData = nomeLimpo.match(/\[?(\d{2})[\/\.-](\d{2})(?:[\/\.-](\d{4}))?\]?/);
             let diaIso = '';
             if (matchData) {
                 const dia = matchData[1];
                 const mes = matchData[2];
-                diaIso = `${d.ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+                const ano = matchData[3] || d.ano;
+                diaIso = `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
             }
 
-            let temaNome = nomeLimpo.replace(/^\[?\d{2}[\/\.-]\d{2}\]?\s*[-—–]?\s*/, '').trim();
+            let temaNome = nomeLimpo.replace(/^\[?\d{2}[\/\.-]\d{2}(?:[\/\.-]\d{4})?\]?\s*[-—–:]*\s*/, '').trim();
             if (!temaNome) temaNome = nomeLimpo;
 
             let grupoAlvo = copiaDoc.grupos.find(g => {
@@ -541,7 +544,7 @@ async function relSmsFotosImportarDaPastaAutomatico() {
             });
 
             if (!grupoAlvo) {
-                const isDds = /dds|di[aá]logo/i.test(nomeLimpo);
+                const isDds = /dds|di[aá]logo/i.test(nomeLimpo) || (typeof allDdsCronograma !== 'undefined' && Array.isArray(allDdsCronograma) && allDdsCronograma.some(c => c.data === diaIso));
                 grupoAlvo = {
                     tipo: isDds ? 'ddsma' : 'treinamento',
                     tema: temaNome,
@@ -553,7 +556,7 @@ async function relSmsFotosImportarDaPastaAutomatico() {
 
             grupoAlvo.fotos = fotosValidas.map(f => ({
                 id: f.id,
-                nome: f.nome || 'Foto do Treinamento'
+                nome: f.nome || 'Foto de Evidência'
             }));
 
             fotosVinculadas += fotosValidas.length;

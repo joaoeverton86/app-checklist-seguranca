@@ -926,9 +926,16 @@ async function salvarLancamentoFerias() {
 async function iniciarGozoFeriasRapido(feriasId, matricula) {
     if (!confirm(`Confirma o início do gozo de férias hoje para o colaborador de matrícula ${matricula}?`)) return;
     try {
+        if (!feriasId || feriasId === 'undefined' || feriasId === 'null') {
+            throw new Error('Registro de férias não identificado. Atualize a lista e tente novamente.');
+        }
         const hojeIso = toISODateLocal(new Date());
-        const payload = { id: feriasId, status: 'em_gozo', data_inicio: hojeIso, updated_at: new Date().toISOString() };
-        await supabaseUpsert('colaboradores_ferias', [payload]);
+        const payload = { status: 'em_gozo', data_inicio: hojeIso, updated_at: new Date().toISOString() };
+        // Atualiza somente o lançamento existente, preservando matrícula, datas e histórico.
+        const atualizados = await supabaseUpdate('colaboradores_ferias', feriasId, payload);
+        if (!Array.isArray(atualizados) || atualizados.length !== 1) {
+            throw new Error('Registro de férias não encontrado ou sem permissão para atualizar. Recarregue a lista.');
+        }
         await garantirColaboradoresFeriasCarregados();
         renderFeriasPanel();
     } catch (err) {
@@ -939,8 +946,15 @@ async function iniciarGozoFeriasRapido(feriasId, matricula) {
 async function concluirFeriasRapido(feriasId, matricula) {
     if (!confirm(`Confirma a conclusão do período de férias do colaborador de matrícula ${matricula}?`)) return;
     try {
-        const payload = { id: feriasId, status: 'concluida', updated_at: new Date().toISOString() };
-        await supabaseUpsert('colaboradores_ferias', [payload]);
+        if (!feriasId || feriasId === 'undefined' || feriasId === 'null') {
+            throw new Error('Registro de férias não identificado. Atualize a lista e tente novamente.');
+        }
+        const payload = { status: 'concluida', updated_at: new Date().toISOString() };
+        // Atualiza somente o lançamento existente, preservando matrícula, datas e histórico.
+        const atualizados = await supabaseUpdate('colaboradores_ferias', feriasId, payload);
+        if (!Array.isArray(atualizados) || atualizados.length !== 1) {
+            throw new Error('Registro de férias não encontrado ou sem permissão para atualizar. Recarregue a lista.');
+        }
         await garantirColaboradoresFeriasCarregados();
         renderFeriasPanel();
     } catch (err) {

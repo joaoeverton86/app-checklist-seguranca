@@ -117,6 +117,8 @@ function relSmsFotosRender() {
         event.preventDefault(); if (!relSmsFotosPodeEditar()) return;
         const form = event.currentTarget;
         const grupo = { tipo: form.elements.tipo.value, tema: form.elements.tema.value.trim(), data: form.elements.data.value, fotos: s.editando >= 0 ? d.grupos[s.editando].fotos : [] };
+        if (s.editor?.cronogramaId) grupo.cronogramaId = s.editor.cronogramaId;
+        else if (s.editando >= 0 && d.grupos[s.editando].tema === grupo.tema && d.grupos[s.editando].data === grupo.data && d.grupos[s.editando].cronogramaId) grupo.cronogramaId = d.grupos[s.editando].cronogramaId;
         const candidato = structuredClone(d);
         if (s.editando >= 0) candidato.grupos[s.editando] = grupo; else candidato.grupos.push(grupo);
         try { relSmsFotosValidar(candidato); s.doc = candidato; s.editando = -1; s.editor = null; s.dirty = true; relSmsFotosRender(); }
@@ -131,7 +133,9 @@ function relSmsFotosRender() {
     if (editorForm) {
         if (s.editor) for (const nome of ['tipo', 'tema', 'data']) editorForm.elements[nome].value = s.editor[nome];
         editorForm.addEventListener('input', () => {
+            const anterior = s.editor;
             s.editor = Object.fromEntries(['tipo', 'tema', 'data'].map(nome => [nome, editorForm.elements[nome].value]));
+            if (anterior?.cronogramaId && anterior.tema === s.editor.tema && anterior.data === s.editor.data && s.editor.tipo === 'treinamento') s.editor.cronogramaId = anterior.cronogramaId;
         });
         const limpar = document.createElement('button'); limpar.type = 'button'; limpar.textContent = 'Limpar formulário';
         limpar.addEventListener('click', () => {
@@ -180,13 +184,32 @@ async function relSmsFotosCronograma() {
     const fim = `${d.ano}-${String(d.mes + 1).padStart(2, '0')}-${new Date(d.ano, d.mes + 1, 0).getDate()}`;
     try {
         const [rows, catalogo] = await Promise.all([
-            supabaseFetch('treinamentos_cronograma', `?select=treinamento_cod,data_prevista,data_realizada&data_prevista=gte.${inicio}&data_prevista=lte.${fim}&limit=100`),
+            supabaseFetch('treinamentos_cronograma', `?select=id,treinamento_cod,data_prevista,data_realizada&or=(and(data_prevista.gte.${inicio},data_prevista.lte.${fim}),and(data_realizada.gte.${inicio},data_realizada.lte.${fim}))&limit=500`),
             supabaseFetch('treinamentos_catalogo', '?select=id,nome&limit=500')
         ]);
         if (relSmsFotosEstado.doc !== d) return;
-        const temas = rows.map(r => catalogo.find(c => String(c.id) === String(r.treinamento_cod))?.nome).filter(Boolean);
-        document.getElementById('relSmsFotosTemas').innerHTML = [...new Set(temas)].map(t => `<option value="${escapeHTML(t)}"></option>`).join('');
-        relSmsFotosMensagem('Temas disponíveis no campo Tema aplicado. Confirme a data real de aplicação; previsão não comprova execução.');
+        const temas = rows.map(r => ({ ...r, nome: catalogo.find(c => String(c.id) === String(r.treinamento_cod))?.nome || 'Treinamento sem nome no catálogo' }));
+        document.getElementById('relSmsFotosTemas').innerHTML = [...new Set(temas.map(r => r.nome))].map(t => `<option value="${escapeHTML(t)}"></option>`).join('');
+        document.getElementById('relSmsFotosOpcoesCronograma')?.remove();
+        const bloco = document.createElement('div'); bloco.id = 'relSmsFotosOpcoesCronograma';
+        const titulo = document.createElement('p'); titulo.textContent = 'Escolha uma aplicação realizada. Datas previstas não comprovam execução.'; bloco.appendChild(titulo);
+        const realizadas = temas.filter(r => r.data_realizada && r.data_realizada.slice(0, 10) >= inicio && r.data_realizada.slice(0, 10) <= fim);
+        realizadas.sort((a, b) => a.data_realizada.localeCompare(b.data_realizada)).forEach(r => {
+            const botao = document.createElement('button'); botao.type = 'button';
+            botao.textContent = r.data_realizada.slice(0, 10).split('-').reverse().join('/') + ' — ' + r.nome + ' (previsto: ' + (r.data_prevista || 'não informado') + ')';
+            botao.addEventListener('click', () => {
+                if (!relSmsFotosPodeEditar() || relSmsFotosEstado.doc !== d) return;
+                const form = document.getElementById('relSmsFotosNovo');
+                form.elements.tipo.value = 'treinamento'; form.elements.tema.value = r.nome; form.elements.data.value = r.data_realizada.slice(0, 10);
+                relSmsFotosEstado.editor = { tipo: 'treinamento', tema: r.nome, data: r.data_realizada.slice(0, 10), cronogramaId: String(r.id || '') };
+                relSmsFotosMensagem('Aplicação selecionada. Confira tema/data e clique em Adicionar tema / data.');
+            }); bloco.appendChild(botao);
+        });
+        const resumo = document.createElement('p');
+        const semFotos = realizadas.filter(r => !d.grupos.some(g => g.tipo === 'treinamento' && g.data === r.data_realizada.slice(0, 10) && g.tema === r.nome && g.fotos.length === 2));
+        resumo.textContent = realizadas.length + ' aplicações realizadas; ' + semFotos.length + ' sem par de fotos selecionado. Previstas sem realização no mês: ' + (temas.length - realizadas.length) + '. Consulta limitada a 500 registros.';
+        bloco.appendChild(resumo); document.getElementById('relSmsFotosNovo').appendChild(bloco);
+        relSmsFotosMensagem('Cronograma consultado. Nenhuma foto foi selecionada automaticamente.');
     } catch (err) { relSmsFotosMensagem('Não foi possível consultar o cronograma: ' + err.message); }
 }
 async function relSmsFotosSalvar(fechar) {

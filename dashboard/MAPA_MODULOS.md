@@ -1,5 +1,7 @@
 # MAPA OFICIAL DE MÓDULOS — DASHBOARD GERENCIAL SST
 
+Incremento local v285 (04/11/2026): relatório SMS preserva ocultações executivas, distingue ausência de evidência, recorta atestados por competência e mantém HHT zero; fotos permitem escolher aplicação realizada do cronograma. Escopo, testes e itens estruturais pendentes em `RELATORIO_SMS_VALIDACAO.md`.
+
 Atualização pontual de 03/11/2026: `modules/relatorio_sms_fotos.js` mantém a seleção editorial mensal de fotos no Drive (metadados leves por competência), com fechamento e incorporação no Word/impressão. Carrega após `relatorio_sms_nc.js`, que mantém os pontos de entrada do relatório. Ver `RELATORIO_SMS_FOTOS.md`.
 
 Atualização pontual de 03/11/2026: `modules/saude_prestadores.js` concentra o cadastro administrativo de estabelecimentos parceiros e médicos examinadores, com seleção para a prévia do ASO. Carrega após `saude_psicossocial.js` e `pcmso.js`; reutiliza `configuracoes_sistema` e preserva a separação entre coordenador e examinador. Detalhes em `ASO_MODELO.md`. As contagens históricas abaixo devem ser confirmadas no código atual.

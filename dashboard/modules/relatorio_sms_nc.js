@@ -1,3 +1,31 @@
+function relSmsHhtCompetencia(ano, mes) {
+    const cfg = typeof hhtDiasTrabalhadosMap !== 'undefined' ? hhtDiasTrabalhadosMap[ano + '-' + String(mes + 1).padStart(2, '0')] : null;
+    const numero = v => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0;
+    const diasConfirmados = numero(cfg?.dias_trabalhados);
+    const dias = diasConfirmados ? Number(cfg.dias_trabalhados) : semanasUteisDoMes(ano, mes).length * 5;
+    const horas = numero(cfg?.horas_por_dia) ? Number(cfg.horas_por_dia) : 8;
+    const efetivo = headcountAsOf(new Date(ano, mes + 1, 0, 23, 59, 59, 999));
+    return { valor: efetivo * dias * horas, estimado: efetivo > 0 && !diasConfirmados, dias, horas };
+}
+
+function relSmsPercentual(valor) {
+    return valor === null || valor === undefined || !Number.isFinite(valor) ? 'Sem base de cálculo' : valor.toFixed(1) + '%';
+}
+
+function relSmsDiasAtestadoNaCompetencia(atestado, mes, ano) {
+    const dia = valor => {
+        const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(valor || ''));
+        if (!match) return NaN;
+        const utc = Date.UTC(+match[1], +match[2] - 1, +match[3]);
+        return new Date(utc).toISOString().slice(0, 10) === match[0] ? utc / 86400000 : NaN;
+    };
+    const inicio = dia(atestado.data_inicio);
+    const dias = Number.parseInt(atestado.dias_afastamento, 10);
+    const fim = atestado.data_fim ? dia(atestado.data_fim) : (Number.isFinite(dias) && dias > 0 ? inicio + dias - 1 : NaN);
+    if (!Number.isFinite(inicio) || !Number.isFinite(fim) || fim < inicio) return null;
+    return Math.max(0, Math.min(fim, Date.UTC(ano, mes + 1, 0) / 86400000) - Math.max(inicio, Date.UTC(ano, mes, 1) / 86400000) + 1);
+}
+
 // ==============================================================================
 // MODULO: RELATORIO MENSAL SMS (.DOCX / SVG), INSPECOES E NAO CONFORMIDADES
 // Extraido de dashboard.js para arquitetura modular de alta performance
@@ -842,7 +870,7 @@ async function garantirDadosSecao1RelSms() {
 // Coleta os números já prontos de cada módulo pro mês/ano do relatório. Retorna um objeto
 // plano com um bloco por subseção (1.1 a 1.9) - construirSecao1RelSms() só formata, não
 // recalcula nada.
-function coletarDadosSecao1RelSms(mes, ano) {
+function coletarDadosSecao1RelSms(mes, ano, consolidado = null) {
     const inicio = new Date(ano, mes, 1);
     const fim = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
     const dentroMes = (dataStr) => {
@@ -850,28 +878,13 @@ function coletarDadosSecao1RelSms(mes, ano) {
         const d = parseLocalDate(dataStr);
         return d >= inicio && d <= fim;
     };
-    const ultimoDia = fim.getDate();
-    const customFromStr = `${ano}-${String(mes + 1).padStart(2, '0')}-01`;
-    const customToStr = `${ano}-${String(mes + 1).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`;
-
-    // ---- 1.1 Checklists - hijack de reportFilter/customFrom/customTo + filtros de
-    // categoria/empresa (zerados pro relatório sair sempre com o TOTAL do mês, não com
-    // o que a tela de Checklists tiver filtrado no momento). ----
-    const catEl = document.getElementById('filterCategoria');
-    const empEl = document.getElementById('filterEmpresa');
-    const prevFilter = reportFilter, prevFrom = customFrom, prevTo = customTo;
-    const prevCat = catEl ? catEl.value : '', prevEmp = empEl ? empEl.value : '';
-    reportFilter = 'custom';
-    customFrom = customFromStr;
-    customTo = customToStr;
-    if (catEl) catEl.value = '';
-    if (empEl) empEl.value = '';
-    renderAll();
-    const checklistKpis = (window.checklistReportData?.kpis || []).slice();
-    reportFilter = prevFilter; customFrom = prevFrom; customTo = prevTo;
-    if (catEl) catEl.value = prevCat;
-    if (empEl) empEl.value = prevEmp;
-    renderAll();
+    const base = consolidado || coletarDadosCompletosRelatorioMensalSms(mes, ano);
+    const checklistKpis = [
+        { label: 'Checklists no mês', value: base.checklists.total },
+        { label: 'Conformes', value: base.checklists.conformes },
+        { label: 'Com não conformidades', value: base.checklists.naoConformes },
+        { label: 'Conformidade', value: relSmsPercentual(base.checklists.taxaConformidade) }
+    ];
 
     // ---- 1.2 Treinamentos e DDSMS - já tem uma função pronta parametrizada por mês
     // (mesma usada no Excel/PDF do "Relatório Mensal" de Treinamentos), sem precisar de
@@ -950,7 +963,8 @@ function coletarDadosSecao1RelSms(mes, ano) {
         const insp = ultimaInspecaoMesExt[e.id];
         if (!insp) extPendentes++;
         else if (insp.status_geral === 'nao_conforme') extNaoConf++;
-        else extConf++;
+        else if (insp.status_geral === 'conforme') extConf++;
+        else extPendentes++;
     });
     const hojeExt = new Date(); hojeExt.setHours(0, 0, 0, 0);
     let extVencidos = 0, extVencendo = 0;
@@ -1115,21 +1129,13 @@ function construirSecao1RelSms(dados, mes, ano, fiscalizacao, graficoHhtBuffer) 
     // 1.6 Extintores
     out.push(relSmsH2('1.6. Extintores de Incêndio'));
     const totalInspMesDocx = (dados.extintores.conf || 0) + (dados.extintores.naoConf || 0);
-    if (totalInspMesDocx === 0 || fiscalizacao) {
-        out.push(relSmsTabela(['Indicador', 'Valor'], [
-            ['Extintores ativos', dados.extintores.totalAtivos],
-            ['Extintores em Prontidão Operacional', `${dados.extintores.totalAtivos} (100% com carga e teste hidrostático válidos)`]
-        ]));
-        out.push(relSmsNota('Todos os equipamentos de combate a incêndio encontram-se mapeados, desobstruídos e com manutenção preventiva dentro dos prazos de validade técnica.'));
-    } else {
-        out.push(relSmsTabela(['Indicador', 'Valor'], [
-            ['Extintores ativos', dados.extintores.totalAtivos],
-            ['Inspecionados no mês — conforme', dados.extintores.conf],
-            ['Inspecionados no mês — não conforme', dados.extintores.naoConf],
-            ['Situação atual — com validade técnica ativa', dados.extintores.totalAtivos - dados.extintores.vencidos],
-            ['Situação atual — vencendo (≤30 dias)', dados.extintores.vencendo],
-        ]));
-    }
+    out.push(relSmsTabela(['Indicador', 'Valor'], [
+        ['Extintores ativos — cadastro atual', dados.extintores.totalAtivos],
+        ['Inspecionados no mês', totalInspMesDocx],
+        ['Inspeções conformes no mês', dados.extintores.conf],
+        ...(!fiscalizacao ? [['Inspeções não conformes no mês', dados.extintores.naoConf], ['Sem inspeção no mês', dados.extintores.pendentes]] : [])
+    ]));
+    if (!totalInspMesDocx) out.push(relSmsNota('Sem inspeções registradas nesta competência.'));
 
     // 1.7 Acidentabilidade
     out.push(relSmsH2('1.7. Acidentabilidade'));
@@ -1197,18 +1203,20 @@ async function garantirDadosSecoes23RelSms() {
     await Promise.all(tarefas);
 }
 
-function coletarDadosSecoes23RelSms(mes, ano) {
+function coletarDadosSecoes23RelSms(mes, ano, consolidado = null) {
     // ---- Seção 2 - ADA / Mão de Obra Local (Quadros 1 e 2 do RSA) ----
     const ada = montarQuadrosMaoDeObra(ano, mes);
 
-    // ---- Seção 3.1 - ASO e Absenteísmo Ocupacional - hijack de saudeFiltroAno/Mês
-    // (mesmo padrão do 1.1/1.5/1.7). ----
-    const prevSaudeAno = saudeFiltroAno, prevSaudeMes = saudeFiltroMes, prevSaudeFilter = saudeFilter;
-    saudeFiltroAno = String(ano); saudeFiltroMes = String(mes);
-    renderSaudePanel();
-    const saudeKpis = (window.saudeReportData?.kpis || []).slice();
-    saudeFiltroAno = prevSaudeAno; saudeFiltroMes = prevSaudeMes; saudeFilter = prevSaudeFilter;
-    renderSaudePanel();
+    const base = consolidado || coletarDadosCompletosRelatorioMensalSms(mes, ano);
+    const saudeKpis = [
+        { label: 'ASOs no mês', value: base.saude.totalAsos },
+        { label: 'Aptos', value: base.saude.aptos },
+        { label: 'Com restrição', value: base.saude.restricoes },
+        { label: 'Inaptos', value: base.saude.inaptos },
+        { label: 'Sem resultado informado', value: base.saude.semResultado },
+        { label: 'Dias corridos de atestados na competência (sobreposições mantidas)', value: base.saude.diasAfastamento },
+        { label: 'Atestados sem intervalo válido (não somados)', value: base.saude.atestadosSemIntervalo }
+    ];
 
     // ---- Seção 3.2 - Avaliação Psicossocial (COPSOQ II) - não é mensal (é por
     // "aplicação" do questionário); usa a aplicação mais recente cujo período
@@ -1274,6 +1282,7 @@ function construirSecao3RelSms(dados, mes, ano, fiscalizacao) {
 
     out.push(relSmsH2('3.1. Atestados de Saúde Ocupacional (ASO) e Absenteísmo'));
     out.push(dados.saudeKpis.length > 0 ? relSmsTabelaKpis(dados.saudeKpis) : relSmsP('Nenhum dado de ASO disponível para o período.'));
+    out.push(relSmsNota('Afastamentos em dias corridos por atestado dentro da competência; sobreposições mantidas. O total não representa dias únicos por colaborador.'));
 
     out.push(relSmsH2('3.2. Avaliação Psicossocial (COPSOQ II)'));
     const p = dados.psicossocial;
@@ -1338,7 +1347,7 @@ function construirSecaoMeioAmbienteRelSms(dados, mes, ano, fiscalizacao) {
     const l = dados.linhaResiduos;
     if (!dados.residuosConfirmados) {
         if (fiscalizacao) {
-            out.push(relSmsP('A gestão, segregação e destinação de resíduos no canteiro e frentes de serviço foram conduzidas em conformidade com as diretrizes do PGRS, mantendo-se dentro dos parâmetros operacionais do período.'));
+            out.push(relSmsP('Quantitativos de resíduos não apresentados nesta edição.'));
         } else {
             out.push(relSmsP(`As quantidades de resíduos (quentinhas de isopor, copos descartáveis e EPI usado sem contaminação) de ${nomeMes.toLowerCase()} de ${ano} ainda não foram confirmadas nos registros de campo consolidados pela equipe de SMS.`));
         }
@@ -1364,7 +1373,7 @@ function construirSecaoMeioAmbienteRelSms(dados, mes, ano, fiscalizacao) {
     out.push(relSmsH2('7.2. Rastreabilidade de Manutenção Veicular (Troca de Óleo)'));
     if (dados.manutRegistrosMes === 0) {
         if (fiscalizacao) {
-            out.push(relSmsP('As manutenções preventivas, inspeções de nível e trocas de fluidos da frota e equipamentos operacionais foram realizadas conforme o plano de manutenção, sem ocorrências de vazamentos ou impactos ambientais no período.'));
+            out.push(relSmsP('Detalhamento de manutenção veicular não apresentado nesta edição.'));
         } else {
             out.push(relSmsP(`Nenhum registro de manutenção veicular no período em ${nomeMes.toLowerCase()} de ${ano}.`));
         }
@@ -1404,7 +1413,7 @@ function construirSecao4RelSms(dadosSecao1, dadosSecoes23, dadosMeioAmbiente, me
         if (d1.apr.situacaoAtual.vencendo > 0) pontosInternos.push(`${d1.apr.situacaoAtual.vencendo} APR(s) vencendo em até 5 dias.`);
         if (d1.relatos.abertosAtual > 0) pontosInternos.push(`${d1.relatos.abertosAtual} relato(s) de segurança em acompanhamento pelo SESMT.`);
         if (d1.cipa.pendenciasAbertas > 0) pontosInternos.push(`${d1.cipa.pendenciasAbertas} ação(ões) da CIPA em andamento conforme cronograma.`);
-        
+
         if (pontosInternos.length > 0) {
             out.push(relSmsH2('Acompanhamento Operacional Interno'));
             pontosInternos.forEach(texto => out.push(new docx.Paragraph({
@@ -1593,7 +1602,7 @@ function coletarDadosFase4RelSms(mes, ano) {
 
     (allTreinamentosRealizados || []).forEach(r => {
         if (!dentroPeriodo(r.data_treinamento)) return;
-        
+
         // Excluir qualquer tentativa de exibir fotos ou blocos para "Integração"
         if (String(r.treinamento_cod) === '1' || (r.treinamento_nome || '').toUpperCase().includes('INTEGRA')) {
             return;
@@ -2013,7 +2022,7 @@ function construirSecaoPgrDocx(dados, fiscalizacao) {
         ['Total de Ações Mapeadas no PGR', p.totalAcoes ?? 0],
         ['Ações Concluídas / Implementadas', p.concluidas ?? 0],
         ['Ações com Eficácia Comprovada', p.eficazes ?? 0],
-        ['Taxa de Eficácia das Ações', (p.taxaEficacia ?? 0) + '%'],
+        ['Taxa de Eficácia das Ações', relSmsPercentual(p.taxaEficacia)],
     ];
     if (!fiscalizacao) {
         linhas.push(['Ações em Andamento', p.andamento ?? 0]);
@@ -2141,6 +2150,8 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
     const sumario = [
         relSmsH1('Sumário Executivo'),
         relSmsP('Este relatório consolida de forma integrada as ações e o desempenho operacional em Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste no mês de ' + nomeMes.toLowerCase() + ' de ' + ano + ', com base nos registros de campo consolidados pela equipe de SMS e em conformidade com as Normas Regulamentadoras aplicáveis.'),
+        relSmsNota('Realizações mensais correspondem à competência. Cadastros, validades e pendências atuais refletem a data de emissão; não constituem retrato histórico fechado.'),
+        relSmsNota('HHT mensal: ' + dadosCompletos.hht.hhtMes + ' h' + (dadosCompletos.hht.hhtEstimado ? ' (estimado)' : '') + '; acumulado: ' + dadosCompletos.hht.hhtAcumuladoAno + ' h' + (dadosCompletos.hht.hhtAcumuladoEstimado ? ' (inclui estimativas)' : '') + '. Taxas dependentes acompanham esta base.'),
         relSmsH2('Destaques do Período'),
         ...(dadosCompletos.destaques || []).map(d => new docx.Paragraph({
             spacing: { after: 100 },
@@ -2154,13 +2165,13 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
     ];
 
     await garantirDadosSecao1RelSms();
-    const dadosSecao1 = coletarDadosSecao1RelSms(mes, ano);
+    const dadosSecao1 = coletarDadosSecao1RelSms(mes, ano, dadosCompletos);
     const secao1 = construirSecao1RelSms(dadosSecao1, mes, ano, fiscalizacao, graficoHhtBuffer);
 
     const secaoPgr = construirSecaoPgrDocx(dadosCompletos, fiscalizacao);
 
     await garantirDadosSecoes23RelSms();
-    const dadosSecoes23 = coletarDadosSecoes23RelSms(mes, ano);
+    const dadosSecoes23 = coletarDadosSecoes23RelSms(mes, ano, dadosCompletos);
     const secao2 = construirSecao2RelSms(dadosSecoes23, mes, ano);
     const secao3 = construirSecao3RelSms(dadosSecoes23, mes, ano, fiscalizacao);
 
@@ -2409,32 +2420,16 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
 
     // 1. Efetivo e Exposição ao Risco (HHT)
     const efetivoFim = headcountAsOf(fim);
-    const totalFuncionarios = efetivoFim > 0 ? efetivoFim : ((allEfetivo || []).filter(colaboradorEstaAtivo).length || 0);
+    const totalFuncionarios = efetivoFim;
 
-    const keyHht = `${ano}-${String(mes + 1).padStart(2, '0')}`;
-    const cfgHht = (typeof hhtDiasTrabalhadosMap !== 'undefined' && hhtDiasTrabalhadosMap[keyHht]) ? hhtDiasTrabalhadosMap[keyHht] : null;
-    const semanasUteis = semanasUteisDoMes(ano, mes);
-    const diasTrabalhados = cfgHht?.dias_trabalhados || (semanasUteis.length * 5);
-    const horasPorDia = cfgHht?.horas_por_dia || 8;
-
-    let hhtMes = hhtExposicaoDoMes(ano, mes);
-    let hhtEstimado = false;
-    if (hhtMes === null || hhtMes === 0) {
-        hhtMes = totalFuncionarios * diasTrabalhados * horasPorDia;
-        hhtEstimado = true;
-    }
-
-    // HHT Acumulado no ano (Jan até o mês atual)
-    let hhtAcumuladoAno = 0;
-    for (let m = 0; m <= mes; m++) {
-        const h = hhtExposicaoDoMes(ano, m);
-        if (h !== null && h > 0) {
-            hhtAcumuladoAno += h;
-        } else {
-            const hc = headcountAsOf(new Date(ano, m + 1, 0));
-            hhtAcumuladoAno += (hc || totalFuncionarios) * 22 * 8;
-        }
-    }
+    const exposicao = relSmsHhtCompetencia(ano, mes);
+    const diasTrabalhados = exposicao.dias;
+    const horasPorDia = exposicao.horas;
+    const hhtMes = exposicao.valor;
+    const hhtEstimado = exposicao.estimado;
+    const memoriaHht = Array.from({ length: mes + 1 }, (_, m) => relSmsHhtCompetencia(ano, m));
+    const hhtAcumuladoAno = memoriaHht.reduce((total, m) => total + m.valor, 0);
+    const hhtAcumuladoEstimado = memoriaHht.some(m => m.estimado);
 
     // 2. Checklists e Não Conformidades
     const checklistsMes = (allChecklists || []).filter(c => dentroMes(c.date));
@@ -2445,7 +2440,7 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
         if (temNc) chkNaoConformes++;
         else chkConformes++;
     });
-    const taxaConformidadeChk = checklistsMes.length > 0 ? (chkConformes / checklistsMes.length * 100) : 100;
+    const taxaConformidadeChk = checklistsMes.length > 0 ? (chkConformes / checklistsMes.length * 100) : null;
 
     const ncMes = (allNaoConformidades || []).filter(nc => dentroMes(nc.date) || dentroMes(nc.created_at));
     const ncPorRisco = { critico_alto: 0, medio: 0, baixo: 0 };
@@ -2514,7 +2509,7 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
     const cronogramaMes = (allTreinamentosCronograma || []).filter(c => dentroMes(c.data_prevista));
     const cronogramaRealizados = cronogramaMes.filter(c => c.status === 'lancado' || c.status === 'concluido').length;
     const cronogramaPendentes = cronogramaMes.filter(c => c.status !== 'lancado' && c.status !== 'concluido').length;
-    const taxaCronograma = cronogramaMes.length > 0 ? Math.round((cronogramaRealizados / cronogramaMes.length) * 100) : 100;
+    const taxaCronograma = cronogramaMes.length > 0 ? Math.round((cronogramaRealizados / cronogramaMes.length) * 100) : null;
 
     // Colaboradores com NR vencida (situação atual)
     const hojeNR = new Date(); hojeNR.setHours(0, 0, 0, 0);
@@ -2559,10 +2554,10 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
     const diasPerdidosMes = acidentesTipicos.reduce((s, a) => s + (parseInt(a.dias_perdidos, 10) || 0), 0);
     const diasDebitadosMes = acidentesTipicos.reduce((s, a) => s + (parseInt(a.dias_debitados, 10) || 0), 0);
 
-    const tfG = hhtMes > 0 ? ((acidentesTipicos.length * 1000000) / hhtMes) : 0;
-    const tfCA = hhtMes > 0 ? ((acidentesCA.length * 1000000) / hhtMes) : 0;
-    const tfSA = hhtMes > 0 ? ((acidentesSA.length * 1000000) / hhtMes) : 0;
-    const tg = hhtMes > 0 ? (((diasPerdidosMes + diasDebitadosMes) * 1000000) / hhtMes) : 0;
+    const tfG = hhtMes > 0 ? ((acidentesTipicos.length * 1000000) / hhtMes) : null;
+    const tfCA = hhtMes > 0 ? ((acidentesCA.length * 1000000) / hhtMes) : null;
+    const tfSA = hhtMes > 0 ? ((acidentesSA.length * 1000000) / hhtMes) : null;
+    const tg = hhtMes > 0 ? (((diasPerdidosMes + diasDebitadosMes) * 1000000) / hhtMes) : null;
     const taxaIncidencia = totalFuncionarios > 0 ? ((acidentesTipicos.length * 1000) / totalFuncionarios) : 0;
 
     const diasSemCpt = diasSemAcidente(true);
@@ -2580,19 +2575,19 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
 
         if (st === 'concluida') {
             pgrConcluidas++;
-            if (a.afericao_eficacia === 'eficaz' || a.afericao_eficacia === 'parcial') pgrEficazes++;
+            if (a.afericao_eficacia === 'eficaz') pgrEficazes++;
         } else if (st !== 'cancelada') {
             if (prazo && prazo < hojeStr) pgrAtrasadas++;
             if (st === 'aberta') pgrAbertas++;
             else pgrAndamento++;
         }
     });
-    const pgrTaxaEficacia = pgrConcluidas > 0 ? Math.round((pgrEficazes / pgrConcluidas) * 100) : (pgrTotal > 0 ? 0 : 100);
+    const pgrTaxaEficacia = pgrConcluidas > 0 ? Math.round((pgrEficazes / pgrConcluidas) * 100) : null;
 
     // 9. Saúde Ocupacional & Absenteísmo (NR-07)
     const asoMes = (allAsoExames || []).filter(a => dentroMes(a.data_exame));
     const asoPorTipo = { admissional: 0, periodico: 0, demissional: 0, retorno: 0, mudanca: 0, psicossocial: 0, outros: 0 };
-    let asoAptos = 0, asoInaptos = 0, asoRestricao = 0;
+    let asoAptos = 0, asoInaptos = 0, asoRestricao = 0, asoSemResultado = 0;
     asoMes.forEach(a => {
         const t = (a.tipo_aso || '').toLowerCase();
         if (t.includes('admiss')) asoPorTipo.admissional++;
@@ -2603,16 +2598,18 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
         else if (t.includes('psico')) asoPorTipo.psicossocial++;
         else asoPorTipo.outros++;
 
-        const res = (a.resultado || 'apto').toLowerCase();
+        const res = String(a.resultado || '').trim().toLowerCase();
         if (res.includes('inapto')) asoInaptos++;
         else if (res.includes('restr')) asoRestricao++;
-        else asoAptos++;
+        else if (res === 'apto') asoAptos++;
+        else asoSemResultado++;
     });
 
-    const atestadosMes = (allAtestadosOcupacionais || []).filter(a => dentroMes(a.data_inicio));
-    const diasAfastamentoMes = atestadosMes.reduce((s, a) => s + (parseInt(a.dias_afastamento, 10) || 0), 0);
+    const atestadosComDias = (allAtestadosOcupacionais || []).map(a => ({ registro: a, dias: relSmsDiasAtestadoNaCompetencia(a, mes, ano) }));
+    const atestadosMes = atestadosComDias.filter(a => a.dias > 0).map(a => a.registro);
+    const diasAfastamentoMes = atestadosComDias.reduce((total, a) => total + (a.dias || 0), 0);
     const horasPerdidasAtestados = diasAfastamentoMes * horasPorDia;
-    const taxaAbsenteismo = hhtMes > 0 ? ((horasPerdidasAtestados / hhtMes) * 100) : 0;
+    const taxaAbsenteismo = hhtMes > 0 ? ((horasPerdidasAtestados / hhtMes) * 100) : null;
 
     // Status Clínico Geral de ASO (NR-07) para o efetivo ativo
     let asoEmDia = 0, asoVencendo30 = 0, asoVencendo60 = 0, asoVencidos = 0;
@@ -2687,7 +2684,8 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
         const insp = ultimaInspecaoMes[e.id];
         if (!insp) extPend++;
         else if (insp.status_geral === 'nao_conforme') extNaoConf++;
-        else extConf++;
+        else if (insp.status_geral === 'conforme') extConf++;
+        else extPend++;
     });
     const totalInspecionadosExt = extConf + extNaoConf;
 
@@ -2700,16 +2698,11 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
         if (diffDays < 0) extVencidos++; else if (diffDays <= 30) extVencendo++;
     });
 
-    const totalExtintoresAtivosBase = extintoresAtivos.length > 0 ? extintoresAtivos.length : 37;
-    const extintoresComValidadeAtiva = Math.max(totalExtintoresAtivosBase - extVencidos, 0);
-    // Se houver inspeções registradas no mês da competência, reflete o índice das inspeções;
-    // caso ainda não haja lançamentos para o mês, considera a prontidão dos extintores ativos com carga/teste válidos (evita "0/0").
-    const extintoresInspecionadosFinal = totalInspecionadosExt > 0 ? totalInspecionadosExt : totalExtintoresAtivosBase;
-    const extintoresConformesFinal = totalInspecionadosExt > 0 ? extConf : extintoresComValidadeAtiva;
-    const percConformidadeExt = extintoresInspecionadosFinal > 0
-        ? Math.round((extintoresConformesFinal / extintoresInspecionadosFinal) * 100)
-        : 100;
-    const fracaoExtintoresTexto = `${extintoresConformesFinal}/${extintoresInspecionadosFinal}`;
+    const totalExtintoresAtivosBase = extintoresAtivos.length;
+    const extintoresInspecionadosFinal = totalInspecionadosExt;
+    const extintoresConformesFinal = extConf;
+    const percConformidadeExt = totalInspecionadosExt > 0 ? Math.round(extConf / totalInspecionadosExt * 100) : null;
+    const fracaoExtintoresTexto = totalInspecionadosExt > 0 ? `${extConf}/${totalInspecionadosExt}` : 'Sem inspeções registradas';
 
     // Brigada:
     const brigadaAtivos = (allBrigadaMembros || []).filter(m => m.ativo);
@@ -2756,42 +2749,42 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
     const ddsEfetuadosValor = sessoesTotaisDds > 0 ? sessoesTotaisDds : (diasUteisComDds > 0 ? diasUteisComDds : 0);
 
     const kpisRapidos = {
-        tfGlobal: tfG.toFixed(2),
-        tfCa: tfCA.toFixed(2),
-        tfSa: tfSA.toFixed(2),
-        tg: tg.toFixed(2),
+        tfGlobal: (tfG === null ? 'Sem base de cálculo' : tfG.toFixed(2)),
+        tfCa: (tfCA === null ? 'Sem base de cálculo' : tfCA.toFixed(2)),
+        tfSa: (tfSA === null ? 'Sem base de cálculo' : tfSA.toFixed(2)),
+        tg: (tg === null ? 'Sem base de cálculo' : tg.toFixed(2)),
         checklistsTotal: checklistsMes.length,
-        checklistsConformePct: taxaConformidadeChk.toFixed(1) + '%',
+        checklistsConformePct: relSmsPercentual(taxaConformidadeChk),
         hhtTreinamento: (treinamentosDados?.totais?.hht?.geral || 0).toFixed(0) + ' h',
         treinamentosParticipantes: treinamentosDados?.totais?.participantes?.geral || 0,
         ddsEfetuados: ddsEfetuadosValor,
         ddsSessoes: sessoesTotaisDds,
         ddsDias: diasUteisComDds,
         ddsParticipantes: treinamentosDados?.totais?.participantes?.dds || 0,
-        extintoresConformePct: percConformidadeExt + '%',
+        extintoresConformePct: relSmsPercentual(percConformidadeExt),
         extintoresFracao: fracaoExtintoresTexto,
         diasSemCpt: (diasSemCpt !== null && diasSemCpt !== undefined) ? diasSemCpt : 0,
         diasSemSpt: (diasSemSpt !== null && diasSemSpt !== undefined) ? diasSemSpt : 0,
-        pgrEficaciaPct: pgrTaxaEficacia + '%'
+        pgrEficaciaPct: relSmsPercentual(pgrTaxaEficacia)
     };
 
     // 19. Destaques do Período para o Sumário Executivo (Cálculo Dinâmico)
-    const totalGhesMapeados = new Set(riscosGhe.map(r => r.ghe_id || r.ghe_nome || r.ghe_setor || r.ghe).filter(Boolean)).size || 1;
+    const totalGhesMapeados = new Set(riscosGhe.map(r => r.ghe_id || r.ghe_nome || r.ghe_setor || r.ghe).filter(Boolean)).size;
     const taxaAtendimentoEpi = totalFuncionarios > 0 ? Math.round((epiColaboradoresAtendidos / totalFuncionarios) * 100) : 0;
-    
-    const statusAcidentesTexto = acidentesTipicos.length === 0 
-        ? `Zero acidentes com afastamento (CPT) registrados no período de competência, totalizando ${kpisRapidos.diasSemCpt} dias consecutivos sem CPT e Taxa de Frequência zerada (TF = 0,00).`
+
+    const statusAcidentesTexto = acidentesCA.length === 0
+        ? `Zero acidentes com afastamento (CPT) registrados no período de competência, totalizando ${kpisRapidos.diasSemCpt} dias consecutivos sem CPT e TF = ${kpisRapidos.tfCa}.`
         : `${acidentesTipicos.length} acidente(s) típico(s) registrado(s) no mês, com controle preventivo intensificado e ${kpisRapidos.diasSemCpt} dias acumulados sem CPT.`;
 
-    const statusChecklistsTexto = `Índice de conformidade geral de ${taxaConformidadeChk.toFixed(1)}% nas inspeções pré-operacionais de campo, com ${checklistsMes.length} equipamentos e veículos verificados (${chkConformes} conformes e ${chkNaoConformes} desvios mitigados).`;
+    const statusChecklistsTexto = checklistsMes.length === 0 ? 'Sem inspeções pré-operacionais registradas na competência.' : `Índice de conformidade geral de ${taxaConformidadeChk.toFixed(1)}% nas inspeções pré-operacionais de campo, com ${checklistsMes.length} equipamentos e veículos verificados (${chkConformes} conformes e ${chkNaoConformes} registros com desvios identificados).`;
 
-    const statusCapacitacaoTexto = `Total de ${treinamentosDados.totais.hht.geral.toFixed(0)} horas-homem de treinamento (HHT) investidas em capacitação técnica e diálogos diários (DDSMA), com ${treinamentosDados.totais.participantes.geral} participações registradas e ${taxaCronograma}% de cumprimento do cronograma normativo.`;
+    const statusCapacitacaoTexto = `Total de ${treinamentosDados.totais.hht.geral.toFixed(0)} horas-homem de treinamento (HHT) investidas em capacitação técnica e diálogos diários (DDSMA), com ${treinamentosDados.totais.participantes.geral} participações registradas e ${relSmsPercentual(taxaCronograma)} de cumprimento do cronograma normativo.`;
 
-    const statusEpiTexto = `Fornecimento e rastreabilidade de ${epiTotalItens} unidades de EPI com Certificado de Aprovação (CA) vigente, contemplando ${epiColaboradoresAtendidos} colaboradores atendidos (${taxaAtendimentoEpi}% do efetivo em rotina de reposição/entrega).`;
+    const statusEpiTexto = `Fornecimento e rastreabilidade de ${epiTotalItens} unidades de EPI registradas, contemplando ${epiColaboradoresAtendidos} colaboradores atendidos (${taxaAtendimentoEpi}% do efetivo em rotina de reposição/entrega).`;
 
     const statusPsicoTexto = psicoDados 
         ? `Monitoramento de riscos psicossociais (COPSOQ II) com taxa de adesão de ${fmtPct(psicoDados.aplicacao.taxa_participacao)} e ${psicoDados.fortes.length} dimensões fortemente favoráveis ao bem-estar e clima organizacional.`
-        : `Diretrizes psicossociais e de saúde mental em conformidade com o PGR/PCMSO, mantendo acompanhamento contínuo dos fatores psicossociais do trabalho.`;
+        : `Avaliação psicossocial não apresentada nesta competência.`;
 
     const statusMatrizTexto = `Mapeamento de ${totalGhesMapeados} Grupos Homogêneos de Exposição (GHEs) consolidando ${riscosGhe.length} fatores de risco ocupacionais inventariados e controlados na Matriz de Riscos do PGR.`;
 
@@ -2826,7 +2819,9 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
             hhtAcumuladoAno,
             diasTrabalhados,
             horasPorDia,
-            hhtEstimado
+            hhtEstimado,
+            hhtAcumuladoEstimado,
+            memoriaHht
         },
         kpisRapidos,
         checklists: {
@@ -2889,18 +2884,20 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
             concluidas: pgrConcluidas ?? 0,
             atrasadas: pgrAtrasadas ?? 0,
             eficazes: pgrEficazes ?? 0,
-            taxaEficacia: pgrTaxaEficacia ?? 0,
+            taxaEficacia: pgrTaxaEficacia,
             custoTotal: pgrCustoTotal ?? 0
         },
         saude: {
             totalAsos: asoMes.length ?? 0,
             porTipo: asoPorTipo,
             aptos: asoAptos ?? 0,
+            semResultado: asoSemResultado,
             inaptos: asoInaptos ?? 0,
             restricoes: asoRestricao ?? 0,
             atestadosTotal: atestadosMes.length ?? 0,
             diasAfastamento: diasAfastamentoMes ?? 0,
-            taxaAbsenteismo: taxaAbsenteismo ?? 0,
+            atestadosSemIntervalo: atestadosComDias.filter(a => a.dias === null).length,
+            taxaAbsenteismo: taxaAbsenteismo,
             statusGeral: {
                 emDia: asoEmDia,
                 vencendo30: asoVencendo30,
@@ -3358,8 +3355,8 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                     <tr>
                         <td><strong>${efetivo.headcount} trabalhadores</strong></td>
                         <td><strong>${hht.diasTrabalhados} dias</strong></td>
-                        <td><strong>${Number(hht.hhtMes).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h</strong></td>
-                        <td><strong>${Number(hht.hhtAcumuladoAno).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h</strong></td>
+                        <td><strong>${hht.hhtEstimado ? 'Estimado: ' : ''}${Number(hht.hhtMes).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h</strong></td>
+                        <td><strong>${hht.hhtAcumuladoEstimado ? 'Inclui estimativas: ' : ''}${Number(hht.hhtAcumuladoAno).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h</strong></td>
                     </tr>
                 </tbody>
             </table>
@@ -3379,43 +3376,43 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                         <td style="text-align: left;">Taxa de Frequência Global (TF_G)</td>
                         <td>NBR 14280 / Zero Acidentes</td>
                         <td><strong>${kpisRapidos.tfGlobal}</strong></td>
-                        <td><span style="color: ${Number(kpisRapidos.tfGlobal) === 0 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${Number(kpisRapidos.tfGlobal) === 0 ? '✅ Meta Atingida' : '⚠ Atenção'}</span></td>
+                        <td><span style="color: ${Number(kpisRapidos.tfGlobal) === 0 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${hht.hhtMes <= 0 ? 'Sem base de cálculo' : Number(kpisRapidos.tfGlobal) === 0 ? '✅ Meta Atingida' : '⚠ Atenção'}</span></td>
                     </tr>
                     <tr>
                         <td style="text-align: left;">Taxa de Gravidade (TG)</td>
                         <td>NBR 14280 / Zero Gravidade</td>
                         <td><strong>${kpisRapidos.tg}</strong></td>
-                        <td><span style="color: ${Number(kpisRapidos.tg) === 0 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${Number(kpisRapidos.tg) === 0 ? '✅ Meta Atingida' : '⚠ Atenção'}</span></td>
+                        <td><span style="color: ${Number(kpisRapidos.tg) === 0 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${hht.hhtMes <= 0 ? 'Sem base de cálculo' : Number(kpisRapidos.tg) === 0 ? '✅ Meta Atingida' : '⚠ Atenção'}</span></td>
                     </tr>
                     <tr>
                         <td style="text-align: left;">Conformidade de Checklists</td>
                         <td>≥ 95% Inspeções Conformes</td>
                         <td><strong>${kpisRapidos.checklistsConformePct}</strong> (${checklists.conformes}/${checklists.total})</td>
-                        <td><span style="color: ${checklists.taxaConformidade >= 95 ? '#16a34a' : '#d97706'}; font-weight: bold;">${checklists.taxaConformidade >= 95 ? '✅ Conforme' : '⚠ Acompanhamento'}</span></td>
+                        <td><span style="color: ${checklists.taxaConformidade >= 95 ? '#16a34a' : '#d97706'}; font-weight: bold;">${checklists.taxaConformidade === null ? 'Sem avaliação' : checklists.taxaConformidade >= 95 ? '✅ Conforme' : '⚠ Acompanhamento'}</span></td>
                     </tr>
                     <tr>
                         <td style="text-align: left;">Capacitação Técnica e DDSMA</td>
                         <td>Cronograma Normativo NR-01</td>
-                        <td><strong>${kpisRapidos.hhtTreinamento}</strong> (${treinamentos.cronograma.taxa}% crono)</td>
-                        <td><span style="color: #16a34a; font-weight: bold;">✅ Realizado</span></td>
+                        <td><strong>${kpisRapidos.hhtTreinamento}</strong> (${relSmsPercentual(treinamentos.cronograma.taxa)} crono)</td>
+                        <td><span style="color: #16a34a; font-weight: bold;">${treinamentos.dados.totais.hht.geral > 0 ? 'Realizações registradas' : 'Sem realizações registradas'}</span></td>
                     </tr>
                     <tr>
                         <td style="text-align: left;">Prontidão de Extintores (NR-23)</td>
                         <td>100% Inspecionados / Conformes</td>
                         <td><strong>${kpisRapidos.extintoresConformePct}</strong> (${extintores.fracaoTexto})</td>
-                        <td><span style="color: ${extintores.percConformidade >= 90 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${extintores.percConformidade >= 90 ? '✅ Conforme' : '⚠ Ação Necessária'}</span></td>
+                        <td><span style="color: ${extintores.percConformidade >= 90 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${extintores.percConformidade === null ? 'Sem avaliação' : extintores.percConformidade >= 90 ? '✅ Conforme' : '⚠ Ação Necessária'}</span></td>
                     </tr>
                     <tr>
                         <td style="text-align: left;">Eficácia 5W2H PGR (NR-01)</td>
                         <td>Melhoria Contínua SST</td>
                         <td><strong>${kpisRapidos.pgrEficaciaPct}</strong> (${pgr.concluidas}/${pgr.totalAcoes} ações)</td>
-                        <td><span style="color: #16a34a; font-weight: bold;">✅ Conforme</span></td>
+                        <td><span style="color: #16a34a; font-weight: bold;">${pgr.taxaEficacia === null ? 'Sem aferição' : 'Eficácia aferida'}</span></td>
                     </tr>
                     <tr>
                         <td style="text-align: left;">Dias Consecutivos sem Afastamento (CPT)</td>
                         <td>Meta: Zero Acidentes com Lesão</td>
                         <td><strong>${kpisRapidos.diasSemCpt} dias</strong></td>
-                        <td><span style="color: #16a34a; font-weight: bold;">✅ Controlado</span></td>
+                        <td><span style="color: #16a34a; font-weight: bold;">Registros consultados</span></td>
                     </tr>
                 </tbody>
             </table>
@@ -3474,9 +3471,9 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             <div class="rel-h2">1.1. Checklists Diários de Equipamentos e Veículos</div>
             ${relSmsTabelaGenericaHtml(['Indicador Operacional', 'Valor'], [
                 ['Total de Checklists Executados no Mês', checklists.total],
-                ['Inspeções Conformes (Sem Não Conformidades)', `${checklists.conformes} (${checklists.taxaConformidade.toFixed(1)}%)`],
-                ['Inspeções com Não Conformidades Apontadas', `${checklists.naoConformes} (${(100 - checklists.taxaConformidade).toFixed(1)}%)`],
-                ['Índice Geral de Conformidade Operacional', `${checklists.taxaConformidade.toFixed(1)}%`]
+                ['Inspeções Conformes (Sem Não Conformidades)', `${checklists.conformes} (${(checklists.taxaConformidade === null ? '—' : checklists.taxaConformidade.toFixed(1))}%)`],
+                ['Inspeções com Não Conformidades Apontadas', `${checklists.naoConformes} (${(checklists.taxaConformidade === null ? '—' : (100 - checklists.taxaConformidade).toFixed(1))}%)`],
+                ['Índice Geral de Conformidade Operacional', `${(checklists.taxaConformidade === null ? '—' : checklists.taxaConformidade.toFixed(1))}%`]
             ], '75%')}
 
             <div class="rel-h2">1.2. Não Conformidades de Campo e Medidas Corretivas</div>
@@ -3523,7 +3520,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                 ['Treinamentos Programados para o Mês', treinamentos.cronograma.totalPrevistos],
                 ['Treinamentos Ministrados / Realizados', treinamentos.cronograma.realizados],
                 ['Treinamentos Pendentes / Reprogramados', treinamentos.cronograma.pendentes],
-                ['Índice de Cumprimento do Cronograma', `${treinamentos.cronograma.taxa}%`]
+                ['Índice de Cumprimento do Cronograma', `${relSmsPercentual(treinamentos.cronograma.taxa)}`]
             ], '75%')}
         </div>
 
@@ -3558,16 +3555,16 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             <div style="font-size: 9.5px; font-weight: 700; color: #1f3864; margin: 4px 0 2px 0;">1.8.1. Parque de Extintores de Incêndio e Manutenção</div>
             ${relSmsTabelaGenericaHtml(['Parâmetro Técnico', 'Valor'], [
                 ['Total de Extintores Ativos no Canteiro e Frentes', extintores.totalAtivos],
-                ['Extintores Inspecionados / Prontos para Uso', extintores.inspecionados],
-                ['Extintores Conformes (Validade Técnica Ativa)', extintores.conf],
-                ['Índice de Prontidão e Conformidade', `${extintores.percConformidade}% (${extintores.fracaoTexto})`]
+                ['Extintores inspecionados no mês', extintores.inspecionados],
+                ['Inspeções conformes no mês', extintores.conf],
+                ['Índice de Prontidão e Conformidade', `${relSmsPercentual(extintores.percConformidade)} (${extintores.fracaoTexto})`]
             ], '75%')}
 
             <div style="font-size: 9.5px; font-weight: 700; color: #1f3864; margin: 6px 0 2px 0;">1.8.2. Brigada de Emergência e Resposta Rápida (NR-23)</div>
             ${relSmsTabelaGenericaHtml(['Estrutura da Brigada', 'Situação'], [
                 ['Efetivo de Brigadistas Ativos', `${brigada.membrosAtivos} colaboradores treinados`],
                 ['Coordenador Geral da Brigada', escapeHTML(brigada.coordenador)],
-                ['Prontidão Operacional', '100% dos brigadistas aptos com ASO e treinamento vigente']
+                ['Prontidão Operacional', 'Cadastro de membros ativos; aptidão e capacitação dependem de conferência individual']
             ], '75%')}
 
             <div style="font-size: 9.5px; font-weight: 700; color: #1f3864; margin: 6px 0 2px 0;">1.8.3. Comissão Interna de Prevenção de Acidentes (CIPA - NR-05)</div>
@@ -3591,18 +3588,19 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                 ['Colaboradores Atendidos no Período', `${epi.colaboradoresAtendidos} colaboradores`],
                 ['Registros de Entrega com Ficha Assinada', `${epi.entregasQtd} lançamentos`]
             ], '75%')}
-            <div class="rel-nota">100% dos EPIs fornecidos possuem CA ativo junto ao Ministério do Trabalho e Emprego, com registros em conformidade com a NR-06.</div>
+            <div class="rel-nota">Quantitativos de entregas registrados no período. A validade dos CAs depende de conferência específica.</div>
 
             <div class="rel-h1" style="margin-top: 14px;">2. Governança do PGR e Plano de Ação 5W2H (NR-01)</div>
             <p class="rel-p">Acompanhamento contínuo da eficácia e status das medidas de prevenção estabelecidas no Plano de Ação do Programa de Gerenciamento de Riscos (PGR).</p>
 
+            <div class="rel-nota">Cadastros, validades e pendências refletem a data de emissão. Não constituem retrato histórico fechado da competência.</div>
             <div class="rel-h2">2.1. Balanço Operacional do Plano de Ação 5W2H</div>
             ${relSmsTabelaGenericaHtml(['Status da Ação Preventiva (5W2H)', 'Quantidade', 'Percentual'], [
-                ['Ações Concluídas com Eficácia Verificada', pgr.concluidas, pgr.totalAcoes > 0 ? `${Math.round(pgr.concluidas / pgr.totalAcoes * 100)}%` : '—'],
+                ['Ações Concluídas / Implementadas', pgr.concluidas, pgr.totalAcoes > 0 ? `${Math.round(pgr.concluidas / pgr.totalAcoes * 100)}%` : '—'],
                 ['Ações em Andamento / Em Validação Técnica', pgr.andamento, pgr.totalAcoes > 0 ? `${Math.round(pgr.andamento / pgr.totalAcoes * 100)}%` : '—'],
                 ['Ações em Aberto (Aguardando Início)', pgr.abertas, pgr.totalAcoes > 0 ? `${Math.round(pgr.abertas / pgr.totalAcoes * 100)}%` : '—'],
-                ['Ações em Atraso frente ao Cronograma', fiscalizacao ? 0 : pgr.atrasadas, pgr.totalAcoes > 0 ? `${Math.round(pgr.atrasadas / pgr.totalAcoes * 100)}%` : '—'],
-                ['TOTAL DE AÇÕES MONITORADAS', pgr.totalAcoes, '100%']
+                ...(!fiscalizacao ? [['Ações em Atraso frente ao Cronograma', pgr.atrasadas, pgr.totalAcoes > 0 ? `${Math.round(pgr.atrasadas / pgr.totalAcoes * 100)}%` : '—']] : []),
+                ['TOTAL DE AÇÕES MONITORADAS', pgr.totalAcoes, pgr.totalAcoes > 0 ? '100%' : '—']
             ], '80%')}
             <div class="rel-nota">Índice de Eficácia do Plano de Ação: ${kpisRapidos.pgrEficaciaPct} das ações implementadas com resultado satisfatório aferido.</div>
         </div>
@@ -3650,13 +3648,14 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                 ['Avaliações Clínicas / Psicossociais Adicionais', saude.porTipo.psicossocial + saude.porTipo.outros],
                 ['TOTAL DE EXAMES NO MÊS', saude.totalAsos]
             ], '75%')}
-            <p class="rel-p">Resultados de aptidão técnica: <strong>${saude.aptos} aptos</strong>, <strong>${saude.restricoes} aptos com restrição</strong> e <strong>${saude.inaptos} inaptos</strong>.</p>
+            <div class="rel-nota">Afastamentos: dias corridos por atestado dentro da competência, com sobreposições mantidas; não são dias únicos por colaborador. Conversão em horas pela jornada diária configurada (${hht.horasPorDia} h), sem desconto de folgas. Registros sem intervalo válido: ${saude.atestadosSemIntervalo}. ${hht.hhtEstimado ? 'Taxas calculadas sobre HHT estimado.' : ''}</div>
+            <p class="rel-p">Resultados de aptidão técnica: <strong>${saude.aptos} aptos</strong>, <strong>${saude.restricoes} aptos com restrição</strong> e <strong>${saude.inaptos} inaptos</strong>; <strong>${saude.semResultado} sem resultado informado</strong>.</p>
 
             <div class="rel-h2">4.2. Absenteísmo e Atestados Médicos Ocupacionais</div>
             ${relSmsTabelaGenericaHtml(['Indicador de Absenteísmo', 'Valor no Mês'], [
                 ['Total de Atestados Homologados', saude.atestadosTotal],
                 ['Total de Dias de Afastamento Concedidos', `${saude.diasAfastamento} dias`],
-                ['Taxa de Absenteísmo Ocupacional', `${saude.taxaAbsenteismo.toFixed(2)}% do HHT`]
+                ['Taxa de Absenteísmo Ocupacional', `${(saude.taxaAbsenteismo === null ? '—' : saude.taxaAbsenteismo.toFixed(2))}% do HHT`]
             ], '75%')}
 
             <div class="rel-h2">4.3. Diagnóstico de Riscos Psicossociais (COPSOQ II)</div>
@@ -3708,7 +3707,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             <div class="rel-h2">7.1. Geração de Resíduos Sólidos de Refeições e Operação</div>
             ${!meioAmbiente.residuosConfirmados ? `
                 <p class="rel-p">${fiscalizacao
-                    ? 'A destinação e segregação de resíduos foram conduzidas integralmente sob as diretrizes do PGRS, com recolhimento diário e transporte para aterro sanitário licenciado.'
+                    ? 'Quantitativos de resíduos não apresentados nesta edição.'
                     : 'As quantidades de resíduos de refeições (quentinhas e copos) deste período encontram-se em processo de fechamento nos registros de campo.'}
                 </p>
             ` : `
@@ -3947,12 +3946,12 @@ function renderRelSmsPainel(dados, fiscalizacao) {
                 <span class="rel-sms-badge ${checklists.naoConformes > 0 ? 'alerta' : 'sucesso'}">${checklists.naoConformes > 0 ? `${checklists.naoConformes} Não Conforme(s)` : '100% Conforme'}</span>
             </div>
             <div style="font-size: 13px; line-height: 1.6;">
-                <div>• <strong>1.1. Checklists de Equipamentos:</strong> ${checklists.total} inspeções (${checklists.conformes} conformes • ${checklists.taxaConformidade.toFixed(1)}%)</div>
+                <div>• <strong>1.1. Checklists de Equipamentos:</strong> ${checklists.total} inspeções (${checklists.conformes} conformes • ${(checklists.taxaConformidade === null ? '—' : checklists.taxaConformidade.toFixed(1))}%)</div>
                 <div>• <strong>1.2. Não Conformidades:</strong> ${naoConformidades.total} registradas (Crítico: ${naoConformidades.porRisco.critico_alto}, Médio: ${naoConformidades.porRisco.medio}, Baixo: ${naoConformidades.porRisco.baixo})</div>
                 <div>• <strong>1.3. Relatos de Quase-Acidentes/Desvios:</strong> ${relatos.total} no período (${relatos.statusCounts.resolvido} resolvidos • ${relatos.abertosAtual} pendentes acumulados)</div>
                 <div>• <strong>1.4. Análises Preliminares de Risco (APR):</strong> ${apr.emitidasNoMes} emitidas no mês (${apr.situacaoAtual.ativas} ativas em campo)</div>
                 <div>• <strong>1.5. Matriz de Riscos:</strong> ${matrizRisco.total} fatores catalogados em ${matrizRisco.totalGhes} GHEs</div>
-                <div>• <strong>1.6. Treinamentos & DDS:</strong> ${kpisRapidos.hhtTreinamento} dedicadas (${kpisRapidos.treinamentosParticipantes} part. • ${treinamentos.cronograma.taxa}% cronograma)</div>
+                <div>• <strong>1.6. Treinamentos & DDS:</strong> ${kpisRapidos.hhtTreinamento} dedicadas (${kpisRapidos.treinamentosParticipantes} part. • ${relSmsPercentual(treinamentos.cronograma.taxa)} cronograma)</div>
                 <div>• <strong>1.7. Acidentabilidade:</strong> TF Global = <strong>${kpisRapidos.tfGlobal}</strong> • TG = <strong>${kpisRapidos.tg}</strong> • <strong>${kpisRapidos.diasSemCpt}</strong> dias sem CPT</div>
                 <div>• <strong>1.8. Emergência & CIPA:</strong> ${extintores.conf} extintores conformes (${kpisRapidos.extintoresConformePct} • ${extintores.fracaoTexto}) • ${brigada.membrosAtivos} brigadistas • CIPA ativa</div>
                 <div>• <strong>1.9. EPI (NR-06):</strong> ${epi.totalItens} unidades entregues com CA ativo para ${epi.colaboradoresAtendidos} colaboradores</div>
@@ -3966,12 +3965,12 @@ function renderRelSmsPainel(dados, fiscalizacao) {
         <div class="rel-sms-section-box">
             <div class="rel-sms-section-header">
                 <div class="rel-sms-section-title"><i class="fa-solid fa-list-check" style="color:#10b981;"></i> 2. Governança e Plano de Ação PGR (NR-01)</div>
-                <span class="rel-sms-badge info">${pgr.taxaEficacia}% Eficácia</span>
+                <span class="rel-sms-badge info">${relSmsPercentual(pgr.taxaEficacia)} Eficácia</span>
             </div>
             <div style="font-size: 13px; line-height: 1.6;">
                 <div>• <strong>Total de Ações Monitoradas:</strong> ${pgr.totalAcoes} ações no plano geral do PGR</div>
                 <div>• <strong>Status Operacional:</strong> ${pgr.concluidas} concluídas • ${pgr.andamento} em andamento • ${pgr.abertas} a iniciar</div>
-                <div>• <strong>Atrasos frente ao Cronograma:</strong> ${fiscalizacao ? 0 : pgr.atrasadas} ações com prazo expirado</div>
+                <div>• <strong>Atrasos frente ao Cronograma:</strong> ${fiscalizacao ? 'Não apresentado nesta edição' : pgr.atrasadas + ' ações com prazo expirado'}</div>
                 <div>• <strong>Eficácia Verificada:</strong> ${pgr.eficazes} ações com resultado preventivo satisfatório aferido</div>
                 <div>• <strong>Investimento Preventivo:</strong> R$ ${pgr.custoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
@@ -4008,9 +4007,10 @@ function renderRelSmsPainel(dados, fiscalizacao) {
                 <span class="rel-sms-badge neutro">${saude.totalAsos} ASOs</span>
             </div>
             <div style="font-size: 13px; line-height: 1.6;">
-                <div>• <strong>ASOs Emitidos no Mês:</strong> ${saude.totalAsos} exames (${saude.aptos} aptos / ${saude.restricoes} c/ restrição / ${saude.inaptos} inaptos)</div>
+                <div>Dias corridos por atestado, com sobreposições; conversão pela jornada configurada, sem desconto de folgas.</div>
+            <div>• <strong>ASOs Emitidos no Mês:</strong> ${saude.totalAsos} exames (${saude.aptos} aptos / ${saude.restricoes} c/ restrição / ${saude.inaptos} inaptos / ${saude.semResultado} sem resultado)</div>
                 <div>• <strong>Modalidades:</strong> Adm: ${saude.porTipo.admissional} • Periódicos: ${saude.porTipo.periodico} • Dem: ${saude.porTipo.demissional}</div>
-                <div>• <strong>Absenteísmo Médico:</strong> ${saude.atestadosTotal} atestados (${saude.diasAfastamento} dias perdidos • ${saude.taxaAbsenteismo.toFixed(2)}% do HHT)</div>
+                <div>• <strong>Absenteísmo Médico:</strong> ${saude.atestadosTotal} atestados (${saude.diasAfastamento} dias corridos de atestados • ${(saude.taxaAbsenteismo === null ? '—' : saude.taxaAbsenteismo.toFixed(2))}% do HHT)</div>
                 <div>• <strong>Riscos Psicossociais:</strong> ${psicossocial ? `COPSOQ II ativo (${fmtPct(psicossocial.aplicacao.taxa_participacao)} adesão • ${psicossocial.fortes.length} escalas fortes)` : 'Diretrizes preventivas em conformidade com o PGR/PCMSO'}</div>
             </div>
             <div style="margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 8px;">

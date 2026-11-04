@@ -102,7 +102,7 @@ function onAcidentesFiltroAnoMesChange() {
     renderAcidentesPanel();
 }
 
-async function loadAcidentesData() {
+async function loadAcidentesData(opcoes = {}) {
     try {
         allAcidentes = await supabaseFetch('acidentes', '?select=*');
         // Precisa do efetivo pra calcular a HHT de exposição e pra sugerir/autocompletar
@@ -117,6 +117,7 @@ async function loadAcidentesData() {
         renderAcidentesPanel();
     } catch (err) {
         console.error('Erro ao carregar dados de acidentes:', err);
+        if (opcoes.propagarErro) throw err;
     }
 }
 

@@ -1,5 +1,7 @@
 # MAPA OFICIAL DE MÓDULOS — DASHBOARD GERENCIAL SST
 
+Prioridade de emissão v289: `modules/relsms_fotos_manuais.js` gera a seção de fotos editável no Word a partir dos cronogramas, com dois campos por tema, sem Drive. Integra por opção de `montarDocRelSms`/`gerarRelatorioMensalSms`, preservando o fluxo automático. Guia em `RELSMS_WORD_MANUAL.md`.
+
 Incremento local v288: entradas de fotos no Cronograma, Calendário DDSMA e Acervo; botões de escaneados preservados. `modules/cronograma_pastas.js` prepara pastas antecipadas pela data prevista, após `relatorio_sms_fotos.js`. API responsável: `api/cronograma-pastas.js`, com autenticação e reserva de IDs. Uso, permissões e limites em `CRONOGRAMA_PASTAS.md`.
 
 Incremento local v285 (04/11/2026): relatório SMS preserva ocultações executivas, distingue ausência de evidência, recorta atestados por competência e mantém HHT zero; fotos permitem escolher aplicação realizada do cronograma. Escopo, testes e itens estruturais pendentes em `RELATORIO_SMS_VALIDACAO.md`.

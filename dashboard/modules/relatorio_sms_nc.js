@@ -872,7 +872,7 @@ async function relSmsCarregarFonteSegura(nome, flagKey, loadFn) {
     if (_relSmsPromisesInFlight[flagKey]) return await _relSmsPromisesInFlight[flagKey];
     _relSmsPromisesInFlight[flagKey] = (async () => {
         try {
-            await loadFn();
+            await loadFn({ propagarErro: true });
             if (typeof window !== 'undefined') window[flagKey] = true;
             return true;
         } catch (err) {
@@ -2056,21 +2056,23 @@ function relSmsTipoImagemBufferDocx(buffer) {
     throw new Error('Formato de imagem não suportado no Word. Use JPEG, PNG, GIF ou BMP.');
 }
 
-async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapshot) {
+async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapshot, opcoes = {}) {
+    const fotosManuais = opcoes.fotosManuais === true;
+    const camposFotos = fotosManuais ? await relSmsColetarCamposFotos(mes, ano) : null;
     if (!snapshot && typeof relSmsObterSnapshotFechamento === 'function') {
         snapshot = await relSmsObterSnapshotFechamento(mes, ano);
     }
 
     const fechado = Boolean(snapshot && snapshot.status === 'fechado');
     if (fechado) {
-        if (!snapshot.dados || !snapshot.dadosSecao1 || !snapshot.dadosSecoes23 || !snapshot.dadosMeioAmbiente || !snapshot.fotos || !snapshot.anexos) {
+        if (!snapshot.dados || !snapshot.dadosSecao1 || !snapshot.dadosSecoes23 || !snapshot.dadosMeioAmbiente || (!fotosManuais && !snapshot.fotos) || !snapshot.anexos) {
             throw new Error(`Snapshot corrompido ou incompleto da competência ${NOMES_MESES[mes]}/${ano} (Rev. ${snapshot.revisao || 1}): partes essenciais ausentes. Recálculo ao vivo bloqueado por segurança.`);
         }
         fiscalizacao = Boolean(snapshot.fiscalizacao);
     }
 
-    let fotosSelecionadas = (fechado && snapshot.fotos) ? snapshot.fotos : null;
-    if (!fotosSelecionadas) {
+    let fotosSelecionadas = !fotosManuais && fechado && snapshot.fotos ? snapshot.fotos : null;
+    if (!fotosManuais && !fotosSelecionadas) {
         fotosSelecionadas = await relSmsFotosPreparar(mes, ano, (atual, total) => {
             const status = document.getElementById('relSmsStatus');
             if (status) status.textContent = `Preparando fotos selecionadas: ${atual}/${total}…`;
@@ -2083,7 +2085,8 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
 
     let dadosCompletos = dadosPrecoletados || (fechado && snapshot.dados) ? (dadosPrecoletados || snapshot.dados) : null;
     if (!dadosCompletos) {
-        await garantirDadosCompletosRelatorioMensalSms();
+        if (fotosManuais && typeof loadAcidentesData === 'function') await loadAcidentesData({ propagarErro: true });
+        await garantirDadosCompletosRelatorioMensalSms({ exigirSucesso: fotosManuais });
         dadosCompletos = coletarDadosCompletosRelatorioMensalSms(mes, ano);
     }
 
@@ -2131,11 +2134,11 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'CONSÓRCIO OPERADOR RAMAL DO AGRESTE', bold: true, color: RELSMS_NAVY, size: 20 })] }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 80 }, children: [new docx.TextRun({ text: 'CNPJ: ' + (EMPRESA_INFO.cnpj || '55.623.017/0001-97') + ' — Engenharia de Segurança do Trabalho', color: RELSMS_GREY, size: 18 })] }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'Código de Controle: ' + codigoRev, bold: true, color: RELSMS_GREY, size: 18 })] }),
-        ...(fechado ? [
+        ...(fechado && !fotosManuais ? [
             new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 30 }, children: [new docx.TextRun({ text: 'Status: 🔒 HOMOLOGADO E FECHADO (Rev. ' + (snapshot.revisao || 1) + ')', bold: true, color: '107C41', size: 18 })] }),
             new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'Homologado em: ' + (snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleDateString('pt-BR') : '—') + ' por ' + (snapshot.fechado_por || 'Gestor SST') + ' • Hash: ' + (snapshot.hash ? snapshot.hash.slice(0, 16) + '...' : '—'), color: RELSMS_GREY, size: 16 })] }),
         ] : [
-            new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'Status: 🟢 Minuta em Aberto (Cálculo Dinâmico ao Vivo)', color: RELSMS_BLUE, size: 18 })] }),
+            new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: fotosManuais ? 'Status: Em edição — completar registro fotográfico' : 'Status: 🟢 Minuta em Aberto (Cálculo Dinâmico ao Vivo)', color: RELSMS_BLUE, size: 18 })] }),
         ]),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, children: [new docx.TextRun({ text: 'Data de emissão: ' + dataEmissao, color: RELSMS_GREY, size: 18 })] }),
         new docx.Paragraph({ children: [new docx.PageBreak()] })
@@ -2152,12 +2155,13 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
     const sumario = [
         relSmsH1('Sumário Executivo'),
         relSmsP('Este relatório reúne indicadores de Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste para ' + nomeMes.toLowerCase() + ' de ' + ano + ', com base nos registros disponíveis no sistema na data de emissão.'),
-        ...(fechado ? [
+        ...(fechado && !fotosManuais ? [
             relSmsNota('COMPETÊNCIA HOMOLOGADA E FECHADA (Snapshot Histórico Imutável) em ' + (snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleDateString('pt-BR') : '—') + ' às ' + (snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : '—') + ' por ' + (snapshot.fechado_por || 'Gestor SST') + ' • Revisão: ' + (snapshot.revisao || 1) + ' • Hash de integridade: ' + (snapshot.hash || '—') + '. Os dados foram congelados na homologação e preservam fidelidade histórica permanente.')
         ] : [
             relSmsNota('Indicadores mensais referem-se à competência. Cadastros, validades e pendências atuais refletem a data de emissão e não constituem retrato histórico fechado. A ausência de registro não comprova conformidade ou inexistência de ocorrência.')
         ]),
         relSmsNota('HHT mensal: ' + dadosCompletos.hht.hhtMes + ' h' + (dadosCompletos.hht.hhtEstimado ? ' (estimativa operacional: efetivo × 220 h)' : '') + '; acumulado: ' + dadosCompletos.hht.hhtAcumuladoAno + ' h' + (dadosCompletos.hht.hhtAcumuladoEstimado ? ' (inclui estimativas)' : '') + '. Taxas dependentes acompanham esta base.'),
+        ...(fotosManuais ? [relSmsNota('Edição para complementação manual do registro fotográfico. Conferir as fotos, temas e datas antes da emissão final.')] : []),
         relSmsH2('Destaques do Período'),
         ...(dadosCompletos.destaques || []).map(d => new docx.Paragraph({
             spacing: { after: 100 },
@@ -2196,9 +2200,10 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
 
     const secao4 = construirSecao4RelSms(dadosSecao1, dadosSecoes23, dadosMeioAmbiente, mes, ano, fiscalizacao);
 
-    const dadosFase4 = fotosSelecionadas ? null : ((fechado && snapshot.dadosFase4) ? snapshot.dadosFase4 : coletarDadosFase4RelSms(mes, ano));
-    const secao5 = fotosSelecionadas ? relSmsFotosDocx(fotosSelecionadas) : await construirSecao5RelSms(dadosFase4, mes, ano);
-    const anexos = (fechado && snapshot.anexos) ? snapshot.anexos : construirAnexosRelSms(mes, ano);
+    const dadosFase4 = fotosManuais || fotosSelecionadas ? null : ((fechado && snapshot.dadosFase4) ? snapshot.dadosFase4 : coletarDadosFase4RelSms(mes, ano));
+    const secao5 = fotosManuais ? relSmsConstruirCamposFotosWord(camposFotos) : fotosSelecionadas ? relSmsFotosDocx(fotosSelecionadas) : await construirSecao5RelSms(dadosFase4, mes, ano);
+    // Os anexos são textos fixos da competência: reconstruir classes Word após JSON.
+    const anexos = construirAnexosRelSms(mes, ano);
 
     // Cabeçalho institucional com Logo do COP redimensionado e identificação corporativa
     const headerTabelaFilhos = [];
@@ -2327,7 +2332,8 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
 // Botão "📄 Gerar Relatório (.docx)" - monta o Document e baixa via <a download> (mesmo
 // padrão de baixarCSV/Ficha de EPI, não usa window.open pra não cair no bloqueador de
 // pop-up).
-async function gerarRelatorioMensalSms() {
+async function gerarRelatorioMensalSms(opcoes = {}) {
+    const fotosManuais = opcoes.fotosManuais === true;
     const statusEl = document.getElementById('relSmsStatus');
     if (relSmsFotosEstado.gerando) { if (statusEl) statusEl.textContent = 'Aguarde a geração que já está em andamento.'; return; }
     const mes = parseInt(document.getElementById('relSmsMes').value);
@@ -2360,11 +2366,11 @@ async function gerarRelatorioMensalSms() {
         }
 
         const dadosPrecoletados = (fechado && snapshot.dados) ? snapshot.dados : null;
-        const doc = await montarDocRelSms(mes, ano, fiscalizacaoEfetiva, dadosPrecoletados, snapshot);
+        const doc = await montarDocRelSms(mes, ano, fiscalizacaoEfetiva, dadosPrecoletados, snapshot, { fotosManuais });
         const blob = await docx.Packer.toBlob(doc);
         const nomeMes = NOMES_MESES[mes];
         const revSuffix = fechado ? `_Rev${snapshot.revisao || 1}` : '_Minuta';
-        const nomeArquivo = 'Relatorio_Mensal_SMS_' + nomeMes + '_' + ano + revSuffix + '.docx';
+        const nomeArquivo = 'Relatorio_Mensal_SMS_' + nomeMes + '_' + ano + revSuffix + (fotosManuais ? '_CompletarFotos' : '') + '.docx';
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -2374,7 +2380,7 @@ async function gerarRelatorioMensalSms() {
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 30000);
         if (statusEl) {
-            statusEl.textContent = '✅ Relatório gerado (' + nomeMes + '/' + ano + ') — download do Word iniciado.';
+            statusEl.textContent = '✅ Relatório gerado (' + nomeMes + '/' + ano + ')' + (fotosManuais ? ' com dois campos de fotos por tema. Complete as imagens e confira as datas no Word.' : ' — download do Word iniciado.');
         }
     } catch (e) {
         console.error('Erro ao gerar Relatório Mensal SMS:', e);

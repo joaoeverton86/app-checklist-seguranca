@@ -1,0 +1,38 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const vm=require('node:vm');const espree=require('espree');const {chromium}=require('playwright');
+const sms='dashboard/modules/relatorio_sms_nc.js', manual='dashboard/modules/relsms_fotos_manuais.js';
+function fn(file,nome){const s=fs.readFileSync(file,'utf8');const n=espree.parse(s,{ecmaVersion:'latest',range:true}).body.find(n=>n.type==='FunctionDeclaration'&&n.id.name===nome);return s.slice(...n.range);}
+test('cronogramas: temas/datas reais e previstos, 2 fontes e agrupamento sem Drive',async()=>{
+ const requests=[];const c={supabaseFetch:async(t,q)=>{requests.push([t,q]);if(t==='treinamentos_catalogo')return[{id:'t1',nome:'NR-17 — Transporte manual de carga'}];if(t==='dds_temas_cronograma')return[{id:'d1',data:'2026-10-06',tema:'IgE - Abelhas'}];if(t==='treinamentos_cronograma')return[{id:'a',treinamento_cod:'t1',data_prevista:'2026-09-29',data_realizada:'2026-10-02'},{id:'b',treinamento_cod:'t1',data_prevista:'2026-09-29',data_realizada:'2026-10-02'},{id:'c',treinamento_cod:'t1',data_prevista:'2026-10-03',status:'cancelado'}];throw Error('Consulta não autorizada');}};vm.createContext(c);vm.runInContext(fn(manual,'relSmsColetarCamposFotos'),c);
+ const d=await c.relSmsColetarCamposFotos(9,2026);assert.equal(d.grupos.length,2);assert.equal(d.grupos[0].realizada,'2026-10-02');assert.equal(d.grupos[1].prevista,'2026-10-06');assert.equal(requests.length,3);assert.match(requests[0][1],/data_realizada/);
+ c.supabaseFetch=async()=>{throw Error('Calendário indisponível')};await assert.rejects(()=>c.relSmsColetarCamposFotos(9,2026),/indisponível/);
+});
+test('loader real de acidentes propaga falha no fluxo estrito do relatório',async()=>{
+ const c={window:{},_relSmsPromisesInFlight:{},console:{error(){},warn(){}},supabaseFetch:async()=>{throw Error('503 simulado')}};vm.createContext(c);vm.runInContext(fn(sms,'relSmsCarregarFonteSegura')+'\n'+fn('dashboard/modules/saude_psicossocial.js','loadAcidentesData'),c);assert.equal(await c.relSmsCarregarFonteSegura('Acidentes','acidentesLoaded',c.loadAcidentesData),false);assert.equal(c.window.acidentesLoaded,false);
+});
+test('Word com cronogramas: 02 campos por tema, datas, anexos e renderização real',async()=>{
+ const b=await chromium.launch({headless:true});try{const p=await b.newPage({viewport:{width:1100,height:1400}});await p.setContent('<body></body>');await p.addScriptTag({path:'scratch/relsms-fotos/docx.js'});await p.addScriptTag({path:'scratch/relsms-fotos/jszip.js'});
+ await p.addScriptTag({content:`var RELSMS_NAVY='1F3864',RELSMS_BLUE='2E5395',RELSMS_GREY='595959',NOMES_MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];\n`+['relSmsH1','relSmsH2','relSmsP','relSmsNota','construirAnexosRelSms'].map(n=>fn(sms,n)).join('\n')+'\n'+fn(manual,'relSmsConstruirCamposFotosWord')});
+ const resultado=await p.evaluate(async()=>{
+  const grupos=[{tipo:'treinamento',tema:'AMOSTRA — Transporte manual de cargas e cuidados ergonômicos nas frentes de trabalho',prevista:'2026-10-08',realizada:'2026-10-09'},{tipo:'treinamento',tema:'AMOSTRA — Proteção individual',prevista:'2026-10-13',realizada:null},{tipo:'ddsma',tema:'AMOSTRA — Organização da frente de serviço',prevista:'2026-10-06',realizada:null}];
+  const secoes=relSmsConstruirCamposFotosWord({mes:9,ano:2026,grupos});const d=new docx.Document({sections:[{properties:{page:{size:{width:11906,height:16838},margin:{top:1134,bottom:1134,left:1134,right:1134}}},children:[new docx.Paragraph('AMOSTRA FICTÍCIA — CONFERÊNCIA DE LAYOUT'),...secoes,...construirAnexosRelSms(9,2026)]}]});const blob=await docx.Packer.toBlob(d);window.wordAmostra=blob;const zip=await JSZip.loadAsync(await blob.arrayBuffer());const xml=await zip.file('word/document.xml').async('string');return{bytes:Array.from(new Uint8Array(await blob.arrayBuffer())),xml};
+ });
+ assert.equal((resultado.xml.match(/INSERIR FOTO 1/g)||[]).length,3);assert.equal((resultado.xml.match(/INSERIR FOTO 2/g)||[]).length,3);assert.match(resultado.xml,/09\/10\/2026/);assert.match(resultado.xml,/08\/10\/2026/);assert.match(resultado.xml,/Anexos Oficiais Complementares/);assert(!resultado.xml.includes('word/media/'));fs.mkdirSync('scratch/relsms-manual',{recursive:true});fs.writeFileSync('scratch/relsms-manual/amostra-campos.docx',Buffer.from(resultado.bytes));
+ await p.addScriptTag({path:'scratch/relsms-fotos/docx-preview.js'});await p.evaluate(()=>docx.renderAsync(wordAmostra,document.body));await p.screenshot({path:'scratch/relsms-manual/campos-renderizados.png',fullPage:true});
+ }finally{await b.close();}
+});
+test('exportação integrada manual aceita snapshot sem fotos, ignora Drive e reconstrói anexos após JSON',async()=>{
+ const b=await chromium.launch({headless:true});try{const p=await b.newPage();await p.setContent('<select id="relSmsMes"><option value="9">Outubro</option></select><input id="relSmsAno" value="2026"><input id="relSmsFiscalizacao" type="checkbox" checked><div id="relSmsStatus"></div>');await p.addScriptTag({path:'scratch/relsms-fotos/docx.js'});await p.addScriptTag({path:'scratch/relsms-fotos/jszip.js'});
+ await p.addScriptTag({content:`var RELSMS_NAVY='1F3864',RELSMS_BLUE='2E5395',RELSMS_GREY='595959',NOMES_MESES=Array(12).fill('Outubro');var EMPRESA_INFO={cnpj:'AMOSTRA'},relSmsFotosEstado={gerando:false};\n`+['relSmsH1','relSmsH2','relSmsP','relSmsNota','construirAnexosRelSms','montarDocRelSms','gerarRelatorioMensalSms'].map(n=>fn(sms,n)).join('\n')+'\n'+fn(manual,'relSmsConstruirCamposFotosWord')});
+ await p.evaluate(()=>{
+  window.carregarBufferLogoCop=async()=>null;window.gerarGraficoBarrasHHTSVG=()=>'';window.converterSvgParaPngBuffer=async()=>null;
+  for(const n of ['construirSecao1RelSms','construirSecaoPgrDocx','construirSecao2RelSms','construirSecao3RelSms','construirSecaoErgonomiaDocx','construirSecaoPericulosidadeDocx','construirSecaoMeioAmbienteRelSms','construirSecao4RelSms'])window[n]=()=>[];
+  for(const n of ['relSmsFotosPreparar','coletarDadosFase4RelSms','construirSecao5RelSms','garantirDadosCompletosRelatorioMensalSms'])window[n]=()=>{throw Error('Dependência automática indevida: '+n)};
+  window.fetch=()=>{throw Error('Nenhuma consulta ao Drive permitida')};
+  window.relSmsColetarCamposFotos=async()=>({mes:9,ano:2026,grupos:[{tipo:'ddsma',tema:'AMOSTRA MANUAL',prevista:'2026-10-06',realizada:null}]});
+  window.relSmsObterSnapshotFechamento=async()=>JSON.parse(JSON.stringify({status:'fechado',fiscalizacao:true,revisao:1,hash:'hash-antigo',dados:{hht:{hhtMes:2200,hhtAcumuladoAno:4400},treinamentos:{historicoHht:[]},destaques:[]},dadosSecao1:{},dadosSecoes23:{},dadosMeioAmbiente:{},fotos:null,anexos:[{root:[{invalid:'json-sem-prototipos'}]}]}));
+ });
+ const xml=await p.evaluate(async()=>{const snap=await relSmsObterSnapshotFechamento();const d=await montarDocRelSms(9,2026,false,null,snap,{fotosManuais:true});const blob=await docx.Packer.toBlob(d);const z=await JSZip.loadAsync(await blob.arrayBuffer());return z.file('word/document.xml').async('string')});
+ assert.match(xml,/INSERIR FOTO 1/);assert.match(xml,/INSERIR FOTO 2/);assert.match(xml,/Anexos Oficiais Complementares/);assert(!xml.includes('HOMOLOGADO E FECHADO'));assert.match(xml,/Em edição/);
+ const baixar=p.waitForEvent('download');await p.evaluate(()=>gerarRelatorioMensalSms({fotosManuais:true}));const download=await baixar;assert.match(download.suggestedFilename(),/CompletarFotos\.docx$/);assert.match(await p.locator('#relSmsStatus').innerText(),/dois campos de fotos/);
+ }finally{await b.close();}
+});

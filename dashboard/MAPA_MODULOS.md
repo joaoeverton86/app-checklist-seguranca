@@ -1,5 +1,7 @@
 # MAPA OFICIAL DE MÓDULOS — DASHBOARD GERENCIAL SST
 
+Incremento local v288: entradas de fotos no Cronograma, Calendário DDSMA e Acervo; botões de escaneados preservados. `modules/cronograma_pastas.js` prepara pastas antecipadas pela data prevista, após `relatorio_sms_fotos.js`. API responsável: `api/cronograma-pastas.js`, com autenticação e reserva de IDs. Uso, permissões e limites em `CRONOGRAMA_PASTAS.md`.
+
 Incremento local v285 (04/11/2026): relatório SMS preserva ocultações executivas, distingue ausência de evidência, recorta atestados por competência e mantém HHT zero; fotos permitem escolher aplicação realizada do cronograma. Escopo, testes e itens estruturais pendentes em `RELATORIO_SMS_VALIDACAO.md`.
 
 Atualização pontual de 03/11/2026: `modules/relatorio_sms_fotos.js` mantém a seleção editorial mensal de fotos no Drive (metadados leves por competência), com fechamento e incorporação no Word/impressão. Carrega após `relatorio_sms_nc.js`, que mantém os pontos de entrada do relatório. Ver `RELATORIO_SMS_FOTOS.md`.

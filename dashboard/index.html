@@ -1084,9 +1084,10 @@
                     <div style="margin-bottom: 12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                         <button class="db-clear-btn" onclick="imprimirCronogramaFiltro()">🖨️ Imprimir este Cronograma</button>
                         <button class="db-apply-btn" id="btnSincronizarPastasDriveCronograma" onclick="sincronizarPastasDriveCronograma()" style="background:#0284c7; border-color:#0284c7; display:inline-flex; align-items:center; gap:6px;">
-                            <i class="fas fa-folder-plus"></i> 📁 Criar/Sincronizar Pastas do Mês no Drive
+                            <i class="fas fa-folder-plus"></i> 📁 Criar pastas de escaneados
                         </button>
                     </div>
+                    <button type="button" class="db-clear-btn" style="margin-bottom:12px;" onclick="cronogramaPastasAbrir('treinamentos')">📷 Criar pastas de fotos de treinamentos</button>
                     <div id="cronogramaLista" class="db-list"></div>
                 </div>
 
@@ -3013,7 +3014,7 @@
                         </div>
                         <div>
                             <label style="display:flex; align-items:center; gap:7px; cursor:pointer; font-size:13px; font-weight:600; padding-bottom:7px;">
-                                <input type="checkbox" id="relSmsFiscalizacao" onchange="onRelSmsPeriodoChange()"> Relatório Executivo Oficial (Ocultar pendências internas)
+                                <input type="checkbox" id="relSmsFiscalizacao" checked onchange="onRelSmsPeriodoChange()"> Relatório Executivo Oficial (Ocultar notas e pendências internas)
                             </label>
                         </div>
                         <div style="margin-left:auto; display:flex; gap:10px; flex-wrap:wrap;">
@@ -3021,6 +3022,7 @@
                             <button class="db-apply-btn" style="background:#1e3a8a; border-color:#1e40af;" onclick="carregarEVisualizarRelatorioSmsPainel()">🔍 Visualizar Dossiê no Painel</button>
                             <button class="db-apply-btn" style="background:#4f46e5; border-color:#4338ca;" onclick="imprimirRelatorioMensalSms()">🖨️ Visualizar / Imprimir (A4)</button>
                             <button class="db-clear-btn" style="background:var(--bg-card); border:1px solid var(--border);" onclick="gerarRelatorioMensalSms()">📄 Exportar (.docx)</button>
+                            <button type="button" id="btnRelSmsFecharHomologar" class="db-apply-btn" style="background:#059669; border-color:#047857;" onclick="relSmsHomologarEFecharCompetencia()"><i class="fa-solid fa-lock"></i> Homologar / Fechar Mês</button>
                         </div>
                     </div>
                     <div id="relSmsStatus" style="margin-top:12px; font-size:12.5px; font-weight:500;"></div>
@@ -3324,6 +3326,7 @@
                             <option value="11">Dezembro</option>
                         </select>
                         <button class="db-clear-btn" onclick="abrirAdicionarDdsTemaDia()">+ Adicionar dia</button>
+                        <button type="button" class="db-clear-btn" onclick="cronogramaPastasAbrir('ddsma')">📷 Criar pastas de fotos DDSMA</button>
                         <span id="ddsCalendarioStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
                     <div id="ddsCalendarioAdicionarWrap" style="display:none; border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 10px; background: var(--bg);">
@@ -9606,8 +9609,9 @@
                         </div>
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                             <button class="db-clear-btn" style="padding:8px 12px; font-size:12.5px; display:inline-flex; align-items:center; gap:6px; color:#0284c7; border-color:#0284c7;" onclick="sincronizarPastasDriveCronograma()" title="Criar ou sincronizar subpastas dos temas do cronograma no Google Drive">
-                                <i class="fas fa-folder-plus"></i> 📁 Sincronizar Pastas do Mês
+                                <i class="fas fa-folder-plus"></i> 📁 Pastas de escaneados do mês
                             </button>
+                            <button type="button" class="db-clear-btn" onclick="cronogramaPastasAbrir('treinamentos')">📷 Criar pastas de fotos</button>
                             <button class="db-apply-btn" id="btnUploadAcervoDrive" style="background:#0284c7; border:none; display:inline-flex; align-items:center; gap:6px; padding:8px 16px; font-weight:600; font-size:12.5px;" onclick="abrirModalUploadAcervoDrive()">
                                 <i class="fas fa-cloud-upload-alt"></i> 📤 Subir Arquivo para o Acervo
                             </button>
@@ -10157,8 +10161,9 @@
     <script src="modules/treinamentos_ddsma.js?v=282"></script>
     <script src="modules/efetivo_ferias.js?v=284"></script>
     <script src="modules/ghe_os.js?v=268"></script>
-    <script src="modules/relatorio_sms_nc.js?v=285"></script>
-    <script src="modules/relatorio_sms_fotos.js?v=285"></script>
+    <script src="modules/relatorio_sms_nc.js?v=288"></script>
+    <script src="modules/relatorio_sms_fotos.js?v=288"></script>
+    <script src="modules/cronograma_pastas.js?v=288"></script>
     <script src="modules/saude_psicossocial.js?v=280"></script>
     <script src="modules/pcmso.js?v=278"></script>
     <script src="modules/saude_prestadores.js?v=280"></script>

@@ -1,11 +1,20 @@
 function relSmsHhtCompetencia(ano, mes) {
     const cfg = typeof hhtDiasTrabalhadosMap !== 'undefined' ? hhtDiasTrabalhadosMap[ano + '-' + String(mes + 1).padStart(2, '0')] : null;
     const numero = v => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0;
-    const diasConfirmados = numero(cfg?.dias_trabalhados);
-    const dias = diasConfirmados ? Number(cfg.dias_trabalhados) : semanasUteisDoMes(ano, mes).length * 5;
-    const horas = numero(cfg?.horas_por_dia) ? Number(cfg.horas_por_dia) : 8;
+    const diasConfigurados = numero(cfg?.dias_trabalhados) ? Number(cfg.dias_trabalhados) : null;
+    const jornadaConfigurada = numero(cfg?.horas_por_dia) && Number(cfg.horas_por_dia) > 0;
+    const horasPorDia = jornadaConfigurada ? Number(cfg.horas_por_dia) : 8;
     const efetivo = headcountAsOf(new Date(ano, mes + 1, 0, 23, 59, 59, 999));
-    return { valor: efetivo * dias * horas, estimado: efetivo > 0 && !diasConfirmados, dias, horas };
+    const zeroConfirmado = diasConfigurados === 0;
+    const valor = zeroConfirmado ? 0 : efetivo * 220;
+    return {
+        valor,
+        estimado: valor > 0 && !zeroConfirmado,
+        dias: diasConfigurados,
+        horas: horasPorDia,
+        horasEstimadas: !jornadaConfigurada,
+        horasBasePorTrabalhador: 220
+    };
 }
 
 function relSmsPercentual(valor) {
@@ -86,6 +95,12 @@ var RELSMS_TEMAS_FALLBACK_DDS = [
     'Inspeção Prévia e Conservação dos EPIs',
     'Comunicação de Quase-Acidentes e Desvios'
 ];
+
+function relSmsEscape(s) {
+    if (typeof escapeHTML === 'function') return escapeHTML(s);
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]);
+}
 
 function sanitizarTemaDdsRelSms(temaOriginal, dataStr, fallbackIndex = 0) {
     let t = (temaOriginal || '').trim();
@@ -848,30 +863,45 @@ function relSmsTabelaKpis(kpis) {
 // gerarRelatorioMensalSms() avisa isso na tela depois de gerar.
 // ================================================================
 
-// Garante que todas as tabelas usadas pela Seção 1 já estão em memória, carregando (uma
-// única vez por sessão, reaproveitando os MESMOS flags "xLoaded" que showDbPage() usa
-// pra carregar sob demanda) o que o usuário ainda não tiver aberto manualmente.
-// checklists/extintores/relatos não entram aqui porque loadData() já carrega os três
-// desde o init() do painel, não importa qual página está aberta.
+// Helper resiliente de carga por fonte (SMS-06): mantém promessa compartilhada por chave,
+// marca sucesso apenas após a resolução completa e mantém estado permitindo retry em falhas
+const _relSmsPromisesInFlight = {};
+async function relSmsCarregarFonteSegura(nome, flagKey, loadFn) {
+    if (typeof window !== 'undefined' && window[flagKey]) return true;
+    if (typeof loadFn !== 'function') return false;
+    if (_relSmsPromisesInFlight[flagKey]) return await _relSmsPromisesInFlight[flagKey];
+    _relSmsPromisesInFlight[flagKey] = (async () => {
+        try {
+            await loadFn();
+            if (typeof window !== 'undefined') window[flagKey] = true;
+            return true;
+        } catch (err) {
+            if (typeof window !== 'undefined') window[flagKey] = false;
+            console.warn(`[Relatório SMS] Falha ao carregar fonte ${nome}:`, err);
+            return false;
+        } finally {
+            delete _relSmsPromisesInFlight[flagKey];
+        }
+    })();
+    return await _relSmsPromisesInFlight[flagKey];
+}
+
+// Garante que todas as tabelas usadas pela Seção 1 já estão em memória com retry resiliente (SMS-06).
 async function garantirDadosSecao1RelSms() {
-    const tarefas = [];
-    // loadTreinamentosData já cross-carrega allEfetivo e allGheCatalogo se ainda
-    // estiverem vazios (ver comentário dentro dela) - cobre também a Matriz de Risco
-    // (1.4) e o headcountAsOf usado em Treinamentos/DDS (1.2), sem precisar de uma
-    // chamada separada pra Efetivo aqui.
-    if (!treinamentosLoaded) { treinamentosLoaded = true; tarefas.push(loadTreinamentosData()); }
-    if (!acidentesLoaded) { acidentesLoaded = true; tarefas.push(loadAcidentesData()); }
-    if (!epiLoaded) { epiLoaded = true; tarefas.push(loadEpiData()); }
-    if (!aprLoaded) { aprLoaded = true; tarefas.push(loadAprData()); }
-    if (!cipaLoaded) { cipaLoaded = true; tarefas.push(loadCipaData()); }
-    await Promise.all(tarefas);
+    await Promise.all([
+        relSmsCarregarFonteSegura('Treinamentos', 'treinamentosLoaded', typeof loadTreinamentosData === 'function' ? loadTreinamentosData : null),
+        relSmsCarregarFonteSegura('Acidentes', 'acidentesLoaded', typeof loadAcidentesData === 'function' ? loadAcidentesData : null),
+        relSmsCarregarFonteSegura('EPI', 'epiLoaded', typeof loadEpiData === 'function' ? loadEpiData : null),
+        relSmsCarregarFonteSegura('APR', 'aprLoaded', typeof loadAprData === 'function' ? loadAprData : null),
+        relSmsCarregarFonteSegura('CIPA', 'cipaLoaded', typeof loadCipaData === 'function' ? loadCipaData : null)
+    ]);
 }
 
 // Coleta os números já prontos de cada módulo pro mês/ano do relatório. Retorna um objeto
 // plano com um bloco por subseção (1.1 a 1.9) - construirSecao1RelSms() só formata, não
 // recalcula nada.
 function coletarDadosSecao1RelSms(mes, ano, consolidado = null) {
-    const inicio = new Date(ano, mes, 1);
+    const inicio = new Date(ano, mes, 1, 0, 0, 0, 0);
     const fim = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
     const dentroMes = (dataStr) => {
         if (!dataStr) return false;
@@ -889,7 +919,7 @@ function coletarDadosSecao1RelSms(mes, ano, consolidado = null) {
     // ---- 1.2 Treinamentos e DDSMS - já tem uma função pronta parametrizada por mês
     // (mesma usada no Excel/PDF do "Relatório Mensal" de Treinamentos), sem precisar de
     // hijack nenhum. ----
-    const treinamentos = montarLinhasRelatorioMensal(ano, mes, 'semanal');
+    const treinamentos = base.treinamentos.dados;
     // "Integrações de NR vencidas" (item sensível - ver construirSecao1RelSms/fiscalizacao):
     // mesmo critério de kpiTreinVencidos em renderTreinamentosPanel - colaboradores ATIVOS
     // hoje com pelo menos 1 treinamento de validade (NR) com data_proxima_reciclagem
@@ -907,110 +937,56 @@ function coletarDadosSecao1RelSms(mes, ano, consolidado = null) {
     });
     treinamentos.nrVencidas = matriculasComNRVencida.size;
 
-    // ---- 1.3 APR - nº emitidas no mês (por data_emissao) + classificação de risco
-    // residual dessas APRs + situação atual do sistema (ativas/vencendo/vencidas), do
-    // mesmo jeito que o painel calcula "hoje" (não é filtrável por mês na tela). ----
-    const aprEmitidasMes = allAprRegistros.filter(a => dentroMes(a.data_emissao));
-    const aprClassCounts = { Baixo: 0, Moderado: 0, Alto: 0, 'Crítico': 0 };
-    aprEmitidasMes.forEach(a => {
-        (Array.isArray(a.riscos) ? a.riscos : []).forEach(r => {
-            const n = nivelRiscoApr(r.p_residual, r.s_residual);
-            if (n.valor !== null && aprClassCounts[n.label] !== undefined) aprClassCounts[n.label]++;
-        });
+    // ---- 1.5 EPI - cálculo direto dos KPIs em memória a partir dos dados consolidados, sem hijack de filtros nem re-render da tela ----
+    const entregasPeriodo = (allEpiEntregas || []).filter(e => dentroMes(e.data_entrega));
+    const totalItensPeriodo = entregasPeriodo.reduce((s, e) => s + (parseInt(e.quantidade, 10) || 1), 0);
+    const colabsAtendidos = new Set(entregasPeriodo.map(e => e.matricula)).size;
+    const catalogoAtivo = (allEpiCatalogo || []).filter(c => c.ativo !== false);
+
+    // Alertas de estoque e CAs (situação atual cadastral)
+    const hojeData = new Date(); hojeData.setHours(0, 0, 0, 0);
+    let caVencidosQtd = 0, caVencendoQtd = 0;
+    catalogoAtivo.forEach(c => {
+        if (!c.ca_validade) return;
+        const dtVal = parseLocalDate(c.ca_validade); dtVal.setHours(0, 0, 0, 0);
+        const diff = Math.ceil((dtVal - hojeData) / 86400000);
+        if (diff < 0) caVencidosQtd++;
+        else if (diff <= 30) caVencendoQtd++;
     });
-    const aprStatusAtual = allAprRegistros.map(a => statusApr(a));
-    const apr = {
-        emitidasNoMes: aprEmitidasMes.length,
-        classCounts: aprClassCounts,
-        situacaoAtual: {
-            ativas: aprStatusAtual.filter(s => s.status === 'ativa' || s.status === 'vencendo').length,
-            vencendo: aprStatusAtual.filter(s => s.status === 'vencendo').length,
-            vencidas: aprStatusAtual.filter(s => s.status === 'vencida').length,
-        },
+    const estoqueBaixoQtd = (allEpiEstoque || []).filter(es => Number(es.quantidade_atual || 0) < Number(es.quantidade_minima || 0)).length;
+
+    const epiKpis = [
+        { key: 'entregas', label: 'Entregas no Período', value: entregasPeriodo.length },
+        { key: 'colaboradores', label: 'Colaboradores Atendidos no Período', value: colabsAtendidos },
+        { key: 'itens', label: 'Itens Cadastrados no Catálogo', value: catalogoAtivo.length },
+        { key: 'estoqueBaixo', label: 'Itens com Estoque Baixo', value: estoqueBaixoQtd },
+        { key: 'caVencidos', label: "CA's Vencidos", value: caVencidosQtd },
+        { key: 'caVencendo', label: "CA's Vencendo (30 dias)", value: caVencendoQtd },
+        { key: 'totalItens', label: 'Total de Itens Entregues (Período)', value: totalItensPeriodo }
+    ];
+
+    const acidentes = base.acidentes;
+    const acidentesKpis = [
+        { key: 'tfg', label: 'TF Global (TF_CA + TF_SA)', value: base.kpisRapidos.tfGlobal },
+        { key: 'tg', label: 'Taxa de Gravidade (TG)', value: base.kpisRapidos.tg },
+        { key: 'taxaIncidencia', label: 'Taxa de Incidência (por 1.000 colaboradores)', value: acidentes.taxaIncidencia.toFixed(2) },
+        { key: 'diasSemCpt', label: 'Dias sem Acidente c/ Afastamento (CPT)', value: acidentes.diasSemCpt },
+        { key: 'diasSemSpt', label: 'Dias sem Acidente s/ Afastamento (SPT)', value: acidentes.diasSemSpt },
+        { key: 'total', label: 'Acidentes Típicos no Período', value: acidentes.tipicosTotal },
+        { key: 'outras', label: 'Trajeto / Sem Lesão no Período', value: acidentes.outrosTotal }
+    ];
+    const relatos = { ...base.relatos, totalMes: base.relatos.total };
+    return {
+        checklistKpis,
+        treinamentos,
+        apr: base.apr,
+        matrizRisco: base.matrizRisco,
+        epiKpis,
+        extintores: base.extintores,
+        acidentesKpis,
+        relatos,
+        cipa: base.cipa
     };
-
-    // ---- 1.4 Matriz de Risco (GHE) - catálogo de riscos por grupo de exposição, sem
-    // filtro de período na tela (é "situação atual do catálogo", igual ao painel). ----
-    const riscosGhe = todosRiscosGhe();
-    const matrizRiscoPorNivel = {};
-    NIVEIS_RISCO_ORDEM.forEach(n => { matrizRiscoPorNivel[n] = 0; });
-    riscosGhe.forEach(r => { if (matrizRiscoPorNivel[r.gravidade_label] !== undefined) matrizRiscoPorNivel[r.gravidade_label]++; });
-    const matrizRisco = { total: riscosGhe.length, porNivel: matrizRiscoPorNivel };
-
-    // ---- 1.5 EPI - hijack de epiFiltroAno/epiFiltroMes (mesmo padrão do 1.1). ----
-    const prevEpiAno = epiFiltroAno, prevEpiMes = epiFiltroMes, prevEpiFilter = epiFilter;
-    epiFiltroAno = String(ano); epiFiltroMes = String(mes);
-    renderEpiPanel();
-    const epiKpis = (window.epiReportData?.kpis || []).slice();
-    epiFiltroAno = prevEpiAno; epiFiltroMes = prevEpiMes; epiFilter = prevEpiFilter;
-    renderEpiPanel();
-
-    // ---- 1.6 Extintores - inspeções do mês (conforme/não conforme/pendente, mesmo
-    // critério de renderExtintorPanel) + situação atual de vencimento (não é filtrável
-    // por mês na tela). ----
-    const extintoresAtivos = allExtintores.filter(e => e.ativo !== false);
-    const anoMesExt = `${ano}-${String(mes + 1).padStart(2, '0')}`;
-    const ultimaInspecaoMesExt = {};
-    allInspecoesExtintores.forEach(i => {
-        if (!(i.date || '').startsWith(anoMesExt)) return;
-        const existing = ultimaInspecaoMesExt[i.extintor_id];
-        if (!existing || new Date(i.created_at || 0) > new Date(existing.created_at || 0)) {
-            ultimaInspecaoMesExt[i.extintor_id] = i;
-        }
-    });
-    let extConf = 0, extNaoConf = 0, extPendentes = 0;
-    extintoresAtivos.forEach(e => {
-        const insp = ultimaInspecaoMesExt[e.id];
-        if (!insp) extPendentes++;
-        else if (insp.status_geral === 'nao_conforme') extNaoConf++;
-        else if (insp.status_geral === 'conforme') extConf++;
-        else extPendentes++;
-    });
-    const hojeExt = new Date(); hojeExt.setHours(0, 0, 0, 0);
-    let extVencidos = 0, extVencendo = 0;
-    extintoresAtivos.forEach(e => {
-        if (!e.proxima_recarga) return;
-        const deadline = parseLocalDate(e.proxima_recarga); deadline.setHours(0, 0, 0, 0);
-        const diffDays = Math.ceil((deadline.getTime() - hojeExt.getTime()) / 86400000);
-        if (diffDays < 0) extVencidos++; else if (diffDays <= 30) extVencendo++;
-    });
-    const extintores = { totalAtivos: extintoresAtivos.length, conf: extConf, naoConf: extNaoConf, pendentes: extPendentes, vencidos: extVencidos, vencendo: extVencendo };
-
-    // ---- 1.7 Acidentabilidade - hijack de acidentesFiltroAno/acidentesFiltroMes (mesmo
-    // padrão do 1.1/1.5). ----
-    const prevAcidAno = acidentesFiltroAno, prevAcidMes = acidentesFiltroMes, prevAcidFilter = acidentesFilter;
-    acidentesFiltroAno = String(ano); acidentesFiltroMes = String(mes);
-    renderAcidentesPanel();
-    const acidentesKpis = (window.acidReportData?.kpis || []).slice();
-    acidentesFiltroAno = prevAcidAno; acidentesFiltroMes = prevAcidMes; acidentesFilter = prevAcidFilter;
-    renderAcidentesPanel();
-
-    // ---- 1.8 Relatos - contagem do mês (por status/tipo) + total ainda aberto/em
-    // andamento HOJE (situação atual, como o painel mostra). ----
-    const relatosMes = allRelatos.filter(r => dentroMes(r.date));
-    const relatosStatusCounts = { aberto: 0, em_andamento: 0, resolvido: 0 };
-    relatosMes.forEach(r => { const st = (r.status || 'aberto').toLowerCase(); if (relatosStatusCounts[st] !== undefined) relatosStatusCounts[st]++; });
-    const relatosTipoCounts = {};
-    relatosMes.forEach(r => { const t = r.tipo || 'Outro'; relatosTipoCounts[t] = (relatosTipoCounts[t] || 0) + 1; });
-    const relatos = {
-        totalMes: relatosMes.length,
-        statusCounts: relatosStatusCounts,
-        tipoCounts: relatosTipoCounts,
-        abertosAtual: allRelatos.filter(r => (r.status || 'aberto').toLowerCase() !== 'resolvido').length,
-    };
-
-    // ---- 1.9 CIPA - reuniões realizadas no mês + situação atual do plano de ação
-    // (pendências abertas/atrasadas, não filtrável por mês na tela). ----
-    const cipaReunioesMes = allCipaReunioes.filter(r => dentroMes(r.data_reuniao)).sort((a, b) => (a.data_reuniao || '').localeCompare(b.data_reuniao || ''));
-    const hojeCipa = new Date(); hojeCipa.setHours(0, 0, 0, 0);
-    const cipa = {
-        reunioesMes: cipaReunioesMes,
-        membrosAtivos: allCipaMembros.filter(m => m.ativo).length,
-        pendenciasAbertas: allCipaPlanoAcao.filter(p => p.status !== 'concluido').length,
-        pendenciasAtrasadas: allCipaPlanoAcao.filter(p => p.status !== 'concluido' && p.prazo && parseLocalDate(p.prazo) < hojeCipa).length,
-    };
-
-    return { checklistKpis, treinamentos, apr, matrizRisco, epiKpis, extintores, acidentesKpis, relatos, cipa };
 }
 
 // Formata os dados coletados acima em Paragraphs/Tables do docx.js - só formatação,
@@ -1196,11 +1172,11 @@ function construirSecao1RelSms(dados, mes, ano, fiscalizacao, graficoHhtBuffer) 
 // dela), então não há problema em chamar esta função antes ou depois de
 // garantirDadosSecao1RelSms().
 async function garantirDadosSecoes23RelSms() {
-    const tarefas = [];
-    if (!efetivoLoaded) { efetivoLoaded = true; tarefas.push(loadEfetivoData()); }
-    if (!saudeLoaded) { saudeLoaded = true; tarefas.push(loadSaudeData()); }
-    if (!psicossocialLoaded) { tarefas.push(loadPsicossocialData()); }
-    await Promise.all(tarefas);
+    await Promise.all([
+        relSmsCarregarFonteSegura('Efetivo', 'efetivoLoaded', typeof loadEfetivoData === 'function' ? loadEfetivoData : null),
+        relSmsCarregarFonteSegura('Saúde', 'saudeLoaded', typeof loadSaudeData === 'function' ? loadSaudeData : null),
+        relSmsCarregarFonteSegura('Psicossocial', 'psicossocialLoaded', typeof loadPsicossocialData === 'function' ? loadPsicossocialData : null)
+    ]);
 }
 
 function coletarDadosSecoes23RelSms(mes, ano, consolidado = null) {
@@ -1313,7 +1289,7 @@ function construirSecao3RelSms(dados, mes, ano, fiscalizacao) {
 // ================================================================
 
 async function garantirDadosSecaoMeioAmbienteRelSms() {
-    if (!ambientalLoaded) { ambientalLoaded = true; await loadAmbientalData(); }
+    await relSmsCarregarFonteSegura('Meio Ambiente', 'ambientalLoaded', typeof loadAmbientalData === 'function' ? loadAmbientalData : null);
 }
 
 // Mesma regra de "não falar em estimativa" já usada no Manifesto de Resíduos: só entra no
@@ -2080,16 +2056,36 @@ function relSmsTipoImagemBufferDocx(buffer) {
     throw new Error('Formato de imagem não suportado no Word. Use JPEG, PNG, GIF ou BMP.');
 }
 
-async function montarDocRelSms(mes, ano, fiscalizacao) {
-    const fotosSelecionadas = await relSmsFotosPreparar(mes, ano, (atual, total) => {
-        const status = document.getElementById('relSmsStatus');
-        if (status) status.textContent = `Preparando fotos selecionadas: ${atual}/${total}…`;
-    });
-    if (typeof garantirDocumentosControleCarregados === 'function') {
+async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapshot) {
+    if (!snapshot && typeof relSmsObterSnapshotFechamento === 'function') {
+        snapshot = await relSmsObterSnapshotFechamento(mes, ano);
+    }
+
+    const fechado = Boolean(snapshot && snapshot.status === 'fechado');
+    if (fechado) {
+        if (!snapshot.dados || !snapshot.dadosSecao1 || !snapshot.dadosSecoes23 || !snapshot.dadosMeioAmbiente || !snapshot.fotos || !snapshot.anexos) {
+            throw new Error(`Snapshot corrompido ou incompleto da competência ${NOMES_MESES[mes]}/${ano} (Rev. ${snapshot.revisao || 1}): partes essenciais ausentes. Recálculo ao vivo bloqueado por segurança.`);
+        }
+        fiscalizacao = Boolean(snapshot.fiscalizacao);
+    }
+
+    let fotosSelecionadas = (fechado && snapshot.fotos) ? snapshot.fotos : null;
+    if (!fotosSelecionadas) {
+        fotosSelecionadas = await relSmsFotosPreparar(mes, ano, (atual, total) => {
+            const status = document.getElementById('relSmsStatus');
+            if (status) status.textContent = `Preparando fotos selecionadas: ${atual}/${total}…`;
+        });
+    }
+
+    if (typeof garantirDocumentosControleCarregados === 'function' && !fechado) {
         await garantirDocumentosControleCarregados();
     }
-    await garantirDadosCompletosRelatorioMensalSms();
-    const dadosCompletos = coletarDadosCompletosRelatorioMensalSms(mes, ano);
+
+    let dadosCompletos = dadosPrecoletados || (fechado && snapshot.dados) ? (dadosPrecoletados || snapshot.dados) : null;
+    if (!dadosCompletos) {
+        await garantirDadosCompletosRelatorioMensalSms();
+        dadosCompletos = coletarDadosCompletosRelatorioMensalSms(mes, ano);
+    }
 
     // Carregamento de Recursos Visuais (Logo COP e Gráfico Canvas HHT)
     const logoCopBuffer = await carregarBufferLogoCop();
@@ -2135,6 +2131,12 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'CONSÓRCIO OPERADOR RAMAL DO AGRESTE', bold: true, color: RELSMS_NAVY, size: 20 })] }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 80 }, children: [new docx.TextRun({ text: 'CNPJ: ' + (EMPRESA_INFO.cnpj || '55.623.017/0001-97') + ' — Engenharia de Segurança do Trabalho', color: RELSMS_GREY, size: 18 })] }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'Código de Controle: ' + codigoRev, bold: true, color: RELSMS_GREY, size: 18 })] }),
+        ...(fechado ? [
+            new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 30 }, children: [new docx.TextRun({ text: 'Status: 🔒 HOMOLOGADO E FECHADO (Rev. ' + (snapshot.revisao || 1) + ')', bold: true, color: '107C41', size: 18 })] }),
+            new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'Homologado em: ' + (snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleDateString('pt-BR') : '—') + ' por ' + (snapshot.fechado_por || 'Gestor SST') + ' • Hash: ' + (snapshot.hash ? snapshot.hash.slice(0, 16) + '...' : '—'), color: RELSMS_GREY, size: 16 })] }),
+        ] : [
+            new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'Status: 🟢 Minuta em Aberto (Cálculo Dinâmico ao Vivo)', color: RELSMS_BLUE, size: 18 })] }),
+        ]),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, children: [new docx.TextRun({ text: 'Data de emissão: ' + dataEmissao, color: RELSMS_GREY, size: 18 })] }),
         new docx.Paragraph({ children: [new docx.PageBreak()] })
     );
@@ -2149,9 +2151,13 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
 
     const sumario = [
         relSmsH1('Sumário Executivo'),
-        relSmsP('Este relatório consolida de forma integrada as ações e o desempenho operacional em Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste no mês de ' + nomeMes.toLowerCase() + ' de ' + ano + ', com base nos registros de campo consolidados pela equipe de SMS e em conformidade com as Normas Regulamentadoras aplicáveis.'),
-        relSmsNota('Realizações mensais correspondem à competência. Cadastros, validades e pendências atuais refletem a data de emissão; não constituem retrato histórico fechado.'),
-        relSmsNota('HHT mensal: ' + dadosCompletos.hht.hhtMes + ' h' + (dadosCompletos.hht.hhtEstimado ? ' (estimado)' : '') + '; acumulado: ' + dadosCompletos.hht.hhtAcumuladoAno + ' h' + (dadosCompletos.hht.hhtAcumuladoEstimado ? ' (inclui estimativas)' : '') + '. Taxas dependentes acompanham esta base.'),
+        relSmsP('Este relatório reúne indicadores de Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste para ' + nomeMes.toLowerCase() + ' de ' + ano + ', com base nos registros disponíveis no sistema na data de emissão.'),
+        ...(fechado ? [
+            relSmsNota('COMPETÊNCIA HOMOLOGADA E FECHADA (Snapshot Histórico Imutável) em ' + (snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleDateString('pt-BR') : '—') + ' às ' + (snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : '—') + ' por ' + (snapshot.fechado_por || 'Gestor SST') + ' • Revisão: ' + (snapshot.revisao || 1) + ' • Hash de integridade: ' + (snapshot.hash || '—') + '. Os dados foram congelados na homologação e preservam fidelidade histórica permanente.')
+        ] : [
+            relSmsNota('Indicadores mensais referem-se à competência. Cadastros, validades e pendências atuais refletem a data de emissão e não constituem retrato histórico fechado. A ausência de registro não comprova conformidade ou inexistência de ocorrência.')
+        ]),
+        relSmsNota('HHT mensal: ' + dadosCompletos.hht.hhtMes + ' h' + (dadosCompletos.hht.hhtEstimado ? ' (estimativa operacional: efetivo × 220 h)' : '') + '; acumulado: ' + dadosCompletos.hht.hhtAcumuladoAno + ' h' + (dadosCompletos.hht.hhtAcumuladoEstimado ? ' (inclui estimativas)' : '') + '. Taxas dependentes acompanham esta base.'),
         relSmsH2('Destaques do Período'),
         ...(dadosCompletos.destaques || []).map(d => new docx.Paragraph({
             spacing: { after: 100 },
@@ -2164,29 +2170,35 @@ async function montarDocRelSms(mes, ano, fiscalizacao) {
         new docx.Paragraph({ children: [new docx.PageBreak()] })
     ];
 
-    await garantirDadosSecao1RelSms();
-    const dadosSecao1 = coletarDadosSecao1RelSms(mes, ano, dadosCompletos);
+    if (!fechado) await garantirDadosSecao1RelSms();
+    const dadosSecao1 = (fechado && snapshot.dadosSecao1) ? snapshot.dadosSecao1 : coletarDadosSecao1RelSms(mes, ano, dadosCompletos);
     const secao1 = construirSecao1RelSms(dadosSecao1, mes, ano, fiscalizacao, graficoHhtBuffer);
 
     const secaoPgr = construirSecaoPgrDocx(dadosCompletos, fiscalizacao);
 
-    await garantirDadosSecoes23RelSms();
-    const dadosSecoes23 = coletarDadosSecoes23RelSms(mes, ano, dadosCompletos);
+    let dadosSecoes23 = (fechado && snapshot.dadosSecoes23) ? snapshot.dadosSecoes23 : null;
+    if (!dadosSecoes23) {
+        if (!fechado) await garantirDadosSecoes23RelSms();
+        dadosSecoes23 = coletarDadosSecoes23RelSms(mes, ano, dadosCompletos);
+    }
     const secao2 = construirSecao2RelSms(dadosSecoes23, mes, ano);
     const secao3 = construirSecao3RelSms(dadosSecoes23, mes, ano, fiscalizacao);
 
     const secaoErgonomia = construirSecaoErgonomiaDocx(dadosCompletos);
     const secaoPericulosidade = construirSecaoPericulosidadeDocx(dadosCompletos);
 
-    await garantirDadosSecaoMeioAmbienteRelSms();
-    const dadosMeioAmbiente = coletarDadosMeioAmbienteRelSms(mes, ano);
+    let dadosMeioAmbiente = (fechado && snapshot.dadosMeioAmbiente) ? snapshot.dadosMeioAmbiente : null;
+    if (!dadosMeioAmbiente) {
+        if (!fechado) await garantirDadosSecaoMeioAmbienteRelSms();
+        dadosMeioAmbiente = coletarDadosMeioAmbienteRelSms(mes, ano);
+    }
     const secaoMeioAmbiente = construirSecaoMeioAmbienteRelSms(dadosMeioAmbiente, mes, ano, fiscalizacao);
 
     const secao4 = construirSecao4RelSms(dadosSecao1, dadosSecoes23, dadosMeioAmbiente, mes, ano, fiscalizacao);
 
-    const dadosFase4 = fotosSelecionadas ? null : coletarDadosFase4RelSms(mes, ano);
+    const dadosFase4 = fotosSelecionadas ? null : ((fechado && snapshot.dadosFase4) ? snapshot.dadosFase4 : coletarDadosFase4RelSms(mes, ano));
     const secao5 = fotosSelecionadas ? relSmsFotosDocx(fotosSelecionadas) : await construirSecao5RelSms(dadosFase4, mes, ano);
-    const anexos = construirAnexosRelSms(mes, ano);
+    const anexos = (fechado && snapshot.anexos) ? snapshot.anexos : construirAnexosRelSms(mes, ano);
 
     // Cabeçalho institucional com Logo do COP redimensionado e identificação corporativa
     const headerTabelaFilhos = [];
@@ -2326,13 +2338,33 @@ async function gerarRelatorioMensalSms() {
         if (statusEl) statusEl.textContent = '❌ Biblioteca de geração de Word não carregou. Verifique sua conexão e recarregue a página.';
         return;
     }
-    if (statusEl) statusEl.textContent = '⏳ Carregando dados e gerando Word... pode levar até 1 minuto.';
+    if (statusEl) statusEl.textContent = '⏳ Verificando fechamento e gerando Word... pode levar até 1 minuto.';
     try {
         relSmsFotosEstado.gerando = true;
-        const doc = await montarDocRelSms(mes, ano, fiscalizacao);
+        let snapshot = null;
+        try {
+            snapshot = await relSmsObterSnapshotFechamento(mes, ano);
+        } catch (errSnap) {
+            console.error('Falha ao verificar fechamento para exportação Word:', errSnap);
+            if (statusEl) {
+                statusEl.innerHTML = `<span style="color:#ef4444; font-weight:600;">❌ Exportação bloqueada: Falha ao consultar status de fechamento (${relSmsEscape(errSnap.message)}). Operação interrompida por segurança para evitar exportação com dados divergentes.</span>`;
+            }
+            return;
+        }
+
+        const fechado = Boolean(snapshot && snapshot.status === 'fechado');
+        const fiscalizacaoEfetiva = fechado ? Boolean(snapshot.fiscalizacao) : fiscalizacao;
+        const fiscalizacaoEl = document.getElementById('relSmsFiscalizacao');
+        if (fechado && fiscalizacaoEl && fiscalizacaoEl.checked !== fiscalizacaoEfetiva) {
+            fiscalizacaoEl.checked = fiscalizacaoEfetiva;
+        }
+
+        const dadosPrecoletados = (fechado && snapshot.dados) ? snapshot.dados : null;
+        const doc = await montarDocRelSms(mes, ano, fiscalizacaoEfetiva, dadosPrecoletados, snapshot);
         const blob = await docx.Packer.toBlob(doc);
         const nomeMes = NOMES_MESES[mes];
-        const nomeArquivo = 'Relatorio_Mensal_SMS_' + nomeMes + '_' + ano + '.docx';
+        const revSuffix = fechado ? `_Rev${snapshot.revisao || 1}` : '_Minuta';
+        const nomeArquivo = 'Relatorio_Mensal_SMS_' + nomeMes + '_' + ano + revSuffix + '.docx';
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -2364,43 +2396,73 @@ var allNaoConformidades = [];
 
 // Garante o carregamento em paralelo (Promise.all) de todas as tabelas e módulos
 // necessários para compor o dossiê executivo de SMS.
-async function garantirDadosCompletosRelatorioMensalSms() {
-    const tarefas = [];
+async function garantirDadosCompletosRelatorioMensalSms(opcoes = {}) {
+    const tarefas = [
+        relSmsCarregarFonteSegura('Treinamentos', 'treinamentosLoaded', typeof loadTreinamentosData === 'function' ? loadTreinamentosData : null),
+        relSmsCarregarFonteSegura('Acidentes', 'acidentesLoaded', typeof loadAcidentesData === 'function' ? loadAcidentesData : null),
+        relSmsCarregarFonteSegura('EPI', 'epiLoaded', typeof loadEpiData === 'function' ? loadEpiData : null),
+        relSmsCarregarFonteSegura('APR', 'aprLoaded', typeof loadAprData === 'function' ? loadAprData : null),
+        relSmsCarregarFonteSegura('CIPA', 'cipaLoaded', typeof loadCipaData === 'function' ? loadCipaData : null),
+        relSmsCarregarFonteSegura('Efetivo', 'efetivoLoaded', typeof loadEfetivoData === 'function' ? loadEfetivoData : null),
+        relSmsCarregarFonteSegura('Saúde', 'saudeLoaded', typeof loadSaudeData === 'function' ? loadSaudeData : null),
+        relSmsCarregarFonteSegura('Psicossocial', 'psicossocialLoaded', typeof loadPsicossocialData === 'function' ? loadPsicossocialData : null),
+        relSmsCarregarFonteSegura('Meio Ambiente', 'ambientalLoaded', typeof loadAmbientalData === 'function' ? loadAmbientalData : null),
+        relSmsCarregarFonteSegura('Ergonomia', 'ergonomiaLoaded', typeof loadErgonomiaData === 'function' ? loadErgonomiaData : null),
+        relSmsCarregarFonteSegura('Periculosidade', 'periculosidadeLoaded', typeof loadPericulosidadeData === 'function' ? loadPericulosidadeData : null),
+        relSmsCarregarFonteSegura('Plano Ação PGR', 'planoAcaoPgrLoaded', typeof loadPlanoAcaoPgrData === 'function' ? loadPlanoAcaoPgrData : null),
+        relSmsCarregarFonteSegura('Brigada', 'brigadaLoaded', typeof loadBrigadaData === 'function' ? loadBrigadaData : null)
+    ];
+
     if (typeof garantirDocumentosControleCarregados === 'function') {
-        tarefas.push(garantirDocumentosControleCarregados());
+        tarefas.push(garantirDocumentosControleCarregados().then(() => true).catch(e => {
+            console.warn('[Relatório SMS] Falha em docs controle:', e);
+            return false;
+        }));
     }
-    if (!treinamentosLoaded) { treinamentosLoaded = true; tarefas.push(loadTreinamentosData()); }
-    if (!acidentesLoaded) { acidentesLoaded = true; tarefas.push(loadAcidentesData()); }
-    if (!epiLoaded) { epiLoaded = true; tarefas.push(loadEpiData()); }
-    if (!aprLoaded) { aprLoaded = true; tarefas.push(loadAprData()); }
-    if (!cipaLoaded) { cipaLoaded = true; tarefas.push(loadCipaData()); }
-    if (!efetivoLoaded) { efetivoLoaded = true; tarefas.push(loadEfetivoData()); }
-    if (!saudeLoaded) { saudeLoaded = true; tarefas.push(loadSaudeData()); }
-    if (!psicossocialLoaded) { tarefas.push(loadPsicossocialData()); }
-    if (!ambientalLoaded) { ambientalLoaded = true; tarefas.push(loadAmbientalData()); }
-    if (!ergonomiaLoaded) { ergonomiaLoaded = true; tarefas.push(loadErgonomiaData()); }
-    if (!periculosidadeLoaded) { periculosidadeLoaded = true; tarefas.push(loadPericulosidadeData()); }
-    if (!planoAcaoPgrLoaded) { planoAcaoPgrLoaded = true; tarefas.push(loadPlanoAcaoPgrData()); }
-    if (!brigadaLoaded) { brigadaLoaded = true; tarefas.push(loadBrigadaData()); }
 
     // Garantir carregamento de anexos e evidências fotográficas
-    if (!anexosSmsCarregados) {
+    const precisaCarregarAnexos = typeof anexosSmsCarregados !== 'undefined' ? !anexosSmsCarregados : (typeof garantirAnexosSmsCarregados === 'function');
+    if (precisaCarregarAnexos && typeof garantirAnexosSmsCarregados === 'function') {
         tarefas.push(new Promise((resolve) => {
-            garantirAnexosSmsCarregados(() => resolve());
+            try {
+                garantirAnexosSmsCarregados(() => resolve(true));
+            } catch (e) {
+                console.warn('[Relatório SMS] Falha ao carregar anexos:', e);
+                resolve(false);
+            }
         }));
     }
 
     // Não Conformidades geradas no campo
     if (!allNaoConformidades || allNaoConformidades.length === 0) {
-        tarefas.push(supabaseFetch('nao_conformidades', '?select=*').then(res => {
-            allNaoConformidades = Array.isArray(res) ? res : [];
-        }).catch(e => {
-            console.warn('Erro ao carregar nao_conformidades para o Relatório SMS:', e);
-            allNaoConformidades = [];
-        }));
+        if (typeof supabaseFetch === 'function') {
+            tarefas.push(supabaseFetch('nao_conformidades', '?select=*').then(res => {
+                allNaoConformidades = Array.isArray(res) ? res : [];
+                return true;
+            }).catch(e => {
+                console.warn('Erro ao carregar nao_conformidades para o Relatório SMS:', e);
+                allNaoConformidades = [];
+                return false;
+            }));
+        }
     }
 
-    await Promise.all(tarefas);
+    const resultados = await Promise.all(tarefas);
+    if (opcoes.exigirSucesso) {
+        const nomesFontes = [
+            'Treinamentos', 'Acidentes', 'EPI', 'APR', 'CIPA', 'Efetivo',
+            'Saúde', 'Psicossocial', 'Meio Ambiente', 'Ergonomia',
+            'Periculosidade', 'Plano Ação PGR', 'Brigada', 'Documentos de Controle',
+            'Anexos SMS', 'Não Conformidades'
+        ];
+        const falhas = [];
+        resultados.forEach((ok, idx) => {
+            if (ok === false) falhas.push(nomesFontes[idx] || `Fonte #${idx + 1}`);
+        });
+        if (falhas.length > 0) {
+            throw new Error(`Falha ao carregar as seguintes fontes obrigatórias de SST: ${falhas.join(', ')}. Não é permitido homologar com dados incompletos.`);
+        }
+    }
 }
 
 // Coleta e agrega dinamicamente todas as métricas no período selecionado (Mês/Ano)
@@ -2425,6 +2487,7 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
     const exposicao = relSmsHhtCompetencia(ano, mes);
     const diasTrabalhados = exposicao.dias;
     const horasPorDia = exposicao.horas;
+    const horasPorDiaEstimadas = exposicao.horasEstimadas;
     const hhtMes = exposicao.valor;
     const hhtEstimado = exposicao.estimado;
     const memoriaHht = Array.from({ length: mes + 1 }, (_, m) => relSmsHhtCompetencia(ano, m));
@@ -2608,11 +2671,16 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
     const atestadosComDias = (allAtestadosOcupacionais || []).map(a => ({ registro: a, dias: relSmsDiasAtestadoNaCompetencia(a, mes, ano) }));
     const atestadosMes = atestadosComDias.filter(a => a.dias > 0).map(a => a.registro);
     const diasAfastamentoMes = atestadosComDias.reduce((total, a) => total + (a.dias || 0), 0);
+    const atestadosSemIntervaloMes = atestadosComDias.filter(a => {
+        const reg = a.registro;
+        const pertenceCompetencia = dentroMes(reg.data_inicio) || (!reg.data_inicio && dentroMes(reg.created_at));
+        return pertenceCompetencia && a.dias === null;
+    }).length;
     const horasPerdidasAtestados = diasAfastamentoMes * horasPorDia;
     const taxaAbsenteismo = hhtMes > 0 ? ((horasPerdidasAtestados / hhtMes) * 100) : null;
 
     // Status Clínico Geral de ASO (NR-07) para o efetivo ativo
-    let asoEmDia = 0, asoVencendo30 = 0, asoVencendo60 = 0, asoVencidos = 0;
+    let asoEmDia = 0, asoVencendo30 = 0, asoVencendo60 = 0, asoVencidos = 0, asoSemStatus = 0;
     const ativosEfetivoAso = (allEfetivo || []).filter(colaboradorEstaAtivo);
     ativosEfetivoAso.forEach(colab => {
         const statusObj = calcularStatusAsoColaborador(colab.id);
@@ -2625,7 +2693,7 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
             if (statusObj.diffDays !== null && statusObj.diffDays <= 60) asoVencendo60++;
             else asoEmDia++;
         } else {
-            asoVencidos++;
+            asoSemStatus++;
         }
     });
 
@@ -2773,12 +2841,12 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
     const taxaAtendimentoEpi = totalFuncionarios > 0 ? Math.round((epiColaboradoresAtendidos / totalFuncionarios) * 100) : 0;
 
     const statusAcidentesTexto = acidentesCA.length === 0
-        ? `Zero acidentes com afastamento (CPT) registrados no período de competência, totalizando ${kpisRapidos.diasSemCpt} dias consecutivos sem CPT e TF = ${kpisRapidos.tfCa}.`
-        : `${acidentesTipicos.length} acidente(s) típico(s) registrado(s) no mês, com controle preventivo intensificado e ${kpisRapidos.diasSemCpt} dias acumulados sem CPT.`;
+        ? `Nenhum acidente com afastamento (CPT) localizado nos registros carregados da competência. Dias sem CPT: ${kpisRapidos.diasSemCpt}; TF_CA: ${kpisRapidos.tfCa}.`
+        : `${acidentesTipicos.length} acidente(s) típico(s) localizado(s) nos registros carregados do mês; ${kpisRapidos.diasSemCpt} dias sem CPT na consulta atual.`;
 
     const statusChecklistsTexto = checklistsMes.length === 0 ? 'Sem inspeções pré-operacionais registradas na competência.' : `Índice de conformidade geral de ${taxaConformidadeChk.toFixed(1)}% nas inspeções pré-operacionais de campo, com ${checklistsMes.length} equipamentos e veículos verificados (${chkConformes} conformes e ${chkNaoConformes} registros com desvios identificados).`;
 
-    const statusCapacitacaoTexto = `Total de ${treinamentosDados.totais.hht.geral.toFixed(0)} horas-homem de treinamento (HHT) investidas em capacitação técnica e diálogos diários (DDSMA), com ${treinamentosDados.totais.participantes.geral} participações registradas e ${relSmsPercentual(taxaCronograma)} de cumprimento do cronograma normativo.`;
+    const statusCapacitacaoTexto = `Total de ${treinamentosDados.totais.hht.geral.toFixed(0)} horas-homem de treinamento (HHT) registradas em capacitação e diálogos diários (DDSMA), com ${treinamentosDados.totais.participantes.geral} participações e ${relSmsPercentual(taxaCronograma)} do cronograma configurado.`;
 
     const statusEpiTexto = `Fornecimento e rastreabilidade de ${epiTotalItens} unidades de EPI registradas, contemplando ${epiColaboradoresAtendidos} colaboradores atendidos (${taxaAtendimentoEpi}% do efetivo em rotina de reposição/entrega).`;
 
@@ -2819,6 +2887,7 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
             hhtAcumuladoAno,
             diasTrabalhados,
             horasPorDia,
+            horasPorDiaEstimadas,
             hhtEstimado,
             hhtAcumuladoEstimado,
             memoriaHht
@@ -2896,13 +2965,14 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
             restricoes: asoRestricao ?? 0,
             atestadosTotal: atestadosMes.length ?? 0,
             diasAfastamento: diasAfastamentoMes ?? 0,
-            atestadosSemIntervalo: atestadosComDias.filter(a => a.dias === null).length,
+            atestadosSemIntervalo: atestadosSemIntervaloMes,
             taxaAbsenteismo: taxaAbsenteismo,
             statusGeral: {
                 emDia: asoEmDia,
                 vencendo30: asoVencendo30,
                 vencendo60: asoVencendo60,
-                vencidos: asoVencidos
+                vencidos: asoVencidos,
+                semStatus: asoSemStatus
             }
         },
         ergonomia: {
@@ -2953,7 +3023,7 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
 }
 
 // Constrói o documento HTML completo calibrado para Impressão A4 e exportação para PDF
-function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
+function construirHtmlDossieOficialRelSms(dados, fiscalizacao, snapshot) {
     const { meta, efetivo, hht, kpisRapidos, checklists, naoConformidades, relatos, apr, matrizRisco, treinamentos, acidentes, pgr, saude, ergonomia, psicossocial, periculosidade, extintores, brigada, cipa, epi, ada, meioAmbiente, fotos } = dados;
     const mesSelect = document.getElementById('relSmsMes');
     const nomeMes = (meta && meta.nomeMes) ? meta.nomeMes : (mesSelect && mesSelect.selectedIndex >= 0 ? mesSelect.options[mesSelect.selectedIndex].text : 'Mes_Nao_Definido');
@@ -3319,6 +3389,21 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                     <div style="margin-top: 8px; font-weight: 700; color: #1f3864;">${escapeHTML(meta.empresa)}</div>
                     <div>CNPJ: ${escapeHTML(EMPRESA_INFO.cnpj || '55.623.017/0001-97')}</div>
                     <div style="margin-top: 8px;"><strong>Código de Controle:</strong> ${escapeHTML(meta.codigoRev)}</div>
+                    ${snapshot && snapshot.status === 'fechado' ? `
+                    <div style="margin-top: 6px; color: #047857; font-weight: 700; font-size: 11px;">
+                        🔒 HOMOLOGADO E FECHADO (Rev. ${snapshot.revisao || 1})
+                    </div>
+                    <div style="font-size: 9.5px; color: #065f46;">
+                        Fechado em: ${snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleDateString('pt-BR') : '—'} às ${snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : '—'} por ${escapeHTML(snapshot.fechado_por || 'Gestor SST')}
+                    </div>
+                    <div style="font-size: 9px; color: #64748b; font-family: monospace;">
+                        Hash: ${escapeHTML(snapshot.hash ? snapshot.hash.slice(0, 20) + '...' : '—')}
+                    </div>
+                    ` : `
+                    <div style="margin-top: 6px; color: #1e40af; font-weight: 600; font-size: 10.5px;">
+                        🟢 Minuta em Aberto (Cálculo Dinâmico ao Vivo)
+                    </div>
+                    `}
                     <div><strong>Data de Emissão:</strong> ${meta.dataEmissao}</div>
                 </div>
             </div>
@@ -3329,8 +3414,13 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, 'Sumário Executivo e Indicadores')}
             <div class="rel-h1">Sumário Executivo</div>
             <p class="rel-p">
-                Este relatório consolida de forma integrada as ações e o desempenho operacional em Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste no mês de <strong>${nomeMes.toLowerCase()} de ${ano}</strong>, em estrita conformidade com as Normas Regulamentadoras do MTE (NR-01, NR-04, NR-05, NR-06, NR-07, NR-16, NR-17 e NR-23) e com o PGRS.
+                Este relatório reúne os indicadores de Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste para <strong>${nomeMes.toLowerCase()} de ${ano}</strong>, com base nos registros disponíveis no sistema na data de emissão.
             </p>
+            ${snapshot && snapshot.status === 'fechado' ? `
+            <div style="background:#ecfdf5; border:1px solid #10b981; border-radius:6px; padding:6px 10px; margin:6px 0 10px 0; font-size:8.5px; color:#065f46; line-height:1.4;">
+                <strong>COMPETÊNCIA HOMOLOGADA E FECHADA (Snapshot Histórico Imutável):</strong> Este documento reflete o conjunto consolidado homologado em ${snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleDateString('pt-BR') : '—'} por ${escapeHTML(snapshot.fechado_por || 'Gestor SST')} (Rev. ${snapshot.revisao || 1}, Hash: ${escapeHTML(snapshot.hash ? snapshot.hash.slice(0, 16) + '...' : '—')}). Os dados foram congelados na homologação e preservam fidelidade histórica permanente.
+            </div>
+            ` : ''}
 
             <div class="rel-h2">Destaques do Período</div>
             <ul style="padding-left: 16px; margin: 2px 0 6px 0; font-size: 8.5px; line-height: 1.35; color: #1e293b;">
@@ -3346,7 +3436,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                 <thead>
                     <tr>
                         <th>Efetivo Ativo na Obra</th>
-                        <th>Dias Úteis Trabalhados</th>
+                        <th>Base de Cálculo do HHT</th>
                         <th>HHT Trabalhado no Mês</th>
                         <th>HHT Acumulado no Contrato</th>
                     </tr>
@@ -3354,7 +3444,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                 <tbody>
                     <tr>
                         <td><strong>${efetivo.headcount} trabalhadores</strong></td>
-                        <td><strong>${hht.diasTrabalhados} dias</strong></td>
+                        <td><strong>${hht.hhtEstimado ? `Efetivo × ${hht.horasBasePorTrabalhador || 220} h por trabalhador (estimativa)` : hht.hhtMes === 0 ? 'Zero informado ou sem efetivo' : 'Base registrada'}</strong></td>
                         <td><strong>${hht.hhtEstimado ? 'Estimado: ' : ''}${Number(hht.hhtMes).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h</strong></td>
                         <td><strong>${hht.hhtAcumuladoEstimado ? 'Inclui estimativas: ' : ''}${Number(hht.hhtAcumuladoAno).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h</strong></td>
                     </tr>
@@ -3374,21 +3464,21 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                 <tbody>
                     <tr>
                         <td style="text-align: left;">Taxa de Frequência Global (TF_G)</td>
-                        <td>NBR 14280 / Zero Acidentes</td>
+                        <td>Indicador de frequência</td>
                         <td><strong>${kpisRapidos.tfGlobal}</strong></td>
-                        <td><span style="color: ${Number(kpisRapidos.tfGlobal) === 0 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${hht.hhtMes <= 0 ? 'Sem base de cálculo' : Number(kpisRapidos.tfGlobal) === 0 ? '✅ Meta Atingida' : '⚠ Atenção'}</span></td>
+                        <td><span style="color: ${Number(kpisRapidos.tfGlobal) === 0 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${hht.hhtMes <= 0 ? 'Sem base de cálculo' : Number(kpisRapidos.tfGlobal) === 0 ? 'Sem acidentes registrados no período' : '⚠ Atenção'}</span></td>
                     </tr>
                     <tr>
                         <td style="text-align: left;">Taxa de Gravidade (TG)</td>
-                        <td>NBR 14280 / Zero Gravidade</td>
+                        <td>Indicador de gravidade</td>
                         <td><strong>${kpisRapidos.tg}</strong></td>
-                        <td><span style="color: ${Number(kpisRapidos.tg) === 0 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${hht.hhtMes <= 0 ? 'Sem base de cálculo' : Number(kpisRapidos.tg) === 0 ? '✅ Meta Atingida' : '⚠ Atenção'}</span></td>
+                        <td><span style="color: ${Number(kpisRapidos.tg) === 0 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${hht.hhtMes <= 0 ? 'Sem base de cálculo' : Number(kpisRapidos.tg) === 0 ? 'Sem gravidade registrada no período' : '⚠ Atenção'}</span></td>
                     </tr>
                     <tr>
                         <td style="text-align: left;">Conformidade de Checklists</td>
-                        <td>≥ 95% Inspeções Conformes</td>
+                        <td>Índice sobre inspeções registradas</td>
                         <td><strong>${kpisRapidos.checklistsConformePct}</strong> (${checklists.conformes}/${checklists.total})</td>
-                        <td><span style="color: ${checklists.taxaConformidade >= 95 ? '#16a34a' : '#d97706'}; font-weight: bold;">${checklists.taxaConformidade === null ? 'Sem avaliação' : checklists.taxaConformidade >= 95 ? '✅ Conforme' : '⚠ Acompanhamento'}</span></td>
+                        <td><span style="font-weight: bold;">${checklists.taxaConformidade === null ? 'Sem avaliação' : 'Índice calculado'}</span></td>
                     </tr>
                     <tr>
                         <td style="text-align: left;">Capacitação Técnica e DDSMA</td>
@@ -3398,9 +3488,9 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                     </tr>
                     <tr>
                         <td style="text-align: left;">Prontidão de Extintores (NR-23)</td>
-                        <td>100% Inspecionados / Conformes</td>
+                        <td>Índice sobre inspeções registradas</td>
                         <td><strong>${kpisRapidos.extintoresConformePct}</strong> (${extintores.fracaoTexto})</td>
-                        <td><span style="color: ${extintores.percConformidade >= 90 ? '#16a34a' : '#dc2626'}; font-weight: bold;">${extintores.percConformidade === null ? 'Sem avaliação' : extintores.percConformidade >= 90 ? '✅ Conforme' : '⚠ Ação Necessária'}</span></td>
+                        <td><span style="font-weight: bold;">${extintores.percConformidade === null ? 'Sem avaliação' : 'Índice calculado'}</span></td>
                     </tr>
                     <tr>
                         <td style="text-align: left;">Eficácia 5W2H PGR (NR-01)</td>
@@ -3529,7 +3619,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
             ${gerarBarraCabecalhoInstitucionalRelSmsHtml(mes, ano, '1.7. Acidentabilidade NBR 14280 & 1.8. Emergência e CIPA')}
 
             <div class="rel-h2" style="margin-top: 4px;">1.7. Estatísticas de Acidentabilidade e HHT (NR-04 / NBR 14280)</div>
-            <p class="rel-p">Apuramento dos coeficientes de frequência e gravidade em consonância com os critérios da NBR 14280 e diretrizes da NR-04.</p>
+            <p class="rel-p">Apresentação dos indicadores de frequência e gravidade calculados a partir dos registros de acidentes e da base HHT informada neste relatório.</p>
             <div style="font-size: 9.5px; font-weight: 700; color: #1f3864; margin: 4px 0 2px 0;">1.7.1. Indicadores Estatísticos Oficiais da NBR 14280</div>
             ${relSmsTabelaGenericaHtml(['Indicador Estatístico', 'Resultado no Mês'], [
                 ['Taxa de Frequência Global (TF_G)', kpisRapidos.tfGlobal],
@@ -3580,8 +3670,8 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         <div class="pagina-relatorio">
             ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '1.9. Gestão de EPIs & 2. Governança do PGR 5W2H')}
 
-            <div class="rel-h1">1.9. Equipamentos de Proteção Individual - EPI (NR-06)</div>
-            <p class="rel-p">Controle de fornecimento, rastreabilidade e fichas digitais de entrega de EPIs com Certificado de Aprovação (CA) válido.</p>
+            <div class="rel-h1">1.9. Equipamentos de Proteção Individual (EPI)</div>
+            <p class="rel-p">Controle de fornecimento e rastreabilidade das entregas registradas. A situação dos Certificados de Aprovação (CA) depende de conferência específica na respectiva fonte.</p>
             <div style="font-size: 9.5px; font-weight: 700; color: #1f3864; margin: 4px 0 2px 0;">1.9.1. Movimentação e Entregas de EPI no Mês</div>
             ${relSmsTabelaGenericaHtml(['Métrica de Fornecimento', 'Quantitativo'], [
                 ['Total de Itens / Unidades de EPI Entregues', `${epi.totalItens} unidades`],
@@ -3609,7 +3699,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
         <div class="pagina-relatorio">
             ${gerarCabecalhoPadraoRelSmsHtml(mes, ano, '3. Mão de Obra Local - ADA')}
             <div class="rel-h1">3. Área Diretamente Afetada (ADA) e Mão de Obra Local</div>
-            <p class="rel-p">Demonstrativo da contratação e valorização da mão de obra regional dos municípios abrangidos pelo projeto, em conformidade com as condicionantes socioambientais da Licença de Instalação.</p>
+            <p class="rel-p">Demonstrativo da mão de obra registrada nos municípios cadastrados como Área Diretamente Afetada (ADA) para o projeto.</p>
 
             ${(() => {
                 const sertaniaLinha = (ada.linhasQuadro2 || []).find(l => (l.municipio || '').toUpperCase().includes('SERT'));
@@ -3648,7 +3738,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                 ['Avaliações Clínicas / Psicossociais Adicionais', saude.porTipo.psicossocial + saude.porTipo.outros],
                 ['TOTAL DE EXAMES NO MÊS', saude.totalAsos]
             ], '75%')}
-            <div class="rel-nota">Afastamentos: dias corridos por atestado dentro da competência, com sobreposições mantidas; não são dias únicos por colaborador. Conversão em horas pela jornada diária configurada (${hht.horasPorDia} h), sem desconto de folgas. Registros sem intervalo válido: ${saude.atestadosSemIntervalo}. ${hht.hhtEstimado ? 'Taxas calculadas sobre HHT estimado.' : ''}</div>
+            <div class="rel-nota">Afastamentos: dias corridos por atestado dentro da competência, com sobreposições mantidas; não são dias únicos por colaborador. Conversão aproximada em horas pela jornada diária de ${hht.horasPorDia} h${hht.horasPorDiaEstimadas ? ' (parâmetro padrão estimado)' : ' (configurada)'}, sem desconto de folgas. Registros sem intervalo válido atribuíveis à competência: ${saude.atestadosSemIntervalo}. ${hht.hhtEstimado ? 'Taxas calculadas sobre HHT estimado.' : ''}</div>
             <p class="rel-p">Resultados de aptidão técnica: <strong>${saude.aptos} aptos</strong>, <strong>${saude.restricoes} aptos com restrição</strong> e <strong>${saude.inaptos} inaptos</strong>; <strong>${saude.semResultado} sem resultado informado</strong>.</p>
 
             <div class="rel-h2">4.2. Absenteísmo e Atestados Médicos Ocupacionais</div>
@@ -3664,7 +3754,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                 ${relSmsTabelaGenericaHtml(['Dimensão Avaliada', 'Quantidade de Escalas'], [
                     ['Escalas Avaliadas no Instrumento', psicossocial.totalEscalas],
                     ['Escalas Fortemente Favoráveis (Condição Positiva)', psicossocial.fortes.length],
-                    ['Escalas com Alerta Preventivo (Acompanhamento SESMT)', psicossocial.criticas.length]
+                    ...(fiscalizacao ? [] : [['Escalas com Alerta Preventivo (Acompanhamento SESMT)', psicossocial.criticas.length]])
                 ], '75%')}
             `}
         </div>
@@ -3723,7 +3813,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                         ['TOTAL CONSOLIDADO NO MÊS', '', lRes.pesoKg.toFixed(1)]
                     ], '80%');
                 })()}
-                <div class="rel-nota">Destinação final: Transporte via convênio municipal até o Aterro Sanitário devidamente licenciado.</div>
+                <div class="rel-nota">Destinação informada nos registros do período: transporte via convênio municipal.</div>
             `}
 
             <div class="rel-h2">7.2. Rastreabilidade de Manutenção Veicular e Lubrificantes</div>
@@ -3735,7 +3825,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
 
             <div class="rel-h1" style="margin-top: 14px;">8. Considerações Finais e Diretrizes de Governança</div>
             <p class="rel-p">
-                As ações de Segurança, Saúde Ocupacional e Meio Ambiente desenvolvidas em <strong>${nomeMes.toLowerCase()} de ${ano}</strong> atestam o compromisso integral do Consórcio com a preservação da integridade física dos colaboradores e o cumprimento da legislação trabalhista e ambiental.
+                Este documento reúne os registros disponíveis para <strong>${nomeMes.toLowerCase()} de ${ano}</strong>. Indicadores e informações devem ser conferidos pelo responsável antes de seu encaminhamento.
             </p>
             <p class="rel-p">
                 Para o próximo ciclo de trabalho, o SESMT manterá prioridade na fiscalização intensiva das análises preliminares de risco (APR), no cumprimento rigoroso do cronograma de treinamentos obrigatórios e na verificação contínua da eficácia dos planos de ação do PGR.
@@ -3817,7 +3907,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
                     Termo de Encerramento e Autenticação Técnica
                 </div>
                 <p class="rel-p" style="text-align: justify; margin-bottom: 26px; font-size: 9.5px; line-height: 1.45;">
-                    Atesto que o presente Dossiê e Relatório Mensal Consolidado de SMS reflete com fidedignidade o cumprimento das diretrizes de Segurança do Trabalho, Higiene Ocupacional, Saúde e Meio Ambiente no âmbito do Consórcio Operador do PISF – Ramal do Agreste (Trecho VII) referente à competência de <strong>${nomeMes} de ${ano}</strong>, em estrita observância às Normas Regulamentadoras vigentes e aos compromissos socioambientais estabelecidos.
+                    Documento compilado a partir dos registros disponíveis no sistema na data de emissão. A emissão não substitui a conferência técnica e documental do responsável.
                 </p>
 
                 <div style="display: flex; justify-content: center; text-align: center; margin-top: 15px;">
@@ -3835,9 +3925,13 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao) {
 }
 
 // Renderiza a visualização gerencial direta na tela do dashboard (#relSmsPainelPreview)
-function renderRelSmsPainel(dados, fiscalizacao) {
+function renderRelSmsPainel(dados, fiscalizacao, snapshot) {
     const previewEl = document.getElementById('relSmsPainelPreview');
     if (!previewEl) return;
+
+    if (typeof atualizarBotaoFechamentoToolbar === 'function') {
+        atualizarBotaoFechamentoToolbar(snapshot);
+    }
 
     const { meta, efetivo, hht, kpisRapidos, checklists, naoConformidades, relatos, apr, matrizRisco, treinamentos, acidentes, pgr, saude, ergonomia, psicossocial, periculosidade, extintores, brigada, cipa, epi, ada, meioAmbiente, fotos } = dados;
     const treinamentosDados = (treinamentos && treinamentos.dados) ? treinamentos.dados : { totais: { participantes: { dds: 0, geral: 0 }, hht: { dds: 0, geral: 0 } }, categorias: [] };
@@ -3848,7 +3942,52 @@ function renderRelSmsPainel(dados, fiscalizacao) {
     const anoRelatorio = (meta && meta.ano) ? meta.ano : (document.getElementById('relSmsAno') ? document.getElementById('relSmsAno').value : new Date().getFullYear());
     const ano = anoRelatorio;
 
+    const fechado = Boolean(snapshot && snapshot.status === 'fechado');
+    const bannerFechamento = fechado ? `
+    <!-- Banner de Competência Fechada / Snapshot Imutável (SMS-03, SMS-11, SMS-12) -->
+    <div class="rel-sms-fechamento-badge" style="background:#ecfdf5; border:1px solid #10b981; border-left:6px solid #059669; border-radius:10px; padding:14px 20px; margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; box-shadow:0 2px 6px rgba(16,185,129,0.1);">
+        <div>
+            <div style="display:flex; align-items:center; gap:8px; color:#065f46; font-weight:800; font-size:14px;">
+                <i class="fa-solid fa-lock" style="color:#059669;"></i> COMPETÊNCIA HOMOLOGADA E FECHADA — SNAPSHOT HISTÓRICO IMUTÁVEL
+                <span style="background:#059669; color:#fff; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700;">Rev. ${snapshot.revisao || 1}</span>
+            </div>
+            <div style="font-size:12px; color:#047857; margin-top:4px; line-height:1.4;">
+                Fechado em <strong>${snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleDateString('pt-BR') : '—'}</strong> às <strong>${snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : '—'}</strong> por <strong>${relSmsEscape(snapshot.fechado_por || 'Gestor SST')}</strong> • Hash de Integridade: <code style="background:#d1fae5; padding:2px 6px; border-radius:4px; font-size:11px; color:#065f46;">${relSmsEscape(snapshot.hash ? snapshot.hash.slice(0, 16) + '...' : '—')}</code>
+            </div>
+            ${snapshot.arquivo_acervo?.webViewLink ? `
+            <div style="font-size:12px; color:#047857; margin-top:4px;">
+                📁 Arquivo Oficial no Drive: <a href="${relSmsEscape(snapshot.arquivo_acervo.webViewLink)}" target="_blank" rel="noopener noreferrer" style="color:#0284c7; font-weight:700; text-decoration:underline;">${relSmsEscape(snapshot.arquivo_acervo.nomeArquivo || 'Abrir cópia no Acervo')}</a>
+            </div>` : ''}
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            ${snapshot.arquivo_acervo?.webViewLink ? `
+            <a href="${relSmsEscape(snapshot.arquivo_acervo.webViewLink)}" target="_blank" rel="noopener noreferrer" class="db-apply-btn" style="background:#0284c7; border-color:#0369a1; text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:7px 12px;">
+                <i class="fa-solid fa-cloud-arrow-down"></i> Abrir Arquivo no Drive
+            </a>` : ''}
+            <button type="button" class="db-clear-btn" style="background:#ffffff; border:1px solid #cbd5e1; color:#b91c1c; font-weight:700; font-size:12px; padding:7px 12px; cursor:pointer;" onclick="relSmsReabrirCompetencia()">
+                <i class="fa-solid fa-lock-open"></i> Reabrir Competência
+            </button>
+        </div>
+    </div>` : `
+    <!-- Banner de Competência em Aberto (Cálculo Dinâmico ao Vivo) -->
+    <div class="rel-sms-fechamento-badge" style="background:#eff6ff; border:1px solid #93c5fd; border-left:6px solid #2563eb; border-radius:10px; padding:14px 20px; margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; box-shadow:0 2px 6px rgba(37,99,235,0.08);">
+        <div>
+            <div style="display:flex; align-items:center; gap:8px; color:#1e40af; font-weight:800; font-size:14px;">
+                <i class="fa-solid fa-clock-rotate-left" style="color:#2563eb;"></i> COMPETÊNCIA EM ABERTO — CÁLCULO DINÂMICO AO VIVO
+            </div>
+            <div style="font-size:12px; color:#1d4ed8; margin-top:4px;">
+                Os indicadores refletem a base de dados em tempo real. Homologue para congelar o histórico oficial e arquivar no Drive.
+            </div>
+        </div>
+        <div>
+            <button type="button" class="db-apply-btn" style="background:#059669; border-color:#047857; font-size:12px; padding:8px 14px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px;" onclick="relSmsHomologarEFecharCompetencia()">
+                <i class="fa-solid fa-lock"></i> Homologar & Fechar Mês
+            </button>
+        </div>
+    </div>`;
+
     const html = `
+    ${bannerFechamento}
     <!-- Topo do Dossiê -->
     <div style="background: linear-gradient(135deg, #1f3864 0%, #2e5395 100%); color: #ffffff; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; box-shadow: 0 4px 14px rgba(31,56,100,0.25);">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
@@ -3943,7 +4082,7 @@ function renderRelSmsPainel(dados, fiscalizacao) {
         <div class="rel-sms-section-box">
             <div class="rel-sms-section-header">
                 <div class="rel-sms-section-title"><i class="fa-solid fa-shield-halved" style="color:#2563eb;"></i> 1. Segurança do Trabalho & Inspeções de Campo</div>
-                <span class="rel-sms-badge ${checklists.naoConformes > 0 ? 'alerta' : 'sucesso'}">${checklists.naoConformes > 0 ? `${checklists.naoConformes} Não Conforme(s)` : '100% Conforme'}</span>
+                <span class="rel-sms-badge ${checklists.total === 0 ? 'neutro' : (checklists.naoConformes > 0 ? 'alerta' : 'sucesso')}">${checklists.total === 0 ? 'Sem inspeções registradas' : (checklists.naoConformes > 0 ? `${checklists.naoConformes} Não Conforme(s)` : '100% Conforme')}</span>
             </div>
             <div style="font-size: 13px; line-height: 1.6;">
                 <div>• <strong>1.1. Checklists de Equipamentos:</strong> ${checklists.total} inspeções (${checklists.conformes} conformes • ${(checklists.taxaConformidade === null ? '—' : checklists.taxaConformidade.toFixed(1))}%)</div>
@@ -3954,7 +4093,7 @@ function renderRelSmsPainel(dados, fiscalizacao) {
                 <div>• <strong>1.6. Treinamentos & DDS:</strong> ${kpisRapidos.hhtTreinamento} dedicadas (${kpisRapidos.treinamentosParticipantes} part. • ${relSmsPercentual(treinamentos.cronograma.taxa)} cronograma)</div>
                 <div>• <strong>1.7. Acidentabilidade:</strong> TF Global = <strong>${kpisRapidos.tfGlobal}</strong> • TG = <strong>${kpisRapidos.tg}</strong> • <strong>${kpisRapidos.diasSemCpt}</strong> dias sem CPT</div>
                 <div>• <strong>1.8. Emergência & CIPA:</strong> ${extintores.conf} extintores conformes (${kpisRapidos.extintoresConformePct} • ${extintores.fracaoTexto}) • ${brigada.membrosAtivos} brigadistas • CIPA ativa</div>
-                <div>• <strong>1.9. EPI (NR-06):</strong> ${epi.totalItens} unidades entregues com CA ativo para ${epi.colaboradoresAtendidos} colaboradores</div>
+                <div>• <strong>1.9. EPI:</strong> ${epi.totalItens} unidades de entrega registradas para ${epi.colaboradoresAtendidos} colaboradores</div>
             </div>
             <div style="margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 8px;">
                 ${gerarGraficoBarrasHHTSVG(treinamentos.historicoHht)}
@@ -3972,7 +4111,7 @@ function renderRelSmsPainel(dados, fiscalizacao) {
                 <div>• <strong>Status Operacional:</strong> ${pgr.concluidas} concluídas • ${pgr.andamento} em andamento • ${pgr.abertas} a iniciar</div>
                 <div>• <strong>Atrasos frente ao Cronograma:</strong> ${fiscalizacao ? 'Não apresentado nesta edição' : pgr.atrasadas + ' ações com prazo expirado'}</div>
                 <div>• <strong>Eficácia Verificada:</strong> ${pgr.eficazes} ações com resultado preventivo satisfatório aferido</div>
-                <div>• <strong>Investimento Preventivo:</strong> R$ ${pgr.custoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <div>• <strong>Investimento Preventivo:</strong> R$ ${Number(pgr.custoTotal || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
         </div>
 
@@ -3986,7 +4125,7 @@ function renderRelSmsPainel(dados, fiscalizacao) {
                 <div>• <strong>Efetivo Total da Obra:</strong> ${ada.totalFuncionarios} colaboradores ativos</div>
                 <div>• <strong>Trabalhadores Originários da ADA:</strong> ${ada.totalAda} colaboradores contratados</div>
                 <div>• <strong>Participação Regional:</strong> ${r2(ada.pctAda)}% do efetivo mobilizado</div>
-                <div>• <strong>Municípios Contemplados:</strong> ${ada.linhasQuadro2.map(l => `${escapeHTML(l.municipio)} (${l.qtd})`).join(', ') || 'Nenhum no período'}</div>
+                <div>• <strong>Municípios Contemplados:</strong> ${(ada.linhasQuadro2 || []).map(l => `${relSmsEscape(l.municipio)} (${l.qtd})`).join(', ') || 'Nenhum no período'}</div>
             </div>
             <div style="margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 8px;">
                 ${(() => {
@@ -4011,7 +4150,7 @@ function renderRelSmsPainel(dados, fiscalizacao) {
             <div>• <strong>ASOs Emitidos no Mês:</strong> ${saude.totalAsos} exames (${saude.aptos} aptos / ${saude.restricoes} c/ restrição / ${saude.inaptos} inaptos / ${saude.semResultado} sem resultado)</div>
                 <div>• <strong>Modalidades:</strong> Adm: ${saude.porTipo.admissional} • Periódicos: ${saude.porTipo.periodico} • Dem: ${saude.porTipo.demissional}</div>
                 <div>• <strong>Absenteísmo Médico:</strong> ${saude.atestadosTotal} atestados (${saude.diasAfastamento} dias corridos de atestados • ${(saude.taxaAbsenteismo === null ? '—' : saude.taxaAbsenteismo.toFixed(2))}% do HHT)</div>
-                <div>• <strong>Riscos Psicossociais:</strong> ${psicossocial ? `COPSOQ II ativo (${fmtPct(psicossocial.aplicacao.taxa_participacao)} adesão • ${psicossocial.fortes.length} escalas fortes)` : 'Diretrizes preventivas em conformidade com o PGR/PCMSO'}</div>
+                <div>• <strong>Riscos Psicossociais:</strong> ${psicossocial ? `COPSOQ II ativo (${fmtPct(psicossocial.aplicacao.taxa_participacao)} adesão • ${psicossocial.fortes.length} escalas favoráveis)` : 'Sem aplicação registrada na competência'}</div>
             </div>
             <div style="margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 8px;">
                 ${(() => {
@@ -4058,7 +4197,7 @@ function renderRelSmsPainel(dados, fiscalizacao) {
             <div style="font-size: 13px; line-height: 1.6;">
                 <div>• <strong>Geração de Resíduos:</strong> ${meioAmbiente.residuosConfirmados ? `${meioAmbiente.linhaResiduos.pesoKg.toFixed(1)} kg destinados ao Aterro Sanitário` : 'Segregação diária conduzida sob as diretrizes do PGRS'}</div>
                 <div>• <strong>Composição do Período:</strong> Quentinhas (${meioAmbiente.linhaResiduos?.quentinhas || 0} un.) • Copos PP (${meioAmbiente.linhaResiduos?.copos || 0} un.)</div>
-                <div>• <strong>Manutenção Veicular:</strong> ${meioAmbiente.trocasOleoMes} trocas de óleo registradas (${meioAmbiente.litrosOleoMes.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} L rastreados)</div>
+                <div>• <strong>Manutenção Veicular:</strong> ${meioAmbiente.trocasOleoMes || 0} trocas de óleo registradas (${Number(meioAmbiente.litrosOleoMes || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} L rastreados)</div>
                 <div>• <strong>Destinação Final:</strong> Aterro Sanitário licenciado no âmbito de convênio municipal</div>
             </div>
         </div>
@@ -4108,10 +4247,571 @@ function renderRelSmsPainel(dados, fiscalizacao) {
     <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 18px; flex-wrap: wrap;">
         <button class="db-apply-btn" style="background:#1f3864; border-color:#1e3a8a; padding:10px 20px;" onclick="imprimirRelatorioMensalSms()">🖨️ Visualizar / Imprimir Dossiê Oficial (A4)</button>
         <button class="db-clear-btn" style="background:var(--bg-card); border:1px solid var(--border); padding:10px 20px;" onclick="gerarRelatorioMensalSms()">📄 Exportar Relatório em Word (.docx)</button>
+        ${fechado ? `
+        <button type="button" class="db-clear-btn" style="background:#ffffff; border:1px solid #cbd5e1; color:#b91c1c; font-weight:700; padding:10px 20px;" onclick="relSmsReabrirCompetencia()">🔓 Reabrir Competência</button>
+        ` : `
+        <button type="button" class="db-apply-btn" style="background:#059669; border-color:#047857; font-weight:700; padding:10px 20px;" onclick="relSmsHomologarEFecharCompetencia()">🔒 Homologar & Fechar Mês</button>
+        `}
     </div>
     `;
 
     previewEl.innerHTML = html;
+}
+
+// ==========================================================================
+// SMS-03, SMS-11 e SMS-12: SNAPSHOT HISTÓRICO CONGELADO & ARQUIVAMENTO NO ACERVO
+// ==========================================================================
+
+function relSmsFechamentoChave(mes, ano) {
+    const m = String(Number(mes) + 1).padStart(2, '0');
+    return `rel_sms_fechamento_${ano}_${m}`;
+}
+
+function relSmsFechamentoChaveRevisao(mes, ano, revisao) {
+    return `${relSmsFechamentoChave(mes, ano)}_rev${revisao || 1}`;
+}
+
+/**
+ * Serialização JSON canônica recursiva para cálculo de hash determinístico.
+ * Garante ordenação alfabética de propriedades em qualquer nível de aninhamento
+ * sem descartar chaves de objetos filhos.
+ */
+function relSmsCanonicalStringify(val) {
+    if (val === null || typeof val !== 'object') {
+        return JSON.stringify(val);
+    }
+    if (Array.isArray(val)) {
+        return '[' + val.map(item => relSmsCanonicalStringify(item) ?? 'null').join(',') + ']';
+    }
+    const keys = Object.keys(val).sort();
+    const pairs = [];
+    for (const k of keys) {
+        const v = val[k];
+        if (typeof v !== 'undefined' && typeof v !== 'function' && typeof v !== 'symbol') {
+            pairs.push(JSON.stringify(k) + ':' + relSmsCanonicalStringify(v));
+        }
+    }
+    return '{' + pairs.join(',') + '}';
+}
+
+/**
+ * Calcula hash canônico determinístico do snapshot.
+ * Retorna { hash, tipo }, identificando o algoritmo aplicado:
+ * 1. 'sha256' via Web Crypto API (Browser moderno)
+ * 2. 'sha256' via Node.js crypto (Ambiente de testes/Node)
+ * 3. 'fnv1a_64_fallback' com prefixo 'fnv1a64_' (Resumo determinístico não-criptográfico de fallback)
+ */
+async function relSmsCalcularHash(dados) {
+    const texto = typeof dados === 'string' ? dados : relSmsCanonicalStringify(dados);
+
+    // 1. Web Crypto API (Browser)
+    if (typeof crypto !== 'undefined' && crypto?.subtle?.digest) {
+        try {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(texto);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            return { hash: hex, tipo: 'sha256' };
+        } catch (_) {}
+    }
+
+    // 2. Node.js crypto (Testes automatizados / Node vm)
+    try {
+        if (typeof require === 'function') {
+            const nodeCrypto = require('crypto');
+            if (nodeCrypto?.createHash) {
+                const hex = nodeCrypto.createHash('sha256').update(texto).digest('hex');
+                return { hash: hex, tipo: 'sha256' };
+            }
+        }
+    } catch (_) {}
+
+    // 3. Fallback determinístico não-criptográfico (FNV-1a 64 bits rotulado)
+    let h1 = 0xdeadbeef, h2 = 0x41c64e6d;
+    for (let i = 0; i < texto.length; i++) {
+        const ch = texto.charCodeAt(i);
+        h1 = Math.imul(h1 ^ ch, 2654435761);
+        h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    const fallbackHex = (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(16, '0');
+    return { hash: `fnv1a64_${fallbackHex}`, tipo: 'fnv1a_64_fallback' };
+}
+
+/**
+ * Consulta o snapshot histórico fechado de uma competência.
+ * IMPORTANTE: Retorna null APENAS quando a competência legitimamente não possui fechamento gravado.
+ * Em caso de erro de rede, timeout, permissão negada ou falha do banco, LANÇA EXCEÇÃO explícita
+ * para bloquear recálculos dinâmicos acidentais de competências homologadas.
+ */
+async function relSmsObterSnapshotFechamento(mes, ano) {
+    const chave = relSmsFechamentoChave(mes, ano);
+    if (typeof supabaseFetch !== 'function') {
+        throw new Error('Cliente do banco de dados (supabaseFetch) não está disponível para consultar o snapshot.');
+    }
+
+    let rows;
+    try {
+        rows = await supabaseFetch('configuracoes_sistema', `?select=id,valor,atualizado_em&id=eq.${chave}&limit=1`);
+    } catch (err) {
+        console.error('[Relatório SMS] Erro de rede/acesso ao consultar snapshot de fechamento:', err);
+        const erroConexao = new Error(`Falha de conectividade ou banco ao consultar fechamento da competência ${NOMES_MESES[mes]}/${ano}: ${err?.message || String(err)}`);
+        erroConexao.causaOriginal = err;
+        throw erroConexao;
+    }
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+        return null;
+    }
+
+    const raw = rows[0].valor;
+    const val = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!val || typeof val !== 'object') return null;
+    return {
+        id: rows[0].id,
+        atualizado_em: rows[0].atualizado_em,
+        ...val
+    };
+}
+
+/**
+ * Salva snapshot histórico no banco (configuracoes_sistema).
+ * Regras de ouro:
+ * 1. Apenas snapshots com status === 'fechado' são gravados na chave dedicada da revisão (imutabilidade).
+ * 2. Reaberturas (status === 'aberto') atualizam APENAS a chave principal, preservando a chave da revisão anterior 100% intacta.
+ * 3. A leitura do histórico prévio é mandatória: falhas de rede interrompem imediatamente o salvamento.
+ * 4. Validação e confirmação pós-gravação: confere id, status, revisao e hash, falhando em caso de divergência.
+ */
+async function relSmsSalvarSnapshotFechamento(mes, ano, snapshot) {
+    if (typeof supabaseFetch !== 'function') {
+        throw new Error('Cliente do banco de dados (supabaseFetch) não está disponível no ambiente para persistência do snapshot.');
+    }
+
+    const chaveAtual = relSmsFechamentoChave(mes, ano);
+    const revNum = snapshot.revisao || 1;
+    const chaveRevisao = relSmsFechamentoChaveRevisao(mes, ano, revNum);
+
+    // 1. Recuperar histórico existente para preservar todas as revisões anteriores
+    // Falhas de rede/banco aqui são críticas e NÃO podem ser ignoradas com array vazio!
+    let rowsExistentes;
+    try {
+        rowsExistentes = await supabaseFetch('configuracoes_sistema', `?select=valor&id=eq.${chaveAtual}&limit=1`);
+    } catch (eHist) {
+        console.error('[Relatório SMS] Falha crítica ao obter histórico prévio:', eHist);
+        throw new Error(`Falha ao ler histórico de revisões anteriores no banco: ${eHist?.message || String(eHist)}`);
+    }
+
+    let historicoExistente = [];
+    if (Array.isArray(rowsExistentes) && rowsExistentes.length > 0) {
+        const v = typeof rowsExistentes[0].valor === 'string' ? JSON.parse(rowsExistentes[0].valor) : rowsExistentes[0].valor;
+        if (Array.isArray(v?.historico_revisoes)) {
+            historicoExistente = v.historico_revisoes;
+        } else if (v && v.revisao) {
+            historicoExistente = [{
+                revisao: v.revisao,
+                status: v.status || 'fechado',
+                fechado_em: v.fechado_em,
+                fechado_por: v.fechado_por,
+                hash: v.hash,
+                hash_tipo: v.hash_tipo,
+                chave_revisao: chaveRevisao,
+                arquivo_acervo: v.arquivo_acervo
+            }];
+        }
+    }
+
+    // Se a competência está sendo fechada, registra no histórico a revisão fechada
+    if (snapshot.status === 'fechado') {
+        const entradaHistorico = {
+            revisao: revNum,
+            status: 'fechado',
+            fechado_em: snapshot.fechado_em,
+            fechado_por: snapshot.fechado_por,
+            hash: snapshot.hash,
+            hash_tipo: snapshot.hash_tipo,
+            chave_revisao: chaveRevisao,
+            arquivo_acervo: snapshot.arquivo_acervo
+        };
+        const historicoAtualizado = historicoExistente.filter(h => h.revisao !== revNum);
+        historicoAtualizado.push(entradaHistorico);
+        snapshot.historico_revisoes = historicoAtualizado;
+    } else {
+        // Se está sendo reaberta, preserva o histórico de revisões fechadas sem adulterá-lo!
+        snapshot.historico_revisoes = historicoExistente;
+    }
+
+    const agoraIso = new Date().toISOString();
+    const payloadAtual = {
+        valor: snapshot,
+        descricao: `Snapshot de fechamento histórico do Relatório Mensal SMS de ${NOMES_MESES[mes]}/${ano} (Rev. ${revNum})`,
+        atualizado_em: agoraIso
+    };
+
+    // 2. Gravar cópia imutável na chave dedicada da revisão APENAS se estiver fechando
+    if (snapshot.status === 'fechado') {
+        const payloadRevisao = {
+            valor: snapshot,
+            descricao: `Cópia imutável do Snapshot da Rev. ${revNum} de ${NOMES_MESES[mes]}/${ano}`,
+            atualizado_em: agoraIso
+        };
+
+        if (typeof supabaseUpsert === 'function') {
+            await supabaseUpsert('configuracoes_sistema', [{ id: chaveRevisao, ...payloadRevisao }]);
+        } else {
+            const existeRev = await supabaseFetch('configuracoes_sistema', `?select=id&id=eq.${chaveRevisao}&limit=1`);
+            if (Array.isArray(existeRev) && existeRev.length > 0) {
+                if (typeof supabasePatch !== 'function') throw new Error('supabasePatch não está disponível.');
+                await supabasePatch('configuracoes_sistema', `id=eq.${chaveRevisao}`, payloadRevisao);
+            } else {
+                if (typeof supabaseInsert !== 'function') throw new Error('supabaseInsert não está disponível.');
+                await supabaseInsert('configuracoes_sistema', [{ id: chaveRevisao, ...payloadRevisao }]);
+            }
+        }
+    }
+
+    // 3. Gravar na chave principal da competência
+    if (typeof supabaseUpsert === 'function') {
+        await supabaseUpsert('configuracoes_sistema', [{ id: chaveAtual, ...payloadAtual }]);
+    } else {
+        const existeAtual = await supabaseFetch('configuracoes_sistema', `?select=id&id=eq.${chaveAtual}&limit=1`);
+        if (Array.isArray(existeAtual) && existeAtual.length > 0) {
+            if (typeof supabasePatch !== 'function') throw new Error('supabasePatch não está disponível.');
+            await supabasePatch('configuracoes_sistema', `id=eq.${chaveAtual}`, payloadAtual);
+        } else {
+            if (typeof supabaseInsert !== 'function') throw new Error('supabaseInsert não está disponível.');
+            await supabaseInsert('configuracoes_sistema', [{ id: chaveAtual, ...payloadAtual }]);
+        }
+    }
+
+    // 4. Confirmação explícita pós-gravação conferindo id, status, revisao e hash
+    const confRows = await supabaseFetch('configuracoes_sistema', `?select=id,valor,atualizado_em&id=eq.${chaveAtual}&limit=1`);
+    if (!Array.isArray(confRows) || confRows.length === 0) {
+        throw new Error(`Falha crítica de persistência: Snapshot ${chaveAtual} não foi confirmado no banco de dados após a tentativa de gravação.`);
+    }
+    const rawVal = confRows[0].valor;
+    const confVal = typeof rawVal === 'string' ? JSON.parse(rawVal) : rawVal;
+    if (confVal.status !== snapshot.status || confVal.revisao !== snapshot.revisao || confVal.hash !== snapshot.hash) {
+        throw new Error(`Falha crítica de persistência: Os dados confirmados no banco divergem do snapshot enviado (status: ${confVal.status}, rev: ${confVal.revisao}).`);
+    }
+
+    return snapshot;
+}
+
+function atualizarBotaoFechamentoToolbar(snapshot) {
+    const btn = document.getElementById('btnRelSmsFecharHomologar');
+    if (!btn) return;
+    if (snapshot && snapshot.status === 'fechado') {
+        btn.innerHTML = '<i class="fa-solid fa-lock-open"></i> Reabrir Mês';
+        btn.style.background = '#b91c1c';
+        btn.style.borderColor = '#991b1b';
+        btn.onclick = (typeof relSmsReabrirCompetencia === 'function') ? relSmsReabrirCompetencia : null;
+        btn.title = `Competência fechada (Rev. ${snapshot.revisao || 1}) em ${snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleDateString('pt-BR') : ''}. Clique para reabrir.`;
+    } else {
+        btn.innerHTML = '<i class="fa-solid fa-lock"></i> Homologar / Fechar Mês';
+        btn.style.background = '#059669';
+        btn.style.borderColor = '#047857';
+        btn.onclick = (typeof relSmsHomologarEFecharCompetencia === 'function') ? relSmsHomologarEFecharCompetencia : null;
+        btn.title = 'Homologar competência, congelar snapshot histórico e arquivar cópia no Drive.';
+    }
+}
+
+async function relSmsArquivarNoAcervo(mes, ano, blobOuArquivo, nomeArquivo, mimeType, opcoes = {}) {
+    const mesFormatado = String(Number(mes) + 1).padStart(2, '0');
+    const chave = `rel_sms_${ano}_${mesFormatado}`;
+    const opts = Object.assign({ tornarPublico: false }, opcoes);
+
+    if (typeof fetch === 'undefined') {
+        throw new Error('Ambiente sem suporte a fetch para comunicação com o Drive.');
+    }
+
+    // 1. Inicia sessão no Drive via API existente (/api/anexo-iniciar)
+    const iniciarResp = await fetch('/api/anexo-iniciar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            tabela: 'relatorios_mensais',
+            registroChave: chave,
+            nomeArquivo: nomeArquivo,
+            mimeType: mimeType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            ano: String(ano),
+            mes: mesFormatado,
+            pastaRaiz: 'SMS_COP'
+        })
+    });
+
+    if (!iniciarResp.ok) {
+        const erroJson = await iniciarResp.json().catch(() => ({}));
+        throw new Error(erroJson.erro || `Falha ao iniciar envio no Drive (HTTP ${iniciarResp.status})`);
+    }
+    const iniciarDados = await iniciarResp.json();
+    if (!iniciarDados?.uploadUrl) {
+        throw new Error('API do Drive não retornou URL de upload válida.');
+    }
+
+    // 2. Transfere arquivo em pedaços ou direto
+    let arquivo = null;
+    if (typeof enviarArquivoEmPedacos === 'function') {
+        arquivo = await enviarArquivoEmPedacos(blobOuArquivo, iniciarDados.uploadUrl);
+    } else {
+        const putResp = await fetch(iniciarDados.uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': mimeType || 'application/octet-stream' },
+            body: blobOuArquivo
+        });
+        if (!putResp.ok) throw new Error(`Falha no upload direto para o Drive: HTTP ${putResp.status}`);
+        arquivo = await putResp.json().catch(() => null);
+    }
+
+    if (!arquivo || !arquivo.id) {
+        throw new Error('Upload concluído mas o Drive não retornou identificador válido do arquivo.');
+    }
+
+    // 3. Permissão pública no Drive (APENAS se explicitamente autorizada)
+    if (opts.tornarPublico) {
+        const finResp = await fetch('/api/anexo-finalizar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ driveFileId: arquivo.id })
+        });
+        if (!finResp.ok) {
+            const errTexto = await finResp.text().catch(() => '');
+            console.warn('[Relatório SMS] Aviso ao finalizar permissão do arquivo:', errTexto);
+            throw new Error(`Falha ao conceder permissão pública no Drive (HTTP ${finResp.status}): ${errTexto}`);
+        }
+    }
+
+    // 4. Registra na tabela anexos_sms
+    const novoAnexo = {
+        id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'anx_' + Date.now(),
+        tabela_origem: 'relatorios_mensais',
+        registro_chave: chave,
+        nome_arquivo: nomeArquivo,
+        drive_file_id: arquivo.id,
+        drive_view_link: arquivo.webViewLink || `https://drive.google.com/file/d/${arquivo.id}/view`,
+        enviado_por: (typeof supabaseUser !== 'undefined' && supabaseUser?.email) || 'Gestor SST'
+    };
+    try {
+        if (typeof supabaseUpsert === 'function') {
+            await supabaseUpsert('anexos_sms', [novoAnexo]);
+        }
+        if (typeof allAnexosSms !== 'undefined' && Array.isArray(allAnexosSms)) {
+            allAnexosSms.push(novoAnexo);
+        }
+    } catch (eAnx) {
+        console.warn('[Relatório SMS] Aviso ao registrar anexo na tabela anexos_sms:', eAnx);
+    }
+
+    return {
+        driveFileId: arquivo.id,
+        webViewLink: arquivo.webViewLink || `https://drive.google.com/file/d/${arquivo.id}/view`,
+        nomeArquivo: nomeArquivo,
+        dataEnvio: new Date().toISOString(),
+        acesso_publico: Boolean(opts.tornarPublico)
+    };
+}
+
+async function relSmsHomologarEFecharCompetencia() {
+    const mesEl = document.getElementById('relSmsMes');
+    const anoEl = document.getElementById('relSmsAno');
+    if (!mesEl || !anoEl) return;
+    const mes = parseInt(mesEl.value, 10);
+    const ano = parseInt(anoEl.value, 10);
+    const fiscalizacao = document.getElementById('relSmsFiscalizacao')?.checked !== false; // Padrão seguro: Executivo Oficial
+    const nomeMes = NOMES_MESES[mes];
+
+    const conf = confirm(
+        `🔒 CONFIRMAÇÃO DE HOMOLOGAÇÃO E FECHAMENTO — COMPETÊNCIA ${nomeMes.toUpperCase()}/${ano}\n\n` +
+        `Deseja homologar e fechar a competência de ${nomeMes}/${ano}?\n\n` +
+        `• Modalidade: ${fiscalizacao ? 'Relatório Executivo Oficial (Recomendado: notas e pendências internas omitidas para sigilo corporativo)' : 'Dossiê Interno Completo (Atenção: inclui notas confidenciais de auditoria)'}\n` +
+        `• Snapshot Imutável: Todas as seções (HHT, Efetivo, Treinamentos, Indicadores, Meio Ambiente, Fotos e Anexos) serão congeladas na base.\n` +
+        `• Arquivo no Drive: Cópia oficial restrita arquivada no Acervo da obra (sem permissão pública irrestrita).\n` +
+        `• Rastreabilidade: Cálculo de hash canônico e registro imutável da revisão.\n\n` +
+        `Clique em OK para homologar e fechar a competência.`
+    );
+    if (!conf) return;
+
+    const statusEl = document.getElementById('relSmsStatus');
+    if (statusEl) {
+        statusEl.innerHTML = '<span style="color:var(--text-light);"><i class="fa-solid fa-spinner fa-spin"></i> Coletando dados integrais de todas as seções e calculando hash canônico...</span>';
+    }
+
+    try {
+        // 1. Coleta integral de todas as seções para congelamento absoluto (com validação estrita de fontes)
+        await garantirDadosCompletosRelatorioMensalSms({ exigirSucesso: true });
+        const dadosCompletos = coletarDadosCompletosRelatorioMensalSms(mes, ano);
+
+        await garantirDadosSecao1RelSms();
+        const dadosSecao1 = coletarDadosSecao1RelSms(mes, ano, dadosCompletos);
+
+        await garantirDadosSecoes23RelSms();
+        const dadosSecoes23 = coletarDadosSecoes23RelSms(mes, ano, dadosCompletos);
+
+        await garantirDadosSecaoMeioAmbienteRelSms();
+        const dadosMeioAmbiente = coletarDadosMeioAmbienteRelSms(mes, ano);
+
+        const dadosFase4 = coletarDadosFase4RelSms(mes, ano);
+        const fotos = await relSmsFotosPreparar(mes, ano);
+        const anexos = construirAnexosRelSms(mes, ano);
+
+        // 2. Consulta revisão anterior (com barreira contra falhas de rede)
+        const snapAnterior = await relSmsObterSnapshotFechamento(mes, ano);
+        const rev = (snapAnterior?.revisao || 0) + 1;
+        const agoraIso = new Date().toISOString();
+        const usuarioLogado = (typeof supabaseUser !== 'undefined' && supabaseUser?.email) || 'Gestor SST';
+
+        // 3. Cálculo de hash canônico sobre todo o payload que define o documento homologado
+        const payloadParaHash = {
+            versao: 2,
+            mes,
+            ano,
+            revisao: rev,
+            fechado_em: agoraIso,
+            fechado_por: usuarioLogado,
+            perfil_emissao: fiscalizacao ? 'oficial_executivo' : 'auditoria_interna',
+            fiscalizacao: Boolean(fiscalizacao),
+            dados: dadosCompletos,
+            dadosSecao1,
+            dadosSecoes23,
+            dadosMeioAmbiente,
+            dadosFase4,
+            fotos,
+            anexos
+        };
+        const hashInfo = await relSmsCalcularHash(payloadParaHash);
+
+        // 4. Geração do arquivo e arquivamento obrigatório no Acervo Oficial do Drive
+        let acervoMeta = null;
+        if (statusEl) {
+            statusEl.innerHTML = '<span style="color:var(--text-light);"><i class="fa-solid fa-spinner fa-spin"></i> Gerando documento oficial e arquivando cópia restrita no Google Drive (Acervo)...</span>';
+        }
+
+        try {
+            let blobArquivo = null;
+            let nomeArquivo = `Relatorio_Mensal_SMS_${nomeMes}_${ano}_Rev${rev}.docx`;
+            let mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+            const snapshotPreparo = {
+                status: 'fechado',
+                revisao: rev,
+                fechado_em: agoraIso,
+                fechado_por: usuarioLogado,
+                hash: hashInfo.hash,
+                hash_tipo: hashInfo.tipo,
+                perfil_emissao: fiscalizacao ? 'oficial_executivo' : 'auditoria_interna',
+                fiscalizacao: Boolean(fiscalizacao),
+                dados: dadosCompletos,
+                dadosSecao1,
+                dadosSecoes23,
+                dadosMeioAmbiente,
+                dadosFase4,
+                fotos,
+                anexos
+            };
+
+            if (typeof docx !== 'undefined') {
+                const doc = await montarDocRelSms(mes, ano, fiscalizacao, dadosCompletos, snapshotPreparo);
+                blobArquivo = await docx.Packer.toBlob(doc);
+            } else {
+                const html = relSmsFotosInserirHtml(construirHtmlDossieOficialRelSms(dadosCompletos, fiscalizacao, snapshotPreparo), fotos);
+                blobArquivo = new Blob([html], { type: 'text/html;charset=utf-8' });
+                nomeArquivo = `Relatorio_Mensal_SMS_${nomeMes}_${ano}_Rev${rev}.html`;
+                mimeType = 'text/html';
+            }
+
+            // Arquiva no Drive como cópia restrita corporativa (sem tornar pública)
+            acervoMeta = await relSmsArquivarNoAcervo(mes, ano, blobArquivo, nomeArquivo, mimeType, { tornarPublico: false });
+            if (!acervoMeta || !acervoMeta.driveFileId) {
+                throw new Error('Upload concluído mas o Drive não confirmou o identificador do arquivo.');
+            }
+        } catch (errAcervo) {
+            console.error('[Relatório SMS] Erro no arquivamento oficial no Drive:', errAcervo);
+            throw new Error(`Homologação cancelada: Falha ao arquivar cópia oficial no Google Drive (${errAcervo.message || String(errAcervo)}). Nenhum dado foi congelado.`);
+        }
+
+        // 5. Montagem do snapshot integral imutável
+        const snapshot = {
+            versao: 2,
+            status: 'fechado',
+            mes,
+            ano,
+            fechado_em: agoraIso,
+            fechado_por: usuarioLogado,
+            revisao: rev,
+            hash: hashInfo.hash,
+            hash_tipo: hashInfo.tipo,
+            perfil_emissao: fiscalizacao ? 'oficial_executivo' : 'auditoria_interna',
+            fiscalizacao: Boolean(fiscalizacao),
+            dados: dadosCompletos,
+            dadosSecao1,
+            dadosSecoes23,
+            dadosMeioAmbiente,
+            dadosFase4,
+            fotos,
+            anexos,
+            arquivo_acervo: acervoMeta
+        };
+
+        // 6. Persistência e confirmação no banco
+        await relSmsSalvarSnapshotFechamento(mes, ano, snapshot);
+        renderRelSmsPainel(dadosCompletos, fiscalizacao, snapshot);
+
+        if (statusEl) {
+            let msgAcervo = acervoMeta?.webViewLink
+                ? ` e arquivado no Drive (<a href="${relSmsEscape(acervoMeta.webViewLink)}" target="_blank" rel="noopener noreferrer" style="color:#0284c7; text-decoration:underline;">Ver no Acervo</a>)`
+                : (acervoMeta?.erro ? ` (Aviso: Drive corporativo — ${relSmsEscape(acervoMeta.erro)})` : '');
+            statusEl.innerHTML = `<span style="color:#10b981; font-weight:600;">✅ Competência ${nomeMes}/${ano} HOMOLOGADA E FECHADA (Rev. ${rev}) com sucesso! Snapshot imutável gravado e confirmado${msgAcervo}.</span>`;
+        }
+    } catch (err) {
+        console.error('Erro ao homologar e fechar competência:', err);
+        if (statusEl) {
+            statusEl.innerHTML = `<span style="color:#ef4444; font-weight:600;">❌ Falha ao homologar competência: ${relSmsEscape(err?.message || String(err))}</span>`;
+        }
+    }
+}
+
+async function relSmsReabrirCompetencia() {
+    const mesEl = document.getElementById('relSmsMes');
+    const anoEl = document.getElementById('relSmsAno');
+    if (!mesEl || !anoEl) return;
+    const mes = parseInt(mesEl.value, 10);
+    const ano = parseInt(anoEl.value, 10);
+    const fiscalizacao = document.getElementById('relSmsFiscalizacao')?.checked !== false;
+    const nomeMes = NOMES_MESES[mes];
+
+    const conf = confirm(
+        `🔓 CONFIRMAÇÃO DE REABERTURA — COMPETÊNCIA ${nomeMes.toUpperCase()}/${ano}\n\n` +
+        `Atenção: Ao reabrir a competência de ${nomeMes}/${ano}, o painel voltará a exibir cálculos dinâmicos ao vivo e permitirá nova homologação gerando uma próxima revisão.\n\n` +
+        `Deseja realmente reabrir a competência?`
+    );
+    if (!conf) return;
+
+    const statusEl = document.getElementById('relSmsStatus');
+    if (statusEl) {
+        statusEl.innerHTML = '<span style="color:var(--text-light);"><i class="fa-solid fa-spinner fa-spin"></i> Reabrindo competência e gravando evento de reabertura...</span>';
+    }
+
+    try {
+        const snap = await relSmsObterSnapshotFechamento(mes, ano);
+        if (snap) {
+            snap.status = 'aberto';
+            snap.reaberto_em = new Date().toISOString();
+            snap.reaberto_por = (typeof supabaseUser !== 'undefined' && supabaseUser?.email) || 'Gestor SST';
+            await relSmsSalvarSnapshotFechamento(mes, ano, snap);
+        }
+
+        await carregarEVisualizarRelatorioSmsPainel();
+
+        if (statusEl) {
+            statusEl.innerHTML = `<span style="color:#3b82f6; font-weight:600;">🔓 Competência ${nomeMes}/${ano} REABERTA com sucesso! Exibindo dados dinâmicos ao vivo.</span>`;
+        }
+    } catch (err) {
+        console.error('Erro ao reabrir competência:', err);
+        if (statusEl) {
+            statusEl.innerHTML = `<span style="color:#ef4444; font-weight:600;">❌ Falha ao reabrir competência: ${relSmsEscape(err?.message || String(err))}</span>`;
+        }
+    }
 }
 
 // Disparado ao clicar em "🔍 Visualizar Dossiê no Painel" ou na troca de Mês/Ano
@@ -4123,25 +4823,44 @@ async function carregarEVisualizarRelatorioSmsPainel() {
 
     const mes = parseInt(mesEl.value, 10);
     const ano = parseInt(anoEl.value, 10);
-    const fiscalizacao = document.getElementById('relSmsFiscalizacao')?.checked || false;
+    const fiscalizacao = document.getElementById('relSmsFiscalizacao')?.checked !== false;
     if (!ano) { alert('Informe o ano.'); return; }
 
     if (statusEl) {
-        statusEl.innerHTML = '<span style="color:var(--text-light);"><i class="fa-solid fa-spinner fa-spin"></i> Executando varredura paralela em todas as tabelas (Promise.all)...</span>';
+        statusEl.innerHTML = '<span style="color:var(--text-light);"><i class="fa-solid fa-spinner fa-spin"></i> Verificando fechamento e carregando dossiê de SMS...</span>';
     }
 
     try {
-        await garantirDadosCompletosRelatorioMensalSms();
-        const dados = coletarDadosCompletosRelatorioMensalSms(mes, ano);
-        renderRelSmsPainel(dados, fiscalizacao);
+        let snapshot = null;
+        try {
+            snapshot = await relSmsObterSnapshotFechamento(mes, ano);
+        } catch (errSnapshot) {
+            console.error('Falha crítica ao verificar status de fechamento:', errSnapshot);
+            if (statusEl) {
+                statusEl.innerHTML = `<span style="color:#ef4444; font-weight:600;">❌ Interrompido por segurança: Não foi possível verificar se esta competência está fechada (${relSmsEscape(errSnapshot.message)}). O recálculo dinâmico foi bloqueado para proteger a integridade histórica.</span>`;
+            }
+            return;
+        }
+
+        let dados;
+        if (snapshot && snapshot.status === 'fechado' && snapshot.dados) {
+            dados = snapshot.dados;
+        } else {
+            await garantirDadosCompletosRelatorioMensalSms();
+            dados = coletarDadosCompletosRelatorioMensalSms(mes, ano);
+        }
+        renderRelSmsPainel(dados, fiscalizacao, snapshot);
 
         if (statusEl) {
-            statusEl.innerHTML = `<span style="color:#10b981; font-weight:600;">✅ Dossiê de SMS de ${NOMES_MESES[mes]}/${ano} carregado com sucesso (${new Date().toLocaleTimeString('pt-BR')}).</span>`;
+            const statusTxt = snapshot?.status === 'fechado'
+                ? `🔒 Dossiê histórico fechado de ${NOMES_MESES[mes]}/${ano} carregado (Rev. ${snapshot.revisao || 1}, Snapshot Imutável).`
+                : `✅ Dossiê de SMS de ${NOMES_MESES[mes]}/${ano} carregado com sucesso (${new Date().toLocaleTimeString('pt-BR')}).`;
+            statusEl.innerHTML = `<span style="color:#10b981; font-weight:600;">${statusTxt}</span>`;
         }
     } catch (err) {
         console.error('Erro ao gerar dossiê executivo de SMS no painel:', err);
         if (statusEl) {
-            statusEl.innerHTML = `<span style="color:#ef4444; font-weight:600;">❌ Falha na varredura dos dados: ${escapeHTML(err?.message || String(err))}</span>`;
+            statusEl.innerHTML = `<span style="color:#ef4444; font-weight:600;">❌ Falha na varredura dos dados: ${relSmsEscape(err?.message || String(err))}</span>`;
         }
     }
 }
@@ -4156,31 +4875,61 @@ async function imprimirRelatorioMensalSms() {
     const ano = parseInt(document.getElementById('relSmsAno').value);
     const fiscalizacao = document.getElementById('relSmsFiscalizacao').checked;
     if (!ano) { alert('Informe o ano.'); return; }
-    if (statusEl) statusEl.innerHTML = '<span style="color:var(--text-light);"><i class="fa-solid fa-spinner fa-spin"></i> Carregando dados completos de todos os módulos e preparando impressão A4...</span>';
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--text-light);"><i class="fa-solid fa-spinner fa-spin"></i> Verificando fechamento e preparando impressão A4...</span>';
 
     try {
         relSmsFotosEstado.gerando = true;
-        const fotosSelecionadas = await relSmsFotosPreparar(mes, ano, (atual, total) => {
-            if (statusEl) statusEl.textContent = `Preparando fotos selecionadas: ${atual}/${total}…`;
-        });
-        await garantirDadosCompletosRelatorioMensalSms();
-        const dados = coletarDadosCompletosRelatorioMensalSms(mes, ano);
+
+        // 1. Consulta snapshot com barreira contra falha de rede/banco
+        let snapshot = null;
+        try {
+            snapshot = await relSmsObterSnapshotFechamento(mes, ano);
+        } catch (errSnap) {
+            console.error('Falha ao verificar fechamento para impressão:', errSnap);
+            if (statusEl) {
+                statusEl.innerHTML = `<span style="color:#ef4444; font-weight:600;">❌ Impressão bloqueada: Falha ao consultar status de fechamento (${relSmsEscape(errSnap.message)}). Operação interrompida para evitar impressão de dados divergentes.</span>`;
+            }
+            return;
+        }
+
+        const fechado = Boolean(snapshot && snapshot.status === 'fechado');
+        const fiscalizacaoEfetiva = fechado ? Boolean(snapshot.fiscalizacao) : fiscalizacao;
+        const fiscalizacaoEl = document.getElementById('relSmsFiscalizacao');
+        if (fechado && fiscalizacaoEl && fiscalizacaoEl.checked !== fiscalizacaoEfetiva) {
+            fiscalizacaoEl.checked = fiscalizacaoEfetiva;
+        }
+
+        let fotosSelecionadas = (fechado && snapshot.fotos) ? snapshot.fotos : null;
+        if (!fotosSelecionadas) {
+            fotosSelecionadas = await relSmsFotosPreparar(mes, ano, (atual, total) => {
+                if (statusEl) statusEl.textContent = `Preparando fotos selecionadas: ${atual}/${total}…`;
+            });
+        }
+
+        let dados;
+        if (fechado && snapshot.dados) {
+            dados = snapshot.dados;
+        } else {
+            await garantirDadosCompletosRelatorioMensalSms();
+            dados = coletarDadosCompletosRelatorioMensalSms(mes, ano);
+        }
 
         // Atualiza a visualização do painel na tela
-        renderRelSmsPainel(dados, fiscalizacao);
+        renderRelSmsPainel(dados, fiscalizacaoEfetiva, snapshot);
 
         // Gera o HTML oficial calibrado para impressão A4
-        const html = relSmsFotosInserirHtml(construirHtmlDossieOficialRelSms(dados, fiscalizacao), fotosSelecionadas);
+        const html = relSmsFotosInserirHtml(construirHtmlDossieOficialRelSms(dados, fiscalizacaoEfetiva, snapshot), fotosSelecionadas);
 
         const nomeMes = NOMES_MESES[mes];
-        abrirDocumentoHtmlParaImpressao(html, `Relatorio_Mensal_SMS_${nomeMes}_${ano}`);
+        const revSuffix = fechado ? `_Rev${snapshot.revisao || 1}` : '_Minuta';
+        abrirDocumentoHtmlParaImpressao(html, `Relatorio_Mensal_SMS_${nomeMes}_${ano}${revSuffix}`);
 
         if (statusEl) {
             statusEl.innerHTML = `<span style="color:#10b981; font-weight:600;">✅ Dossiê gerado com sucesso (${nomeMes}/${ano}) — aberto na aba de impressão em formato A4 imune a bloqueador de popups.</span>`;
         }
     } catch (err) {
         console.error('Erro ao gerar visualização do Relatório Mensal SMS:', err);
-        if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444; font-weight:600;">❌ Erro ao gerar documento de impressão: ${escapeHTML(err?.message || String(err))}</span>`;
+        if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444; font-weight:600;">❌ Erro ao gerar documento de impressão: ${relSmsEscape(err?.message || String(err))}</span>`;
     } finally {
         relSmsFotosEstado.gerando = false;
     }
@@ -5490,6 +6239,14 @@ window.atualizarAniversariantesCard = atualizarAniversariantesCard;
 window.formatarTextoAniversariantesWhatsApp = formatarTextoAniversariantesWhatsApp;
 window.copiarAniversariantesWhatsApp = copiarAniversariantesWhatsApp;
 window.gerarCartazAniversariantesMes = gerarCartazAniversariantesMes;
+
+window.relSmsFechamentoChave = relSmsFechamentoChave;
+window.relSmsCalcularHash = relSmsCalcularHash;
+window.relSmsObterSnapshotFechamento = relSmsObterSnapshotFechamento;
+window.relSmsSalvarSnapshotFechamento = relSmsSalvarSnapshotFechamento;
+window.relSmsArquivarNoAcervo = relSmsArquivarNoAcervo;
+window.relSmsHomologarEFecharCompetencia = relSmsHomologarEFecharCompetencia;
+window.relSmsReabrirCompetencia = relSmsReabrirCompetencia;
 
 
 async function importarEfetivoCSV() {

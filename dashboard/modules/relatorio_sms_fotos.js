@@ -103,7 +103,7 @@ function relSmsFotosRender() {
     <p><strong>${d.status === 'fechado' ? 'Seleção fechada para o relatório' : 'Seleção em preparação'}</strong> · ${contagem.total}/${RELSMS_FOTOS_MAX} fotos · DDSMA ${contagem.dds}/${d.limiteDdsma} · ${s.dirty ? 'Alterações ainda não salvas' : 'Sem alterações pendentes'}</p>
     <p>Ao longo do mês, separe 2 fotos por tema/data de treinamento e uma amostra escolhida de DDSMA. As fotos ficam no Drive; aqui são guardadas apenas suas referências. A ordem abaixo é respeitada dentro de cada categoria.</p>
     ${!usuarioPodeGravarModulo('relatoriosms') ? '<p>Seu perfil permite apenas consulta. A edição requer permissão no módulo Relatório Mensal SMS.</p>' : ''}
-    <div class="rf-acoes">${pode ? `<button type="button" onclick="relSmsFotosSalvar(false)">Salvar progresso</button><button type="button" onclick="relSmsFotosSalvar(true)">Fechar seleção para o relatório</button>` : ''}
+    <div class="rf-acoes">${pode ? `<button type="button" onclick="cronogramaPastasAbrir()">Gerar pastas pelo cronograma</button><button type="button" onclick="relSmsFotosSalvar(false)">Salvar progresso</button><button type="button" onclick="relSmsFotosSalvar(true)">Fechar seleção para o relatório</button>` : ''}
     ${d.status === 'fechado' && usuarioPodeGravarModulo('relatoriosms') ? '<button type="button" onclick="relSmsFotosReabrir()">Reabrir seleção para ajustes</button>' : ''}
     <button type="button" onclick="relSmsFotosFecharJanela()">Fechar janela</button></div>
     <p id="relSmsFotosMensagem" role="status"></p>

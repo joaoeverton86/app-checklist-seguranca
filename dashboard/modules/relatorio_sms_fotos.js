@@ -103,7 +103,7 @@ function relSmsFotosRender() {
     <p><strong>${d.status === 'fechado' ? 'Seleção fechada para o relatório' : 'Seleção em preparação'}</strong> · ${contagem.total}/${RELSMS_FOTOS_MAX} fotos · DDSMA ${contagem.dds}/${d.limiteDdsma} · ${s.dirty ? 'Alterações ainda não salvas' : 'Sem alterações pendentes'}</p>
     <p>Ao longo do mês, separe 2 fotos por tema/data de treinamento e uma amostra escolhida de DDSMA. As fotos ficam no Drive; aqui são guardadas apenas suas referências. A ordem abaixo é respeitada dentro de cada categoria.</p>
     ${!usuarioPodeGravarModulo('relatoriosms') ? '<p>Seu perfil permite apenas consulta. A edição requer permissão no módulo Relatório Mensal SMS.</p>' : ''}
-    <div class="rf-acoes">${pode ? `<button type="button" onclick="cronogramaPastasAbrir()">Gerar pastas pelo cronograma</button><button type="button" onclick="relSmsFotosSalvar(false)">Salvar progresso</button><button type="button" onclick="relSmsFotosSalvar(true)">Fechar seleção para o relatório</button>` : ''}
+    <div class="rf-acoes">${pode ? `<button type="button" style="background:#0284c7;color:#fff;border-color:#0284c7;font-weight:700;" onclick="relSmsFotosImportarDaPastaAutomatico()"><i class="fa-solid fa-wand-magic-sparkles"></i> ⚡ Puxar fotos da pasta do Drive (Sem colar link)</button><button type="button" onclick="cronogramaPastasAbrir()">Gerar pastas pelo cronograma</button><button type="button" onclick="relSmsFotosSalvar(false)">Salvar progresso</button><button type="button" onclick="relSmsFotosSalvar(true)">Fechar seleção para o relatório</button>` : ''}
     ${d.status === 'fechado' && usuarioPodeGravarModulo('relatoriosms') ? '<button type="button" onclick="relSmsFotosReabrir()">Reabrir seleção para ajustes</button>' : ''}
     <button type="button" onclick="relSmsFotosFecharJanela()">Fechar janela</button></div>
     <p id="relSmsFotosMensagem" role="status"></p>
@@ -390,4 +390,213 @@ function relSmsFotosInserirHtml(html, selecao) {
     const fim = html.indexOf('<!-- PÁGINA 12: SEÇÃO 10', inicio);
     if (inicio < 0 || fim < 0) throw new Error('Não foi possível localizar a seção fotográfica no modelo de impressão.');
     return html.slice(0, inicio) + relSmsFotosPaginasHtml(selecao) + html.slice(fim);
+}
+
+function relSmsFotosExtrairIdPasta(linkOuId) {
+    if (!linkOuId) return '';
+    const str = String(linkOuId).trim();
+    const match = str.match(/\/folders\/([a-zA-Z0-9_-]{10,150})/);
+    if (match && match[1]) return match[1];
+    if (/^[a-zA-Z0-9_-]{10,150}$/.test(str)) return str;
+    return '';
+}
+
+async function relSmsFotosImportarDaPastaAutomatico() {
+    const s = relSmsFotosEstado;
+    const d = s.doc;
+    if (!relSmsFotosPodeEditar()) return;
+
+    const chaveStorage = `cronograma_pastas_fotos_${d.ano}_${d.mes}_treinamentos`;
+    const pastaSalva = localStorage.getItem(chaveStorage) || localStorage.getItem('drive_folder_fotos_url') || 'https://drive.google.com/drive/folders/17JUzOnAcvYJfVVbjZhvwPxC7hSlB1o_m';
+
+    let linkPasta = pastaSalva;
+    if (typeof Swal !== 'undefined') {
+        const { value: linkInformado, isConfirmed } = await Swal.fire({
+            title: '⚡ Puxar Fotos do Drive em Lote',
+            html: `
+                <p style="font-size:13px; color:#475569; margin-bottom:12px; line-height:1.5;">
+                    Informe o link da <b>pasta do mês no Google Drive</b>. O sistema varrerá as subpastas e vinculará as fotos aos treinamentos automaticamente, <b>sem precisar de link por foto</b>:
+                </p>
+                <input id="swalPastaFotosMesLink" class="swal2-input" placeholder="Cole o link da pasta do mês..." value="${escapeHTML(linkPasta)}" style="font-size:12.5px; width:100%; box-sizing:border-box;">
+                <p style="font-size:11.5px; color:#64748b; margin-top:8px;">
+                    Exemplo: <code>https://drive.google.com/drive/folders/...</code>
+                </p>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '🚀 Puxar Fotos Automaticamente',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#0284c7',
+            preConfirm: () => {
+                const el = document.getElementById('swalPastaFotosMesLink');
+                const val = (el?.value || '').trim();
+                if (!val) {
+                    Swal.showValidationMessage('Informe o link da pasta do mês no Google Drive.');
+                    return false;
+                }
+                return val;
+            }
+        });
+        if (!isConfirmed || !linkInformado) return;
+        linkPasta = linkInformado;
+    } else {
+        linkPasta = prompt('Link da pasta do mês no Google Drive:', linkPasta);
+        if (!linkPasta) return;
+    }
+
+    const pastaId = relSmsFotosExtrairIdPasta(linkPasta);
+    if (!pastaId) {
+        relSmsFotosMensagem('Link ou ID da pasta do Drive inválido.');
+        if (typeof Swal !== 'undefined') Swal.fire('Link Inválido', 'Não foi possível extrair o ID da pasta do Drive.', 'error');
+        return;
+    }
+
+    localStorage.setItem(chaveStorage, linkPasta);
+
+    const webhookUrl = typeof getDriveGasWebhookUrl === 'function' ? getDriveGasWebhookUrl() : 'https://script.google.com/macros/s/AKfycbzdCzGE9Jm77RauUe8iuo1p8il193F7Pd7HeLLbut0zToD8zhHtv2RBSAY86bQZGLtA/exec';
+
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: 'Consultando fotos no Google Drive...',
+            html: '<p style="font-size:13px; color:#64748b;">Acessando as subpastas do mês e coletando as fotos de treinamentos. Aguarde alguns instantes…</p>',
+            allowOutsideClick: false,
+            showConfirmButton: false,
+            didOpen: () => { Swal.showLoading(); }
+        });
+    }
+
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60000);
+
+        const resp = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+                action: 'listarFotosSubpastas',
+                pastaId: pastaId
+            }),
+            signal: controller.signal
+        });
+        clearTimeout(timeout);
+
+        if (!resp.ok) throw new Error(`Google Apps Script respondeu com código ${resp.status}`);
+        const resJson = await resp.json().catch(() => null);
+
+        if (!resJson || resJson.status === 'erro' || !Array.isArray(resJson.subpastas)) {
+            const msgErro = resJson?.message || 'Ação de listagem de fotos ainda não habilitada na implantação do Apps Script.';
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'info',
+                    title: 'Atualização do Web App',
+                    html: `
+                        <p style="font-size:12.5px; color:#475569; line-height:1.5;">
+                            O Web App do Google Apps Script respondeu, mas ainda precisa da nova ação <b>listarFotosSubpastas</b>.
+                        </p>
+                        <p style="font-size:12px; color:#64748b; margin-top:8px;">
+                            Basta colar o código atualizado em seu projeto do Google Apps Script e clicar em <b>Implantar > Gerenciar Implantações > Editar > Nova versão</b>.
+                        </p>
+                    `,
+                    confirmButtonText: 'Entendido',
+                    confirmButtonColor: '#0284c7'
+                });
+            } else {
+                alert(msgErro);
+            }
+            return;
+        }
+
+        const subpastas = resJson.subpastas;
+        if (subpastas.length === 0) {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire('Nenhuma subpasta', 'Não foram encontradas subpastas dentro da pasta informada.', 'info');
+            }
+            return;
+        }
+
+        const copiaDoc = structuredClone(s.doc);
+        let fotosVinculadas = 0;
+        let temasVinculados = 0;
+
+        for (const sub of subpastas) {
+            const fotosValidas = (sub.fotos || []).slice(0, 2);
+            if (fotosValidas.length === 0) continue;
+
+            const nomeLimpo = sub.pastaNome.trim();
+            const matchData = nomeLimpo.match(/\[?(\d{2})[\/\.-](\d{2})\]?/);
+            let diaIso = '';
+            if (matchData) {
+                const dia = matchData[1];
+                const mes = matchData[2];
+                diaIso = `${d.ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+            }
+
+            let temaNome = nomeLimpo.replace(/^\[?\d{2}[\/\.-]\d{2}\]?\s*[-—–]?\s*/, '').trim();
+            if (!temaNome) temaNome = nomeLimpo;
+
+            let grupoAlvo = copiaDoc.grupos.find(g => {
+                if (diaIso && g.data === diaIso) return true;
+                const gTema = g.tema.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                const subTema = temaNome.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                return gTema.includes(subTema) || subTema.includes(gTema);
+            });
+
+            if (!grupoAlvo) {
+                const isDds = /dds|di[aá]logo/i.test(nomeLimpo);
+                grupoAlvo = {
+                    tipo: isDds ? 'ddsma' : 'treinamento',
+                    tema: temaNome,
+                    data: diaIso || `${d.ano}-${String(d.mes + 1).padStart(2, '0')}-01`,
+                    fotos: []
+                };
+                copiaDoc.grupos.push(grupoAlvo);
+            }
+
+            grupoAlvo.fotos = fotosValidas.map(f => ({
+                id: f.id,
+                nome: f.nome || 'Foto do Treinamento'
+            }));
+
+            fotosVinculadas += fotosValidas.length;
+            temasVinculados++;
+        }
+
+        relSmsFotosValidar(copiaDoc);
+        s.doc = copiaDoc;
+        s.dirty = true;
+        s.sequencia++;
+        relSmsFotosRender();
+        await relSmsFotosSalvar(false);
+
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'success',
+                title: 'Fotos Importadas com Sucesso!',
+                html: `
+                    <p style="font-size:13px; color:#334155; line-height:1.5;">
+                        Vinculadas <strong>${fotosVinculadas} fotos</strong> em <strong>${temasVinculados} temas de treinamentos</strong> automaticamente a partir da pasta do Google Drive!
+                    </p>
+                    <p style="font-size:12px; color:#16a34a; font-weight:600; margin-top:8px;">
+                        ✓ Progresso salvo automaticamente para o relatório!
+                    </p>
+                `,
+                confirmButtonText: 'Excelente!',
+                confirmButtonColor: '#16a34a'
+            });
+        } else {
+            alert(`Sucesso! ${fotosVinculadas} fotos vinculadas em ${temasVinculados} temas.`);
+        }
+
+    } catch (err) {
+        console.error('Erro ao importar fotos automaticamente:', err);
+        if (typeof Swal !== 'undefined') {
+            Swal.fire('Falha na Importação', err.message || 'Erro de conexão ao ler pasta do Drive.', 'error');
+        } else {
+            alert('Falha ao importar fotos: ' + err.message);
+        }
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.relSmsFotosImportarDaPastaAutomatico = relSmsFotosImportarDaPastaAutomatico;
+    window.relSmsFotosExtrairIdPasta = relSmsFotosExtrairIdPasta;
 }

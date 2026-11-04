@@ -32,3 +32,32 @@ test('cronograma: data realizada, reprogramação, escolha explícita e progress
  assert.match(await page.evaluate(()=>consultas.find(c=>c[0]==='treinamentos_cronograma')[1]),/data_realizada.gte/);
  } finally { await browser.close(); }
 });
+
+test('fotos: extração de ID da pasta do Drive e presença do botão de importação automática sem link', async () => {
+ const browser = await chromium.launch({ headless: true });
+ try {
+  const page = await browser.newPage();
+  await page.setContent('<select id="relSmsMes"><option value="9">Outubro</option></select><input id="relSmsAno" value="2026">');
+  await page.evaluate(() => {
+   window.escapeHTML = v => String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
+   window.usuarioPodeGravarModulo = () => true;
+   window.supabaseFetch = async () => [];
+  });
+  await page.addScriptTag({ path: 'dashboard/modules/relatorio_sms_fotos.js' });
+
+  // Testa extração de ID da pasta
+  const idExtraido1 = await page.evaluate(() => window.relSmsFotosExtrairIdPasta('https://drive.google.com/drive/folders/17JUzOnAcvYJfVVbjZhvwPxC7hSlB1o_m?usp=drive_link'));
+  assert.equal(idExtraido1, '17JUzOnAcvYJfVVbjZhvwPxC7hSlB1o_m');
+
+  const idExtraido2 = await page.evaluate(() => window.relSmsFotosExtrairIdPasta('17JUzOnAcvYJfVVbjZhvwPxC7hSlB1o_m'));
+  assert.equal(idExtraido2, '17JUzOnAcvYJfVVbjZhvwPxC7hSlB1o_m');
+
+  // Abre a janela de fotos e confere a presença do botão de importação automática sem colar link
+  await page.evaluate(() => relSmsFotosAbrir());
+  const botaoTexto = await page.locator('#relSmsFotosModal button').allInnerTexts();
+  const temBotaoAuto = botaoTexto.some(t => t.includes('Puxar fotos da pasta do Drive'));
+  assert.equal(temBotaoAuto, true, 'O botão de puxar fotos automaticamente DEVE estar visível no modal');
+ } finally {
+  await browser.close();
+ }
+});

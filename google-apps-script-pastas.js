@@ -52,6 +52,10 @@ function doPost(e) {
     const action = String(data.action || '').trim();
 
     // Roteamento de ações
+    if (action === 'listarFotosSubpastas' || action === 'extrairFotosDaPasta') {
+      return listarFotosSubpastas(data);
+    }
+
     if (action === 'criarEstruturaCronograma' || (Array.isArray(data.temas) && data.temas.length > 0)) {
       return criarEstruturaCronograma(data);
     }
@@ -205,6 +209,80 @@ function criarPastaEvidenciasFotos(data) {
     folderId: pastaFinal.getId(),
     folderUrl: pastaFinal.getUrl(),
     caminho: `${ano} / ${mes} / ${categoria} / ${nomePastaFinal}`,
+    timestamp: new Date().toISOString()
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * AÇÃO 3: Varredura de fotos em lote de uma pasta mãe de fotos do mês (ex: 10_OUTUBRO_2026)
+ * Retorna as subpastas e as fotos (IDs e nomes) para preenchimento 100% automático no Relatório SMS
+ */
+function listarFotosSubpastas(data) {
+  let pastaId = extrairIdPasta(data.pastaId || data.pastaRaizId || data.folderId);
+  if (!pastaId) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'erro',
+      message: 'ID da pasta não informado.'
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  let pastaMae;
+  try {
+    pastaMae = DriveApp.getFolderById(pastaId);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'erro',
+      message: 'Não foi possível acessar a pasta no Drive: ' + err.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  const subpastas = pastaMae.getFolders();
+  const resultado = [];
+
+  while (subpastas.hasNext()) {
+    const sub = subpastas.next();
+    const subNome = sub.getName();
+    const subId = sub.getId();
+
+    const arquivos = sub.getFiles();
+    const fotos = [];
+
+    while (arquivos.hasNext()) {
+      const arq = arquivos.next();
+      const mime = arq.getMimeType();
+      // Imagens ou fotos
+      if (mime.indexOf('image/') === 0 || mime === 'application/vnd.google-apps.photo') {
+        try {
+          arq.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        } catch (_) {}
+
+        fotos.push({
+          id: arq.getId(),
+          nome: arq.getName(),
+          url: arq.getUrl(),
+          tamanho: arq.getSize()
+        });
+      }
+    }
+
+    resultado.push({
+      pastaId: subId,
+      pastaNome: subNome,
+      fotos: fotos
+    });
+  }
+
+  // Ordena alfabeticamente
+  resultado.sort(function(a, b) {
+    return a.pastaNome.localeCompare(b.pastaNome, 'pt-BR');
+  });
+
+  return ContentService.createTextOutput(JSON.stringify({
+    status: 'sucesso',
+    pastaMaeNome: pastaMae.getName(),
+    pastaMaeId: pastaMae.getId(),
+    totalSubpastas: resultado.length,
+    subpastas: resultado,
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);
 }

@@ -31,7 +31,7 @@ function relSmsFotosValidar(doc, fechado = false) {
         const temaChave = `${g.tipo}|${g.tema.trim().toLocaleLowerCase('pt-BR')}|${g.data}`;
         if (temas.has(temaChave)) throw new Error('Este tema e data já estão na seleção. Edite o bloco existente.');
         temas.add(temaChave);
-        if (!Array.isArray(g.fotos) || g.fotos.length > 2 || (fechado && g.fotos.length < 1)) throw new Error('No fechamento, cada treinamento ou DDSMA precisa de 1 ou 2 fotos.');
+        if (!Array.isArray(g.fotos) || g.fotos.length > 2 || (fechado && (g.tipo === 'treinamento' ? g.fotos.length !== 2 : g.fotos.length < 1))) throw new Error('No fechamento, cada treinamento precisa de 2 fotos; cada amostra DDSMA, de 1 ou 2.');
         g.fotos.forEach(f => {
             if (typeof f.id !== 'string' || relSmsFotosId(f.id) !== f.id || ids.has(f.id) || typeof f.nome !== 'string' || f.nome.length > 180) throw new Error('Foto inválida ou repetida na seleção do mês.');
             ids.add(f.id); total++;
@@ -103,7 +103,7 @@ function relSmsFotosRender() {
     <p><strong>${d.status === 'fechado' ? 'Seleção fechada para o relatório' : 'Seleção em preparação'}</strong> · ${contagem.total}/${RELSMS_FOTOS_MAX} fotos · DDSMA ${contagem.dds}/${d.limiteDdsma} · ${s.dirty ? 'Alterações ainda não salvas' : 'Sem alterações pendentes'}</p>
     <p>Ao longo do mês, separe 2 fotos por tema/data de treinamento e uma amostra escolhida de DDSMA. As fotos ficam no Drive; aqui são guardadas apenas suas referências. A ordem abaixo é respeitada dentro de cada categoria.</p>
     ${!usuarioPodeGravarModulo('relatoriosms') ? '<p>Seu perfil permite apenas consulta. A edição requer permissão no módulo Relatório Mensal SMS.</p>' : ''}
-    <div class="rf-acoes">${pode ? `<button type="button" style="background:#0284c7;color:#fff;border-color:#0284c7;font-weight:700;" onclick="relSmsFotosImportarDaPastaAutomatico()"><i class="fa-solid fa-wand-magic-sparkles"></i> ⚡ Puxar fotos da pasta do Drive (Sem colar link)</button><button type="button" onclick="cronogramaPastasAbrir()">Gerar pastas pelo cronograma</button><button type="button" onclick="relSmsFotosSalvar(false)">Salvar progresso</button><button type="button" onclick="relSmsFotosSalvar(true)">Fechar seleção para o relatório</button>` : ''}
+    <div class="rf-acoes">${pode ? `<button type="button" style="background:#0284c7;color:#fff;border-color:#0284c7;font-weight:700;" onclick="relSmsFotosImportarDaPastaAutomatico()"><i class="fa-solid fa-wand-magic-sparkles"></i> ⚡ Importar fotos do Drive com prévia</button><button type="button" onclick="cronogramaPastasAbrir()">Gerar pastas pelo cronograma</button><button type="button" onclick="relSmsFotosSalvar(false)">Salvar progresso</button><button type="button" onclick="relSmsFotosSalvar(true)">Fechar seleção para o relatório</button>` : ''}
     ${d.status === 'fechado' && usuarioPodeGravarModulo('relatoriosms') ? '<button type="button" onclick="relSmsFotosReabrir()">Reabrir seleção para ajustes</button>' : ''}
     <button type="button" onclick="relSmsFotosFecharJanela()">Fechar janela</button></div>
     <p id="relSmsFotosMensagem" role="status"></p>
@@ -236,7 +236,8 @@ async function relSmsFotosSalvar(fechar) {
         if (!confirmado || canon(confirmado.valor) !== canon(snapshot)) throw new Error('Não foi possível confirmar a seleção salva. Confira no servidor antes de repetir.');
         Object.assign(s, { row: confirmado, doc: structuredClone(confirmado.valor), dirty: false, busy: false });
         relSmsFotosRender(); relSmsFotosMensagem(fechar ? 'Seleção fechada. Ao gerar Word ou impressão, estas fotos serão incluídas.' : 'Progresso salvo. Você pode continuar em outro dia ou computador.');
-    } catch (err) { relSmsFotosMensagem('Falha ao salvar: ' + err.message); }
+        return true;
+    } catch (err) { relSmsFotosMensagem('Falha ao salvar: ' + err.message); return false; }
     finally {
         s.busy = false;
         document.getElementById('relSmsFotosModal')?.querySelectorAll('button,input,select').forEach(el => { el.disabled = false; });
@@ -307,60 +308,28 @@ function relSmsFotosAdicionar(i, foto) {
 window.addEventListener('beforeunload', event => { if (relSmsFotosEstado.dirty || relSmsFotosEstado.editor || relSmsFotosEstado.busy) { event.preventDefault(); event.returnValue = ''; } });
 
 // Placeholder visual de segurança caso a foto externa esteja indisponível ou privada no Drive
-async function relSmsFotosPlaceholder(nome, id) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 600;
-    canvas.height = 400;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(0, 0, 600, 400);
-    ctx.strokeStyle = '#94a3b8';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(10, 10, 580, 380);
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 22px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('📷 Evidência Fotográfica no Drive', 300, 170);
-    ctx.font = '15px sans-serif';
-    ctx.fillStyle = '#475569';
-    ctx.fillText(String(nome || 'Registro Fotográfico').slice(0, 60), 300, 210);
-    ctx.font = '12px monospace';
-    ctx.fillStyle = '#64748b';
-    ctx.fillText('ID: ' + String(id || '').slice(0, 40), 300, 245);
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
-    const buffer = await blob.arrayBuffer();
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-    return { buffer, dataUrl, width: 280, height: 187 };
-}
+
 
 // Exportação: download apenas das selecionadas, no máximo 2 simultâneas, sem cache global.
-async function relSmsFotosImagem(id, nome = '') {
+async function relSmsFotosImagem(id) {
     relSmsFotosId(id);
     const url = `/api/proxy-imagem?url=${encodeURIComponent('https://lh3.googleusercontent.com/d/' + id + '=w1200')}&drive_id=${encodeURIComponent(id)}`;
-    let r = await fetch(url, { signal: AbortSignal.timeout(20000) }).catch(() => null);
-    if (!r || !r.ok) {
-        // Fallback resiliente: tenta exportação direta view
-        const urlFallback = `/api/proxy-imagem?url=${encodeURIComponent('https://drive.google.com/uc?export=view&id=' + id)}&drive_id=${encodeURIComponent(id)}`;
-        r = await fetch(urlFallback, { signal: AbortSignal.timeout(20000) }).catch(() => null);
-    }
-    if (!r || !r.ok || !/^image\/(jpeg|png|webp)/i.test(r.headers.get('content-type') || '')) {
-        return relSmsFotosPlaceholder(nome, id);
-    }
+    const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    if (!r.ok || !/^image\/(jpeg|png|webp)/i.test(r.headers.get('content-type') || '')) throw new Error('Foto indisponível ou formato não suportado.');
     const max = 8 * 1024 * 1024;
-    if (Number(r.headers.get('content-length')) > max) { await r.body?.cancel(); return relSmsFotosPlaceholder(nome, id); }
+    if (Number(r.headers.get('content-length')) > max) { await r.body?.cancel(); throw new Error('Foto acima de 8 MB. Reduza a imagem no Drive.'); }
     const reader = r.body.getReader(); const partes = []; let bytes = 0;
     try {
-        while (true) { const item = await reader.read(); if (item.done) break; bytes += item.value.byteLength; if (bytes > max) return relSmsFotosPlaceholder(nome, id); partes.push(item.value); }
-    } catch (err) { await reader.cancel(); return relSmsFotosPlaceholder(nome, id); } finally { reader.releaseLock(); }
-    const bitmap = await createImageBitmap(new Blob(partes)).catch(() => null);
-    if (!bitmap) return relSmsFotosPlaceholder(nome, id);
+        while (true) { const item = await reader.read(); if (item.done) break; bytes += item.value.byteLength; if (bytes > max) throw new Error('Foto acima de 8 MB.'); partes.push(item.value); }
+    } catch (err) { await reader.cancel(); throw err; } finally { reader.releaseLock(); }
+    const bitmap = await createImageBitmap(new Blob(partes));
     try {
-        if (bitmap.width * bitmap.height > 40000000) return relSmsFotosPlaceholder(nome, id);
+        if (bitmap.width * bitmap.height > 40000000) throw new Error('Resolução de foto excessiva. Reduza a imagem no Drive.');
         const escala = Math.min(1, 1000 / bitmap.width, 700 / bitmap.height);
         const canvas = document.createElement('canvas'); canvas.width = Math.max(1, Math.round(bitmap.width * escala)); canvas.height = Math.max(1, Math.round(bitmap.height * escala));
         const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', .78));
-        if (!blob || blob.size > 600000) return relSmsFotosPlaceholder(nome, id);
+        if (!blob || blob.size > 600000) throw new Error('Foto muito pesada após otimização.');
         const buffer = await blob.arrayBuffer();
         const dataUrl = await new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.onerror = reject; fr.readAsDataURL(blob); });
         const escalaDoc = Math.min(280 / canvas.width, 190 / canvas.height);
@@ -368,58 +337,17 @@ async function relSmsFotosImagem(id, nome = '') {
     } finally { bitmap.close(); }
 }
 async function relSmsFotosPreparar(mes, ano, progresso = () => {}) {
-    // 1. Se houver alterações em tela não salvas da mesma competência, auto-persiste
-    if (relSmsFotosEstado.dirty && relSmsFotosEstado.doc && relSmsFotosEstado.doc.mes === mes && relSmsFotosEstado.doc.ano === ano) {
-        try {
-            await relSmsFotosSalvar(true);
-        } catch (eSalvar) {
-            console.warn('[relSmsFotosPreparar] Aviso ao auto-salvar estado em memória:', eSalvar);
-        }
-    }
-    relSmsFotosEstado.editor = null;
-
-    let row = await relSmsFotosLer(mes, ano);
+    if (relSmsFotosEstado.dirty || relSmsFotosEstado.editor) throw new Error('Salve e feche a seleção de fotos antes de gerar o relatório.');
+    const row = await relSmsFotosLer(mes, ano);
     if (!row) return null; // preserva relatórios legados sem seleção editorial
-
-    // 2. Se a seleção estiver como rascunho, auto-fecha para a homologação se possuir fotos válidas
-    if (row.valor.status !== 'fechado') {
-        const gruposComFotos = Array.isArray(row.valor.grupos)
-            ? row.valor.grupos.filter(g => Array.isArray(g.fotos) && g.fotos.length > 0)
-            : [];
-        if (gruposComFotos.length > 0) {
-            const copia = structuredClone(row.valor);
-            copia.grupos = gruposComFotos;
-            copia.status = 'fechado';
-            relSmsFotosValidar(copia, true);
-            const id = relSmsFotosChave(mes, ano);
-            const payload = {
-                valor: copia,
-                descricao: 'Seleção mensal de fotos SMS — somente referências Drive (consolidada na homologação)',
-                atualizado_em: new Date().toISOString()
-            };
-            if (typeof supabasePatch === 'function') {
-                await supabasePatch('configuracoes_sistema', `id=eq.${id}`, payload);
-            } else if (typeof supabaseUpsert === 'function') {
-                await supabaseUpsert('configuracoes_sistema', [{ id, ...payload }]);
-            }
-            row = { id, ...payload };
-            if (relSmsFotosEstado.doc && relSmsFotosEstado.doc.mes === mes && relSmsFotosEstado.doc.ano === ano) {
-                relSmsFotosEstado.doc = copia;
-                relSmsFotosEstado.row = row;
-                relSmsFotosEstado.dirty = false;
-            }
-        } else {
-            // Rascunho vazio sem nenhuma foto: prossegue homologação sem fotos anexadas
-            return null;
-        }
-    }
+    if (row.valor.status !== 'fechado') throw new Error('As fotos deste mês estão em preparação. Use Organizar fotos do mês e Fechar seleção para o relatório.');
     const doc = structuredClone(row.valor); const refs = doc.grupos.flatMap(g => g.fotos);
     const carregadas = new Map(); let indice = 0; let concluidas = 0; let bytes = 0; let erro = null;
     const worker = async () => {
         while (!erro && indice < refs.length) {
             const f = refs[indice++];
             try {
-                const img = await relSmsFotosImagem(f.id, f.nome); bytes += img.buffer.byteLength;
+                const img = await relSmsFotosImagem(f.id); bytes += img.buffer.byteLength;
                 if (bytes > 16 * 1024 * 1024) throw new Error('As fotos otimizadas excedem 16 MB. Reduza a seleção.');
                 carregadas.set(f.id, img); progresso(++concluidas, refs.length);
             } catch (err) { erro = new Error(`Não foi possível incluir ${f.nome || f.id}: ${err.message} O relatório não foi fechado com fotos faltantes.`); }
@@ -478,201 +406,7 @@ function relSmsFotosExtrairIdPasta(linkOuId) {
 }
 
 async function relSmsFotosImportarDaPastaAutomatico() {
-    const s = relSmsFotosEstado;
-    const d = s.doc;
-    if (!relSmsFotosPodeEditar()) return;
-
-    const chaveStorage = `cronograma_pastas_fotos_${d.ano}_${d.mes}_treinamentos`;
-    const pastaSalva = localStorage.getItem(chaveStorage) || localStorage.getItem('drive_folder_fotos_url') || 'https://drive.google.com/drive/folders/17JUzOnAcvYJfVVbjZhvwPxC7hSlB1o_m';
-
-    let linkPasta = pastaSalva;
-    if (typeof Swal !== 'undefined') {
-        const { value: linkInformado, isConfirmed } = await Swal.fire({
-            title: '⚡ Puxar Fotos do Drive em Lote',
-            html: `
-                <p style="font-size:13px; color:#475569; margin-bottom:12px; line-height:1.5;">
-                    Informe o link da <b>pasta do mês no Google Drive</b>. O sistema varrerá as subpastas e vinculará as fotos aos treinamentos automaticamente, <b>sem precisar de link por foto</b>:
-                </p>
-                <input id="swalPastaFotosMesLink" class="swal2-input" placeholder="Cole o link da pasta do mês..." value="${escapeHTML(linkPasta)}" style="font-size:12.5px; width:100%; box-sizing:border-box;">
-                <p style="font-size:11.5px; color:#64748b; margin-top:8px;">
-                    Exemplo: <code>https://drive.google.com/drive/folders/...</code>
-                </p>
-            `,
-            showCancelButton: true,
-            confirmButtonText: '🚀 Puxar Fotos Automaticamente',
-            cancelButtonText: 'Cancelar',
-            confirmButtonColor: '#0284c7',
-            preConfirm: () => {
-                const el = document.getElementById('swalPastaFotosMesLink');
-                const val = (el?.value || '').trim();
-                if (!val) {
-                    Swal.showValidationMessage('Informe o link da pasta do mês no Google Drive.');
-                    return false;
-                }
-                return val;
-            }
-        });
-        if (!isConfirmed || !linkInformado) return;
-        linkPasta = linkInformado;
-    } else {
-        linkPasta = prompt('Link da pasta do mês no Google Drive:', linkPasta);
-        if (!linkPasta) return;
-    }
-
-    const pastaId = relSmsFotosExtrairIdPasta(linkPasta);
-    if (!pastaId) {
-        relSmsFotosMensagem('Link ou ID da pasta do Drive inválido.');
-        if (typeof Swal !== 'undefined') Swal.fire('Link Inválido', 'Não foi possível extrair o ID da pasta do Drive.', 'error');
-        return;
-    }
-
-    localStorage.setItem(chaveStorage, linkPasta);
-
-    const webhookUrl = typeof getDriveGasWebhookUrl === 'function' ? getDriveGasWebhookUrl() : 'https://script.google.com/macros/s/AKfycbzdCzGE9Jm77RauUe8iuo1p8il193F7Pd7HeLLbut0zToD8zhHtv2RBSAY86bQZGLtA/exec';
-
-    if (typeof Swal !== 'undefined') {
-        Swal.fire({
-            title: 'Consultando fotos no Google Drive...',
-            html: '<p style="font-size:13px; color:#64748b;">Acessando as subpastas do mês e coletando as fotos de treinamentos. Aguarde alguns instantes…</p>',
-            allowOutsideClick: false,
-            showConfirmButton: false,
-            didOpen: () => { Swal.showLoading(); }
-        });
-    }
-
-    try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 60000);
-
-        const resp = await fetch(webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({
-                action: 'listarFotosSubpastas',
-                pastaId: pastaId
-            }),
-            signal: controller.signal
-        });
-        clearTimeout(timeout);
-
-        if (!resp.ok) throw new Error(`Google Apps Script respondeu com código ${resp.status}`);
-        const resJson = await resp.json().catch(() => null);
-
-        if (!resJson || resJson.status === 'erro' || !Array.isArray(resJson.subpastas)) {
-            const msgErro = resJson?.message || 'Ação de listagem de fotos ainda não habilitada na implantação do Apps Script.';
-            if (typeof Swal !== 'undefined') {
-                Swal.fire({
-                    icon: 'info',
-                    title: 'Atualização do Web App',
-                    html: `
-                        <p style="font-size:12.5px; color:#475569; line-height:1.5;">
-                            O Web App do Google Apps Script respondeu, mas ainda precisa da nova ação <b>listarFotosSubpastas</b>.
-                        </p>
-                        <p style="font-size:12px; color:#64748b; margin-top:8px;">
-                            Basta colar o código atualizado em seu projeto do Google Apps Script e clicar em <b>Implantar > Gerenciar Implantações > Editar > Nova versão</b>.
-                        </p>
-                    `,
-                    confirmButtonText: 'Entendido',
-                    confirmButtonColor: '#0284c7'
-                });
-            } else {
-                alert(msgErro);
-            }
-            return;
-        }
-
-        const subpastas = resJson.subpastas;
-        if (subpastas.length === 0) {
-            if (typeof Swal !== 'undefined') {
-                Swal.fire('Nenhuma subpasta', 'Não foram encontradas subpastas dentro da pasta informada.', 'info');
-            }
-            return;
-        }
-
-        const copiaDoc = structuredClone(s.doc);
-        let fotosVinculadas = 0;
-        let temasVinculados = 0;
-
-        for (const sub of subpastas) {
-            const fotosValidas = (sub.fotos || []).slice(0, 2);
-            if (fotosValidas.length === 0) continue;
-
-            const nomeLimpo = sub.pastaNome.trim();
-            if (/^\d{4}$/.test(nomeLimpo)) continue;
-
-            const matchData = nomeLimpo.match(/\[?(\d{2})[\/\.-](\d{2})(?:[\/\.-](\d{4}))?\]?/);
-            let diaIso = '';
-            if (matchData) {
-                const dia = matchData[1];
-                const mes = matchData[2];
-                const ano = matchData[3] || d.ano;
-                diaIso = `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
-            }
-
-            let temaNome = nomeLimpo.replace(/^\[?\d{2}[\/\.-]\d{2}(?:[\/\.-]\d{4})?\]?\s*[-—–:]*\s*/, '').trim();
-            if (!temaNome) temaNome = nomeLimpo;
-
-            let grupoAlvo = copiaDoc.grupos.find(g => {
-                if (diaIso && g.data === diaIso) return true;
-                const gTema = g.tema.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                const subTema = temaNome.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                return gTema.includes(subTema) || subTema.includes(gTema);
-            });
-
-            if (!grupoAlvo) {
-                const isDds = /dds|di[aá]logo/i.test(nomeLimpo) || (typeof allDdsCronograma !== 'undefined' && Array.isArray(allDdsCronograma) && allDdsCronograma.some(c => c.data === diaIso));
-                grupoAlvo = {
-                    tipo: isDds ? 'ddsma' : 'treinamento',
-                    tema: temaNome,
-                    data: diaIso || `${d.ano}-${String(d.mes + 1).padStart(2, '0')}-01`,
-                    fotos: []
-                };
-                copiaDoc.grupos.push(grupoAlvo);
-            }
-
-            grupoAlvo.fotos = fotosValidas.map(f => ({
-                id: f.id,
-                nome: f.nome || 'Foto de Evidência'
-            }));
-
-            fotosVinculadas += fotosValidas.length;
-            temasVinculados++;
-        }
-
-        relSmsFotosValidar(copiaDoc);
-        s.doc = copiaDoc;
-        s.dirty = true;
-        s.sequencia++;
-        relSmsFotosRender();
-        await relSmsFotosSalvar(false);
-
-        if (typeof Swal !== 'undefined') {
-            Swal.fire({
-                icon: 'success',
-                title: 'Fotos Importadas com Sucesso!',
-                html: `
-                    <p style="font-size:13px; color:#334155; line-height:1.5;">
-                        Vinculadas <strong>${fotosVinculadas} fotos</strong> em <strong>${temasVinculados} temas de treinamentos</strong> automaticamente a partir da pasta do Google Drive!
-                    </p>
-                    <p style="font-size:12px; color:#16a34a; font-weight:600; margin-top:8px;">
-                        ✓ Progresso salvo automaticamente para o relatório!
-                    </p>
-                `,
-                confirmButtonText: 'Excelente!',
-                confirmButtonColor: '#16a34a'
-            });
-        } else {
-            alert(`Sucesso! ${fotosVinculadas} fotos vinculadas em ${temasVinculados} temas.`);
-        }
-
-    } catch (err) {
-        console.error('Erro ao importar fotos automaticamente:', err);
-        if (typeof Swal !== 'undefined') {
-            Swal.fire('Falha na Importação', err.message || 'Erro de conexão ao ler pasta do Drive.', 'error');
-        } else {
-            alert('Falha ao importar fotos: ' + err.message);
-        }
-    }
+    return await relSmsImportarFotosComPrevia();
 }
 
 if (typeof window !== 'undefined') {

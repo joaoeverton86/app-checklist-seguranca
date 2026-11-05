@@ -1,5 +1,9 @@
 function doGet(e) {
-  return ContentService.createTextOutput(JSON.stringify({ status: "ok" })).setMimeType(ContentService.MimeType.JSON);
+  var raiz = PropertiesService.getScriptProperties().getProperty("FOTOS_ROOT_ID");
+  return ContentService.createTextOutput(JSON.stringify({
+    status: "ok", protocolo: "fotos-leitura-v292", somenteLeitura: true,
+    raizConfigurada: Boolean(raiz)
+  })).setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
@@ -34,10 +38,23 @@ function listarFotosSubpastas(data) {
     return ContentService.createTextOutput(JSON.stringify({ status: "erro", message: String(err) })).setMimeType(ContentService.MimeType.JSON);
   }
 
+  var raiz = PropertiesService.getScriptProperties().getProperty("FOTOS_ROOT_ID");
+  if (!raiz) throw new Error("Configure FOTOS_ROOT_ID nas propriedades do script.");
+  var atual = pastaMae;
+  var permitida = false;
+  for (var nivel = 0; nivel < 12; nivel++) {
+    if (atual.getId() === raiz) { permitida = true; break; }
+    var pais = atual.getParents();
+    if (!pais.hasNext()) break;
+    atual = pais.next();
+  }
+  if (!permitida) throw new Error("Pasta fora da raiz de fotos autorizada.");
+
   var subpastas = pastaMae.getFolders();
   var resultado = [];
 
   while (subpastas.hasNext()) {
+    if (resultado.length >= 200) throw new Error("Mais de 200 subpastas: consulte uma pasta mensal menor.");
     var sub = subpastas.next();
     var arquivos = sub.getFiles();
     var fotos = [];
@@ -46,17 +63,18 @@ function listarFotosSubpastas(data) {
       var arq = arquivos.next();
       var mime = arq.getMimeType();
       if (mime.indexOf("image/") === 0 || mime === "application/vnd.google-apps.photo") {
-        try {
-          arq.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-        } catch (_) {}
+        if (fotos.length >= 200) throw new Error("Mais de 200 fotos em uma subpasta.");
         fotos.push({
           id: arq.getId(),
           nome: arq.getName(),
+          mimeType: mime,
           url: arq.getUrl(),
           tamanho: arq.getSize()
         });
       }
     }
+
+    fotos.sort(function(a, b) { return a.nome.localeCompare(b.nome, "pt-BR"); });
 
     resultado.push({
       pastaId: sub.getId(),
@@ -71,6 +89,7 @@ function listarFotosSubpastas(data) {
 
   return ContentService.createTextOutput(JSON.stringify({
     status: "sucesso",
+    somenteLeitura: true,
     pastaMaeNome: pastaMae.getName(),
     pastaMaeId: pastaMae.getId(),
     totalSubpastas: resultado.length,

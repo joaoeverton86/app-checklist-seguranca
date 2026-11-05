@@ -55,14 +55,14 @@ test('fotos: extração de ID da pasta do Drive e presença do botão de importa
   // Abre a janela de fotos e confere a presença do botão de importação automática sem colar link
   await page.evaluate(() => relSmsFotosAbrir());
   const botaoTexto = await page.locator('#relSmsFotosModal button').allInnerTexts();
-  const temBotaoAuto = botaoTexto.some(t => t.includes('Puxar fotos da pasta do Drive'));
+  const temBotaoAuto = botaoTexto.some(t => t.includes('Importar fotos do Drive com prévia'));
   assert.equal(temBotaoAuto, true, 'O botão de puxar fotos automaticamente DEVE estar visível no modal');
  } finally {
   await browser.close();
  }
 });
 
-test('auto-fechamento: relSmsFotosPreparar auto-fecha seleção com status rascunho sem travar homologação', async () => {
+test('preparação exige fechamento explícito e não grava rascunho automaticamente', async () => {
  const browser = await chromium.launch({ headless: true });
  try {
   const page = await browser.newPage();
@@ -99,19 +99,9 @@ test('auto-fechamento: relSmsFotosPreparar auto-fecha seleção com status rascu
   });
   await page.addScriptTag({ path: 'dashboard/modules/relatorio_sms_fotos.js' });
 
-  // Executa relSmsFotosPreparar diretamente (como ocorre na homologação)
-  const docPreparado = await page.evaluate(async () => {
-   return await window.relSmsFotosPreparar(9, 2026);
-  });
+  await assert.rejects(() => page.evaluate(() => relSmsFotosPreparar(9, 2026)), /preparação|Fechar seleção/);
+  assert.equal((await page.evaluate(() => patchesRegistrados)).length, 0, 'Exportar não fecha nem grava a seleção');
 
-  assert.ok(docPreparado, 'O documento preparado de fotos não deve ser nulo');
-  assert.equal(docPreparado.status, 'fechado', 'O status retornado DEVE ser fechado');
-  assert.equal(docPreparado.grupos.length, 2, 'Deve conter os 2 grupos');
-
-  const patches = await page.evaluate(() => window.patchesRegistrados);
-  assert.equal(patches.length, 1, 'Deve ter gravado o fechamento no Supabase');
-  assert.equal(patches[0].tabela, 'configuracoes_sistema');
-  assert.equal(patches[0].payload.valor.status, 'fechado');
  } finally {
   await browser.close();
  }

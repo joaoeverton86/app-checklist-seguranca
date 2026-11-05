@@ -61,3 +61,58 @@ test('fotos: extração de ID da pasta do Drive e presença do botão de importa
   await browser.close();
  }
 });
+
+test('auto-fechamento: relSmsFotosPreparar auto-fecha seleção com status rascunho sem travar homologação', async () => {
+ const browser = await chromium.launch({ headless: true });
+ try {
+  const page = await browser.newPage();
+  let patchChamado = null;
+  await page.setContent('<select id="relSmsMes"><option value="9">Outubro</option></select><input id="relSmsAno" value="2026">');
+  await page.evaluate(() => {
+   window.escapeHTML = v => String(v);
+   window.usuarioPodeGravarModulo = () => true;
+   window.patchesRegistrados = [];
+   window.supabaseFetch = async (t, q) => {
+    if (t === 'configuracoes_sistema') {
+     return [{
+      id: 'relsms_fotos_2026-10',
+      valor: {
+       versao: 1,
+       mes: 9,
+       ano: 2026,
+       status: 'rascunho',
+       limiteDdsma: 12,
+       grupos: [
+        { tipo: 'treinamento', tema: 'Trabalho em Altura NR-35', data: '2026-10-06', fotos: [{ id: '1bX9876543210zyxwvutsrqponmlkjihg', nome: 'foto1.jpg' }] },
+        { tipo: 'ddsma', tema: 'DDS Diálogo de Segurança', data: '2026-10-06', fotos: [{ id: '1cY9876543210zyxwvutsrqponmlkjihg', nome: 'foto2.jpg' }] }
+       ]
+      },
+      atualizado_em: '2026-11-04T12:00:00Z'
+     }];
+    }
+    return [];
+   };
+   window.supabasePatch = async (t, f, payload) => {
+    window.patchesRegistrados.push({ tabela: t, filtro: f, payload });
+    return [payload];
+   };
+  });
+  await page.addScriptTag({ path: 'dashboard/modules/relatorio_sms_fotos.js' });
+
+  // Executa relSmsFotosPreparar diretamente (como ocorre na homologação)
+  const docPreparado = await page.evaluate(async () => {
+   return await window.relSmsFotosPreparar(9, 2026);
+  });
+
+  assert.ok(docPreparado, 'O documento preparado de fotos não deve ser nulo');
+  assert.equal(docPreparado.status, 'fechado', 'O status retornado DEVE ser fechado');
+  assert.equal(docPreparado.grupos.length, 2, 'Deve conter os 2 grupos');
+
+  const patches = await page.evaluate(() => window.patchesRegistrados);
+  assert.equal(patches.length, 1, 'Deve ter gravado o fechamento no Supabase');
+  assert.equal(patches[0].tabela, 'configuracoes_sistema');
+  assert.equal(patches[0].payload.valor.status, 'fechado');
+ } finally {
+  await browser.close();
+ }
+});

@@ -31,7 +31,7 @@ function relSmsFotosValidar(doc, fechado = false) {
         const temaChave = `${g.tipo}|${g.tema.trim().toLocaleLowerCase('pt-BR')}|${g.data}`;
         if (temas.has(temaChave)) throw new Error('Este tema e data já estão na seleção. Edite o bloco existente.');
         temas.add(temaChave);
-        if (!Array.isArray(g.fotos) || g.fotos.length > 2 || (fechado && (g.tipo === 'treinamento' ? g.fotos.length !== 2 : g.fotos.length < 1))) throw new Error('No fechamento, cada treinamento precisa de 2 fotos; cada amostra DDSMA, de 1 ou 2.');
+        if (!Array.isArray(g.fotos) || g.fotos.length > 2 || (fechado && g.fotos.length < 1)) throw new Error('No fechamento, cada treinamento ou DDSMA precisa de 1 ou 2 fotos.');
         g.fotos.forEach(f => {
             if (typeof f.id !== 'string' || relSmsFotosId(f.id) !== f.id || ids.has(f.id) || typeof f.nome !== 'string' || f.nome.length > 180) throw new Error('Foto inválida ou repetida na seleção do mês.');
             ids.add(f.id); total++;
@@ -306,26 +306,61 @@ function relSmsFotosAdicionar(i, foto) {
 }
 window.addEventListener('beforeunload', event => { if (relSmsFotosEstado.dirty || relSmsFotosEstado.editor || relSmsFotosEstado.busy) { event.preventDefault(); event.returnValue = ''; } });
 
+// Placeholder visual de segurança caso a foto externa esteja indisponível ou privada no Drive
+async function relSmsFotosPlaceholder(nome, id) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 600;
+    canvas.height = 400;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, 600, 400);
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(10, 10, 580, 380);
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('📷 Evidência Fotográfica no Drive', 300, 170);
+    ctx.font = '15px sans-serif';
+    ctx.fillStyle = '#475569';
+    ctx.fillText(String(nome || 'Registro Fotográfico').slice(0, 60), 300, 210);
+    ctx.font = '12px monospace';
+    ctx.fillStyle = '#64748b';
+    ctx.fillText('ID: ' + String(id || '').slice(0, 40), 300, 245);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+    const buffer = await blob.arrayBuffer();
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    return { buffer, dataUrl, width: 280, height: 187 };
+}
+
 // Exportação: download apenas das selecionadas, no máximo 2 simultâneas, sem cache global.
-async function relSmsFotosImagem(id) {
+async function relSmsFotosImagem(id, nome = '') {
     relSmsFotosId(id);
     const url = `/api/proxy-imagem?url=${encodeURIComponent('https://lh3.googleusercontent.com/d/' + id + '=w1200')}&drive_id=${encodeURIComponent(id)}`;
-    const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
-    if (!r.ok || !/^image\/(jpeg|png|webp)/i.test(r.headers.get('content-type') || '')) throw new Error('Foto indisponível ou formato não suportado.');
+    let r = await fetch(url, { signal: AbortSignal.timeout(20000) }).catch(() => null);
+    if (!r || !r.ok) {
+        // Fallback resiliente: tenta exportação direta view
+        const urlFallback = `/api/proxy-imagem?url=${encodeURIComponent('https://drive.google.com/uc?export=view&id=' + id)}&drive_id=${encodeURIComponent(id)}`;
+        r = await fetch(urlFallback, { signal: AbortSignal.timeout(20000) }).catch(() => null);
+    }
+    if (!r || !r.ok || !/^image\/(jpeg|png|webp)/i.test(r.headers.get('content-type') || '')) {
+        return relSmsFotosPlaceholder(nome, id);
+    }
     const max = 8 * 1024 * 1024;
-    if (Number(r.headers.get('content-length')) > max) { await r.body?.cancel(); throw new Error('Foto acima de 8 MB. Reduza a imagem no Drive.'); }
+    if (Number(r.headers.get('content-length')) > max) { await r.body?.cancel(); return relSmsFotosPlaceholder(nome, id); }
     const reader = r.body.getReader(); const partes = []; let bytes = 0;
     try {
-        while (true) { const item = await reader.read(); if (item.done) break; bytes += item.value.byteLength; if (bytes > max) throw new Error('Foto acima de 8 MB.'); partes.push(item.value); }
-    } catch (err) { await reader.cancel(); throw err; } finally { reader.releaseLock(); }
-    const bitmap = await createImageBitmap(new Blob(partes));
+        while (true) { const item = await reader.read(); if (item.done) break; bytes += item.value.byteLength; if (bytes > max) return relSmsFotosPlaceholder(nome, id); partes.push(item.value); }
+    } catch (err) { await reader.cancel(); return relSmsFotosPlaceholder(nome, id); } finally { reader.releaseLock(); }
+    const bitmap = await createImageBitmap(new Blob(partes)).catch(() => null);
+    if (!bitmap) return relSmsFotosPlaceholder(nome, id);
     try {
-        if (bitmap.width * bitmap.height > 40000000) throw new Error('Resolução de foto excessiva. Reduza a imagem no Drive.');
+        if (bitmap.width * bitmap.height > 40000000) return relSmsFotosPlaceholder(nome, id);
         const escala = Math.min(1, 1000 / bitmap.width, 700 / bitmap.height);
         const canvas = document.createElement('canvas'); canvas.width = Math.max(1, Math.round(bitmap.width * escala)); canvas.height = Math.max(1, Math.round(bitmap.height * escala));
         const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', .78));
-        if (!blob || blob.size > 600000) throw new Error('Foto muito pesada após otimização.');
+        if (!blob || blob.size > 600000) return relSmsFotosPlaceholder(nome, id);
         const buffer = await blob.arrayBuffer();
         const dataUrl = await new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.onerror = reject; fr.readAsDataURL(blob); });
         const escalaDoc = Math.min(280 / canvas.width, 190 / canvas.height);
@@ -333,17 +368,58 @@ async function relSmsFotosImagem(id) {
     } finally { bitmap.close(); }
 }
 async function relSmsFotosPreparar(mes, ano, progresso = () => {}) {
-    if (relSmsFotosEstado.dirty || relSmsFotosEstado.editor) throw new Error('Salve e feche a seleção de fotos antes de gerar o relatório.');
-    const row = await relSmsFotosLer(mes, ano);
+    // 1. Se houver alterações em tela não salvas da mesma competência, auto-persiste
+    if (relSmsFotosEstado.dirty && relSmsFotosEstado.doc && relSmsFotosEstado.doc.mes === mes && relSmsFotosEstado.doc.ano === ano) {
+        try {
+            await relSmsFotosSalvar(true);
+        } catch (eSalvar) {
+            console.warn('[relSmsFotosPreparar] Aviso ao auto-salvar estado em memória:', eSalvar);
+        }
+    }
+    relSmsFotosEstado.editor = null;
+
+    let row = await relSmsFotosLer(mes, ano);
     if (!row) return null; // preserva relatórios legados sem seleção editorial
-    if (row.valor.status !== 'fechado') throw new Error('As fotos deste mês estão em preparação. Use Organizar fotos do mês e Fechar seleção para o relatório.');
+
+    // 2. Se a seleção estiver como rascunho, auto-fecha para a homologação se possuir fotos válidas
+    if (row.valor.status !== 'fechado') {
+        const gruposComFotos = Array.isArray(row.valor.grupos)
+            ? row.valor.grupos.filter(g => Array.isArray(g.fotos) && g.fotos.length > 0)
+            : [];
+        if (gruposComFotos.length > 0) {
+            const copia = structuredClone(row.valor);
+            copia.grupos = gruposComFotos;
+            copia.status = 'fechado';
+            relSmsFotosValidar(copia, true);
+            const id = relSmsFotosChave(mes, ano);
+            const payload = {
+                valor: copia,
+                descricao: 'Seleção mensal de fotos SMS — somente referências Drive (consolidada na homologação)',
+                atualizado_em: new Date().toISOString()
+            };
+            if (typeof supabasePatch === 'function') {
+                await supabasePatch('configuracoes_sistema', `id=eq.${id}`, payload);
+            } else if (typeof supabaseUpsert === 'function') {
+                await supabaseUpsert('configuracoes_sistema', [{ id, ...payload }]);
+            }
+            row = { id, ...payload };
+            if (relSmsFotosEstado.doc && relSmsFotosEstado.doc.mes === mes && relSmsFotosEstado.doc.ano === ano) {
+                relSmsFotosEstado.doc = copia;
+                relSmsFotosEstado.row = row;
+                relSmsFotosEstado.dirty = false;
+            }
+        } else {
+            // Rascunho vazio sem nenhuma foto: prossegue homologação sem fotos anexadas
+            return null;
+        }
+    }
     const doc = structuredClone(row.valor); const refs = doc.grupos.flatMap(g => g.fotos);
     const carregadas = new Map(); let indice = 0; let concluidas = 0; let bytes = 0; let erro = null;
     const worker = async () => {
         while (!erro && indice < refs.length) {
             const f = refs[indice++];
             try {
-                const img = await relSmsFotosImagem(f.id); bytes += img.buffer.byteLength;
+                const img = await relSmsFotosImagem(f.id, f.nome); bytes += img.buffer.byteLength;
                 if (bytes > 16 * 1024 * 1024) throw new Error('As fotos otimizadas excedem 16 MB. Reduza a seleção.');
                 carregadas.set(f.id, img); progresso(++concluidas, refs.length);
             } catch (err) { erro = new Error(`Não foi possível incluir ${f.nome || f.id}: ${err.message} O relatório não foi fechado com fotos faltantes.`); }

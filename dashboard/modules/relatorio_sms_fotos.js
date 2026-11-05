@@ -357,6 +357,47 @@ async function relSmsFotosPreparar(mes, ano, progresso = () => {}) {
     doc.grupos.forEach(g => { g.fotos = g.fotos.map(f => ({ ...f, img: carregadas.get(f.id) })); });
     return doc;
 }
+function relSmsFotosSanitizarParaSnapshot(fotosDoc) {
+    if (!fotosDoc || typeof fotosDoc !== 'object') return null;
+    const copia = structuredClone(fotosDoc);
+    if (Array.isArray(copia.grupos)) {
+        copia.grupos.forEach(g => {
+            if (Array.isArray(g.fotos)) {
+                g.fotos = g.fotos.map(f => ({
+                    id: f.id,
+                    nome: f.nome || 'Foto do Drive'
+                }));
+            }
+        });
+    }
+    return copia;
+}
+
+async function relSmsFotosGarantirBuffers(fotosDoc) {
+    if (!fotosDoc || !Array.isArray(fotosDoc.grupos)) return fotosDoc;
+    const doc = structuredClone(fotosDoc);
+    const pendentes = [];
+    doc.grupos.forEach(g => {
+        if (Array.isArray(g.fotos)) {
+            g.fotos.forEach(f => {
+                const b = f.img?.buffer;
+                const valido = b && (b instanceof ArrayBuffer || b instanceof Uint8Array || (typeof Buffer !== 'undefined' && Buffer.isBuffer(b))) && b.byteLength > 0;
+                if (!valido) pendentes.push(f);
+            });
+        }
+    });
+    if (pendentes.length > 0 && typeof relSmsFotosImagem === 'function') {
+        for (const f of pendentes) {
+            try {
+                f.img = await relSmsFotosImagem(f.id, f.nome);
+            } catch (err) {
+                console.warn(`[Relatório SMS Fotos] Aviso ao hidratar buffer da foto ${f.id}:`, err);
+            }
+        }
+    }
+    return doc;
+}
+
 function relSmsFotosDocx(selecao) {
     const out = [relSmsH1('9. Registros Fotográficos (Treinamentos e DDSMA)')];
     for (const tipo of ['treinamento', 'ddsma']) {
@@ -364,10 +405,18 @@ function relSmsFotosDocx(selecao) {
         const grupos = selecao.grupos.filter(g => g.tipo === tipo);
         if (!grupos.length) out.push(relSmsNota('Nenhuma foto selecionada nesta categoria.'));
         grupos.forEach(g => {
-            const cells = g.fotos.map(f => new docx.TableCell({ width: { size: 4680, type: docx.WidthType.DXA }, children: [
-                new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, children: [new docx.ImageRun({ type: 'jpg', data: f.img.buffer, transformation: { width: f.img.width, height: f.img.height } })] }),
-                new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 160 }, children: [new docx.TextRun({ text: `${g.tema} — Aplicado em ${g.data.split('-').reverse().join('/')}`, size: 18 })] })
-            ] }));
+            const cells = g.fotos.map(f => {
+                const b = f.img?.buffer;
+                const temBufferValido = b && (b instanceof ArrayBuffer || b instanceof Uint8Array || (typeof Buffer !== 'undefined' && Buffer.isBuffer(b))) && b.byteLength > 0;
+                const conteudoImg = temBufferValido
+                    ? new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, children: [new docx.ImageRun({ type: 'jpg', data: f.img.buffer, transformation: { width: f.img.width || 280, height: f.img.height || 190 } })] })
+                    : new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 200, after: 200 }, children: [new docx.TextRun({ text: `📷 [Registro Fotográfico no Drive — ${f.nome || f.id}]`, italics: true, size: 18, color: '555555' })] });
+
+                return new docx.TableCell({ width: { size: 4680, type: docx.WidthType.DXA }, children: [
+                    conteudoImg,
+                    new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 160 }, children: [new docx.TextRun({ text: `${g.tema} — Aplicado em ${g.data.split('-').reverse().join('/')}`, size: 18 })] })
+                ] });
+            });
             if (cells.length === 1) cells.push(new docx.TableCell({ width: { size: 4680, type: docx.WidthType.DXA }, children: [new docx.Paragraph('')] }));
             out.push(new docx.Table({ width: { size: 9360, type: docx.WidthType.DXA }, columnWidths: [4680, 4680], rows: [new docx.TableRow({ cantSplit: true, children: cells })] }));
             out.push(new docx.Paragraph({ spacing: { after: 120 }, children: [] }));

@@ -842,3 +842,60 @@ test('SMS v288 (Ponto 6): falha na leitura do histórico aborta relSmsSalvarSnap
         'Erro na leitura do histórico DEVE abortar o salvamento para não apagar o histórico'
     );
 });
+
+test('SMS v293: snapshot com fotos:null é aceito no fechamento sem erro de snapshot corrompido', async () => {
+    const c = contexto();
+    c.require = require;
+    vm.runInContext(func('montarDocRelSms'), c);
+    const snapComFotosNull = {
+        status: 'fechado',
+        revisao: 1,
+        fiscalizacao: true,
+        dados: {},
+        dadosSecao1: {},
+        dadosSecoes23: {},
+        dadosMeioAmbiente: {},
+        fotos: null,
+        anexos: []
+    };
+
+    // Não deve lançar 'Snapshot corrompido ou incompleto' quando fotos for null
+    try {
+        await c.montarDocRelSms(9, 2026, true, null, snapComFotosNull);
+    } catch (e) {
+        assert.doesNotMatch(e.message, /Snapshot corrompido ou incompleto/, 'fotos:null é legítimo e não deve acusar snapshot corrompido');
+    }
+});
+
+test('SMS v293: tentativa de sobrescrita de revisão _revN já fechada com hash diferente é bloqueada por imutabilidade', async () => {
+    const c = contexto();
+    c.require = require;
+    for (const n of ['relSmsFechamentoChave', 'relSmsFechamentoChaveRevisao', 'relSmsSalvarSnapshotFechamento']) {
+        vm.runInContext(func(n), c);
+    }
+
+    const bancoSimulado = new Map();
+    c.supabaseFetch = async (_t, q) => {
+        const id = new URLSearchParams(q).get('id').slice(3);
+        return bancoSimulado.has(id) ? [JSON.parse(JSON.stringify(bancoSimulado.get(id)))] : [];
+    };
+    c.supabaseUpsert = async (_t, rows) => {
+        for (const r of rows) bancoSimulado.set(r.id, JSON.parse(JSON.stringify(r)));
+    };
+    c.supabaseInsert = async (_t, rows) => {
+        for (const r of rows) bancoSimulado.set(r.id, JSON.parse(JSON.stringify(r)));
+    };
+
+    // Grava Rev 1 com hash 'hash_A'
+    await c.relSmsSalvarSnapshotFechamento(9, 2026, { status: 'fechado', revisao: 1, hash: 'hash_A', dados: { v: 1 } });
+    assert.ok(bancoSimulado.has(c.relSmsFechamentoChaveRevisao(9, 2026, 1)));
+
+    // Tentativa de regravar sobre a mesma Rev 1 com hash diferente 'hash_B' DEVE falhar
+    await assert.rejects(
+        async () => {
+            await c.relSmsSalvarSnapshotFechamento(9, 2026, { status: 'fechado', revisao: 1, hash: 'hash_B', dados: { v: 2 } });
+        },
+        /Conflito de versão: A revisão 1 da competência já foi homologada previamente e é imutável/,
+        'Revisão dedicada não pode ser sobrescrita'
+    );
+});

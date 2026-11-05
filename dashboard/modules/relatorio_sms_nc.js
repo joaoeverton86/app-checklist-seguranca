@@ -2065,14 +2065,19 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
 
     const fechado = Boolean(snapshot && snapshot.status === 'fechado');
     if (fechado) {
-        if (!snapshot.dados || !snapshot.dadosSecao1 || !snapshot.dadosSecoes23 || !snapshot.dadosMeioAmbiente || (!fotosManuais && !snapshot.fotos) || !snapshot.anexos) {
+        if (!snapshot.dados || !snapshot.dadosSecao1 || !snapshot.dadosSecoes23 || !snapshot.dadosMeioAmbiente || (!fotosManuais && snapshot.fotos === undefined) || !snapshot.anexos) {
             throw new Error(`Snapshot corrompido ou incompleto da competência ${NOMES_MESES[mes]}/${ano} (Rev. ${snapshot.revisao || 1}): partes essenciais ausentes. Recálculo ao vivo bloqueado por segurança.`);
         }
         fiscalizacao = Boolean(snapshot.fiscalizacao);
     }
 
-    let fotosSelecionadas = !fotosManuais && fechado && snapshot.fotos ? snapshot.fotos : null;
-    if (!fotosManuais && !fotosSelecionadas) {
+    let fotosSelecionadas = null;
+    if (!fotosManuais && fechado && snapshot.fotos) {
+        fotosSelecionadas = typeof relSmsFotosGarantirBuffers === 'function'
+            ? await relSmsFotosGarantirBuffers(snapshot.fotos)
+            : snapshot.fotos;
+    }
+    if (!fotosManuais && !fechado && !fotosSelecionadas) {
         fotosSelecionadas = await relSmsFotosPreparar(mes, ano, (atual, total) => {
             const status = document.getElementById('relSmsStatus');
             if (status) status.textContent = `Preparando fotos selecionadas: ${atual}/${total}…`;
@@ -4463,16 +4468,19 @@ async function relSmsSalvarSnapshotFechamento(mes, ano, snapshot) {
             atualizado_em: agoraIso
         };
 
-        if (typeof supabaseUpsert === 'function') {
-            await supabaseUpsert('configuracoes_sistema', [{ id: chaveRevisao, ...payloadRevisao }]);
-        } else {
-            const existeRev = await supabaseFetch('configuracoes_sistema', `?select=id&id=eq.${chaveRevisao}&limit=1`);
-            if (Array.isArray(existeRev) && existeRev.length > 0) {
-                if (typeof supabasePatch !== 'function') throw new Error('supabasePatch não está disponível.');
-                await supabasePatch('configuracoes_sistema', `id=eq.${chaveRevisao}`, payloadRevisao);
+        const jaExisteRev = await supabaseFetch('configuracoes_sistema', `?select=id,valor&id=eq.${chaveRevisao}&limit=1`);
+        if (Array.isArray(jaExisteRev) && jaExisteRev.length > 0) {
+            const revExistente = typeof jaExisteRev[0].valor === 'string' ? JSON.parse(jaExisteRev[0].valor) : jaExisteRev[0].valor;
+            if (revExistente && revExistente.hash === snapshot.hash) {
+                console.warn(`[Relatório SMS] Revisão ${chaveRevisao} já gravada com mesmo hash; preservando cópia imutável.`);
             } else {
-                if (typeof supabaseInsert !== 'function') throw new Error('supabaseInsert não está disponível.');
+                throw new Error(`Conflito de versão: A revisão ${revNum} da competência já foi homologada previamente e é imutável. Recarregue os dados para obter a próxima revisão.`);
+            }
+        } else {
+            if (typeof supabaseInsert === 'function') {
                 await supabaseInsert('configuracoes_sistema', [{ id: chaveRevisao, ...payloadRevisao }]);
+            } else if (typeof supabaseUpsert === 'function') {
+                await supabaseUpsert('configuracoes_sistema', [{ id: chaveRevisao, ...payloadRevisao }]);
             }
         }
     }
@@ -4666,8 +4674,10 @@ async function relSmsHomologarEFecharCompetencia() {
         const rev = (snapAnterior?.revisao || 0) + 1;
         const agoraIso = new Date().toISOString();
         const usuarioLogado = (typeof supabaseUser !== 'undefined' && supabaseUser?.email) || 'Gestor SST';
+        const fotosSanitizadas = typeof relSmsFotosSanitizarParaSnapshot === 'function' ? relSmsFotosSanitizarParaSnapshot(fotos) : fotos;
+        const anexosDescritores = Array.isArray(anexos) ? anexos.map((_a, i) => ({ id: `anexo_${i + 1}`, tipo: 'documento_complementar' })) : (anexos || []);
 
-        // 3. Cálculo de hash canônico sobre todo o payload que define o documento homologado
+        // 3. Cálculo de hash canônico sobre todo o payload que define o documento homologado (somente dados serializáveis)
         const payloadParaHash = {
             versao: 2,
             mes,
@@ -4682,8 +4692,8 @@ async function relSmsHomologarEFecharCompetencia() {
             dadosSecoes23,
             dadosMeioAmbiente,
             dadosFase4,
-            fotos,
-            anexos
+            fotos: fotosSanitizadas,
+            anexos: anexosDescritores
         };
         const hashInfo = await relSmsCalcularHash(payloadParaHash);
 
@@ -4736,7 +4746,7 @@ async function relSmsHomologarEFecharCompetencia() {
             throw new Error(`Homologação cancelada: Falha ao arquivar cópia oficial no Google Drive (${errAcervo.message || String(errAcervo)}). Nenhum dado foi congelado.`);
         }
 
-        // 5. Montagem do snapshot integral imutável
+        // 5. Montagem do snapshot integral imutável (com metadados serializáveis limpos)
         const snapshot = {
             versao: 2,
             status: 'fechado',
@@ -4754,8 +4764,8 @@ async function relSmsHomologarEFecharCompetencia() {
             dadosSecoes23,
             dadosMeioAmbiente,
             dadosFase4,
-            fotos,
-            anexos,
+            fotos: fotosSanitizadas,
+            anexos: anexosDescritores,
             arquivo_acervo: acervoMeta
         };
 

@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-var VERSAO_PAINEL = 'v296';
+var VERSAO_PAINEL = 'v297';
 try { ['badgeVersaoDashboardLogin', 'badgeVersaoDashboardSidebar'].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = VERSAO_PAINEL; }); } catch(e){}
 var DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
@@ -14743,9 +14743,9 @@ async function loadEfetivoData() {
     }
 }
 
-// Abas da página Efetivo (Visão Geral / Colaboradores / Férias / etc.)
+// Abas da página Efetivo (Visão Geral / Colaboradores / Terceiros & PJ / Férias / etc.)
 function showEfetivoSubtab(tab) {
-    ['visao', 'colaboradores', 'ferias', 'os', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].forEach(t => {
+    ['visao', 'colaboradores', 'terceiros', 'ferias', 'os', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].forEach(t => {
         const content = document.getElementById('efetivoSubtab-' + t);
         const btn = document.getElementById('efetivoSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -14755,6 +14755,9 @@ function showEfetivoSubtab(tab) {
     if (tab === 'colaboradores') {
         renderEfetivoResumo();
         filterEfetivoColaboradores(document.getElementById('efetivoSearchInput')?.value || '');
+    }
+    if (tab === 'terceiros') {
+        if (typeof window.renderTerceirosPanel === 'function') window.renderTerceirosPanel();
     }
     if (tab === 'ferias') {
         renderFeriasPanel();
@@ -37878,13 +37881,19 @@ function showDbPage(pageId) {
         else if (document.getElementById('ddsmaSubtabBtn-visao')?.classList.contains('active')) renderDdsPanel();
     }
     if (pageId === 'efetivo') {
+        const anySubtabActive = ['visao', 'colaboradores', 'terceiros', 'ferias', 'os', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].some(t => document.getElementById('efetivoSubtabBtn-' + t)?.classList.contains('active'));
+        if (!anySubtabActive) {
+            showEfetivoSubtab('visao');
+        }
         if (!efetivoLoaded) {
             efetivoLoaded = true;
             loadEfetivoData().then(() => {
                 if (document.getElementById('efetivoSubtabBtn-ferias')?.classList.contains('active')) renderFeriasPanel();
+                else if (document.getElementById('efetivoSubtabBtn-terceiros')?.classList.contains('active') && typeof window.renderTerceirosPanel === 'function') window.renderTerceirosPanel();
             });
         } else {
             if (document.getElementById('efetivoSubtabBtn-ferias')?.classList.contains('active')) renderFeriasPanel();
+            else if (document.getElementById('efetivoSubtabBtn-terceiros')?.classList.contains('active') && typeof window.renderTerceirosPanel === 'function') window.renderTerceirosPanel();
             else renderEfetivoPanel();
         }
     }

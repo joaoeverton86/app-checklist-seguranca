@@ -4352,13 +4352,19 @@ function showDbPage(pageId) {
         else if (document.getElementById('ddsmaSubtabBtn-visao')?.classList.contains('active')) renderDdsPanel();
     }
     if (pageId === 'efetivo') {
+        const anySubtabActive = ['visao', 'colaboradores', 'terceiros', 'ferias', 'os', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].some(t => document.getElementById('efetivoSubtabBtn-' + t)?.classList.contains('active'));
+        if (!anySubtabActive) {
+            if (typeof showEfetivoSubtab === 'function') showEfetivoSubtab('visao');
+        }
         if (!efetivoLoaded) { 
             efetivoLoaded = true; 
             loadEfetivoData().then(() => {
                 if (document.getElementById('efetivoSubtabBtn-ferias')?.classList.contains('active')) renderFeriasPanel();
+                else if (document.getElementById('efetivoSubtabBtn-terceiros')?.classList.contains('active') && typeof window.renderTerceirosPanel === 'function') window.renderTerceirosPanel();
             }); 
         } else {
             if (document.getElementById('efetivoSubtabBtn-ferias')?.classList.contains('active')) renderFeriasPanel();
+            else if (document.getElementById('efetivoSubtabBtn-terceiros')?.classList.contains('active') && typeof window.renderTerceirosPanel === 'function') window.renderTerceirosPanel();
             else renderEfetivoPanel();
         }
     }

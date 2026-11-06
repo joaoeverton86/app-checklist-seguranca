@@ -44,9 +44,9 @@ async function loadEfetivoData() {
     }
 }
 
-// Abas da página Efetivo (Visão Geral / Colaboradores / Férias / etc.)
+// Abas da página Efetivo (Visão Geral / Colaboradores / Terceiros & PJ / Férias / etc.)
 function showEfetivoSubtab(tab) {
-    ['visao', 'colaboradores', 'ferias', 'os', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].forEach(t => {
+    ['visao', 'colaboradores', 'terceiros', 'ferias', 'os', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].forEach(t => {
         const content = document.getElementById('efetivoSubtab-' + t);
         const btn = document.getElementById('efetivoSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -56,6 +56,9 @@ function showEfetivoSubtab(tab) {
     if (tab === 'colaboradores') {
         renderEfetivoResumo();
         filterEfetivoColaboradores(document.getElementById('efetivoSearchInput')?.value || '');
+    }
+    if (tab === 'terceiros') {
+        renderTerceirosPanel();
     }
     if (tab === 'ferias') {
         renderFeriasPanel();
@@ -2264,3 +2267,4 @@ window.fecharModalTerceiro = fecharModalTerceiro;
 window.salvarTerceiroEfetivo = salvarTerceiroEfetivo;
 window.alternarStatusTerceiro = alternarStatusTerceiro;
 window.exportarExcelTerceiros = exportarExcelTerceiros;
+window.showEfetivoSubtab = showEfetivoSubtab;

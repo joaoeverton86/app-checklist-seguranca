@@ -5143,7 +5143,8 @@ async function salvarMatrizRiscos() {
 function obterEfetivoFiltrado() {
     const situacaoEl = document.getElementById('filtroEfetivoSituacao');
     const situacaoFiltro = situacaoEl ? situacaoEl.value : 'ativos';
-    let lista = (allEfetivo || []).slice();
+    const _ehTerc = typeof colaboradorEhTerceiro === 'function' ? colaboradorEhTerceiro : () => false;
+    let lista = (allEfetivo || []).filter(e => !_ehTerc(e));
     if (situacaoFiltro === 'ativos') {
         lista = lista.filter(colaboradorEstaAtivo);
     } else if (situacaoFiltro === 'demitidos') {
@@ -7135,6 +7136,7 @@ function headcountAsOf(dateEnd) {
     for (let i = 0; i < allEfetivo.length; i++) {
         const e = allEfetivo[i];
         if (!e || !e.dt_admissao) continue;
+        if (typeof colaboradorEhTerceiro === 'function' && colaboradorEhTerceiro(e)) continue;
         const admMs = e._admMs || (e._admMs = parseLocalDate(e.dt_admissao).getTime());
         if (isNaN(admMs) || admMs > endMs) continue;
         if (!e.dt_demissao) {

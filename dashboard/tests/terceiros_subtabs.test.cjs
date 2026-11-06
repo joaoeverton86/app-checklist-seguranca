@@ -90,3 +90,4 @@ subtabs.forEach(tab => {
 });
 
 console.log('✅ Teste de alternância das 10 subabas de Efetivo APROVADO!');
+

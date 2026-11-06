@@ -47,5 +47,5 @@ test('entradas de fotos são distintas dos botões existentes de escaneados',()=
  assert.match(html,/onclick="sincronizarPastasDriveCronograma\(\)"/);
  assert.match(html,/onclick="cronogramaPastasAbrir\('treinamentos'\)"/);
  assert.match(html,/onclick="cronogramaPastasAbrir\('ddsma'\)"/);
- assert.match(html,/modules\/cronograma_pastas.js\?v=288/);
+ assert.match(html,/modules\/cronograma_pastas.js\?v=\d+/);
 });

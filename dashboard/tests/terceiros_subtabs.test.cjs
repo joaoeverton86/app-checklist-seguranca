@@ -31,7 +31,7 @@ function mockElement(id) {
     return elements[id];
 }
 
-const subtabs = ['visao', 'colaboradores', 'terceiros', 'ferias', 'os', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'];
+const subtabs = ['visao', 'colaboradores', 'terceiros', 'ferias', 'os', 'setores', 'frentes', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'];
 subtabs.forEach(t => {
     mockElement('efetivoSubtab-' + t);
     mockElement('efetivoSubtabBtn-' + t);
@@ -53,6 +53,8 @@ global.renderFeriasPanel = () => {};
 global.renderControleOrdensServico = () => {};
 global.fecharGerenciarSetor = () => {};
 global.renderSetoresLista = () => {};
+global.fecharGerenciarFrente = () => {};
+global.renderFrentesLista = () => {};
 global.fecharGerenciarGhe = () => {};
 global.renderGheLista = () => {};
 global.renderRecomendacoesGheLista = () => {};
@@ -89,5 +91,5 @@ subtabs.forEach(tab => {
     });
 });
 
-console.log('✅ Teste de alternância das 10 subabas de Efetivo APROVADO!');
+console.log('✅ Teste de alternância das 11 subabas de Efetivo APROVADO!');
 

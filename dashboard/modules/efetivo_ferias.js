@@ -16,6 +16,8 @@ var allColaboradoresFerias = [];
 var dadosFeriasCltCache = [];
 var valFeriasFiltroAtual = 'todos'; // 'todos' | 'critico' | 'atencao' | 'normal' | 'emGozo' | 'programadas' | 'concluidas'
 var efetivoLoaded = false;
+var allFrentesCatalogo = [];
+window.allFrentesCatalogo = allFrentesCatalogo;
 
 async function loadEfetivoData() {
     const statusEl = document.getElementById('efetivoImportStatus');
@@ -30,7 +32,22 @@ async function loadEfetivoData() {
             console.warn('Aviso ao buscar colaboradores_ferias no Supabase:', errF);
             allColaboradoresFerias = [];
         }
+        try {
+            const frentesCfg = await supabaseFetch('configuracoes_sistema', '?id=eq.efetivo_frentes_catalogo&limit=1');
+            if (frentesCfg && frentesCfg.length > 0 && Array.isArray(frentesCfg[0].valor)) {
+                allFrentesCatalogo = frentesCfg[0].valor;
+                window.allFrentesCatalogo = allFrentesCatalogo;
+            } else {
+                allFrentesCatalogo = [];
+                window.allFrentesCatalogo = allFrentesCatalogo;
+            }
+        } catch (errCfg) {
+            console.warn('Aviso ao buscar efetivo_frentes_catalogo:', errCfg);
+            allFrentesCatalogo = [];
+            window.allFrentesCatalogo = allFrentesCatalogo;
+        }
         popularGheCatalogoDatalist();
+        popularFrentesDatalist();
         if (!treinamentosLoaded) {
             treinamentosLoaded = true;
             await loadTreinamentosData();
@@ -46,7 +63,7 @@ async function loadEfetivoData() {
 
 // Abas da página Efetivo (Visão Geral / Colaboradores / Terceiros & PJ / Férias / etc.)
 function showEfetivoSubtab(tab) {
-    ['visao', 'colaboradores', 'terceiros', 'ferias', 'os', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].forEach(t => {
+    ['visao', 'colaboradores', 'terceiros', 'ferias', 'os', 'setores', 'frentes', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].forEach(t => {
         const content = document.getElementById('efetivoSubtab-' + t);
         const btn = document.getElementById('efetivoSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -65,6 +82,7 @@ function showEfetivoSubtab(tab) {
     }
     if (tab === 'os') renderControleOrdensServico();
     if (tab === 'setores') { fecharGerenciarSetor(); renderSetoresLista(); }
+    if (tab === 'frentes') { fecharGerenciarFrente(); renderFrentesLista(); }
     if (tab === 'ghe') { fecharGerenciarGhe(); renderGheLista(); }
     if (tab === 'recomendacoes') renderRecomendacoesGheLista();
     if (tab === 'maoobra') { popularMaoDeObraDefaults(); renderMunicipiosAdaLista(); }
@@ -1689,6 +1707,470 @@ async function renomearSetor() {
     }
 }
 
+// ==============================================================================
+// GESTÃO GLOBAL DE FRENTES DE TRABALHO (EFETIVO & CONSUMIDORES SST)
+// Permite cadastrar, renomear, vincular/desvincular e inativar frentes globais
+// da obra, suportando frentes vazias sem criar colaboradores fictícios nem
+// alterar headcount, HHT ou ASO.
+// ==============================================================================
+
+var frenteAtualGerenciada = null;
+
+function obterCatalogoFrentesCompleto() {
+    var mapa = new Map();
+
+    // 1. Frentes do catálogo persistido no sistema
+    var catalogo = Array.isArray(allFrentesCatalogo) ? allFrentesCatalogo : [];
+    catalogo.forEach(function(f) {
+        var nome = typeof f === 'string' ? f.trim() : (f && f.nome ? f.nome.trim() : '');
+        if (!nome) return;
+        var chave = nome.toUpperCase();
+        var ativo = typeof f === 'object' && f !== null ? f.ativo !== false : true;
+        mapa.set(chave, {
+            nome: chave,
+            ativo: ativo,
+            qtd: 0,
+            criadoManualmente: true
+        });
+    });
+
+    // 2. Frentes legadas de DDSMA (preservação de compatibilidade)
+    if (typeof allDdsFrentesConfig !== 'undefined' && Array.isArray(allDdsFrentesConfig)) {
+        allDdsFrentesConfig.forEach(function(c) {
+            if (!c || !c.id) return;
+            var chave = c.id.trim().toUpperCase();
+            if (!chave) return;
+            if (!mapa.has(chave)) {
+                mapa.set(chave, {
+                    nome: chave,
+                    ativo: true,
+                    qtd: 0,
+                    criadoManualmente: true
+                });
+            }
+        });
+    }
+
+    // 3. Frentes derivadas dos colaboradores próprios ativos com responsável atribuído
+    if (typeof allEfetivo !== 'undefined' && Array.isArray(allEfetivo)) {
+        allEfetivo.forEach(function(e) {
+            if (!colaboradorEstaAtivo(e) || !e.responsavel || colaboradorEhTerceiro(e)) return;
+            var chave = e.responsavel.trim().toUpperCase();
+            if (!chave) return;
+            if (!mapa.has(chave)) {
+                mapa.set(chave, {
+                    nome: chave,
+                    ativo: true,
+                    qtd: 0,
+                    criadoManualmente: false
+                });
+            }
+            mapa.get(chave).qtd += 1;
+        });
+    }
+
+    return Array.from(mapa.values()).sort(function(a, b) {
+        return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
+    });
+}
+
+async function salvarCatalogoFrentesSupabase(catalogo) {
+    try {
+        await supabaseUpsert('configuracoes_sistema', [{
+            id: 'efetivo_frentes_catalogo',
+            valor: catalogo,
+            descricao: 'Catálogo global de frentes de trabalho cadastradas no Efetivo (com ou sem colaboradores vinculados).',
+            atualizado_em: new Date().toISOString(),
+            atualizado_por: (typeof usuarioDashboardAtual === 'function' ? usuarioDashboardAtual() : 'painel') || 'painel'
+        }]);
+    } catch (e) {
+        console.error('Erro ao salvar catálogo de frentes no Supabase:', e);
+        throw e;
+    }
+}
+
+function renderFrentesLista() {
+    var container = document.getElementById('frentesLista');
+    var resumo = document.getElementById('frentesResumo');
+    if (!container) return;
+
+    var frentes = obterCatalogoFrentesCompleto();
+    var comPessoas = frentes.filter(function(f) { return f.qtd > 0; }).length;
+
+    if (resumo) {
+        resumo.textContent = frentes.length + ' frente(s) cadastrada(s) • ' + comPessoas + ' com colaboradores ativos';
+    }
+
+    if (frentes.length === 0) {
+        container.innerHTML = '<div class="db-list-empty">Nenhuma frente de trabalho cadastrada ainda. Clique em "+ Nova Frente" para cadastrar.</div>';
+        return;
+    }
+
+    container.innerHTML = frentes.map(function(f) {
+        var statusBadge = f.ativo
+            ? '<span style="font-size:10.5px; background:rgba(34,197,94,0.15); color:#15803d; border:1px solid rgba(34,197,94,0.3); padding:1px 6px; border-radius:6px; font-weight:600;">Ativa</span>'
+            : '<span style="font-size:10.5px; background:rgba(100,116,139,0.15); color:#475569; border:1px solid rgba(100,116,139,0.3); padding:1px 6px; border-radius:6px; font-weight:600;">Inativa</span>';
+
+        var subInfo = f.qtd > 0
+            ? f.qtd + ' colaborador(es) ativo(s)'
+            : '<span style="color:#d97706;">⚠️ Frente sem colaboradores vinculados</span>';
+
+        return '<div class="db-list-item" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="abrirGerenciarFrente(\'' + escapeHTML(f.nome) + '\')">' +
+            '<div>' +
+                '<div class="db-list-item-title" style="display:flex; align-items:center; gap:8px;">' +
+                    '<span>👷 ' + escapeHTML(f.nome) + '</span> ' + statusBadge +
+                '</div>' +
+                '<div class="db-list-item-sub">' + subInfo + '</div>' +
+            '</div>' +
+            '<div style="font-size:11px; color:var(--text-light);">Gerenciar ➔</div>' +
+        '</div>';
+    }).join('');
+}
+
+async function criarNovaFrente() {
+    var nome = prompt('Nome da nova frente de trabalho (ex: CANTEIRO CENTRAL, LINHA 01):');
+    if (!nome || !nome.trim()) return;
+    var nomeFinal = nome.trim().toUpperCase();
+
+    var catalogo = Array.isArray(allFrentesCatalogo) ? allFrentesCatalogo : [];
+    var existenteIdx = catalogo.findIndex(function(f) {
+        var n = typeof f === 'string' ? f : (f && f.nome);
+        return n && n.trim().toUpperCase() === nomeFinal;
+    });
+
+    if (existenteIdx >= 0) {
+        var item = catalogo[existenteIdx];
+        var estaAtivo = typeof item === 'object' && item !== null ? item.ativo !== false : true;
+        if (estaAtivo) {
+            alert('A frente "' + nomeFinal + '" já está cadastrada e ativa.');
+            abrirGerenciarFrente(nomeFinal);
+            return;
+        } else {
+            if (confirm('A frente "' + nomeFinal + '" está cadastrada como inativa. Deseja reativá-la agora?')) {
+                if (typeof item === 'object' && item !== null) item.ativo = true;
+                else catalogo[existenteIdx] = { nome: nomeFinal, ativo: true };
+                allFrentesCatalogo = catalogo;
+                window.allFrentesCatalogo = allFrentesCatalogo;
+                await salvarCatalogoFrentesSupabase(allFrentesCatalogo);
+                popularFrentesDatalist();
+                renderFrentesLista();
+                abrirGerenciarFrente(nomeFinal);
+            }
+            return;
+        }
+    }
+
+    catalogo.push({
+        nome: nomeFinal,
+        ativo: true,
+        criado_em: new Date().toISOString()
+    });
+    allFrentesCatalogo = catalogo;
+    window.allFrentesCatalogo = allFrentesCatalogo;
+
+    try {
+        await salvarCatalogoFrentesSupabase(allFrentesCatalogo);
+    } catch (e) {
+        alert('Erro ao salvar no banco: ' + e.message);
+    }
+
+    popularFrentesDatalist();
+    renderFrentesLista();
+    abrirGerenciarFrente(nomeFinal);
+}
+
+function abrirGerenciarFrente(nomeFrente) {
+    frenteAtualGerenciada = nomeFrente;
+    var tituloEl = document.getElementById('frenteGerenciarTitulo');
+    var statusEl = document.getElementById('frenteGerenciarStatus');
+    var btnAtivo = document.getElementById('frenteBtnAlternarAtivo');
+    var inputAdd = document.getElementById('frenteAddColabInput');
+    var resultsAdd = document.getElementById('frenteAddColabResults');
+    var card = document.getElementById('frenteGerenciarCard');
+
+    if (tituloEl) tituloEl.textContent = '👷 ' + nomeFrente;
+    if (statusEl) statusEl.textContent = '';
+    if (inputAdd) inputAdd.value = '';
+    if (resultsAdd) resultsAdd.innerHTML = '';
+
+    var catalogo = Array.isArray(allFrentesCatalogo) ? allFrentesCatalogo : [];
+    var item = catalogo.find(function(f) {
+        var n = typeof f === 'string' ? f : (f && f.nome);
+        return n && n.trim().toUpperCase() === nomeFrente.toUpperCase();
+    });
+    var estaAtivo = item ? (typeof item === 'object' && item.ativo !== false) : true;
+
+    if (btnAtivo) {
+        btnAtivo.textContent = estaAtivo ? '⏸️ Desativar Frente' : '▶️ Ativar Frente';
+        btnAtivo.title = estaAtivo ? 'Desativar frente para novas seleções (preserva colaboradores existentes)' : 'Reativar frente para seleções no sistema';
+    }
+
+    if (card) card.style.display = 'block';
+    renderFrenteColabList();
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function fecharGerenciarFrente() {
+    frenteAtualGerenciada = null;
+    var card = document.getElementById('frenteGerenciarCard');
+    if (card) card.style.display = 'none';
+}
+
+function renderFrenteColabList() {
+    var container = document.getElementById('frenteColabList');
+    if (!container || !frenteAtualGerenciada) return;
+
+    var equipe = allEfetivo.filter(function(e) {
+        return colaboradorEstaAtivo(e) && !colaboradorEhTerceiro(e) &&
+            (e.responsavel || '').trim().toUpperCase() === frenteAtualGerenciada.toUpperCase();
+    }).sort(function(a, b) {
+        return (a.nome || '').localeCompare(b.nome || '');
+    });
+
+    if (equipe.length === 0) {
+        container.innerHTML = '<div class="db-list-empty">Nenhum colaborador vinculado a esta frente ainda. Use a busca abaixo para vincular colaboradores.</div>';
+        return;
+    }
+
+    container.innerHTML = equipe.map(function(e) {
+        return '<div class="db-list-item" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">' +
+            '<div>' +
+                '<div class="db-list-item-title">' + escapeHTML(e.nome || '') + '</div>' +
+                '<div class="db-list-item-sub">' + escapeHTML(e.funcao || '') + ' — Matrícula ' + escapeHTML(e.id) + '</div>' +
+            '</div>' +
+            '<div style="display:flex; gap:6px; flex-shrink:0;">' +
+                '<button class="db-clear-btn" onclick="editarColaboradorDaEquipe(\'' + escapeHTML(e.id) + '\')">✏️ Editar</button>' +
+                '<button class="db-clear-btn" style="color:var(--danger); border-color:var(--danger);" onclick="removerDaFrente(\'' + escapeHTML(e.id) + '\')">Remover</button>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function filterFrenteAddColab(query) {
+    var container = document.getElementById('frenteAddColabResults');
+    if (!container || !frenteAtualGerenciada) return;
+    var q = (query || '').toLowerCase().trim();
+    if (q.length < 2) { container.innerHTML = ''; return; }
+
+    var matches = allEfetivo.filter(function(e) {
+        return colaboradorEstaAtivo(e) && !colaboradorEhTerceiro(e) &&
+            (e.responsavel || '').trim().toUpperCase() !== frenteAtualGerenciada.toUpperCase() &&
+            ((e.nome && e.nome.toLowerCase().includes(q)) || (e.id && e.id.toLowerCase().includes(q)));
+    }).slice(0, 15);
+
+    if (matches.length === 0) {
+        container.innerHTML = '<div class="db-list-empty">Nenhum colaborador encontrado</div>';
+        return;
+    }
+
+    container.innerHTML = matches.map(function(e) {
+        return '<div class="db-list-item" style="cursor:pointer;" onclick="adicionarAFrente(\'' + escapeHTML(e.id) + '\')">' +
+            '<div class="db-list-item-title">' + escapeHTML(e.nome || '') + '</div>' +
+            '<div class="db-list-item-sub">' + escapeHTML(e.funcao || '') + ' — Matrícula ' + escapeHTML(e.id) +
+            (e.responsavel ? ' — atualmente na frente ' + escapeHTML(e.responsavel) : ' — sem frente definida') + '</div>' +
+        '</div>';
+    }).join('');
+}
+
+async function salvarFrenteColaborador(matricula, novaFrente) {
+    var statusEl = document.getElementById('frenteGerenciarStatus');
+    var e = allEfetivo.find(function(x) { return x.id === matricula; });
+    if (!e) return;
+    if (statusEl) { statusEl.textContent = 'Salvando vínculo...'; statusEl.style.color = 'var(--text-light)'; }
+
+    try {
+        await supabaseUpsert('colaboradores_efetivo', [{ id: matricula, responsavel: novaFrente }]);
+        e.responsavel = novaFrente;
+        if (statusEl) { statusEl.textContent = '✅ Vínculo atualizado com sucesso.'; statusEl.style.color = 'var(--success)'; }
+        renderFrenteColabList();
+        renderFrentesLista();
+        popularFrentesDatalist();
+    } catch (err) {
+        console.error('Erro ao atualizar frente do colaborador:', err);
+        if (statusEl) { statusEl.textContent = '❌ Falha: ' + err.message; statusEl.style.color = 'var(--danger)'; }
+    }
+}
+
+function adicionarAFrente(matricula) {
+    if (!frenteAtualGerenciada) return;
+    salvarFrenteColaborador(matricula, frenteAtualGerenciada);
+    var input = document.getElementById('frenteAddColabInput');
+    var res = document.getElementById('frenteAddColabResults');
+    if (input) input.value = '';
+    if (res) res.innerHTML = '';
+}
+
+function removerDaFrente(matricula) {
+    if (!confirm('Remover este colaborador da frente? Ele ficará sem frente definida até ser vinculado a outra.')) return;
+    salvarFrenteColaborador(matricula, null);
+}
+
+async function renomearFrenteAtual() {
+    if (!frenteAtualGerenciada) return;
+    var novoNome = prompt('Renomear frente "' + frenteAtualGerenciada + '" para:', frenteAtualGerenciada);
+    if (!novoNome || !novoNome.trim() || novoNome.trim().toUpperCase() === frenteAtualGerenciada.toUpperCase()) return;
+    var nomeFinal = novoNome.trim().toUpperCase();
+
+    var afetados = allEfetivo.filter(function(e) {
+        return colaboradorEstaAtivo(e) && (e.responsavel || '').trim().toUpperCase() === frenteAtualGerenciada.toUpperCase();
+    });
+
+    var statusEl = document.getElementById('frenteGerenciarStatus');
+    if (statusEl) {
+        statusEl.textContent = 'Renomeando ' + afetados.length + ' colaborador(es)...';
+        statusEl.style.color = 'var(--text-light)';
+    }
+
+    try {
+        if (afetados.length > 0) {
+            var linhas = afetados.map(function(e) { return { id: e.id, responsavel: nomeFinal }; });
+            await supabaseUpsert('colaboradores_efetivo', linhas);
+            afetados.forEach(function(e) { e.responsavel = nomeFinal; });
+        }
+
+        var catalogo = Array.isArray(allFrentesCatalogo) ? allFrentesCatalogo : [];
+        var itemIdx = catalogo.findIndex(function(f) {
+            var n = typeof f === 'string' ? f : (f && f.nome);
+            return n && n.trim().toUpperCase() === frenteAtualGerenciada.toUpperCase();
+        });
+
+        if (itemIdx >= 0) {
+            if (typeof catalogo[itemIdx] === 'object' && catalogo[itemIdx] !== null) {
+                catalogo[itemIdx].nome = nomeFinal;
+            } else {
+                catalogo[itemIdx] = { nome: nomeFinal, ativo: true };
+            }
+        } else {
+            catalogo.push({ nome: nomeFinal, ativo: true, criado_em: new Date().toISOString() });
+        }
+
+        allFrentesCatalogo = catalogo;
+        window.allFrentesCatalogo = allFrentesCatalogo;
+        await salvarCatalogoFrentesSupabase(allFrentesCatalogo);
+
+        frenteAtualGerenciada = nomeFinal;
+        var tituloEl = document.getElementById('frenteGerenciarTitulo');
+        if (tituloEl) tituloEl.textContent = '👷 ' + nomeFinal;
+
+        if (statusEl) {
+            statusEl.textContent = '✅ Frente renomeada para "' + nomeFinal + '" (' + afetados.length + ' colaboradores atualizados).';
+            statusEl.style.color = 'var(--success)';
+        }
+
+        renderFrenteColabList();
+        renderFrentesLista();
+        popularFrentesDatalist();
+    } catch (err) {
+        console.error('Erro ao renomear frente:', err);
+        if (statusEl) {
+            statusEl.textContent = '❌ Falha: ' + err.message;
+            statusEl.style.color = 'var(--danger)';
+        }
+    }
+}
+
+async function alternarAtivoFrenteAtual() {
+    if (!frenteAtualGerenciada) return;
+    var catalogo = Array.isArray(allFrentesCatalogo) ? allFrentesCatalogo : [];
+    var item = catalogo.find(function(f) {
+        var n = typeof f === 'string' ? f : (f && f.nome);
+        return n && n.trim().toUpperCase() === frenteAtualGerenciada.toUpperCase();
+    });
+
+    if (!item) {
+        item = { nome: frenteAtualGerenciada, ativo: true };
+        catalogo.push(item);
+    }
+
+    var novoStatus = !(typeof item === 'object' && item.ativo !== false);
+    if (typeof item === 'object' && item !== null) {
+        item.ativo = novoStatus;
+    }
+
+    allFrentesCatalogo = catalogo;
+    window.allFrentesCatalogo = allFrentesCatalogo;
+
+    try {
+        await salvarCatalogoFrentesSupabase(allFrentesCatalogo);
+        var statusEl = document.getElementById('frenteGerenciarStatus');
+        if (statusEl) {
+            statusEl.textContent = '✅ Frente marcada como ' + (novoStatus ? 'ATIVA' : 'INATIVA') + '. Colaboradores vinculados continuam preservados.';
+            statusEl.style.color = 'var(--success)';
+        }
+        abrirGerenciarFrente(frenteAtualGerenciada);
+        renderFrentesLista();
+        popularFrentesDatalist();
+    } catch (e) {
+        alert('Erro ao alterar status da frente: ' + e.message);
+    }
+}
+
+async function excluirFrenteAtual() {
+    if (!frenteAtualGerenciada) return;
+    var afetados = allEfetivo.filter(function(e) {
+        return colaboradorEstaAtivo(e) && (e.responsavel || '').trim().toUpperCase() === frenteAtualGerenciada.toUpperCase();
+    });
+
+    if (afetados.length > 0) {
+        alert('⚠️ Não é possível excluir a frente "' + frenteAtualGerenciada + '" porque existem ' + afetados.length + ' colaborador(es) vinculado(s) a ela.\n\nPara excluir, reatribua ou desvincule os colaboradores primeiro.');
+        return;
+    }
+
+    if (!confirm('Deseja excluir a frente vazia "' + frenteAtualGerenciada + '" do catálogo global?')) return;
+
+    var catalogo = (Array.isArray(allFrentesCatalogo) ? allFrentesCatalogo : []).filter(function(f) {
+        var n = typeof f === 'string' ? f : (f && f.nome);
+        return n && n.trim().toUpperCase() !== frenteAtualGerenciada.toUpperCase();
+    });
+
+    allFrentesCatalogo = catalogo;
+    window.allFrentesCatalogo = allFrentesCatalogo;
+
+    try {
+        await salvarCatalogoFrentesSupabase(allFrentesCatalogo);
+    } catch (e) {
+        console.warn('Aviso ao salvar exclusão no Supabase:', e);
+    }
+
+    fecharGerenciarFrente();
+    renderFrentesLista();
+    popularFrentesDatalist();
+}
+
+function popularFrentesDatalist() {
+    var dl = document.getElementById('efFrentesDatalist');
+    if (!dl) return;
+    dl.innerHTML = '';
+    var frentes = typeof todasFrentesAtivas === 'function' ? todasFrentesAtivas() : [];
+    frentes.forEach(function(f) {
+        var opt = document.createElement('option');
+        opt.value = f;
+        dl.appendChild(opt);
+    });
+}
+
+async function registrarFrenteGlobalNoCatalogo(nome) {
+    if (!nome || !nome.trim()) return;
+    var nomeFinal = nome.trim().toUpperCase();
+    var catalogo = Array.isArray(allFrentesCatalogo) ? allFrentesCatalogo : [];
+    var existe = catalogo.some(function(f) {
+        var n = typeof f === 'string' ? f : (f && f.nome);
+        return n && n.trim().toUpperCase() === nomeFinal;
+    });
+    if (!existe) {
+        catalogo.push({ nome: nomeFinal, ativo: true, criado_em: new Date().toISOString() });
+        allFrentesCatalogo = catalogo;
+        window.allFrentesCatalogo = allFrentesCatalogo;
+        try {
+            await salvarCatalogoFrentesSupabase(allFrentesCatalogo);
+        } catch (e) {
+            console.warn('Aviso ao registrar frente no catálogo global:', e);
+        }
+        popularFrentesDatalist();
+        renderFrentesLista();
+    }
+}
+
 // Exportações globais para integração com outros módulos
 window.obterResumoCiclosFeriasColab = obterResumoCiclosFeriasColab;
 window.marcarCicloFeriasGozadoRapido = marcarCicloFeriasGozadoRapido;
@@ -2268,3 +2750,21 @@ window.salvarTerceiroEfetivo = salvarTerceiroEfetivo;
 window.alternarStatusTerceiro = alternarStatusTerceiro;
 window.exportarExcelTerceiros = exportarExcelTerceiros;
 window.showEfetivoSubtab = showEfetivoSubtab;
+
+// Exportações globais de Frentes
+window.allFrentesCatalogo = allFrentesCatalogo;
+window.obterCatalogoFrentesCompleto = obterCatalogoFrentesCompleto;
+window.renderFrentesLista = renderFrentesLista;
+window.criarNovaFrente = criarNovaFrente;
+window.abrirGerenciarFrente = abrirGerenciarFrente;
+window.fecharGerenciarFrente = fecharGerenciarFrente;
+window.renderFrenteColabList = renderFrenteColabList;
+window.filterFrenteAddColab = filterFrenteAddColab;
+window.salvarFrenteColaborador = salvarFrenteColaborador;
+window.adicionarAFrente = adicionarAFrente;
+window.removerDaFrente = removerDaFrente;
+window.renomearFrenteAtual = renomearFrenteAtual;
+window.alternarAtivoFrenteAtual = alternarAtivoFrenteAtual;
+window.excluirFrenteAtual = excluirFrenteAtual;
+window.popularFrentesDatalist = popularFrentesDatalist;
+window.registrarFrenteGlobalNoCatalogo = registrarFrenteGlobalNoCatalogo;

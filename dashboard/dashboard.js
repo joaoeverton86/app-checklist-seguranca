@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-var VERSAO_PAINEL = 'v298';
+var VERSAO_PAINEL = 'v299';
 try { ['badgeVersaoDashboardLogin', 'badgeVersaoDashboardSidebar'].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = VERSAO_PAINEL; }); } catch(e){}
 var DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
@@ -6886,9 +6886,32 @@ function equipeDaFrente(responsavel) {
 // por frente pra um mesmo tema, já que um treinamento pode precisar ir pra várias
 // equipes (confirmado com o usuário: "uma lista por frente, pra cada tema").
 function todasFrentesAtivas() {
-    const frentes = new Set();
-    allEfetivo.forEach(e => { if (colaboradorEstaAtivo(e) && e.responsavel) frentes.add(e.responsavel); });
-    return Array.from(frentes).sort();
+    var frentes = new Set();
+    if (typeof allEfetivo !== 'undefined' && Array.isArray(allEfetivo)) {
+        allEfetivo.forEach(function(e) {
+            if (typeof colaboradorEstaAtivo === 'function' && colaboradorEstaAtivo(e) && e.responsavel) {
+                var f = e.responsavel.trim();
+                if (f) frentes.add(f);
+            }
+        });
+    }
+    var catalogo = (typeof window !== 'undefined' && Array.isArray(window.allFrentesCatalogo)) ? window.allFrentesCatalogo : [];
+    catalogo.forEach(function(f) {
+        var nome = typeof f === 'string' ? f.trim() : (f && f.nome ? f.nome.trim() : '');
+        var ativo = typeof f === 'object' && f !== null ? f.ativo !== false : true;
+        if (nome && ativo) frentes.add(nome);
+    });
+    if (typeof allDdsFrentesConfig !== 'undefined' && Array.isArray(allDdsFrentesConfig)) {
+        allDdsFrentesConfig.forEach(function(c) {
+            if (c && c.id && c.ativo !== false) {
+                var nome = c.id.trim();
+                if (nome) frentes.add(nome);
+            }
+        });
+    }
+    return Array.from(frentes).sort(function(a, b) {
+        return a.localeCompare(b, 'pt-BR', { sensitivity: 'base' });
+    });
 }
 
 // Resolve um nome de frente pro seu "nome atual", caso tenha sido mesclado em
@@ -8930,6 +8953,9 @@ async function adicionarFrenteDdsManual() {
     try {
         await supabaseUpsert('dds_frentes_config', [{ id: nome, ativo: true }]);
         allDdsFrentesConfig.push({ id: nome, ativo: true });
+        if (typeof window.registrarFrenteGlobalNoCatalogo === 'function') {
+            try { await window.registrarFrenteGlobalNoCatalogo(nome); } catch (eCat) { console.warn('Aviso ao sincronizar catálogo global:', eCat); }
+        }
         input.value = '';
         renderDdsGerenciarFrentes();
         const { inicio, fim } = getDdsDateRange();
@@ -14747,7 +14773,7 @@ async function loadEfetivoData() {
 
 // Abas da página Efetivo (Visão Geral / Colaboradores / Terceiros & PJ / Férias / etc.)
 function showEfetivoSubtab(tab) {
-    ['visao', 'colaboradores', 'terceiros', 'ferias', 'os', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].forEach(t => {
+    ['visao', 'colaboradores', 'terceiros', 'ferias', 'os', 'setores', 'frentes', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].forEach(t => {
         const content = document.getElementById('efetivoSubtab-' + t);
         const btn = document.getElementById('efetivoSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -14766,6 +14792,7 @@ function showEfetivoSubtab(tab) {
     }
     if (tab === 'os') renderControleOrdensServico();
     if (tab === 'setores') { fecharGerenciarSetor(); renderSetoresLista(); }
+    if (tab === 'frentes') { if (typeof window.fecharGerenciarFrente === 'function') window.fecharGerenciarFrente(); if (typeof window.renderFrentesLista === 'function') window.renderFrentesLista(); }
     if (tab === 'ghe') { fecharGerenciarGhe(); renderGheLista(); }
     if (tab === 'recomendacoes') renderRecomendacoesGheLista();
     if (tab === 'maoobra') { popularMaoDeObraDefaults(); renderMunicipiosAdaLista(); }

@@ -2372,9 +2372,34 @@ function equipeDaFrente(responsavel) {
 // por frente pra um mesmo tema, já que um treinamento pode precisar ir pra várias
 // equipes (confirmado com o usuário: "uma lista por frente, pra cada tema").
 function todasFrentesAtivas() {
-    const frentes = new Set();
-    allEfetivo.forEach(e => { if (colaboradorEstaAtivo(e) && e.responsavel) frentes.add(e.responsavel); });
-    return Array.from(frentes).sort();
+    var frentes = new Set();
+    if (typeof allEfetivo !== 'undefined' && Array.isArray(allEfetivo)) {
+        allEfetivo.forEach(function(e) {
+            if (typeof colaboradorEstaAtivo === 'function' && colaboradorEstaAtivo(e) && e.responsavel) {
+                var f = e.responsavel.trim();
+                if (f) frentes.add(f);
+            }
+        });
+    }
+    var catalogo = (typeof allFrentesCatalogo !== 'undefined' && Array.isArray(allFrentesCatalogo))
+        ? allFrentesCatalogo
+        : (typeof window !== 'undefined' && Array.isArray(window.allFrentesCatalogo) ? window.allFrentesCatalogo : []);
+    catalogo.forEach(function(f) {
+        var nome = typeof f === 'string' ? f.trim() : (f && f.nome ? f.nome.trim() : '');
+        var ativo = typeof f === 'object' && f !== null ? f.ativo !== false : true;
+        if (nome && ativo) frentes.add(nome);
+    });
+    if (typeof allDdsFrentesConfig !== 'undefined' && Array.isArray(allDdsFrentesConfig)) {
+        allDdsFrentesConfig.forEach(function(c) {
+            if (c && c.id && c.ativo !== false) {
+                var nome = c.id.trim();
+                if (nome) frentes.add(nome);
+            }
+        });
+    }
+    return Array.from(frentes).sort(function(a, b) {
+        return a.localeCompare(b, 'pt-BR', { sensitivity: 'base' });
+    });
 }
 
 // Resolve um nome de frente pro seu "nome atual", caso tenha sido mesclado em
@@ -4416,6 +4441,9 @@ async function adicionarFrenteDdsManual() {
     try {
         await supabaseUpsert('dds_frentes_config', [{ id: nome, ativo: true }]);
         allDdsFrentesConfig.push({ id: nome, ativo: true });
+        if (typeof window.registrarFrenteGlobalNoCatalogo === 'function') {
+            try { await window.registrarFrenteGlobalNoCatalogo(nome); } catch (eCat) { console.warn('Aviso ao sincronizar catálogo global:', eCat); }
+        }
         input.value = '';
         renderDdsGerenciarFrentes();
         const { inicio, fim } = getDdsDateRange();
@@ -11252,9 +11280,8 @@ function popularEquipesResponsavelDatalist() {
     const dl = document.getElementById('equipesResponsavelList');
     if (!dl) return;
     dl.innerHTML = '';
-    const responsaveis = new Set();
-    allEfetivo.forEach(e => { if (colaboradorEstaAtivo(e) && e.responsavel) responsaveis.add(e.responsavel); });
-    Array.from(responsaveis).sort().forEach(r => {
+    const responsaveis = typeof todasFrentesAtivas === 'function' ? todasFrentesAtivas() : [];
+    responsaveis.forEach(r => {
         const opt = document.createElement('option');
         opt.value = r;
         dl.appendChild(opt);
@@ -14294,3 +14321,9 @@ var excluirRegraTrein = excluirRegraRecomendacao;
     }
 
 // [Fim do Módulo treinamentos_ddsma.js - v221]
+
+function irParaGestaoGlobalFrentesEfetivo() {
+    if (typeof showDbPage === 'function') showDbPage('efetivo');
+    if (typeof showEfetivoSubtab === 'function') showEfetivoSubtab('frentes');
+}
+window.irParaGestaoGlobalFrentesEfetivo = irParaGestaoGlobalFrentesEfetivo;

@@ -33,7 +33,7 @@
         <div style="width:100%; max-width:380px; margin:20px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:32px 28px; box-shadow:0 8px 32px rgba(0,0,0,0.08); box-sizing:border-box;">
             <div style="text-align:center; margin-bottom:22px;">
                 <div style="font-size:34px; margin-bottom:6px;">🛡️</div>
-                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v295</span></div>
+                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v296</span></div>
                 <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; letter-spacing:.5px; margin-top:2px;">PISF Ramal do Agreste</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:12px;">
@@ -149,7 +149,7 @@
             <div class="db-brand">
                 <div class="db-brand-icon">🛡️</div>
                 <div>
-                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v295</span></div>
+                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v296</span></div>
                     <div class="db-brand-sub">PISF Ramal do Agreste</div>
                 </div>
             </div>
@@ -298,12 +298,12 @@
                 <div class="db-header-status">
                     <span id="statusText">Carregando...</span>
                     <button onclick="forcarAtualizacaoGeralDadosPainel()" title="Atualizar dados da nuvem agora (limpar cache local)" style="padding:4px 10px; border-radius:6px; border:1px solid var(--border); background:#fff; cursor:pointer; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:background 0.2s;">🔄 Atualizar Dados</button>
-                    
+
                     <!-- Alternância Modo Noturno / Modo Claro (NR-17 Ergonomia Visual) -->
                     <button type="button" id="btnToggleDarkMode" onclick="alternarModoEscuro()" title="Alternar entre modo claro e modo escuro (NR-17 Ergonomia Visual)" class="db-theme-toggle-btn" style="padding:4px 10px; border-radius:6px; border:1px solid var(--border); background:var(--card, #fff); color:var(--text, #0f172a); cursor:pointer; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:5px; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:all 0.2s;">
                         <span id="themeToggleIcon">🌙</span> <span id="themeToggleText">Modo Noturno</span>
                     </button>
-                    
+
                     <!-- Central Inteligente de Alertas e Pendências SST -->
                     <div class="db-alertas-wrapper" id="wrapCentralAlertas">
                         <button type="button" id="btnCentralAlertas" class="db-btn-sininho" onclick="toggleCentralAlertasDropdown(event)" title="Central de Pendências e Alertas SST">
@@ -475,6 +475,24 @@
                     <div class="db-kpi-card db-kpi-success">
                         <div class="db-kpi-value" id="kpiRealizados">0</div>
                         <div class="db-kpi-label">Realizados no Período</div>
+                    </div>
+                </div>
+
+                <!-- Banner de Composição Geral da Obra (Próprios vs Terceiros) -->
+                <div class="db-card" style="margin-bottom: 16px; padding: 12px 16px; background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 16px;">👥</span>
+                            <div>
+                                <strong style="font-size: 13px; color: var(--text);">Composição Geral do Efetivo na Obra (PISF Ramal do Agreste):</strong>
+                                <div style="font-size: 11.5px; color: var(--text-light);">Segregação estrita: Próprios CLT (headcount) vs Terceirizados &amp; PJs (prestadores e mecânica).</div>
+                            </div>
+                        </div>
+                        <div id="efetivoComposicaoGeralObra" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 12.5px;">
+                            <span class="db-badge" style="background: rgba(37,99,235,0.1); color: var(--primary); padding: 4px 10px; border-radius: 6px; font-weight: 700;">👷 Próprios CLT: <span id="compPropriosQtd">0</span></span>
+                            <span class="db-badge" style="background: rgba(124,58,237,0.1); color: #7c3aed; padding: 4px 10px; border-radius: 6px; font-weight: 700;">🏢 Terceirizados / PJ: <span id="compTerceirosQtd">0</span></span>
+                            <span class="db-badge" style="background: rgba(16,185,129,0.1); color: #10b981; padding: 4px 10px; border-radius: 6px; font-weight: 700;">👥 Total Presente: <span id="compTotalQtd">0</span></span>
+                        </div>
                     </div>
                 </div>
 
@@ -2227,7 +2245,7 @@
                         <div id="relatorioMensalStatus" style="margin-top:10px; font-size:12.5px;"></div>
                     </div>
                 </div>
-            
+
 
                 <!-- SUBABA: PLANO ANUAL DE TREINAMENTO (PAT - NR-01 / NR-18) -->
 <div id="treinSubtab-pat" style="display:none;">
@@ -2735,7 +2753,7 @@
         <!-- Alvo Dinâmico -->
         <div id="wrapFormRegra_alvo" style="margin-bottom: 14px;">
             <label id="formRegra_alvoLabel" style="display:block; font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 4px;">Alvo da Exigência *</label>
-            
+
             <!-- Container quando tipo é TODOS -->
             <div id="formRegra_alvoTodosNotice" style="display:block; padding: 10px 12px; background: #e0e7ff; border: 1px solid #c7d2fe; border-radius: 8px; font-size: 12px; color: #3730a3;">
                 ℹ️ Esta regra será aplicada automaticamente a <strong>100% dos colaboradores ativos</strong> na admissão e na gestão contínua.
@@ -3391,7 +3409,7 @@
                     <p style="font-size: 12px; color: var(--text-light); margin-bottom: 14px; line-height: 1.4;">
                         Emita de uma vez as fichas semanais em branco com os temas diários do cronograma e a listagem nominal dos colaboradores de cada frente de serviço. O layout é auto-otimizado para que equipes de até 15 colaboradores caibam em <strong>1 única folha</strong>.
                     </p>
-                    
+
                     <!-- BARRA DE FILTROS DO LOTE -->
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; font-size: 12px; margin-bottom: 12px; align-items: end;">
                         <div>
@@ -3641,6 +3659,7 @@
                     <div class="db-filter-buttons">
                         <button id="efetivoSubtabBtn-visao" class="db-filter-btn active" onclick="showEfetivoSubtab('visao')">📊 Visão Geral</button>
                         <button id="efetivoSubtabBtn-colaboradores" class="db-filter-btn" onclick="showEfetivoSubtab('colaboradores')">👥 Colaboradores</button>
+                        <button id="efetivoSubtabBtn-terceiros" class="db-filter-btn" onclick="showEfetivoSubtab('terceiros')">🏢 Gestão de Terceiros &amp; PJ</button>
                         <button id="efetivoSubtabBtn-ferias" class="db-filter-btn" onclick="showEfetivoSubtab('ferias')">🏖️ Férias & Afastamentos</button>
                         <button id="efetivoSubtabBtn-os" class="db-filter-btn" onclick="showEfetivoSubtab('os')">📄 Ordens de Serviço (NR-01)</button>
                         <button id="efetivoSubtabBtn-setores" class="db-filter-btn" onclick="showEfetivoSubtab('setores')">🏢 Setores</button>
@@ -4091,7 +4110,7 @@
                                 <div style="font-size:11.5px; font-weight:700; color:var(--text-light); text-transform:uppercase; letter-spacing:0.5px;">
                                     ⚙️ Opções do Documento:
                                 </div>
-                                
+
                                 <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; user-select:none;">
                                     <input type="checkbox" id="relEquipeIncluirAssinatura" checked onchange="atualizarPreviaRelatorioEquipe()" style="width:16px; height:16px; cursor:pointer;">
                                     <span><b>Incluir campo para Rubrica / Assinatura</b> (DDSMA e Liberação Diária)</span>
@@ -4273,6 +4292,218 @@
                 </div>
 
                                 <!-- Sub-aba: Ordens de Serviço (NR-01) -->
+                <!-- Subaba: Gestão de Terceiros & PJ -->
+                <div id="efetivoSubtab-terceiros" style="display:none;">
+                    <div class="db-card" style="margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap;">
+                            <div>
+                                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                                    🏢 Gestão de Terceiros, Prestadores e PJs (PISF Ramal do Agreste)
+                                </h3>
+                                <p style="font-size: 12px; color: var(--text-light); margin: 4px 0 0; line-height: 1.4;">
+                                    Controle operacional e de SST de parceiros e terceirizados (ex: manutenção de máquinas/veículos ARTEC e contratos PJ). Totalmente segregado do efetivo próprio CLT para <strong>preservar a integridade dos indicadores legais e trabalhistas</strong>.
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <button type="button" class="db-clear-btn" onclick="exportarExcelTerceiros()" title="Exportar listagem de terceiros para Excel" style="border-color: #10b981; color: #047857; background: #ecfdf5; font-weight: 700; display: inline-flex; align-items: center; gap: 5px;">
+                                    📊 Gerar Excel
+                                </button>
+                                <button type="button" class="db-clear-btn" onclick="renderTerceirosPanel()" title="Atualizar listagem de terceiros">
+                                    🔄 Atualizar
+                                </button>
+                                <button type="button" class="db-apply-btn" onclick="abrirModalNovoTerceiro()" style="background: #4f46e5; font-weight: 700;">
+                                    ➕ Novo Terceiro / PJ
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Banner Informativo SST -->
+                        <div style="margin-top: 14px; padding: 10px 14px; background: rgba(79, 70, 229, 0.05); border: 1px solid rgba(79, 70, 229, 0.2); border-left: 4px solid #4f46e5; border-radius: 8px; font-size: 12px; line-height: 1.5; color: var(--text);">
+                            <strong>⚖️ Marco de Gestão Segregada &amp; Rastreabilidade SST:</strong>
+                            <div style="margin-top: 3px; color: var(--text-light);">
+                                • <strong>Blindagem Legal</strong>: Terceiros e PJs possuem identificação explícita de vínculo e empresa. Cadastrar, editar ou inativar terceiros <strong>não altera</strong> os indicadores de efetivo próprio CLT, admissões, demissões, férias ou distribuição setorial.<br>
+                                • <strong>Sincronização Dupla</strong>: Toda inclusão ou alteração de status reflete simultaneamente no cadastro gerencial (<code>colaboradores_efetivo</code>) e no aplicativo de campo (<code>colaboradores_checklist</code>).<br>
+                                • <strong>Segurança &amp; Meio Ambiente</strong>: Vínculo com GHE e catálogo de riscos para controle preventivo de EPIs aplicáveis e conformidade de ASO.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cards de Contadores Exclusivos de Terceiros -->
+                    <div class="db-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px;">
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #4f46e5;">
+                            <div class="db-kpi-value" id="kpiTerceirosTotal" style="font-size: 22px; color: #4f46e5;">0</div>
+                            <div class="db-kpi-label" style="font-weight: 700;">🏢 Total de Terceiros / PJ</div>
+                        </div>
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #059669;">
+                            <div class="db-kpi-value" id="kpiTerceirosAtivos" style="font-size: 22px; color: #059669;">0</div>
+                            <div class="db-kpi-label" style="color: #065f46; font-weight: 700;">🟢 Ativos na Obra</div>
+                        </div>
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #0284c7;">
+                            <div class="db-kpi-value" id="kpiTerceirosEmpresas" style="font-size: 22px; color: #0284c7;">0</div>
+                            <div class="db-kpi-label" style="color: #0369a1; font-weight: 700;">🚜 Empresas Parceiras</div>
+                        </div>
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #7c3aed;">
+                            <div class="db-kpi-value" id="kpiTerceirosPj" style="font-size: 22px; color: #7c3aed;">0</div>
+                            <div class="db-kpi-label" style="color: #5b21b6; font-weight: 700;">📋 Contratos PJ</div>
+                        </div>
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #10b981;">
+                            <div class="db-kpi-value" id="kpiTerceirosComposicaoTotal" style="font-size: 15px; font-weight: 800; color: #111827; margin-top: 4px;">0 Próprios + 0 Terceiros</div>
+                            <div class="db-kpi-label" style="color: #047857; font-weight: 700;">👥 Composição Total da Obra</div>
+                        </div>
+                    </div>
+
+                    <!-- Barra de Filtros e Busca -->
+                    <div class="db-chart-card" style="margin-bottom: 14px; padding: 12px 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <div style="display: flex; gap: 10px; align-items: center; flex: 1; min-width: 260px; max-width: 450px;">
+                                <input type="text" id="filtroTerceirosTexto" placeholder="🔍 Buscar por nome, matrícula, empresa ou função..." oninput="filtrarTabelaTerceiros()" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--card); color: var(--text);">
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-light); text-transform: uppercase;">Modalidade:</label>
+                                <select id="filtroTerceirosModalidade" onchange="filtrarTabelaTerceiros()" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); font-weight: 600;">
+                                    <option value="todos">Todas as Modalidades</option>
+                                    <option value="Terceirizado">🏢 Terceirizado</option>
+                                    <option value="PJ">📋 PJ (Pessoa Jurídica)</option>
+                                    <option value="Prestador">🛠️ Prestador de Serviços</option>
+                                </select>
+
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-light); text-transform: uppercase;">Empresa:</label>
+                                <select id="filtroTerceirosEmpresa" onchange="filtrarTabelaTerceiros()" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); font-weight: 600;">
+                                    <option value="todas">Todas as Empresas</option>
+                                </select>
+
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-light); text-transform: uppercase;">Situação:</label>
+                                <select id="filtroTerceirosSituacao" onchange="filtrarTabelaTerceiros()" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); font-weight: 600;">
+                                    <option value="ativos" selected>🟢 Apenas Ativos</option>
+                                    <option value="inativos">🔴 Inativos / Desmobilizados</option>
+                                    <option value="todos">📋 Todos</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabela de Terceiros e PJs -->
+                    <div class="db-chart-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <div class="db-chart-title" style="margin-bottom: 0;">📋 Relação de Terceiros &amp; Prestadores PJ</div>
+                            <div id="terceirosContadorTabela" style="font-size: 12px; color: var(--text-light);">Exibindo 0 registros</div>
+                        </div>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
+                                <thead>
+                                    <tr style="border-bottom: 2px solid var(--border); text-align: left; color: var(--text-light); font-size: 11.5px; text-transform: uppercase;">
+                                        <th style="padding: 10px 8px;">Matrícula</th>
+                                        <th style="padding: 10px 8px;">Nome</th>
+                                        <th style="padding: 10px 8px; text-align: center;">Modalidade</th>
+                                        <th style="padding: 10px 8px;">Empresa / Razão Social</th>
+                                        <th style="padding: 10px 8px;">Função / Atividade</th>
+                                        <th style="padding: 10px 8px;">Setor Atendido</th>
+                                        <th style="padding: 10px 8px;">GHE</th>
+                                        <th style="padding: 10px 8px; text-align: center;">Início</th>
+                                        <th style="padding: 10px 8px; text-align: center;">Status</th>
+                                        <th style="padding: 10px 8px; text-align: right;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaTerceirosBody">
+                                    <tr><td colspan="10" style="padding: 24px; text-align: center; color: var(--text-light);">Nenhum terceiro ou PJ cadastrado ainda. Clique em "+ Novo Terceiro / PJ" para cadastrar.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal: Cadastro / Edição de Terceiro & PJ -->
+                <div id="modalTerceiroForm" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:10050; align-items:center; justify-content:center; padding:16px;" onclick="if(event.target===this) fecharModalTerceiro();">
+                    <div style="background:var(--card, #fff); color:var(--text); border-radius:14px; max-width:680px; width:100%; max-height:92vh; overflow-y:auto; padding:22px 24px; box-shadow:0 20px 40px rgba(0,0,0,0.25); border:1px solid var(--border); box-sizing:border-box;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+                            <div class="db-chart-title" id="modalTerceiroTitle" style="margin-bottom:0; display:flex; align-items:center; gap:8px; font-size:16px;">
+                                🏢 Novo Terceiro / Prestador PJ
+                            </div>
+                            <button type="button" class="db-clear-btn" style="padding:4px 8px; font-weight:700;" onclick="fecharModalTerceiro()">✕</button>
+                        </div>
+
+                        <div style="font-size:12px; color:var(--text-light); margin-bottom:16px; line-height:1.45;">
+                            Cadastro de colaboradores terceirizados (ex: ARTEC - Mecânica e Máquinas) e prestadores em modalidade PJ. Os registros possuem identificação de vínculo explícita e <strong>não alteram o headcount de efetivo próprio CLT</strong> da obra.
+                        </div>
+
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; font-size:12.5px;">
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Matrícula / Identificador *</label>
+                                <input type="text" id="tercForm_matricula" placeholder="Ex: ARTEC-01, PJ-01..." style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Nome Completo *</label>
+                                <input type="text" id="tercForm_nome" placeholder="Nome do profissional" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Modalidade de Vínculo *</label>
+                                <select id="tercForm_modalidade" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text); font-weight:600;">
+                                    <option value="Terceirizado">🏢 Terceirizado (Empresa Prestadora)</option>
+                                    <option value="PJ">📋 PJ (Pessoa Jurídica)</option>
+                                    <option value="Prestador">🛠️ Prestador de Serviços</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Empresa Prestadora / Razão Social *</label>
+                                <input type="text" id="tercForm_empresa" placeholder="Ex: ARTEC, PJ - Auto Mecânica..." list="terceirosEmpresasDatalist" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                                <datalist id="terceirosEmpresasDatalist">
+                                    <option value="ARTEC"></option>
+                                </datalist>
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Função / Atividade *</label>
+                                <input type="text" id="tercForm_funcao" placeholder="Ex: Mecânico de Máquinas, Eletricista..." style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Setor Atendido</label>
+                                <input type="text" id="tercForm_setor" placeholder="Ex: MANUTENÇÃO MECÂNICA" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">GHE (Grupo de Risco SST)</label>
+                                <input type="text" id="tercForm_ghe" list="gheCatalogoList" placeholder="GHE de atuação" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Sexo *</label>
+                                <select id="tercForm_sexo" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                                    <option value="M">Masculino (M)</option>
+                                    <option value="F">Feminino (F)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">CPF</label>
+                                <input type="text" id="tercForm_cpf" placeholder="000.000.000-00" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Data Início / Mobilização</label>
+                                <input type="date" id="tercForm_dt_inicio" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Data Saída / Desmobilização</label>
+                                <input type="date" id="tercForm_dt_saida" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Status Operacional</label>
+                                <select id="tercForm_status" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                                    <option value="ATIVO">🟢 ATIVO (Em atividade na obra)</option>
+                                    <option value="INATIVO">🔴 INATIVO / Desmobilizado</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div style="margin-top:12px;">
+                            <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600; font-size:12.5px;">Observações Operacionais / SST</label>
+                            <input type="text" id="tercForm_obs" placeholder="Ex: Atuação em veículos pesados e manutenção preventiva de esteiras..." style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text); font-size:12.5px;">
+                        </div>
+
+                        <div id="terceiroFormStatus" style="font-size:12.5px; margin-top:12px; min-height:18px;"></div>
+
+                        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; border-top:1px solid var(--border); padding-top:12px;">
+                            <button type="button" class="db-clear-btn" onclick="fecharModalTerceiro()">Cancelar</button>
+                            <button type="button" id="btnSalvarTerceiro" class="db-apply-btn" onclick="salvarTerceiroEfetivo()">💾 Salvar Terceiro</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="efetivoSubtab-os" style="display:none;">
                     <!-- Banner Informativo / Legal -->
                     <div class="db-chart-card" style="margin-bottom: 16px; background: linear-gradient(135deg, rgba(37,99,235,0.06), rgba(16,185,129,0.06)); border-left: 4px solid var(--primary, #2563eb);">
@@ -4382,7 +4613,7 @@
                             <div style="font-weight: 600; font-size: 14px;">Nenhum colaborador encontrado com os filtros selecionados.</div>
                         </div>
                     </div>
-                
+
                 <!-- Atalho para o Placar das Lideranças -->
                 <div class="placar-shortcut-banner">
                     <div class="placar-shortcut-text">
@@ -4478,7 +4709,7 @@
                             </div>
                         </div>
                     </div>
-                
+
                 <!-- Atalho para o Placar das Lideranças -->
                 <div class="placar-shortcut-banner">
                     <div class="placar-shortcut-text">
@@ -5016,7 +5247,7 @@
                             </div>
                             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                                 <input type="text" id="filtroPgrTexto" placeholder="🔍 Buscar por ação, local, responsável..." style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; min-width: 240px;" oninput="filtrarPlanoAcaoPgr()">
-                                
+
                                 <select id="filtroPgrStatus" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;" onchange="filtrarPlanoAcaoPgr()">
                                     <option value="">Status: Todos</option>
                                     <option value="aberta">📌 Abertas</option>
@@ -8182,7 +8413,7 @@
             <!-- ============================================================ -->
             <section class="db-page" id="page-placarlideres">
                 <div class="placar-container">
-                    
+
                     <!-- Header Card Executivo -->
                     <div class="placar-header-card">
                         <div>
@@ -9062,7 +9293,7 @@
                                     </div>
                                     <span style="font-size: 11.5px; background: rgba(79, 70, 229, 0.12); color: var(--primary); padding: 3px 10px; border-radius: 20px; font-weight: 600;">Regras da Portaria MTP nº 422 / NR-05</span>
                                 </div>
-                                
+
                                 <div style="font-size: 12px; color: var(--text-light); margin-bottom: 12px; line-height: 1.45;">
                                     Defina apenas <b>uma data de referência</b> (início ou fim do processo) para calcular todas as etapas regulamentares. O assistente <b>identifica sábados e domingos</b> e ajusta as datas para dias úteis conforme as exigências da norma.
                                 </div>
@@ -9443,8 +9674,8 @@
                         <div class="db-chart-title" id="brigadaTreinFormTitle">🎓 Registrar / Editar Treinamento NR-23</div>
                         <input type="hidden" id="brigadaTreinForm_matricula">
                         <div style="margin-bottom: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
-                            <strong>Brigadista:</strong> <span id="brigadaTreinForm_colabNome" style="color:var(--primary); font-weight:600;">-</span> &nbsp;|&nbsp; 
-                            <strong>Matrícula:</strong> <span id="brigadaTreinForm_colabMatricula">-</span> &nbsp;|&nbsp; 
+                            <strong>Brigadista:</strong> <span id="brigadaTreinForm_colabNome" style="color:var(--primary); font-weight:600;">-</span> &nbsp;|&nbsp;
+                            <strong>Matrícula:</strong> <span id="brigadaTreinForm_colabMatricula">-</span> &nbsp;|&nbsp;
                             <strong>Cargo na Brigada:</strong> <span id="brigadaTreinForm_colabCargo">-</span>
                         </div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px;">
@@ -10158,9 +10389,9 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js?v=295"></script>
     <script src="logo_cop_base64.js?v=295"></script>
-    <script src="dashboard.js?v=295"></script>
+    <script src="dashboard.js?v=296"></script>
     <script src="modules/treinamentos_ddsma.js?v=295"></script>
-    <script src="modules/efetivo_ferias.js?v=295"></script>
+    <script src="modules/efetivo_ferias.js?v=296"></script>
     <script src="modules/ghe_os.js?v=295"></script>
     <script src="modules/relatorio_sms_nc.js?v=295"></script>
     <script src="modules/relatorio_sms_fotos.js?v=295"></script>
@@ -10217,7 +10448,7 @@ function filterMatrizEpi(q) {
 <!-- Modal de Emissão de Certificado de Treinamento (NR-01 / NR-18) -->
 <div id="modalEmissaoCertificado" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:10060; align-items:center; justify-content:center; padding:16px;" onclick="if (event.target === this) fecharModalEmissaoCertificado();">
     <div style="background:var(--card); border-radius:14px; max-width:680px; width:100%; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1); border:1px solid var(--border); overflow:hidden;">
-        
+
         <!-- Header -->
         <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:linear-gradient(to right, rgba(79,70,229,0.06), transparent);">
             <div>
@@ -10233,7 +10464,7 @@ function filterMatrizEpi(q) {
 
         <!-- Body com Scroll -->
         <div style="padding:18px 20px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:14px; font-size:12.5px;">
-            
+
             <!-- Card de Identificação do Treinamento e Alvo -->
             <div style="background:rgba(79,70,229,0.04); border:1px solid rgba(79,70,229,0.18); border-radius:10px; padding:12px 14px;">
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
@@ -10246,7 +10477,7 @@ function filterMatrizEpi(q) {
                         <span id="certModalDataBadge" style="background:#f1f5f9; color:#475569; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600;">-</span>
                     </div>
                 </div>
-                
+
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px; margin-top:10px; padding-top:10px; border-top:1px dashed rgba(79,70,229,0.2);">
                     <div>
                         <label style="display:block; font-size:11px; font-weight:600; color:var(--text-light); margin-bottom:3px;">Escopo de Emissão</label>
@@ -10319,7 +10550,7 @@ function filterMatrizEpi(q) {
                     </div>
                 </div>
                 <textarea id="certModalConteudoProgramatico" rows="6" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-family:inherit; font-size:12px; line-height:1.5; resize:vertical; background:var(--card); color:var(--text);"></textarea>
-                
+
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
                     <span style="font-size:10.5px; color:var(--text-light);">Um tópico por linha ou parágrafo numerado.</span>
                     <label style="font-size:11.5px; color:var(--text); display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
@@ -10526,16 +10757,16 @@ function filterMatrizEpi(q) {
             </div>
             <button type="button" onclick="fecharModalCalendarioCoresChecklist()" style="background:rgba(255,255,255,0.15); border:none; color:white; font-size:18px; width:32px; height:32px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
         </div>
-        
+
         <div style="padding:20px 24px;">
             <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; font-size:12.5px; color:#475569; line-height:1.5; margin-bottom:18px;">
                 ℹ️ <strong>Regra Operacional:</strong> Todo equipamento, máquina móvel, veículo ou ferramenta inspecionado e liberado pela Engenharia de Segurança / Inspetor de Campo deve receber a fita plástica, lacre ou etiqueta de identificação visual correspondente à cor vigente no mês do checklist.
             </div>
-            
+
             <div id="gridCalendarioCoresChecklist" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:10px;">
                 <!-- Renderizado dinamicamente via renderModalCalendarioCores() -->
             </div>
-            
+
             <div style="margin-top:20px; padding-top:16px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end;">
                 <button type="button" class="db-apply-btn" onclick="fecharModalCalendarioCoresChecklist()" style="padding:8px 20px; font-size:13px;">Fechar</button>
             </div>
@@ -10552,7 +10783,7 @@ function filterMatrizEpi(q) {
             </div>
             <button type="button" onclick="fecharModalRestaurarBackup()" style="background:rgba(255,255,255,0.15); border:none; color:white; font-size:18px; width:32px; height:32px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
         </div>
-        
+
         <div style="padding:22px 24px;">
             <!-- Informações do Arquivo -->
             <div id="restoreFileInfoCard" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; margin-bottom:16px; font-size:12.5px; color:#334155; line-height:1.5;">
@@ -10701,7 +10932,7 @@ function filterMatrizEpi(q) {
                     <div style="font-size: 11.5px; color: var(--text-light); margin: 8px 0 10px; line-height: 1.45;">
                         Quando um encarregado sai da empresa ou é substituído por uma frente/setor (ex: <strong>EVERALDO ➔ LINHA DE TRANSMISSÃO</strong> ou <strong>FABRICIO ➔ ELÉTRICA</strong>), unifique os dois nomes aqui. Todo o histórico anterior (DDS, Treinamentos, APRs) é mantido 100% preservado no banco e computado automaticamente na frente atual para cálculo dos percentuais.
                     </div>
-                    
+
                     <div id="placarAliasLista" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; font-size: 12px;">
                         <!-- Preenchido via JS com as mesclagens do Supabase -->
                     </div>
@@ -10810,8 +11041,8 @@ function filterMatrizEpi(q) {
             <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
                 <div style="font-weight: 800; font-size: 14px; color: var(--text);" id="modalPsico_nome">—</div>
                 <div style="font-size: 12px; color: var(--text-light); margin-top: 3px;">
-                    Matrícula: <strong id="modalPsico_lblMatricula" style="color: var(--primary);">—</strong> | 
-                    Função: <strong id="modalPsico_lblFuncao">—</strong> | 
+                    Matrícula: <strong id="modalPsico_lblMatricula" style="color: var(--primary);">—</strong> |
+                    Função: <strong id="modalPsico_lblFuncao">—</strong> |
                     GHE: <strong id="modalPsico_lblGhe">—</strong>
                 </div>
             </div>
@@ -11260,7 +11491,7 @@ function filterMatrizEpi(q) {
         <!-- Body -->
         <div class="placar-modal-body" style="padding: 18px 20px; display: flex; flex-direction: column; gap: 12px;">
             <input type="hidden" id="sinPsico_matricula">
-            
+
             <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px;">
                 <div style="font-weight: 700; font-size: 13px; color: var(--text);" id="sinPsico_colabNome">—</div>
                 <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;" id="sinPsico_colabDetalhe">—</div>
@@ -11328,7 +11559,7 @@ function filterMatrizEpi(q) {
         </div>
         <div class="placar-modal-body" style="padding: 18px 20px;">
             <input type="hidden" id="feriasForm_id">
-            
+
             <!-- Seleção do Colaborador -->
             <div style="margin-bottom: 12px;">
                 <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Colaborador *</label>
@@ -11583,7 +11814,7 @@ function filterMatrizEpi(q) {
             <div style="font-weight:700; color:#0284c7; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
                 <i class="fas fa-check-circle"></i> Integração Nativa em Nuvem Ativa
             </div>
-            O sistema já conta com conexão direta e autenticada com o <b>Google Drive</b> através da infraestrutura da Vercel. 
+            O sistema já conta com conexão direta e autenticada com o <b>Google Drive</b> através da infraestrutura da Vercel.
             Você <b>não precisa</b> configurar scripts manuais para enviar os checklists.
         </div>
 
@@ -11731,7 +11962,7 @@ function filterMatrizEpi(q) {
             <div style="font-size:11.5px; font-weight:700; color:#0284c7; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">
                 <i class="fas fa-folder"></i> Destino no Google Drive
             </div>
-            
+
             <div style="display:flex; flex-direction:column; gap:8px;">
                 <div id="wrapAcervoDestinoContextual" style="display:none; font-size:12px; color:var(--text);">
                     <span>Salvar na pasta aberta:</span>
@@ -11838,9 +12069,9 @@ function filterMatrizEpi(q) {
                 <i class="fas fa-circle-notch fa-spin" style="font-size:28px; color:#38bdf8;"></i>
                 <span>Carregando documento do Google Drive...</span>
             </div>
-            <iframe id="modalPreviewDriveIframe" 
-                    src="" 
-                    title="Pré-visualização de Documento" 
+            <iframe id="modalPreviewDriveIframe"
+                    src=""
+                    title="Pré-visualização de Documento"
                     style="width:100%; height:100%; border:none; display:block; position:relative; z-index:2;"
                     onload="const l = document.getElementById('modalPreviewDriveLoading'); if (l) l.style.display='none';">
             </iframe>

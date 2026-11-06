@@ -236,8 +236,8 @@ async function marcarCicloFeriasGozadoRapido(matricula, cicloRotulo = '1º Ciclo
         const limiteFatal = dataAdm ? addMeses(dataAdm, mesesLimite) : toISODateLocal(new Date());
 
         // Busca registro existente do mesmo ciclo para evitar duplicidade
-        const regExistente = (allColaboradoresFerias || []).find(f => 
-            String(f.matricula) === String(matricula) && 
+        const regExistente = (allColaboradoresFerias || []).find(f =>
+            String(f.matricula) === String(matricula) &&
             f.status !== 'cancelada' &&
             (f.ciclo_rotulo === cicloRotulo || (cicloRotulo.includes('1') && (!f.ciclo_rotulo || f.ciclo_rotulo.includes('1'))))
         );
@@ -314,7 +314,7 @@ function calcularReguaFeriasClt(colab) {
     const matricula = colab.id;
     const dataAdmStr = colab.dt_admissao || colab.data_admissao || '';
     const resumoCiclos = obterResumoCiclosFeriasColab(matricula);
-    
+
     if (!dataAdmStr) {
         return {
             colaborador: colab,
@@ -448,7 +448,7 @@ function calcularReguaFeriasClt(colab) {
 // Renderização geral do painel e tabela de Férias e Régua CLT
 async function renderFeriasPanel() {
     await garantirColaboradoresFeriasCarregados();
-    const ativos = (allEfetivo || []).filter(colaboradorEstaAtivo);
+    const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e) && !colaboradorEhTerceiro(e));
     dadosFeriasCltCache = ativos.map(calcularReguaFeriasClt);
 
     // Ordenação de prioridade: 1º Crítico (Dobra CLT), 2º Atenção, 3º Em Gozo, 4º Programada, 5º Normal, 6º Concluída
@@ -545,7 +545,7 @@ function renderTabelaFerias() {
         const mesesInt = Math.floor(d.mesesTotal);
         const maxMesesRegua = d.mesesLimiteFatal || 24;
         const pct24 = Math.min(100, Math.max(0, Math.round((d.mesesTotal / maxMesesRegua) * 100)));
-        
+
         let fillClass = 'ferias-regua-fill-aquisitivo';
         if (pct24 >= 95) fillClass = 'ferias-regua-fill-concessivo-alerta';
         else if (pct24 >= 78) fillClass = 'ferias-regua-fill-concessivo-ok';
@@ -671,7 +671,7 @@ function abrirModalLancamentoFerias(matriculaAlvo, feriasIdAlvo) {
     // Popula select de colaboradores ativos ordenados por nome
     const selColab = document.getElementById('feriasForm_matricula');
     if (selColab) {
-        const ativos = (allEfetivo || []).filter(colaboradorEstaAtivo).slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+        const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e) && !colaboradorEhTerceiro(e)).slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
         selColab.innerHTML = '<option value="">Selecione o colaborador...</option>' +
             ativos.map(c => `<option value="${escapeHTML(c.id)}">${escapeHTML(c.nome)} (Mat. ${escapeHTML(c.id)} — ${escapeHTML(c.funcao || '')})</option>`).join('');
     }
@@ -754,11 +754,11 @@ function onColabFeriasSelectChange() {
     document.getElementById('feriasForm_lblAdmissao').textContent = reg.dataAdmissao ? formatSimpleDate(reg.dataAdmissao) : '—';
     document.getElementById('feriasForm_lblTempoCasa').textContent = `${tempoCasaTxt} (${Math.floor(reg.mesesTotal)} meses)`;
     document.getElementById('feriasForm_lblLimiteFatal').textContent = reg.limiteConcessivoFatal ? `${formatSimpleDate(reg.limiteConcessivoFatal)} (${reg.limiteMesesLabel || '24m'})` : '—';
-    
+
     let diasDobraTxt = '—';
     if (reg.diasParaDobra !== null) {
-        diasDobraTxt = reg.diasParaDobra < 0 
-            ? `⚠️ VENCIDO há ${Math.abs(reg.diasParaDobra)} dias` 
+        diasDobraTxt = reg.diasParaDobra < 0
+            ? `⚠️ VENCIDO há ${Math.abs(reg.diasParaDobra)} dias`
             : `${reg.diasParaDobra} dias restantes`;
     }
     document.getElementById('feriasForm_lblDiasDobra').textContent = diasDobraTxt;
@@ -1069,8 +1069,8 @@ function imprimirMapaFeriasClt() {
 
     const linhas = dadosFeriasCltCache.map(d => {
         const reg = d.registroFerias;
-        const periodo = reg && reg.data_inicio && reg.data_fim 
-            ? `${formatSimpleDate(reg.data_inicio)} a ${formatSimpleDate(reg.data_fim)} (${reg.dias_gozo || 30}d)` 
+        const periodo = reg && reg.data_inicio && reg.data_fim
+            ? `${formatSimpleDate(reg.data_inicio)} a ${formatSimpleDate(reg.data_fim)} (${reg.dias_gozo || 30}d)`
             : '—';
         const diasTxt = d.diasParaDobra !== null ? (d.diasParaDobra < 0 ? `Vencido há ${Math.abs(d.diasParaDobra)}d` : `${d.diasParaDobra}d restantes`) : '—';
         return `
@@ -1107,7 +1107,7 @@ function imprimirMapaFeriasClt() {
         <body>
             <h2>🏖️ Mapa de Gestão de Férias e Régua Concessiva CLT (Art. 130 e 134)</h2>
             <div class="sub">PISF Ramal do Agreste • Gerado em: ${dataFmt} às ${horaFmt}</div>
-            
+
             <div class="resumo-box">
                 <div class="resumo-item" style="color:#b91c1c;"><b>${criticos.length}</b> Risco Dobra CLT (≥23m)</div>
                 <div class="resumo-item" style="color:#d97706;"><b>${atencao.length}</b> Atenção / Programar (19-22m)</div>
@@ -1545,7 +1545,7 @@ function renderSetoresLista() {
 
     const contagem = new Map();
     allEfetivo.forEach(e => {
-        if (!colaboradorEstaAtivo(e) || !e.setor) return;
+        if (!colaboradorEstaAtivo(e) || !e.setor || colaboradorEhTerceiro(e)) return;
         contagem.set(e.setor, (contagem.get(e.setor) || 0) + 1);
     });
     const setores = Array.from(contagem.entries()).sort((a, b) => a[0].localeCompare(b[0]));
@@ -1589,7 +1589,7 @@ function fecharGerenciarSetor() {
 function renderSetorColabList() {
     const container = document.getElementById('setorColabList');
     if (!container || !setorAtualGerenciado) return;
-    const equipe = allEfetivo.filter(e => colaboradorEstaAtivo(e) && e.setor === setorAtualGerenciado)
+    const equipe = allEfetivo.filter(e => colaboradorEstaAtivo(e) && !colaboradorEhTerceiro(e) && e.setor === setorAtualGerenciado)
         .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
     if (equipe.length === 0) {
@@ -1698,3 +1698,569 @@ window.onCicloOuStatusFeriasChange = onCicloOuStatusFeriasChange;
 window.marcarFechamentoRapidoNoModal = marcarFechamentoRapidoNoModal;
 
 
+
+
+// ==============================================================================
+// SUBMÓDULO: GESTÃO DE TERCEIROS, PRESTADORES E PJS (SEGREGADO DO EFETIVO CLT)
+// ==============================================================================
+
+var valTerceirosFiltroModalidade = 'todos';
+var valTerceirosFiltroEmpresa = 'todas';
+var valTerceirosFiltroSituacao = 'ativos';
+var valTerceirosFiltroTexto = '';
+var terceiroEditandoId = null;
+
+function colaboradorEhTerceiro(colab) {
+    if (!colab) return false;
+    // 1. Marcação explícita no campo estabilidade
+    const estab = String(colab.estabilidade || '').toUpperCase().trim();
+    if (estab === 'TERCEIRO' || estab === 'TERCEIRIZADO' || estab === 'PJ' || estab === 'PRESTADOR') return true;
+
+    // 2. Metadado padronizado em os_obs
+    const obs = String(colab.os_obs || '').toUpperCase();
+    if (obs.includes('[VINCULO:TERCEIRO') || obs.includes('[VINCULO:TERCEIRIZADO') || obs.includes('[VINCULO:PJ') || obs.includes('[VINCULO:PRESTADOR')) return true;
+
+    // 3. Flags de objeto em memória
+    if (colab.tipo_vinculo && colab.tipo_vinculo !== 'PROPRIO' && colab.tipo_vinculo !== 'CLT') return true;
+    if (colab.is_terceiro === true) return true;
+
+    // 4. Empresa externa preenchida
+    const emp = String(colab.empresa || '').trim().toUpperCase();
+    if (emp && emp !== 'COP' && emp !== 'CONSORCIO' && emp !== 'CONSÓRCIO' && emp !== 'PROPRIO' && emp !== 'PRÓPRIO') {
+        return true;
+    }
+
+    return false;
+}
+
+function obterDadosVinculoTerceiro(colab) {
+    if (!colab) return { ehTerceiro: false, tipo: 'PROPRIO', modalidade: 'Próprio CLT', empresa: 'COP (Próprio)' };
+
+    const ehTerc = colaboradorEhTerceiro(colab);
+    if (!ehTerc) {
+        return { ehTerceiro: false, tipo: 'PROPRIO', modalidade: 'Próprio CLT', empresa: 'COP (Próprio)' };
+    }
+
+    let modalidade = 'Terceirizado';
+    let empresa = (colab.responsavel || colab.empresa || '').trim();
+
+    const estab = String(colab.estabilidade || '').toUpperCase().trim();
+    if (estab === 'PJ') modalidade = 'PJ (Pessoa Jurídica)';
+    else if (estab === 'PRESTADOR') modalidade = 'Prestador de Serviços';
+    else if (estab === 'TERCEIRO' || estab === 'TERCEIRIZADO') modalidade = 'Terceirizado';
+
+    const obs = String(colab.os_obs || '');
+    const mVinculo = obs.match(/\[VINCULO:([^\|\]]+)/i);
+    if (mVinculo && mVinculo[1]) {
+        const v = mVinculo[1].trim().toUpperCase();
+        if (v === 'PJ') modalidade = 'PJ (Pessoa Jurídica)';
+        else if (v === 'PRESTADOR') modalidade = 'Prestador de Serviços';
+        else if (v === 'TERCEIRIZADO' || v === 'TERCEIRO') modalidade = 'Terceirizado';
+    }
+
+    const mEmpresa = obs.match(/\[EMPRESA:([^\|\]]+)/i);
+    if (mEmpresa && mEmpresa[1] && mEmpresa[1].trim()) {
+        empresa = mEmpresa[1].trim();
+    }
+    if (!empresa) {
+        empresa = (colab.responsavel || colab.empresa || 'Empresa Externa').trim();
+    }
+
+    return {
+        ehTerceiro: true,
+        tipo: modalidade.includes('PJ') ? 'PJ' : 'TERCEIRO',
+        modalidade,
+        empresa
+    };
+}
+
+function obterTerceirosLista() {
+    let lista = (allEfetivo || []).filter(colaboradorEhTerceiro);
+
+    // Filtro por texto
+    const q = (valTerceirosFiltroTexto || '').trim().toLowerCase();
+    if (q) {
+        lista = lista.filter(e => {
+            const v = obterDadosVinculoTerceiro(e);
+            return (e.nome || '').toLowerCase().includes(q) ||
+                   (e.id || '').toLowerCase().includes(q) ||
+                   (e.funcao || '').toLowerCase().includes(q) ||
+                   (v.empresa || '').toLowerCase().includes(q) ||
+                   (v.modalidade || '').toLowerCase().includes(q) ||
+                   (e.setor || '').toLowerCase().includes(q);
+        });
+    }
+
+    // Filtro por Modalidade
+    if (valTerceirosFiltroModalidade && valTerceirosFiltroModalidade !== 'todos') {
+        lista = lista.filter(e => {
+            const v = obterDadosVinculoTerceiro(e);
+            if (valTerceirosFiltroModalidade === 'Terceirizado') return v.modalidade.includes('Terceirizado');
+            if (valTerceirosFiltroModalidade === 'PJ') return v.modalidade.includes('PJ');
+            if (valTerceirosFiltroModalidade === 'Prestador') return v.modalidade.includes('Prestador');
+            return true;
+        });
+    }
+
+    // Filtro por Empresa
+    if (valTerceirosFiltroEmpresa && valTerceirosFiltroEmpresa !== 'todas') {
+        lista = lista.filter(e => {
+            const v = obterDadosVinculoTerceiro(e);
+            return v.empresa.toLowerCase() === valTerceirosFiltroEmpresa.toLowerCase();
+        });
+    }
+
+    // Filtro por Situação
+    if (valTerceirosFiltroSituacao === 'ativos') {
+        lista = lista.filter(e => e.status === 'ATIVO' && !e.dt_demissao);
+    } else if (valTerceirosFiltroSituacao === 'inativos') {
+        lista = lista.filter(e => e.status !== 'ATIVO' || !!e.dt_demissao);
+    }
+
+    return lista;
+}
+
+function filtrarTabelaTerceiros() {
+    const txtEl = document.getElementById('filtroTerceirosTexto');
+    const modEl = document.getElementById('filtroTerceirosModalidade');
+    const empEl = document.getElementById('filtroTerceirosEmpresa');
+    const sitEl = document.getElementById('filtroTerceirosSituacao');
+
+    valTerceirosFiltroTexto = txtEl ? txtEl.value : '';
+    valTerceirosFiltroModalidade = modEl ? modEl.value : 'todos';
+    valTerceirosFiltroEmpresa = empEl ? empEl.value : 'todas';
+    valTerceirosFiltroSituacao = sitEl ? sitEl.value : 'ativos';
+
+    renderTabelaTerceiros();
+}
+
+function renderTabelaTerceiros() {
+    const tbody = document.getElementById('tabelaTerceirosBody');
+    const contador = document.getElementById('terceirosContadorTabela');
+    if (!tbody) return;
+
+    const lista = obterTerceirosLista();
+    if (contador) contador.textContent = `Exibindo ${lista.length} registro(s)`;
+
+    if (lista.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" style="padding:24px; text-align:center; color:var(--text-light);">Nenhum terceiro ou PJ encontrado com os filtros selecionados. Clique em "➕ Novo Terceiro / PJ" para cadastrar.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = lista.map(c => {
+        const v = obterDadosVinculoTerceiro(c);
+        const isAtivo = c.status === 'ATIVO' && !c.dt_demissao;
+        const badgeStatus = isAtivo
+            ? '<span style="display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:700; background:rgba(16,185,129,0.15); color:#10b981;">🟢 Ativo</span>'
+            : '<span style="display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:700; background:rgba(239,68,68,0.15); color:var(--danger);">🔴 Inativo</span>';
+
+        const badgeModalidade = v.modalidade.includes('PJ')
+            ? '<span style="display:inline-block; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700; background:rgba(124,58,237,0.15); color:#7c3aed; border:1px solid rgba(124,58,237,0.3);">📋 PJ</span>'
+            : '<span style="display:inline-block; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700; background:rgba(2,132,199,0.15); color:#0284c7; border:1px solid rgba(2,132,199,0.3);">🏢 Terceirizado</span>';
+
+        const dtInicioFmt = c.dt_admissao ? formatarDataBr(c.dt_admissao) : '-';
+
+        return `
+            <tr style="border-bottom:1px solid var(--border); transition:background 0.15s ease;" onmouseover="this.style.background='rgba(0,0,0,0.02)'" onmouseout="this.style.background='transparent'">
+                <td style="padding:10px 8px; font-weight:700; font-family:monospace; color:var(--primary);">${escapeHTML(c.id)}</td>
+                <td style="padding:10px 8px; font-weight:600; color:var(--text);">${escapeHTML(c.nome || '-')}</td>
+                <td style="padding:10px 8px; text-align:center;">${badgeModalidade}</td>
+                <td style="padding:10px 8px; font-weight:700; color:var(--text);">${escapeHTML(v.empresa || '-')}</td>
+                <td style="padding:10px 8px; color:var(--text);">${escapeHTML(c.funcao || '-')}</td>
+                <td style="padding:10px 8px; color:var(--text-light);">${escapeHTML(c.setor || '-')}</td>
+                <td style="padding:10px 8px; color:var(--text-light); font-size:11.5px;">${escapeHTML(c.ghe || '-')}</td>
+                <td style="padding:10px 8px; text-align:center; color:var(--text-light); font-size:11.5px;">${dtInicioFmt}</td>
+                <td style="padding:10px 8px; text-align:center;">${badgeStatus}</td>
+                <td style="padding:10px 8px; text-align:right; white-space:nowrap;">
+                    <button class="db-clear-btn" style="padding:4px 8px; font-size:11px; margin-right:4px;" onclick="abrirModalNovoTerceiro('${escapeHTML(c.id)}')" title="Editar dados do terceiro">✏️ Editar</button>
+                    <button class="db-clear-btn" style="padding:4px 8px; font-size:11px;" onclick="alternarStatusTerceiro('${escapeHTML(c.id)}', ${isAtivo})" title="${isAtivo ? 'Inativar / Desmobilizar terceiro' : 'Reativar terceiro'}">${isAtivo ? '🚫 Inativar' : '✅ Reativar'}</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderTerceirosPanel() {
+    const todosTerceiros = (allEfetivo || []).filter(colaboradorEhTerceiro);
+    const ativos = todosTerceiros.filter(e => e.status === 'ATIVO' && !e.dt_demissao);
+    const empresasSet = new Set();
+    let countPj = 0;
+    let countTerceirizados = 0;
+
+    todosTerceiros.forEach(e => {
+        const v = obterDadosVinculoTerceiro(e);
+        if (v.empresa) empresasSet.add(v.empresa);
+        if (v.modalidade.includes('PJ')) countPj++;
+        else countTerceirizados++;
+    });
+
+    // Contadores de próprios
+    const propriosAtivos = (allEfetivo || []).filter(e => !colaboradorEhTerceiro(e) && colaboradorEstaAtivo(e)).length;
+
+    // Atualiza KPIs
+    const kpiTotal = document.getElementById('kpiTerceirosTotal');
+    const kpiAtivos = document.getElementById('kpiTerceirosAtivos');
+    const kpiEmpresas = document.getElementById('kpiTerceirosEmpresas');
+    const kpiPj = document.getElementById('kpiTerceirosPj');
+    const kpiComp = document.getElementById('kpiTerceirosComposicaoTotal');
+
+    if (kpiTotal) kpiTotal.textContent = todosTerceiros.length;
+    if (kpiAtivos) kpiAtivos.textContent = ativos.length;
+    if (kpiEmpresas) kpiEmpresas.textContent = `${empresasSet.size} (${countTerceirizados} colab.)`;
+    if (kpiPj) kpiPj.textContent = countPj;
+    if (kpiComp) kpiComp.textContent = `${propriosAtivos} Próprios + ${ativos.length} Terceiros = ${propriosAtivos + ativos.length} Total`;
+
+    // Atualiza dropdown de empresas no filtro
+    const empSelect = document.getElementById('filtroTerceirosEmpresa');
+    if (empSelect) {
+        const valAtual = empSelect.value || 'todas';
+        let opts = '<option value="todas">Todas as Empresas</option>';
+        Array.from(empresasSet).sort().forEach(emp => {
+            opts += `<option value="${escapeHTML(emp)}" ${emp.toLowerCase() === valAtual.toLowerCase() ? 'selected' : ''}>${escapeHTML(emp)}</option>`;
+        });
+        empSelect.innerHTML = opts;
+    }
+
+    // Atualiza datalist de empresas no formulário
+    const datalistEmp = document.getElementById('terceirosEmpresasDatalist');
+    if (datalistEmp) {
+        const setFinal = new Set(['ARTEC', ...empresasSet]);
+        datalistEmp.innerHTML = Array.from(setFinal).map(emp => `<option value="${escapeHTML(emp)}"></option>`).join('');
+    }
+
+    renderTabelaTerceiros();
+    atualizarCardComposicaoGeral();
+}
+
+function atualizarCardComposicaoGeral() {
+    const totalProprios = (allEfetivo || []).filter(e => !colaboradorEhTerceiro(e) && colaboradorEstaAtivo(e)).length;
+    const totalTerceiros = (allEfetivo || []).filter(e => colaboradorEhTerceiro(e) && colaboradorEstaAtivo(e)).length;
+
+    const pEl = document.getElementById('compPropriosQtd');
+    const tEl = document.getElementById('compTerceirosQtd');
+    const totEl = document.getElementById('compTotalQtd');
+    if (pEl) pEl.textContent = totalProprios;
+    if (tEl) tEl.textContent = totalTerceiros;
+    if (totEl) totEl.textContent = totalProprios + totalTerceiros;
+}
+
+function abrirModalNovoTerceiro(id) {
+    if (typeof bloquearEdicaoSeNaoAutorizado === 'function' && bloquearEdicaoSeNaoAutorizado('efetivo')) return;
+    const modal = document.getElementById('modalTerceiroForm');
+    const title = document.getElementById('modalTerceiroTitle');
+    const matInput = document.getElementById('tercForm_matricula');
+    const statusMsg = document.getElementById('terceiroFormStatus');
+    if (statusMsg) statusMsg.textContent = '';
+
+    if (id) {
+        const terc = (allEfetivo || []).find(e => String(e.id) === String(id));
+        if (!terc) return;
+        terceiroEditandoId = id;
+        if (title) title.textContent = '✏️ Editar Terceiro / Prestador PJ';
+        if (matInput) { matInput.value = terc.id; matInput.readOnly = true; }
+
+        const v = obterDadosVinculoTerceiro(terc);
+        document.getElementById('tercForm_nome').value = terc.nome || '';
+        document.getElementById('tercForm_modalidade').value = v.modalidade.includes('PJ') ? 'PJ' : (v.modalidade.includes('Prestador') ? 'Prestador' : 'Terceirizado');
+        document.getElementById('tercForm_empresa').value = v.empresa || '';
+        document.getElementById('tercForm_funcao').value = terc.funcao || '';
+        document.getElementById('tercForm_setor').value = terc.setor || '';
+        document.getElementById('tercForm_ghe').value = terc.ghe || '';
+        document.getElementById('tercForm_sexo').value = (terc.sexo || 'M').toUpperCase().startsWith('F') ? 'F' : 'M';
+        document.getElementById('tercForm_cpf').value = terc.cpf || '';
+        document.getElementById('tercForm_dt_inicio').value = terc.dt_admissao ? String(terc.dt_admissao).slice(0, 10) : '';
+        document.getElementById('tercForm_dt_saida').value = terc.dt_demissao ? String(terc.dt_demissao).slice(0, 10) : '';
+        document.getElementById('tercForm_status').value = terc.status || 'ATIVO';
+
+        // Extrai texto limpo de os_obs sem as tags de metadado
+        let obsTxt = String(terc.os_obs || '');
+        obsTxt = obsTxt.replace(/\[VINCULO:[^\]]+\]/gi, '').replace(/\[EMPRESA:[^\]]+\]/gi, '').trim();
+        document.getElementById('tercForm_obs').value = obsTxt;
+    } else {
+        terceiroEditandoId = null;
+        if (title) title.textContent = '🏢 Novo Terceiro / Prestador PJ';
+        if (matInput) { matInput.value = ''; matInput.readOnly = false; }
+        document.getElementById('tercForm_nome').value = '';
+        document.getElementById('tercForm_modalidade').value = 'Terceirizado';
+        document.getElementById('tercForm_empresa').value = '';
+        document.getElementById('tercForm_funcao').value = '';
+        document.getElementById('tercForm_setor').value = '';
+        document.getElementById('tercForm_ghe').value = '';
+        document.getElementById('tercForm_sexo').value = 'M';
+        document.getElementById('tercForm_cpf').value = '';
+        document.getElementById('tercForm_dt_inicio').value = new Date().toISOString().slice(0, 10);
+        document.getElementById('tercForm_dt_saida').value = '';
+        document.getElementById('tercForm_status').value = 'ATIVO';
+        document.getElementById('tercForm_obs').value = '';
+    }
+
+    if (modal) modal.style.display = 'flex';
+}
+
+function fecharModalTerceiro() {
+    const modal = document.getElementById('modalTerceiroForm');
+    if (modal) modal.style.display = 'none';
+    terceiroEditandoId = null;
+}
+
+async function salvarTerceiroEfetivo() {
+    if (typeof bloquearEdicaoSeNaoAutorizado === 'function' && bloquearEdicaoSeNaoAutorizado('efetivo')) return;
+    const statusEl = document.getElementById('terceiroFormStatus');
+    const btn = document.getElementById('btnSalvarTerceiro');
+
+    const matricula = (document.getElementById('tercForm_matricula').value || '').trim().toUpperCase();
+    const nome = (document.getElementById('tercForm_nome').value || '').trim();
+    const modalidade = document.getElementById('tercForm_modalidade').value;
+    const empresa = (document.getElementById('tercForm_empresa').value || '').trim();
+    const funcao = (document.getElementById('tercForm_funcao').value || '').trim();
+    const setor = (document.getElementById('tercForm_setor').value || '').trim();
+    const ghe = (document.getElementById('tercForm_ghe').value || '').trim();
+    const sexo = document.getElementById('tercForm_sexo').value;
+    const cpf = (document.getElementById('tercForm_cpf').value || '').trim();
+    const dtInicio = document.getElementById('tercForm_dt_inicio').value || null;
+    const dtSaida = document.getElementById('tercForm_dt_saida').value || null;
+    let status = document.getElementById('tercForm_status').value || 'ATIVO';
+    const obsLivre = (document.getElementById('tercForm_obs').value || '').trim();
+
+    if (dtSaida) status = 'INATIVO';
+
+    if (!matricula || !nome || !empresa || !funcao) {
+        if (statusEl) {
+            statusEl.textContent = '❌ Matrícula, Nome, Empresa e Função são obrigatórios.';
+            statusEl.style.color = 'var(--danger)';
+        }
+        return;
+    }
+
+    // Trava de segurança contra conflito em novo cadastro
+    const ehNovo = !terceiroEditandoId;
+    if (ehNovo && (allEfetivo || []).some(e => String(e.id) === String(matricula))) {
+        if (statusEl) {
+            statusEl.textContent = `❌ Já existe um cadastro com a matrícula "${matricula}". Escolha outro identificador.`;
+            statusEl.style.color = 'var(--danger)';
+        }
+        return;
+    }
+
+    const obsFinal = `[VINCULO:${modalidade}|EMPRESA:${empresa}] ${obsLivre}`.trim();
+    const estabilidadeMarcador = modalidade.toUpperCase().includes('PJ') ? 'PJ' : 'TERCEIRO';
+
+    const rowEfetivo = {
+        id: matricula,
+        status: status,
+        nome: nome,
+        funcao: funcao,
+        setor: setor,
+        responsavel: empresa,
+        dt_admissao: dtInicio,
+        dt_demissao: dtSaida,
+        cpf: cpf,
+        ghe: ghe,
+        sexo: sexo,
+        estabilidade: estabilidadeMarcador,
+        os_obs: obsFinal
+    };
+
+    const isAtivoChecklist = status === 'ATIVO' && !dtSaida;
+    const rowChecklist = {
+        id: matricula,
+        matricula: matricula,
+        nome: nome,
+        funcao: funcao,
+        setor: setor,
+        empresa: empresa,
+        ativo: isAtivoChecklist,
+        nivel_acesso: 'Técnico'
+    };
+
+    if (statusEl) {
+        statusEl.textContent = '⏳ Salvando e sincronizando entre tabelas (Efetivo & Campo)...';
+        statusEl.style.color = 'var(--text-light)';
+    }
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando...'; }
+
+    try {
+        // ETAPA 1: Gravação na tabela colaboradores_efetivo
+        await supabaseUpsert('colaboradores_efetivo', [rowEfetivo]);
+
+        // ETAPA 2: Sincronização obrigatória na tabela colaboradores_checklist
+        try {
+            const token = typeof authTokenDashboard === 'function' ? await authTokenDashboard() : SUPABASE_KEY;
+            const resCk = await fetch(`${SUPABASE_URL}/rest/v1/colaboradores_checklist?on_conflict=id`, {
+                method: 'POST',
+                headers: {
+                    apikey: SUPABASE_KEY,
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    Prefer: 'resolution=merge-duplicates'
+                },
+                body: JSON.stringify([rowChecklist])
+            });
+
+            if (!resCk.ok) {
+                const errTxt = await resCk.text();
+                throw new Error(`Falha HTTP ${resCk.status} ao sincronizar com colaboradores_checklist: ${errTxt}`);
+            }
+
+            // Atualiza allColaboradoresInternos em memória
+            if (typeof allColaboradoresInternos !== 'undefined' && Array.isArray(allColaboradoresInternos)) {
+                const idxCk = allColaboradoresInternos.findIndex(c => String(c.id) === String(matricula));
+                if (idxCk >= 0) allColaboradoresInternos[idxCk] = { ...allColaboradoresInternos[idxCk], ...rowChecklist };
+                else allColaboradoresInternos.push(rowChecklist);
+            }
+        } catch (errSync) {
+            console.error('Erro na sincronização com colaboradores_checklist:', errSync);
+            // REGRA MANDATÓRIA: NÃO apresentar sucesso quando houver falha de sincronização!
+            throw new Error(`Falha de sincronização dupla: o registro foi salvo em colaboradores_efetivo, mas a sincronização com colaboradores_checklist falhou (${errSync.message}). A operação não foi homologada.`);
+        }
+
+        // Limpa cache de headcount
+        if (typeof _headcountMemoMap !== 'undefined' && _headcountMemoMap && typeof _headcountMemoMap.clear === 'function') {
+            _headcountMemoMap.clear();
+        }
+
+        // Atualiza memória allEfetivo
+        const idxEf = (allEfetivo || []).findIndex(e => String(e.id) === String(matricula));
+        if (idxEf >= 0) allEfetivo[idxEf] = { ...allEfetivo[idxEf], ...rowEfetivo };
+        else allEfetivo.push(rowEfetivo);
+
+        if (statusEl) {
+            statusEl.textContent = '✅ Terceiro salvo e sincronizado com sucesso em ambas as tabelas!';
+            statusEl.style.color = '#10b981';
+        }
+
+        renderTerceirosPanel();
+        if (typeof renderEfetivoPanel === 'function') renderEfetivoPanel();
+
+        setTimeout(() => {
+            fecharModalTerceiro();
+        }, 800);
+    } catch (err) {
+        console.error('Falha na operação de terceiro:', err);
+        if (statusEl) {
+            statusEl.textContent = '❌ ' + err.message;
+            statusEl.style.color = 'var(--danger)';
+        }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar Terceiro'; }
+    }
+}
+
+async function alternarStatusTerceiro(id, ativoAtual) {
+    if (typeof bloquearEdicaoSeNaoAutorizado === 'function' && bloquearEdicaoSeNaoAutorizado('efetivo')) return;
+    const novoStatus = !ativoAtual;
+    const acaoTexto = novoStatus ? 'reativar' : 'inativar';
+    const terceiro = (allEfetivo || []).find(e => String(e.id) === String(id));
+    const nome = terceiro ? terceiro.nome : id;
+    const v = obterDadosVinculoTerceiro(terceiro);
+
+    if (!confirm(`Deseja realmente ${acaoTexto} o terceiro/prestador "${nome}" (${v.empresa} - Matrícula ${id})?`)) return;
+
+    const statusEfetivo = novoStatus ? 'ATIVO' : 'INATIVO';
+    try {
+        // 1. Atualiza colaboradores_efetivo
+        await supabaseUpsert('colaboradores_efetivo', [{
+            id: id,
+            status: statusEfetivo,
+            dt_demissao: novoStatus ? null : (terceiro?.dt_demissao || new Date().toISOString().slice(0, 10))
+        }]);
+
+        // 2. Sincroniza colaboradores_checklist
+        const token = typeof authTokenDashboard === 'function' ? await authTokenDashboard() : SUPABASE_KEY;
+        const resCk = await fetch(`${SUPABASE_URL}/rest/v1/colaboradores_checklist?id=eq.${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ ativo: novoStatus })
+        });
+
+        if (!resCk.ok) {
+            const errTxt = await resCk.text();
+            throw new Error(`Falha HTTP ${resCk.status} ao sincronizar com colaboradores_checklist: ${errTxt}`);
+        }
+
+        // Atualiza memória
+        if (terceiro) {
+            terceiro.status = statusEfetivo;
+            if (novoStatus) terceiro.dt_demissao = null;
+            else if (!terceiro.dt_demissao) terceiro.dt_demissao = new Date().toISOString().slice(0, 10);
+        }
+        if (typeof allColaboradoresInternos !== 'undefined' && Array.isArray(allColaboradoresInternos)) {
+            const ck = allColaboradoresInternos.find(c => String(c.id) === String(id));
+            if (ck) ck.ativo = novoStatus;
+        }
+
+        if (typeof _headcountMemoMap !== 'undefined' && _headcountMemoMap && typeof _headcountMemoMap.clear === 'function') {
+            _headcountMemoMap.clear();
+        }
+
+        renderTerceirosPanel();
+        if (typeof renderEfetivoPanel === 'function') renderEfetivoPanel();
+
+        if (typeof Swal !== 'undefined' && Swal.fire) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Status atualizado com sucesso!',
+                text: `O profissional "${nome}" foi ${novoStatus ? 'reativado' : 'inativado'} e sincronizado em ambas as tabelas (Efetivo & Campo).`,
+                timer: 2000,
+                showConfirmButton: false
+            });
+        }
+    } catch (err) {
+        console.error('Erro ao alternar status do terceiro:', err);
+        alert(`❌ Falha de sincronização dupla ao alterar status: ${err.message}\n\nA alteração NÃO foi homologada.`);
+    }
+}
+
+function exportarExcelTerceiros() {
+    if (typeof XLSX === 'undefined') {
+        alert('A biblioteca de exportação Excel ainda está carregando.');
+        return;
+    }
+    const lista = obterTerceirosLista();
+    if (lista.length === 0) {
+        alert('Nenhum terceiro ou prestador PJ encontrado para exportar.');
+        return;
+    }
+
+    const rows = lista.map(c => {
+        const v = obterDadosVinculoTerceiro(c);
+        const isAtivo = c.status === 'ATIVO' && !c.dt_demissao;
+        return {
+            'Matrícula / Código': c.id,
+            'Nome Completo': c.nome || '',
+            'Modalidade de Vínculo': v.modalidade,
+            'Empresa Prestadora': v.empresa,
+            'Função / Especialidade': c.funcao || '',
+            'Setor Atendido': c.setor || '',
+            'GHE (Riscos SST)': c.ghe || '',
+            'Sexo': c.sexo || '',
+            'CPF': c.cpf || '',
+            'Data de Início / Mobilização': c.dt_admissao ? formatarDataBr(c.dt_admissao) : '',
+            'Data de Saída / Desmobilização': c.dt_demissao ? formatarDataBr(c.dt_demissao) : '',
+            'Status': isAtivo ? 'ATIVO' : 'INATIVO',
+            'Observações': c.os_obs || ''
+        };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Gestão de Terceiros');
+    const dt = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `terceiros_pj_pisf_${dt}.xlsx`);
+}
+
+// Exportações globais de Terceiros
+window.colaboradorEhTerceiro = colaboradorEhTerceiro;
+window.obterDadosVinculoTerceiro = obterDadosVinculoTerceiro;
+window.obterTerceirosLista = obterTerceirosLista;
+window.renderTerceirosPanel = renderTerceirosPanel;
+window.filtrarTabelaTerceiros = filtrarTabelaTerceiros;
+window.abrirModalNovoTerceiro = abrirModalNovoTerceiro;
+window.fecharModalTerceiro = fecharModalTerceiro;
+window.salvarTerceiroEfetivo = salvarTerceiroEfetivo;
+window.alternarStatusTerceiro = alternarStatusTerceiro;
+window.exportarExcelTerceiros = exportarExcelTerceiros;

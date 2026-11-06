@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-var VERSAO_PAINEL = 'v295';
+var VERSAO_PAINEL = 'v296';
 try { ['badgeVersaoDashboardLogin', 'badgeVersaoDashboardSidebar'].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = VERSAO_PAINEL; }); } catch(e){}
 var DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
@@ -427,20 +427,20 @@ function usuarioPodeGravarModulo(modulo) {
     const session = sessaoDashboardAtual();
     if (!session) return false;
     if (session.role === 'Admin' || session.matricula === '76' || session.matricula === 'TESTE') return true;
-    
+
     // Amanda (matrícula 98) ou perfil modulo_saude: Edição restrita exclusivamente a Saúde
     if (session.matricula === '98' || session.perfil_id === 'modulo_saude' || (session.funcao && session.funcao.toUpperCase().includes('ENFERMEIR'))) {
         return modulo === 'saude';
     }
-    
+
     if (session.modulos_edicao && Array.isArray(session.modulos_edicao) && session.modulos_edicao.length > 0) {
         return session.modulos_edicao.includes(modulo);
     }
-    
+
     if (session.tipo === 'painel_externo') {
         return false;
     }
-    
+
     return true;
 }
 
@@ -2589,8 +2589,8 @@ function getDriveFolderTreinamentosId() {
     if (local && local.trim()) {
         return extrairIdPastaDrive(local.trim());
     }
-    const fromSettings = (allChecklistItemSettings || []).find(s => 
-        s.id === 'drive_folder_treinamentos_id' || 
+    const fromSettings = (allChecklistItemSettings || []).find(s =>
+        s.id === 'drive_folder_treinamentos_id' ||
         s.id === 'drive_treinamentos' ||
         s.key === 'drive_folder_treinamentos_id'
     );
@@ -2785,9 +2785,9 @@ async function testarConexaoGoogleDrive() {
                     localStorage.setItem('checklist_drive_folder_url', dataV.pastaRaizUrl);
                 }
                 const emailInfo = dataV.emailConta ? ` (Conta: ${dataV.emailConta})` : '';
-                if (status) { 
-                    status.innerHTML = `✅ Conectado ao Google Drive!${emailInfo} <a href="${getDriveFolderUrl()}" target="_blank" style="color:#0284c7; text-decoration:underline; margin-left:6px; font-weight:700;">Abrir Pasta ↗</a>`; 
-                    status.style.color = '#10b981'; 
+                if (status) {
+                    status.innerHTML = `✅ Conectado ao Google Drive!${emailInfo} <a href="${getDriveFolderUrl()}" target="_blank" style="color:#0284c7; text-decoration:underline; margin-left:6px; font-weight:700;">Abrir Pasta ↗</a>`;
+                    status.style.color = '#10b981';
                 }
                 return;
             }
@@ -6424,7 +6424,7 @@ function renderCronogramaLista() {
         const diaPrefixo = c.data_prevista && c.data_prevista.includes('-')
             ? `${c.data_prevista.split('-')[2]}/${c.data_prevista.split('-')[1]}`
             : '';
-        const pastaMapeadaUrl = pastasCronogramaDriveCache[c.id] || 
+        const pastaMapeadaUrl = pastasCronogramaDriveCache[c.id] ||
                                (diaPrefixo && c.treinamento_cod ? pastasCronogramaDriveCache[`${diaPrefixo}_${c.treinamento_cod}`] : null);
 
         const btnPastaDrive = pastaMapeadaUrl
@@ -6464,7 +6464,7 @@ async function sincronizarPastasDriveCronograma(anoParam, mesParam) {
     if (mes === '' || mes === undefined || mes === null) {
         if (typeof Swal !== 'undefined') {
             const mesAtualIdx = hoje.getMonth();
-            const mesesOptions = NOMES_MESES.map((nome, i) => 
+            const mesesOptions = NOMES_MESES.map((nome, i) =>
                 `<option value="${i}" ${i === mesAtualIdx ? 'selected' : ''}>${String(i + 1).padStart(2, '0')} - ${nome}</option>`
             ).join('');
 
@@ -12368,7 +12368,7 @@ function blocoAssinatura(conteudoHTML) {
     return `<div class="assinatura-item"><div class="linha-assinatura">______________________________</div><div class="linha-nome">${conteudoHTML}</div></div>`;
 }
 
-var CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01 = 
+var CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01 =
 `1. As condições e meio ambiente de trabalho;
 2. Os riscos inerentes às atividades (físicos, químicos, biológicos, ergonômicos e fatores psicossociais);
 3. Prevenção e combate ao assédio no ambiente de trabalho (Lei 14.457/22);
@@ -12445,17 +12445,17 @@ function construirFolhaCertificado(r, colab, cat, codigo, campos, data, customPa
                     <div style="font-size:9.5pt; color:#475569;">CNPJ: ${escapeHTML(EMPRESA_INFO.cnpj)} | PISF Ramal do Agreste</div>
                 </div>
             </div>
-            
+
             <div class="titulo-cert">CERTIFICADO DE CAPACITAÇÃO</div>
             <div class="subtitulo-cert">
                 Segurança e Saúde no Trabalho — Requisitos da NR-01 (Item 1.7.1.1)${ehNr10 ? ' e NR-10 (Anexo III)' : ''} • ${escapeHTML(codigoDoc)}
             </div>
 
             <div class="texto-cert">
-                Certificamos que <b>${escapeHTML(r.nome)}</b>, portador(a) do CPF nº <b>${escapeHTML(colab?.cpf || 'Não informado')}</b>, 
-                função: <b>${escapeHTML(r.funcao || colab?.funcao || 'Operacional')}</b>, colaborador(a) da empresa <b>${escapeHTML(EMPRESA_INFO.razaoSocial)}</b>, 
-                CNPJ: <b>${escapeHTML(EMPRESA_INFO.cnpj)}</b>, participou do treinamento de <b>${escapeHTML(tituloTreinamento)}</b>, realizado ${periodoInfo.extenso}, 
-                com carga horária total de <b>${escapeHTML(cargaHorariaStr)}</b>${horarioStr}${turmaStr}, ministrado na modalidade <b>${escapeHTML(modalidade)}</b>, 
+                Certificamos que <b>${escapeHTML(r.nome)}</b>, portador(a) do CPF nº <b>${escapeHTML(colab?.cpf || 'Não informado')}</b>,
+                função: <b>${escapeHTML(r.funcao || colab?.funcao || 'Operacional')}</b>, colaborador(a) da empresa <b>${escapeHTML(EMPRESA_INFO.razaoSocial)}</b>,
+                CNPJ: <b>${escapeHTML(EMPRESA_INFO.cnpj)}</b>, participou do treinamento de <b>${escapeHTML(tituloTreinamento)}</b>, realizado ${periodoInfo.extenso},
+                com carga horária total de <b>${escapeHTML(cargaHorariaStr)}</b>${horarioStr}${turmaStr}, ministrado na modalidade <b>${escapeHTML(modalidade)}</b>,
                 e <b>concluiu com aproveitamento satisfatório: ${aproveitamentoHtml}</b>.
             </div>
 
@@ -14044,7 +14044,7 @@ function filterCatalogoTreinamentos(query) {
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                 <div class="db-list-item-title">${c.meses_validade ? '🔄 ' : ''}${escapeHTML(c.nome || '')}</div>
                 <div style="flex-shrink:0;">
-                    ${(c.objetivo && c.conteudo_programatico) 
+                    ${(c.objetivo && c.conteudo_programatico)
                         ? '<span style="font-size:10px; background:rgba(16,185,129,0.12); color:#059669; padding:2px 7px; border-radius:10px; font-weight:600;">📋 FOR.001 OK</span>'
                         : '<span style="font-size:10px; background:rgba(239,68,68,0.12); color:#dc2626; padding:2px 7px; border-radius:10px; font-weight:600;">⚠️ Sem Conteúdo</span>'
                     }
@@ -14421,11 +14421,11 @@ function catFormGerarIaObjetivoEConteudo() {
     }
     const codigo = codigoInput?.value || '';
     const res = gerarDadosSstPorTema(nome, codigo);
-    
+
     const objEl = document.getElementById('catForm_objetivo');
     const contEl = document.getElementById('catForm_conteudoProgramatico');
     const chEl = document.getElementById('catForm_cargaHoraria');
-    
+
     if (objEl) objEl.value = res.objetivo;
     if (contEl) contEl.value = res.conteudo_programatico;
     const usaReferenciaNr10 = res.conteudo_programatico === CONTEUDO_PROGRAMATICO_NR10_BASICO_40H;
@@ -14834,7 +14834,7 @@ function renderDetalheFeriasColabBadge(matricula) {
 function calcularReguaFeriasClt(colab) {
     const matricula = colab.id;
     const dataAdmStr = colab.dt_admissao || colab.data_admissao || '';
-    
+
     if (!dataAdmStr) {
         return {
             colaborador: colab,
@@ -14872,7 +14872,7 @@ function calcularReguaFeriasClt(colab) {
 
     // Busca registros cadastrados para a matrícula
     const feriasRegs = (allColaboradoresFerias || []).filter(f => String(f.matricula) === String(matricula));
-    
+
     const regEmGozo = feriasRegs.find(f => f.status === 'em_gozo' || (f.status !== 'cancelada' && f.data_inicio && f.data_fim && hojeIso >= f.data_inicio && hojeIso <= f.data_fim));
     const regProgramada = feriasRegs.find(f => f.status === 'programada' && f.data_inicio && hojeIso < f.data_inicio);
     const regConcluida = feriasRegs.find(f => f.status === 'concluida' || (f.data_fim && hojeIso > f.data_fim && f.status !== 'cancelada' && f.status !== 'pendente'));
@@ -15028,7 +15028,7 @@ function renderTabelaFerias() {
     tbody.innerHTML = filtrados.map(d => {
         const mesesInt = Math.floor(d.mesesTotal);
         const pct24 = Math.min(100, Math.max(0, Math.round((d.mesesTotal / 24) * 100)));
-        
+
         let fillClass = 'ferias-regua-fill-aquisitivo';
         if (pct24 >= 95) fillClass = 'ferias-regua-fill-concessivo-alerta';
         else if (pct24 >= 78) fillClass = 'ferias-regua-fill-concessivo-ok';
@@ -15201,11 +15201,11 @@ function onColabFeriasSelectChange() {
     document.getElementById('feriasForm_lblAdmissao').textContent = reg.dataAdmissao ? formatSimpleDate(reg.dataAdmissao) : '—';
     document.getElementById('feriasForm_lblTempoCasa').textContent = `${tempoCasaTxt} (${Math.floor(reg.mesesTotal)} meses)`;
     document.getElementById('feriasForm_lblLimiteFatal').textContent = reg.limiteConcessivoFatal ? formatSimpleDate(reg.limiteConcessivoFatal) : '—';
-    
+
     let diasDobraTxt = '—';
     if (reg.diasParaDobra !== null) {
-        diasDobraTxt = reg.diasParaDobra < 0 
-            ? `⚠️ VENCIDO há ${Math.abs(reg.diasParaDobra)} dias` 
+        diasDobraTxt = reg.diasParaDobra < 0
+            ? `⚠️ VENCIDO há ${Math.abs(reg.diasParaDobra)} dias`
             : `${reg.diasParaDobra} dias restantes`;
     }
     document.getElementById('feriasForm_lblDiasDobra').textContent = diasDobraTxt;
@@ -15455,8 +15455,8 @@ function imprimirMapaFeriasClt() {
 
     const linhas = dadosFeriasCltCache.map(d => {
         const reg = d.registroFerias;
-        const periodo = reg && reg.data_inicio && reg.data_fim 
-            ? `${formatSimpleDate(reg.data_inicio)} a ${formatSimpleDate(reg.data_fim)} (${reg.dias_gozo || 30}d)` 
+        const periodo = reg && reg.data_inicio && reg.data_fim
+            ? `${formatSimpleDate(reg.data_inicio)} a ${formatSimpleDate(reg.data_fim)} (${reg.dias_gozo || 30}d)`
             : '—';
         const diasTxt = d.diasParaDobra !== null ? (d.diasParaDobra < 0 ? `Vencido há ${Math.abs(d.diasParaDobra)}d` : `${d.diasParaDobra}d restantes`) : '—';
         return `
@@ -15493,7 +15493,7 @@ function imprimirMapaFeriasClt() {
         <body>
             <h2>🏖️ Mapa de Gestão de Férias e Régua Concessiva CLT (Art. 130 e 134)</h2>
             <div class="sub">PISF Ramal do Agreste • Gerado em: ${dataFmt} às ${horaFmt}</div>
-            
+
             <div class="resumo-box">
                 <div class="resumo-item" style="color:#b91c1c;"><b>${criticos.length}</b> Risco Dobra CLT (≥23m)</div>
                 <div class="resumo-item" style="color:#d97706;"><b>${atencao.length}</b> Atenção / Programar (19-22m)</div>
@@ -17662,7 +17662,7 @@ function gerarExcelEfetivo() {
 function abrirModalRelatorioEquipeEncarregado() {
     const modal = document.getElementById('modalRelatorioEquipeEncarregado');
     if (!modal) return;
-    
+
     // Garante carregamento assíncrono de ASO e efetivo se ainda não disponíveis
     if (typeof allAsoExames === 'undefined' || !allAsoExames || allAsoExames.length === 0) {
         if (typeof supabaseFetchCacheado === 'function') {
@@ -19330,7 +19330,7 @@ function popularSelectSetorGheOs() {
     if (!sel) return;
     const valAtual = sel.value;
     const setoresGhe = new Set();
-    
+
     (allEfetivo || []).filter(e => colaboradorEstaAtivo(e)).forEach(e => {
         const item = e.setor ? (e.ghe ? `${e.setor} | ${e.ghe}` : e.setor) : (e.ghe || '');
         if (item) setoresGhe.add(item.trim());
@@ -19353,7 +19353,7 @@ async function renderControleOrdensServico() {
         allGheCatalogo = await supabaseFetch('ghe_catalogo', '?select=*');
     }
     await garantirDocumentosControleCarregados();
-    
+
     const ativos = (allEfetivo || []).filter(e => colaboradorEstaAtivo(e));
     const totalAtivos = ativos.length;
     const totalAssinadas = ativos.filter(e => e.os_status === 'entregue').length;
@@ -19375,8 +19375,8 @@ async function renderControleOrdensServico() {
 
     const kpiPendentesPct = document.getElementById('kpiOsPendentesPct');
     if (kpiPendentesPct) {
-        kpiPendentesPct.textContent = totalPendentes > 0 
-            ? `${totalPendentes} aguardando coleta física` 
+        kpiPendentesPct.textContent = totalPendentes > 0
+            ? `${totalPendentes} aguardando coleta física`
             : '✅ 100% regular (sem pendências)';
     }
 
@@ -19474,8 +19474,8 @@ function renderTabelaControleOs() {
         const anexosOs = typeof anexosDoRegistro === 'function' ? anexosDoRegistro('ordens_servico', e.id) : [];
         const temAnexo = anexosOs.length > 0;
 
-        let dataEntregaFormatada = e.os_data_entrega 
-            ? formatSimpleDate(e.os_data_entrega) 
+        let dataEntregaFormatada = e.os_data_entrega
+            ? formatSimpleDate(e.os_data_entrega)
             : `<span style="color:var(--text-light); font-size:11.5px;">—</span>`;
 
         if (temAnexo) {
@@ -19485,7 +19485,7 @@ function renderTabelaControleOs() {
         }
 
         const versaoTxt = e.os_versao || 'Rev. 00';
-        const setorGheTxt = e.setor 
+        const setorGheTxt = e.setor
             ? (e.ghe ? `${escapeHTML(e.setor)} <span style="font-size:11px; color:var(--text-light); font-weight:600;">[${escapeHTML(e.ghe)}]</span>` : escapeHTML(e.setor))
             : (e.ghe ? escapeHTML(e.ghe) : '<span style="color:var(--text-light);">—</span>');
 
@@ -19982,8 +19982,8 @@ function renderTabelaAuditoriaOs(matriculaFoco) {
                     <span>📊</span> Status de Correspondência: <strong>${totalCompativel} de ${ativos.length} compatíveis (${pctCompativel}%)</strong>
                 </div>
                 <div style="font-size: 12px; color: var(--text-light); margin-top: 4px;">
-                    ${inconsistencias.length > 0 
-                        ? `Restam <strong>${inconsistencias.length} inconsistências</strong> que impedem a emissão automática completa da OS.` 
+                    ${inconsistencias.length > 0
+                        ? `Restam <strong>${inconsistencias.length} inconsistências</strong> que impedem a emissão automática completa da OS.`
                         : '🎉 Parabéns! 100% dos colaboradores ativos possuem correspondência com os cargos do catálogo.'}
                 </div>
             </div>
@@ -20509,13 +20509,13 @@ function popularRelSmsDefaults() {
     const mesEl = document.getElementById('relSmsMes');
     const anoEl = document.getElementById('relSmsAno');
     let deveCarregar = false;
-    if (mesEl && !mesEl.dataset.inicializado) { 
-        mesEl.value = String(mesAnterior.getMonth()); 
-        mesEl.dataset.inicializado = '1'; 
+    if (mesEl && !mesEl.dataset.inicializado) {
+        mesEl.value = String(mesAnterior.getMonth());
+        mesEl.dataset.inicializado = '1';
         deveCarregar = true;
     }
-    if (anoEl && !anoEl.value) { 
-        anoEl.value = mesAnterior.getFullYear(); 
+    if (anoEl && !anoEl.value) {
+        anoEl.value = mesAnterior.getFullYear();
         deveCarregar = true;
     }
     const previewEl = document.getElementById('relSmsPainelPreview');
@@ -21885,7 +21885,7 @@ function construirSecao4RelSms(dadosSecao1, dadosSecoes23, dadosMeioAmbiente, me
         if (d1.apr.situacaoAtual.vencendo > 0) pontosInternos.push(`${d1.apr.situacaoAtual.vencendo} APR(s) vencendo em até 5 dias.`);
         if (d1.relatos.abertosAtual > 0) pontosInternos.push(`${d1.relatos.abertosAtual} relato(s) de segurança em acompanhamento pelo SESMT.`);
         if (d1.cipa.pendenciasAbertas > 0) pontosInternos.push(`${d1.cipa.pendenciasAbertas} ação(ões) da CIPA em andamento conforme cronograma.`);
-        
+
         if (pontosInternos.length > 0) {
             out.push(relSmsH2('Acompanhamento Operacional Interno'));
             pontosInternos.forEach(texto => out.push(new docx.Paragraph({
@@ -22074,15 +22074,15 @@ function coletarDadosFase4RelSms(mes, ano) {
 
     (allTreinamentosRealizados || []).forEach(r => {
         if (!dentroPeriodo(r.data_treinamento)) return;
-        
+
         // Excluir qualquer tentativa de exibir fotos ou blocos para "Integração"
         if (String(r.treinamento_cod) === '1' || (r.treinamento_nome || '').toUpperCase().includes('INTEGRA')) {
             return;
         }
 
         // Cruzar treinamento_cod com treinamentos_catalogo.nome para exibir sempre o nome descritivo
-        const cat = (allTreinamentosCatalogo || []).find(c => 
-            String(c.id) === String(r.treinamento_cod) || 
+        const cat = (allTreinamentosCatalogo || []).find(c =>
+            String(c.id) === String(r.treinamento_cod) ||
             String(c.codigo) === String(r.treinamento_cod)
         );
         let temaNome = (cat?.nome || r.treinamento_nome || '').trim();
@@ -22114,8 +22114,8 @@ function coletarDadosFase4RelSms(mes, ano) {
             return;
         }
 
-        const cat = (allTreinamentosCatalogo || []).find(x => 
-            String(x.id) === String(c.treinamento_cod) || 
+        const cat = (allTreinamentosCatalogo || []).find(x =>
+            String(x.id) === String(c.treinamento_cod) ||
             String(x.codigo) === String(c.treinamento_cod)
         );
         let temaNome = (cat?.nome || c.treinamento_nome || '').trim();
@@ -23239,8 +23239,8 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
     // 19. Destaques do Período para o Sumário Executivo (Cálculo Dinâmico)
     const totalGhesMapeados = new Set(riscosGhe.map(r => r.ghe_id || r.ghe_nome || r.ghe_setor || r.ghe).filter(Boolean)).size || 1;
     const taxaAtendimentoEpi = totalFuncionarios > 0 ? Math.round((epiColaboradoresAtendidos / totalFuncionarios) * 100) : 0;
-    
-    const statusAcidentesTexto = acidentesTipicos.length === 0 
+
+    const statusAcidentesTexto = acidentesTipicos.length === 0
         ? `Zero acidentes com afastamento (CPT) registrados no período de competência, totalizando ${kpisRapidos.diasSemCpt} dias consecutivos sem CPT e Taxa de Frequência zerada (TF = 0,00).`
         : `${acidentesTipicos.length} acidente(s) típico(s) registrado(s) no mês, com controle preventivo intensificado e ${kpisRapidos.diasSemCpt} dias acumulados sem CPT.`;
 
@@ -23250,7 +23250,7 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
 
     const statusEpiTexto = `Fornecimento e rastreabilidade de ${epiTotalItens} unidades de EPI com Certificado de Aprovação (CA) vigente, contemplando ${epiColaboradoresAtendidos} colaboradores atendidos (${taxaAtendimentoEpi}% do efetivo em rotina de reposição/entrega).`;
 
-    const statusPsicoTexto = psicoDados 
+    const statusPsicoTexto = psicoDados
         ? `Monitoramento de riscos psicossociais (COPSOQ II) com taxa de adesão de ${fmtPct(psicoDados.aplicacao.taxa_participacao)} e ${psicoDados.fortes.length} dimensões fortemente favoráveis ao bem-estar e clima organizacional.`
         : `Diretrizes psicossociais e de saúde mental em conformidade com o PGR/PCMSO, mantendo acompanhamento contínuo dos fatores psicossociais do trabalho.`;
 
@@ -25198,6 +25198,7 @@ function renderEfetivoPanel() {
     const efetivoAtual = headcountAsOf(dataRef);
     document.getElementById('kpiEfetivoAtual').textContent = efetivoAtual;
 
+    const _ehTerc = typeof window.colaboradorEhTerceiro === 'function' ? window.colaboradorEhTerceiro : () => false;
     const admissoesPeriodo = allEfetivo.filter(e => e.dt_admissao && parseLocalDate(e.dt_admissao) >= periodoInicio && parseLocalDate(e.dt_admissao) <= periodoFim).length;
     const demissoesPeriodo = allEfetivo.filter(e => e.dt_demissao && parseLocalDate(e.dt_demissao) >= periodoInicio && parseLocalDate(e.dt_demissao) <= periodoFim).length;
     document.getElementById('kpiEfetivoAdmissoes').textContent = admissoesPeriodo;
@@ -25208,7 +25209,7 @@ function renderEfetivoPanel() {
     const turnover = efetivoMedioPeriodo > 0 ? (demissoesPeriodo / efetivoMedioPeriodo * 100) : 0;
     document.getElementById('kpiEfetivoTurnover').textContent = turnover.toFixed(1) + '%';
 
-    const ativosNaData = allEfetivo.filter(e => e.dt_admissao && parseLocalDate(e.dt_admissao) <= dataRef && (!e.dt_demissao || parseLocalDate(e.dt_demissao) > dataRef));
+    const ativosNaData = allEfetivo.filter(e => !_ehTerc(e) && e.dt_admissao && parseLocalDate(e.dt_admissao) <= dataRef && (!e.dt_demissao || parseLocalDate(e.dt_demissao) > dataRef));
     let tempoCasaTotalMeses = 0;
     ativosNaData.forEach(e => {
         const adm = parseLocalDate(e.dt_admissao);
@@ -27971,20 +27972,20 @@ function renderSaudePanel() {
     ativos.forEach(e => {
         // Cálculo com regra NR-07 / PCMSO: 1 ano para operacionais, 2 anos para administrativos
         const r = calcularValidadeAsoPcmso(e);
-        if (r.status === 'vencido') { 
-            vencidos++; 
-            alertList.push({ e, r }); 
-        } else if (r.status === 'vencendo30') { 
-            vencendo30++; 
-            alertList.push({ e, r }); 
-        } else if (r.status === 'vencendo60') { 
-            vencendo60++; 
-            alertList.push({ e, r }); 
-        } else if (r.status === 'em_dia') { 
-            emDia++; 
-        } else { 
-            semRegistro++; 
-            alertList.push({ e, r }); 
+        if (r.status === 'vencido') {
+            vencidos++;
+            alertList.push({ e, r });
+        } else if (r.status === 'vencendo30') {
+            vencendo30++;
+            alertList.push({ e, r });
+        } else if (r.status === 'vencendo60') {
+            vencendo60++;
+            alertList.push({ e, r });
+        } else if (r.status === 'em_dia') {
+            emDia++;
+        } else {
+            semRegistro++;
+            alertList.push({ e, r });
         }
     });
 
@@ -28034,11 +28035,11 @@ function renderSaudePanel() {
             type: 'doughnut',
             data: {
                 labels: ['Vencidos', 'Vencendo (30d)', 'Vencendo (60d)', 'Em Dia (>60d)', 'Sem Registro'],
-                datasets: [{ 
-                    data: [vencidos, vencendo30, vencendo60, emDia, semRegistro], 
-                    backgroundColor: ['#ef4444', '#ea580c', '#d97706', '#10b981', '#94a3b8'], 
-                    borderWidth: 2, 
-                    borderColor: '#fff' 
+                datasets: [{
+                    data: [vencidos, vencendo30, vencendo60, emDia, semRegistro],
+                    backgroundColor: ['#ef4444', '#ea580c', '#d97706', '#10b981', '#94a3b8'],
+                    borderWidth: 2,
+                    borderColor: '#fff'
                 }]
             },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, cutout: '55%' }
@@ -28050,7 +28051,7 @@ function renderSaudePanel() {
     const tipoSorted = Object.entries(tipoCounts).sort((a, b) => b[1] - a[1]);
     const tipoLabels = tipoSorted.map(t => wrapChartLabel(t[0]));
     ajustarAlturaBarrasHorizontais('chartAsoTipo', tipoLabels);
-    
+
     const canvasAsoTipo = document.getElementById('chartAsoTipo');
     if (canvasAsoTipo) {
         chartInstances.asoTipo = new Chart(canvasAsoTipo, {
@@ -28071,7 +28072,7 @@ function renderSaudePanel() {
         taxaPorMes.push(r.disponivel ? Math.round(r.taxa * 100) / 100 : null);
         cursorAbs = new Date(cursorAbs.getFullYear(), cursorAbs.getMonth() + 1, 1);
     }
-    
+
     const canvasAbs = document.getElementById('chartAbsenteismoMes');
     if (canvasAbs) {
         chartInstances.absenteismoMes = new Chart(canvasAbs, {
@@ -28208,7 +28209,7 @@ function calcularValidadeAsoPcmso(colaborador) {
             const vencEstimado = addMeses(colaborador.dt_admissao, periodicidadeMeses);
             const vencDate = parseLocalDate(vencEstimado); vencDate.setHours(0, 0, 0, 0);
             const diffDays = Math.ceil((vencDate.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
-            
+
             // Se foi admitido há mais de 1 ano sem exame, está vencido; se foi admitido há 10-11 meses, está vencendo
             if (diffDays < 0) {
                 return { status: 'vencido', ultimoExame: null, diffDays, dataVencimento: vencEstimado, periodicidadeMeses, motivo: 'Admissão sem ASO periódico há >1 ano' };
@@ -28223,7 +28224,7 @@ function calcularValidadeAsoPcmso(colaborador) {
 
     const ultimo = exames.reduce((max, a) => parseLocalDate(a.data_exame) > parseLocalDate(max.data_exame) ? a : max, exames[0]);
     let dataVencimento = ultimo.data_vencimento;
-    
+
     // Se a data de vencimento não foi preenchida na mão, aplica a regra de 1 ano (ou 2 anos adm)
     if (!dataVencimento && ultimo.data_exame) {
         dataVencimento = addMeses(ultimo.data_exame, periodicidadeMeses);
@@ -28252,14 +28253,14 @@ function calcularValidadeAsoPcmso(colaborador) {
         motivo = 'Regularizar no Retorno de Férias';
     }
 
-    return { 
-        status, 
-        ultimoExame: ultimo, 
-        diffDays, 
-        dataVencimento, 
-        periodicidadeMeses, 
-        isencaoFerias: !!isencaoFerias, 
-        motivo 
+    return {
+        status,
+        ultimoExame: ultimo,
+        diffDays,
+        dataVencimento,
+        periodicidadeMeses,
+        isencaoFerias: !!isencaoFerias,
+        motivo
     };
 }
 
@@ -30324,7 +30325,7 @@ function renderTabelaRecomendacaoPsicossocial() {
 
     tbody.innerHTML = filtrados.map(d => {
         const dataAdmFmt = d.dt_admissao ? formatSimpleDate(d.dt_admissao) : '—';
-        const ultimoAsoFmt = d.ultimoAsoData 
+        const ultimoAsoFmt = d.ultimoAsoData
             ? `<div>${formatSimpleDate(d.ultimoAsoData)}</div><div style="font-size:10.5px; color:var(--text-light); text-transform:uppercase;">${escapeHTML(d.ultimoAsoTipo || 'ASO')}</div>`
             : '<span style="color:var(--text-light);">Sem registro</span>';
 
@@ -31026,11 +31027,11 @@ function abrirModalPsicossocial(colaboradorOuMatricula) {
 
     modal.dataset.matricula = matricula;
 
-    const dataMutirao = (typeof obterDataMutiraoPsico === 'function') 
-        ? obterDataMutiraoPsico() 
+    const dataMutirao = (typeof obterDataMutiraoPsico === 'function')
+        ? obterDataMutiraoPsico()
         : new Date().toISOString().split('T')[0];
 
-    let exameCfg = (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' && CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual]) 
+    let exameCfg = (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' && CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual])
         || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
 
     // Se estiver na Matriz Geral e o colaborador for de GHE Psicossocial pendente, sugere Avaliação Psicossocial
@@ -31051,7 +31052,7 @@ function abrirModalPsicossocial(colaboradorOuMatricula) {
 
     const nomeColab = colab?.nome || 'Colaborador';
     const funcColab = colab?.funcao || '—';
-    const gheColab = colab?.ghe 
+    const gheColab = colab?.ghe
         ? (typeof obterNomeGheCompleto === 'function' ? obterNomeGheCompleto(colab.ghe) : colab.ghe)
         : '—';
 
@@ -31088,7 +31089,7 @@ function abrirModalPsicossocial(colaboradorOuMatricula) {
     setVal('modalPsico_obs', obsPadrao);
     setVal('regPsico_obs', obsPadrao);
 
-    const statusMsg = document.getElementById('modalPsico_statusMsg') 
+    const statusMsg = document.getElementById('modalPsico_statusMsg')
         || document.getElementById('regPsico_statusMsg');
     if (statusMsg) statusMsg.innerHTML = '';
 
@@ -31116,11 +31117,11 @@ async function salvarRegistroPsicoRapido() {
                        document.getElementById('regPsico_matricula')?.value ||
                        modal?.dataset?.matricula || '').trim();
 
-    const inputData = (document.getElementById('psicoDataAvaliacao')?.value 
-                    || document.getElementById('data_avaliacao')?.value 
+    const inputData = (document.getElementById('psicoDataAvaliacao')?.value
+                    || document.getElementById('data_avaliacao')?.value
                     || document.getElementById('psicoData')?.value
                     || document.getElementById('modalPsico_data')?.value
-                    || document.getElementById('regPsico_dataExame')?.value 
+                    || document.getElementById('regPsico_dataExame')?.value
                     || '').trim();
 
     const resultado = document.getElementById('modalPsico_resultado')?.value ||
@@ -31446,7 +31447,7 @@ async function salvarBaixaLoteMutirao() {
     if (statusMsg) statusMsg.innerHTML = `<span style="color:var(--primary); font-weight:700;">Salvando baixa de ${selecionados.length} colaboradores...</span>`;
 
     try {
-        const exameCfg = (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' && CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual]) 
+        const exameCfg = (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' && CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual])
             || (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' ? CATALOGO_EXAMES_COMPLEMENTARES.psicossocial : {
                 nomeExame: 'Avaliação Psicossocial',
                 profissionalPadrao: 'Psicóloga Responsável',
@@ -31793,8 +31794,8 @@ function copiarConvocacaoSelecionadosWhatsApp() {
     for (const [gheNome, colabs] of Object.entries(porGhe)) {
         txt += `🔹 *${gheNome.toUpperCase()}* (${colabs.length} vagas convocadas):\n`;
         colabs.forEach((c, idx) => {
-            const tag = c.statusKey === 'PENDENTE' 
-                ? '🔴 [Inclusão PCMSO]' 
+            const tag = c.statusKey === 'PENDENTE'
+                ? '🔴 [Inclusão PCMSO]'
                 : (c.statusKey === 'VENCIDO' ? '🔴 [Renovação Vencida]' : '🟡 [Renovação Periódica]');
             txt += `   ${idx + 1}. ${c.nome} (Matrícula ${c.matricula} - ${c.funcao}) ${tag}\n`;
         });
@@ -31984,7 +31985,7 @@ function popularSelectPeriodosConvocacaoPsico() {
 
     const hoje = new Date();
     const nomesMeses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-    
+
     const mesAtualNome = nomesMeses[hoje.getMonth()];
     const anoAtual = hoje.getFullYear();
 
@@ -32235,7 +32236,7 @@ function renderTabelaConvocacaoPsicossocial() {
     tbody.innerHTML = filtrados.map(c => {
         const checked = c.selecionado ? 'checked' : '';
         const vencFmt = c.vencPsico ? formatSimpleDate(c.vencPsico) : '<span style="color:var(--text-light);">—</span>';
-        
+
         let motivoBadge = '';
         if (c.avulso) {
             motivoBadge = `<span style="background:#f3e8ff; color:#7e22ce; border:1px solid #d8b4fe; padding:2px 8px; border-radius:999px; font-weight:700; font-size:11px;">➕ Avulso / SESMT</span>`;
@@ -37025,7 +37026,7 @@ function renderColaboradoresInternos() {
 
     let lista = allColaboradoresInternos;
     if (filtroColabsInternosTexto) {
-        lista = lista.filter(c => 
+        lista = lista.filter(c =>
             (c.nome || '').toLowerCase().includes(filtroColabsInternosTexto) ||
             (c.matricula || '').toLowerCase().includes(filtroColabsInternosTexto) ||
             (c.funcao || '').toLowerCase().includes(filtroColabsInternosTexto) ||
@@ -37200,7 +37201,7 @@ function abrirModalEditarColaborador(id) {
     document.getElementById('editColabFuncao').value = colab.funcao || '';
     document.getElementById('editColabSetor').value = colab.setor || '';
     document.getElementById('editColabEmail').value = colab.email || '';
-    
+
     const nivel = (colab.nivel_acesso || '').toLowerCase().includes('admin') ? 'Admin' : 'Tecnico';
     document.getElementById('editColabNivel').value = nivel;
 
@@ -37877,11 +37878,11 @@ function showDbPage(pageId) {
         else if (document.getElementById('ddsmaSubtabBtn-visao')?.classList.contains('active')) renderDdsPanel();
     }
     if (pageId === 'efetivo') {
-        if (!efetivoLoaded) { 
-            efetivoLoaded = true; 
+        if (!efetivoLoaded) {
+            efetivoLoaded = true;
             loadEfetivoData().then(() => {
                 if (document.getElementById('efetivoSubtabBtn-ferias')?.classList.contains('active')) renderFeriasPanel();
-            }); 
+            });
         } else {
             if (document.getElementById('efetivoSubtabBtn-ferias')?.classList.contains('active')) renderFeriasPanel();
             else renderEfetivoPanel();
@@ -38202,8 +38203,8 @@ function renderAcervoDriveLista() {
 
     el.innerHTML = itensExibidos.map(item => {
         const ehPasta = item.mimeType === 'application/vnd.google-apps.folder';
-        const icone = ehPasta 
-            ? '<i class="fas fa-folder" style="color:#f59e0b; margin-right:8px; font-size:18px;"></i>' 
+        const icone = ehPasta
+            ? '<i class="fas fa-folder" style="color:#f59e0b; margin-right:8px; font-size:18px;"></i>'
             : '<i class="fas fa-file-pdf" style="color:#ef4444; margin-right:8px; font-size:18px;"></i>';
 
         // Extrai código de patrimônio amigável se for checklist padrão CKL_YYYY-MM-DD_PATR_EQUIP
@@ -38217,8 +38218,8 @@ function renderAcervoDriveLista() {
             badgeLegado = `<span class="acervo-badge-legado">Legado</span>`;
         }
 
-        const detalhe = ehPasta 
-            ? 'Pasta do Google Drive' 
+        const detalhe = ehPasta
+            ? 'Pasta do Google Drive'
             : `${formatarTamanhoArquivoAcervoDrive(item.size)} • Modificado em ${formatSimpleDate(item.modifiedTime)}`;
 
         if (ehPasta) {
@@ -38249,10 +38250,10 @@ function renderAcervoDriveLista() {
                 <button type="button" class="btn-visualizar-drive" onclick="visualizarArquivoAcervoDrive('${escapeHTML(item.id)}')" title="Visualizar documento dentro do painel">
                     <i class="fas fa-eye"></i> Visualizar
                 </button>
-                <a href="${escapeHTML(linkDrive)}" 
-                   target="_blank" 
-                   rel="noopener noreferrer" 
-                   class="btn-abrir-drive" 
+                <a href="${escapeHTML(linkDrive)}"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   class="btn-abrir-drive"
                    title="Abrir arquivo diretamente no Google Drive (nova guia)">
                     Abrir ↗
                 </a>
@@ -38402,10 +38403,10 @@ function montarEstruturaPastaFotos(tipoOuCategoria, dataStr, temaStr) {
 var DEFAULT_DRIVE_GAS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzdCzGE9Jm77RauUe8iuo1p8il193F7Pd7HeLLbut0zToD8zhHtv2RBSAY86bQZGLtA/exec';
 
 function getDriveGasWebhookUrl() {
-    const fromSettings = (allChecklistItemSettings || []).find(s => 
+    const fromSettings = (allChecklistItemSettings || []).find(s =>
         s.id === 'drive_gas_webhook_url' ||
-        s.id === 'drive_config' || 
-        s.id === 'drive_settings' || 
+        s.id === 'drive_config' ||
+        s.id === 'drive_settings' ||
         s.key === 'drive_gas_webhook_url' ||
         s.drive_gas_webhook_url
     );
@@ -38414,9 +38415,9 @@ function getDriveGasWebhookUrl() {
         urlFromCustom = fromSettings.custom_items[0]?.url || fromSettings.custom_items[0]?.webhook_url || '';
     }
     return urlFromCustom ||
-           fromSettings?.drive_gas_webhook_url || 
-           fromSettings?.value || 
-           localStorage.getItem('drive_gas_webhook_url') || 
+           fromSettings?.drive_gas_webhook_url ||
+           fromSettings?.value ||
+           localStorage.getItem('drive_gas_webhook_url') ||
            DEFAULT_DRIVE_GAS_WEBHOOK_URL;
 }
 
@@ -38450,10 +38451,10 @@ function getDriveFolderFotosUrl(usarFallbackLegado = false) {
     }
 
     // 3. Busca no cache sincronizado do Supabase (checklist_item_settings)
-    const fromSettings = (allChecklistItemSettings || []).find(s => 
-        s.id === 'drive_folder_fotos_url' || 
-        s.id === 'drive_config' || 
-        s.id === 'drive_settings' || 
+    const fromSettings = (allChecklistItemSettings || []).find(s =>
+        s.id === 'drive_folder_fotos_url' ||
+        s.id === 'drive_config' ||
+        s.id === 'drive_settings' ||
         s.key === 'drive_folder_fotos_url'
     );
     if (fromSettings) {
@@ -38737,16 +38738,16 @@ async function abrirPastaFotosOperacional(tipoOuCategoria, dataStr, temaStr) {
             title: urlDestino ? 'Pasta Pronta no Drive!' : 'Estrutura das Evidências Fotográficas',
             html: `
                 <div style="font-size:12.5px; color:#475569; margin-bottom:10px; text-align:left;">
-                    ${copiado 
-                        ? '✅ <span style="color:#10b981; font-weight:600;">Caminho copiado para a área de transferência!</span>' 
+                    ${copiado
+                        ? '✅ <span style="color:#10b981; font-weight:600;">Caminho copiado para a área de transferência!</span>'
                         : 'Diretório padronizado:'}
                 </div>
                 <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:10px; font-size:11px; font-family:monospace; color:#1e293b; margin-bottom:14px; word-break:break-all; text-align:left;">
                     ${escapeHTML(info.caminhoCompleto)}
                 </div>
                 <p style="font-size:11.5px; color:#64748b; margin-bottom:16px; text-align:left;">
-                    ${urlDestino 
-                        ? 'Clique abaixo para abrir a pasta específica no Google Drive:' 
+                    ${urlDestino
+                        ? 'Clique abaixo para abrir a pasta específica no Google Drive:'
                         : 'Navegue até a pasta no Drive ou utilize o caminho copiado:'}
                 </p>
                 <div style="text-align:center;">
@@ -38777,8 +38778,8 @@ function abrirModalConfirmacaoFotosDrive(info, url, copiado) {
     if (txtEl) txtEl.textContent = info.caminhoCompleto;
     if (linkEl) linkEl.href = url;
     if (statusEl) {
-        statusEl.innerHTML = copiado 
-            ? '✅ <strong>Caminho copiado para a área de transferência!</strong>' 
+        statusEl.innerHTML = copiado
+            ? '✅ <strong>Caminho copiado para a área de transferência!</strong>'
             : 'Navegue até a pasta ou cole o caminho no Google Drive.';
         statusEl.style.color = copiado ? 'var(--success)' : 'var(--text-light)';
     }
@@ -41714,7 +41715,7 @@ function autoCalibrarTodosRiscosApr() {
 function onMudarPuroApr(i, campo, valor) {
     if (!aprRiscosForm[i]) return;
     aprRiscosForm[i][campo] = valor;
-    
+
     const pPuro = parseInt(aprRiscosForm[i].p_puro, 10);
     const sPuro = parseInt(aprRiscosForm[i].s_puro, 10);
 
@@ -41840,7 +41841,7 @@ var BIBLIOTECA_RISCOS_OBRA = [
 function inserirPacoteRiscosDaBiblioteca(idxCat) {
     const cat = BIBLIOTECA_RISCOS_OBRA[idxCat];
     if (!cat) return;
-    
+
     // Se o primeiro risco estiver vazio, remove ele antes de adicionar
     if (aprRiscosForm.length === 1 && !aprRiscosForm[0].perigo_fonte && !aprRiscosForm[0].passo_tarefa) {
         aprRiscosForm = [];
@@ -41989,7 +41990,7 @@ function renderEquipeAprPreview() {
         return `
             <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; background:var(--card, #fff); border:1px solid var(--border); border-radius:6px; font-size:12px;">
                 <div>
-                    <strong>${i + 1}. ${escapeHTML(c.nome)}</strong> 
+                    <strong>${i + 1}. ${escapeHTML(c.nome)}</strong>
                     <span style="color:var(--text-light); font-size:11px;">(Matr. ${escapeHTML(c.id)} — ${escapeHTML(c.funcao || '—')})</span>
                 </div>
                 <div>${tagsAptidao}</div>
@@ -42025,7 +42026,7 @@ function renderEquipeAprPreview() {
 function abrirModalBibliotecaRiscos() {
     let modal = document.getElementById('modalBibliotecaRiscosApr');
     if (!modal) return;
-    
+
     const container = document.getElementById('modalBibliotecaRiscosConteudo');
     if (container) {
         container.innerHTML = BIBLIOTECA_RISCOS_OBRA.map((cat, idx) => `
@@ -46293,7 +46294,7 @@ function renderBrigadaMembrosLista() {
         return;
     }
     container.innerHTML = linhas.map(m => {
-        const datasStr = m.data_designacao 
+        const datasStr = m.data_designacao
             ? ` — Designado em ${formatSimpleDate(m.data_designacao)}${m.data_fim ? ' até ' + formatSimpleDate(m.data_fim) : ''}`
             : (m.data_fim ? ` — Vigência até ${formatSimpleDate(m.data_fim)}` : '');
         const turnoStr = m.turno ? ` — Turno: ${escapeHTML(m.turno)}` : '';
@@ -46592,7 +46593,7 @@ function onBrigadaTreinDataChange() {
         const d = parseLocalDate(dataTrein);
         if (!isNaN(d.getTime())) {
             const alvo = new Date(d.getFullYear(), d.getMonth() + meses, d.getDate());
-            document.getElementById('brigadaTreinForm_reciclagem').value = 
+            document.getElementById('brigadaTreinForm_reciclagem').value =
                 `${alvo.getFullYear()}-${String(alvo.getMonth() + 1).padStart(2, '0')}-${String(alvo.getDate()).padStart(2, '0')}`;
         }
     }
@@ -46610,7 +46611,7 @@ function abrirFormTreinamentoBrigada(matricula) {
     const title = document.getElementById('brigadaTreinFormTitle');
     const statusEl = document.getElementById('brigadaTreinFormStatus');
     statusEl.textContent = '';
-    
+
     document.getElementById('brigadaTreinForm_matricula').value = matricula;
     document.getElementById('brigadaTreinForm_colabNome').textContent = membro.nome || '-';
     document.getElementById('brigadaTreinForm_colabMatricula').textContent = matricula;
@@ -50704,7 +50705,7 @@ function abrirModalNovaAep() {
 
     document.getElementById('modalErgonomiaAepTitulo').textContent = '📋 Nova Avaliação Ergonômica Preliminar (AEP - NR-17)';
     document.getElementById('aepForm_id').value = '';
-    
+
     // Sugestão de código sequencial
     const anoAtual = new Date().getFullYear();
     const countAno = allErgonomiaAep.filter(a => (a.codigo || '').includes(String(anoAtual))).length + 1;
@@ -52813,7 +52814,7 @@ function obterAcoesPgrFiltradas() {
         // Filtro por texto
         if (texto) {
             const haystack = [
-                a.what_acao, a.why_motivo, a.where_local, a.who_responsavel, 
+                a.what_acao, a.why_motivo, a.where_local, a.who_responsavel,
                 a.how_metodo, a.origem_rotulo, a.id
             ].filter(Boolean).join(' ').toLowerCase();
             if (!haystack.includes(texto)) return false;
@@ -53159,7 +53160,7 @@ async function executarScannerDesviosObra() {
             if (recargaVencida || testeVencido) {
                 countExt++;
                 if (!origensJaTratadas.has(ext.id)) {
-                    const motivo = recargaVencida && testeVencido 
+                    const motivo = recargaVencida && testeVencido
                         ? 'Validade de Recarga e Teste Hidrostático (5 anos) expirados'
                         : (recargaVencida ? 'Validade da Recarga Anual expirada' : 'Teste Hidrostático Quinquenal expirado');
 
@@ -53309,12 +53310,12 @@ function abrirModalNovaAcaoPgr(prefill = {}) {
     document.getElementById('pgrForm_why').value = prefill.why_motivo || '';
     document.getElementById('pgrForm_where').value = prefill.where_local || '';
     document.getElementById('pgrForm_who').value = prefill.who_responsavel || '';
-    
+
     // Prazo padrão: 7 dias a partir de hoje
     const prazoPadrao = new Date();
     prazoPadrao.setDate(prazoPadrao.getDate() + 7);
     document.getElementById('pgrForm_when').value = prefill.when_prazo || toISODateLocal(prazoPadrao);
-    
+
     document.getElementById('pgrForm_how').value = prefill.how_metodo || '';
     document.getElementById('pgrForm_howMuch').value = prefill.how_much_custo || '';
     document.getElementById('pgrForm_status').value = prefill.status || 'aberta';
@@ -53900,8 +53901,8 @@ function obterHistoricoTemasConsolidado() {
     const mapa = new Map(); // nomeNormalizado -> { ultimoIso: string, total: number, frentes: Set, nomeOriginal: string }
 
     function normalizar(s) {
-        return typeof normalizarTextoCargoBasico === 'function' 
-            ? normalizarTextoCargoBasico(s) 
+        return typeof normalizarTextoCargoBasico === 'function'
+            ? normalizarTextoCargoBasico(s)
             : String(s || '').toLowerCase().trim();
     }
 
@@ -53955,8 +53956,8 @@ function obterHistoricoTemasConsolidado() {
 // 2. Cálculo da Carência de 90 Dias de um Tema
 function calcularCarenciaTema(nomeTema, dataReferenciaIso) {
     const historico = obterHistoricoTemasConsolidado();
-    const norm = typeof normalizarTextoCargoBasico === 'function' 
-        ? normalizarTextoCargoBasico(nomeTema) 
+    const norm = typeof normalizarTextoCargoBasico === 'function'
+        ? normalizarTextoCargoBasico(nomeTema)
         : String(nomeTema || '').toLowerCase().trim();
     const registro = historico.get(norm);
 
@@ -54172,8 +54173,8 @@ function renderGradePatAnual() {
                                         </div>
                                         <div style="font-size:10px; color:var(--text-light); display:flex; gap:6px; margin-top:2px; align-items:center; flex-wrap:wrap;">
                                             <span>📅 <strong>${dataFormatada}</strong> ${infoDia.curto ? `(${infoDia.curto})` : ''}</span>
-                                            ${infoDia.ehTerOuQui 
-                                                ? '<span style="color:#059669; font-weight:700; background:#d1fae5; padding:1px 4px; border-radius:3px;" title="Cronograma Regular de Terça/Quinta">⚡ Ter/Qui</span>' 
+                                            ${infoDia.ehTerOuQui
+                                                ? '<span style="color:#059669; font-weight:700; background:#d1fae5; padding:1px 4px; border-radius:3px;" title="Cronograma Regular de Terça/Quinta">⚡ Ter/Qui</span>'
                                                 : '<span style="color:#b45309; background:#fef3c7; padding:1px 4px; border-radius:3px;" title="Treinamento fora do cronograma regular de terças e quintas">📌 Extra</span>'
                                             }
                                             <span>⏱️ ${ch}</span>
@@ -54344,7 +54345,7 @@ function abrirFormCronogramaComMes(mesIdx) {
 
     const proximaLivre = terQuintas.find(tq => !datasOcupadas.has(tq.iso));
     const dataSugerida = proximaLivre ? proximaLivre.iso : `${ano}-${String(mesIdx + 1).padStart(2, '0')}-15`;
-    
+
     showTreinSubtab('cronograma');
     abrirFormCronograma();
     const dataInput = document.getElementById('cronoForm_data');
@@ -54474,7 +54475,7 @@ function renderSugestoesTemasModal() {
         <div style="font-size:12px; color:var(--text-light); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
             <div>
                 Mostrando <strong>${listaFiltrada.length} tema(s)</strong> para <strong>${infoSazonal.nomeMes}/${ano}</strong>
-                ${proximaDataSugerida 
+                ${proximaDataSugerida
                     ? ` • Próxima vaga regular: <strong style="color:#059669;">${formatSimpleDate(proximaDataSugerida.iso)} (${proximaDataSugerida.diaSemanaNome})</strong>`
                     : ' • <span style="color:#b45309; font-weight:700;">Todas as Terças e Quintas do mês já preenchidas</span>'
                 }
@@ -55697,7 +55698,7 @@ async function atualizarCentralAlertasUsuario(forcarRecarregar = false) {
         // -------------------------------------------------------------
         if (typeof allCadastros !== 'undefined' && Array.isArray(allCadastros) &&
             typeof allChecklists !== 'undefined' && Array.isArray(allChecklists)) {
-            
+
             const cadastrosAtivos = allCadastros.filter(c => c.ativo !== false);
             const checklistsDoMes = allChecklists.filter(c => {
                 if (!c.date) return false;

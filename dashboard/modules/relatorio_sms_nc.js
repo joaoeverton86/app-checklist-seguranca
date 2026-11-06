@@ -64,13 +64,13 @@ function popularRelSmsDefaults() {
     const mesEl = document.getElementById('relSmsMes');
     const anoEl = document.getElementById('relSmsAno');
     let deveCarregar = false;
-    if (mesEl && !mesEl.dataset.inicializado) { 
-        mesEl.value = String(mesAnterior.getMonth()); 
-        mesEl.dataset.inicializado = '1'; 
+    if (mesEl && !mesEl.dataset.inicializado) {
+        mesEl.value = String(mesAnterior.getMonth());
+        mesEl.dataset.inicializado = '1';
         deveCarregar = true;
     }
-    if (anoEl && !anoEl.value) { 
-        anoEl.value = mesAnterior.getFullYear(); 
+    if (anoEl && !anoEl.value) {
+        anoEl.value = mesAnterior.getFullYear();
         deveCarregar = true;
     }
     const previewEl = document.getElementById('relSmsPainelPreview');
@@ -1585,8 +1585,8 @@ function coletarDadosFase4RelSms(mes, ano) {
         }
 
         // Cruzar treinamento_cod com treinamentos_catalogo.nome para exibir sempre o nome descritivo
-        const cat = (allTreinamentosCatalogo || []).find(c => 
-            String(c.id) === String(r.treinamento_cod) || 
+        const cat = (allTreinamentosCatalogo || []).find(c =>
+            String(c.id) === String(r.treinamento_cod) ||
             String(c.codigo) === String(r.treinamento_cod)
         );
         let temaNome = (cat?.nome || r.treinamento_nome || '').trim();
@@ -1618,8 +1618,8 @@ function coletarDadosFase4RelSms(mes, ano) {
             return;
         }
 
-        const cat = (allTreinamentosCatalogo || []).find(x => 
-            String(x.id) === String(c.treinamento_cod) || 
+        const cat = (allTreinamentosCatalogo || []).find(x =>
+            String(x.id) === String(c.treinamento_cod) ||
             String(x.codigo) === String(c.treinamento_cod)
         );
         let temaNome = (cat?.nome || c.treinamento_nome || '').trim();
@@ -2861,7 +2861,7 @@ function coletarDadosCompletosRelatorioMensalSms(mes, ano) {
 
     const statusEpiTexto = `Fornecimento e rastreabilidade de ${epiTotalItens} unidades de EPI registradas, contemplando ${epiColaboradoresAtendidos} colaboradores atendidos (${taxaAtendimentoEpi}% do efetivo em rotina de reposição/entrega).`;
 
-    const statusPsicoTexto = psicoDados 
+    const statusPsicoTexto = psicoDados
         ? `Monitoramento de riscos psicossociais (COPSOQ II) com taxa de adesão de ${fmtPct(psicoDados.aplicacao.taxa_participacao)} e ${psicoDados.fortes.length} dimensões fortemente favoráveis ao bem-estar e clima organizacional.`
         : `Avaliação psicossocial não apresentada nesta competência.`;
 
@@ -5509,8 +5509,9 @@ function renderEfetivoPanel() {
     const efetivoAtual = headcountAsOf(dataRef);
     document.getElementById('kpiEfetivoAtual').textContent = efetivoAtual;
 
-    const admissoesPeriodo = allEfetivo.filter(e => e.dt_admissao && parseLocalDate(e.dt_admissao) >= periodoInicio && parseLocalDate(e.dt_admissao) <= periodoFim).length;
-    const demissoesPeriodo = allEfetivo.filter(e => e.dt_demissao && parseLocalDate(e.dt_demissao) >= periodoInicio && parseLocalDate(e.dt_demissao) <= periodoFim).length;
+    const _ehTerc = typeof colaboradorEhTerceiro === 'function' ? colaboradorEhTerceiro : () => false;
+    const admissoesPeriodo = allEfetivo.filter(e => !_ehTerc(e) && e.dt_admissao && parseLocalDate(e.dt_admissao) >= periodoInicio && parseLocalDate(e.dt_admissao) <= periodoFim).length;
+    const demissoesPeriodo = allEfetivo.filter(e => !_ehTerc(e) && e.dt_demissao && parseLocalDate(e.dt_demissao) >= periodoInicio && parseLocalDate(e.dt_demissao) <= periodoFim).length;
     document.getElementById('kpiEfetivoAdmissoes').textContent = admissoesPeriodo;
     document.getElementById('kpiEfetivoDemissoes').textContent = demissoesPeriodo;
 
@@ -5519,7 +5520,7 @@ function renderEfetivoPanel() {
     const turnover = efetivoMedioPeriodo > 0 ? (demissoesPeriodo / efetivoMedioPeriodo * 100) : 0;
     document.getElementById('kpiEfetivoTurnover').textContent = turnover.toFixed(1) + '%';
 
-    const ativosNaData = allEfetivo.filter(e => e.dt_admissao && parseLocalDate(e.dt_admissao) <= dataRef && (!e.dt_demissao || parseLocalDate(e.dt_demissao) > dataRef));
+    const ativosNaData = allEfetivo.filter(e => !_ehTerc(e) && e.dt_admissao && parseLocalDate(e.dt_admissao) <= dataRef && (!e.dt_demissao || parseLocalDate(e.dt_demissao) > dataRef));
     let tempoCasaTotalMeses = 0;
     ativosNaData.forEach(e => {
         const adm = parseLocalDate(e.dt_admissao);
@@ -5556,8 +5557,8 @@ function renderEfetivoPanel() {
         const inicioMes = new Date(ano, mes, 1);
         const fimMes = new Date(ano, mes + 1, 0);
         meses.push(cursor.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
-        const admDoMes = allEfetivo.filter(e => e.dt_admissao && parseLocalDate(e.dt_admissao) >= inicioMes && parseLocalDate(e.dt_admissao) <= fimMes);
-        const dem = allEfetivo.filter(e => e.dt_demissao && parseLocalDate(e.dt_demissao) >= inicioMes && parseLocalDate(e.dt_demissao) <= fimMes).length;
+        const admDoMes = allEfetivo.filter(e => !_ehTerc(e) && e.dt_admissao && parseLocalDate(e.dt_admissao) >= inicioMes && parseLocalDate(e.dt_admissao) <= fimMes);
+        const dem = allEfetivo.filter(e => !_ehTerc(e) && e.dt_demissao && parseLocalDate(e.dt_demissao) >= inicioMes && parseLocalDate(e.dt_demissao) <= fimMes).length;
         const eft = headcountAsOf(fimMes);
         const hht = hhtDoMes(ano, mes);
         admissoesPorMes.push(admDoMes.length);

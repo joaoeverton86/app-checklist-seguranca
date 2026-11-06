@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-var VERSAO_PAINEL = 'v297';
+var VERSAO_PAINEL = 'v298';
 try { ['badgeVersaoDashboardLogin', 'badgeVersaoDashboardSidebar'].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = VERSAO_PAINEL; }); } catch(e){}
 var DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
@@ -399,7 +399,8 @@ var MODULOS_PAINEL_DISPONIVEIS = [
     { key: 'relatoriosms', label: 'Relatório Mensal SMS' },
     { key: 'ergonomia', label: 'Ergonomia (NR-17)' },
     { key: 'periculosidade', label: 'Periculosidade (NR-16)' },
-    { key: 'placarlideres', label: '🏆 Placar de Líderes' }
+    { key: 'placarlideres', label: '🏆 Placar de Líderes' },
+    { key: 'geradorprompts', label: '💡 Gerador de Prompts IA' }
 ];
 
 // Matrículas que podem mexer em "Usuários do Painel" (perfis/convites) - hoje só o
@@ -504,7 +505,8 @@ function aplicarRestricaoModulosPainelNoMenu() {
         importexport: 'navImportExport',
         relatoriosms: 'navRelatorioSms',
         ergonomia: 'navErgonomia',
-        periculosidade: 'navPericulosidade'
+        periculosidade: 'navPericulosidade',
+        geradorprompts: 'navGeradorPrompts'
     };
 
     Object.keys(navMap).forEach(pageId => {
@@ -36944,7 +36946,8 @@ var DB_PAGE_TITLES = {
     ergonomia: 'Ergonomia (NR-17)',
     periculosidade: 'Periculosidade (NR-16) - Laudo Técnico (LTP)',
     planoacao: 'Plano de Ação Integrado (5W2H) — NR-01 / GRO',
-    placarlideres: '🏆 Placar das Lideranças & Rotinas de Encarregados'
+    placarlideres: '🏆 Placar das Lideranças & Rotinas de Encarregados',
+    geradorprompts: 'Gerador de Prompts IA'
 };
 
 // ============================================
@@ -37832,7 +37835,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', planoacao: 'navPlanoAcao', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', placarlideres: 'navPlacarLideres', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia', periculosidade: 'navPericulosidade' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', planoacao: 'navPlanoAcao', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', placarlideres: 'navPlacarLideres', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia', periculosidade: 'navPericulosidade', geradorprompts: 'navGeradorPrompts' };
     document.getElementById(navMap[pageId])?.classList.add('active');
     abrirGrupoNavPagina(pageId);
     destacarGrupoAtivo(pageId);
@@ -37846,6 +37849,9 @@ function showDbPage(pageId) {
     // um redesenho depois disso. Recriar o gráfico do zero a cada visita é barato (não
     // busca nada de novo no Supabase, só usa os dados já carregados em memória) e
     // corrige isso sozinho.
+    if (pageId === 'geradorprompts') {
+        if (typeof window.inicializarGeradorPrompts === 'function') window.inicializarGeradorPrompts();
+    }
     if (pageId === 'placarlideres') {
         if (typeof abrirPaginaPlacarLideres === 'function') abrirPaginaPlacarLideres();
     }

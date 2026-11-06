@@ -1,5 +1,7 @@
 # MAPA OFICIAL DE MÓDULOS — DASHBOARD GERENCIAL SST
 
+Ativação oficial v298 (06/11/2026): `modules/gerador_prompts.js` integra a ferramenta interna de engenharia de prompts especialista em SST, arquitetura do App Checklist Segurança e regras inegociáveis de conformidade para agentes de IA.
+
 Correção local v292: `modules/relsms_importacao_segura.js` assume a importação de fotos com categoria, vínculo exato e prévia; carrega após relatorio_sms_fotos.js. Contratos, testes e dependência do Apps Script em `RELSMS_IMPORTACAO_SEGURA.md`. Word manual permanece independente.
 
 Prioridade de emissão v289: `modules/relsms_fotos_manuais.js` gera a seção de fotos editável no Word a partir dos cronogramas, com dois campos por tema, sem Drive. Integra por opção de `montarDocRelSms`/`gerarRelatorioMensalSms`, preservando o fluxo automático. Guia em `RELSMS_WORD_MANUAL.md`.
@@ -31,6 +33,7 @@ O monólito original de 52.062 linhas foi integralmente refatorado e desacoplado
 | **8** | **`dashboard/modules/apr_cipa.js`** | **6.807** | 456,1 KB | **APR (5x5), Templates & CIPA**: Motor Técnico de Inferência SST para APR (Matriz 5x5 COP Ramal), banco de templates `MODELOS_APR_SEED`, gestão de reuniões/atas da CIPA e assistente de cronograma eleitoral NR-05. |
 | **9** | **`dashboard/modules/documentos_brigada.js`** | **1.411** | 85,7 KB | **Controle Documental & Brigada de Incêndio**: Lista mestra de documentos e revisões oficiais, dimensionamento da Brigada de Incêndio, organograma e programação de reciclagem de brigadistas. |
 | **10** | **`dashboard/modules/ergonomia_periculosidade_pgr.js`** | **5.530** | 314,7 KB | **Ergonomia, Periculosidade, PGR & Alertas**: Avaliação Ergonômica Preliminar - AEP (NR-17), Laudos de Periculosidade (NR-16), Plano de Ação PGR (NR-01), Campanhas Sazonais de SST e Central de Alertas Inteligentes SST / Pendências do Dia. |
+| **11** | **`dashboard/modules/gerador_prompts.js`** | **2.310** | 152,0 KB | **Gerador de Prompts Especialista em SST & Engenharia de Contexto**: Geração automatizada de instruções de alta precisão para agentes de IA (Antigravity, Cursor, Claude Code, Gemini), validação de regras de ouro SST/arquiteturais, árvore de conhecimento dos módulos e histórico de prompts. |
 | **—** | **`dashboard/placar_lideres.js`** | **~1.200** | ~75 KB | **Gamificação SST**: Placar de líderes, ranking de segurança e engajamento das frentes operacionais. |
 
 ---

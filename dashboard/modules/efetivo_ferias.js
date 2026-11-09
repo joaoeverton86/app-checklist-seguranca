@@ -1718,6 +1718,7 @@ var frenteAtualGerenciada = null;
 
 function obterCatalogoFrentesCompleto() {
     var mapa = new Map();
+    var excluidas = new Set();
 
     // 1. Frentes do catálogo persistido no sistema
     var catalogo = Array.isArray(allFrentesCatalogo) ? allFrentesCatalogo : [];
@@ -1725,6 +1726,10 @@ function obterCatalogoFrentesCompleto() {
         var nome = typeof f === 'string' ? f.trim() : (f && f.nome ? f.nome.trim() : '');
         if (!nome) return;
         var chave = nome.toUpperCase();
+        if (f && f.excluida === true) {
+            excluidas.add(chave);
+            return;
+        }
         var ativo = typeof f === 'object' && f !== null ? f.ativo !== false : true;
         mapa.set(chave, {
             nome: chave,
@@ -1739,7 +1744,7 @@ function obterCatalogoFrentesCompleto() {
         allDdsFrentesConfig.forEach(function(c) {
             if (!c || !c.id) return;
             var chave = c.id.trim().toUpperCase();
-            if (!chave) return;
+            if (!chave || excluidas.has(chave)) return;
             if (!mapa.has(chave)) {
                 mapa.set(chave, {
                     nome: chave,
@@ -1808,12 +1813,12 @@ function renderFrentesLista() {
 
     container.innerHTML = frentes.map(function(f) {
         var statusBadge = f.ativo
-            ? '<span style="font-size:10.5px; background:rgba(34,197,94,0.15); color:#15803d; border:1px solid rgba(34,197,94,0.3); padding:1px 6px; border-radius:6px; font-weight:600;">Ativa</span>'
-            : '<span style="font-size:10.5px; background:rgba(100,116,139,0.15); color:#475569; border:1px solid rgba(100,116,139,0.3); padding:1px 6px; border-radius:6px; font-weight:600;">Inativa</span>';
+            ? '<span style="font-size:10.5px; background:rgba(16,185,129,0.15); color:var(--success); border:1px solid var(--success); padding:1px 6px; border-radius:6px; font-weight:600;">Ativa</span>'
+            : '<span style="font-size:10.5px; background:var(--bg); color:var(--text-light); border:1px solid var(--border); padding:1px 6px; border-radius:6px; font-weight:600;">Inativa</span>';
 
         var subInfo = f.qtd > 0
             ? f.qtd + ' colaborador(es) ativo(s)'
-            : '<span style="color:#d97706;">⚠️ Frente sem colaboradores vinculados</span>';
+            : '<span style="color:var(--warning);">⚠️ Frente sem colaboradores vinculados</span>';
 
         return '<div class="db-list-item" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="abrirGerenciarFrente(\'' + escapeHTML(f.nome) + '\')">' +
             '<div>' +
@@ -1847,7 +1852,10 @@ async function criarNovaFrente() {
             return;
         } else {
             if (confirm('A frente "' + nomeFinal + '" está cadastrada como inativa. Deseja reativá-la agora?')) {
-                if (typeof item === 'object' && item !== null) item.ativo = true;
+                if (typeof item === 'object' && item !== null) {
+                    item.ativo = true;
+                    delete item.excluida;
+                }
                 else catalogo[existenteIdx] = { nome: nomeFinal, ativo: true };
                 allFrentesCatalogo = catalogo;
                 window.allFrentesCatalogo = allFrentesCatalogo;
@@ -2107,8 +2115,8 @@ async function alternarAtivoFrenteAtual() {
 
 async function excluirFrenteAtual() {
     if (!frenteAtualGerenciada) return;
-    var afetados = allEfetivo.filter(function(e) {
-        return colaboradorEstaAtivo(e) && (e.responsavel || '').trim().toUpperCase() === frenteAtualGerenciada.toUpperCase();
+    var afetados = (Array.isArray(allEfetivo) ? allEfetivo : []).filter(function(e) {
+        return colaboradorEstaAtivo(e) && (e.responsavel || '').trim().toUpperCase() === frenteAtualGerenciada.trim().toUpperCase();
     });
 
     if (afetados.length > 0) {
@@ -2118,23 +2126,37 @@ async function excluirFrenteAtual() {
 
     if (!confirm('Deseja excluir a frente vazia "' + frenteAtualGerenciada + '" do catálogo global?')) return;
 
+    var nomeExcluido = frenteAtualGerenciada.trim();
     var catalogo = (Array.isArray(allFrentesCatalogo) ? allFrentesCatalogo : []).filter(function(f) {
         var n = typeof f === 'string' ? f : (f && f.nome);
-        return n && n.trim().toUpperCase() !== frenteAtualGerenciada.toUpperCase();
+        return n && n.trim().toUpperCase() !== nomeExcluido.toUpperCase();
     });
 
-    allFrentesCatalogo = catalogo;
-    window.allFrentesCatalogo = allFrentesCatalogo;
-
+    // Impede que a importação legada recrie a frente; preserva o histórico DDSMA.
+    catalogo.push({ nome: nomeExcluido, ativo: false, excluida: true, atualizado_em: new Date().toISOString() });
+    var statusEl = document.getElementById('frenteGerenciarStatus');
+    var botao = document.getElementById('frenteBtnExcluirVazia');
+    if (botao && botao.disabled) return;
+    if (botao) botao.disabled = true;
     try {
-        await salvarCatalogoFrentesSupabase(allFrentesCatalogo);
+        await salvarCatalogoFrentesSupabase(catalogo);
+        allFrentesCatalogo = catalogo;
+        window.allFrentesCatalogo = allFrentesCatalogo;
+        if (!frenteAtualGerenciada || frenteAtualGerenciada.trim().toUpperCase() === nomeExcluido.toUpperCase()) {
+            fecharGerenciarFrente();
+        }
+        renderFrentesLista();
+        popularFrentesDatalist();
     } catch (e) {
-        console.warn('Aviso ao salvar exclusão no Supabase:', e);
+        console.error('Erro ao excluir frente:', e);
+        if (statusEl && frenteAtualGerenciada && frenteAtualGerenciada.trim().toUpperCase() === nomeExcluido.toUpperCase()) {
+            statusEl.textContent = '❌ Não foi possível excluir a frente: ' + e.message;
+            statusEl.style.color = 'var(--danger)';
+        }
+        alert('Não foi possível excluir a frente. Nenhuma exclusão foi confirmada.\n' + e.message);
+    } finally {
+        if (botao) botao.disabled = false;
     }
-
-    fecharGerenciarFrente();
-    renderFrentesLista();
-    popularFrentesDatalist();
 }
 
 function popularFrentesDatalist() {

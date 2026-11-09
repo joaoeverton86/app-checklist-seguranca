@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-var VERSAO_PAINEL = 'v299';
+var VERSAO_PAINEL = 'v300';
 try { ['badgeVersaoDashboardLogin', 'badgeVersaoDashboardSidebar'].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = VERSAO_PAINEL; }); } catch(e){}
 var DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
@@ -6909,6 +6909,15 @@ function todasFrentesAtivas() {
             }
         });
     }
+    // Exclusões globais prevalecem sobre opções legadas, sem apagar registros DDS.
+    catalogo.forEach(function(f) {
+        if (f && f.excluida === true && f.nome) {
+            var chave = f.nome.trim().toUpperCase();
+            frentes.forEach(function(nome) {
+                if (nome.trim().toUpperCase() === chave) frentes.delete(nome);
+            });
+        }
+    });
     return Array.from(frentes).sort(function(a, b) {
         return a.localeCompare(b, 'pt-BR', { sensitivity: 'base' });
     });

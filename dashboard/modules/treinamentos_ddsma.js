@@ -2397,6 +2397,15 @@ function todasFrentesAtivas() {
             }
         });
     }
+    // Exclusões globais prevalecem sobre opções legadas, sem apagar registros DDS.
+    catalogo.forEach(function(f) {
+        if (f && f.excluida === true && f.nome) {
+            var chave = f.nome.trim().toUpperCase();
+            frentes.forEach(function(nome) {
+                if (nome.trim().toUpperCase() === chave) frentes.delete(nome);
+            });
+        }
+    });
     return Array.from(frentes).sort(function(a, b) {
         return a.localeCompare(b, 'pt-BR', { sensitivity: 'base' });
     });

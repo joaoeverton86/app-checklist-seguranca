@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-var VERSAO_PAINEL = 'v300';
+var VERSAO_PAINEL = 'v301.3';
 try { ['badgeVersaoDashboardLogin', 'badgeVersaoDashboardSidebar'].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = VERSAO_PAINEL; }); } catch(e){}
 var DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
@@ -400,7 +400,8 @@ var MODULOS_PAINEL_DISPONIVEIS = [
     { key: 'ergonomia', label: 'Ergonomia (NR-17)' },
     { key: 'periculosidade', label: 'Periculosidade (NR-16)' },
     { key: 'placarlideres', label: '🏆 Placar de Líderes' },
-    { key: 'geradorprompts', label: '💡 Gerador de Prompts IA' }
+    { key: 'geradorprompts', label: '💡 Gerador de Prompts IA' },
+    { key: 'gestao_de_condutores', label: '🪪 Gestão de Condutores – CNH' }
 ];
 
 // Matrículas que podem mexer em "Usuários do Painel" (perfis/convites) - hoje só o
@@ -506,7 +507,8 @@ function aplicarRestricaoModulosPainelNoMenu() {
         relatoriosms: 'navRelatorioSms',
         ergonomia: 'navErgonomia',
         periculosidade: 'navPericulosidade',
-        geradorprompts: 'navGeradorPrompts'
+        geradorprompts: 'navGeradorPrompts',
+        gestao_de_condutores: 'navGestaoDeCondutores'
     };
 
     Object.keys(navMap).forEach(pageId => {
@@ -704,6 +706,8 @@ async function realizarLoginPainelExterno() {
         const isSaude = (pu.matricula === '98' || pu.perfil_id === 'modulo_saude' || (pu.nome && pu.nome.toUpperCase().includes('AMANDA')));
         const session = {
             tipo: 'painel_externo',
+            auth_user_id: authData.user.id,
+            email: authData.user.email || pu.email || '',
             matricula: pu.matricula || null,
             role: isSaude ? 'Saúde (Enfermagem)' : (pu.painel_perfis.nome || 'Visualizador'),
             nome: pu.nome,
@@ -36983,7 +36987,8 @@ var DB_PAGE_TITLES = {
     periculosidade: 'Periculosidade (NR-16) - Laudo Técnico (LTP)',
     planoacao: 'Plano de Ação Integrado (5W2H) — NR-01 / GRO',
     placarlideres: '🏆 Placar das Lideranças & Rotinas de Encarregados',
-    geradorprompts: 'Gerador de Prompts IA'
+    geradorprompts: 'Gerador de Prompts IA',
+    gestao_de_condutores: 'GESTÃO DE CONDUTORES - CNH'
 };
 
 // ============================================
@@ -37785,7 +37790,7 @@ async function salvarPerfilPainel() {
 // ================================================================
 var NAV_GROUP_POR_PAGINA = {
     checklists: 'seguranca', treinamentos: 'seguranca', ddsma: 'seguranca', apr: 'seguranca', matrizrisco: 'seguranca', planoacao: 'seguranca',
-    epi: 'seguranca', periculosidade: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca', brigada: 'seguranca',
+    epi: 'seguranca', periculosidade: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca', brigada: 'seguranca', gestao_de_condutores: 'seguranca',
     saude: 'saude', psicossocial: 'saude', ergonomia: 'saude',
     ambiental: 'ambiente',
     efetivo: 'pessoas',
@@ -37871,7 +37876,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', planoacao: 'navPlanoAcao', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', placarlideres: 'navPlacarLideres', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia', periculosidade: 'navPericulosidade', geradorprompts: 'navGeradorPrompts' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', planoacao: 'navPlanoAcao', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', placarlideres: 'navPlacarLideres', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia', periculosidade: 'navPericulosidade', geradorprompts: 'navGeradorPrompts', gestao_de_condutores: 'navGestaoDeCondutores' };
     document.getElementById(navMap[pageId])?.classList.add('active');
     abrirGrupoNavPagina(pageId);
     destacarGrupoAtivo(pageId);
@@ -37887,6 +37892,16 @@ function showDbPage(pageId) {
     // corrige isso sozinho.
     if (pageId === 'geradorprompts') {
         if (typeof window.inicializarGeradorPrompts === 'function') window.inicializarGeradorPrompts();
+    }
+    if (pageId === 'gestao_de_condutores') {
+        const elCond = document.getElementById('page-gestao_de_condutores');
+        if (typeof window.renderGestaoDeCondutoresPanel === 'function') {
+            Promise.resolve().then(() => window.renderGestaoDeCondutoresPanel()).catch(err => {
+                if (elCond) elCond.innerHTML = `<div class="db-chart-card" style="padding:20px; border:1px solid var(--danger); color:var(--danger);">❌ Erro ao carregar Gestão de Condutores – CNH: ${escapeHTML(err && err.message ? err.message : String(err))}</div>`;
+            });
+        } else if (elCond) {
+            elCond.innerHTML = '<div class="db-chart-card" style="padding:20px; border:1px solid var(--danger); color:var(--danger);">❌ Módulo Gestão de Condutores – CNH (renderGestaoDeCondutoresPanel) não carregado. Recarregue a página.</div>';
+        }
     }
     if (pageId === 'placarlideres') {
         if (typeof abrirPaginaPlacarLideres === 'function') abrirPaginaPlacarLideres();

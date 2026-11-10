@@ -1,5 +1,7 @@
 # MAPA OFICIAL DE MÓDULOS — DASHBOARD GERENCIAL SST
 
+Incremento local v301 (09/11/2026): `modules/gestao_de_condutores_cnh.js` (2.862 linhas, 165,1 KB) implementa o módulo independente de Gestão de Condutores – CNH (Próprios, Terceiros e PJ), expondo exclusivamente o ponto de entrada `window.renderGestaoDeCondutoresPanel` (rota `gestao_de_condutores`, container `page-gestao_de_condutores`) e operando apenas sobre `public.gestao_de_condutores_cnh` com ciclos UUID de CNH, avaliação individual por atividade/equipamento, proteção de regras/histórico e comunicações imutáveis. Minuta SQL (`supabase/migrations/20261109_modulo_gestao_condutores_cnh.sql`), políticas RLS/vínculo Auth real e validação visual em navegador permanecem bloqueadas/pendentes de ambiente isolado e homologação.
+
 Ativação oficial v298 (06/11/2026): `modules/gerador_prompts.js` integra a ferramenta interna de engenharia de prompts especialista em SST, arquitetura do App Checklist Segurança e regras inegociáveis de conformidade para agentes de IA.
 
 Correção local v292: `modules/relsms_importacao_segura.js` assume a importação de fotos com categoria, vínculo exato e prévia; carrega após relatorio_sms_fotos.js. Contratos, testes e dependência do Apps Script em `RELSMS_IMPORTACAO_SEGURA.md`. Word manual permanece independente.
@@ -34,6 +36,7 @@ O monólito original de 52.062 linhas foi integralmente refatorado e desacoplado
 | **9** | **`dashboard/modules/documentos_brigada.js`** | **1.411** | 85,7 KB | **Controle Documental & Brigada de Incêndio**: Lista mestra de documentos e revisões oficiais, dimensionamento da Brigada de Incêndio, organograma e programação de reciclagem de brigadistas. |
 | **10** | **`dashboard/modules/ergonomia_periculosidade_pgr.js`** | **5.530** | 314,7 KB | **Ergonomia, Periculosidade, PGR & Alertas**: Avaliação Ergonômica Preliminar - AEP (NR-17), Laudos de Periculosidade (NR-16), Plano de Ação PGR (NR-01), Campanhas Sazonais de SST e Central de Alertas Inteligentes SST / Pendências do Dia. |
 | **11** | **`dashboard/modules/gerador_prompts.js`** | **2.310** | 152,0 KB | **Gerador de Prompts Especialista em SST & Engenharia de Contexto**: Geração automatizada de instruções de alta precisão para agentes de IA (Antigravity, Cursor, Claude Code, Gemini), validação de regras de ouro SST/arquiteturais, árvore de conhecimento dos módulos e histórico de prompts. |
+| **12** | **`dashboard/modules/gestao_de_condutores_cnh.js`** | **2.862** | 165,1 KB | **Gestão de Condutores – CNH**: Ponto de entrada único `window.renderGestaoDeCondutoresPanel` (rota `gestao_de_condutores`, tabela exclusiva `public.gestao_de_condutores_cnh`). Controle de condutores e operadores (Próprios, Terceiros e PJ), ciclos de validade de CNH (`America/Sao_Paulo`), aptidão por atividade/equipamento (`Inativo > Inapto > Pendente > Apto`), treinamentos com conferência e histórico imutável de comunicações. *(Minuta SQL/RLS, Auth real e validação visual bloqueados/pendentes de ambiente isolado)*. |
 | **—** | **`dashboard/placar_lideres.js`** | **~1.200** | ~75 KB | **Gamificação SST**: Placar de líderes, ranking de segurança e engajamento das frentes operacionais. |
 
 ---
@@ -54,3 +57,5 @@ O arquivo central agora atua estritamente como **Core do Dashboard**:
 1. **PROIBIDO LER O ARQUIVO COMPLETO**: Nunca execute `view_file` sem passar `StartLine` e `EndLine`. Limite cada chamada a blocos de até 150 linhas.
 2. **EDIÇÃO DIRETA NO MÓDULO ALVO**: Qualquer manutenção deve ser feita diretamente no arquivo correspondente dentro de `dashboard/modules/` conforme a tabela acima.
 3. **COMPATIBILIDADE GARANTIDA**: Todos os arquivos compartilham o escopo global nativo do navegador via tags `<script>` no [dashboard/index.html](file:///c:/Projetos/app-checklist-seguranca/dashboard/index.html), sem necessidade de `import/export` ou compiladores.
+
+Incremento local CNH v301.2: matriz interna aprovada por João; sete modelos, validação canônica de requisitos no servidor por migração adicional e reciclagem interna de 24 meses para Direção Defensiva e NR-11/NR-12. Ver MATRIZ_CONDUTORES_APROVADA.md. Teste local não equivale a publicação ou validação do schema operacional.

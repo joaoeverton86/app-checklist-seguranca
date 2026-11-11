@@ -8187,7 +8187,9 @@ function construirFolhaCertificado(r, colab, cat, codigo, campos, data, customPa
     const respTecnicoRegistro = customParams.respTecnicoRegistro || campos.responsavel_tecnico_registro || 'CREA: 0522078320';
 
     const cargaHorariaStr = cargaHoraria ? `${cargaHoraria} horas` : 'Carga horária regulamentar';
-    const horarioStr = (campos.hora_inicio && campos.hora_termino) ? ` (das ${campos.hora_inicio} às ${campos.hora_termino})` : '';
+    const horarioStr = Array.isArray(campos.agenda_periodos) && campos.agenda_periodos.length
+        ? ` (${campos.agenda_periodos.map(p => `${escapeHTML(formatSimpleDate(p.data))}: ${escapeHTML(p.inicio)}–${escapeHTML(p.fim)}`).join('; ')})`
+        : ((campos.hora_inicio && campos.hora_termino) ? ` (das ${campos.hora_inicio} às ${campos.hora_termino})` : '');
     const turmaStr = campos.numero_turma ? ` | Turma: ${escapeHTML(campos.numero_turma)}` : '';
     const periodoInfo = formatarPeriodoTreinamento(data, campos);
 

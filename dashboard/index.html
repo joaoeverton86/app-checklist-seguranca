@@ -1397,6 +1397,12 @@
                 </div>
 
                 <div id="treinSubtab-kits" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom:16px">
+                    <div class="db-chart-title">Treinamentos iniciais — kit admissional</div>
+                    <p>Marque um colaborador na turma abaixo e carregue os cursos definidos nas Regras de Recomendação.</p>
+                    <button type="button" class="db-apply-btn" onclick="abrirKitAdmissional()">Montar sequência admissional</button>
+                    <div id="kitAdmissionalEditor"></div>
+                </div>
                 <!-- Banner e Passo 1: Seleção do Treinamento, Modalidade (Inicial/Reciclagem) e Período -->
                 <div class="db-chart-card" style="margin-bottom: 16px; border-left: 4px solid var(--primary, #2563eb);">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
@@ -10448,7 +10454,8 @@
     <script src="../data.js?v=295"></script>
     <script src="logo_cop_base64.js?v=295"></script>
     <script src="dashboard.js?v=301.5"></script>
-    <script src="modules/treinamentos_ddsma.js?v=300"></script>
+    <script src="modules/treinamentos_ddsma.js?v=301"></script>
+    <script src="modules/kits_admissionais.js?v=3"></script>
     <script src="modules/efetivo_ferias.js?v=300"></script>
     <script src="modules/ghe_os.js?v=295"></script>
     <script src="modules/relatorio_sms_nc.js?v=295"></script>

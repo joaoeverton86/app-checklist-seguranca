@@ -15832,20 +15832,65 @@ function gerarPdfRelatorioEfetivo() {
 // Mapa nome-do-estado -> UF, porque "estado" em colaboradores_efetivo é texto
 // livre (tem registro como "PERNAMBUCO" e outro como "PE" pro MESMO município
 // - sem isso, os dois viram grupos separados e o Quadro 1 conta errado).
+// As chaves ficam SEM acento de propósito: a busca é feita por normalizarChaveTexto(),
+// que remove acento. Assim "CEARÁ", "Ceara" e "CEARA" acham a mesma UF.
 var NOME_ESTADO_PARA_UF = {
-    'ACRE': 'AC', 'ALAGOAS': 'AL', 'AMAPÁ': 'AP', 'AMAZONAS': 'AM', 'BAHIA': 'BA',
-    'CEARÁ': 'CE', 'DISTRITO FEDERAL': 'DF', 'ESPÍRITO SANTO': 'ES', 'GOIÁS': 'GO',
-    'MARANHÃO': 'MA', 'MATO GROSSO': 'MT', 'MATO GROSSO DO SUL': 'MS',
-    'MINAS GERAIS': 'MG', 'PARÁ': 'PA', 'PARAÍBA': 'PB', 'PARANÁ': 'PR',
-    'PERNAMBUCO': 'PE', 'PIAUÍ': 'PI', 'RIO DE JANEIRO': 'RJ',
-    'RIO GRANDE DO NORTE': 'RN', 'RIO GRANDE DO SUL': 'RS', 'RONDÔNIA': 'RO',
-    'RORAIMA': 'RR', 'SANTA CATARINA': 'SC', 'SÃO PAULO': 'SP', 'SERGIPE': 'SE',
+    'ACRE': 'AC', 'ALAGOAS': 'AL', 'AMAPA': 'AP', 'AMAZONAS': 'AM', 'BAHIA': 'BA',
+    'CEARA': 'CE', 'DISTRITO FEDERAL': 'DF', 'ESPIRITO SANTO': 'ES', 'GOIAS': 'GO',
+    'MARANHAO': 'MA', 'MATO GROSSO': 'MT', 'MATO GROSSO DO SUL': 'MS',
+    'MINAS GERAIS': 'MG', 'PARA': 'PA', 'PARAIBA': 'PB', 'PARANA': 'PR',
+    'PERNAMBUCO': 'PE', 'PIAUI': 'PI', 'RIO DE JANEIRO': 'RJ',
+    'RIO GRANDE DO NORTE': 'RN', 'RIO GRANDE DO SUL': 'RS', 'RONDONIA': 'RO',
+    'RORAIMA': 'RR', 'SANTA CATARINA': 'SC', 'SAO PAULO': 'SP', 'SERGIPE': 'SE',
     'TOCANTINS': 'TO'
 };
+
+// Nome completo (com acento, para exibição) de cada UF - usado ao GRAVAR o
+// cadastro, para o campo "estado" não voltar a misturar "PE" com "PERNAMBUCO".
+var UF_PARA_NOME_ESTADO = {
+    'AC': 'ACRE', 'AL': 'ALAGOAS', 'AP': 'AMAPÁ', 'AM': 'AMAZONAS', 'BA': 'BAHIA',
+    'CE': 'CEARÁ', 'DF': 'DISTRITO FEDERAL', 'ES': 'ESPÍRITO SANTO', 'GO': 'GOIÁS',
+    'MA': 'MARANHÃO', 'MT': 'MATO GROSSO', 'MS': 'MATO GROSSO DO SUL',
+    'MG': 'MINAS GERAIS', 'PA': 'PARÁ', 'PB': 'PARAÍBA', 'PR': 'PARANÁ',
+    'PE': 'PERNAMBUCO', 'PI': 'PIAUÍ', 'RJ': 'RIO DE JANEIRO',
+    'RN': 'RIO GRANDE DO NORTE', 'RS': 'RIO GRANDE DO SUL', 'RO': 'RONDÔNIA',
+    'RR': 'RORAIMA', 'SC': 'SANTA CATARINA', 'SP': 'SÃO PAULO', 'SE': 'SERGIPE',
+    'TO': 'TOCANTINS'
+};
+
+// Chave de comparação: remove acento, força maiúsculas e junta espaços repetidos.
+// "Sertânia", "SERTANIA" e " sertania " passam a ser a MESMA chave ("SERTANIA").
+function normalizarChaveTexto(texto) {
+    return String(texto == null ? '' : texto)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase();
+}
+
+// Chave de município - mesma regra do texto (nome de cidade é texto livre no cadastro).
+function normalizarChaveMunicipio(texto) {
+    return normalizarChaveTexto(texto);
+}
+
 function normalizarUF(estadoTexto) {
-    const t = (estadoTexto || '').trim();
-    if (t.length === 2) return t.toUpperCase();
-    return NOME_ESTADO_PARA_UF[t.toUpperCase()] || t.toUpperCase();
+    const t = normalizarChaveTexto(estadoTexto);
+    if (t.length === 2) return t;
+    return NOME_ESTADO_PARA_UF[t] || t;
+}
+
+// Texto que vai para o banco no campo "estado": sempre o nome completo do estado.
+// Se o valor não for reconhecido, mantém exatamente o que foi digitado.
+function normalizarEstadoGravacao(estadoTexto) {
+    const original = String(estadoTexto == null ? '' : estadoTexto).replace(/\s+/g, ' ').trim();
+    const uf = normalizarUF(original);
+    return UF_PARA_NOME_ESTADO[uf] || original;
+}
+
+// Limpa espaços repetidos do texto digitado, sem trocar maiúsculas nem acentos.
+function normalizarTextoGravacao(texto) {
+    return String(texto == null ? '' : texto).replace(/\s+/g, ' ').trim();
 }
 
 function popularMaoDeObraDefaults() {
@@ -15882,8 +15927,14 @@ async function adicionarMunicipioAda() {
         statusEl.style.color = 'var(--danger)';
         return;
     }
-    const id = municipio.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + uf.toLowerCase();
-    if (allMunicipiosAda.some(m => m.id === id)) {
+    // Gera o id a partir da chave SEM acento - "Sertânia" e "Sertania" precisam
+    // produzir o mesmo id, senão a lista aceita o município duplicado.
+    const id = normalizarChaveMunicipio(municipio).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '-' + uf.toLowerCase();
+    // IDs legados podem ter sido gerados sem normalização de acentos.
+    if (allMunicipiosAda.some(m => m.id === id || (
+        normalizarChaveMunicipio(m.municipio) === normalizarChaveMunicipio(municipio)
+        && normalizarUF(m.uf) === uf
+    ))) {
         statusEl.textContent = 'Esse município já está na lista.';
         statusEl.style.color = 'var(--text-light)';
         return;
@@ -15942,16 +15993,18 @@ function montarQuadrosMaoDeObra(ano, mesIndex0) {
 
     const porMunicipio = new Map();
     ativos.forEach(e => {
-        const municipio = (e.cidade || '').trim().toUpperCase() || '(NÃO INFORMADO)';
+        const municipio = normalizarTextoGravacao(e.cidade).toUpperCase() || '(NÃO INFORMADO)';
         const uf = normalizarUF(e.estado);
-        if (!porMunicipio.has(municipio)) porMunicipio.set(municipio, { municipio, uf, qtd: 0 });
-        porMunicipio.get(municipio).qtd++;
+        // Agrupa pela chave sem acento/maiúsculas: "Sertânia" e "SERTANIA" caem na mesma linha.
+        const chave = `${normalizarChaveMunicipio(municipio)}||${uf}`;
+        if (!porMunicipio.has(chave)) porMunicipio.set(chave, { municipio, uf, qtd: 0 });
+        porMunicipio.get(chave).qtd++;
     });
     const linhasQuadro1 = Array.from(porMunicipio.values()).sort((a, b) => a.municipio.localeCompare(b.municipio, 'pt-BR'));
 
-    const chavesAda = new Set(allMunicipiosAda.map(m => `${m.municipio.toUpperCase()}||${normalizarUF(m.uf)}`));
+    const chavesAda = new Set(allMunicipiosAda.map(m => `${normalizarChaveMunicipio(m.municipio)}||${normalizarUF(m.uf)}`));
     const linhasQuadro2 = linhasQuadro1
-        .filter(l => chavesAda.has(`${l.municipio}||${l.uf}`))
+        .filter(l => chavesAda.has(`${normalizarChaveMunicipio(l.municipio)}||${l.uf}`))
         .map(l => ({ ...l, pct: totalFuncionarios > 0 ? (l.qtd / totalFuncionarios * 100) : 0 }));
     const totalAda = linhasQuadro2.reduce((s, l) => s + l.qtd, 0);
     const pctAda = totalFuncionarios > 0 ? (totalAda / totalFuncionarios * 100) : 0;
@@ -17478,8 +17531,8 @@ var EFETIVO_PDF_COLUNAS = [
     { id: 'estado', label: 'UF', get: e => e.estado },
     { id: 'ada', label: 'Mão de Obra ADA', get: e => {
         if (typeof allMunicipiosAda !== 'undefined' && Array.isArray(allMunicipiosAda) && allMunicipiosAda.length > 0) {
-            const cid = (e.cidade || '').toUpperCase().trim();
-            return allMunicipiosAda.some(m => (m.municipio || '').toUpperCase().trim() === cid) ? 'SIM' : 'NÃO';
+            const cid = normalizarChaveMunicipio(e.cidade);
+            return allMunicipiosAda.some(m => normalizarChaveMunicipio(m.municipio) === cid) ? 'SIM' : 'NÃO';
         }
         return '';
     }},
@@ -18849,8 +18902,8 @@ async function salvarColaboradorEfetivo() {
         dt_demissao: dtDemissaoInput,
         dt_nascimento: dtNascimentoInput,
         cpf: document.getElementById('efForm_cpf').value.trim(),
-        cidade: document.getElementById('efForm_cidade').value.trim(),
-        estado: document.getElementById('efForm_estado').value.trim(),
+        cidade: normalizarTextoGravacao(document.getElementById('efForm_cidade').value),
+        estado: normalizarEstadoGravacao(document.getElementById('efForm_estado').value),
         estabilidade: document.getElementById('efForm_estabilidade').value,
         ghe: document.getElementById('efForm_ghe').value.trim(),
         sexo: sexoNormalizado,
@@ -25300,8 +25353,8 @@ function renderEfetivoPanel() {
         efetivoPorMes.push(eft);
         indicePorMes.push(eft > 0 ? Math.round((hht / eft) * 100) : 0);
         hht220PorMes.push(eft * 220);
-        admArcoverdePorMes.push(admDoMes.filter(e => (e.cidade || '').toUpperCase().trim() === 'ARCOVERDE').length);
-        admSertaniaPorMes.push(admDoMes.filter(e => (e.cidade || '').toUpperCase().trim() === 'SERTÂNIA').length);
+        admArcoverdePorMes.push(admDoMes.filter(e => normalizarChaveMunicipio(e.cidade) === 'ARCOVERDE').length);
+        admSertaniaPorMes.push(admDoMes.filter(e => normalizarChaveMunicipio(e.cidade) === 'SERTANIA').length);
         cursor = new Date(ano, mes + 1, 1);
     }
 
@@ -25426,9 +25479,9 @@ function renderEfetivoPanel() {
     // todo o resto do efetivo (outras cidades de origem) entra em "Outros".
     const adaCounts = { ARCOVERDE: 0, 'SERTÂNIA': 0, OUTROS: 0 };
     ativosNaData.forEach(e => {
-        const c = (e.cidade || '').toUpperCase().trim();
+        const c = normalizarChaveMunicipio(e.cidade);
         if (c === 'ARCOVERDE') adaCounts.ARCOVERDE++;
-        else if (c === 'SERTÂNIA') adaCounts['SERTÂNIA']++;
+        else if (c === 'SERTANIA') adaCounts['SERTÂNIA']++;
         else adaCounts.OUTROS++;
     });
     chartInstances.adaAtual = new Chart(document.getElementById('chartAdaAtual'), {
@@ -26038,8 +26091,8 @@ async function importarEfetivoCSV() {
                 dt_admissao: parseDataBR(col(parts, 'DT_ADMISSAO')),
                 dt_demissao: parseDataBR(col(parts, 'DT_DEMISSAO')),
                 dt_nascimento: parseDataBR(col(parts, 'DT_NASCIMENTO')),
-                cidade: col(parts, 'CIDADE'),
-                estado: col(parts, 'ESTADO'),
+                cidade: normalizarTextoGravacao(col(parts, 'CIDADE')),
+                estado: normalizarEstadoGravacao(col(parts, 'ESTADO')),
                 estabilidade: col(parts, 'ESTABILIDADE'),
                 ghe: col(parts, 'GHE'),
                 calca: col(parts, 'CALCA'),
@@ -56625,16 +56678,34 @@ window.imprimirResumoPendenciasEquipe = imprimirResumoPendenciasEquipe;
 
 
 
-// Consulta histórica: somente procedimentos identificados e realização comprovada.
+// ================================================================
+// CONSULTA MENSAL DE EXAMES (PCMSO - NR-07)
+// Gestão de Exames Ocupacionais, Acompanhamento Mensal e Auditoria
+// ================================================================
+
 function pcmsoDataValida(valor) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(valor || '')) return false;
     const d = new Date(valor + 'T12:00:00Z');
-    return !isNaN(d) && d.toISOString().slice(0,10) === valor;
+    return !isNaN(d) && d.toISOString().slice(0, 10) === valor;
 }
+
+function formatarMesAnoPcmso(periodo) {
+    if (!periodo || !periodo.includes('-')) return periodo || '';
+    const parts = periodo.split('-');
+    const ano = parts[0];
+    const mesNum = parseInt(parts[1], 10);
+    const meses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    return (meses[mesNum - 1] || parts[1]) + ' de ' + ano;
+}
+
 function calcularConsultaMensalPcmso(registros, periodo, exame, matriculasAtivas = new Set(), hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })) {
     const realizados = [], previstos = [], vencidos = [], vistos = new Set(), ultimos = new Map();
     let semDetalhamento = 0, invalidos = 0;
     const normalizar = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+    // Mapeamento enriquecido a partir do efetivo para setor, função e vínculo
+    const efetivoMap = new Map((typeof allEfetivo !== 'undefined' && Array.isArray(allEfetivo) ? allEfetivo : []).map(e => [String(e.id || '').trim(), e]));
+
     for (const a of registros || []) {
         if (/cancel|remarc|agend|previst/i.test(a.status || '')) continue;
         const itens = Array.isArray(a.exames_detalhe) ? a.exames_detalhe : [];
@@ -56650,39 +56721,600 @@ function calcularConsultaMensalPcmso(registros, periodo, exame, matriculasAtivas
             const chave = matricula + '|' + nome + '|' + data;
             if (vistos.has(chave)) continue;
             vistos.add(chave);
-            const linha = { matricula, nome: a.nome_colaborador || matricula, exame: item.nome, data };
+
+            const ef = efetivoMap.get(matricula);
+            const isAtivo = ef ? (typeof colaboradorEstaAtivo === 'function' ? colaboradorEstaAtivo(ef) : true) : matriculasAtivas.has(matricula);
+
+            const linha = {
+                matricula,
+                nome: a.nome_colaborador || (ef ? ef.nome : matricula),
+                exame: item.nome,
+                funcao: ef?.funcao || ef?.cargo || '—',
+                setor: ef?.setor || ef?.departamento || ef?.ghe || '—',
+                ativo: isAtivo,
+                data,
+                data_evento: data,
+                vencimento: item.data_vencimento || '',
+                tipo: 'realizado',
+                statusLabel: 'Realizado'
+            };
+
             if (data.startsWith(periodo)) realizados.push(linha);
+
             const chaveUltimo = matricula + '|' + nome;
             if (!ultimos.has(chaveUltimo) || data > ultimos.get(chaveUltimo).data) {
                 ultimos.set(chaveUltimo, { ...linha, vencimento: item.data_vencimento });
             }
         }
     }
+
     for (const linha of ultimos.values()) {
         // Vencimentos operacionais usam somente vínculos atuais; realizados preservam o histórico.
         if (!matriculasAtivas.has(linha.matricula)) continue;
         if (!pcmsoDataValida(linha.vencimento) || !linha.vencimento.startsWith(periodo)) continue;
-        const destino = linha.vencimento < hoje ? vencidos : previstos;
-        destino.push({ ...linha, data: linha.vencimento });
+        const isVencido = linha.vencimento < hoje;
+        const destino = isVencido ? vencidos : previstos;
+        destino.push({
+            ...linha,
+            data: linha.vencimento,
+            data_evento: linha.vencimento,
+            tipo: isVencido ? 'vencido' : 'previsto',
+            statusLabel: isVencido ? 'Vencido' : 'A Vencer'
+        });
     }
-    return { realizados, previstos, vencidos, pessoasVencidas: new Set(vencidos.map(r => r.matricula)).size, pessoas: new Set(realizados.map(r => r.matricula)).size, pessoasPrevistas: new Set(previstos.map(r => r.matricula)).size, semDetalhamento, invalidos };
+
+    // Ordenação alfabética por colaborador e depois por data
+    const ordenarLinhas = arr => arr.sort((a, b) => (a.nome || '').localeCompare(b.nome || '') || (a.data || '').localeCompare(b.data || ''));
+    ordenarLinhas(realizados);
+    ordenarLinhas(vencidos);
+    ordenarLinhas(previstos);
+
+    const todos = [...realizados, ...vencidos, ...previstos];
+
+    return {
+        periodo,
+        exameFiltro: exame,
+        realizados,
+        previstos,
+        vencidos,
+        todos,
+        pessoas: new Set(realizados.map(r => r.matricula)).size,
+        pessoasVencidas: new Set(vencidos.map(r => r.matricula)).size,
+        pessoasPrevistas: new Set(previstos.map(r => r.matricula)).size,
+        totalExames: realizados.length + vencidos.length + previstos.length,
+        semDetalhamento,
+        invalidos,
+        hoje
+    };
 }
+
+// Estados e controles em memória da Consulta Mensal
+window._pcmsoFiltroStatus = window._pcmsoFiltroStatus || 'todos';
+window._pcmsoBuscaTexto = window._pcmsoBuscaTexto || '';
+window._pcmsoUltimoResultado = null;
+
 function renderConsultaMensalPcmso() {
     const host = document.getElementById('consultaMensalPcmso');
     if (!host) return;
-    if (!host.dataset.inicializado) {
-        host.dataset.inicializado = 'true';
-        const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
-        host.innerHTML = '<h3>Consulta mensal de exames</h3><p>Exames realizados preservam o histórico, incluindo desligados. Vencidos e a vencer consideram somente colaboradores atualmente ativos, com vencimento no mês selecionado e situação em relação a hoje.</p><label>Mês e ano <input type="month" id="pcmsoPeriodo" value="' + hoje.slice(0,7) + '" onchange="renderConsultaMensalPcmso()"></label> <label>Tipo de exame <select id="pcmsoTipo" onchange="renderConsultaMensalPcmso()"></select></label><div id="pcmsoMensalResultado"></div>';
-    }
-    const select = document.getElementById('pcmsoTipo'), anterior = select.value;
-    const nomes = [...new Set((allAsoExames || []).flatMap(a => Array.isArray(a.exames_detalhe) ? a.exames_detalhe.map(e => e.nome).filter(Boolean) : []))].sort();
-    const normalizar = v => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-    select.innerHTML = '<option value="">Todos os exames</option>' + nomes.map(n => '<option value="' + escapeHTML(normalizar(n)) + '">' + escapeHTML(n) + '</option>').join('');
-    select.value = anterior;
-    const matriculasAtivas = new Set((allEfetivo || []).filter(colaboradorEstaAtivo).map(e => String(e.id || '').trim()).filter(Boolean));
+
     const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
-    const r = calcularConsultaMensalPcmso(allAsoExames, document.getElementById('pcmsoPeriodo').value, select.value, matriculasAtivas, hoje);
-    const lista = (titulo, linhas, colunaData = 'Data de realização') => '<details><summary>' + titulo + '</summary>' + (linhas.length ? '<div style="overflow:auto"><table class="db-table"><thead><tr><th>Colaborador</th><th>Exame</th><th>' + colunaData + '</th></tr></thead><tbody>' + linhas.map(l => '<tr><td>' + escapeHTML(l.nome) + '</td><td>' + escapeHTML(l.exame) + '</td><td>' + escapeHTML(l.data) + '</td></tr>').join('') + '</tbody></table></div>' : '<p>Sem registros no período.</p>') + '</details>';
-    document.getElementById('pcmsoMensalResultado').innerHTML = lista('Colaboradores com exames realizados: ' + r.pessoas + ' • Exames realizados: ' + r.realizados.length, r.realizados) + '<p>Colaboradores com agendamento confirmado: indisponível. Este fluxo não mantém agenda individual com confirmação, cancelamento e remarcação.</p>' + '<p>Situação em ' + formatSimpleDate(hoje) + ' (horário de São Paulo). Vencimentos restritos ao mês selecionado.</p>' + lista('Colaboradores ativos com exames vencidos: ' + r.pessoasVencidas, r.vencidos, 'Vencimento') + lista('Colaboradores ativos com exames a vencer (inclui hoje): ' + r.pessoasPrevistas, r.previstos, 'Vencimento') + '<details><summary>Critérios e limitações</summary><p>Datas civis do exame, sem conversão de fuso. Sem data individual, usa-se a data do atendimento com resultado registrado. Cada procedimento identificado é contado; repetições da mesma pessoa, exame e data são consolidadas. Vencidos têm validade anterior a hoje; a vencer têm validade de hoje em diante. A previsão usa a validade explícita do último procedimento disponível de colaboradores atualmente ativos, sem representar agendamento. Demitidos, inativos e pessoas sem vínculo ativo identificado ficam fora desse indicador e de sua listagem; o histórico de realizados é preservado. Registros sem detalhamento: ' + r.semDetalhamento + '; procedimentos sem identificação/data válida: ' + r.invalidos + '. ASOs sem procedimentos não permitem inferir quais exames foram realizados.</p></details>';
+    const periodoAtual = document.getElementById('pcmsoPeriodo')?.value || hoje.slice(0, 7);
+
+    // Lista de tipos de exames disponíveis no banco de ASOs
+    const nomesExames = [...new Set((typeof allAsoExames !== 'undefined' && Array.isArray(allAsoExames) ? allAsoExames : []).flatMap(a => Array.isArray(a.exames_detalhe) ? a.exames_detalhe.map(e => e.nome).filter(Boolean) : []))].sort((a, b) => a.localeCompare(b));
+    const normalizar = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+    const exameSelecionado = document.getElementById('pcmsoTipo')?.value || '';
+
+    // Colaboradores com vínculo ativo
+    const matriculasAtivas = new Set((typeof allEfetivo !== 'undefined' && Array.isArray(allEfetivo) ? allEfetivo : []).filter(e => typeof colaboradorEstaAtivo === 'function' ? colaboradorEstaAtivo(e) : true).map(e => String(e.id || '').trim()).filter(Boolean));
+
+    // Executa a apuração técnica
+    const r = calcularConsultaMensalPcmso(typeof allAsoExames !== 'undefined' ? allAsoExames : [], periodoAtual, exameSelecionado, matriculasAtivas, hoje);
+    window._pcmsoUltimoResultado = r;
+
+    const mesAnoFormatado = formatarMesAnoPcmso(periodoAtual);
+    const filtroAtivo = window._pcmsoFiltroStatus || 'todos';
+
+    // Se o container ainda não possui a casca principal montada, renderiza o layout base
+    if (!host.dataset.montado || host.dataset.montado !== 'true') {
+        host.dataset.montado = 'true';
+        host.innerHTML = `
+            <!-- Bloco 1: Controles, Filtros e Ações -->
+            <div class="db-chart-card" style="margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 12px; flex-wrap: wrap;">
+                    <div>
+                        <div class="db-chart-title" style="margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+                            <span>📆 Consulta Mensal de Exames</span>
+                            <span style="font-size: 11px; font-weight: 700; color: #0f766e; background: rgba(15, 118, 110, 0.1); padding: 2px 8px; border-radius: 12px;">NR-07 / PCMSO</span>
+                        </div>
+                        <p style="font-size: 12px; color: var(--text-light); margin: 0;">
+                            Acompanhamento mensal de exames realizados, vencidos e a vencer com dados cadastrais e integridade histórica.
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button type="button" class="db-apply-btn" onclick="imprimirConsultaMensalPcmso()" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 12.5px; border-radius: 8px;">
+                            <span>🖨️</span>
+                            <span>Imprimir Relatório</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Barra de Ferramentas / Filtros -->
+                <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--border);">
+                    <!-- Seletor de Período com navegação rápida -->
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <label style="font-size: 11px; font-weight: 600; color: var(--text-light);">Competência (Mês/Ano)</label>
+                        <div style="display: flex; gap: 4px; align-items: center;">
+                            <button type="button" class="db-clear-btn" onclick="navegarPeriodoConsultaMensalPcmso(-1)" title="Mês anterior" style="padding: 6px 10px; font-size: 12px; border-radius: 6px;">◀</button>
+                            <input type="month" id="pcmsoPeriodo" value="${periodoAtual}" onchange="renderConsultaMensalPcmso()" style="padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-weight: 600; background: var(--card); color: var(--text);">
+                            <button type="button" class="db-clear-btn" onclick="navegarPeriodoConsultaMensalPcmso(0)" title="Mês atual" style="padding: 6px 10px; font-size: 11px; border-radius: 6px; font-weight: 600;">Hoje</button>
+                            <button type="button" class="db-clear-btn" onclick="navegarPeriodoConsultaMensalPcmso(1)" title="Próximo mês" style="padding: 6px 10px; font-size: 12px; border-radius: 6px;">▶</button>
+                        </div>
+                    </div>
+
+                    <!-- Seletor de Tipo de Exame -->
+                    <div style="display: flex; flex-direction: column; gap: 4px; min-width: 220px; flex: 1;">
+                        <label style="font-size: 11px; font-weight: 600; color: var(--text-light);">Procedimento / Tipo de Exame</label>
+                        <select id="pcmsoTipo" onchange="renderConsultaMensalPcmso()" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; background: var(--card); color: var(--text); width: 100%;">
+                            <option value="">Todos os procedimentos</option>
+                        </select>
+                    </div>
+
+                    <!-- Busca Textual Instantânea -->
+                    <div style="display: flex; flex-direction: column; gap: 4px; min-width: 250px; flex: 1.5;">
+                        <label style="font-size: 11px; font-weight: 600; color: var(--text-light);">Busca rápida no mês</label>
+                        <div style="position: relative; display: flex; align-items: center;">
+                            <input type="search" id="pcmsoBusca" value="${escapeHTML(window._pcmsoBuscaTexto || '')}" oninput="aoDigitarBuscaConsultaMensalPcmso(this.value)" placeholder="Filtrar por nome, matrícula, função ou exame..." style="padding: 7px 32px 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; background: var(--card); color: var(--text); width: 100%;">
+                            <button type="button" onclick="limparBuscaConsultaMensalPcmso()" title="Limpar busca" style="position: absolute; right: 8px; background: none; border: none; color: var(--text-light); cursor: pointer; font-size: 13px;">✕</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bloco 2: Grid de Cards KPI Visíveis e Interativos -->
+            <div id="pcmsoKpiContainer" class="db-kpi-grid"></div>
+
+            <!-- Bloco 3: Listagem Principal com Filtro de Abas/Pills e Tabela -->
+            <div class="db-chart-card" style="margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 10px; flex-wrap: wrap;">
+                    <!-- Abas de Filtro Rápido (Pills) -->
+                    <div id="pcmsoPillsFiltro" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;"></div>
+                    <div id="pcmsoContadorRegistros" style="font-size: 12px; color: var(--text-light); font-weight: 600;"></div>
+                </div>
+
+                <!-- Tabela de Registros -->
+                <div style="overflow-x: auto; max-height: 560px; border: 1px solid var(--border); border-radius: 8px;">
+                    <table class="db-table" style="margin: 0; width: 100%; border-collapse: separate; border-spacing: 0;">
+                        <thead style="position: sticky; top: 0; background: var(--card); z-index: 2; box-shadow: 0 1px 2px rgba(0,0,0,0.06);">
+                            <tr>
+                                <th style="padding: 10px 12px; font-size: 11px;">Colaborador</th>
+                                <th style="padding: 10px 12px; font-size: 11px;">Função / Setor</th>
+                                <th style="padding: 10px 12px; font-size: 11px;">Procedimento / Exame</th>
+                                <th style="padding: 10px 12px; font-size: 11px; text-align: center;">Status</th>
+                                <th style="padding: 10px 12px; font-size: 11px;">Data do Evento</th>
+                                <th style="padding: 10px 12px; font-size: 11px; text-align: center;">Vínculo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pcmsoTabelaBody"></tbody>
+                    </table>
+                </div>
+
+                <div id="pcmsoTabelaVazia" style="display: none; padding: 40px 16px; text-align: center;">
+                    <div style="font-size: 32px; margin-bottom: 8px;">📭</div>
+                    <div style="font-size: 14px; font-weight: 600; color: var(--text);">Nenhum exame encontrado</div>
+                    <div style="font-size: 12px; color: var(--text-light); margin-top: 4px;" id="pcmsoTabelaVaziaSub">Nenhum registro coincide com os filtros selecionados para este mês.</div>
+                </div>
+            </div>
+
+            <!-- Bloco 4: Critérios Normativos, Integridade e Limitações Técnicas -->
+            <div id="pcmsoCriteriosBox" class="db-chart-card" style="margin-bottom: 16px; background: rgba(15, 118, 110, 0.03); border: 1px solid rgba(15, 118, 110, 0.2);"></div>
+        `;
+    }
+
+    // Popula o select de tipos de exames preservando a seleção atual
+    const selectTipo = document.getElementById('pcmsoTipo');
+    if (selectTipo) {
+        const valorAnterior = exameSelecionado || selectTipo.value;
+        selectTipo.innerHTML = '<option value="">Todos os procedimentos (' + nomesExames.length + ' tipos cadastrados)</option>' +
+            nomesExames.map(n => '<option value="' + escapeHTML(normalizar(n)) + '"' + (normalizar(n) === valorAnterior ? ' selected' : '') + '>' + escapeHTML(n) + '</option>').join('');
+    }
+
+    // Sincroniza o input de período
+    const inputPeriodo = document.getElementById('pcmsoPeriodo');
+    if (inputPeriodo && inputPeriodo.value !== periodoAtual) {
+        inputPeriodo.value = periodoAtual;
+    }
+
+    // Atualiza a Grid de KPIs
+    const kpiContainer = document.getElementById('pcmsoKpiContainer');
+    if (kpiContainer) {
+        kpiContainer.innerHTML = `
+            <div class="db-kpi-card db-kpi-success" onclick="selecionarFiltroConsultaMensalPcmso('realizados')" style="cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; ${filtroAtivo === 'realizados' ? 'outline: 2px solid #059669; outline-offset: 2px;' : ''}" title="Clique para filtrar apenas exames realizados">
+                <div class="db-kpi-value" style="color: #059669;">${r.realizados.length}</div>
+                <div class="db-kpi-label">Exames Realizados no Mês</div>
+                <div class="db-kpi-sub" style="font-size: 11px; color: var(--text-light); margin-top: 4px;">👥 <strong>${r.pessoas}</strong> colaboradores atendidos</div>
+            </div>
+
+            <div class="db-kpi-card db-kpi-danger" onclick="selecionarFiltroConsultaMensalPcmso('vencidos')" style="cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; ${filtroAtivo === 'vencidos' ? 'outline: 2px solid #dc2626; outline-offset: 2px;' : ''}" title="Clique para filtrar exames vencidos neste mês">
+                <div class="db-kpi-value" style="color: #dc2626;">${r.vencidos.length}</div>
+                <div class="db-kpi-label">Exames Vencidos no Mês</div>
+                <div class="db-kpi-sub" style="font-size: 11px; color: var(--text-light); margin-top: 4px;">⚠️ <strong>${r.pessoasVencidas}</strong> colaboradores ativos pendentes</div>
+            </div>
+
+            <div class="db-kpi-card db-kpi-warning" onclick="selecionarFiltroConsultaMensalPcmso('previstos')" style="cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; ${filtroAtivo === 'previstos' ? 'outline: 2px solid #d97706; outline-offset: 2px;' : ''}" title="Clique para filtrar exames a vencer até o fim do mês">
+                <div class="db-kpi-value" style="color: #d97706;">${r.previstos.length}</div>
+                <div class="db-kpi-label">Exames a Vencer no Mês</div>
+                <div class="db-kpi-sub" style="font-size: 11px; color: var(--text-light); margin-top: 4px;">⏳ <strong>${r.pessoasPrevistas}</strong> colaboradores ativos para agenda</div>
+            </div>
+
+            <div class="db-kpi-card db-kpi-primary" onclick="selecionarFiltroConsultaMensalPcmso('todos')" style="cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; ${filtroAtivo === 'todos' ? 'outline: 2px solid var(--primary); outline-offset: 2px;' : ''}" title="Clique para exibir todos os registros do mês">
+                <div class="db-kpi-value" style="color: var(--primary);">${r.totalExames}</div>
+                <div class="db-kpi-label">Total Monitorado no Mês</div>
+                <div class="db-kpi-sub" style="font-size: 11px; color: var(--text-light); margin-top: 4px;">📅 Competência: <strong>${escapeHTML(mesAnoFormatado)}</strong></div>
+            </div>
+        `;
+    }
+
+    // Atualiza as Pills de filtro rápido
+    const pillsContainer = document.getElementById('pcmsoPillsFiltro');
+    if (pillsContainer) {
+        pillsContainer.innerHTML = `
+            <button type="button" class="db-filter-btn ${filtroAtivo === 'todos' ? 'active' : ''}" onclick="selecionarFiltroConsultaMensalPcmso('todos')" style="font-size: 12px; padding: 5px 12px;">
+                <span>Todos</span> <span style="font-weight: 700; margin-left: 4px;">(${r.totalExames})</span>
+            </button>
+            <button type="button" class="db-filter-btn ${filtroAtivo === 'realizados' ? 'active' : ''}" onclick="selecionarFiltroConsultaMensalPcmso('realizados')" style="font-size: 12px; padding: 5px 12px;">
+                <span>✓ Realizados</span> <span style="font-weight: 700; margin-left: 4px;">(${r.realizados.length})</span>
+            </button>
+            <button type="button" class="db-filter-btn ${filtroAtivo === 'vencidos' ? 'active' : ''}" onclick="selecionarFiltroConsultaMensalPcmso('vencidos')" style="font-size: 12px; padding: 5px 12px;">
+                <span>⚠️ Vencidos</span> <span style="font-weight: 700; margin-left: 4px;">(${r.vencidos.length})</span>
+            </button>
+            <button type="button" class="db-filter-btn ${filtroAtivo === 'previstos' ? 'active' : ''}" onclick="selecionarFiltroConsultaMensalPcmso('previstos')" style="font-size: 12px; padding: 5px 12px;">
+                <span>⏳ A Vencer</span> <span style="font-weight: 700; margin-left: 4px;">(${r.previstos.length})</span>
+            </button>
+        `;
+    }
+
+    // Atualiza o painel de Critérios e Limitações Técnicas
+    const criteriosBox = document.getElementById('pcmsoCriteriosBox');
+    if (criteriosBox) {
+        criteriosBox.innerHTML = `
+            <details style="cursor: pointer;">
+                <summary style="font-size: 12.5px; font-weight: 700; color: #0f766e; list-style: none; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>📋</span>
+                        <span>Critérios Técnicos, Integridade e Diretrizes Normativas (PCMSO / NR-07)</span>
+                    </div>
+                    <span style="font-size: 11px; font-weight: 600; text-decoration: underline;">Ver detalhes</span>
+                </summary>
+                <div style="margin-top: 12px; font-size: 11.5px; color: var(--text); line-height: 1.6; border-top: 1px solid rgba(15, 118, 110, 0.2); padding-top: 10px;">
+                    <ul style="margin: 0; padding-left: 18px;">
+                        <li><strong>Preservação Histórica:</strong> Os exames realizados mantêm registro integral de todos os colaboradores atendidos na competência, incluindo colaboradores desligados ou transferidos, garantindo rastreabilidade perante auditorias de SST.</li>
+                        <li><strong>Colaboradores Ativos:</strong> As categorias de <em>Vencidos</em> e <em>A Vencer</em> consideram estritamente colaboradores com vínculo ativo no mês de referência selecionado.</li>
+                        <li><strong>Data de Referência:</strong> Posição consolidada apurada em <strong>${formatSimpleDate(hoje)}</strong> (Horário Oficial de Brasília).</li>
+                        <li><strong>Régua de Agendamento:</strong> Este painel monitora a validade legal e os atendimentos registrados. O agendamento individualizado e confirmação de presença continuam sob gestão direta das clínicas parceiras credenciadas.</li>
+                        <li><strong>Auditoria Cadastral da Competência:</strong> Foram identificados <strong>${r.semDetalhamento}</strong> atendimentos de ASO sem detalhamento de exames complementares e <strong>${r.invalidos}</strong> procedimentos desconsiderados por ausência de data ou identificação válida.</li>
+                    </ul>
+                </div>
+            </details>
+        `;
+    }
+
+    // Renderiza as linhas da tabela aplicando filtro e busca
+    atualizarTabelaConsultaMensalPcmso();
 }
+
+function atualizarTabelaConsultaMensalPcmso() {
+    const r = window._pcmsoUltimoResultado;
+    if (!r) return;
+
+    const tbody = document.getElementById('pcmsoTabelaBody');
+    const vazioEl = document.getElementById('pcmsoTabelaVazia');
+    const vazioSub = document.getElementById('pcmsoTabelaVaziaSub');
+    const contadorEl = document.getElementById('pcmsoContadorRegistros');
+    if (!tbody) return;
+
+    const filtroStatus = window._pcmsoFiltroStatus || 'todos';
+    const termoBusca = (window._pcmsoBuscaTexto || '').trim().toLowerCase();
+
+    // 1. Filtragem por categoria de status
+    let linhas = [];
+    if (filtroStatus === 'realizados') linhas = r.realizados;
+    else if (filtroStatus === 'vencidos') linhas = r.vencidos;
+    else if (filtroStatus === 'previstos') linhas = r.previstos;
+    else linhas = r.todos;
+
+    // 2. Filtragem textual (busca rápida)
+    if (termoBusca) {
+        linhas = linhas.filter(l => {
+            const strNome = (l.nome || '').toLowerCase();
+            const strMatricula = (l.matricula || '').toLowerCase();
+            const strFuncao = (l.funcao || '').toLowerCase();
+            const strSetor = (l.setor || '').toLowerCase();
+            const strExame = (l.exame || '').toLowerCase();
+            return strNome.includes(termoBusca) ||
+                   strMatricula.includes(termoBusca) ||
+                   strFuncao.includes(termoBusca) ||
+                   strSetor.includes(termoBusca) ||
+                   strExame.includes(termoBusca);
+        });
+    }
+
+    // Atualiza o contador de registros
+    if (contadorEl) {
+        contadorEl.innerHTML = `Exibindo <strong>${linhas.length}</strong> de ${r.totalExames} exames na competência`;
+    }
+
+    // Se não houver registros
+    if (!linhas.length) {
+        tbody.innerHTML = '';
+        if (vazioEl) {
+            vazioEl.style.display = 'block';
+            if (vazioSub) {
+                if (termoBusca) {
+                    vazioSub.textContent = `Nenhum exame encontrado para a busca "${window._pcmsoBuscaTexto}" na categoria selecionada.`;
+                } else {
+                    vazioSub.textContent = `Nenhum exame registrado como "${filtroStatus}" para a competência de ${formatarMesAnoPcmso(r.periodo)}.`;
+                }
+            }
+        }
+        return;
+    }
+
+    if (vazioEl) vazioEl.style.display = 'none';
+
+    // Renderiza cada linha com formatação visual moderna e acessível
+    tbody.innerHTML = linhas.map(l => {
+        let statusBadge = '';
+        if (l.tipo === 'realizado') {
+            statusBadge = '<span class="badge-aso-valido">✓ Realizado</span>';
+        } else if (l.tipo === 'vencido') {
+            statusBadge = '<span class="badge-aso-vencido">⚠️ Vencido</span>';
+        } else {
+            statusBadge = '<span class="badge-aso-avencer">⏳ A Vencer</span>';
+        }
+
+        const dataEventoFmt = formatSimpleDate(l.data_evento || l.data);
+        const subtituloData = l.tipo === 'realizado' ? 'Data Realização' : 'Validade / Vencimento';
+
+        const vinculoBadge = l.ativo
+            ? '<span style="display:inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10.5px; font-weight: 700; background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;">Ativo</span>'
+            : '<span style="display:inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10.5px; font-weight: 600; background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1;">Histórico</span>';
+
+        return `
+            <tr style="transition: background 0.12s;">
+                <td style="padding: 10px 12px; vertical-align: middle;">
+                    <div style="font-weight: 700; color: var(--text); font-size: 12.5px;">${escapeHTML(l.nome)}</div>
+                    <div style="font-size: 11px; color: var(--text-light); margin-top: 1px;">Matrícula: <strong>${escapeHTML(l.matricula)}</strong></div>
+                </td>
+                <td style="padding: 10px 12px; vertical-align: middle;">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text);">${escapeHTML(l.funcao)}</div>
+                    <div style="font-size: 11px; color: var(--text-light); margin-top: 1px;">${escapeHTML(l.setor)}</div>
+                </td>
+                <td style="padding: 10px 12px; vertical-align: middle;">
+                    <div style="font-size: 12.5px; font-weight: 600; color: #0f766e;">${escapeHTML(l.exame)}</div>
+                </td>
+                <td style="padding: 10px 12px; vertical-align: middle; text-align: center;">
+                    ${statusBadge}
+                </td>
+                <td style="padding: 10px 12px; vertical-align: middle;">
+                    <div style="font-size: 12.5px; font-weight: 700; color: var(--text);">${escapeHTML(dataEventoFmt)}</div>
+                    <div style="font-size: 10px; color: var(--text-light); text-transform: uppercase;">${subtituloData}</div>
+                </td>
+                <td style="padding: 10px 12px; vertical-align: middle; text-align: center;">
+                    ${vinculoBadge}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function selecionarFiltroConsultaMensalPcmso(categoria) {
+    window._pcmsoFiltroStatus = categoria;
+    renderConsultaMensalPcmso();
+}
+
+function navegarPeriodoConsultaMensalPcmso(delta) {
+    const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+    const input = document.getElementById('pcmsoPeriodo');
+    let periodoAtual = input ? input.value : hoje.slice(0, 7);
+
+    if (delta === 0) {
+        periodoAtual = hoje.slice(0, 7);
+    } else {
+        const parts = periodoAtual.split('-');
+        let ano = parseInt(parts[0], 10);
+        let mes = parseInt(parts[1], 10);
+        mes += delta;
+        if (mes > 12) { mes = 1; ano += 1; }
+        else if (mes < 1) { mes = 12; ano -= 1; }
+        periodoAtual = ano + '-' + String(mes).padStart(2, '0');
+    }
+
+    if (input) input.value = periodoAtual;
+    renderConsultaMensalPcmso();
+}
+
+function aoDigitarBuscaConsultaMensalPcmso(termo) {
+    window._pcmsoBuscaTexto = termo || '';
+    atualizarTabelaConsultaMensalPcmso();
+}
+
+function limparBuscaConsultaMensalPcmso() {
+    window._pcmsoBuscaTexto = '';
+    const input = document.getElementById('pcmsoBusca');
+    if (input) input.value = '';
+    atualizarTabelaConsultaMensalPcmso();
+}
+
+// Impressão Oficial do Relatório Mensal de Exames (PCMSO / NR-07)
+function imprimirConsultaMensalPcmso() {
+    const r = window._pcmsoUltimoResultado;
+    if (!r) {
+        alert('Carregue os dados da consulta mensal antes de imprimir.');
+        return;
+    }
+
+    const periodoFormatado = formatarMesAnoPcmso(r.periodo);
+    const hojeFmt = formatSimpleDate(r.hoje);
+    const filtroStatus = window._pcmsoFiltroStatus || 'todos';
+
+    let linhas = r.todos;
+    let labelFiltroImpressao = 'Consolidado Geral (Realizados, Vencidos e A Vencer)';
+    if (filtroStatus === 'realizados') {
+        linhas = r.realizados;
+        labelFiltroImpressao = 'Exames Realizados no Mês';
+    } else if (filtroStatus === 'vencidos') {
+        linhas = r.vencidos;
+        labelFiltroImpressao = 'Exames Vencidos no Mês';
+    } else if (filtroStatus === 'previstos') {
+        linhas = r.previstos;
+        labelFiltroImpressao = 'Exames A Vencer no Mês';
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <title>Relatório Mensal de Exames PCMSO — ${escapeHTML(periodoFormatado)}</title>
+    <style>
+        @page { size: A4 landscape; margin: 12mm 15mm; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #0f172a; background: #fff; margin: 0; padding: 0; font-size: 11px; }
+        .header { border-bottom: 2px solid #0f766e; padding-bottom: 10px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-start; }
+        .header-title h1 { margin: 0; font-size: 16px; color: #0f766e; text-transform: uppercase; letter-spacing: 0.5px; }
+        .header-title h2 { margin: 3px 0 0 0; font-size: 12px; color: #475569; font-weight: 600; }
+        .header-meta { text-align: right; font-size: 10px; color: #64748b; line-height: 1.4; }
+        .kpi-row { display: flex; gap: 12px; margin-bottom: 16px; }
+        .kpi-box { flex: 1; border: 1px solid #cbd5e1; border-top: 3px solid #0f766e; border-radius: 6px; padding: 8px 12px; text-align: center; }
+        .kpi-box.success { border-top-color: #059669; }
+        .kpi-box.danger { border-top-color: #dc2626; }
+        .kpi-box.warning { border-top-color: #d97706; }
+        .kpi-box-val { font-size: 22px; font-weight: 700; color: #0f172a; line-height: 1; }
+        .kpi-box-lbl { font-size: 10px; font-weight: 700; color: #475569; margin-top: 5px; text-transform: uppercase; }
+        .kpi-box-sub { font-size: 9.5px; color: #64748b; margin-top: 2px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 10px; }
+        th { background: #f1f5f9; color: #1e293b; font-weight: 700; text-align: left; padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 9.5px; text-transform: uppercase; }
+        td { padding: 5px 8px; border: 1px solid #e2e8f0; vertical-align: middle; }
+        tr:nth-child(even) td { background: #f8fafc; }
+        .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+        .badge-realizado { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+        .badge-vencido { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+        .badge-avencer { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+        .footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #cbd5e1; display: flex; justify-content: space-between; font-size: 9.5px; color: #64748b; page-break-inside: avoid; }
+        .signatures { margin-top: 36px; display: flex; justify-content: space-around; text-align: center; font-size: 10px; color: #1e293b; page-break-inside: avoid; }
+        .sig-line { width: 250px; border-top: 1px solid #334155; padding-top: 5px; font-weight: 600; }
+    </style>
+    <script>
+        window.onload = function() {
+            setTimeout(function() { window.print(); }, 400);
+        };
+    </script>
+</head>
+<body>
+    <div class="header">
+        <div class="header-title">
+            <h1>Consórcio Operador Ramal do Agreste</h1>
+            <h2>Relatório Mensal de Exames Ocupacionais — PCMSO (NR-07)</h2>
+        </div>
+        <div class="header-meta">
+            <div><strong>Competência:</strong> ${escapeHTML(periodoFormatado)}</div>
+            <div><strong>Emissão:</strong> ${escapeHTML(hojeFmt)}</div>
+            <div><strong>Escopo:</strong> ${escapeHTML(labelFiltroImpressao)}</div>
+        </div>
+    </div>
+
+    <div class="kpi-row">
+        <div class="kpi-box success">
+            <div class="kpi-box-val" style="color: #059669;">${r.realizados.length}</div>
+            <div class="kpi-box-lbl">Exames Realizados</div>
+            <div class="kpi-box-sub">${r.pessoas} colaboradores atendidos</div>
+        </div>
+        <div class="kpi-box danger">
+            <div class="kpi-box-val" style="color: #dc2626;">${r.vencidos.length}</div>
+            <div class="kpi-box-lbl">Exames Vencidos</div>
+            <div class="kpi-box-sub">${r.pessoasVencidas} colaboradores com pendência</div>
+        </div>
+        <div class="kpi-box warning">
+            <div class="kpi-box-val" style="color: #d97706;">${r.previstos.length}</div>
+            <div class="kpi-box-lbl">Exames a Vencer</div>
+            <div class="kpi-box-sub">${r.pessoasPrevistas} colaboradores a agendar</div>
+        </div>
+        <div class="kpi-box">
+            <div class="kpi-box-val">${r.totalExames}</div>
+            <div class="kpi-box-lbl">Total Monitorado</div>
+            <div class="kpi-box-sub">Total apurado no mês</div>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 24%;">Colaborador / Matrícula</th>
+                <th style="width: 22%;">Função / Setor</th>
+                <th style="width: 24%;">Procedimento / Exame</th>
+                <th style="width: 12%; text-align: center;">Status</th>
+                <th style="width: 10%;">Data Evento</th>
+                <th style="width: 8%; text-align: center;">Vínculo</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${linhas.length ? linhas.map(l => {
+                let badgeClass = 'badge-realizado';
+                let statusTxt = 'Realizado';
+                if (l.tipo === 'vencido') { badgeClass = 'badge-vencido'; statusTxt = 'Vencido'; }
+                else if (l.tipo === 'previsto') { badgeClass = 'badge-avencer'; statusTxt = 'A Vencer'; }
+                return `
+                    <tr>
+                        <td><strong>${escapeHTML(l.nome)}</strong><br><span style="color:#64748b;font-size:9px;">Matrícula: ${escapeHTML(l.matricula)}</span></td>
+                        <td>${escapeHTML(l.funcao)}<br><span style="color:#64748b;font-size:9px;">${escapeHTML(l.setor)}</span></td>
+                        <td><strong>${escapeHTML(l.exame)}</strong></td>
+                        <td style="text-align: center;"><span class="badge ${badgeClass}">${statusTxt}</span></td>
+                        <td><strong>${escapeHTML(formatSimpleDate(l.data_evento || l.data))}</strong></td>
+                        <td style="text-align: center;">${l.ativo ? 'Ativo' : 'Histórico'}</td>
+                    </tr>
+                `;
+            }).join('') : '<tr><td colspan="6" style="text-align:center;padding:16px;color:#64748b;">Nenhum exame localizado para esta seleção.</td></tr>'}
+        </tbody>
+    </table>
+
+    <div class="signatures">
+        <div class="sig-line">
+            Engenharia de Segurança do Trabalho<br>
+            <span style="font-size: 8.5px; color: #64748b;">Consórcio Ramal do Agreste</span>
+        </div>
+        <div class="sig-line">
+            Médico Coordenador do PCMSO<br>
+            <span style="font-size: 8.5px; color: #64748b;">NR-07 / Gestão de Saúde Ocupacional</span>
+        </div>
+    </div>
+
+    <div class="footer">
+        <div>App Checklist Segurança — Módulo Saúde Ocupacional (PCMSO)</div>
+        <div>Página 1 de 1 • Documento emitido em conformidade com as diretrizes da NR-07</div>
+    </div>
+</body>
+</html>`;
+
+    if (typeof abrirDocumentoHtmlParaImpressao === 'function') {
+        abrirDocumentoHtmlParaImpressao(html, 'Relatorio_Mensal_Exames_' + r.periodo);
+    } else {
+        const w = window.open('', '_blank');
+        if (w) {
+            w.document.open();
+            w.document.write(html);
+            w.document.close();
+        }
+    }
+}
+
+// Exportações globais para compatibilidade
+window.pcmsoDataValida = pcmsoDataValida;
+window.formatarMesAnoPcmso = formatarMesAnoPcmso;
+window.calcularConsultaMensalPcmso = calcularConsultaMensalPcmso;
+window.renderConsultaMensalPcmso = renderConsultaMensalPcmso;
+window.atualizarTabelaConsultaMensalPcmso = atualizarTabelaConsultaMensalPcmso;
+window.selecionarFiltroConsultaMensalPcmso = selecionarFiltroConsultaMensalPcmso;
+window.navegarPeriodoConsultaMensalPcmso = navegarPeriodoConsultaMensalPcmso;
+window.aoDigitarBuscaConsultaMensalPcmso = aoDigitarBuscaConsultaMensalPcmso;
+window.limparBuscaConsultaMensalPcmso = limparBuscaConsultaMensalPcmso;
+window.imprimirConsultaMensalPcmso = imprimirConsultaMensalPcmso;

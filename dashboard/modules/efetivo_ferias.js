@@ -1422,20 +1422,65 @@ function gerarPdfRelatorioEfetivo() {
 // Mapa nome-do-estado -> UF, porque "estado" em colaboradores_efetivo é texto
 // livre (tem registro como "PERNAMBUCO" e outro como "PE" pro MESMO município
 // - sem isso, os dois viram grupos separados e o Quadro 1 conta errado).
+// As chaves ficam SEM acento de propósito: a busca é feita por normalizarChaveTexto(),
+// que remove acento. Assim "CEARÁ", "Ceara" e "CEARA" acham a mesma UF.
 var NOME_ESTADO_PARA_UF = {
-    'ACRE': 'AC', 'ALAGOAS': 'AL', 'AMAPÁ': 'AP', 'AMAZONAS': 'AM', 'BAHIA': 'BA',
-    'CEARÁ': 'CE', 'DISTRITO FEDERAL': 'DF', 'ESPÍRITO SANTO': 'ES', 'GOIÁS': 'GO',
-    'MARANHÃO': 'MA', 'MATO GROSSO': 'MT', 'MATO GROSSO DO SUL': 'MS',
-    'MINAS GERAIS': 'MG', 'PARÁ': 'PA', 'PARAÍBA': 'PB', 'PARANÁ': 'PR',
-    'PERNAMBUCO': 'PE', 'PIAUÍ': 'PI', 'RIO DE JANEIRO': 'RJ',
-    'RIO GRANDE DO NORTE': 'RN', 'RIO GRANDE DO SUL': 'RS', 'RONDÔNIA': 'RO',
-    'RORAIMA': 'RR', 'SANTA CATARINA': 'SC', 'SÃO PAULO': 'SP', 'SERGIPE': 'SE',
+    'ACRE': 'AC', 'ALAGOAS': 'AL', 'AMAPA': 'AP', 'AMAZONAS': 'AM', 'BAHIA': 'BA',
+    'CEARA': 'CE', 'DISTRITO FEDERAL': 'DF', 'ESPIRITO SANTO': 'ES', 'GOIAS': 'GO',
+    'MARANHAO': 'MA', 'MATO GROSSO': 'MT', 'MATO GROSSO DO SUL': 'MS',
+    'MINAS GERAIS': 'MG', 'PARA': 'PA', 'PARAIBA': 'PB', 'PARANA': 'PR',
+    'PERNAMBUCO': 'PE', 'PIAUI': 'PI', 'RIO DE JANEIRO': 'RJ',
+    'RIO GRANDE DO NORTE': 'RN', 'RIO GRANDE DO SUL': 'RS', 'RONDONIA': 'RO',
+    'RORAIMA': 'RR', 'SANTA CATARINA': 'SC', 'SAO PAULO': 'SP', 'SERGIPE': 'SE',
     'TOCANTINS': 'TO'
 };
+
+// Nome completo (com acento, para exibição) de cada UF - usado ao GRAVAR o
+// cadastro, para o campo "estado" não voltar a misturar "PE" com "PERNAMBUCO".
+var UF_PARA_NOME_ESTADO = {
+    'AC': 'ACRE', 'AL': 'ALAGOAS', 'AP': 'AMAPÁ', 'AM': 'AMAZONAS', 'BA': 'BAHIA',
+    'CE': 'CEARÁ', 'DF': 'DISTRITO FEDERAL', 'ES': 'ESPÍRITO SANTO', 'GO': 'GOIÁS',
+    'MA': 'MARANHÃO', 'MT': 'MATO GROSSO', 'MS': 'MATO GROSSO DO SUL',
+    'MG': 'MINAS GERAIS', 'PA': 'PARÁ', 'PB': 'PARAÍBA', 'PR': 'PARANÁ',
+    'PE': 'PERNAMBUCO', 'PI': 'PIAUÍ', 'RJ': 'RIO DE JANEIRO',
+    'RN': 'RIO GRANDE DO NORTE', 'RS': 'RIO GRANDE DO SUL', 'RO': 'RONDÔNIA',
+    'RR': 'RORAIMA', 'SC': 'SANTA CATARINA', 'SP': 'SÃO PAULO', 'SE': 'SERGIPE',
+    'TO': 'TOCANTINS'
+};
+
+// Chave de comparação: remove acento, força maiúsculas e junta espaços repetidos.
+// "Sertânia", "SERTANIA" e " sertania " passam a ser a MESMA chave ("SERTANIA").
+function normalizarChaveTexto(texto) {
+    return String(texto == null ? '' : texto)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase();
+}
+
+// Chave de município - mesma regra do texto (nome de cidade é texto livre no cadastro).
+function normalizarChaveMunicipio(texto) {
+    return normalizarChaveTexto(texto);
+}
+
 function normalizarUF(estadoTexto) {
-    const t = (estadoTexto || '').trim();
-    if (t.length === 2) return t.toUpperCase();
-    return NOME_ESTADO_PARA_UF[t.toUpperCase()] || t.toUpperCase();
+    const t = normalizarChaveTexto(estadoTexto);
+    if (t.length === 2) return t;
+    return NOME_ESTADO_PARA_UF[t] || t;
+}
+
+// Texto que vai para o banco no campo "estado": sempre o nome completo do estado.
+// Se o valor não for reconhecido, mantém exatamente o que foi digitado.
+function normalizarEstadoGravacao(estadoTexto) {
+    const original = String(estadoTexto == null ? '' : estadoTexto).replace(/\s+/g, ' ').trim();
+    const uf = normalizarUF(original);
+    return UF_PARA_NOME_ESTADO[uf] || original;
+}
+
+// Limpa espaços repetidos do texto digitado, sem trocar maiúsculas nem acentos.
+function normalizarTextoGravacao(texto) {
+    return String(texto == null ? '' : texto).replace(/\s+/g, ' ').trim();
 }
 
 function popularMaoDeObraDefaults() {
@@ -1472,8 +1517,14 @@ async function adicionarMunicipioAda() {
         statusEl.style.color = 'var(--danger)';
         return;
     }
-    const id = municipio.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + uf.toLowerCase();
-    if (allMunicipiosAda.some(m => m.id === id)) {
+    // Gera o id a partir da chave SEM acento - "Sertânia" e "Sertania" precisam
+    // produzir o mesmo id, senão a lista aceita o município duplicado.
+    const id = normalizarChaveMunicipio(municipio).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '-' + uf.toLowerCase();
+    // IDs legados podem ter sido gerados sem normalização de acentos.
+    if (allMunicipiosAda.some(m => m.id === id || (
+        normalizarChaveMunicipio(m.municipio) === normalizarChaveMunicipio(municipio)
+        && normalizarUF(m.uf) === uf
+    ))) {
         statusEl.textContent = 'Esse município já está na lista.';
         statusEl.style.color = 'var(--text-light)';
         return;
@@ -1532,16 +1583,18 @@ function montarQuadrosMaoDeObra(ano, mesIndex0) {
 
     const porMunicipio = new Map();
     ativos.forEach(e => {
-        const municipio = (e.cidade || '').trim().toUpperCase() || '(NÃO INFORMADO)';
+        const municipio = normalizarTextoGravacao(e.cidade).toUpperCase() || '(NÃO INFORMADO)';
         const uf = normalizarUF(e.estado);
-        if (!porMunicipio.has(municipio)) porMunicipio.set(municipio, { municipio, uf, qtd: 0 });
-        porMunicipio.get(municipio).qtd++;
+        // Agrupa pela chave sem acento/maiúsculas: "Sertânia" e "SERTANIA" caem na mesma linha.
+        const chave = `${normalizarChaveMunicipio(municipio)}||${uf}`;
+        if (!porMunicipio.has(chave)) porMunicipio.set(chave, { municipio, uf, qtd: 0 });
+        porMunicipio.get(chave).qtd++;
     });
     const linhasQuadro1 = Array.from(porMunicipio.values()).sort((a, b) => a.municipio.localeCompare(b.municipio, 'pt-BR'));
 
-    const chavesAda = new Set(allMunicipiosAda.map(m => `${m.municipio.toUpperCase()}||${normalizarUF(m.uf)}`));
+    const chavesAda = new Set(allMunicipiosAda.map(m => `${normalizarChaveMunicipio(m.municipio)}||${normalizarUF(m.uf)}`));
     const linhasQuadro2 = linhasQuadro1
-        .filter(l => chavesAda.has(`${l.municipio}||${l.uf}`))
+        .filter(l => chavesAda.has(`${normalizarChaveMunicipio(l.municipio)}||${l.uf}`))
         .map(l => ({ ...l, pct: totalFuncionarios > 0 ? (l.qtd / totalFuncionarios * 100) : 0 }));
     const totalAda = linhasQuadro2.reduce((s, l) => s + l.qtd, 0);
     const pctAda = totalFuncionarios > 0 ? (totalAda / totalFuncionarios * 100) : 0;

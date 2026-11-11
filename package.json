@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "node server.js",
+    "preview:dashboard": "node scripts/preview-dashboard.cjs",
     "lint": "eslint --no-eslintrc -c .eslintrc.undef-check.json app.js data.js dashboard/dashboard.js",
     "lint:undef": "eslint --no-eslintrc -c .eslintrc.undef-check.json app.js data.js dashboard/dashboard.js",
     "deploy": "vercel --prod",

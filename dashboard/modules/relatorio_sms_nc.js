@@ -5566,8 +5566,8 @@ function renderEfetivoPanel() {
         efetivoPorMes.push(eft);
         indicePorMes.push(eft > 0 ? Math.round((hht / eft) * 100) : 0);
         hht220PorMes.push(eft * 220);
-        admArcoverdePorMes.push(admDoMes.filter(e => (e.cidade || '').toUpperCase().trim() === 'ARCOVERDE').length);
-        admSertaniaPorMes.push(admDoMes.filter(e => (e.cidade || '').toUpperCase().trim() === 'SERTÂNIA').length);
+        admArcoverdePorMes.push(admDoMes.filter(e => normalizarChaveMunicipio(e.cidade) === 'ARCOVERDE').length);
+        admSertaniaPorMes.push(admDoMes.filter(e => normalizarChaveMunicipio(e.cidade) === 'SERTANIA').length);
         cursor = new Date(ano, mes + 1, 1);
     }
 
@@ -5692,9 +5692,9 @@ function renderEfetivoPanel() {
     // todo o resto do efetivo (outras cidades de origem) entra em "Outros".
     const adaCounts = { ARCOVERDE: 0, 'SERTÂNIA': 0, OUTROS: 0 };
     ativosNaData.forEach(e => {
-        const c = (e.cidade || '').toUpperCase().trim();
+        const c = normalizarChaveMunicipio(e.cidade);
         if (c === 'ARCOVERDE') adaCounts.ARCOVERDE++;
-        else if (c === 'SERTÂNIA') adaCounts['SERTÂNIA']++;
+        else if (c === 'SERTANIA') adaCounts['SERTÂNIA']++;
         else adaCounts.OUTROS++;
     });
     chartInstances.adaAtual = new Chart(document.getElementById('chartAdaAtual'), {
@@ -6312,8 +6312,8 @@ async function importarEfetivoCSV() {
                 dt_admissao: parseDataBR(col(parts, 'DT_ADMISSAO')),
                 dt_demissao: parseDataBR(col(parts, 'DT_DEMISSAO')),
                 dt_nascimento: parseDataBR(col(parts, 'DT_NASCIMENTO')),
-                cidade: col(parts, 'CIDADE'),
-                estado: col(parts, 'ESTADO'),
+                cidade: normalizarTextoGravacao(col(parts, 'CIDADE')),
+                estado: normalizarEstadoGravacao(col(parts, 'ESTADO')),
                 estabilidade: col(parts, 'ESTABILIDADE'),
                 ghe: col(parts, 'GHE'),
                 calca: col(parts, 'CALCA'),

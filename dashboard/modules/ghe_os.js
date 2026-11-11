@@ -5256,8 +5256,8 @@ var EFETIVO_PDF_COLUNAS = [
     { id: 'estado', label: 'UF', get: e => e.estado },
     { id: 'ada', label: 'Mão de Obra ADA', get: e => {
         if (typeof allMunicipiosAda !== 'undefined' && Array.isArray(allMunicipiosAda) && allMunicipiosAda.length > 0) {
-            const cid = (e.cidade || '').toUpperCase().trim();
-            return allMunicipiosAda.some(m => (m.municipio || '').toUpperCase().trim() === cid) ? 'SIM' : 'NÃO';
+            const cid = normalizarChaveMunicipio(e.cidade);
+            return allMunicipiosAda.some(m => normalizarChaveMunicipio(m.municipio) === cid) ? 'SIM' : 'NÃO';
         }
         return '';
     }},
@@ -6652,8 +6652,8 @@ async function salvarColaboradorEfetivo() {
         dt_demissao: dtDemissaoInput,
         dt_nascimento: dtNascimentoInput,
         cpf: document.getElementById('efForm_cpf').value.trim(),
-        cidade: document.getElementById('efForm_cidade').value.trim(),
-        estado: document.getElementById('efForm_estado').value.trim(),
+        cidade: normalizarTextoGravacao(document.getElementById('efForm_cidade').value),
+        estado: normalizarEstadoGravacao(document.getElementById('efForm_estado').value),
         estabilidade: document.getElementById('efForm_estabilidade').value,
         ghe: document.getElementById('efForm_ghe').value.trim(),
         sexo: sexoNormalizado,

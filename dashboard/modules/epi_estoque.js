@@ -3415,7 +3415,9 @@ var DB_PAGE_TITLES = {
     ergonomia: 'Ergonomia (NR-17)',
     periculosidade: 'Periculosidade (NR-16) - Laudo Técnico (LTP)',
     planoacao: 'Plano de Ação Integrado (5W2H) — NR-01 / GRO',
-    placarlideres: '🏆 Placar das Lideranças & Rotinas de Encarregados'
+    placarlideres: '🏆 Placar das Lideranças & Rotinas de Encarregados',
+    geradorprompts: 'Gerador de Prompts IA',
+    gestao_de_condutores: 'GESTÃO DE CONDUTORES - CNH'
 };
 
 // ============================================
@@ -4217,7 +4219,7 @@ async function salvarPerfilPainel() {
 // ================================================================
 var NAV_GROUP_POR_PAGINA = {
     checklists: 'seguranca', treinamentos: 'seguranca', ddsma: 'seguranca', apr: 'seguranca', matrizrisco: 'seguranca', planoacao: 'seguranca',
-    epi: 'seguranca', periculosidade: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca', brigada: 'seguranca',
+    epi: 'seguranca', periculosidade: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca', brigada: 'seguranca', gestao_de_condutores: 'seguranca',
     saude: 'saude', psicossocial: 'saude', ergonomia: 'saude',
     ambiental: 'ambiente',
     efetivo: 'pessoas',
@@ -4303,7 +4305,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', planoacao: 'navPlanoAcao', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', placarlideres: 'navPlacarLideres', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia', periculosidade: 'navPericulosidade' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', planoacao: 'navPlanoAcao', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', placarlideres: 'navPlacarLideres', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia', periculosidade: 'navPericulosidade', geradorprompts: 'navGeradorPrompts', gestao_de_condutores: 'navGestaoDeCondutores' };
     document.getElementById(navMap[pageId])?.classList.add('active');
     abrirGrupoNavPagina(pageId);
     destacarGrupoAtivo(pageId);
@@ -4317,6 +4319,19 @@ function showDbPage(pageId) {
     // um redesenho depois disso. Recriar o gráfico do zero a cada visita é barato (não
     // busca nada de novo no Supabase, só usa os dados já carregados em memória) e
     // corrige isso sozinho.
+    if (pageId === 'geradorprompts') {
+        if (typeof window.inicializarGeradorPrompts === 'function') window.inicializarGeradorPrompts();
+    }
+    if (pageId === 'gestao_de_condutores') {
+        const elCond = document.getElementById('page-gestao_de_condutores');
+        if (typeof window.renderGestaoDeCondutoresPanel === 'function') {
+            Promise.resolve().then(() => window.renderGestaoDeCondutoresPanel()).catch(err => {
+                if (elCond) elCond.innerHTML = `<div class="db-chart-card" style="padding:20px; border:1px solid var(--danger); color:var(--danger);">❌ Erro ao carregar Gestão de Condutores – CNH: ${escapeHTML(err && err.message ? err.message : String(err))}</div>`;
+            });
+        } else if (elCond) {
+            elCond.innerHTML = '<div class="db-chart-card" style="padding:20px; border:1px solid var(--danger); color:var(--danger);">❌ Módulo Gestão de Condutores – CNH (renderGestaoDeCondutoresPanel) não carregado. Recarregue a página.</div>';
+        }
+    }
     if (pageId === 'placarlideres') {
         if (typeof abrirPaginaPlacarLideres === 'function') abrirPaginaPlacarLideres();
     }
@@ -4352,13 +4367,19 @@ function showDbPage(pageId) {
         else if (document.getElementById('ddsmaSubtabBtn-visao')?.classList.contains('active')) renderDdsPanel();
     }
     if (pageId === 'efetivo') {
+        const anySubtabActive = ['visao', 'colaboradores', 'terceiros', 'ferias', 'os', 'setores', 'ghe', 'recomendacoes', 'maoobra', 'relatorio'].some(t => document.getElementById('efetivoSubtabBtn-' + t)?.classList.contains('active'));
+        if (!anySubtabActive) {
+            if (typeof showEfetivoSubtab === 'function') showEfetivoSubtab('visao');
+        }
         if (!efetivoLoaded) { 
             efetivoLoaded = true; 
             loadEfetivoData().then(() => {
                 if (document.getElementById('efetivoSubtabBtn-ferias')?.classList.contains('active')) renderFeriasPanel();
+                else if (document.getElementById('efetivoSubtabBtn-terceiros')?.classList.contains('active') && typeof window.renderTerceirosPanel === 'function') window.renderTerceirosPanel();
             }); 
         } else {
             if (document.getElementById('efetivoSubtabBtn-ferias')?.classList.contains('active')) renderFeriasPanel();
+            else if (document.getElementById('efetivoSubtabBtn-terceiros')?.classList.contains('active') && typeof window.renderTerceirosPanel === 'function') window.renderTerceirosPanel();
             else renderEfetivoPanel();
         }
     }
@@ -4380,7 +4401,7 @@ function showDbPage(pageId) {
         else if (document.getElementById('saudeSubtabBtn-visao')?.classList.contains('active')) renderSaudePanel();
     }
     if (pageId === 'psicossocial') {
-        if (!psicossocialLoaded) { psicossocialLoaded = true; loadPsicossocialData(); }
+        if (!psicossocialLoaded) { loadPsicossocialData(); }
         else if (document.getElementById('psicossocialSubtabBtn-visao')?.classList.contains('active')) renderPsicossocialPanel();
     }
     if (pageId === 'epi') {

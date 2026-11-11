@@ -1,4 +1,20 @@
 # MAPA OFICIAL DE MÓDULOS — DASHBOARD GERENCIAL SST
+
+Incremento local v301 (09/11/2026): `modules/gestao_de_condutores_cnh.js` (2.862 linhas, 165,1 KB) implementa o módulo independente de Gestão de Condutores – CNH (Próprios, Terceiros e PJ), expondo exclusivamente o ponto de entrada `window.renderGestaoDeCondutoresPanel` (rota `gestao_de_condutores`, container `page-gestao_de_condutores`) e operando apenas sobre `public.gestao_de_condutores_cnh` com ciclos UUID de CNH, avaliação individual por atividade/equipamento, proteção de regras/histórico e comunicações imutáveis. Minuta SQL (`supabase/migrations/20261109_modulo_gestao_condutores_cnh.sql`), políticas RLS/vínculo Auth real e validação visual em navegador permanecem bloqueadas/pendentes de ambiente isolado e homologação.
+
+Ativação oficial v298 (06/11/2026): `modules/gerador_prompts.js` integra a ferramenta interna de engenharia de prompts especialista em SST, arquitetura do App Checklist Segurança e regras inegociáveis de conformidade para agentes de IA.
+
+Correção local v292: `modules/relsms_importacao_segura.js` assume a importação de fotos com categoria, vínculo exato e prévia; carrega após relatorio_sms_fotos.js. Contratos, testes e dependência do Apps Script em `RELSMS_IMPORTACAO_SEGURA.md`. Word manual permanece independente.
+
+Prioridade de emissão v289: `modules/relsms_fotos_manuais.js` gera a seção de fotos editável no Word a partir dos cronogramas, com dois campos por tema, sem Drive. Integra por opção de `montarDocRelSms`/`gerarRelatorioMensalSms`, preservando o fluxo automático. Guia em `RELSMS_WORD_MANUAL.md`.
+
+Incremento local v288: entradas de fotos no Cronograma, Calendário DDSMA e Acervo; botões de escaneados preservados. `modules/cronograma_pastas.js` prepara pastas antecipadas pela data prevista, após `relatorio_sms_fotos.js`. API responsável: `api/cronograma-pastas.js`, com autenticação e reserva de IDs. Uso, permissões e limites em `CRONOGRAMA_PASTAS.md`.
+
+Incremento local v285 (04/11/2026): relatório SMS preserva ocultações executivas, distingue ausência de evidência, recorta atestados por competência e mantém HHT zero; fotos permitem escolher aplicação realizada do cronograma. Escopo, testes e itens estruturais pendentes em `RELATORIO_SMS_VALIDACAO.md`.
+
+Atualização pontual de 03/11/2026: `modules/relatorio_sms_fotos.js` mantém a seleção editorial mensal de fotos no Drive (metadados leves por competência), com fechamento e incorporação no Word/impressão. Carrega após `relatorio_sms_nc.js`, que mantém os pontos de entrada do relatório. Ver `RELATORIO_SMS_FOTOS.md`.
+
+Atualização pontual de 03/11/2026: `modules/saude_prestadores.js` concentra o cadastro administrativo de estabelecimentos parceiros e médicos examinadores, com seleção para a prévia do ASO. Carrega após `saude_psicossocial.js` e `pcmso.js`; reutiliza `configuracoes_sistema` e preserva a separação entre coordenador e examinador. Detalhes em `ASO_MODELO.md`. As contagens históricas abaixo devem ser confirmadas no código atual.
 *Arquitetura Modular de Alta Performance (Versão v198)*
 
 O monólito original de 52.062 linhas foi integralmente refatorado e desacoplado em **10 módulos independentes** dentro de `dashboard/modules/`, mantendo no `dashboard/dashboard.js` apenas o Núcleo/Core do sistema (4.233 linhas).
@@ -19,6 +35,8 @@ O monólito original de 52.062 linhas foi integralmente refatorado e desacoplado
 | **8** | **`dashboard/modules/apr_cipa.js`** | **6.807** | 456,1 KB | **APR (5x5), Templates & CIPA**: Motor Técnico de Inferência SST para APR (Matriz 5x5 COP Ramal), banco de templates `MODELOS_APR_SEED`, gestão de reuniões/atas da CIPA e assistente de cronograma eleitoral NR-05. |
 | **9** | **`dashboard/modules/documentos_brigada.js`** | **1.411** | 85,7 KB | **Controle Documental & Brigada de Incêndio**: Lista mestra de documentos e revisões oficiais, dimensionamento da Brigada de Incêndio, organograma e programação de reciclagem de brigadistas. |
 | **10** | **`dashboard/modules/ergonomia_periculosidade_pgr.js`** | **5.530** | 314,7 KB | **Ergonomia, Periculosidade, PGR & Alertas**: Avaliação Ergonômica Preliminar - AEP (NR-17), Laudos de Periculosidade (NR-16), Plano de Ação PGR (NR-01), Campanhas Sazonais de SST e Central de Alertas Inteligentes SST / Pendências do Dia. |
+| **11** | **`dashboard/modules/gerador_prompts.js`** | **2.310** | 152,0 KB | **Gerador de Prompts Especialista em SST & Engenharia de Contexto**: Geração automatizada de instruções de alta precisão para agentes de IA (Antigravity, Cursor, Claude Code, Gemini), validação de regras de ouro SST/arquiteturais, árvore de conhecimento dos módulos e histórico de prompts. |
+| **12** | **`dashboard/modules/gestao_de_condutores_cnh.js`** | **2.862** | 165,1 KB | **Gestão de Condutores – CNH**: Ponto de entrada único `window.renderGestaoDeCondutoresPanel` (rota `gestao_de_condutores`, tabela exclusiva `public.gestao_de_condutores_cnh`). Controle de condutores e operadores (Próprios, Terceiros e PJ), ciclos de validade de CNH (`America/Sao_Paulo`), aptidão por atividade/equipamento (`Inativo > Inapto > Pendente > Apto`), treinamentos com conferência e histórico imutável de comunicações. *(Minuta SQL/RLS, Auth real e validação visual bloqueados/pendentes de ambiente isolado)*. |
 | **—** | **`dashboard/placar_lideres.js`** | **~1.200** | ~75 KB | **Gamificação SST**: Placar de líderes, ranking de segurança e engajamento das frentes operacionais. |
 
 ---
@@ -39,3 +57,7 @@ O arquivo central agora atua estritamente como **Core do Dashboard**:
 1. **PROIBIDO LER O ARQUIVO COMPLETO**: Nunca execute `view_file` sem passar `StartLine` e `EndLine`. Limite cada chamada a blocos de até 150 linhas.
 2. **EDIÇÃO DIRETA NO MÓDULO ALVO**: Qualquer manutenção deve ser feita diretamente no arquivo correspondente dentro de `dashboard/modules/` conforme a tabela acima.
 3. **COMPATIBILIDADE GARANTIDA**: Todos os arquivos compartilham o escopo global nativo do navegador via tags `<script>` no [dashboard/index.html](file:///c:/Projetos/app-checklist-seguranca/dashboard/index.html), sem necessidade de `import/export` ou compiladores.
+
+Incremento local CNH v301.2: matriz interna aprovada por João; sete modelos, validação canônica de requisitos no servidor por migração adicional e reciclagem interna de 24 meses para Direção Defensiva e NR-11/NR-12. Ver MATRIZ_CONDUTORES_APROVADA.md. Teste local não equivale a publicação ou validação do schema operacional.
+
+Incremento local CNH v301.4 (2026-11-10): o cadastro de condutor passou a oferecer busca na base do Efetivo (`colaboradores_efetivo`, somente leitura) para preencher nome, função e setor automaticamente, com aviso quando já existe condutor com o mesmo nome. Nenhuma escrita/sincronização na base do Efetivo; o cadastro manual (Terceiros/PJ) continua livre e a tela degrada sem bloquear caso a base esteja indisponível.

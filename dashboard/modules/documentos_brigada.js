@@ -314,29 +314,58 @@ async function loadPsicossocialData() {
             supabaseFetch('avaliacoes_psicossociais_escalas', '?select=*'),
             supabaseFetch('avaliacoes_psicossociais_perguntas', '?select=*')
         ]);
-        allAvaliacoesPsicossociais = aplicacoes;
-        allEscalasPsicossociais = escalas;
-        allPerguntasPsicossociais = perguntas;
-        if (!psicossocialAplicacaoAtivaId || !aplicacoes.some(a => a.id === psicossocialAplicacaoAtivaId)) {
-            const ordenadas = aplicacoes.slice().sort((a, b) => (b.periodo_inicio || '').localeCompare(a.periodo_inicio || ''));
+        allAvaliacoesPsicossociais = Array.isArray(aplicacoes) ? aplicacoes : [];
+        allEscalasPsicossociais = Array.isArray(escalas) ? escalas : [];
+        allPerguntasPsicossociais = Array.isArray(perguntas) ? perguntas : [];
+        psicossocialLoaded = true;
+
+        if (!psicossocialAplicacaoAtivaId || !allAvaliacoesPsicossociais.some(a => a.id === psicossocialAplicacaoAtivaId)) {
+            const ordenadas = allAvaliacoesPsicossociais.slice().sort((a, b) => (b.periodo_inicio || '').localeCompare(a.periodo_inicio || ''));
             psicossocialAplicacaoAtivaId = ordenadas[0]?.id || null;
         }
         renderPsicossocialPanel();
         renderListaAplicacoesPsicossociais();
+        return true;
     } catch (err) {
         console.error('Erro ao carregar avaliação psicossocial:', err);
+        psicossocialLoaded = false;
+        const conteudo = document.getElementById('psicossocialConteudo');
+        const conteudoVazio = document.getElementById('psicossocialConteudoVazio');
+        const conteudoAtivo = document.getElementById('psicossocialConteudoAtivo');
+        if (allAvaliacoesPsicossociais.length === 0) {
+            if (conteudoVazio) {
+                conteudoVazio.style.display = 'block';
+                conteudoVazio.innerHTML = `
+                    <div style="font-size:32px; margin-bottom:8px;">⚠️</div>
+                    <div style="font-size:14px; font-weight:700; color:var(--danger); margin-bottom:6px;">Falha ao carregar dados psicossociais</div>
+                    <div style="font-size:12.5px; color:var(--text-light); margin-bottom:14px;">${escapeHTML(err.message || String(err))}</div>
+                    <button class="db-apply-btn" onclick="loadPsicossocialData()" style="font-size:12px; padding:6px 14px;">🔄 Tentar Novamente</button>
+                `;
+            }
+            if (conteudoAtivo) conteudoAtivo.style.display = 'none';
+        }
+        return false;
     }
 }
 
 function showPsicossocialSubtab(tab) {
-    ['visao', 'gerenciar'].forEach(t => {
+    ['visao', 'gerenciar', 'ghe'].forEach(t => {
         const content = document.getElementById('psicossocialSubtab-' + t);
         const btn = document.getElementById('psicossocialSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
         if (btn) btn.classList.toggle('active', t === tab);
     });
     if (tab === 'visao') renderPsicossocialPanel();
-    if (tab === 'gerenciar') { fecharFormAplicacaoPsicossocial(); renderListaAplicacoesPsicossociais(); }
+    if (tab === 'gerenciar') {
+        const form = document.getElementById('psicoAplicacaoFormCard');
+        if (!form || form.style.display !== 'block') {
+            fecharFormAplicacaoPsicossocial();
+        }
+        renderListaAplicacoesPsicossociais();
+    }
+    if (tab === 'ghe') {
+        garantirDadosGestaoPsicoGhe();
+    }
 }
 
 function onPsicossocialAplicacaoChange(id) {
@@ -344,46 +373,90 @@ function onPsicossocialAplicacaoChange(id) {
     renderPsicossocialPanel();
 }
 
+function editarAplicacaoPsicossocialAtiva() {
+    if (!psicossocialAplicacaoAtivaId) return;
+    showPsicossocialSubtab('gerenciar');
+    abrirFormAplicacaoPsicossocial(psicossocialAplicacaoAtivaId);
+}
+
+function abrirFormNovaAplicacaoPsicossocial() {
+    showPsicossocialSubtab('gerenciar');
+    abrirFormAplicacaoPsicossocial(null);
+}
+
 function renderPsicossocialPanel() {
     const seletorWrap = document.getElementById('psicossocialSeletorWrap');
     const seletor = document.getElementById('psicossocialSeletorAplicacao');
-    if (!seletorWrap || !seletor) return;
+    const btnEditar = document.getElementById('btnEditarAplicacaoPsicoAtiva');
+    const conteudoVazio = document.getElementById('psicossocialConteudoVazio');
+    const conteudoAtivo = document.getElementById('psicossocialConteudoAtivo');
 
     if (allAvaliacoesPsicossociais.length > 1) {
-        seletorWrap.style.display = '';
-        const ordenadas = allAvaliacoesPsicossociais.slice().sort((a, b) => (b.periodo_inicio || '').localeCompare(a.periodo_inicio || ''));
-        seletor.innerHTML = ordenadas.map(a => `<option value="${escapeHTML(a.id)}" ${a.id === psicossocialAplicacaoAtivaId ? 'selected' : ''}>${formatarPeriodoPsicossocial(a)}</option>`).join('');
+        if (seletorWrap) seletorWrap.style.display = 'flex';
+        if (seletor) {
+            const ordenadas = allAvaliacoesPsicossociais.slice().sort((a, b) => (b.periodo_inicio || '').localeCompare(a.periodo_inicio || ''));
+            seletor.innerHTML = ordenadas.map(a => `<option value="${escapeHTML(a.id)}" ${a.id === psicossocialAplicacaoAtivaId ? 'selected' : ''}>${formatarPeriodoPsicossocial(a)}</option>`).join('');
+        }
+    } else if (allAvaliacoesPsicossociais.length === 1) {
+        if (seletorWrap) seletorWrap.style.display = 'flex';
+        if (seletor) {
+            seletor.innerHTML = `<option value="${escapeHTML(allAvaliacoesPsicossociais[0].id)}" selected>${formatarPeriodoPsicossocial(allAvaliacoesPsicossociais[0])}</option>`;
+        }
     } else {
-        seletorWrap.style.display = 'none';
+        if (seletorWrap) seletorWrap.style.display = 'none';
     }
 
     const aplicacao = allAvaliacoesPsicossociais.find(a => a.id === psicossocialAplicacaoAtivaId);
-    const conteudo = document.getElementById('psicossocialConteudo');
     if (!aplicacao) {
-        if (conteudo) conteudo.innerHTML = '<div class="db-list-empty">Nenhuma aplicação do questionário cadastrada ainda.</div>';
+        if (conteudoVazio) conteudoVazio.style.display = 'block';
+        if (conteudoAtivo) conteudoAtivo.style.display = 'none';
+        if (btnEditar) btnEditar.style.display = 'none';
         return;
     }
+
+    if (conteudoVazio) conteudoVazio.style.display = 'none';
+    if (conteudoAtivo) conteudoAtivo.style.display = 'block';
+    if (btnEditar) btnEditar.style.display = 'inline-flex';
 
     const escalas = allEscalasPsicossociais.filter(e => e.aplicacao_id === psicossocialAplicacaoAtivaId);
     const perguntas = allPerguntasPsicossociais.filter(p => p.aplicacao_id === psicossocialAplicacaoAtivaId).sort((a, b) => a.numero - b.numero);
 
-    document.getElementById('kpiPsicoParticipacao').textContent = fmtPct(aplicacao.taxa_participacao);
-    const criticas = escalas.filter(e => Number(e.pct_risco) >= PSICO_LIMIAR_RISCO_CRITICO).sort((a, b) => Number(b.pct_risco) - Number(a.pct_risco));
-    const atencao = escalas.filter(e => Number(e.pct_risco) >= 20 && Number(e.pct_risco) < PSICO_LIMIAR_RISCO_CRITICO);
-    const fortes = escalas.filter(e => Number(e.pct_favoravel) >= PSICO_LIMIAR_FAVORAVEL_FORTE).sort((a, b) => Number(b.pct_favoravel) - Number(a.pct_favoravel));
-    document.getElementById('kpiPsicoCriticas').textContent = criticas.length;
-    document.getElementById('kpiPsicoAtencao').textContent = atencao.length;
-    document.getElementById('kpiPsicoFortes').textContent = fortes.length;
+    const kpiPart = document.getElementById('kpiPsicoParticipacao');
+    if (kpiPart) kpiPart.textContent = fmtPct(aplicacao.taxa_participacao);
+
+    const limiarCritico = (typeof PSICO_LIMIAR_RISCO_CRITICO !== 'undefined') ? PSICO_LIMIAR_RISCO_CRITICO : 40;
+    const limiarForte = (typeof PSICO_LIMIAR_FAVORAVEL_FORTE !== 'undefined') ? PSICO_LIMIAR_FAVORAVEL_FORTE : 90;
+
+    const criticas = escalas.filter(e => e.pct_risco != null && Number(e.pct_risco) >= limiarCritico).sort((a, b) => Number(b.pct_risco) - Number(a.pct_risco));
+    const atencao = escalas.filter(e => e.pct_risco != null && Number(e.pct_risco) >= 20 && Number(e.pct_risco) < limiarCritico);
+    const fortes = escalas.filter(e => e.pct_favoravel != null && Number(e.pct_favoravel) >= limiarForte).sort((a, b) => Number(b.pct_favoravel) - Number(a.pct_favoravel));
+
+    const elCriticas = document.getElementById('kpiPsicoCriticas');
+    const elAtencao = document.getElementById('kpiPsicoAtencao');
+    const elFortes = document.getElementById('kpiPsicoFortes');
+    if (elCriticas) elCriticas.textContent = criticas.length;
+    if (elAtencao) elAtencao.textContent = atencao.length;
+    if (elFortes) elFortes.textContent = fortes.length;
+
+    // Rótulos dinâmicos vinculados estritamente aos limiares configurados
+    const lblCriticas = document.getElementById('lblKpiPsicoCriticas');
+    const lblAtencao = document.getElementById('lblKpiPsicoAtencao');
+    const lblFortes = document.getElementById('lblKpiPsicoFortes');
+    if (lblCriticas) lblCriticas.textContent = `Escalas em Risco Crítico (≥${limiarCritico}%)`;
+    if (lblAtencao) lblAtencao.textContent = `Escalas em Atenção (20–${limiarCritico}% risco)`;
+    if (lblFortes) lblFortes.textContent = `Pontos Fortes (≥${limiarForte}% favorável)`;
 
     renderPsicoCards('psicoCardsCriticas', criticas, 'risco');
     renderPsicoCards('psicoCardsFortes', fortes, 'favoravel');
 
     const resumoEl = document.getElementById('psicossocialResumo');
-    if (aplicacao.resumo_analise) {
-        resumoEl.style.display = 'block';
-        resumoEl.textContent = aplicacao.resumo_analise;
-    } else {
-        resumoEl.style.display = 'none';
+    if (resumoEl) {
+        if (aplicacao.resumo_analise) {
+            resumoEl.style.display = 'block';
+            resumoEl.textContent = aplicacao.resumo_analise;
+        } else {
+            resumoEl.style.display = 'none';
+        }
     }
 
     renderChartEscalasPsicossociais(escalas);
@@ -409,8 +482,20 @@ function renderChartEscalasPsicossociais(escalas) {
     const canvasId = 'chartPsicoEscalas';
     const ctx = document.getElementById(canvasId);
     if (!ctx) return;
-    const ordenadas = escalas.slice().sort((a, b) => Number(b.pct_risco) - Number(a.pct_risco));
-    const labels = ordenadas.map(e => wrapChartLabel(e.escala));
+
+    // Ordenação segura: escalas com dados válidos de risco ordenadas por risco decrescente; dados ausentes no fim
+    const ordenadas = escalas.slice().sort((a, b) => {
+        const valA = a.pct_risco != null ? Number(a.pct_risco) : -1;
+        const valB = b.pct_risco != null ? Number(b.pct_risco) : -1;
+        return valB - valA;
+    });
+
+    const labels = ordenadas.map(e => {
+        const preenchidos = [e.pct_favoravel != null, e.pct_intermediario != null, e.pct_risco != null].filter(Boolean).length;
+        if (preenchidos === 0) return wrapChartLabel(e.escala + ' (Sem dados)');
+        if (preenchidos < 3) return wrapChartLabel(e.escala + ' (Incompleta)');
+        return wrapChartLabel(e.escala);
+    });
     ajustarAlturaBarrasHorizontais(canvasId, labels);
 
     if (chartPsicoEscalas) chartPsicoEscalas.destroy();
@@ -419,9 +504,21 @@ function renderChartEscalasPsicossociais(escalas) {
         data: {
             labels,
             datasets: [
-                { label: 'Situação Favorável', data: ordenadas.map(e => Number(e.pct_favoravel)), backgroundColor: '#10b981' },
-                { label: 'Intermediário', data: ordenadas.map(e => Number(e.pct_intermediario)), backgroundColor: '#f59e0b' },
-                { label: 'Risco para a Saúde', data: ordenadas.map(e => Number(e.pct_risco)), backgroundColor: '#ef4444' }
+                {
+                    label: 'Situação Favorável',
+                    data: ordenadas.map(e => e.pct_favoravel != null ? Number(e.pct_favoravel) : null),
+                    backgroundColor: '#10b981'
+                },
+                {
+                    label: 'Intermediário',
+                    data: ordenadas.map(e => e.pct_intermediario != null ? Number(e.pct_intermediario) : null),
+                    backgroundColor: '#f59e0b'
+                },
+                {
+                    label: 'Risco para a Saúde',
+                    data: ordenadas.map(e => e.pct_risco != null ? Number(e.pct_risco) : null),
+                    backgroundColor: '#ef4444'
+                }
             ]
         },
         options: {
@@ -434,7 +531,14 @@ function renderChartEscalasPsicossociais(escalas) {
             },
             plugins: {
                 legend: { position: 'bottom' },
-                tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.x.toFixed(1)}%` } }
+                tooltip: {
+                    callbacks: {
+                        label: ctx => {
+                            if (ctx.parsed.x == null || isNaN(ctx.parsed.x)) return `${ctx.dataset.label}: Não informado`;
+                            return `${ctx.dataset.label}: ${ctx.parsed.x.toFixed(1)}%`;
+                        }
+                    }
+                }
             }
         }
     });
@@ -483,10 +587,77 @@ function renderListaAplicacoesPsicossociais() {
     }).join('');
 }
 
+function gerarIdPsicossocial(periodoInicio) {
+    const prefixo = (periodoInicio && periodoInicio.length >= 7) ? periodoInicio.slice(0, 7) : new Date().toISOString().slice(0, 7);
+    let uuid = '';
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        uuid = crypto.randomUUID();
+    } else if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        uuid = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    } else {
+        uuid = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 12);
+    }
+    return `${prefixo}_${uuid}`;
+}
+
+function gerarSessionIdPsicossocial() {
+    let token = '';
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        token = crypto.randomUUID();
+    } else {
+        token = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+    }
+    return 'sess_' + token;
+}
+
+async function tentarRecarregarAposSave(id, sessionId) {
+    const statusEl = document.getElementById('psicoAplicacaoFormStatus');
+    if (statusEl) {
+        statusEl.textContent = 'Recarregando visualização...';
+        statusEl.style.color = 'var(--text-light)';
+    }
+    const ok = await loadPsicossocialData();
+    if (ok !== false) {
+        if (statusEl) {
+            statusEl.textContent = '✅ Visualização atualizada com sucesso.';
+            statusEl.style.color = 'var(--success)';
+        }
+        const form = document.getElementById('psicoAplicacaoFormCard');
+        if (form && form.dataset.sessionId === sessionId && form.dataset.id === id) {
+            psicossocialAplicacaoAtivaId = id;
+            fecharFormAplicacaoPsicossocial(id, sessionId);
+            showPsicossocialSubtab('visao');
+        }
+    } else if (statusEl) {
+        statusEl.innerHTML = `❌ Falha persistente ao atualizar tela.<br>
+        <button type="button" class="db-apply-btn" onclick="tentarRecarregarAposSave('${id}', '${sessionId}')" style="margin-top:4px; font-size:12px; padding:4px 10px;">🔄 Tentar Novamente</button>`;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
 function abrirFormAplicacaoPsicossocial(id) {
     const form = document.getElementById('psicoAplicacaoFormCard');
+    if (!form) return false;
+
+    // Proteção contra descarte silencioso de rascunho não salvo (dirty state)
+    if (form.style && form.style.display === 'block' && form.dataset.initialSnapshot) {
+        const snapshotAtual = capturarSnapshotInputsFormPsico();
+        if (snapshotAtual !== form.dataset.initialSnapshot) {
+            if (typeof confirm === 'function' && !confirm('Existem alterações não salvas no formulário atual. Deseja descartá-las?')) {
+                return false;
+            }
+        }
+    }
+
     document.getElementById('psicoAplicacaoFormStatus').textContent = '';
     form.dataset.id = id || '';
+    // Token de sessão único para identificar o ciclo de vida desta edição específica
+    form.dataset.sessionId = typeof gerarSessionIdPsicossocial === 'function' ? gerarSessionIdPsicossocial() : ('sess_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8));
+
+    const btnExcluir = document.getElementById('btnExcluirAplicacaoPsico');
+    if (btnExcluir) btnExcluir.style.display = id ? 'inline-flex' : 'none';
 
     const aplicacao = id ? allAvaliacoesPsicossociais.find(a => a.id === id) : null;
     document.getElementById('psicoFormTitle').textContent = aplicacao ? `✏️ Editar Aplicação (${formatarPeriodoPsicossocial(aplicacao)})` : '+ Nova Aplicação';
@@ -510,10 +681,6 @@ function abrirFormAplicacaoPsicossocial(id) {
     }).join('');
     form.dataset.escalaNomes = JSON.stringify(nomesEscalas);
 
-    // As 41 perguntas são um instrumento fixo (COPSOQ II Versão Curta) - texto e opções
-    // de resposta não mudam entre rodadas, só os %. Uma aplicação nova reaproveita as
-    // perguntas/opções da aplicação mais recente já cadastrada como modelo, com os
-    // valores em branco pra preencher - evita ter que digitar 41 perguntas do zero.
     let perguntasTemplate = aplicacao ? allPerguntasPsicossociais.filter(p => p.aplicacao_id === id).sort((a, b) => a.numero - b.numero) : [];
     if (perguntasTemplate.length === 0) {
         const outraAplicacao = allAvaliacoesPsicossociais.filter(a => a.id !== id).sort((a, b) => (b.periodo_inicio || '').localeCompare(a.periodo_inicio || ''))[0];
@@ -536,80 +703,324 @@ function abrirFormAplicacaoPsicossocial(id) {
             </div>
         </div>`).join('');
 
+    // Snapshot fiel do modelo carregado nesta edicao (evita fallback cruzado ao salvar)
+    form.dataset.perguntasSnapshot = JSON.stringify(perguntasTemplate);
+
     form.style.display = 'block';
-    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    form.dataset.initialSnapshot = capturarSnapshotInputsFormPsico();
+    if (typeof form.scrollIntoView === 'function') {
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    return true;
 }
 
-function fecharFormAplicacaoPsicossocial() {
+function capturarSnapshotInputsFormPsico() {
     const form = document.getElementById('psicoAplicacaoFormCard');
-    if (form) form.style.display = 'none';
+    if (!form) return '';
+    const pIni = document.getElementById('psicoFormPeriodoInicio')?.value ?? '';
+    const pFim = document.getElementById('psicoFormPeriodoFim')?.value ?? '';
+    const taxa = document.getElementById('psicoFormTaxaParticipacao')?.value ?? '';
+    const resumo = document.getElementById('psicoFormResumo')?.value ?? '';
+    let nomesEscalas = [];
+    try { nomesEscalas = JSON.parse(form.dataset.escalaNomes || '[]'); } catch (_) { nomesEscalas = []; }
+    const escalasVals = nomesEscalas.map(nome => {
+        const slug = typeof slugPsico === 'function' ? slugPsico(nome) : String(nome);
+        return [
+            document.getElementById(`psicoEscala_${slug}_fav`)?.value ?? '',
+            document.getElementById(`psicoEscala_${slug}_int`)?.value ?? '',
+            document.getElementById(`psicoEscala_${slug}_risco`)?.value ?? ''
+        ].join(':');
+    }).join('|');
+    const opcaoInputs = typeof form.querySelectorAll === 'function' ? Array.from(form.querySelectorAll('.psico-pergunta-opcao')) : [];
+    const perguntasVals = opcaoInputs.map(inp => `${inp.dataset?.pergunta}_${inp.dataset?.opcao}=${inp.value ?? ''}`).join('|');
+    return JSON.stringify({ pIni, pFim, taxa, resumo, escalasVals, perguntasVals });
+}
+
+function fecharFormAplicacaoPsicossocial(idParaFechar, sessionIdParaFechar) {
+    const form = document.getElementById('psicoAplicacaoFormCard');
+    if (form) {
+        // Se sessionIdParaFechar for informado, não fecha se uma nova sessão de edição já tiver sido aberta
+        if (sessionIdParaFechar && form.dataset.sessionId !== sessionIdParaFechar) return;
+        // Se idParaFechar for informado, não fecha se o form pertencer a outra aplicação
+        if (idParaFechar && form.dataset.id !== idParaFechar) return;
+
+        form.style.display = 'none';
+        form.dataset.id = '';
+        form.dataset.sessionId = '';
+        form.dataset.initialSnapshot = '';
+    }
 }
 
 async function salvarAplicacaoPsicossocial() {
     const form = document.getElementById('psicoAplicacaoFormCard');
+    if (!form) return false;
+    const saveSessionId = form.dataset.sessionId || ('sess_' + Date.now().toString(36));
     const idExistente = form.dataset.id;
+    const statusEl = document.getElementById('psicoAplicacaoFormStatus');
+    const btnSalvar = document.getElementById('btnSalvarAplicacaoPsico');
+
+    // Guarda lógica de envio concorrente na mesma sessão (bloqueia duplo clique)
+    if (form.dataset.salvandoSessionId && form.dataset.salvandoSessionId === saveSessionId) {
+        if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+            console.warn('Gravação já em andamento para esta sessão.');
+        }
+        return false;
+    }
+
     const periodoInicio = document.getElementById('psicoFormPeriodoInicio').value;
     const periodoFim = document.getElementById('psicoFormPeriodoFim').value;
     const taxa = document.getElementById('psicoFormTaxaParticipacao').value;
     const resumo = document.getElementById('psicoFormResumo').value;
-    const statusEl = document.getElementById('psicoAplicacaoFormStatus');
 
-    if (!periodoInicio || !periodoFim) {
-        statusEl.textContent = 'Informe o período (início e fim).';
-        statusEl.style.color = 'var(--danger)';
-        return;
+    const restaurarBotao = () => {
+        if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.textContent = '💾 Salvar Aplicação'; }
+        habilitarInputsFormulario(form);
+    };
+
+    // Funções para desabilitar/habilitar todos os inputs do formulário durante save
+    function desabilitarInputsFormulario(f) {
+        if (!f) return;
+        f.querySelectorAll('input, select, textarea, button').forEach(el => {
+            if (el.type !== 'hidden') el.disabled = true;
+        });
+    }
+    function habilitarInputsFormulario(f) {
+        if (!f) return;
+        f.querySelectorAll('input, select, textarea, button').forEach(el => {
+            if (el.type !== 'hidden') el.disabled = false;
+        });
     }
 
-    const id = idExistente || periodoInicio.slice(0, 7);
+    // 1. Validação de período
+    if (!periodoInicio || !periodoFim) {
+        statusEl.textContent = 'Informe o período completo (data de início e término).';
+        statusEl.style.color = 'var(--danger)';
+        return false;
+    }
+    if (periodoInicio > periodoFim) {
+        statusEl.textContent = 'A data de início não pode ser posterior à data de término.';
+        statusEl.style.color = 'var(--danger)';
+        return false;
+    }
 
-    try {
-        await supabaseUpsert('avaliacoes_psicossociais', [{
-            id, periodo_inicio: periodoInicio, periodo_fim: periodoFim,
-            taxa_participacao: taxa === '' ? null : parseFloat(taxa),
-            resumo_analise: resumo || null
-        }]);
+    // 2. Validação da taxa de participação (finito entre 0 e 100)
+    let taxaNum = null;
+    if (taxa !== '' && taxa != null) {
+        taxaNum = parseFloat(taxa);
+        if (isNaN(taxaNum) || !isFinite(taxaNum) || taxaNum < 0 || taxaNum > 100) {
+            statusEl.textContent = 'A taxa de participação deve ser um número válido entre 0% e 100%.';
+            statusEl.style.color = 'var(--danger)';
+            return false;
+        }
+    }
 
-        const nomesEscalas = JSON.parse(form.dataset.escalaNomes || '[]');
-        const escalaRows = nomesEscalas.map(nome => {
-            const slug = slugPsico(nome);
-            const fav = document.getElementById(`psicoEscala_${slug}_fav`)?.value;
-            const int = document.getElementById(`psicoEscala_${slug}_int`)?.value;
-            const risco = document.getElementById(`psicoEscala_${slug}_risco`)?.value;
-            return {
-                id: `${id}_${slug}`, aplicacao_id: id, escala: nome,
-                pct_favoravel: fav === '' || fav == null ? null : parseFloat(fav),
-                pct_intermediario: int === '' || int == null ? null : parseFloat(int),
-                pct_risco: risco === '' || risco == null ? null : parseFloat(risco)
-            };
-        });
-        if (escalaRows.length > 0) await supabaseUpsert('avaliacoes_psicossociais_escalas', escalaRows);
+    // 3. Fixação imediata do ID no draft (estabilidade em retry e ID collision-resistant com UUID)
+    const id = idExistente || (typeof gerarIdPsicossocial === 'function'
+        ? gerarIdPsicossocial(periodoInicio)
+        : (periodoInicio.slice(0, 7) + '_' + ((typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : (Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10))))
+    );
+    form.dataset.id = id;
 
-        const opcaoInputs = form.querySelectorAll('.psico-pergunta-opcao');
-        if (opcaoInputs.length > 0) {
-            const porPergunta = {};
-            opcaoInputs.forEach(inp => {
-                const numero = inp.dataset.pergunta;
-                const opcao = inp.dataset.opcao;
-                if (!porPergunta[numero]) porPergunta[numero] = {};
-                porPergunta[numero][opcao] = parseFloat(inp.value) || 0;
-            });
-            const perguntaRows = Object.entries(porPergunta).map(([numero, opcoes]) => {
-                let original = allPerguntasPsicossociais.find(p => p.aplicacao_id === id && String(p.numero) === numero);
-                if (!original) original = allPerguntasPsicossociais.find(p => String(p.numero) === numero);
-                return { id: `${id}_q${numero}`, aplicacao_id: id, numero: parseInt(numero, 10), pergunta: original?.pergunta || '', opcoes };
-            });
-            if (perguntaRows.length > 0) await supabaseUpsert('avaliacoes_psicossociais_perguntas', perguntaRows);
+    // 4. Validação e congelamento das escalas COPSOQ II em snapshot imutável ANTES de qualquer await
+    const nomesEscalas = JSON.parse(form.dataset.escalaNomes || '[]');
+    const escalaRows = [];
+    for (const nome of nomesEscalas) {
+        const slug = slugPsico(nome);
+        const favVal = document.getElementById(`psicoEscala_${slug}_fav`)?.value ?? '';
+        const intVal = document.getElementById(`psicoEscala_${slug}_int`)?.value ?? '';
+        const riscoVal = document.getElementById(`psicoEscala_${slug}_risco`)?.value ?? '';
+
+        const validarPct = (v) => {
+            if (v === '' || v == null) return true;
+            const n = parseFloat(v);
+            return !isNaN(n) && isFinite(n) && n >= 0 && n <= 100;
+        };
+        if (!validarPct(favVal) || !validarPct(intVal) || !validarPct(riscoVal)) {
+            statusEl.textContent = `Os percentuais da escala "${nome}" devem ser números válidos entre 0% e 100%.`;
+            statusEl.style.color = 'var(--danger)';
+            return false;
         }
 
-        statusEl.textContent = '✅ Salvo com sucesso.';
+        const preenchidos = [favVal !== '', intVal !== '', riscoVal !== ''].filter(Boolean).length;
+        if (preenchidos > 0 && preenchidos < 3) {
+            statusEl.textContent = `A escala "${nome}" está parcialmente preenchida. Preencha as três categorias (Favorável, Intermediário e Risco) somando 100%, ou deixe todas vazias.`;
+            statusEl.style.color = 'var(--danger)';
+            return false;
+        }
+
+        if (preenchidos === 3) {
+            const soma = parseFloat(favVal) + parseFloat(intVal) + parseFloat(riscoVal);
+            if (Math.abs(soma - 100) > 1.0) {
+                statusEl.textContent = `A soma dos percentuais da escala "${nome}" totaliza ${soma.toFixed(1)}% (deve totalizar 100% ±1%). Ajuste os valores.`;
+                statusEl.style.color = 'var(--danger)';
+                return false;
+            }
+        }
+
+        escalaRows.push({
+            id: `${id}_${slug}`,
+            aplicacao_id: id,
+            escala: nome,
+            pct_favoravel: (favVal === '' || favVal == null) ? null : parseFloat(favVal),
+            pct_intermediario: (intVal === '' || intVal == null) ? null : parseFloat(intVal),
+            pct_risco: (riscoVal === '' || riscoVal == null) ? null : parseFloat(riscoVal)
+        });
+    }
+
+    // 5. Validação e congelamento das perguntas detalhadas em snapshot imutável ANTES de qualquer await
+    const opcaoInputs = form.querySelectorAll('.psico-pergunta-opcao');
+    const porPergunta = {};
+    for (const inp of opcaoInputs) {
+        const v = inp.value;
+        if (v !== '' && v != null) {
+            const n = parseFloat(v);
+            if (isNaN(n) || !isFinite(n) || n < 0 || n > 100) {
+                statusEl.textContent = 'Os percentuais das perguntas devem ser números válidos entre 0% e 100%.';
+                statusEl.style.color = 'var(--danger)';
+                return false;
+            }
+        }
+        const numero = inp.dataset.pergunta;
+        const opcao = inp.dataset.opcao;
+        if (!porPergunta[numero]) porPergunta[numero] = {};
+        porPergunta[numero][opcao] = (v === '' || v == null) ? null : parseFloat(v);
+    }
+
+    const perguntasSnapshot = JSON.parse(form.dataset.perguntasSnapshot || '[]');
+    const perguntaRows = Object.entries(porPergunta).map(([numero, opcoes]) => {
+        let modelo = perguntasSnapshot.find(p => String(p.numero) === numero);
+        if (!modelo) modelo = allPerguntasPsicossociais.find(p => p.aplicacao_id === id && String(p.numero) === numero);
+        return {
+            id: `${id}_q${numero}`,
+            aplicacao_id: id,
+            numero: parseInt(numero, 10),
+            pergunta: modelo?.pergunta || '',
+            opcoes
+        };
+    });
+
+    // 6. Preparação do payload da aplicação principal (snapshot imutável)
+    const aplicacaoRow = {
+        id,
+        periodo_inicio: periodoInicio,
+        periodo_fim: periodoFim,
+        taxa_participacao: taxaNum,
+        resumo_analise: resumo || null
+    };
+
+    const lerSnapshotInputsFormLocal = () => {
+        if (typeof capturarSnapshotInputsFormPsico === 'function') {
+            return capturarSnapshotInputsFormPsico();
+        }
+        const pIni = document.getElementById('psicoFormPeriodoInicio')?.value ?? '';
+        const pFim = document.getElementById('psicoFormPeriodoFim')?.value ?? '';
+        const tx = document.getElementById('psicoFormTaxaParticipacao')?.value ?? '';
+        const res = document.getElementById('psicoFormResumo')?.value ?? '';
+        const esc = nomesEscalas.map(nome => {
+            const slug = slugPsico(nome);
+            return [
+                document.getElementById(`psicoEscala_${slug}_fav`)?.value ?? '',
+                document.getElementById(`psicoEscala_${slug}_int`)?.value ?? '',
+                document.getElementById(`psicoEscala_${slug}_risco`)?.value ?? ''
+            ].join(':');
+        }).join('|');
+        const ops = typeof form.querySelectorAll === 'function' ? Array.from(form.querySelectorAll('.psico-pergunta-opcao')) : [];
+        const perg = ops.map(inp => `${inp.dataset?.pergunta}_${inp.dataset?.opcao}=${inp.value ?? ''}`).join('|');
+        return JSON.stringify({ pIni, pFim, taxa: tx, resumo: res, escalasVals: esc, perguntasVals: perg });
+    };
+    const snapshotSalvo = lerSnapshotInputsFormLocal();
+    form.dataset.initialSnapshot = snapshotSalvo;
+
+    // 7. Fila de serialização por registro (per-ID queue) + geração monotônica (sem mutação retroativa em voo)
+    // Garante que uma gravação anterior em andamento para o mesmo ID termine antes de iniciar a próxima escrita.
+    if (!form._saveQueueById) form._saveQueueById = {};
+    if (!form._latestGenById) form._latestGenById = {};
+    const myWriteGen = (form._latestGenById[id] || 0) + 1;
+    form._latestGenById[id] = myWriteGen;
+    form.dataset.writeGen = String(myWriteGen);
+    form.dataset.salvandoSessionId = saveSessionId;
+    form.dataset.salvandoId = id;
+
+    const previousTask = form._saveQueueById[id];
+    let releaseCurrentTask;
+    const currentTask = new Promise(resolve => { releaseCurrentTask = resolve; });
+    const myQueuedTask = previousTask
+        ? previousTask.then(() => currentTask, () => currentTask)
+        : currentTask;
+    form._saveQueueById[id] = myQueuedTask;
+
+    if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.textContent = '💾 Gravando...'; }
+    statusEl.textContent = 'Gravando aplicação no banco de dados...';
+    statusEl.style.color = 'var(--text-light)';
+
+    try {
+        if (previousTask) {
+            await previousTask;
+        }
+        // Se uma sessão ainda mais recente para o mesmo ID entrou na fila enquanto aguardávamos, cede a vez sem enviar payload obsoleto
+        if (form._latestGenById[id] !== myWriteGen) return false;
+
+        await supabaseUpsert('avaliacoes_psicossociais', [aplicacaoRow]);
+        if (form._latestGenById[id] !== myWriteGen) return false;
+
+        if (escalaRows.length > 0) {
+            await supabaseUpsert('avaliacoes_psicossociais_escalas', escalaRows);
+            if (form._latestGenById[id] !== myWriteGen) return false;
+        }
+
+        if (perguntaRows.length > 0) {
+            await supabaseUpsert('avaliacoes_psicossociais_perguntas', perguntaRows);
+            if (form._latestGenById[id] !== myWriteGen) return false;
+        }
+
+        const recargaOk = await loadPsicossocialData();
+        if (recargaOk === false) {
+            statusEl.innerHTML = `⚠️ <b>Aplicação gravada no banco de dados com sucesso</b>, mas ocorreu uma falha ao atualizar a visualização.<br>
+            <span style="font-size:12px; color:var(--text-light);">Os dados foram persistidos com segurança. Você pode tentar atualizar a tela diretamente sem gravar novamente.</span><br>
+            <button type="button" class="db-apply-btn" onclick="tentarRecarregarAposSave('${id}', '${saveSessionId}')" style="margin-top:6px; font-size:12px; padding:4px 10px;">🔄 Atualizar Visualização</button>`;
+            statusEl.style.color = 'var(--warning, #d97706)';
+            return false;
+        }
+
+        statusEl.textContent = '✅ Aplicação salva com sucesso.';
         statusEl.style.color = 'var(--success)';
-        await loadPsicossocialData();
-        psicossocialAplicacaoAtivaId = id;
-        renderPsicossocialPanel();
+        // Só fecha e transita se o formulário ainda for da mesma sessão, mesma aplicação E sem novas edições feitas durante o envio
+        if (form.dataset.sessionId === saveSessionId && form.dataset.id === id) {
+            psicossocialAplicacaoAtivaId = id;
+            const snapshotPosSave = lerSnapshotInputsFormLocal();
+            if (snapshotPosSave !== snapshotSalvo) {
+                form.dataset.initialSnapshot = snapshotSalvo;
+                statusEl.textContent = '⚠️ A versão anterior foi salva com sucesso, mas houve novas alterações durante o envio. Revise o rascunho mantido na tela e clique em Salvar novamente.';
+                statusEl.style.color = 'var(--warning, #d97706)';
+                return true;
+            }
+            fecharFormAplicacaoPsicossocial(id, saveSessionId);
+            showPsicossocialSubtab('visao');
+        } else if (!psicossocialAplicacaoAtivaId) {
+            psicossocialAplicacaoAtivaId = id;
+        }
+        return true;
     } catch (err) {
         console.error('Erro ao salvar aplicação psicossocial:', err);
-        statusEl.textContent = 'Falha ao salvar: ' + err.message;
+        statusEl.textContent = 'Falha ao salvar: ' + (err.message || err);
         statusEl.style.color = 'var(--danger)';
+        return false;
+    } finally {
+        if (typeof releaseCurrentTask === 'function') {
+            releaseCurrentTask();
+        }
+        if (form && form._saveQueueById && form._saveQueueById[id] === myQueuedTask) {
+            delete form._saveQueueById[id];
+        }
+        if (form && form.dataset.salvandoSessionId === saveSessionId) {
+            delete form.dataset.salvandoSessionId;
+        }
+        if (form && form.dataset.salvandoId === id && form._latestGenById && form._latestGenById[id] === myWriteGen) {
+            delete form.dataset.salvandoId;
+        }
+        if (form && (!form.dataset.salvandoSessionId || form.dataset.sessionId === saveSessionId)) {
+            restaurarBotao();
+        }
     }
 }
 
@@ -627,6 +1038,715 @@ async function excluirAplicacaoPsicossocial() {
         alert('Falha ao excluir: ' + err.message);
     }
 }
+
+// ============================================
+// INCREMENTO 17.2: GESTÃO INTEGRADA NR-01 GRO POR GHE (FATORES PSICOSSOCIAIS E ERGONÔMICOS)
+// Mantém separação estrita dos dados agregados corporativos do COPSOQ II e armazena os fatores
+// preventivos por GHE em ghe_catalogo.conclusoes.fatores_psicossociais_nr01.
+// ============================================
+
+const PSICO_DIMENSOES_NR01_PADRAO = [
+    'Exigências Quantitativas e Ritmo de Trabalho',
+    'Exigências Cognitivas e Emocionais',
+    'Organização e Horários / Turnos de Trabalho',
+    'Autonomia e Controle sobre o Trabalho',
+    'Clareza e Conflito de Papéis Operacionais',
+    'Apoio Social, Liderança e Comunicação',
+    'Relacionamento Interpessoal e Clima Organizacional',
+    'Interface Trabalho-Indivíduo / Condições Ergonômicas',
+    'Outro'
+];
+
+const PSICO_STATUS_NR01_OPCOES = [
+    'Não Avaliado',
+    'Controlado',
+    'Monitoramento Preventivo',
+    'Atenção / Intervenção Recomendada',
+    'Ação Prioritária'
+];
+
+let psicoGheAtivoId = null;
+let psicoGheSessionId = '';
+let psicoGheSalvandoSessionId = null;
+let psicoGheSalvandoGheId = null;
+let psicoGheBaseUpdatedAt = undefined;
+let psicoGheBaseConclusoesJson = undefined;
+let psicoGheBaseRiscosJson = undefined;
+let psicoGheDraftFatores = [];
+let psicoGheDirty = false;
+let psicoGheDelegatedBound = false;
+
+function gerarUidFatorPsicoGhe() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return 'fator_' + crypto.randomUUID();
+    }
+    return 'fator_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+}
+
+function normalizarFatorPsicoGheItem(item) {
+    const obj = (item && typeof item === 'object') ? item : {};
+    let dimensao = String(obj.dimensao || PSICO_DIMENSOES_NR01_PADRAO[0]);
+    let dimensaoCustom = String(obj.dimensao_custom || '');
+    if (!PSICO_DIMENSOES_NR01_PADRAO.includes(dimensao)) {
+        dimensaoCustom = dimensao;
+        dimensao = 'Outro';
+    }
+    const statusRaw = String(obj.status_avaliacao || 'Não Avaliado');
+    const status = PSICO_STATUS_NR01_OPCOES.includes(statusRaw) ? statusRaw : 'Não Avaliado';
+
+    return {
+        uid: String(obj.uid || gerarUidFatorPsicoGhe()),
+        dimensao,
+        dimensao_custom: dimensao === 'Outro' ? dimensaoCustom : '',
+        fator_descricao: String(obj.fator_descricao || ''),
+        fonte_geradora: String(obj.fonte_geradora || ''),
+        status_avaliacao: status,
+        medidas_prevencao: String(obj.medidas_prevencao || ''),
+        responsavel: String(obj.responsavel || ''),
+        data_avaliacao: String(obj.data_avaliacao || ''),
+        proxima_reavaliacao: String(obj.proxima_reavaliacao || '')
+    };
+}
+
+function carregarDraftFatoresDoGhe(gheId) {
+    const ghe = (typeof allGheCatalogo !== 'undefined' && Array.isArray(allGheCatalogo))
+        ? allGheCatalogo.find(g => String(g.id) === String(gheId))
+        : null;
+    const listaPersistida = Array.isArray(ghe?.conclusoes?.fatores_psicossociais_nr01)
+        ? ghe.conclusoes.fatores_psicossociais_nr01
+        : [];
+    psicoGheDraftFatores = listaPersistida.map(item => normalizarFatorPsicoGheItem(JSON.parse(JSON.stringify(item))));
+    psicoGheBaseUpdatedAt = ghe ? (ghe.updated_at ?? null) : undefined;
+    psicoGheBaseConclusoesJson = ghe ? JSON.stringify(ghe.conclusoes || {}) : undefined;
+    psicoGheBaseRiscosJson = ghe ? JSON.stringify(ghe.riscos || []) : undefined;
+    psicoGheSessionId = typeof gerarSessionIdPsicossocial === 'function'
+        ? gerarSessionIdPsicossocial()
+        : ('sess_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10));
+    psicoGheDirty = false;
+}
+
+async function garantirDadosGestaoPsicoGhe(forcarRecarga = false) {
+    const container = document.getElementById('psicoGestaoGheContainer');
+    try {
+        if (forcarRecarga || !Array.isArray(allGheCatalogo) || allGheCatalogo.length === 0) {
+            if (container) {
+                container.innerHTML = '<div class="db-chart-card"><div class="db-list-empty">Carregando catálogo de Setores / GHEs...</div></div>';
+            }
+            const rows = await supabaseFetch('ghe_catalogo', '?select=*');
+            allGheCatalogo = Array.isArray(rows) ? rows : [];
+        }
+        const ordenados = allGheCatalogo.slice().sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
+        if (!psicoGheAtivoId || !ordenados.some(g => String(g.id) === String(psicoGheAtivoId))) {
+            psicoGheAtivoId = ordenados[0]?.id || null;
+            if (psicoGheAtivoId) {
+                carregarDraftFatoresDoGhe(psicoGheAtivoId);
+            } else {
+                psicoGheDraftFatores = [];
+                psicoGheDirty = false;
+            }
+        } else if (!psicoGheSessionId || forcarRecarga) {
+            carregarDraftFatoresDoGhe(psicoGheAtivoId);
+        }
+        renderGestaoPsicossocialGhe();
+        return true;
+    } catch (err) {
+        console.error('Erro ao carregar GHEs na gestão psicossocial NR-01:', err);
+        if (container) {
+            container.innerHTML = `
+                <div class="db-chart-card" style="text-align:center; padding:24px;">
+                    <div style="font-size:32px; margin-bottom:8px;">⚠️</div>
+                    <div style="font-size:14px; font-weight:700; color:var(--danger); margin-bottom:6px;">Falha ao carregar catálogo de GHEs</div>
+                    <div style="font-size:12.5px; color:var(--text-light); margin-bottom:14px;">${escapeHTML(err.message || String(err))}</div>
+                    <button class="db-apply-btn" onclick="garantirDadosGestaoPsicoGhe(true)" style="font-size:12px; padding:6px 14px;">🔄 Tentar Novamente</button>
+                </div>
+            `;
+        }
+        return false;
+    }
+}
+
+async function abrirGestaoPsicossocialPorGhe(gheId) {
+    if (psicoGheDirty && psicoGheAtivoId && String(psicoGheAtivoId) !== String(gheId)) {
+        if (typeof confirm === 'function' && !confirm('Existem alterações não salvas nos fatores NR-01 do GHE atual. Deseja descartá-las e abrir outro GHE?')) {
+            return false;
+        }
+    }
+    if (typeof showDbPage === 'function') {
+        showDbPage('psicossocial');
+    }
+    psicoGheAtivoId = gheId || psicoGheAtivoId;
+    psicoGheSessionId = ''; // Força inicialização limpa do draft para o GHE solicitado
+    showPsicossocialSubtab('ghe');
+    return true;
+}
+
+function selecionarGheGestaoPsicossocial(novoGheId) {
+    if (!novoGheId || String(novoGheId) === String(psicoGheAtivoId)) return true;
+    if (psicoGheDirty) {
+        if (typeof confirm === 'function' && !confirm('Existem alterações não salvas no rascunho deste GHE. Deseja descartá-las e trocar de GHE?')) {
+            const sel = document.getElementById('psicoGheSeletor');
+            if (sel) sel.value = psicoGheAtivoId || '';
+            return false;
+        }
+    }
+    psicoGheAtivoId = novoGheId;
+    carregarDraftFatoresDoGhe(novoGheId);
+    renderGestaoPsicossocialGhe();
+    return true;
+}
+
+function voltarParaMatrizRiscoDoGhe(gheId) {
+    if (psicoGheDirty) {
+        if (typeof confirm === 'function' && !confirm('Existem alterações não salvas nos fatores NR-01 deste GHE. Deseja descartá-las e voltar para a Matriz de Riscos?')) {
+            return false;
+        }
+        psicoGheDirty = false;
+    }
+    if (typeof showDbPage === 'function') {
+        showDbPage('matrizrisco');
+    }
+    if (typeof selecionarGheMatrizRisco === 'function' && gheId) {
+        selecionarGheMatrizRisco(gheId);
+    }
+    return true;
+}
+
+function adicionarFatorPsicossocialGheDraft() {
+    if (!psicoGheAtivoId) return;
+    psicoGheDraftFatores.push({
+        uid: gerarUidFatorPsicoGhe(),
+        dimensao: PSICO_DIMENSOES_NR01_PADRAO[0],
+        dimensao_custom: '',
+        fator_descricao: '',
+        fonte_geradora: '',
+        status_avaliacao: 'Não Avaliado',
+        medidas_prevencao: '',
+        responsavel: '',
+        data_avaliacao: '',
+        proxima_reavaliacao: ''
+    });
+    psicoGheDirty = true;
+    renderGestaoPsicossocialGhe();
+}
+
+function removerFatorPsicossocialGheDraft(uid) {
+    const idx = psicoGheDraftFatores.findIndex(f => String(f.uid) === String(uid));
+    if (idx === -1) return;
+    psicoGheDraftFatores.splice(idx, 1);
+    psicoGheDirty = true;
+    renderGestaoPsicossocialGhe();
+}
+
+function atualizarCampoFatorPsicossocialGheDraft(uid, campo, valor) {
+    const item = psicoGheDraftFatores.find(f => String(f.uid) === String(uid));
+    if (!item) return;
+    item[campo] = valor;
+    if (campo === 'dimensao' && valor !== 'Outro') {
+        item.dimensao_custom = '';
+    }
+    psicoGheDirty = true;
+    if (campo === 'dimensao' || campo === 'status_avaliacao') {
+        renderGestaoPsicossocialGhe();
+    } else {
+        const badgeDirty = document.getElementById('psicoGheDirtyBadge');
+        if (badgeDirty) badgeDirty.style.display = 'inline-flex';
+    }
+}
+
+function cancelarEdicaoFatoresPsicossociaisGhe() {
+    if (!psicoGheAtivoId) return;
+    carregarDraftFatoresDoGhe(psicoGheAtivoId);
+    renderGestaoPsicossocialGhe();
+    const statusEl = document.getElementById('psicoGheFormStatus');
+    if (statusEl) {
+        statusEl.textContent = '↩️ Alterações descartadas. Dados originais do GHE restaurados.';
+        statusEl.style.color = 'var(--text-light)';
+    }
+}
+
+async function salvarFatoresPsicossociaisGhe() {
+    if (typeof bloquearEdicaoSeNaoAutorizado === 'function' && bloquearEdicaoSeNaoAutorizado('psicossocial')) return false;
+    const statusEl = document.getElementById('psicoGheFormStatus');
+    const btnSalvar = document.getElementById('btnSalvarFatoresPsicoGhe');
+    const targetGheId = psicoGheAtivoId;
+    const saveSessionId = psicoGheSessionId || ('sess_' + Date.now().toString(36));
+
+    // Guarda lógica de concorrência por sessão e por GHE
+    if (
+        (psicoGheSalvandoSessionId && psicoGheSalvandoSessionId === saveSessionId) ||
+        (typeof psicoGheSalvandoGheId !== 'undefined' && psicoGheSalvandoGheId && String(psicoGheSalvandoGheId) === String(targetGheId))
+    ) {
+        if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+            console.warn('Gravação de fatores psicossociais do GHE já em andamento.');
+        }
+        return false;
+    }
+
+    const gheOriginal = (typeof allGheCatalogo !== 'undefined' && Array.isArray(allGheCatalogo))
+        ? allGheCatalogo.find(g => String(g.id) === String(targetGheId))
+        : null;
+    if (!gheOriginal) {
+        if (statusEl) {
+            statusEl.textContent = '❌ Selecione um GHE válido antes de salvar.';
+            statusEl.style.color = 'var(--danger)';
+        }
+        return false;
+    }
+
+    // Verificação de versão base (Compare-And-Swap em memória): bloqueia se outra tela alterou o GHE desde a abertura do draft
+    if (typeof psicoGheBaseUpdatedAt !== 'undefined' && (gheOriginal.updated_at ?? null) !== psicoGheBaseUpdatedAt) {
+        if (statusEl) {
+            statusEl.textContent = '⚠️ Conflito de concorrência: este GHE foi modificado em outra tela. Recarregue os dados antes de salvar.';
+            statusEl.style.color = 'var(--danger)';
+        }
+        return false;
+    }
+    if (typeof psicoGheBaseConclusoesJson !== 'undefined' && JSON.stringify(gheOriginal.conclusoes || {}) !== psicoGheBaseConclusoesJson) {
+        if (statusEl) {
+            statusEl.textContent = '⚠️ Conflito de concorrência: as conclusões deste GHE foram modificadas após a leitura inicial. Recarregue os dados antes de salvar.';
+            statusEl.style.color = 'var(--danger)';
+        }
+        return false;
+    }
+    if (typeof psicoGheBaseRiscosJson !== 'undefined' && JSON.stringify(gheOriginal.riscos || []) !== psicoGheBaseRiscosJson) {
+        if (statusEl) {
+            statusEl.textContent = '⚠️ Conflito de concorrência: a matriz de riscos deste GHE foi modificada após a leitura inicial. Recarregue os dados antes de salvar.';
+            statusEl.style.color = 'var(--danger)';
+        }
+        return false;
+    }
+
+    const dimensoesPadrao = (typeof PSICO_DIMENSOES_NR01_PADRAO !== 'undefined' && Array.isArray(PSICO_DIMENSOES_NR01_PADRAO))
+        ? PSICO_DIMENSOES_NR01_PADRAO
+        : ['Exigências Quantitativas e Ritmo de Trabalho', 'Exigências Cognitivas e Emocionais', 'Organização e Horários / Turnos de Trabalho', 'Autonomia e Controle sobre o Trabalho', 'Clareza e Conflito de Papéis Operacionais', 'Apoio Social, Liderança e Comunicação', 'Relacionamento Interpessoal e Clima Organizacional', 'Interface Trabalho-Indivíduo / Condições Ergonômicas', 'Outro'];
+    const statusOpcoes = (typeof PSICO_STATUS_NR01_OPCOES !== 'undefined' && Array.isArray(PSICO_STATUS_NR01_OPCOES))
+        ? PSICO_STATUS_NR01_OPCOES
+        : ['Não Avaliado', 'Controlado', 'Monitoramento Preventivo', 'Atenção / Intervenção Recomendada', 'Ação Prioritária'];
+
+    // Validação síncrona estrita e congelamento do snapshot ANTES de qualquer await
+    const fatoresSnapshot = [];
+    for (let i = 0; i < psicoGheDraftFatores.length; i++) {
+        const f = psicoGheDraftFatores[i];
+        const numItem = i + 1;
+        const desc = String(f.fator_descricao || '').trim();
+        if (!desc) {
+            if (statusEl) {
+                statusEl.textContent = `❌ O Fator #${numItem} precisa ter a descrição da condição/exigência preenchida.`;
+                statusEl.style.color = 'var(--danger)';
+            }
+            return false;
+        }
+        const dim = dimensoesPadrao.includes(f.dimensao) ? f.dimensao : 'Outro';
+        const dimCustom = dim === 'Outro' ? String(f.dimensao_custom || '').trim() : '';
+        if (dim === 'Outro' && !dimCustom) {
+            if (statusEl) {
+                statusEl.textContent = `❌ Informe a especificação da dimensão personalizada no Fator #${numItem}.`;
+                statusEl.style.color = 'var(--danger)';
+            }
+            return false;
+        }
+        const st = statusOpcoes.includes(f.status_avaliacao) ? f.status_avaliacao : 'Não Avaliado';
+        const dtAval = String(f.data_avaliacao || '').trim();
+        const dtProx = String(f.proxima_reavaliacao || '').trim();
+        if (dtAval && dtProx && dtAval > dtProx) {
+            if (statusEl) {
+                statusEl.textContent = `❌ No Fator #${numItem}, a data da avaliação (${dtAval}) não pode ser posterior à próxima reavaliação (${dtProx}).`;
+                statusEl.style.color = 'var(--danger)';
+            }
+            return false;
+        }
+
+        const uidGerado = f.uid ? String(f.uid) : ((typeof gerarUidFatorPsicoGhe === 'function') ? gerarUidFatorPsicoGhe() : ('fator_' + Date.now().toString(36)));
+        fatoresSnapshot.push({
+            uid: uidGerado,
+            dimensao: dim,
+            dimensao_custom: dimCustom,
+            fator_descricao: desc,
+            fonte_geradora: String(f.fonte_geradora || '').trim(),
+            status_avaliacao: st,
+            medidas_prevencao: String(f.medidas_prevencao || '').trim(),
+            responsavel: String(f.responsavel || '').trim(),
+            data_avaliacao: dtAval,
+            proxima_reavaliacao: dtProx
+        });
+    }
+
+    const expectedUpdatedAt = gheOriginal.updated_at ?? null;
+    const expectedConclusoesJson = JSON.stringify(gheOriginal.conclusoes || {});
+    const novoUpdatedAt = new Date().toISOString();
+
+    psicoGheSalvandoSessionId = saveSessionId;
+    if (typeof psicoGheSalvandoGheId !== 'undefined') psicoGheSalvandoGheId = targetGheId;
+    if (btnSalvar) {
+        btnSalvar.disabled = true;
+        btnSalvar.textContent = '💾 Gravando...';
+    }
+    if (statusEl) {
+        statusEl.textContent = 'Gravando fatores psicossociais do GHE no banco de dados...';
+        statusEl.style.color = 'var(--text-light)';
+    }
+
+    try {
+        // Só preserva outras chaves de conclusoes do cache se a versão base foi capturada na abertura do draft (evita reenviar cache não verificado)
+        const temVersaoBaseVerificada = (typeof psicoGheBaseConclusoesJson !== 'undefined' && psicoGheBaseConclusoesJson !== undefined);
+        let conclusoesBaseParaMerge = (temVersaoBaseVerificada && gheOriginal.conclusoes && typeof gheOriginal.conclusoes === 'object' && !Array.isArray(gheOriginal.conclusoes))
+            ? JSON.parse(JSON.stringify(gheOriginal.conclusoes))
+            : {};
+
+        if (typeof supabaseFetch === 'function') {
+            const rowsRemotas = await supabaseFetch('ghe_catalogo', '?select=id,conclusoes,updated_at&id=eq.' + encodeURIComponent(targetGheId));
+            const remoto = Array.isArray(rowsRemotas) ? rowsRemotas.find(r => String(r.id) === String(targetGheId)) : null;
+            if (remoto) {
+                const remotoUpdatedAt = remoto.updated_at ?? null;
+                const remotoConclusoesJson = JSON.stringify(remoto.conclusoes || {});
+                if (remotoUpdatedAt !== expectedUpdatedAt || remotoConclusoesJson !== expectedConclusoesJson) {
+                    throw new Error('Conflito de concorrência (Compare-And-Swap): o registro deste GHE foi modificado no servidor após o carregamento. Atualize a tela antes de salvar.');
+                }
+                conclusoesBaseParaMerge = (remoto.conclusoes && typeof remoto.conclusoes === 'object' && !Array.isArray(remoto.conclusoes))
+                    ? JSON.parse(JSON.stringify(remoto.conclusoes))
+                    : {};
+            }
+        }
+
+        conclusoesBaseParaMerge.fatores_psicossociais_nr01 = fatoresSnapshot;
+
+        // Atualização seletiva estrita via Compare-And-Swap (NUNCA envia riscos, cargos, nome ou quantidade_oficial do cache e sem fallback desprotegido)
+        if (typeof supabasePatch !== 'function') {
+            throw new Error('Operação condicional supabasePatch obrigatória para salvar fatores do GHE com Compare-And-Swap.');
+        }
+        const casFilter = expectedUpdatedAt
+            ? `id=eq.${encodeURIComponent(targetGheId)}&updated_at=eq.${encodeURIComponent(expectedUpdatedAt)}`
+            : `id=eq.${encodeURIComponent(targetGheId)}&updated_at=is.null`;
+        const patchRes = await supabasePatch('ghe_catalogo', casFilter, {
+            conclusoes: conclusoesBaseParaMerge,
+            updated_at: novoUpdatedAt
+        });
+        if (!Array.isArray(patchRes) || patchRes.length === 0) {
+            throw new Error('Conflito de concorrência (Compare-And-Swap): o GHE foi alterado concorrentemente por outra sessão.');
+        }
+
+        // Atualiza memória oficial do catálogo de GHEs (preservando demais campos intactos)
+        gheOriginal.conclusoes = JSON.parse(JSON.stringify(conclusoesBaseParaMerge));
+        gheOriginal.updated_at = novoUpdatedAt;
+
+        // Só atualiza a versão-base ativa e o draft/UI se o usuário continuar na mesma sessão e no mesmo GHE
+        if (psicoGheSessionId === saveSessionId && String(psicoGheAtivoId) === String(targetGheId)) {
+            if (typeof psicoGheBaseUpdatedAt !== 'undefined') psicoGheBaseUpdatedAt = novoUpdatedAt;
+            if (typeof psicoGheBaseConclusoesJson !== 'undefined') psicoGheBaseConclusoesJson = JSON.stringify(conclusoesBaseParaMerge);
+            const draftAtualNormalizado = Array.isArray(psicoGheDraftFatores)
+                ? psicoGheDraftFatores.map(item => normalizarFatorPsicoGheItem(JSON.parse(JSON.stringify(item))))
+                : [];
+            const houveEdicaoDuranteSaveGhe = JSON.stringify(draftAtualNormalizado) !== JSON.stringify(fatoresSnapshot);
+            if (houveEdicaoDuranteSaveGhe) {
+                psicoGheDirty = true;
+                renderGestaoPsicossocialGhe();
+                const novoStatusEl = document.getElementById('psicoGheFormStatus');
+                if (novoStatusEl) {
+                    novoStatusEl.textContent = '⚠️ A versão anterior foi salva no GHE, mas houve novas alterações durante o envio. Revise o rascunho mantido na tela e clique em Salvar novamente.';
+                    novoStatusEl.style.color = 'var(--warning, #d97706)';
+                }
+            } else {
+                psicoGheDraftFatores = fatoresSnapshot.map(item => normalizarFatorPsicoGheItem(JSON.parse(JSON.stringify(item))));
+                psicoGheDirty = false;
+                renderGestaoPsicossocialGhe();
+                const novoStatusEl = document.getElementById('psicoGheFormStatus');
+                if (novoStatusEl) {
+                    novoStatusEl.textContent = '✅ Fatores psicossociais e ergonômicos (NR-01 GRO) salvos com sucesso no GHE.';
+                    novoStatusEl.style.color = 'var(--success)';
+                }
+            }
+        }
+        return true;
+    } catch (err) {
+        console.error('Erro ao salvar fatores psicossociais do GHE:', err);
+        if (statusEl && psicoGheSessionId === saveSessionId && String(psicoGheAtivoId) === String(targetGheId)) {
+            statusEl.textContent = '❌ Falha ao salvar fatores do GHE: ' + (err.message || err);
+            statusEl.style.color = 'var(--danger)';
+        }
+        return false;
+    } finally {
+        if (psicoGheSalvandoSessionId === saveSessionId) {
+            psicoGheSalvandoSessionId = null;
+        }
+        if (typeof psicoGheSalvandoGheId !== 'undefined' && String(psicoGheSalvandoGheId) === String(targetGheId)) {
+            psicoGheSalvandoGheId = null;
+        }
+        if (!psicoGheSalvandoSessionId || psicoGheSessionId === saveSessionId) {
+            const btnAtual = document.getElementById('btnSalvarFatoresPsicoGhe');
+            if (btnAtual) {
+                btnAtual.disabled = false;
+                btnAtual.textContent = '💾 Salvar Fatores deste GHE';
+            }
+        }
+    }
+}
+
+function vincularListenersDelegadosPsicoGhe() {
+    if (psicoGheDelegatedBound || typeof document === 'undefined') return;
+    const container = document.getElementById('psicoGestaoGheContainer');
+    if (!container || typeof container.addEventListener !== 'function') return;
+
+    container.addEventListener('input', (e) => {
+        const el = e.target;
+        if (!el || !el.dataset || !el.dataset.psicoGheUid || !el.dataset.psicoGheField) return;
+        const field = el.dataset.psicoGheField;
+        if (field === 'dimensao' || field === 'status_avaliacao') return;
+        atualizarCampoFatorPsicossocialGheDraft(el.dataset.psicoGheUid, field, el.value);
+    });
+
+    container.addEventListener('change', (e) => {
+        const el = e.target;
+        if (!el) return;
+        if (el.id === 'psicoGheSeletor') {
+            selecionarGheGestaoPsicossocial(el.value);
+            return;
+        }
+        if (el.dataset && el.dataset.psicoGheUid && el.dataset.psicoGheField) {
+            atualizarCampoFatorPsicossocialGheDraft(el.dataset.psicoGheUid, el.dataset.psicoGheField, el.value);
+        }
+    });
+
+    container.addEventListener('click', (e) => {
+        const btnRemover = e.target.closest ? e.target.closest('[data-psico-ghe-remove-uid]') : null;
+        if (btnRemover && btnRemover.dataset.psicoGheRemoveUid) {
+            removerFatorPsicossocialGheDraft(btnRemover.dataset.psicoGheRemoveUid);
+            return;
+        }
+        const btnVoltar = e.target.closest ? e.target.closest('[data-psico-ghe-voltar]') : null;
+        if (btnVoltar && btnVoltar.dataset.psicoGheVoltar) {
+            voltarParaMatrizRiscoDoGhe(btnVoltar.dataset.psicoGheVoltar);
+        }
+    });
+
+    psicoGheDelegatedBound = true;
+}
+
+function corBadgeStatusPsicoNr01(status) {
+    switch (status) {
+        case 'Controlado':
+            return { bg: '#dcfce7', color: '#166534', border: '#86efac', icon: '🟢' };
+        case 'Monitoramento Preventivo':
+            return { bg: '#dbeafe', color: '#1e40af', border: '#93c5fd', icon: '🔵' };
+        case 'Atenção / Intervenção Recomendada':
+            return { bg: '#fef3c7', color: '#92400e', border: '#fcd34d', icon: '🟡' };
+        case 'Ação Prioritária':
+            return { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5', icon: '🔴' };
+        default:
+            return { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1', icon: '⚪' };
+    }
+}
+
+function renderGestaoPsicossocialGhe() {
+    const container = document.getElementById('psicoGestaoGheContainer');
+    if (!container) return;
+    vincularListenersDelegadosPsicoGhe();
+
+    const grupos = (typeof allGheCatalogo !== 'undefined' && Array.isArray(allGheCatalogo))
+        ? allGheCatalogo.slice().sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')))
+        : [];
+
+    if (grupos.length === 0) {
+        container.innerHTML = `
+            <div class="db-chart-card">
+                <div class="db-list-empty">Nenhum GHE cadastrado no catálogo.</div>
+            </div>
+        `;
+        return;
+    }
+
+    const ghe = grupos.find(g => String(g.id) === String(psicoGheAtivoId)) || grupos[0];
+    if (String(psicoGheAtivoId) !== String(ghe.id)) {
+        psicoGheAtivoId = ghe.id;
+        carregarDraftFatoresDoGhe(ghe.id);
+    }
+
+    const cargos = Array.isArray(ghe.cargos) ? ghe.cargos : [];
+    const riscosErgonomicosMatriz = (Array.isArray(ghe.riscos) ? ghe.riscos : []).filter(r => {
+        const tipo = String(r.tipo || '').toLowerCase();
+        return tipo.includes('ergon') || tipo.includes('psico');
+    });
+
+    const totalFatores = psicoGheDraftFatores.length;
+    const qtdPrioritarios = psicoGheDraftFatores.filter(f => f.status_avaliacao === 'Ação Prioritária' || f.status_avaliacao === 'Atenção / Intervenção Recomendada').length;
+    const qtdControlados = psicoGheDraftFatores.filter(f => f.status_avaliacao === 'Controlado' || f.status_avaliacao === 'Monitoramento Preventivo').length;
+    const qtdNaoAvaliados = psicoGheDraftFatores.filter(f => !f.status_avaliacao || f.status_avaliacao === 'Não Avaliado').length;
+
+    container.innerHTML = `
+        <!-- Banner de Diretriz Técnica NR-01 GRO / Anonimato COPSOQ II -->
+        <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:flex-start; gap:10px; font-size:12.5px; color:#1e40af;">
+            <span style="font-size:18px; line-height:1;">🛡️</span>
+            <div>
+                <b>Gestão Preventiva de Fatores Psicossociais e Organizacionais por GHE (NR-01 GRO / NR-17):</b>
+                Este painel registra a avaliação organizacional e as medidas preventivas específicas do Grupo Homogêneo de Exposição (GHE) selecionado.
+                Em respeito à confidencialidade ética e validade estatística, os resultados do questionário anônimo <b>COPSOQ II Global</b> permanecem agregados corporativamente e não são atribuídos individualmente nem retroativamente aos GHEs.
+            </div>
+        </div>
+
+        <!-- Barra de Seleção de GHE e Navegação Cruzada -->
+        <div class="db-chart-card" style="margin-bottom:16px; padding:14px 16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; min-width:260px;">
+                    <label for="psicoGheSeletor" style="font-size:13px; font-weight:700; color:var(--text); white-space:nowrap;">Setor / GHE Ativo:</label>
+                    <select id="psicoGheSeletor" style="padding:8px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px; font-weight:600; min-width:260px; flex:1; max-width:460px;">
+                        ${grupos.map(g => `<option value="${escapeHTML(g.id)}" ${String(g.id) === String(ghe.id) ? 'selected' : ''}>GHE ${escapeHTML(g.id)} — ${escapeHTML(g.nome || '')}</option>`).join('')}
+                    </select>
+                    <span id="psicoGheDirtyBadge" style="display:${psicoGheDirty ? 'inline-flex' : 'none'}; align-items:center; gap:4px; background:#fef3c7; color:#92400e; border:1px solid #fcd34d; font-size:11px; font-weight:700; padding:3px 8px; border-radius:12px;">
+                        ⚠️ Alterações não salvas
+                    </span>
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="db-clear-btn" data-psico-ghe-voltar="${escapeHTML(ghe.id)}" style="font-size:12px; padding:7px 12px;">
+                        ⬅️ Voltar à Matriz de Riscos do GHE ${escapeHTML(ghe.id)}
+                    </button>
+                    <button type="button" class="db-apply-btn" onclick="adicionarFatorPsicossocialGheDraft()" style="font-size:12px; padding:7px 14px; background:#2563eb;">
+                        ➕ Adicionar Fator NR-01 ao GHE
+                    </button>
+                </div>
+            </div>
+
+            <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border); display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--text-light);">
+                <span><b>GHE:</b> ${escapeHTML(ghe.id)} — ${escapeHTML(ghe.nome || '')}</span>
+                <span><b>Cargos vinculados:</b> ${cargos.length > 0 ? cargos.map(c => escapeHTML(c.cargo || c.funcao || '')).join(', ') : 'Nenhum cargo listado'}</span>
+                <span><b>Riscos Ergonômicos na Matriz PGR:</b> ${riscosErgonomicosMatriz.length} identificado(s)</span>
+            </div>
+        </div>
+
+        <!-- KPIs do GHE Selecionado -->
+        <div class="db-kpi-grid" style="grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); margin-bottom:16px;">
+            <div class="db-kpi-card db-kpi-primary">
+                <div class="db-kpi-value">${totalFatores}</div>
+                <div class="db-kpi-label">Fatores NR-01 no GHE</div>
+            </div>
+            <div class="db-kpi-card db-kpi-danger">
+                <div class="db-kpi-value">${qtdPrioritarios}</div>
+                <div class="db-kpi-label">Atenção / Ação Prioritária</div>
+            </div>
+            <div class="db-kpi-card db-kpi-success">
+                <div class="db-kpi-value">${qtdControlados}</div>
+                <div class="db-kpi-label">Controlados / Monitorados</div>
+            </div>
+            <div class="db-kpi-card db-kpi-warning">
+                <div class="db-kpi-value">${qtdNaoAvaliados}</div>
+                <div class="db-kpi-label">Não Avaliados (Pendentes)</div>
+            </div>
+        </div>
+
+        <!-- Resumo de Riscos Ergonômicos já constantes na Matriz do GHE -->
+        ${riscosErgonomicosMatriz.length > 0 ? `
+        <div class="db-chart-card" style="margin-bottom:16px; padding:12px 16px; background:var(--bg);">
+            <div style="font-size:12.5px; font-weight:700; color:var(--text); margin-bottom:6px;">
+                🦾 Riscos Ergonômicos / Organizacionais já Mapeados no Inventário PGR deste GHE (${riscosErgonomicosMatriz.length})
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                ${riscosErgonomicosMatriz.map(r => `
+                    <span style="background:var(--bg-card, #fff); border:1px solid var(--border); border-radius:6px; padding:4px 10px; font-size:11.5px; color:var(--text);">
+                        <b>${escapeHTML(r.agente || 'Agente')}:</b> ${escapeHTML(r.fonte_geradora || 'Sem fonte informada')}
+                        ${r.classe_risco ? ` · <span style="color:var(--text-light);">Classe ${escapeHTML(r.classe_risco)}</span>` : ''}
+                    </span>
+                `).join('')}
+            </div>
+        </div>
+        ` : ''}
+
+        <!-- Lista de Fatores Psicossociais e Organizacionais do GHE -->
+        <div class="db-chart-card" style="margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+                <div class="db-chart-title" style="margin-bottom:0;">📋 Inventário de Fatores Psicossociais e Organizacionais do GHE ${escapeHTML(ghe.id)}</div>
+                <button type="button" class="db-apply-btn" onclick="adicionarFatorPsicossocialGheDraft()" style="font-size:12px; padding:6px 12px;">+ Novo Fator</button>
+            </div>
+
+            ${psicoGheDraftFatores.length === 0 ? `
+                <div class="db-list-empty" style="padding:28px 16px;">
+                    <div style="font-size:28px; margin-bottom:6px;">🛡️</div>
+                    <div style="font-weight:700; color:var(--text); margin-bottom:4px;">Nenhum fator psicossocial/organizacional registrado para o GHE ${escapeHTML(ghe.id)}</div>
+                    <div style="font-size:12px; color:var(--text-light); margin-bottom:12px;">Clique em <b>"+ Novo Fator"</b> para parametrizar dimensões da NR-01 GRO (ritmo, carga cognitiva, turnos, autonomia, apoio social e medidas preventivas) para este grupo operacional.</div>
+                    <button type="button" class="db-apply-btn" onclick="adicionarFatorPsicossocialGheDraft()" style="font-size:12px; padding:7px 14px;">➕ Cadastrar Primeiro Fator deste GHE</button>
+                </div>
+            ` : psicoGheDraftFatores.map((f, idx) => {
+                const badge = corBadgeStatusPsicoNr01(f.status_avaliacao);
+                return `
+                <div style="border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:12px; background:var(--bg);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--border);">
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <span style="font-weight:800; font-size:13px; color:var(--text);">Fator #${idx + 1}</span>
+                            <span style="background:${badge.bg}; color:${badge.color}; border:1px solid ${badge.border}; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px;">
+                                ${badge.icon} ${escapeHTML(f.status_avaliacao || 'Não Avaliado')}
+                            </span>
+                        </div>
+                        <button type="button" class="db-clear-btn" data-psico-ghe-remove-uid="${escapeHTML(f.uid)}" style="color:var(--danger); border-color:var(--danger); font-size:11.5px; padding:4px 10px;">
+                            🗑️ Remover Fator
+                        </button>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-bottom:10px;">
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Dimensão NR-01 / Ergonômica<br>
+                            <select data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="dimensao" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                                ${PSICO_DIMENSOES_NR01_PADRAO.map(d => `<option value="${escapeHTML(d)}" ${f.dimensao === d ? 'selected' : ''}>${escapeHTML(d)}</option>`).join('')}
+                            </select>
+                        </label>
+
+                        ${f.dimensao === 'Outro' ? `
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Especificar Dimensão Personalizada *<br>
+                            <input type="text" value="${escapeHTML(f.dimensao_custom || '')}" placeholder="Descreva a dimensão..." data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="dimensao_custom" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                        </label>
+                        ` : ''}
+
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Status Preventivo GRO / NR-01<br>
+                            <select data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="status_avaliacao" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                                ${PSICO_STATUS_NR01_OPCOES.map(st => `<option value="${escapeHTML(st)}" ${f.status_avaliacao === st ? 'selected' : ''}>${escapeHTML(st)}</option>`).join('')}
+                            </select>
+                        </label>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:10px; margin-bottom:10px;">
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Condição / Exigência Observada na Atividade *<br>
+                            <input type="text" value="${escapeHTML(f.fator_descricao || '')}" placeholder="Ex: Atendimento simultâneo de demandas operacionais sob pressão de tempo" data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="fator_descricao" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                        </label>
+
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Fonte Organizacional / Processo<br>
+                            <input type="text" value="${escapeHTML(f.fonte_geradora || '')}" placeholder="Ex: Regime de turno, pico operacional, interface com terceiros" data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="fonte_geradora" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                        </label>
+                    </div>
+
+                    <div style="margin-bottom:10px;">
+                        <label style="font-size:12px; font-weight:600; color:var(--text); display:block;">Medidas Preventivas e Controles Organizacionais (NR-01 / NR-17)<br>
+                            <textarea rows="2" placeholder="Descreva pausas, rodízio, dimensionamento de equipe, treinamento de liderança, canais de apoio..." data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="medidas_prevencao" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box; font-family:inherit;">${escapeHTML(f.medidas_prevencao || '')}</textarea>
+                        </label>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Responsável pelo Acompanhamento<br>
+                            <input type="text" value="${escapeHTML(f.responsavel || '')}" placeholder="Ex: Engenharia SST / Liderança Operacional" data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="responsavel" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                        </label>
+
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Data da Avaliação (opcional)<br>
+                            <input type="date" value="${escapeHTML(f.data_avaliacao || '')}" data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="data_avaliacao" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                        </label>
+
+                        <label style="font-size:12px; font-weight:600; color:var(--text);">Próxima Reavaliação / Monitoramento<br>
+                            <input type="date" value="${escapeHTML(f.proxima_reavaliacao || '')}" data-psico-ghe-uid="${escapeHTML(f.uid)}" data-psico-ghe-field="proxima_reavaliacao" style="width:100%; margin-top:4px; padding:7px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; box-sizing:border-box;">
+                        </label>
+                    </div>
+                </div>
+                `;
+            }).join('')}
+
+            <!-- Barra de Ações Transacionais do GHE -->
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+                <div id="psicoGheFormStatus" style="font-size:12.5px; font-weight:600;"></div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="db-clear-btn" onclick="cancelarEdicaoFatoresPsicossociaisGhe()" style="padding:8px 14px; font-size:12.5px;">
+                        ↩️ Cancelar / Restaurar GHE
+                    </button>
+                    <button type="button" id="btnSalvarFatoresPsicoGhe" class="db-apply-btn" onclick="salvarFatoresPsicossociaisGhe()" style="padding:8px 16px; font-size:12.5px;">
+                        💾 Salvar Fatores deste GHE
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 
 // ============================================
 // CONFIGURAÇÕES GERAIS DO SISTEMA (2026-09-21) - itens que antes ficavam fixos no

@@ -20,7 +20,7 @@
         })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=231">
+    <link rel="stylesheet" href="dashboard.css?v=295">
 </head>
 <body>
 
@@ -33,7 +33,7 @@
         <div style="width:100%; max-width:380px; margin:20px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:32px 28px; box-shadow:0 8px 32px rgba(0,0,0,0.08); box-sizing:border-box;">
             <div style="text-align:center; margin-bottom:22px;">
                 <div style="font-size:34px; margin-bottom:6px;">🛡️</div>
-                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v235</span></div>
+                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v301.5</span></div>
                 <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; letter-spacing:.5px; margin-top:2px;">PISF Ramal do Agreste</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:12px;">
@@ -149,7 +149,7 @@
             <div class="db-brand">
                 <div class="db-brand-icon">🛡️</div>
                 <div>
-                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v235</span></div>
+                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v301.5</span></div>
                     <div class="db-brand-sub">PISF Ramal do Agreste</div>
                 </div>
             </div>
@@ -176,7 +176,7 @@
                             <span class="db-nav-icon">🏆</span> Placar de Líderes
                         </button>
                         <button class="db-nav-item" id="navMatrizRisco" onclick="showDbPage('matrizrisco')">
-                            <span class="db-nav-icon">📐</span> Matriz de Risco
+                            <span class="db-nav-icon">🛡️</span> Avaliação de Riscos (AIHA)
                         </button>
                         <button class="db-nav-item" id="navPlanoAcao" onclick="showDbPage('planoacao')">
                             <span class="db-nav-icon">🎯</span> Plano de Ação (5W2H)
@@ -201,6 +201,9 @@
                         </button>
                         <button class="db-nav-item" id="navBrigada" onclick="showDbPage('brigada')">
                             <span class="db-nav-icon">🚨</span> Brigada de Incêndio
+                        </button>
+                        <button class="db-nav-item" id="navGestaoDeCondutores" onclick="showDbPage('gestao_de_condutores')">
+                            <span class="db-nav-icon">🪪</span> Gestão de Condutores – CNH
                         </button>
                     </div>
                 </div>
@@ -280,7 +283,8 @@
                     </div>
                 </div>
 
-                <div class="db-nav-standalone">
+                <div class="db-nav-standalone" id="navGroupItems-standalone">
+                    <button class="db-nav-item" id="navGeradorPrompts" onclick="showDbPage('geradorprompts')"><span class="db-nav-icon">💡</span> Gerador de Prompts IA</button>
                     <button class="db-nav-item" id="navConfig" onclick="showDbPage('config')">
                         <span class="db-nav-icon">⚙️</span> Configurações
                     </button>
@@ -298,12 +302,12 @@
                 <div class="db-header-status">
                     <span id="statusText">Carregando...</span>
                     <button onclick="forcarAtualizacaoGeralDadosPainel()" title="Atualizar dados da nuvem agora (limpar cache local)" style="padding:4px 10px; border-radius:6px; border:1px solid var(--border); background:#fff; cursor:pointer; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:background 0.2s;">🔄 Atualizar Dados</button>
-                    
+
                     <!-- Alternância Modo Noturno / Modo Claro (NR-17 Ergonomia Visual) -->
                     <button type="button" id="btnToggleDarkMode" onclick="alternarModoEscuro()" title="Alternar entre modo claro e modo escuro (NR-17 Ergonomia Visual)" class="db-theme-toggle-btn" style="padding:4px 10px; border-radius:6px; border:1px solid var(--border); background:var(--card, #fff); color:var(--text, #0f172a); cursor:pointer; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:5px; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:all 0.2s;">
                         <span id="themeToggleIcon">🌙</span> <span id="themeToggleText">Modo Noturno</span>
                     </button>
-                    
+
                     <!-- Central Inteligente de Alertas e Pendências SST -->
                     <div class="db-alertas-wrapper" id="wrapCentralAlertas">
                         <button type="button" id="btnCentralAlertas" class="db-btn-sininho" onclick="toggleCentralAlertasDropdown(event)" title="Central de Pendências e Alertas SST">
@@ -475,6 +479,24 @@
                     <div class="db-kpi-card db-kpi-success">
                         <div class="db-kpi-value" id="kpiRealizados">0</div>
                         <div class="db-kpi-label">Realizados no Período</div>
+                    </div>
+                </div>
+
+                <!-- Banner de Composição Geral da Obra (Próprios vs Terceiros) -->
+                <div class="db-card" style="margin-bottom: 16px; padding: 12px 16px; background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 16px;">👥</span>
+                            <div>
+                                <strong style="font-size: 13px; color: var(--text);">Composição Geral do Efetivo na Obra (PISF Ramal do Agreste):</strong>
+                                <div style="font-size: 11.5px; color: var(--text-light);">Segregação estrita: Próprios CLT (headcount) vs Terceirizados &amp; PJs (prestadores e mecânica).</div>
+                            </div>
+                        </div>
+                        <div id="efetivoComposicaoGeralObra" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 12.5px;">
+                            <span class="db-badge" style="background: rgba(37,99,235,0.1); color: var(--primary); padding: 4px 10px; border-radius: 6px; font-weight: 700;">👷 Próprios CLT: <span id="compPropriosQtd">0</span></span>
+                            <span class="db-badge" style="background: rgba(124,58,237,0.1); color: #7c3aed; padding: 4px 10px; border-radius: 6px; font-weight: 700;">🏢 Terceirizados / PJ: <span id="compTerceirosQtd">0</span></span>
+                            <span class="db-badge" style="background: rgba(16,185,129,0.1); color: #10b981; padding: 4px 10px; border-radius: 6px; font-weight: 700;">👥 Total Presente: <span id="compTotalQtd">0</span></span>
+                        </div>
                     </div>
                 </div>
 
@@ -1084,9 +1106,10 @@
                     <div style="margin-bottom: 12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                         <button class="db-clear-btn" onclick="imprimirCronogramaFiltro()">🖨️ Imprimir este Cronograma</button>
                         <button class="db-apply-btn" id="btnSincronizarPastasDriveCronograma" onclick="sincronizarPastasDriveCronograma()" style="background:#0284c7; border-color:#0284c7; display:inline-flex; align-items:center; gap:6px;">
-                            <i class="fas fa-folder-plus"></i> 📁 Criar/Sincronizar Pastas do Mês no Drive
+                            <i class="fas fa-folder-plus"></i> 📁 Criar pastas de escaneados
                         </button>
                     </div>
+                    <button type="button" class="db-clear-btn" style="margin-bottom:12px;" onclick="cronogramaPastasAbrir('treinamentos')">📷 Criar pastas de fotos de treinamentos</button>
                     <div id="cronogramaLista" class="db-list"></div>
                 </div>
 
@@ -1378,21 +1401,33 @@
                 <div class="db-chart-card" style="margin-bottom: 16px; border-left: 4px solid var(--primary, #2563eb);">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
                         <div>
-                            <div class="db-chart-title" style="margin-bottom:4px;">🪪 Central de Kits Normativos, Certificados e Anuência Formal (NR-01 / NR-10 / NR-18 / NR-35)</div>
+                            <div class="db-chart-title" style="margin-bottom:4px;">🪪 Central de Kits Normativos, Certificados e Anuência Formal (NR-01 / NR-10 / NR-18 / NR-35)<span id="kitsBannerNormaAtiva" style="font-size:12.5px; font-weight:600; color:var(--primary); margin-left:8px;"></span></div>
                             <p style="font-size: 11.5px; color: var(--text-light); margin: 0; line-height:1.45;">
-                                Monte turmas combinando <strong>múltiplas equipes</strong>, filtre automaticamente <strong>apenas colaboradores vencidos</strong>, defina se o treinamento é <strong>Inicial (ex: 40h em vários dias)</strong> ou <strong>Reciclagem Bienal</strong> e emita o Kit Completo (Lista de Presença + Certificado + Termo de Anuência Formal NR-10 + OS) com as <strong>03 assinaturas exigidas (Eng. Eletricista / Eng. Segurança do Trabalho / Colaborador)</strong>.
+                                Monte turmas combinando <strong>múltiplas equipes</strong>, filtre automaticamente <strong>apenas colaboradores vencidos</strong>, defina a modalidade (<strong>Inicial</strong> ou <strong>Reciclagem Periódica</strong>) e emita o Kit Regulamentar Completo (Lista de Presença + Certificados Normativos + Termos de Anuência Formal e Autorização da Empresa + Ordens de Serviço) com as <strong>03 assinaturas exigidas pelas NRs</strong>.
                             </p>
                         </div>
                     </div>
 
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; font-size: 12.5px; margin-top: 12px;">
                         <div style="grid-column: span 2; min-width: 240px;">
-                            <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">1. Treinamento do Catálogo</label>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px; flex-wrap:wrap; gap:4px;">
+                                <label style="color: var(--text-light); font-weight: 600;">1. Treinamento do Catálogo</label>
+                                <div style="display:flex; gap:4px; flex-wrap:wrap; font-size:11px;">
+                                    <span style="color:var(--text-light); font-size:10.5px; align-self:center;">Norma Rápida:</span>
+                                    <button type="button" class="db-clear-btn" style="padding:2px 7px; font-size:11px; font-weight:700; color:#0369a1; background:#e0f2fe; border-color:#7dd3fc;" onclick="selecionarNormaRapidaKits('16')" title="Carregar Treinamento NR-35 (Trabalho em Altura)">🧗 NR-35</button>
+                                    <button type="button" class="db-clear-btn" style="padding:2px 7px; font-size:11px; font-weight:700; color:#b45309; background:#fef3c7; border-color:#fcd34d;" onclick="selecionarNormaRapidaKits('10')" title="Carregar Treinamento NR-10 (Elétrica)">⚡ NR-10</button>
+                                    <button type="button" class="db-clear-btn" style="padding:2px 7px; font-size:11px; font-weight:700; color:#4f46e5; background:#eef2ff; border-color:#c7d2fe;" onclick="selecionarNormaRapidaKits('1')" title="Carregar Integração NR-18 / NR-01">✨ NR-18</button>
+                                    <button type="button" class="db-clear-btn" style="padding:2px 7px; font-size:11px; font-weight:700; color:#c2410c; background:#ffedd5; border-color:#fed7aa;" onclick="selecionarNormaRapidaKits('33')" title="Carregar NR-33 (Espaços Confinados)">🕳️ NR-33</button>
+                                </div>
+                            </div>
                             <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                                <input type="text" id="kitsCodigoInput" list="lancTreinCatalogoList" oninput="onKitsCodigoChange()" placeholder="Digite o código (ex: 10 para NR-10, 1 para Integração) ou nome..."
+                                <input type="text" id="kitsCodigoInput" list="lancTreinCatalogoList" oninput="onKitsCodigoChange()" placeholder="Digite o código (ex: 16 para NR-35, 10 para NR-10) ou nome..."
                                        style="flex:1; min-width:180px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
-                                <button type="button" class="db-clear-btn" style="padding:6px 10px; font-size:11.5px; font-weight:700; color:#b45309; background:#fef3c7; border-color:#fcd34d; white-space:nowrap;" onclick="selecionarAtalhoCursoKits('10', 'reciclagem')" title="Carrega rapidamente NR-10 no modo Reciclagem Bienal">⚡ NR-10 Reciclagem</button>
-                                <button type="button" class="db-clear-btn" style="padding:6px 10px; font-size:11.5px; font-weight:700; color:#1d4ed8; background:#dbeafe; border-color:#93c5fd; white-space:nowrap;" onclick="selecionarAtalhoCursoKits('10', 'inicial')" title="Carrega rapidamente NR-10 no modo Inicial 40h">⚡ NR-10 Inicial (40h)</button>
+                                <!-- Botões contextuais que se adaptam dinamicamente ao treinamento selecionado -->
+                                <div id="kitsBotoesAtalhosContextuais" style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button type="button" class="db-clear-btn" style="padding:6px 10px; font-size:11.5px; font-weight:700; color:#0369a1; background:#e0f2fe; border-color:#7dd3fc; white-space:nowrap;" onclick="aplicarModalidadeAtalhoKits('inicial', 8)" title="Carrega NR-35 Capacitação Inicial (8h)">🧗 NR-35 Capacitação (8h)</button>
+                                    <button type="button" class="db-clear-btn" style="padding:6px 10px; font-size:11.5px; font-weight:700; color:#047857; background:#d1fae5; border-color:#6ee7b7; white-space:nowrap;" onclick="aplicarModalidadeAtalhoKits('reciclagem', 8)" title="Carrega NR-35 Reciclagem Bienal (8h)">🔄 NR-35 Reciclagem (8h)</button>
+                                </div>
                             </div>
                             <div id="kitsInfo" style="display:none; margin-top: 6px; font-size: 11.5px;"></div>
                         </div>
@@ -1400,9 +1435,9 @@
                         <div>
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">2. Tipo / Modalidade Normativa</label>
                             <select id="kitsTipoCapacitacaoSelect" onchange="onKitsTipoCapacitacaoChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-weight:600;">
-                                <option value="inicial">🎓 Capacitação Inicial (Ex: NR-10 40h)</option>
-                                <option value="reciclagem">🔄 Reciclagem Periódica / Bienal (NR-10 16h)</option>
-                                <option value="complementar_sep">⚡ Complementar — SEP (Alta Tensão)</option>
+                                <option value="inicial">🎓 Capacitação Inicial</option>
+                                <option value="reciclagem">🔄 Reciclagem Periódica / Bienal</option>
+                                <option value="complementar_sep">⚡ Complementar / Específico</option>
                                 <option value="eventual">📋 Treinamento Eventual / DDSMA</option>
                             </select>
                         </div>
@@ -1542,6 +1577,7 @@
                             <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
                                 <label id="kitsLabelAssinatura1" style="color:#1e40af; font-weight:700; font-size:12px;">⚡ 1ª Assinatura: Eng. Eletricista / Instrutor Habilitado</label>
                                 <div style="display:flex; gap:4px;">
+                                    <button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:10.5px; color:#0369a1; border-color:#7dd3fc; background:#f0f9ff;" onclick="aplicarPresetAssinatura1Kits('instrutor_altura')" title="Preenche com os dados de Instrutor de Trabalho em Altura (NR-35)">🧗 Instrutor Altura</button>
                                     <button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:10.5px; color:#1d4ed8; border-color:#93c5fd; background:#eff6ff;" onclick="aplicarPresetAssinatura1Kits('eng_eletricista')" title="Preenche com os dados do Engenheiro Eletricista salvo para NR-10">⚡ Eng. Eletricista</button>
                                     <button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:10.5px;" onclick="aplicarPresetAssinatura1Kits('instrutor_sst')" title="Preenche com o Instrutor de SST padrão (Maria Gessica)">👷 Instrutor SST</button>
                                     <button type="button" class="db-clear-btn" style="padding:2px 6px; font-size:10.5px; color:#047857; border-color:#6ee7b7; background:#ecfdf5;" onclick="salvarEngEletricistaPadraoKits()" title="Salva o nome e CREA digitados abaixo como padrão de Engenheiro Eletricista para próximos treinamentos de NR-10">💾 Salvar Padrão</button>
@@ -1550,7 +1586,7 @@
                             <input type="text" id="kitsForm_instrutorNome" placeholder="Nome do Engenheiro Eletricista / Profissional Habilitado" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; margin-bottom: 5px; font-weight:600;">
                             <input type="text" id="kitsForm_instrutorQualificacao" placeholder="Qualificação (ex: ENGENHEIRO ELETRICISTA)" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; margin-bottom: 5px;">
                             <input type="text" id="kitsForm_instrutorRegistro" placeholder="Registro no Conselho (ex: CREA: 123456/PE)" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
-                            <div style="font-size:10.5px; color:var(--text-light); margin-top:4px;">Exigido pela NR-10 (Item 10.8.8) como Responsável Técnico Legalmente Habilitado em Elétrica.</div>
+                            <div id="kitsAjudaAssinatura1" style="font-size:10.5px; color:var(--text-light); margin-top:4px;">Exigido pela NR-10 (Item 10.8.8) como Responsável Técnico Legalmente Habilitado em Elétrica.</div>
                         </div>
 
                         <!-- Assinatura 2: Eng. de Segurança do Trabalho (Responsável Técnico SST) -->
@@ -1574,7 +1610,7 @@
                                     <ul style="margin:6px 0 0 16px; padding:0; font-size:11px; color:var(--text-light);">
                                         <li>Linha individual na <strong>Lista de Presença (FOR.001)</strong></li>
                                         <li>Campo de assinatura no <strong>Certificado de Capacitação</strong></li>
-                                        <li>Termo de <strong>Anuência Formal (Autorização NR-10)</strong></li>
+                                        <li>Termo de <strong>Anuência Formal / Autorização da Empresa</strong></li>
                                     </ul>
                                 </div>
                             </div>
@@ -1588,7 +1624,7 @@
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; flex-wrap:wrap; gap:8px;">
                         <div>
                             <div class="db-chart-title" style="font-size: 13.5px; margin-bottom: 2px;">📦 4. Composição do Kit de Documentos &amp; Emissão (Turma ou Individual)</div>
-                            <div style="font-size:11.5px; color:var(--text-light);">Todo Kit inclui no mínimo <strong>Lista de Presença + Certificado</strong>. Para <strong>NR-10</strong>, inclui automaticamente a <strong>Anuência Formal (Autorização da Empresa — Item 10.8.4)</strong>.</div>
+                            <div id="kitsSubtituloPasso4" style="font-size:11.5px; color:var(--text-light);">Todo Kit inclui no mínimo <strong>Lista de Presença + Certificado</strong>. Para <strong>NR-10 e NR-35</strong>, inclui automaticamente a <strong>Anuência Formal e Autorização da Empresa</strong>.</div>
                         </div>
                         <div style="display:flex; gap:6px; flex-wrap:wrap;">
                             <button type="button" class="db-apply-btn" style="padding:7px 14px; font-size:12px; font-weight:700;" onclick="gerarKitCompletoTurmaKits()">
@@ -1603,8 +1639,8 @@
                             <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:600; color:#4f46e5; border-color:#c7d2fe; background:#eef2ff;" onclick="abrirModalEmissaoCertificadoLote(contextoKits())">
                                 🎓 Certificados da Turma (Lote)
                             </button>
-                            <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:600; color:#b45309; border-color:#fcd34d; background:#fffbeb;" onclick="gerarAnuenciaFormalTurma(contextoKits())">
-                                ⚡ Anuência Formal NR-10 (Lote)
+                            <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:600; color:#b45309; border-color:#fcd34d; background:#fffbeb;" id="btnKitsAnuenciaLote" onclick="gerarAnuenciaFormalTurma(contextoKits())">
+                                ⚡ Anuência Formal (Lote)
                             </button>
                             <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:700; color:#047857; border-color:#6ee7b7; background:#ecfdf5;" onclick="salvarPresencaTurmaDiretoKits()" title="Registra oficialmente este treinamento no histórico da turma e atualiza a validade de 24 meses na Matriz">
                                 💾 Lançar Presença no Histórico
@@ -1622,7 +1658,7 @@
                             <input type="checkbox" id="kitsDocCheck_certificado" checked onchange="renderKitsDocsIndividuaisList()"> 🎓 Certificado (3 Assinaturas)
                         </label>
                         <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:700; color:#b45309;">
-                            <input type="checkbox" id="kitsDocCheck_anuencia" onchange="renderKitsDocsIndividuaisList()"> ⚡ Anuência Formal NR-10 (Autorização da Empresa)
+                            <input type="checkbox" id="kitsDocCheck_anuencia" onchange="renderKitsDocsIndividuaisList()"> <span id="kitsDocCheckLabel_anuencia">⚡ Anuência Formal (Autorização da Empresa)</span>
                         </label>
                         <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer;">
                             <input type="checkbox" id="kitsDocCheck_os" onchange="renderKitsDocsIndividuaisList()"> 📄 Ordem de Serviço (OS)
@@ -1645,7 +1681,8 @@
                                 <span style="font-size:11.5px; color:var(--text-light);">Conteúdo impresso na Lista de Presença e no Certificado:</span>
                                 <div style="display:flex; gap:6px; flex-wrap:wrap;">
                                     <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#1d4ed8; font-weight:600;" onclick="carregarPresetConteudoKits('nr10_inicial')">⚡ NR-10 Básico Inicial (40h - Anexo III Completo)</button>
-                                    <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#b45309; font-weight:600;" onclick="carregarPresetConteudoKits('nr10_reciclagem')">🔄 NR-10 Reciclagem Bienal (Item 10.8.8.2)</button>
+                                    <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#b45309; font-weight:600;" onclick="carregarPresetConteudoKits('nr10_reciclagem')">🔄 NR-10 Reciclagem (16h)</button>
+                                    <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#0369a1; font-weight:700; background:#f0f9ff; border-color:#7dd3fc;" onclick="carregarPresetConteudoKits('nr35_oficial')">🧗 NR-35 Altura (8h)</button>
                                     <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#4f46e5; font-weight:600;" onclick="carregarPresetConteudoKits('nr18_integracao')">✨ NR-18 / NR-01 Integração</button>
                                     <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px;" onclick="carregarPresetConteudoKits('catalogo')">↺ Restaurar do Catálogo</button>
                                 </div>
@@ -2212,7 +2249,7 @@
                         <div id="relatorioMensalStatus" style="margin-top:10px; font-size:12.5px;"></div>
                     </div>
                 </div>
-            
+
 
                 <!-- SUBABA: PLANO ANUAL DE TREINAMENTO (PAT - NR-01 / NR-18) -->
 <div id="treinSubtab-pat" style="display:none;">
@@ -2720,7 +2757,7 @@
         <!-- Alvo Dinâmico -->
         <div id="wrapFormRegra_alvo" style="margin-bottom: 14px;">
             <label id="formRegra_alvoLabel" style="display:block; font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 4px;">Alvo da Exigência *</label>
-            
+
             <!-- Container quando tipo é TODOS -->
             <div id="formRegra_alvoTodosNotice" style="display:block; padding: 10px 12px; background: #e0e7ff; border: 1px solid #c7d2fe; border-radius: 8px; font-size: 12px; color: #3730a3;">
                 ℹ️ Esta regra será aplicada automaticamente a <strong>100% dos colaboradores ativos</strong> na admissão e na gestão contínua.
@@ -2999,13 +3036,16 @@
                         </div>
                         <div>
                             <label style="display:flex; align-items:center; gap:7px; cursor:pointer; font-size:13px; font-weight:600; padding-bottom:7px;">
-                                <input type="checkbox" id="relSmsFiscalizacao" onchange="onRelSmsPeriodoChange()"> Relatório Executivo Oficial (Ocultar pendências internas)
+                                <input type="checkbox" id="relSmsFiscalizacao" checked onchange="onRelSmsPeriodoChange()"> Relatório Executivo Oficial (Ocultar notas e pendências internas)
                             </label>
                         </div>
                         <div style="margin-left:auto; display:flex; gap:10px; flex-wrap:wrap;">
+                            <button type="button" class="db-apply-btn" style="background:#047857;" onclick="gerarRelatorioMensalSms({fotosManuais:true})">📄 Word com campos de fotos (2 por tema)</button>
+                            <button type="button" class="db-apply-btn" onclick="relSmsFotosAbrir()">📷 Organizar fotos do mês</button>
                             <button class="db-apply-btn" style="background:#1e3a8a; border-color:#1e40af;" onclick="carregarEVisualizarRelatorioSmsPainel()">🔍 Visualizar Dossiê no Painel</button>
                             <button class="db-apply-btn" style="background:#4f46e5; border-color:#4338ca;" onclick="imprimirRelatorioMensalSms()">🖨️ Visualizar / Imprimir (A4)</button>
-                            <button class="db-clear-btn" style="background:var(--bg-card); border:1px solid var(--border);" onclick="gerarRelatorioMensalSms()">📄 Exportar (.docx)</button>
+                            <button class="db-clear-btn" style="background:var(--bg-card); border:1px solid var(--border);" onclick="gerarRelatorioMensalSms()">📷 Word com fotos automáticas</button>
+                            <button type="button" id="btnRelSmsFecharHomologar" class="db-apply-btn" style="background:#059669; border-color:#047857;" onclick="relSmsHomologarEFecharCompetencia()"><i class="fa-solid fa-lock"></i> Homologar / Fechar Mês</button>
                         </div>
                     </div>
                     <div id="relSmsStatus" style="margin-top:12px; font-size:12.5px; font-weight:500;"></div>
@@ -3103,6 +3143,9 @@
                         <details style="margin-top:10px;">
                             <summary style="cursor:pointer; font-weight:700; font-size:12.5px; color:var(--text-light);">⚙️ Gerenciar frentes desta tabela</summary>
                             <p style="font-size:11px; color:var(--text-light); margin:8px 0;">Desmarque uma frente pra tirá-la desta tabela e do relatório do DDS (ex: cargo administrativo que quase nunca faz DDS) - isso não mexe no cadastro de Efetivo, só esconde daqui. Também dá pra adicionar uma frente extra que ainda não tem ninguém cadastrado.</p>
+                            <div style="margin:6px 0 10px;">
+                                <button class="db-clear-btn" type="button" onclick="irParaGestaoGlobalFrentesEfetivo()" style="font-size:11.5px; padding:4px 10px; cursor:pointer; display:inline-flex; align-items:center; gap:5px;" title="Acessar o cadastro e gestão de frentes no módulo Efetivo">👷 Abrir Gestão de Frentes no Efetivo</button>
+                            </div>
                             <div id="ddsGerenciarFrentesLista" style="display:flex; flex-direction:column; gap:2px; max-width:320px; max-height:220px; overflow-y:auto; padding:6px 0;"></div>
                             <div style="display:flex; gap:6px; margin-top:10px; max-width:320px;">
                                 <input type="text" id="ddsNovaFrenteInput" placeholder="Nome da nova frente" style="flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
@@ -3309,6 +3352,7 @@
                             <option value="11">Dezembro</option>
                         </select>
                         <button class="db-clear-btn" onclick="abrirAdicionarDdsTemaDia()">+ Adicionar dia</button>
+                        <button type="button" class="db-clear-btn" onclick="cronogramaPastasAbrir('ddsma')">📷 Criar pastas de fotos DDSMA</button>
                         <span id="ddsCalendarioStatus" style="font-size: 12px; color: var(--text-light);"></span>
                     </div>
                     <div id="ddsCalendarioAdicionarWrap" style="display:none; border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 10px; background: var(--bg);">
@@ -3372,7 +3416,7 @@
                     <p style="font-size: 12px; color: var(--text-light); margin-bottom: 14px; line-height: 1.4;">
                         Emita de uma vez as fichas semanais em branco com os temas diários do cronograma e a listagem nominal dos colaboradores de cada frente de serviço. O layout é auto-otimizado para que equipes de até 15 colaboradores caibam em <strong>1 única folha</strong>.
                     </p>
-                    
+
                     <!-- BARRA DE FILTROS DO LOTE -->
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; font-size: 12px; margin-bottom: 12px; align-items: end;">
                         <div>
@@ -3622,9 +3666,11 @@
                     <div class="db-filter-buttons">
                         <button id="efetivoSubtabBtn-visao" class="db-filter-btn active" onclick="showEfetivoSubtab('visao')">📊 Visão Geral</button>
                         <button id="efetivoSubtabBtn-colaboradores" class="db-filter-btn" onclick="showEfetivoSubtab('colaboradores')">👥 Colaboradores</button>
+                        <button id="efetivoSubtabBtn-terceiros" class="db-filter-btn" onclick="showEfetivoSubtab('terceiros')">🏢 Gestão de Terceiros &amp; PJ</button>
                         <button id="efetivoSubtabBtn-ferias" class="db-filter-btn" onclick="showEfetivoSubtab('ferias')">🏖️ Férias & Afastamentos</button>
                         <button id="efetivoSubtabBtn-os" class="db-filter-btn" onclick="showEfetivoSubtab('os')">📄 Ordens de Serviço (NR-01)</button>
                         <button id="efetivoSubtabBtn-setores" class="db-filter-btn" onclick="showEfetivoSubtab('setores')">🏢 Setores</button>
+                        <button id="efetivoSubtabBtn-frentes" class="db-filter-btn" onclick="showEfetivoSubtab('frentes')">👷 Frentes &amp; Responsáveis</button>
                         <button id="efetivoSubtabBtn-ghe" class="db-filter-btn" onclick="showEfetivoSubtab('ghe')">🧪 GHE</button>
                         <button id="efetivoSubtabBtn-recomendacoes" class="db-filter-btn" onclick="showEfetivoSubtab('recomendacoes')">📋 Recomendações</button>
                         <button id="efetivoSubtabBtn-maoobra" class="db-filter-btn" onclick="showEfetivoSubtab('maoobra')">🗺️ Mão de Obra Local</button>
@@ -3838,6 +3884,47 @@
                     <div id="setorAddColabResults" class="db-list" style="max-height:220px;"></div>
                     <span id="setorGerenciarStatus" style="font-size: 12px; color: var(--text-light);"></span>
                 </div>
+                </div>
+
+                <!-- Subaba: Gestão Global de Frentes de Trabalho -->
+                <div id="efetivoSubtab-frentes" style="display:none;">
+                    <div class="db-chart-card" style="margin-bottom: 16px;" id="frentesListaCard">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; flex-wrap: wrap;">
+                            <div class="db-chart-title" style="margin-bottom: 0;">👷 Frentes &amp; Responsáveis</div>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="db-apply-btn" onclick="criarNovaFrente()">+ Nova Frente</button>
+                            </div>
+                        </div>
+                        <p style="font-size: 11.5px; color: var(--text-light); margin: 0 0 10px;">
+                            Gestão operacional de frentes da obra. Permite cadastrar frentes com antecedência (inclusive sem colaboradores vinculados) para uso nos módulos operacionais (DDSMA, Treinamentos, APR). Não cria colaboradores fictícios e não altera indicadores de headcount, férias ou HHT.
+                        </p>
+                        <div id="frentesResumo" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px; font-weight: 600;"></div>
+                        <div id="frentesLista" class="db-list" style="max-height: 440px;"></div>
+                    </div>
+
+                    <div class="db-chart-card" id="frenteGerenciarCard" style="display:none; margin-bottom: 16px; border: 2px solid var(--primary);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px; flex-wrap: wrap;">
+                            <div class="db-chart-title" id="frenteGerenciarTitulo" style="margin-bottom: 0;"></div>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                <button class="db-clear-btn" id="frenteBtnAlternarAtivo" onclick="alternarAtivoFrenteAtual()">Desativar Frente</button>
+                                <button class="db-clear-btn" onclick="renomearFrenteAtual()">✏️ Renomear</button>
+                                <button class="db-clear-btn" id="frenteBtnExcluirVazia" style="color:var(--danger); border-color:var(--danger);" onclick="excluirFrenteAtual()">🗑️ Excluir Frente Vazia</button>
+                                <button class="db-clear-btn" onclick="fecharGerenciarFrente()">✕ Fechar</button>
+                            </div>
+                        </div>
+                        <p style="font-size: 11.5px; color: var(--text-light); margin: 6px 0 12px;" id="frenteGerenciarSub">
+                            Gerencie os colaboradores vinculados a esta frente. Renomear atualiza a frente de todos os membros de forma coordenada.
+                        </p>
+
+                        <div id="frenteColabList" class="db-list" style="max-height: 260px; margin-bottom: 16px;"></div>
+
+                        <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600; font-size: 12.5px;">Adicionar colaborador a esta frente</label>
+                        <input type="text" id="frenteAddColabInput" placeholder="Buscar colaborador por nome ou matrícula..."
+                               oninput="filterFrenteAddColab(this.value)" autocomplete="off"
+                               style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px; box-sizing:border-box; background:var(--card); color:var(--text); margin-bottom:8px;">
+                        <div id="frenteAddColabResults" class="db-list" style="max-height:220px;"></div>
+                        <span id="frenteGerenciarStatus" style="font-size: 12px; color: var(--text-light);"></span>
+                    </div>
                 </div>
 
                 <div id="efetivoSubtab-ghe" style="display:none;">
@@ -4072,7 +4159,7 @@
                                 <div style="font-size:11.5px; font-weight:700; color:var(--text-light); text-transform:uppercase; letter-spacing:0.5px;">
                                     ⚙️ Opções do Documento:
                                 </div>
-                                
+
                                 <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; user-select:none;">
                                     <input type="checkbox" id="relEquipeIncluirAssinatura" checked onchange="atualizarPreviaRelatorioEquipe()" style="width:16px; height:16px; cursor:pointer;">
                                     <span><b>Incluir campo para Rubrica / Assinatura</b> (DDSMA e Liberação Diária)</span>
@@ -4146,7 +4233,8 @@
                         </div>
                         <div>
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Responsável</label>
-                            <input type="text" id="efForm_responsavel" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;">
+                            <input type="text" id="efForm_responsavel" list="efFrentesDatalist" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; background: var(--card); color: var(--text);">
+                            <datalist id="efFrentesDatalist"></datalist>
                         </div>
                         <div>
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Data de Admissão</label>
@@ -4254,6 +4342,218 @@
                 </div>
 
                                 <!-- Sub-aba: Ordens de Serviço (NR-01) -->
+                <!-- Subaba: Gestão de Terceiros & PJ -->
+                <div id="efetivoSubtab-terceiros" style="display:none;">
+                    <div class="db-card" style="margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap;">
+                            <div>
+                                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                                    🏢 Gestão de Terceiros, Prestadores e PJs (PISF Ramal do Agreste)
+                                </h3>
+                                <p style="font-size: 12px; color: var(--text-light); margin: 4px 0 0; line-height: 1.4;">
+                                    Controle operacional e de SST de parceiros e terceirizados (ex: manutenção de máquinas/veículos ARTEC e contratos PJ). Totalmente segregado do efetivo próprio CLT para <strong>preservar a integridade dos indicadores legais e trabalhistas</strong>.
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <button type="button" class="db-clear-btn" onclick="exportarExcelTerceiros()" title="Exportar listagem de terceiros para Excel" style="border-color: #10b981; color: #047857; background: #ecfdf5; font-weight: 700; display: inline-flex; align-items: center; gap: 5px;">
+                                    📊 Gerar Excel
+                                </button>
+                                <button type="button" class="db-clear-btn" onclick="renderTerceirosPanel()" title="Atualizar listagem de terceiros">
+                                    🔄 Atualizar
+                                </button>
+                                <button type="button" class="db-apply-btn" onclick="abrirModalNovoTerceiro()" style="background: #4f46e5; font-weight: 700;">
+                                    ➕ Novo Terceiro / PJ
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Banner Informativo SST -->
+                        <div style="margin-top: 14px; padding: 10px 14px; background: rgba(79, 70, 229, 0.05); border: 1px solid rgba(79, 70, 229, 0.2); border-left: 4px solid #4f46e5; border-radius: 8px; font-size: 12px; line-height: 1.5; color: var(--text);">
+                            <strong>⚖️ Marco de Gestão Segregada &amp; Rastreabilidade SST:</strong>
+                            <div style="margin-top: 3px; color: var(--text-light);">
+                                • <strong>Blindagem Legal</strong>: Terceiros e PJs possuem identificação explícita de vínculo e empresa. Cadastrar, editar ou inativar terceiros <strong>não altera</strong> os indicadores de efetivo próprio CLT, admissões, demissões, férias ou distribuição setorial.<br>
+                                • <strong>Sincronização Dupla</strong>: Toda inclusão ou alteração de status reflete simultaneamente no cadastro gerencial (<code>colaboradores_efetivo</code>) e no aplicativo de campo (<code>colaboradores_checklist</code>).<br>
+                                • <strong>Segurança &amp; Meio Ambiente</strong>: Vínculo com GHE e catálogo de riscos para controle preventivo de EPIs aplicáveis e conformidade de ASO.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cards de Contadores Exclusivos de Terceiros -->
+                    <div class="db-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px;">
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #4f46e5;">
+                            <div class="db-kpi-value" id="kpiTerceirosTotal" style="font-size: 22px; color: #4f46e5;">0</div>
+                            <div class="db-kpi-label" style="font-weight: 700;">🏢 Total de Terceiros / PJ</div>
+                        </div>
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #059669;">
+                            <div class="db-kpi-value" id="kpiTerceirosAtivos" style="font-size: 22px; color: #059669;">0</div>
+                            <div class="db-kpi-label" style="color: #065f46; font-weight: 700;">🟢 Ativos na Obra</div>
+                        </div>
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #0284c7;">
+                            <div class="db-kpi-value" id="kpiTerceirosEmpresas" style="font-size: 22px; color: #0284c7;">0</div>
+                            <div class="db-kpi-label" style="color: #0369a1; font-weight: 700;">🚜 Empresas Parceiras</div>
+                        </div>
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #7c3aed;">
+                            <div class="db-kpi-value" id="kpiTerceirosPj" style="font-size: 22px; color: #7c3aed;">0</div>
+                            <div class="db-kpi-label" style="color: #5b21b6; font-weight: 700;">📋 Contratos PJ</div>
+                        </div>
+                        <div class="db-kpi-card" style="padding: 12px 14px; border-left: 4px solid #10b981;">
+                            <div class="db-kpi-value" id="kpiTerceirosComposicaoTotal" style="font-size: 15px; font-weight: 800; color: #111827; margin-top: 4px;">0 Próprios + 0 Terceiros</div>
+                            <div class="db-kpi-label" style="color: #047857; font-weight: 700;">👥 Composição Total da Obra</div>
+                        </div>
+                    </div>
+
+                    <!-- Barra de Filtros e Busca -->
+                    <div class="db-chart-card" style="margin-bottom: 14px; padding: 12px 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <div style="display: flex; gap: 10px; align-items: center; flex: 1; min-width: 260px; max-width: 450px;">
+                                <input type="text" id="filtroTerceirosTexto" placeholder="🔍 Buscar por nome, matrícula, empresa ou função..." oninput="filtrarTabelaTerceiros()" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--card); color: var(--text);">
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-light); text-transform: uppercase;">Modalidade:</label>
+                                <select id="filtroTerceirosModalidade" onchange="filtrarTabelaTerceiros()" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); font-weight: 600;">
+                                    <option value="todos">Todas as Modalidades</option>
+                                    <option value="Terceirizado">🏢 Terceirizado</option>
+                                    <option value="PJ">📋 PJ (Pessoa Jurídica)</option>
+                                    <option value="Prestador">🛠️ Prestador de Serviços</option>
+                                </select>
+
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-light); text-transform: uppercase;">Empresa:</label>
+                                <select id="filtroTerceirosEmpresa" onchange="filtrarTabelaTerceiros()" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); font-weight: 600;">
+                                    <option value="todas">Todas as Empresas</option>
+                                </select>
+
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-light); text-transform: uppercase;">Situação:</label>
+                                <select id="filtroTerceirosSituacao" onchange="filtrarTabelaTerceiros()" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: var(--card); color: var(--text); font-weight: 600;">
+                                    <option value="ativos" selected>🟢 Apenas Ativos</option>
+                                    <option value="inativos">🔴 Inativos / Desmobilizados</option>
+                                    <option value="todos">📋 Todos</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabela de Terceiros e PJs -->
+                    <div class="db-chart-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <div class="db-chart-title" style="margin-bottom: 0;">📋 Relação de Terceiros &amp; Prestadores PJ</div>
+                            <div id="terceirosContadorTabela" style="font-size: 12px; color: var(--text-light);">Exibindo 0 registros</div>
+                        </div>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
+                                <thead>
+                                    <tr style="border-bottom: 2px solid var(--border); text-align: left; color: var(--text-light); font-size: 11.5px; text-transform: uppercase;">
+                                        <th style="padding: 10px 8px;">Matrícula</th>
+                                        <th style="padding: 10px 8px;">Nome</th>
+                                        <th style="padding: 10px 8px; text-align: center;">Modalidade</th>
+                                        <th style="padding: 10px 8px;">Empresa / Razão Social</th>
+                                        <th style="padding: 10px 8px;">Função / Atividade</th>
+                                        <th style="padding: 10px 8px;">Setor Atendido</th>
+                                        <th style="padding: 10px 8px;">GHE</th>
+                                        <th style="padding: 10px 8px; text-align: center;">Início</th>
+                                        <th style="padding: 10px 8px; text-align: center;">Status</th>
+                                        <th style="padding: 10px 8px; text-align: right;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaTerceirosBody">
+                                    <tr><td colspan="10" style="padding: 24px; text-align: center; color: var(--text-light);">Nenhum terceiro ou PJ cadastrado ainda. Clique em "+ Novo Terceiro / PJ" para cadastrar.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal: Cadastro / Edição de Terceiro & PJ -->
+                <div id="modalTerceiroForm" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:10050; align-items:center; justify-content:center; padding:16px;" onclick="if(event.target===this) fecharModalTerceiro();">
+                    <div style="background:var(--card, #fff); color:var(--text); border-radius:14px; max-width:680px; width:100%; max-height:92vh; overflow-y:auto; padding:22px 24px; box-shadow:0 20px 40px rgba(0,0,0,0.25); border:1px solid var(--border); box-sizing:border-box;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+                            <div class="db-chart-title" id="modalTerceiroTitle" style="margin-bottom:0; display:flex; align-items:center; gap:8px; font-size:16px;">
+                                🏢 Novo Terceiro / Prestador PJ
+                            </div>
+                            <button type="button" class="db-clear-btn" style="padding:4px 8px; font-weight:700;" onclick="fecharModalTerceiro()">✕</button>
+                        </div>
+
+                        <div style="font-size:12px; color:var(--text-light); margin-bottom:16px; line-height:1.45;">
+                            Cadastro de colaboradores terceirizados (ex: ARTEC - Mecânica e Máquinas) e prestadores em modalidade PJ. Os registros possuem identificação de vínculo explícita e <strong>não alteram o headcount de efetivo próprio CLT</strong> da obra.
+                        </div>
+
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; font-size:12.5px;">
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Matrícula / Identificador *</label>
+                                <input type="text" id="tercForm_matricula" placeholder="Ex: ARTEC-01, PJ-01..." style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Nome Completo *</label>
+                                <input type="text" id="tercForm_nome" placeholder="Nome do profissional" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Modalidade de Vínculo *</label>
+                                <select id="tercForm_modalidade" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text); font-weight:600;">
+                                    <option value="Terceirizado">🏢 Terceirizado (Empresa Prestadora)</option>
+                                    <option value="PJ">📋 PJ (Pessoa Jurídica)</option>
+                                    <option value="Prestador">🛠️ Prestador de Serviços</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Empresa Prestadora / Razão Social *</label>
+                                <input type="text" id="tercForm_empresa" placeholder="Ex: ARTEC, PJ - Auto Mecânica..." list="terceirosEmpresasDatalist" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                                <datalist id="terceirosEmpresasDatalist">
+                                    <option value="ARTEC"></option>
+                                </datalist>
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Função / Atividade *</label>
+                                <input type="text" id="tercForm_funcao" placeholder="Ex: Mecânico de Máquinas, Eletricista..." style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Setor Atendido</label>
+                                <input type="text" id="tercForm_setor" placeholder="Ex: MANUTENÇÃO MECÂNICA" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">GHE (Grupo de Risco SST)</label>
+                                <input type="text" id="tercForm_ghe" list="gheCatalogoList" placeholder="GHE de atuação" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Sexo *</label>
+                                <select id="tercForm_sexo" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                                    <option value="M">Masculino (M)</option>
+                                    <option value="F">Feminino (F)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">CPF</label>
+                                <input type="text" id="tercForm_cpf" placeholder="000.000.000-00" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Data Início / Mobilização</label>
+                                <input type="date" id="tercForm_dt_inicio" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Data Saída / Desmobilização</label>
+                                <input type="date" id="tercForm_dt_saida" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600;">Status Operacional</label>
+                                <select id="tercForm_status" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text);">
+                                    <option value="ATIVO">🟢 ATIVO (Em atividade na obra)</option>
+                                    <option value="INATIVO">🔴 INATIVO / Desmobilizado</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div style="margin-top:12px;">
+                            <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600; font-size:12.5px;">Observações Operacionais / SST</label>
+                            <input type="text" id="tercForm_obs" placeholder="Ex: Atuação em veículos pesados e manutenção preventiva de esteiras..." style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--bg); color:var(--text); font-size:12.5px;">
+                        </div>
+
+                        <div id="terceiroFormStatus" style="font-size:12.5px; margin-top:12px; min-height:18px;"></div>
+
+                        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; border-top:1px solid var(--border); padding-top:12px;">
+                            <button type="button" class="db-clear-btn" onclick="fecharModalTerceiro()">Cancelar</button>
+                            <button type="button" id="btnSalvarTerceiro" class="db-apply-btn" onclick="salvarTerceiroEfetivo()">💾 Salvar Terceiro</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="efetivoSubtab-os" style="display:none;">
                     <!-- Banner Informativo / Legal -->
                     <div class="db-chart-card" style="margin-bottom: 16px; background: linear-gradient(135deg, rgba(37,99,235,0.06), rgba(16,185,129,0.06)); border-left: 4px solid var(--primary, #2563eb);">
@@ -4363,7 +4663,7 @@
                             <div style="font-weight: 600; font-size: 14px;">Nenhum colaborador encontrado com os filtros selecionados.</div>
                         </div>
                     </div>
-                
+
                 <!-- Atalho para o Placar das Lideranças -->
                 <div class="placar-shortcut-banner">
                     <div class="placar-shortcut-text">
@@ -4459,7 +4759,7 @@
                             </div>
                         </div>
                     </div>
-                
+
                 <!-- Atalho para o Placar das Lideranças -->
                 <div class="placar-shortcut-banner">
                     <div class="placar-shortcut-text">
@@ -4727,12 +5027,32 @@
                 </div>
             </section>
 
-            <!-- Página: Matriz de Risco (metodologia AIHA, seção 16 do PGR) -->
+            <!-- Página: Avaliação de Riscos (metodologia AIHA / PGR / eSocial) -->
             <section class="db-page" id="page-matrizrisco">
-                <div style="margin-bottom:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <button class="db-apply-btn" onclick="recalcularClassificacaoRiscoGhe()">🔄 Recalcular Classificação (Tabela Oficial AIHA)</button>
-                    <span id="statusRecalcularRiscoGhe" style="font-size:12px; color:var(--text-light);"></span>
+                <!-- Barra Superior de Controle e Navegação da Matriz -->
+                <div class="db-filters" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <div class="db-filter-buttons">
+                        <button id="matrizSubtabBtn-geral" class="db-filter-btn active" onclick="showMatrizSubtab('geral')">📊 Visão Geral & Matriz de Calor</button>
+                        <button id="matrizSubtabBtn-setor" class="db-filter-btn" onclick="showMatrizSubtab('setor')">📋 Avaliação por Setor / GHE</button>
+                        <button id="matrizSubtabBtn-docbase" class="db-filter-btn" onclick="showMatrizSubtab('docbase')">📘 Documento-Base & Auditoria PGR</button>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <label id="matrizRiscoGheSelectLabel" for="matrizRiscoGheSelect" style="font-size: 12px; font-weight: 700; color: var(--text-light); white-space: nowrap;">Setor / GHE:</label>
+                            <select id="matrizRiscoGheSelect" class="db-select" onchange="selecionarGheMatrizRisco(this.value)" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; font-weight: 600; min-width: 260px; max-width: 380px; background: var(--bg); color: var(--text);">
+                                <option value="">-- Selecione um Setor / GHE --</option>
+                            </select>
+                        </div>
+                        <button id="btnRecalcularAihaTop" class="db-apply-btn" onclick="recalcularClassificacaoRiscoGhe()" title="Recalcular todos os riscos salvos com base na tabela 5x5 oficial da AIHA" style="font-size: 12px; padding: 7px 12px;">🔄 Recalcular AIHA</button>
+                        <button id="btnImprimirInventarioTop" class="db-clear-btn" onclick="imprimirInventarioRiscosGheAtual()" title="Imprimir Inventário de Riscos do PGR" style="font-size: 12px; padding: 7px 12px;">🖨️ Imprimir Inventário PGR</button>
+                        <button id="btnImprimirPgrCompletoTop" class="db-apply-btn" onclick="imprimirDocumentoCompletoPgr()" title="Emitir Documento Oficial Completo do PGR (NR-01) com todas as seções, GHEs e anexos" style="font-size: 12px; padding: 7px 14px; background: linear-gradient(135deg, #1e40af, #2563eb); border-color: #1d4ed8; color: #fff; font-weight: 700;">📘 Emitir PGR Completo</button>
+                        <button id="btnCadernosPgrModalTop" class="db-apply-btn" onclick="abrirModalCadernosPgr()" title="Emitir Cadernos Modulares Segmentados do PGR (Documento-Base, Inventário, Plano de Ação, EPIs ou Anexos)" style="font-size: 12px; padding: 7px 12px; background: #0f766e; border-color: #0d9488; color: #fff; font-weight: 700;">📑 Cadernos do PGR</button>
+                    </div>
                 </div>
+                <div id="statusRecalcularRiscoGhe" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px; display: none;"></div>
+
+                <!-- Visão 1: Painel Geral & Matriz de Calor AIHA -->
+                <div id="matrizViewGeral">
                 <div class="db-kpi-grid">
                     <div class="db-kpi-card db-kpi-primary">
                         <div class="db-kpi-value" id="kpiRiscoTotal">0</div>
@@ -4907,6 +5227,17 @@
                     </div>
                     <div style="font-size:12px; color:var(--text-light); margin-top:10px; font-style:italic;">O PGR não define uma correspondência formal entre o Nível de Risco (matriz acima) e esta Classificação de Prioridade — as duas tabelas aparecem lado a lado no documento, cada uma com seu próprio uso, sem uma fórmula de conversão entre elas.</div>
                 </div>
+                </div><!-- /#matrizViewGeral -->
+
+                <!-- Visão 2: Avaliação e Gestão de Riscos por Setor / GHE -->
+                <div id="matrizViewSetor" style="display: none;">
+                    <div id="matrizSetorConteudo"></div>
+                </div>
+
+                <!-- Visão 3: Documento-Base do PGR (NR-01 GRO) & Auditoria Assistida de GHEs -->
+                <div id="matrizViewDocBase" style="display: none;">
+                    <div id="matrizDocBaseConteudo"></div>
+                </div>
             </section>
 
             <!-- Página: Plano de Ação Integrado (5W2H) — NR-01 / GRO -->
@@ -4966,7 +5297,7 @@
                             </div>
                             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                                 <input type="text" id="filtroPgrTexto" placeholder="🔍 Buscar por ação, local, responsável..." style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; min-width: 240px;" oninput="filtrarPlanoAcaoPgr()">
-                                
+
                                 <select id="filtroPgrStatus" style="padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;" onchange="filtrarPlanoAcaoPgr()">
                                     <option value="">Status: Todos</option>
                                     <option value="aberta">📌 Abertas</option>
@@ -5269,7 +5600,8 @@
                         </div>
                     </div>
                 </div>
-            </section>
+
+                </section>
 
             <!-- Página: Acidentabilidade (NR-01 / NBR 14280) -->
             <section class="db-page" id="page-acidentes">
@@ -5615,6 +5947,7 @@
                         <button id="saudeSubtabBtn-previsao" class="db-filter-btn" onclick="showSaudeSubtab('previsao')">📅 Previsão de Exames</button>
                         <button id="saudeSubtabBtn-recomendacoes" class="db-filter-btn" onclick="showSaudeSubtab('recomendacoes')">🩺 Recomendações e Exames (PCMSO)</button>
                         <button id="saudeSubtabBtn-consulta-mensal" class="db-filter-btn" onclick="showSaudeSubtab('consulta-mensal')">📆 Consulta mensal de exames</button>
+                        <button id="saudeSubtabBtn-docbase" class="db-filter-btn" style="border: 1px solid rgba(15, 118, 110, 0.4); font-weight: 700; color: #0f766e;" onclick="showSaudeSubtab('docbase')">📘 Documento-Base & Emissão PCMSO</button>
                         <button id="saudeSubtabBtn-relatorio" class="db-filter-btn" onclick="showSaudeSubtab('relatorio')">📄 Relatório</button>
                     </div>
                 </div>
@@ -5720,7 +6053,11 @@
                 <div class="db-chart-card" style="margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
                         <div class="db-chart-title" style="margin-bottom: 0;">🩺 Exames ASO</div>
-                        <button class="db-apply-btn" onclick="abrirFormAso()">+ Novo Exame</button>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button type="button" class="db-clear-btn" onclick="saudeAbrirPrestadores()">Clínicas e médicos parceiros</button>
+                            <button type="button" class="db-clear-btn" onclick="abrirModeloAsoCop(false)">🖨️ Modelo ASO em branco</button>
+                            <button class="db-apply-btn" onclick="abrirFormAso()">+ Novo Exame</button>
+                        </div>
                     </div>
                     <div id="asoResumo" style="font-size: 12px; color: var(--text-light); margin-bottom: 10px;"></div>
                     <div style="display: flex; gap: 8px; margin-bottom: 10px;">
@@ -5789,6 +6126,8 @@
                     <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <button class="db-apply-btn" onclick="salvarAso()">💾 Salvar</button>
                         <button class="db-clear-btn" onclick="fecharFormAso()">Cancelar</button>
+                        <button type="button" class="db-clear-btn" onclick="abrirModeloAsoCop(true)">🖨️ Modelo ASO deste colaborador</button>
+                        <button type="button" class="db-clear-btn" onclick="saudePrepararAsoParceiro()">ASO com clínica / examinador</button>
                         <button id="asoForm_btnAnexos" type="button" class="db-clear-btn" style="display:none;" onclick="abrirAnexosAsoAtual()">📎 Anexar Ficha Clínica / ASO</button>
                         <button id="asoForm_btnExcluir" class="db-clear-btn" style="display:none; color: var(--danger); border-color: var(--danger);" onclick="excluirAsoAtual()">🗑️ Excluir</button>
                         <span id="asoFormStatus" style="font-size: 12px; color: var(--text-light);"></span>
@@ -6244,7 +6583,6 @@
                     </div>
                 </div>
                 </div>
-            </section>
 
             <!-- Modal do Relatório para Líderes (Previsão de Exames) - fica fora do fluxo normal
                  da página (position:fixed) então a localização no HTML não importa pro layout. -->
@@ -6270,12 +6608,44 @@
                 </div>
             </div>
 
+            <!-- Subaba: Documento-Base e Emissão do PCMSO (NR-07) -->
+                <div id="saudeSubtab-docbase" style="display:none;">
+                    <div class="db-chart-card" style="margin-bottom: 16px; padding: 16px 20px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                            <div>
+                                <div class="db-chart-title" style="margin-bottom: 4px;">📘 Parâmetros Oficiais do Documento-Base do PCMSO (NR-07)</div>
+                                <div style="font-size: 12px; color: var(--text-light);">
+                                    Configure identificação, médico coordenador (Dr. Cícero / CRM 19464-PE), representantes legais, diretrizes clínicas e cronograma de saúde do CONSÓRCIO OPERADOR RAMAL DO AGRESTE.
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                <button type="button" class="db-clear-btn" onclick="pcmsoDescartarRascunho()" style="font-size: 12px; padding: 6px 12px;">📑 Descartar Rascunho</button>
+                                <button type="button" class="db-clear-btn" onclick="pcmsoCarregarDocBase()" style="font-size: 12px; padding: 6px 12px;">🔄 Recarregar</button>
+                                <button type="button" class="db-apply-btn" onclick="pcmsoSalvarDocBase()" style="background: #0f766e; font-size: 12.5px; font-weight: 700; padding: 7px 16px;">💾 Salvar Documento-Base</button>
+                            </div>
+                        </div>
+                        <div style="margin-top: 10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                            <span id="pcmsoDocBaseFormStatus" style="font-size: 12px; font-weight: 600;"></span>
+                            <div style="display:flex; gap:8px;">
+                                <button type="button" class="db-apply-btn" onclick="abrirModalCadernosPcmso()" style="background: #0f766e; font-size: 12px; font-weight: 700; padding: 6px 14px;">📑 Cadernos do PCMSO</button>
+                                <button type="button" id="btnEmitirPcmsoCompleto" class="db-apply-btn" style="background: #2563eb; font-size: 12px; font-weight: 700; padding: 6px 14px;" onclick="pcmsoEmitirDocumentoCompleto();">🖨️ Emitir PCMSO Completo (Consolidado)</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="pcmsoDocBaseFormWrap">
+                        <!-- O formulário oficial é renderizado dinamicamente por renderPcmsoDocBaseView() -->
+                    </div>
+                </div>
+            </section>
+
             <!-- Página: Avaliação Psicossocial (COPSOQ II) -->
             <section class="db-page" id="page-psicossocial">
                 <div class="db-filters" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div class="db-filter-buttons">
                         <button id="psicossocialSubtabBtn-visao" class="db-filter-btn active" onclick="showPsicossocialSubtab('visao')">📊 Visão Geral</button>
                         <button id="psicossocialSubtabBtn-gerenciar" class="db-filter-btn" onclick="showPsicossocialSubtab('gerenciar')">⚙️ Gerenciar Aplicações</button>
+                        <button id="psicossocialSubtabBtn-ghe" class="db-filter-btn" onclick="showPsicossocialSubtab('ghe')">🛡️ Gestão NR-01 por GHE</button>
                     </div>
                     <div>
                         <button class="db-apply-btn" style="background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); font-size: 13px; font-weight: 700; padding: 7px 16px; box-shadow: 0 2px 6px rgba(124, 58, 237, 0.25); display: inline-flex; align-items: center; gap: 6px; cursor: pointer;" onclick="abrirModalConvocacaoPsicossocial()" title="Parametrizar período e triar colaboradores para convocação oficial">
@@ -6285,11 +6655,38 @@
                 </div>
 
                 <div id="psicossocialSubtab-visao">
-                    <div id="psicossocialSeletorWrap" style="display:none; margin-bottom: 14px;">
-                        <select id="psicossocialSeletorAplicacao" onchange="onPsicossocialAplicacaoChange(this.value)" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;"></select>
+                    <!-- Banner de Referência Técnica SST / NR-01 -->
+                    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; margin-bottom:14px; display:flex; align-items:center; gap:10px; font-size:12.5px; color:#1e40af;">
+                        <span style="font-size:18px;">ℹ️</span>
+                        <div>
+                            <b>Resultados Agregados Corporativos (COPSOQ II — Versão Curta):</b>
+                            Os indicadores refletem a percepção estatística global coletada via questionário padronizado. Os limiares de destaque visual são parâmetros orientativos de gestão de SST e não constituem diagnósticos individuais nem limites de tolerância de NR.
+                        </div>
+                    </div>
+
+                    <!-- Barra de Controle: Seletor de Rodada e Ações Rápidas -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; background:var(--bg-card); padding:8px 12px; border-radius:8px; border:1px solid var(--border);">
+                        <div id="psicossocialSeletorWrap" style="display:none; align-items:center; gap:8px;">
+                            <span style="font-size:12.5px; font-weight:700; color:var(--text);">Aplicação Ativa:</span>
+                            <select id="psicossocialSeletorAplicacao" onchange="onPsicossocialAplicacaoChange(this.value)" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;"></select>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-left:auto;">
+                            <button id="btnEditarAplicacaoPsicoAtiva" class="db-apply-btn" onclick="editarAplicacaoPsicossocialAtiva()" style="font-size:12px; padding:6px 12px; background:var(--primary); display:none;">✏️ Editar Aplicação Ativa</button>
+                            <button class="db-apply-btn" onclick="abrirFormNovaAplicacaoPsicossocial()" style="font-size:12px; padding:6px 12px; background:var(--success);">➕ Nova Aplicação</button>
+                        </div>
                     </div>
 
                     <div id="psicossocialConteudo">
+                        <!-- Estado Vazio Seguro (Idempotente, preserva o DOM de KPIs/Gráficos) -->
+                        <div id="psicossocialConteudoVazio" style="display:none; text-align:center; padding:32px 16px; background:var(--bg-card); border:1px dashed var(--border); border-radius:8px; margin-bottom:16px;">
+                            <div style="font-size:32px; margin-bottom:8px;">🧠</div>
+                            <div style="font-size:14px; font-weight:700; color:var(--text); margin-bottom:6px;">Nenhuma aplicação do questionário COPSOQ II cadastrada ainda</div>
+                            <div style="font-size:12.5px; color:var(--text-light); margin-bottom:16px;">Cadastre uma nova rodada com as datas do período, taxa de adesão e resultados das escalas.</div>
+                            <button class="db-apply-btn" onclick="abrirFormNovaAplicacaoPsicossocial()" style="font-size:12.5px; padding:7px 16px; background:var(--success);">➕ Cadastrar Primeira Aplicação</button>
+                        </div>
+
+                        <!-- Estrutura de KPIs e Gráficos da Aplicação -->
+                        <div id="psicossocialConteudoAtivo">
                         <div class="db-kpi-grid">
                             <div class="db-kpi-card db-kpi-primary">
                                 <div class="db-kpi-value" id="kpiPsicoParticipacao">0%</div>
@@ -6297,15 +6694,15 @@
                             </div>
                             <div class="db-kpi-card db-kpi-danger">
                                 <div class="db-kpi-value" id="kpiPsicoCriticas">0</div>
-                                <div class="db-kpi-label">Escalas em Risco Crítico (≥40%)</div>
+                                <div class="db-kpi-label" id="lblKpiPsicoCriticas">Escalas em Risco Crítico (≥40%)</div>
                             </div>
                             <div class="db-kpi-card db-kpi-warning">
                                 <div class="db-kpi-value" id="kpiPsicoAtencao">0</div>
-                                <div class="db-kpi-label">Escalas em Atenção (20-40% risco)</div>
+                                <div class="db-kpi-label" id="lblKpiPsicoAtencao">Escalas em Atenção (20-40% risco)</div>
                             </div>
                             <div class="db-kpi-card db-kpi-success">
                                 <div class="db-kpi-value" id="kpiPsicoFortes">0</div>
-                                <div class="db-kpi-label">Pontos Fortes (≥90% favorável)</div>
+                                <div class="db-kpi-label" id="lblKpiPsicoFortes">Pontos Fortes (≥90% favorável)</div>
                             </div>
                         </div>
 
@@ -6329,6 +6726,7 @@
                         <div class="db-chart-card" style="margin-top: 16px;">
                             <button id="btnTogglePerguntasPsico" class="db-filter-btn" onclick="togglePerguntasPsicossociais()">▼ Ver as 41 perguntas detalhadas</button>
                             <div id="psicoPerguntasLista" class="db-list" style="display:none; margin-top: 12px;"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -6346,7 +6744,7 @@
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
                             <div class="db-chart-title" id="psicoFormTitle" style="margin-bottom: 0;">+ Nova Aplicação</div>
                             <div style="display:flex; gap:8px;">
-                                <button class="db-apply-btn" style="background: var(--danger);" onclick="excluirAplicacaoPsicossocial()">🗑️ Excluir</button>
+                                <button id="btnExcluirAplicacaoPsico" class="db-apply-btn" style="background: var(--danger);" onclick="excluirAplicacaoPsicossocial()">🗑️ Excluir</button>
                                 <button class="db-apply-btn" style="background: var(--text-light);" onclick="fecharFormAplicacaoPsicossocial()">Cancelar</button>
                             </div>
                         </div>
@@ -6373,9 +6771,13 @@
                         <div style="font-weight:600; font-size: 13px; margin-bottom: 8px;">Perguntas Detalhadas</div>
                         <div id="psicoFormPerguntasWrap" style="max-height: 320px; overflow-y: auto; margin-bottom: 16px;"></div>
 
-                        <button class="db-apply-btn" onclick="salvarAplicacaoPsicossocial()">💾 Salvar Aplicação</button>
+                        <button id="btnSalvarAplicacaoPsico" class="db-apply-btn" onclick="salvarAplicacaoPsicossocial()">💾 Salvar Aplicação</button>
                         <div id="psicoAplicacaoFormStatus" style="margin-top: 8px; font-size: 12.5px;"></div>
                     </div>
+                </div>
+
+                <div id="psicossocialSubtab-ghe" style="display:none;">
+                    <div id="psicoGestaoGheContainer"></div>
                 </div>
             </section>
 
@@ -8066,7 +8468,7 @@
             <!-- ============================================================ -->
             <section class="db-page" id="page-placarlideres">
                 <div class="placar-container">
-                    
+
                     <!-- Header Card Executivo -->
                     <div class="placar-header-card">
                         <div>
@@ -8946,7 +9348,7 @@
                                     </div>
                                     <span style="font-size: 11.5px; background: rgba(79, 70, 229, 0.12); color: var(--primary); padding: 3px 10px; border-radius: 20px; font-weight: 600;">Regras da Portaria MTP nº 422 / NR-05</span>
                                 </div>
-                                
+
                                 <div style="font-size: 12px; color: var(--text-light); margin-bottom: 12px; line-height: 1.45;">
                                     Defina apenas <b>uma data de referência</b> (início ou fim do processo) para calcular todas as etapas regulamentares. O assistente <b>identifica sábados e domingos</b> e ajusta as datas para dias úteis conforme as exigências da norma.
                                 </div>
@@ -9327,8 +9729,8 @@
                         <div class="db-chart-title" id="brigadaTreinFormTitle">🎓 Registrar / Editar Treinamento NR-23</div>
                         <input type="hidden" id="brigadaTreinForm_matricula">
                         <div style="margin-bottom: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
-                            <strong>Brigadista:</strong> <span id="brigadaTreinForm_colabNome" style="color:var(--primary); font-weight:600;">-</span> &nbsp;|&nbsp; 
-                            <strong>Matrícula:</strong> <span id="brigadaTreinForm_colabMatricula">-</span> &nbsp;|&nbsp; 
+                            <strong>Brigadista:</strong> <span id="brigadaTreinForm_colabNome" style="color:var(--primary); font-weight:600;">-</span> &nbsp;|&nbsp;
+                            <strong>Matrícula:</strong> <span id="brigadaTreinForm_colabMatricula">-</span> &nbsp;|&nbsp;
                             <strong>Cargo na Brigada:</strong> <span id="brigadaTreinForm_colabCargo">-</span>
                         </div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px;">
@@ -9494,8 +9896,9 @@
                         </div>
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                             <button class="db-clear-btn" style="padding:8px 12px; font-size:12.5px; display:inline-flex; align-items:center; gap:6px; color:#0284c7; border-color:#0284c7;" onclick="sincronizarPastasDriveCronograma()" title="Criar ou sincronizar subpastas dos temas do cronograma no Google Drive">
-                                <i class="fas fa-folder-plus"></i> 📁 Sincronizar Pastas do Mês
+                                <i class="fas fa-folder-plus"></i> 📁 Pastas de escaneados do mês
                             </button>
+                            <button type="button" class="db-clear-btn" onclick="cronogramaPastasAbrir('treinamentos')">📷 Criar pastas de fotos</button>
                             <button class="db-apply-btn" id="btnUploadAcervoDrive" style="background:#0284c7; border:none; display:inline-flex; align-items:center; gap:6px; padding:8px 16px; font-weight:600; font-size:12.5px;" onclick="abrirModalUploadAcervoDrive()">
                                 <i class="fas fa-cloud-upload-alt"></i> 📤 Subir Arquivo para o Acervo
                             </button>
@@ -10027,6 +10430,9 @@
                 </div>
             </section>
 
+            <section class="db-page" id="page-geradorprompts"></section>
+            <section class="db-page" id="page-gestao_de_condutores"></section>
+
             <footer class="db-footer">
                 Painel somente leitura — atualiza automaticamente a cada 5 minutos. Dados sincronizados do mesmo banco do app de campo.
             </footer>
@@ -10039,20 +10445,28 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="../data.js?v=231"></script>
-    <script src="logo_cop_base64.js?v=231"></script>
-    <script src="dashboard.js?v=235"></script>
-    <script src="modules/treinamentos_ddsma.js?v=231"></script>
-    <script src="modules/efetivo_ferias.js?v=231"></script>
-    <script src="modules/ghe_os.js?v=231"></script>
-    <script src="modules/relatorio_sms_nc.js?v=231"></script>
-    <script src="modules/saude_psicossocial.js?v=233"></script>
-    <script src="modules/epi_estoque.js?v=231"></script>
-    <script src="modules/ambiental_compras_hht.js?v=231"></script>
-    <script src="modules/apr_cipa.js?v=231"></script>
-    <script src="modules/documentos_brigada.js?v=231"></script>
-    <script src="modules/ergonomia_periculosidade_pgr.js?v=231"></script>
-    <script src="placar_lideres.js?v=231"></script>
+    <script src="../data.js?v=295"></script>
+    <script src="logo_cop_base64.js?v=295"></script>
+    <script src="dashboard.js?v=301.5"></script>
+    <script src="modules/treinamentos_ddsma.js?v=300"></script>
+    <script src="modules/efetivo_ferias.js?v=300"></script>
+    <script src="modules/ghe_os.js?v=295"></script>
+    <script src="modules/relatorio_sms_nc.js?v=295"></script>
+    <script src="modules/relatorio_sms_fotos.js?v=295"></script>
+    <script src="modules/relsms_importacao_segura.js?v=295"></script>
+    <script src="modules/relsms_fotos_manuais.js?v=295"></script>
+    <script src="modules/cronograma_pastas.js?v=295"></script>
+    <script src="modules/saude_psicossocial.js?v=301.5"></script>
+    <script src="modules/pcmso.js?v=295"></script>
+    <script src="modules/saude_prestadores.js?v=295"></script>
+    <script src="modules/epi_estoque.js?v=301"></script>
+    <script src="modules/ambiental_compras_hht.js?v=295"></script>
+    <script src="modules/apr_cipa.js?v=295"></script>
+    <script src="modules/documentos_brigada.js?v=295"></script>
+    <script src="modules/ergonomia_periculosidade_pgr.js?v=295"></script>
+    <script src="modules/gerador_prompts.js?v=298"></script>
+    <script src="modules/gestao_de_condutores_cnh.js?v=301.4"></script>
+    <script src="placar_lideres.js?v=295"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();
@@ -10094,7 +10508,7 @@ function filterMatrizEpi(q) {
 <!-- Modal de Emissão de Certificado de Treinamento (NR-01 / NR-18) -->
 <div id="modalEmissaoCertificado" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:10060; align-items:center; justify-content:center; padding:16px;" onclick="if (event.target === this) fecharModalEmissaoCertificado();">
     <div style="background:var(--card); border-radius:14px; max-width:680px; width:100%; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1); border:1px solid var(--border); overflow:hidden;">
-        
+
         <!-- Header -->
         <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:linear-gradient(to right, rgba(79,70,229,0.06), transparent);">
             <div>
@@ -10110,7 +10524,7 @@ function filterMatrizEpi(q) {
 
         <!-- Body com Scroll -->
         <div style="padding:18px 20px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:14px; font-size:12.5px;">
-            
+
             <!-- Card de Identificação do Treinamento e Alvo -->
             <div style="background:rgba(79,70,229,0.04); border:1px solid rgba(79,70,229,0.18); border-radius:10px; padding:12px 14px;">
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
@@ -10123,7 +10537,7 @@ function filterMatrizEpi(q) {
                         <span id="certModalDataBadge" style="background:#f1f5f9; color:#475569; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600;">-</span>
                     </div>
                 </div>
-                
+
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px; margin-top:10px; padding-top:10px; border-top:1px dashed rgba(79,70,229,0.2);">
                     <div>
                         <label style="display:block; font-size:11px; font-weight:600; color:var(--text-light); margin-bottom:3px;">Escopo de Emissão</label>
@@ -10178,11 +10592,14 @@ function filterMatrizEpi(q) {
                         Conteúdo Programático Impresso no Certificado:
                     </label>
                     <div style="display:flex; gap:6px;">
-                        <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#1d4ed8; font-weight:600;" onclick="certModalCarregarPadraoNr10('inicial')" title="Insere o conteúdo programático oficial completo do Anexo III da NR-10 (40h)">
+                        <button type="button" id="certModalBtnPadraoNr10Inicial" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#1d4ed8; font-weight:600;" onclick="certModalCarregarPadraoNr10('inicial')" title="Insere o conteúdo programático oficial completo do Anexo III da NR-10 (40h)">
                             ⚡ NR-10 Inicial (40h)
                         </button>
-                        <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#b45309; font-weight:600;" onclick="certModalCarregarPadraoNr10('reciclagem')" title="Insere o conteúdo programático de Reciclagem Bienal da NR-10 (Item 10.8.8.2)">
+                        <button type="button" id="certModalBtnPadraoNr10Reciclagem" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#b45309; font-weight:600;" onclick="certModalCarregarPadraoNr10('reciclagem')" title="Insere o conteúdo programático de Reciclagem Bienal da NR-10 (Item 10.8.8.2)">
                             🔄 NR-10 Reciclagem
+                        </button>
+                        <button type="button" id="certModalBtnPadraoNr35" class="db-clear-btn" style="display:none; padding:3px 8px; font-size:11px; color:#0369a1; font-weight:700; background:#f0f9ff; border-color:#7dd3fc;" onclick="certModalCarregarPadraoNr35()" title="Insere o conteúdo programático oficial de Trabalho em Altura (NR-35 Item 35.3.5)">
+                            🧗 Padrão NR-35 Altura (8h)
                         </button>
                         <button type="button" class="db-clear-btn" style="padding:3px 8px; font-size:11px; color:#4f46e5; font-weight:600;" onclick="certModalCarregarPadraoNr18()" title="Insere os tópicos atualizados conforme NR-18 Anexo I, NR-01 Portaria 1.419/2024 e Lei 14.457/2022">
                             ✨ Padrão NR-18 / NR-01
@@ -10193,7 +10610,7 @@ function filterMatrizEpi(q) {
                     </div>
                 </div>
                 <textarea id="certModalConteudoProgramatico" rows="6" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-family:inherit; font-size:12px; line-height:1.5; resize:vertical; background:var(--card); color:var(--text);"></textarea>
-                
+
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
                     <span style="font-size:10.5px; color:var(--text-light);">Um tópico por linha ou parágrafo numerado.</span>
                     <label style="font-size:11.5px; color:var(--text); display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
@@ -10400,16 +10817,16 @@ function filterMatrizEpi(q) {
             </div>
             <button type="button" onclick="fecharModalCalendarioCoresChecklist()" style="background:rgba(255,255,255,0.15); border:none; color:white; font-size:18px; width:32px; height:32px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
         </div>
-        
+
         <div style="padding:20px 24px;">
             <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; font-size:12.5px; color:#475569; line-height:1.5; margin-bottom:18px;">
                 ℹ️ <strong>Regra Operacional:</strong> Todo equipamento, máquina móvel, veículo ou ferramenta inspecionado e liberado pela Engenharia de Segurança / Inspetor de Campo deve receber a fita plástica, lacre ou etiqueta de identificação visual correspondente à cor vigente no mês do checklist.
             </div>
-            
+
             <div id="gridCalendarioCoresChecklist" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:10px;">
                 <!-- Renderizado dinamicamente via renderModalCalendarioCores() -->
             </div>
-            
+
             <div style="margin-top:20px; padding-top:16px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end;">
                 <button type="button" class="db-apply-btn" onclick="fecharModalCalendarioCoresChecklist()" style="padding:8px 20px; font-size:13px;">Fechar</button>
             </div>
@@ -10426,7 +10843,7 @@ function filterMatrizEpi(q) {
             </div>
             <button type="button" onclick="fecharModalRestaurarBackup()" style="background:rgba(255,255,255,0.15); border:none; color:white; font-size:18px; width:32px; height:32px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
         </div>
-        
+
         <div style="padding:22px 24px;">
             <!-- Informações do Arquivo -->
             <div id="restoreFileInfoCard" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; margin-bottom:16px; font-size:12.5px; color:#334155; line-height:1.5;">
@@ -10575,7 +10992,7 @@ function filterMatrizEpi(q) {
                     <div style="font-size: 11.5px; color: var(--text-light); margin: 8px 0 10px; line-height: 1.45;">
                         Quando um encarregado sai da empresa ou é substituído por uma frente/setor (ex: <strong>EVERALDO ➔ LINHA DE TRANSMISSÃO</strong> ou <strong>FABRICIO ➔ ELÉTRICA</strong>), unifique os dois nomes aqui. Todo o histórico anterior (DDS, Treinamentos, APRs) é mantido 100% preservado no banco e computado automaticamente na frente atual para cálculo dos percentuais.
                     </div>
-                    
+
                     <div id="placarAliasLista" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; font-size: 12px;">
                         <!-- Preenchido via JS com as mesclagens do Supabase -->
                     </div>
@@ -10688,8 +11105,8 @@ function filterMatrizEpi(q) {
             <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
                 <div style="font-weight: 800; font-size: 14px; color: var(--text);" id="modalPsico_nome">—</div>
                 <div style="font-size: 12px; color: var(--text-light); margin-top: 3px;">
-                    Matrícula: <strong id="modalPsico_lblMatricula" style="color: var(--primary);">—</strong> | 
-                    Função: <strong id="modalPsico_lblFuncao">—</strong> | 
+                    Matrícula: <strong id="modalPsico_lblMatricula" style="color: var(--primary);">—</strong> |
+                    Função: <strong id="modalPsico_lblFuncao">—</strong> |
                     GHE: <strong id="modalPsico_lblGhe">—</strong>
                 </div>
             </div>
@@ -10875,41 +11292,47 @@ function filterMatrizEpi(q) {
         <div class="placar-modal-body" style="padding: 16px 20px; flex: 1; overflow-y: auto;">
             <!-- KPIs Rápidos de Vencimento -->
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px;">
-                <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 12px; text-align: center;">
+                <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 12px; text-align: center; cursor: pointer; transition: all 0.2s;" id="valAsoCard_vencidos" onclick="filtrarTabelaValidadeAsos('vencidos')" title="Clique para filtrar/combinar Já Vencidos">
                     <div style="font-size: 20px; font-weight: 800; color: #991b1b;" id="valAsoKpi_vencidos">0</div>
                     <div style="font-size: 11px; font-weight: 700; color: #991b1b;">🔴 Já Vencidos</div>
                 </div>
-                <div style="background: #fff7ed; border: 1px solid #ffedd5; border-radius: 8px; padding: 8px 12px; text-align: center;">
+                <div style="background: #fff7ed; border: 1px solid #ffedd5; border-radius: 8px; padding: 8px 12px; text-align: center; cursor: pointer; transition: all 0.2s;" id="valAsoCard_vencendo30" onclick="filtrarTabelaValidadeAsos('vencendo30')" title="Clique para filtrar/combinar Vencem em até 30d">
                     <div style="font-size: 20px; font-weight: 800; color: #ea580c;" id="valAsoKpi_vencendo30">0</div>
                     <div style="font-size: 11px; font-weight: 700; color: #ea580c;">🟠 Vencem em até 30d</div>
                 </div>
-                <div style="background: #fefce8; border: 1px solid #fef08a; border-radius: 8px; padding: 8px 12px; text-align: center;">
+                <div style="background: #fefce8; border: 1px solid #fef08a; border-radius: 8px; padding: 8px 12px; text-align: center; cursor: pointer; transition: all 0.2s;" id="valAsoCard_vencendo60" onclick="filtrarTabelaValidadeAsos('vencendo60')" title="Clique para filtrar/combinar Vencem em 31 a 60d">
                     <div style="font-size: 20px; font-weight: 800; color: #ca8a04;" id="valAsoKpi_vencendo60">0</div>
                     <div style="font-size: 11px; font-weight: 700; color: #ca8a04;">🟡 Vencem em 31 a 60d</div>
                 </div>
-                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 8px 12px; text-align: center;">
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 8px 12px; text-align: center; cursor: pointer; transition: all 0.2s;" id="valAsoCard_emDia" onclick="filtrarTabelaValidadeAsos('emDia')" title="Clique para filtrar/combinar Em Dia">
                     <div style="font-size: 20px; font-weight: 800; color: #15803d;" id="valAsoKpi_emDia">0</div>
                     <div style="font-size: 11px; font-weight: 700; color: #15803d;">🟢 Em Dia (&gt;60d)</div>
                 </div>
-                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; text-align: center;">
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; text-align: center; cursor: pointer; transition: all 0.2s;" id="valAsoCard_semRegistro" onclick="filtrarTabelaValidadeAsos('semRegistro')" title="Clique para filtrar/combinar Sem Registro ASO">
                     <div style="font-size: 20px; font-weight: 800; color: #64748b;" id="valAsoKpi_semRegistro">0</div>
                     <div style="font-size: 11px; font-weight: 700; color: #475569;">⚪ Sem Registro ASO</div>
                 </div>
             </div>
 
             <!-- Filtros Rápidos -->
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px; flex-wrap: wrap;">
                 <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="filtroValAsoPills">
-                    <button type="button" class="sector-pill active" onclick="filtrarTabelaValidadeAsos('todos', this)">Todos (<span id="valAsoCount_todos">0</span>)</button>
-                    <button type="button" class="sector-pill" style="border-color:#fca5a5; color:#991b1b;" onclick="filtrarTabelaValidadeAsos('vencidos', this)">🔴 Vencidos (<span id="valAsoCount_vencidos">0</span>)</button>
-                    <button type="button" class="sector-pill" style="border-color:#fed7aa; color:#ea580c;" onclick="filtrarTabelaValidadeAsos('vencendo30', this)">🟠 30 dias (<span id="valAsoCount_30">0</span>)</button>
-                    <button type="button" class="sector-pill" style="border-color:#fef08a; color:#ca8a04;" onclick="filtrarTabelaValidadeAsos('vencendo60', this)">🟡 60 dias (<span id="valAsoCount_60">0</span>)</button>
-                    <button type="button" class="sector-pill" style="border-color:#bbf7d0; color:#15803d;" onclick="filtrarTabelaValidadeAsos('emDia', this)">🟢 Em Dia (<span id="valAsoCount_emDia">0</span>)</button>
-                    <button type="button" class="sector-pill" onclick="filtrarTabelaValidadeAsos('semRegistro', this)">⚪ Sem Registro (<span id="valAsoCount_semReg">0</span>)</button>
+                    <button type="button" class="sector-pill active" data-filtro="todos" onclick="filtrarTabelaValidadeAsos('todos', this)">Todos (<span id="valAsoCount_todos">0</span>)</button>
+                    <button type="button" class="sector-pill" data-filtro="vencidos" style="border-color:#fca5a5; color:#991b1b;" onclick="filtrarTabelaValidadeAsos('vencidos', this)">🔴 Vencidos (<span id="valAsoCount_vencidos">0</span>)</button>
+                    <button type="button" class="sector-pill" data-filtro="vencendo30" style="border-color:#fed7aa; color:#ea580c;" onclick="filtrarTabelaValidadeAsos('vencendo30', this)">🟠 30 dias (<span id="valAsoCount_30">0</span>)</button>
+                    <button type="button" class="sector-pill" data-filtro="vencendo60" style="border-color:#fef08a; color:#ca8a04;" onclick="filtrarTabelaValidadeAsos('vencendo60', this)">🟡 60 dias (<span id="valAsoCount_60">0</span>)</button>
+                    <button type="button" class="sector-pill" data-filtro="emDia" style="border-color:#bbf7d0; color:#15803d;" onclick="filtrarTabelaValidadeAsos('emDia', this)">🟢 Em Dia (<span id="valAsoCount_emDia">0</span>)</button>
+                    <button type="button" class="sector-pill" data-filtro="semRegistro" style="border-color:#cbd5e1; color:#475569;" onclick="filtrarTabelaValidadeAsos('semRegistro', this)">⚪ Sem Registro (<span id="valAsoCount_semReg">0</span>)</button>
                 </div>
                 <div style="display: flex; gap: 8px; flex: 1; max-width: 360px; min-width: 220px;">
                     <input type="text" id="valAsoBuscaInput" placeholder="Buscar colaborador, setor, GHE..." oninput="renderTabelaValidadeAsos()" style="width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; background: var(--card); color: var(--text);">
                 </div>
+            </div>
+
+            <!-- Resumo e Orientação de Seleção Múltipla -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 11.5px; color: var(--text-light); flex-wrap: wrap; gap: 6px;">
+                <div>💡 <em>Clique em um ou mais status para combinar (ex: 🔴 Vencidos + 🟠 30 dias).</em></div>
+                <div id="valAsoFiltroResumo" style="font-weight: 700; color: #0284c7;"></div>
             </div>
 
             <!-- Tabela -->
@@ -11132,7 +11555,7 @@ function filterMatrizEpi(q) {
         <!-- Body -->
         <div class="placar-modal-body" style="padding: 18px 20px; display: flex; flex-direction: column; gap: 12px;">
             <input type="hidden" id="sinPsico_matricula">
-            
+
             <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px;">
                 <div style="font-weight: 700; font-size: 13px; color: var(--text);" id="sinPsico_colabNome">—</div>
                 <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;" id="sinPsico_colabDetalhe">—</div>
@@ -11200,7 +11623,7 @@ function filterMatrizEpi(q) {
         </div>
         <div class="placar-modal-body" style="padding: 18px 20px;">
             <input type="hidden" id="feriasForm_id">
-            
+
             <!-- Seleção do Colaborador -->
             <div style="margin-bottom: 12px;">
                 <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Colaborador *</label>
@@ -11455,7 +11878,7 @@ function filterMatrizEpi(q) {
             <div style="font-weight:700; color:#0284c7; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
                 <i class="fas fa-check-circle"></i> Integração Nativa em Nuvem Ativa
             </div>
-            O sistema já conta com conexão direta e autenticada com o <b>Google Drive</b> através da infraestrutura da Vercel. 
+            O sistema já conta com conexão direta e autenticada com o <b>Google Drive</b> através da infraestrutura da Vercel.
             Você <b>não precisa</b> configurar scripts manuais para enviar os checklists.
         </div>
 
@@ -11603,7 +12026,7 @@ function filterMatrizEpi(q) {
             <div style="font-size:11.5px; font-weight:700; color:#0284c7; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">
                 <i class="fas fa-folder"></i> Destino no Google Drive
             </div>
-            
+
             <div style="display:flex; flex-direction:column; gap:8px;">
                 <div id="wrapAcervoDestinoContextual" style="display:none; font-size:12px; color:var(--text);">
                     <span>Salvar na pasta aberta:</span>
@@ -11710,9 +12133,9 @@ function filterMatrizEpi(q) {
                 <i class="fas fa-circle-notch fa-spin" style="font-size:28px; color:#38bdf8;"></i>
                 <span>Carregando documento do Google Drive...</span>
             </div>
-            <iframe id="modalPreviewDriveIframe" 
-                    src="" 
-                    title="Pré-visualização de Documento" 
+            <iframe id="modalPreviewDriveIframe"
+                    src=""
+                    title="Pré-visualização de Documento"
                     style="width:100%; height:100%; border:none; display:block; position:relative; z-index:2;"
                     onload="const l = document.getElementById('modalPreviewDriveLoading'); if (l) l.style.display='none';">
             </iframe>
@@ -11815,6 +12238,167 @@ function filterMatrizEpi(q) {
                     💾 Salvar Regras
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Emissão de Cadernos Modulares do PGR (NR-01 GRO) -->
+<div id="modalCadernosPgr" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 10000; justify-content: center; align-items: center; padding: 16px; overflow-y: auto;">
+    <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 12px; width: 100%; max-width: 680px; max-height: 90vh; overflow-y: auto; padding: 22px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+            <div>
+                <div style="font-size: 17px; font-weight: 800; color: #0f172a;" id="modalCadernosPgrTitulo">📑 Emissão de Cadernos Modulares do PGR</div>
+                <div style="font-size: 12px; color: var(--text-light); margin-top: 2px;">NR-01 — Gerenciamento de Riscos Ocupacionais (GRO)</div>
+            </div>
+            <button onclick="fecharModalCadernosPgr()" style="background: transparent; border: none; font-size: 20px; cursor: pointer; color: var(--text-light); font-weight: 700;">✕</button>
+        </div>
+
+        <div style="font-size: 12.5px; color: var(--text); margin-bottom: 16px; line-height: 1.4;">
+            Selecione o formato de emissão técnica desejado. Cada caderno modular gerado possui capa institucional padronizada, termo de encerramento com assinaturas e rastreabilidade normativa da NR-01.
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px;">
+            <!-- Opção Completo -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--card-bg, #fff); transition: all 0.2s ease;">
+                <input type="radio" name="cadernoPgrTipo" value="completo" checked onchange="alternarVisibilidadeFiltroGheCaderno(this.value)" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13.5px; color: #1e3a8a;">📘 PGR Oficial Completo (Integral)</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Documento-Base, Histórico, Inventário de todos os 27 GHEs, Plano de Ação 5W2H, Matriz de EPIs/CAs e Anexos Analíticos (AEP NR-17 e COPSOQ II).</div>
+                </div>
+            </label>
+
+            <!-- Opção Caderno 1: DocBase -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--card-bg, #fff); transition: all 0.2s ease;">
+                <input type="radio" name="cadernoPgrTipo" value="docbase" onchange="alternarVisibilidadeFiltroGheCaderno(this.value)" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13.5px; color: #0f172a;">📋 Caderno 1 — Documento-Base & Diretrizes Gerais</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Diretrizes institucionais, enquadramento normativo, matriz AIHA 5×5, critérios de probabilidade e severidade, instrumentos de medição e calibração.</div>
+                </div>
+            </label>
+
+            <!-- Opção Caderno 2: Inventário -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--card-bg, #fff); transition: all 0.2s ease;">
+                <input type="radio" name="cadernoPgrTipo" value="inventario" onchange="alternarVisibilidadeFiltroGheCaderno(this.value)" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13.5px; color: #0f172a;">🔍 Caderno 2 — Inventário de Riscos Ocupacionais</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Visão panorâmica dos agentes e matriz detalhada de perigos, fatores de risco, códigos eSocial, fontes geradoras, níveis AIHA e medidas preventivas.</div>
+                </div>
+            </label>
+
+            <!-- Opção Caderno 3: Plano de Ação -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--card-bg, #fff); transition: all 0.2s ease;">
+                <input type="radio" name="cadernoPgrTipo" value="plano_acao" onchange="alternarVisibilidadeFiltroGheCaderno(this.value)" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13.5px; color: #0f172a;">🎯 Caderno 3 — Plano de Ação 5W2H (NR-01)</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Cronograma estruturado de ações preventivas, corretivas e de melhoria contínua (What, Why, Where, Who, When, How, How Much, Status).</div>
+                </div>
+            </label>
+
+            <!-- Opção Caderno 4: Matriz EPI/EPC -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--card-bg, #fff); transition: all 0.2s ease;">
+                <input type="radio" name="cadernoPgrTipo" value="epis" onchange="alternarVisibilidadeFiltroGheCaderno(this.value)" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13.5px; color: #0f172a;">🛡️ Caderno 4 — Matriz de Proteções e EPIs (NR-06)</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Quadro consolidado de Equipamentos de Proteção Coletiva (EPC) e Individual (EPI com Certificado de Aprovação - CA) por GHE e função abrangida.</div>
+                </div>
+            </label>
+
+            <!-- Opção Caderno 5: Anexos -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--card-bg, #fff); transition: all 0.2s ease;">
+                <input type="radio" name="cadernoPgrTipo" value="anexos" onchange="alternarVisibilidadeFiltroGheCaderno(this.value)" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13.5px; color: #0f172a;">📊 Caderno 5 — Anexos Analíticos (AEP NR-17 & COPSOQ II)</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Laudos homologados de Avaliações Ergonômicas Preliminares (AEP) e resultados consolidados do Diagnóstico Psicossocial Corporativo.</div>
+                </div>
+            </label>
+        </div>
+
+        <!-- Filtro de GHE (Visível para Inventário ou EPIs) -->
+        <div id="boxCadernoGheFiltro" style="display: none; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 14px; margin-bottom: 18px;">
+            <label for="selectCadernoGheFiltro" style="font-size: 12px; font-weight: 700; color: #0f172a; display: block; margin-bottom: 5px;">Filtrar GHE Específico (Opcional):</label>
+            <select id="selectCadernoGheFiltro" class="db-select" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; font-weight: 600; background: #fff; color: #0f172a;">
+                <option value="">-- Todos os GHEs (Geral) --</option>
+            </select>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">Deixe em "-- Todos os GHEs (Geral) --" para emitir o caderno abrangendo todo o canteiro operacional.</div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px;">
+            <button class="db-clear-btn" onclick="fecharModalCadernosPgr()">Cancelar</button>
+            <button class="db-apply-btn" style="background: linear-gradient(135deg, #0f766e, #0d9488); border-color: #0d9488; font-weight: 700;" onclick="executarEmissaoCadernoSelecionado()">🖨️ Emitir Caderno Selecionado</button>
+        </div>
+    </div>
+</div>
+
+
+<!-- Modal: Emissão de Cadernos Modulares do PCMSO (NR-07) -->
+<div id="modalCadernosPcmso" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 10000; justify-content: center; align-items: center; padding: 16px; overflow-y: auto;">
+    <div style="background: var(--card, #fff); border-radius: 12px; max-width: 640px; width: 100%; padding: 22px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25); border: 1px solid var(--border);">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;">
+            <div style="font-size: 16px; font-weight: 800; color: #0f172a;">📑 Emissão de Cadernos Modulares do PCMSO (NR-07)</div>
+            <button class="db-clear-btn" onclick="fecharModalCadernosPcmso()" style="font-size: 16px; padding: 2px 8px; cursor: pointer;">✕</button>
+        </div>
+
+        <div style="background: #fef3c7; border: 1px solid #f59e0b; color: #92400e; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; margin-bottom: 16px;">
+            📋 <b>MINUTA TÉCNICA DE TRABALHO:</b> Os cadernos abaixo são gerados como minutas técnicas para conferência e homologação pelo Médico Coordenador Dr. Cícero Henrique (CRM 19464-PE).
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px;">
+            <!-- Opção 1: PCMSO Completo Consolidado -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--bg);">
+                <input type="radio" name="cadernoPcmsoTipo" value="completo" checked onchange="document.getElementById('boxCadernoPcmsoGhe').style.display='none';" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13px; color: #0f172a;">📘 Caderno 1 — PCMSO Completo Consolidado</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Capa oficial, identificação, corpo médico, diretrizes clínicas, protocolos específicos, quadro geral dos 27 GHEs, cronograma anual e termos de encerramento.</div>
+                </div>
+            </label>
+
+            <!-- Opção 2: Protocolos Médicos Específicos -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--bg);">
+                <input type="radio" name="cadernoPcmsoTipo" value="protocolos" onchange="document.getElementById('boxCadernoPcmsoGhe').style.display='none';" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13px; color: #0f172a;">🩺 Caderno 2 — Protocolos e Diretrizes Clínicas Ocupacionais</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">PCA Ruído (NR-07 Anexo II), Vigilância Respiratória (Anexo III), Atividades Críticas Altura/Confinado (NR-35/NR-33) e Alimentos/Saneamento.</div>
+                </div>
+            </label>
+
+            <!-- Opção 3: Matriz Geral de Exames -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--bg);">
+                <input type="radio" name="cadernoPcmsoTipo" value="matriz" onchange="document.getElementById('boxCadernoPcmsoGhe').style.display='none';" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13px; color: #0f172a;">🧬 Caderno 3 — Matriz Geral de Exames por GHE (A4 Paisagem)</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Tabela panorâmica articulada com os 27 GHEs, riscos físicos/químicos/biológicos e periodicidades de exames.</div>
+                </div>
+            </label>
+
+            <!-- Opção 4: Caderno Individual por GHE -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--bg);">
+                <input type="radio" name="cadernoPcmsoTipo" value="individual_ghe" onchange="document.getElementById('boxCadernoPcmsoGhe').style.display='block';" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13px; color: #0f172a;">👤 Caderno 4 — Ficha Específica de Saúde Ocupacional por GHE</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Ficha individual detalhada com cargos abrangidos, ambiente, riscos e condutas clínicas do GHE selecionado.</div>
+                </div>
+            </label>
+
+            <!-- Opção 5: Relatório Analítico Anual (NR-07 item 7.6.2) -->
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--bg);">
+                <input type="radio" name="cadernoPcmsoTipo" value="relatorio_anual" onchange="document.getElementById('boxCadernoPcmsoGhe').style.display='none';" style="margin-top: 3px;">
+                <div>
+                    <div style="font-weight: 700; font-size: 13px; color: #0f172a;">📊 Caderno 5 — Minuta do Relatório Analítico Anual do PCMSO (NR-07 item 7.6.2 / 7.6.4)</div>
+                    <div style="font-size: 11.5px; color: var(--text-light); margin-top: 2px;">Estatística de exames clínicos por tipo, vigilância por GHE, indicador de acidentabilidade, absenteísmo e parecer conclusivo do médico coordenador.</div>
+                </div>
+            </label>
+        </div>
+
+        <!-- Seletor de GHE para opção individual -->
+        <div id="boxCadernoPcmsoGhe" style="display:none; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+            <label for="pcmsoCadernoSelectGhe" style="font-size: 12px; font-weight: 700; color: #0f172a; display: block; margin-bottom: 5px;">Selecione o GHE para Emissão:</label>
+            <select id="pcmsoCadernoSelectGhe" class="db-select" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; font-weight: 600; background: #fff; color: #0f172a;">
+            </select>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px;">
+            <button class="db-clear-btn" onclick="fecharModalCadernosPcmso()">Cancelar</button>
+            <button class="db-apply-btn" style="background: #0f766e; font-weight: 700;" onclick="executarEmissaoCadernoPcmsoSelecionado()">🖨️ Emitir Caderno Selecionado</button>
         </div>
     </div>
 </div>

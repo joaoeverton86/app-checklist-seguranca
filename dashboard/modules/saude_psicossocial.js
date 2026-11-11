@@ -102,7 +102,7 @@ function onAcidentesFiltroAnoMesChange() {
     renderAcidentesPanel();
 }
 
-async function loadAcidentesData() {
+async function loadAcidentesData(opcoes = {}) {
     try {
         allAcidentes = await supabaseFetch('acidentes', '?select=*');
         // Precisa do efetivo pra calcular a HHT de exposição e pra sugerir/autocompletar
@@ -117,6 +117,7 @@ async function loadAcidentesData() {
         renderAcidentesPanel();
     } catch (err) {
         console.error('Erro ao carregar dados de acidentes:', err);
+        if (opcoes.propagarErro) throw err;
     }
 }
 
@@ -2255,19 +2256,28 @@ function calcularValidadeAsoPcmso(colaborador) {
 // ============================================
 // MODAL DE GESTÃO DE VALIDADE DE ASOs (30 e 60 dias)
 // ============================================
-var valAsoFiltroAtual = 'todos'; // 'todos' | 'vencidos' | 'vencendo30' | 'vencendo60' | 'emDia' | 'semRegistro'
+var valAsoFiltrosAtivos = new Set(['todos']); // 'todos' OU conjunto de 'vencidos', 'vencendo30', 'vencendo60', 'emDia', 'semRegistro'
+var valAsoFiltroAtual = 'todos'; // Mantido para retrocompatibilidade
 var dadosValidadeAsosCache = [];
 
+var MAPA_STATUS_ASO = {
+    'vencidos': 'vencido',
+    'vencendo30': 'vencendo30',
+    'vencendo60': 'vencendo60',
+    'emDia': 'em_dia',
+    'semRegistro': 'sem_registro'
+};
+
 function abrirModalGestaoValidadeAsos() {
+    valAsoFiltrosAtivos = new Set(['todos']);
     valAsoFiltroAtual = 'todos';
-    document.querySelectorAll('#filtroValAsoPills .sector-pill').forEach(b => b.classList.remove('active'));
-    const btnTodos = document.querySelector('#filtroValAsoPills .sector-pill');
-    if (btnTodos) btnTodos.classList.add('active');
 
     const inputBusca = document.getElementById('valAsoBuscaInput');
     if (inputBusca) inputBusca.value = '';
 
     calcularEAtualizarValidadeAsos();
+    atualizarEstiloBotoesFiltroValAso();
+
     const modal = document.getElementById('modalGestaoValidadeAsos');
     if (modal) modal.style.display = 'flex';
 }
@@ -2278,10 +2288,124 @@ function fecharModalGestaoValidadeAsos() {
 }
 
 function filtrarTabelaValidadeAsos(filtro, btn) {
-    valAsoFiltroAtual = filtro;
-    document.querySelectorAll('#filtroValAsoPills .sector-pill').forEach(b => b.classList.remove('active'));
-    if (btn) btn.classList.add('active');
+    if (filtro === 'todos') {
+        valAsoFiltrosAtivos.clear();
+        valAsoFiltrosAtivos.add('todos');
+    } else {
+        if (valAsoFiltrosAtivos.has('todos')) {
+            valAsoFiltrosAtivos.clear();
+            valAsoFiltrosAtivos.add(filtro);
+        } else {
+            if (valAsoFiltrosAtivos.has(filtro)) {
+                valAsoFiltrosAtivos.delete(filtro);
+                if (valAsoFiltrosAtivos.size === 0) {
+                    valAsoFiltrosAtivos.add('todos');
+                }
+            } else {
+                valAsoFiltrosAtivos.add(filtro);
+                valAsoFiltrosAtivos.delete('todos');
+            }
+        }
+    }
+
+    if (valAsoFiltrosAtivos.has('todos')) {
+        valAsoFiltroAtual = 'todos';
+    } else if (valAsoFiltrosAtivos.size === 1) {
+        valAsoFiltroAtual = Array.from(valAsoFiltrosAtivos)[0];
+    } else {
+        valAsoFiltroAtual = Array.from(valAsoFiltrosAtivos).join(',');
+    }
+
+    atualizarEstiloBotoesFiltroValAso();
     renderTabelaValidadeAsos();
+}
+
+function atualizarEstiloBotoesFiltroValAso() {
+    const container = document.getElementById('filtroValAsoPills');
+    if (container) {
+        const botoes = container.querySelectorAll('.sector-pill');
+        botoes.forEach(b => {
+            const f = b.getAttribute('data-filtro');
+            if (!f) return;
+            const estaAtivo = valAsoFiltrosAtivos.has(f);
+            if (estaAtivo) {
+                b.classList.add('active');
+                if (f === 'vencidos') {
+                    b.style.background = '#dc2626';
+                    b.style.borderColor = '#b91c1c';
+                    b.style.color = '#ffffff';
+                } else if (f === 'vencendo30') {
+                    b.style.background = '#ea580c';
+                    b.style.borderColor = '#c2410c';
+                    b.style.color = '#ffffff';
+                } else if (f === 'vencendo60') {
+                    b.style.background = '#ca8a04';
+                    b.style.borderColor = '#a16207';
+                    b.style.color = '#ffffff';
+                } else if (f === 'emDia') {
+                    b.style.background = '#16a34a';
+                    b.style.borderColor = '#15803d';
+                    b.style.color = '#ffffff';
+                } else if (f === 'semRegistro') {
+                    b.style.background = '#475569';
+                    b.style.borderColor = '#334155';
+                    b.style.color = '#ffffff';
+                } else {
+                    b.style.background = '#0284c7';
+                    b.style.borderColor = '#0369a1';
+                    b.style.color = '#ffffff';
+                }
+                b.style.boxShadow = '0 2px 6px rgba(0,0,0,0.18)';
+                b.style.fontWeight = '700';
+            } else {
+                b.classList.remove('active');
+                b.style.background = 'var(--card, #ffffff)';
+                b.style.boxShadow = 'none';
+                b.style.fontWeight = '600';
+                if (f === 'vencidos') {
+                    b.style.borderColor = '#fca5a5';
+                    b.style.color = '#991b1b';
+                } else if (f === 'vencendo30') {
+                    b.style.borderColor = '#fed7aa';
+                    b.style.color = '#ea580c';
+                } else if (f === 'vencendo60') {
+                    b.style.borderColor = '#fef08a';
+                    b.style.color = '#ca8a04';
+                } else if (f === 'emDia') {
+                    b.style.borderColor = '#bbf7d0';
+                    b.style.color = '#15803d';
+                } else if (f === 'semRegistro') {
+                    b.style.borderColor = 'var(--border, #cbd5e1)';
+                    b.style.color = '#475569';
+                } else {
+                    b.style.borderColor = 'var(--border, #cbd5e1)';
+                    b.style.color = 'var(--text-light, #64748b)';
+                }
+            }
+        });
+    }
+
+    // Destaque nos cards superiores de KPI
+    const kpiCards = [
+        { id: 'valAsoCard_vencidos', filtro: 'vencidos', border: '#dc2626' },
+        { id: 'valAsoCard_vencendo30', filtro: 'vencendo30', border: '#ea580c' },
+        { id: 'valAsoCard_vencendo60', filtro: 'vencendo60', border: '#ca8a04' },
+        { id: 'valAsoCard_emDia', filtro: 'emDia', border: '#16a34a' },
+        { id: 'valAsoCard_semRegistro', filtro: 'semRegistro', border: '#475569' }
+    ];
+    kpiCards.forEach(c => {
+        const el = document.getElementById(c.id);
+        if (!el) return;
+        if (valAsoFiltrosAtivos.has(c.filtro)) {
+            el.style.outline = `2px solid ${c.border}`;
+            el.style.boxShadow = '0 4px 10px rgba(0,0,0,0.12)';
+            el.style.transform = 'translateY(-2px)';
+        } else {
+            el.style.outline = 'none';
+            el.style.boxShadow = 'none';
+            el.style.transform = 'none';
+        }
+    });
 }
 
 function calcularEAtualizarValidadeAsos() {
@@ -2344,18 +2468,20 @@ function calcularEAtualizarValidadeAsos() {
     renderTabelaValidadeAsos();
 }
 
-function renderTabelaValidadeAsos() {
-    const tbody = document.getElementById('tabelaValidadeAsosCorpo');
-    if (!tbody) return;
-
+function obterColaboradoresValidadeAsosFiltrados() {
     const busca = (document.getElementById('valAsoBuscaInput')?.value || '').toLowerCase().trim();
 
-    let filtrados = dadosValidadeAsosCache.filter(d => {
-        if (valAsoFiltroAtual === 'vencidos' && d.statusKey !== 'vencido') return false;
-        if (valAsoFiltroAtual === 'vencendo30' && d.statusKey !== 'vencendo30') return false;
-        if (valAsoFiltroAtual === 'vencendo60' && d.statusKey !== 'vencendo60') return false;
-        if (valAsoFiltroAtual === 'emDia' && d.statusKey !== 'em_dia') return false;
-        if (valAsoFiltroAtual === 'semRegistro' && d.statusKey !== 'sem_registro') return false;
+    return dadosValidadeAsosCache.filter(d => {
+        if (!valAsoFiltrosAtivos.has('todos')) {
+            let match = false;
+            for (const f of valAsoFiltrosAtivos) {
+                if (MAPA_STATUS_ASO[f] === d.statusKey) {
+                    match = true;
+                    break;
+                }
+            }
+            if (!match) return false;
+        }
 
         if (busca) {
             const txt = `${d.matricula} ${d.nome} ${d.cpf} ${d.gheNome} ${d.funcao} ${d.setor}`.toLowerCase();
@@ -2363,6 +2489,39 @@ function renderTabelaValidadeAsos() {
         }
         return true;
     });
+}
+
+function renderTabelaValidadeAsos() {
+    const tbody = document.getElementById('tabelaValidadeAsosCorpo');
+    if (!tbody) return;
+
+    const filtrados = obterColaboradoresValidadeAsosFiltrados();
+
+    // Atualizar resumo visual dos filtros combinados
+    const resumoEl = document.getElementById('valAsoFiltroResumo');
+    if (resumoEl) {
+        if (valAsoFiltrosAtivos.has('todos')) {
+            resumoEl.innerHTML = `Mostrando todos (<b>${filtrados.length}</b> colaboradores)`;
+        } else {
+            const rotulos = [];
+            if (valAsoFiltrosAtivos.has('vencidos')) rotulos.push(`🔴 Vencidos (${dadosValidadeAsosCache.filter(x => x.statusKey === 'vencido').length})`);
+            if (valAsoFiltrosAtivos.has('vencendo30')) rotulos.push(`🟠 Até 30d (${dadosValidadeAsosCache.filter(x => x.statusKey === 'vencendo30').length})`);
+            if (valAsoFiltrosAtivos.has('vencendo60')) rotulos.push(`🟡 31 a 60d (${dadosValidadeAsosCache.filter(x => x.statusKey === 'vencendo60').length})`);
+            if (valAsoFiltrosAtivos.has('emDia')) rotulos.push(`🟢 Em Dia (${dadosValidadeAsosCache.filter(x => x.statusKey === 'em_dia').length})`);
+            if (valAsoFiltrosAtivos.has('semRegistro')) rotulos.push(`⚪ Sem Reg. (${dadosValidadeAsosCache.filter(x => x.statusKey === 'sem_registro').length})`);
+            resumoEl.innerHTML = `Filtros combinados: <b>${rotulos.join(' + ')}</b> (${filtrados.length} listados)`;
+        }
+    }
+
+    // Atualizar botão de impressão com contagem real
+    const btnImp = document.getElementById('btnImprimirValidadeAsos');
+    if (btnImp) {
+        if (valAsoFiltrosAtivos.has('todos')) {
+            btnImp.innerHTML = `🖨️ Imprimir para Clínica (${filtrados.length})`;
+        } else {
+            btnImp.innerHTML = `🖨️ Imprimir Selecionados (${filtrados.length})`;
+        }
+    }
 
     if (filtrados.length === 0) {
         tbody.innerHTML = '<tr><td colspan="10" style="padding: 24px; text-align: center; color: var(--text-light);">Nenhum colaborador encontrado para os filtros selecionados.</td></tr>';
@@ -2393,8 +2552,8 @@ function renderTabelaValidadeAsos() {
         }
 
         const dataAdmFmt = d.dt_admissao ? formatSimpleDate(d.dt_admissao) : '—';
-        const ultimoAsoFmt = d.ultimoAsoData 
-            ? `<div>${formatSimpleDate(d.ultimoAsoData)}</div><div style="font-size:10px; color:var(--text-light); text-transform:uppercase;">${d.ultimoAsoTipo || 'ASO'}</div>`
+        const ultimoAsoFmt = d.ultimoAsoData
+            ? `<div>${formatSimpleDate(d.ultimoAsoData)}</div><div style="font-size:10px; color:var(--text-light); text-transform:uppercase;">${escapeHTML(d.ultimoAsoTipo || 'ASO')}</div>`
             : '<span style="color:var(--text-light);">Nenhum</span>';
         const vencFmt = d.dataVencimento ? `<b>${formatSimpleDate(d.dataVencimento)}</b>` : '<span style="color:#b91c1c;">Pendente</span>';
 
@@ -2425,13 +2584,59 @@ function renderTabelaValidadeAsos() {
 
 // Impressão da Relação de Validade de ASOs para a Clínica Médica (Blob URL — 100% livre de bloqueador de popups)
 function imprimirRelacaoValidadeAsos() {
-    const prioritarios = dadosValidadeAsosCache.filter(d => d.statusKey === 'vencido' || d.statusKey === 'vencendo30' || d.statusKey === 'vencendo60' || d.statusKey === 'sem_registro');
+    let paraImprimir = obterColaboradoresValidadeAsosFiltrados();
+
+    if (paraImprimir.length === 0) {
+        alert('Nenhum colaborador encontrado com os filtros selecionados para impressão.');
+        return;
+    }
+
+    let subtituloJanela = '';
+    let descricaoFiltros = '';
+
+    if (valAsoFiltrosAtivos.has('todos')) {
+        const prioritarios = paraImprimir.filter(d => d.statusKey === 'vencido' || d.statusKey === 'vencendo30' || d.statusKey === 'vencendo60' || d.statusKey === 'sem_registro');
+        const temEmDia = paraImprimir.some(d => d.statusKey === 'em_dia');
+
+        if (temEmDia && prioritarios.length > 0 && prioritarios.length < paraImprimir.length) {
+            const querApenasPrioritarios = confirm(
+                `A lista atual contém todos os ${paraImprimir.length} colaboradores (incluindo colaboradores com ASO em dia).\n\n` +
+                `• Clique em [OK] para imprimir APENAS os ${prioritarios.length} prioritários para agendamento (Vencidos e a Vencer em até 60d).\n` +
+                `• Clique em [CANCELAR] para imprimir a lista completa com todos os ${paraImprimir.length} colaboradores.`
+            );
+            if (querApenasPrioritarios) {
+                paraImprimir = prioritarios;
+                subtituloJanela = 'Prioridade Máxima: Vencidos e Janela de 30/60 dias da NR-07';
+                descricaoFiltros = `Prioritários para Agendamento Clínico (${prioritarios.length} colaboradores)`;
+            } else {
+                subtituloJanela = 'Relação Geral do Efetivo Ativo';
+                descricaoFiltros = `Todos os Colaboradores (${paraImprimir.length} colaboradores)`;
+            }
+        } else {
+            subtituloJanela = 'Relação Geral de Validade de ASOs';
+            descricaoFiltros = `Total de ${paraImprimir.length} colaboradores`;
+        }
+    } else {
+        const nomes = [];
+        if (valAsoFiltrosAtivos.has('vencidos')) nomes.push('Já Vencidos');
+        if (valAsoFiltrosAtivos.has('vencendo30')) nomes.push('Vencem em até 30d');
+        if (valAsoFiltrosAtivos.has('vencendo60')) nomes.push('Vencem em 31 a 60d');
+        if (valAsoFiltrosAtivos.has('emDia')) nomes.push('Em Dia');
+        if (valAsoFiltrosAtivos.has('semRegistro')) nomes.push('Sem Registro ASO');
+
+        subtituloJanela = `Filtro Selecionado: ${nomes.join(' + ')}`;
+        descricaoFiltros = `Status Selecionados: ${nomes.join(' + ')} (${paraImprimir.length} colaboradores convocados)`;
+    }
+
     const hojeStr = new Date().toLocaleDateString('pt-BR');
 
-    const linhasHtml = prioritarios.map((c, i) => {
+    const linhasHtml = paraImprimir.map((c, i) => {
         let sit = 'Vencido';
-        if (c.statusKey === 'vencendo30') sit = `Vence em ${c.diffDays}d`;
+        if (c.isencaoFerias) sit = 'Retorno Férias';
+        else if (c.statusKey === 'vencido') sit = `Vencido há ${Math.abs(c.diffDays)}d`;
+        else if (c.statusKey === 'vencendo30') sit = c.diffDays === 0 ? 'Vence HOJE' : `Vence em ${c.diffDays}d`;
         else if (c.statusKey === 'vencendo60') sit = `Vence em ${c.diffDays}d`;
+        else if (c.statusKey === 'em_dia') sit = `Em dia (${c.diffDays}d)`;
         else if (c.statusKey === 'sem_registro') sit = 'Sem ASO';
 
         return `
@@ -2481,14 +2686,14 @@ function imprimirRelacaoValidadeAsos() {
         <img src="${LOGO_COP_BASE64}" alt="COP">
         <div class="titulo-doc">
             <h2>RELAÇÃO DE VENCIMENTOS E PREVISÃO DE ASOs PERIÓDICOS (NR-07 / PCMSO)</h2>
-            <p>Controle Preventivo de Agendamentos — Vencidos e a Vencer em 30 e 60 Dias</p>
+            <p>Controle Preventivo de Agendamentos — ${subtituloJanela}</p>
             <p><b>Posição em: ${hojeStr}</b> — Consórcio Operador PISF Ramal do Agreste</p>
         </div>
         <div style="width:46px;"></div>
     </div>
 
     <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:6px 10px; margin-bottom:8px; font-size:10px;">
-        <strong>Total Convocados para Agendamento: ${prioritarios.length}</strong> (Prioridade Máxima: Vencidos e Janela de 30/60 dias da NR-07)
+        <strong>Total Convocados para Agendamento: ${paraImprimir.length}</strong> (${descricaoFiltros})
     </div>
 
     <table>
@@ -2531,7 +2736,8 @@ function imprimirRelacaoValidadeAsos() {
 </body>
 </html>`;
 
-    abrirDocumentoHtmlParaImpressao(html, `Validade_ASOs_30_60_dias_${hojeStr.replace(/\//g, '-')}`);
+    const sufixoFiltro = Array.from(valAsoFiltrosAtivos).join('_');
+    abrirDocumentoHtmlParaImpressao(html, `Validade_ASOs_${sufixoFiltro}_${hojeStr.replace(/\//g, '-')}`);
 }
 
 function exportarExcelValidadeAsos() {
@@ -2539,7 +2745,13 @@ function exportarExcelValidadeAsos() {
         alert('Biblioteca XLSX não carregada.');
         return;
     }
-    const rows = dadosValidadeAsosCache.map(d => ({
+    const paraExportar = obterColaboradoresValidadeAsosFiltrados();
+    if (paraExportar.length === 0) {
+        alert('Nenhum registro encontrado para exportar com os filtros selecionados.');
+        return;
+    }
+
+    const rows = paraExportar.map(d => ({
         'Matrícula': d.matricula,
         'Nome do Colaborador': d.nome,
         'CPF': d.cpf,
@@ -2553,30 +2765,33 @@ function exportarExcelValidadeAsos() {
         'Periodicidade PCMSO (Meses)': d.periodicidadeMeses,
         'Data de Vencimento': d.dataVencimento ? formatSimpleDate(d.dataVencimento) : '',
         'Dias para Vencer': d.diffDays !== null ? d.diffDays : '',
-        'Status de Validade': d.statusKey === 'vencido' ? 'VENCIDO' : d.statusKey === 'vencendo30' ? 'VENCE EM ATÉ 30 DIAS' : d.statusKey === 'vencendo60' ? 'VENCE EM 31 A 60 DIAS' : d.statusKey === 'em_dia' ? 'EM DIA' : 'SEM REGISTRO'
+        'Status de Validade': d.isencaoFerias ? 'RETORNO FÉRIAS' : (d.statusKey === 'vencido' ? 'VENCIDO' : d.statusKey === 'vencendo30' ? 'VENCE EM ATÉ 30 DIAS' : d.statusKey === 'vencendo60' ? 'VENCE EM 31 A 60 DIAS' : d.statusKey === 'em_dia' ? 'EM DIA' : 'SEM REGISTRO')
     }));
 
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Validade ASOs');
     const hoje = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb, `Validade_ASOs_Periodicos_NR07_${hoje}.xlsx`);
+    const sufixoFiltro = Array.from(valAsoFiltrosAtivos).join('_');
+    XLSX.writeFile(wb, `Validade_ASOs_${sufixoFiltro}_${hoje}.xlsx`);
 }
 
 function copiarAlertaValidadeAsosWhatsApp() {
-    const vencidos = dadosValidadeAsosCache.filter(d => d.statusKey === 'vencido');
-    const v30 = dadosValidadeAsosCache.filter(d => d.statusKey === 'vencendo30');
-    const v60 = dadosValidadeAsosCache.filter(d => d.statusKey === 'vencendo60');
+    const filtrados = obterColaboradoresValidadeAsosFiltrados();
+    const vencidos = filtrados.filter(d => d.statusKey === 'vencido');
+    const v30 = filtrados.filter(d => d.statusKey === 'vencendo30');
+    const v60 = filtrados.filter(d => d.statusKey === 'vencendo60');
 
     let txt = `🚨 *ALERTA DE VALIDADE DE ASOs PERIÓDICOS (NR-07 / PCMSO)* 📅\n`;
     txt += `_Consórcio COP — Ramal do Agreste_\n\n`;
-    txt += `📊 *Panorama Geral de Vencimentos:*\n`;
-    txt += `🔴 *ASOs Já Vencidos:* ${vencidos.length} colaboradores\n`;
-    txt += `🟠 *Vencendo nos próximos 30 dias:* ${v30.length} colaboradores\n`;
-    txt += `🟡 *Vencendo entre 31 e 60 dias:* ${v60.length} colaboradores\n\n`;
+    txt += `📊 *Panorama dos Registros Selecionados (${filtrados.length} colaboradores):*\n`;
+    if (vencidos.length > 0) txt += `🔴 *ASOs Já Vencidos:* ${vencidos.length} colaboradores\n`;
+    if (v30.length > 0) txt += `🟠 *Vencendo nos próximos 30 dias:* ${v30.length} colaboradores\n`;
+    if (v60.length > 0) txt += `🟡 *Vencendo entre 31 e 60 dias:* ${v60.length} colaboradores\n\n`;
 
     if (vencidos.length > 0) {
-        txt += `⚠️ *URGENTE — JÁ VENCIDOS (${vencidos.length}):*\n`;
+        txt += `⚠️ *URGENTE — JÁ VENCIDOS (${vencidos.length}):*
+`;
         vencidos.slice(0, 15).forEach((c, idx) => {
             txt += `   ${idx + 1}. ${c.nome} (Matr. ${c.matricula} - ${c.funcao}) - Vencido há ${Math.abs(c.diffDays)}d\n`;
         });
@@ -2590,6 +2805,15 @@ function copiarAlertaValidadeAsosWhatsApp() {
             txt += `   ${idx + 1}. ${c.nome} (Matr. ${c.matricula} - ${c.funcao}) - Vence em ${c.diffDays}d (${formatSimpleDate(c.dataVencimento)})\n`;
         });
         if (v30.length > 15) txt += `   ... e mais ${v30.length - 15} colaboradores.\n`;
+        txt += `\n`;
+    }
+
+    if (v60.length > 0 && !valAsoFiltrosAtivos.has('todos') && valAsoFiltrosAtivos.has('vencendo60')) {
+        txt += `🟡 *PROGRAMAÇÃO — VENCENDO EM 31 A 60 DIAS (${v60.length}):*\n`;
+        v60.slice(0, 15).forEach((c, idx) => {
+            txt += `   ${idx + 1}. ${c.nome} (Matr. ${c.matricula} - ${c.funcao}) - Vence em ${c.diffDays}d (${formatSimpleDate(c.dataVencimento)})\n`;
+        });
+        if (v60.length > 15) txt += `   ... e mais ${v60.length - 15} colaboradores.\n`;
         txt += `\n`;
     }
 
@@ -6905,7 +7129,7 @@ window.aoMudarFiltroStatusTriagem = aoMudarFiltroStatusTriagem;
 window.filtrarTabelaConvocacaoPsicossocial = renderTabelaConvocacaoPsicossocial;
 
 function showSaudeSubtab(tab) {
-    ['visao', 'aso', 'atestado', 'pressao', 'previsao', 'recomendacoes', 'consulta-mensal', 'relatorio'].forEach(t => {
+    ['visao', 'aso', 'atestado', 'pressao', 'previsao', 'recomendacoes', 'consulta-mensal', 'relatorio', 'docbase'].forEach(t => {
         const content = document.getElementById('saudeSubtab-' + t);
         const btn = document.getElementById('saudeSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -6924,6 +7148,15 @@ function showSaudeSubtab(tab) {
     // (com o período que já estava selecionado) pra garantir que o relatório nunca fique
     // com números desatualizados, mesmo que o usuário nunca tenha clicado em "Visão Geral".
     if (tab === 'relatorio') { renderSaudePanel(); renderSaudeRelatorioChecklist(); }
+    if (tab === 'docbase') {
+        if (typeof window.pcmsoOnAbrirAbaDocBase === 'function') {
+            window.pcmsoOnAbrirAbaDocBase();
+        } else if (typeof pcmsoCarregarDocBase === 'function') {
+            pcmsoCarregarDocBase();
+        } else if (typeof renderPcmsoDocBaseView === 'function') {
+            renderPcmsoDocBaseView();
+        }
+    }
 }
 
 // ============================================
@@ -7097,6 +7330,89 @@ function gerarPdfSaude() {
     abrirDocumentoBlob(html);
     statusEl.textContent = `✅ Relatório gerado — abra a aba nova pra imprimir/salvar em PDF.`;
     statusEl.style.color = 'var(--success)';
+}
+
+// Modelo físico: não emite conclusão médica, não altera exames nem validade do efetivo.
+// NR-07, 7.5.19 a 7.5.19.3; identificação complementar: CFM 2.381/2024.
+function gerarHtmlModeloAsoCop(empresa = {}, colaborador = {}, tipo = '', atendimento = {}) {
+    const e = valor => escapeHTML(String(valor || ''));
+    const coordenador = atendimento.coordenador || {};
+    const examinador = atendimento.examinador || {};
+    const clinica = atendimento.clinica || {};
+    const campo = (rotulo, valor = '', classe = '') => `<div class="campo ${classe}"><b>${rotulo}</b><div class="valor" contenteditable="true" role="textbox" aria-label="${rotulo}">${e(valor)}</div></div>`;
+    const tipos = [
+        ['admissional', 'Admissional'], ['periodico', 'Periódico'],
+        ['retorno_trabalho', 'Retorno ao trabalho'], ['mudanca_risco', 'Mudança de riscos ocupacionais'],
+        ['demissional', 'Demissional']
+    ];
+    const opcoes = (nome, itens) => itens.map((texto, i) => `<label><input type="radio" name="${nome}" value="${i}"> ${texto}</label>`).join(' ');
+    return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>ASO — formulário COP</title><style>
+@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box}body{font:10px Arial,sans-serif;color:#172033;margin:0}
+main{max-width:190mm;margin:auto}header{border-bottom:3px solid #164e63;padding:0 0 8px;display:flex;gap:12px;align-items:center}
+header img{width:64px;max-height:48px;object-fit:contain}h1{font-size:19px;margin:0 0 4px}h2{font-size:11px;background:#e9f0f3;padding:4px 7px;margin:4px 0 0;border:1px solid #98a9b1}
+.grade{display:grid;grid-template-columns:1fr 1fr;border-left:1px solid #98a9b1}.campo{border-right:1px solid #98a9b1;border-bottom:1px solid #98a9b1;padding:2px 7px;min-width:0}.inteiro{grid-column:1/-1}
+b{font-size:10px}.valor{min-height:14px;white-space:pre-wrap;overflow-wrap:anywhere;padding-top:2px;outline-offset:2px}.alto .valor{min-height:28px}
+table{width:100%;border-collapse:collapse}th,td{border:1px solid #98a9b1;padding:3px 7px;text-align:left}th{background:#f1f5f7;font-size:10px}td{height:19px;overflow-wrap:anywhere}
+td:first-child{width:73%}label{display:inline-block;margin:2px 7px 2px 0}input{margin:0 2px 0 0;vertical-align:middle;accent-color:#172033}
+.nota{font-size:9px;line-height:1.3;margin:4px 0}.assinatura{min-height:36px;padding-top:23px;text-align:center;border-bottom:1px solid #98a9b1}
+section{break-inside:avoid}.acoes{background:#e9f0f3;padding:12px;margin-bottom:14px;font-size:13px;line-height:1.5}.acoes button{padding:8px 14px;cursor:pointer}
+footer{font-size:8px;border-top:1px solid #98a9b1;margin-top:9px;padding-top:5px}
+@media print{.acoes{display:none}body{color:#000}.valor:empty:after{content:' ';display:block}input{appearance:none;width:10px;height:10px;border:1px solid #000}input:checked:after{content:'X';font:9px Arial;display:block;text-align:center}h2,th{print-color-adjust:exact}}
+</style></head><body><main>
+<div class="acoes"><strong>Formulário para preenchimento e emissão pelo médico.</strong> Confira a identidade e os dados cadastrais. Clique nos campos para preencher ou imprima em branco. As edições desta aba não são salvas no sistema. A impressão ou o PDF sem assinatura não constitui ASO emitido.<br>
+Não inclua diagnósticos, CID ou resultados clínicos neste formulário administrativo. Para exame complementar sem exame clínico, utilize recibo de entrega de resultados (NR-07, 7.5.19.3).<br>
+<button type="button" onclick="window.print()">Imprimir / Salvar como PDF</button></div>
+<header>${typeof LOGO_COP_BASE64 !== 'undefined' ? `<img src="${e(LOGO_COP_BASE64)}" alt="COP">` : ''}<div><h1>ATESTADO DE SAÚDE OCUPACIONAL</h1><div>ASO • Programa de Controle Médico de Saúde Ocupacional — NR-07</div></div></header>
+<section><h2>1. ORGANIZAÇÃO E TRABALHADOR</h2><div class="grade">
+${campo('Razão social', empresa.razaoSocial, 'inteiro')}${campo('CNPJ ou CAEPF', empresa.cnpj)}${campo('Unidade / estabelecimento')}
+${campo('Nome completo do trabalhador', colaborador.nome, 'inteiro')}${campo('CPF', colaborador.cpf)}${campo('Matrícula', colaborador.matricula)}
+${campo('Função', colaborador.funcao)}${campo('Setor / GHE', colaborador.setor)}
+</div></section>
+<section><h2>2. EXAME OCUPACIONAL</h2><div class="grade"><div class="campo inteiro">${tipos.map(([chave, texto]) => `<label><input type="radio" name="tipo" ${tipo === chave ? 'checked' : ''}> ${texto}</label>`).join('')}</div></div></section>
+<section><h2>3. PERIGOS / FATORES DE RISCO QUE EXIGEM CONTROLE MÉDICO</h2><div class="grade">
+${campo('Descrição conforme PGR e controle previsto no PCMSO', '', 'inteiro alto')}
+<div class="campo inteiro"><label><input type="checkbox"> Declaração médica de inexistência de perigos ou fatores de risco que necessitem de controle médico previsto no PCMSO.</label></div>
+${campo('Referência / revisão do PGR')}${campo('Referência / revisão do PCMSO')}
+</div></section>
+<section><h2>4. EXAMES EFETIVAMENTE REALIZADOS</h2><table><thead><tr><th>Exame clínico e exames complementares (indicar individualmente)</th><th>Data de realização</th></tr></thead><tbody>
+<tr><td>Exame clínico ocupacional</td><td contenteditable="true" aria-label="Data do exame clínico"></td></tr>
+${Array.from({ length: 5 }, () => '<tr><td contenteditable="true" aria-label="Nome do exame complementar"></td><td contenteditable="true" aria-label="Data do exame complementar"></td></tr>').join('')}
+</tbody></table><div class="nota">Preencher cada data real de realização. A previsão de exames e a data do cadastro não comprovam sua realização. Se necessário, anexar continuação identificada e assinada pelo médico.</div></section>
+<section><h2>5. CONCLUSÃO MÉDICA</h2><div class="grade"><div class="campo inteiro"><b>Para a função acima:</b> ${opcoes('aptidao', ['APTO', 'INAPTO'])}</div>
+<div class="campo inteiro"><b>Trabalho em altura (NR-35):</b> ${opcoes('altura', ['Apto', 'Inapto', 'Não se aplica'])}<br><b>Espaço confinado (NR-33):</b> ${opcoes('confinado', ['Apto', 'Inapto', 'Não se aplica'])}</div>
+${campo('Outras atividades específicas / aptidão expressa / orientações funcionais, quando aplicável', '', 'inteiro')}
+</div></section>
+<section><h2>6. IDENTIFICAÇÃO MÉDICA E EMISSÃO</h2><div class="grade">
+${atendimento.clinica ? campo('Estabelecimento de atendimento / CNPJ', [clinica.nome, clinica.cnpj].filter(Boolean).join(' — '), 'inteiro') : ''}
+${campo('Médico responsável pelo PCMSO, se houver', coordenador.nome)}${campo('CRM / UF do responsável pelo PCMSO', coordenador.crm)}
+${campo('Médico examinador — nome completo', examinador.nome)}${campo('CRM / UF do examinador e RQE, quando houver', [examinador.crm, examinador.uf, examinador.rqe ? 'RQE ' + examinador.rqe : ''].filter(Boolean).join(' / '))}
+${campo('Contato profissional do examinador (telefone ou e-mail)', examinador.contato)}${campo('Endereço do examinador (preferencialmente profissional)', examinador.endereco)}
+${campo('Local de emissão')}${campo('Data de emissão')}
+</div><div class="assinatura">Assinatura do médico examinador e carimbo ou identificação CRM/UF</div>
+<div class="nota">Emissão exclusivamente médica após exame clínico. Em papel: assinatura manuscrita. Documento eletrônico: assinatura qualificada do médico. Este formulário não aplica assinatura eletrônica.</div></section>
+<section><h2>7. COMPROVANTE DE DISPONIBILIZAÇÃO AO TRABALHADOR</h2><div class="grade"><div class="campo inteiro">Recebi / tive acesso a este ASO. Via física será fornecida quando solicitada.</div>
+${campo('Data e meio de entrega / disponibilização')}${campo('Assinatura do trabalhador / referência do comprovante')}
+</div></section>
+<footer>Modelo COP • revisão 02 — 03/11/2026 • NR-07, itens 7.5.19 a 7.5.19.3; identificação médica conforme Resolução CFM nº 2.381/2024. Preenchimento, conclusão e assinatura sob responsabilidade do médico. Aptidão não substitui capacitação e autorização para atividades específicas.</footer>
+</main></body></html>`;
+}
+
+function abrirModeloAsoCop(usarColaborador) {
+    let colab = {};
+    let tipo = '';
+    if (usarColaborador) {
+        const selecao = buscarColaboradorPorInput('asoForm_matricula');
+        if (!selecao.colab) {
+            const status = document.getElementById('asoFormStatus');
+            status.textContent = 'Selecione um colaborador da lista para preparar seu modelo de ASO.';
+            status.style.color = 'var(--danger)';
+            return;
+        }
+        colab = { ...selecao.colab, matricula: selecao.matricula };
+        tipo = document.getElementById('asoForm_tipo').value;
+    }
+    abrirDocumentoHtmlParaImpressao(gerarHtmlModeloAsoCop(EMPRESA_INFO, colab, tipo), 'Modelo ASO COP');
 }
 
 // ---- CRUD: Exames ASO ----

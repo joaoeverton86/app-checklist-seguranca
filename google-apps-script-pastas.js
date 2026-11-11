@@ -1,146 +1,149 @@
-// =========================================================================================
-// GOOGLE APPS SCRIPT - AUTOMAÇÃO HIERÁRQUICA DE PASTAS DO GOOGLE DRIVE (SST)
-// =========================================================================================
-// Suporta:
-// 1. Criação em lote da estrutura mensal do Cronograma de Treinamentos/DDSMA (Ação: "criarEstruturaCronograma")
-//    Padrão: [Pasta Raiz] -> [Ano] -> [Mês (ex: 10 - Outubro)] -> [Subpastas de Temas: [DD/MM] COD - TEMA]
-// 2. Criação individual de pastas de Fotos & Evidências (Ação: "criar_pasta_fotos")
-//    Padrão: [Pasta Raiz] -> [Ano] -> [Mês] -> [Categoria] -> [Subpasta do Evento]
-//
-// INSTRUÇÕES DE IMPLANTAÇÃO COMO APLICATIVO DA WEB (WEB APP):
-// 1. Acesse o Google Drive (com a conta proprietária da pasta de SST).
-// 2. Crie um novo projeto no Google Apps Script (ou acesse: https://script.google.com).
-// 3. Cole todo este código no editor (substituindo o conteúdo de "Código.gs").
-// 4. Clique em "Implantar" (Deploy) no canto superior direito -> "Nova implantação" (New deployment).
-// 5. Clique no ícone de engrenagem ao lado de "Selecionar tipo" e escolha "Aplicativo da Web" (Web app).
-// 6. Preencha as opções EXATAMENTE assim:
-//    - Descrição: Automação de Pastas SST (Cronograma & Fotos)
-//    - Executar como (Execute as): "Eu" (seu e-mail proprietário do Drive)
-//    - Quem pode acessar (Who has access): "Qualquer pessoa" (Anyone)
-// 7. Clique em "Implantar" (Deploy), autorize as permissões da conta Google e copie a URL do Web App:
-//    URL OFICIAL IMPLANTADA:
-//    https://script.google.com/macros/s/AKfycbzdCzGE9Jm77RauUe8iuo1p8il193F7Pd7HeLLbut0zToD8zhHtv2RBSAY86bQZGLtA/exec
-// 8. No Painel Gerencial de SST, a URL acima já está configurada como padrão operacional no sistema.
-// =========================================================================================
-
-/**
- * Endpoint GET para diagnóstico rápido e teste no navegador
- */
 function doGet(e) {
+  var raiz = PropertiesService.getScriptProperties().getProperty("FOTOS_ROOT_ID");
   return ContentService.createTextOutput(JSON.stringify({
-    status: 'online',
-    servico: 'Automação de Pastas de SST (Cronograma & Evidências)',
-    acoesDisponiveis: ['criarEstruturaCronograma', 'criar_pasta_fotos'],
-    mensagem: 'Web App ativo e pronto para receber requisições POST.',
+    status: "ok", protocolo: "fotos-leitura-v292", somenteLeitura: true,
+    raizConfigurada: Boolean(raiz)
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "erro", message: "Sem dados" })).setMimeType(ContentService.MimeType.JSON);
+    }
+    var data = JSON.parse(e.postData.contents);
+    var action = String(data.action || "").trim();
+
+    if (action === "listarFotosSubpastas" || action === "extrairFotosDaPasta") {
+      return listarFotosSubpastas(data);
+    }
+    if (action === "criarEstruturaCronograma" || (Array.isArray(data.temas) && data.temas.length > 0)) {
+      return criarEstruturaCronograma(data);
+    }
+    return criarPastaEvidenciasFotos(data);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "erro", message: String(error) })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function listarFotosSubpastas(data) {
+  var pastaId = extrairIdPasta(data.pastaId || data.pastaRaizId || data.folderId);
+  if (!pastaId) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "erro", message: "ID invalido" })).setMimeType(ContentService.MimeType.JSON);
+  }
+  var pastaMae;
+  try {
+    pastaMae = DriveApp.getFolderById(pastaId);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "erro", message: String(err) })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var raiz = PropertiesService.getScriptProperties().getProperty("FOTOS_ROOT_ID");
+  if (!raiz) throw new Error("Configure FOTOS_ROOT_ID nas propriedades do script.");
+  var atual = pastaMae;
+  var permitida = false;
+  for (var nivel = 0; nivel < 12; nivel++) {
+    if (atual.getId() === raiz) { permitida = true; break; }
+    var pais = atual.getParents();
+    if (!pais.hasNext()) break;
+    atual = pais.next();
+  }
+  if (!permitida) throw new Error("Pasta fora da raiz de fotos autorizada.");
+
+  var subpastas = pastaMae.getFolders();
+  var resultado = [];
+
+  while (subpastas.hasNext()) {
+    if (resultado.length >= 200) throw new Error("Mais de 200 subpastas: consulte uma pasta mensal menor.");
+    var sub = subpastas.next();
+    var arquivos = sub.getFiles();
+    var fotos = [];
+
+    while (arquivos.hasNext()) {
+      var arq = arquivos.next();
+      var mime = arq.getMimeType();
+      if (mime.indexOf("image/") === 0 || mime === "application/vnd.google-apps.photo") {
+        if (fotos.length >= 200) throw new Error("Mais de 200 fotos em uma subpasta.");
+        fotos.push({
+          id: arq.getId(),
+          nome: arq.getName(),
+          mimeType: mime,
+          url: arq.getUrl(),
+          tamanho: arq.getSize()
+        });
+      }
+    }
+
+    fotos.sort(function(a, b) { return a.nome.localeCompare(b.nome, "pt-BR"); });
+
+    resultado.push({
+      pastaId: sub.getId(),
+      pastaNome: sub.getName(),
+      fotos: fotos
+    });
+  }
+
+  resultado.sort(function(a, b) {
+    return a.pastaNome.localeCompare(b.pastaNome, "pt-BR");
+  });
+
+  return ContentService.createTextOutput(JSON.stringify({
+    status: "sucesso",
+    somenteLeitura: true,
+    pastaMaeNome: pastaMae.getName(),
+    pastaMaeId: pastaMae.getId(),
+    totalSubpastas: resultado.length,
+    subpastas: resultado,
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
-/**
- * Endpoint POST principal
- */
-function doPost(e) {
-  try {
-    if (!e || !e.postData || !e.postData.contents) {
-      return ContentService.createTextOutput(JSON.stringify({
-        status: 'erro',
-        message: 'Nenhum dado recebido no corpo da requisição POST.'
-      })).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    const data = JSON.parse(e.postData.contents);
-    const action = String(data.action || '').trim();
-
-    // Roteamento de ações
-    if (action === 'criarEstruturaCronograma' || (Array.isArray(data.temas) && data.temas.length > 0)) {
-      return criarEstruturaCronograma(data);
-    }
-
-    // Ação padrão legada: criação individual de pasta de fotos/evidências
-    return criarPastaEvidenciasFotos(data);
-
-  } catch (error) {
-    Logger.log('Erro geral no doPost: ' + error.toString());
-    return ContentService.createTextOutput(JSON.stringify({
-      status: 'erro',
-      message: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-/**
- * AÇÃO 1: Criação recursiva e idempotente de pastas para todos os temas de treinamento do cronograma
- * Estrutura: [Pasta Raiz] -> [Ano] -> [Mês (ex: "10 - Outubro")] -> [Subpasta: "[DD/MM] COD - TEMA"]
- */
 function criarEstruturaCronograma(data) {
-  let rootFolderId = data.pastaRaizId || data.rootFolderId || data.folderId;
-  const ano = String(data.ano || new Date().getFullYear());
-  let mes = normalizarNomeMes(data.mes || (new Date().getMonth() + 1));
-  const temas = Array.isArray(data.temas) ? data.temas : [];
+  var rootFolderId = extrairIdPasta(data.pastaRaizId || data.rootFolderId || data.folderId);
+  var ano = String(data.ano || new Date().getFullYear());
+  var mes = normalizarNomeMes(data.mes || (new Date().getMonth() + 1));
+  var temas = Array.isArray(data.temas) ? data.temas : [];
 
-  // Sanitiza rootFolderId se for uma URL completa do Drive
-  rootFolderId = extrairIdPasta(rootFolderId);
-
-  let pastaRaiz;
+  var pastaRaiz;
   if (rootFolderId) {
     try {
       pastaRaiz = DriveApp.getFolderById(rootFolderId);
     } catch (eRaiz) {
-      Logger.log('Pasta raiz não localizada pelo ID informado, usando Raiz do Meu Drive: ' + eRaiz.toString());
       pastaRaiz = DriveApp.getRootFolder();
     }
   } else {
     pastaRaiz = DriveApp.getRootFolder();
   }
 
-  // 1. Localiza ou cria pasta do Ano (ex: "2026")
-  const pastaAno = getOrCreateSubFolder(pastaRaiz, String(ano));
+  var pastaAno = getOrCreateSubFolder(pastaRaiz, String(ano));
+  var pastaMes = getOrCreateSubFolder(pastaAno, String(mes));
+  var pastasResultado = [];
 
-  // 2. Localiza ou cria pasta do Mês (ex: "10 - Outubro")
-  const pastaMes = getOrCreateSubFolder(pastaAno, String(mes));
+  for (var i = 0; i < temas.length; i++) {
+    var t = temas[i];
+    var diaRaw = String(t.dia || "").trim();
+    var codRaw = String(t.codigo || t.cod || "").trim();
+    var temaRaw = String(t.tema || t.nome || "").trim();
 
-  const pastasResultado = [];
+    var matchNumMes = String(mes).match(/^(\d{2})/);
+    var numMesPadrao = matchNumMes ? matchNumMes[1] : String(new Date().getMonth() + 1).padStart(2, "0");
 
-  // 3. Itera sobre cada tema de treinamento do cronograma
-  for (let i = 0; i < temas.length; i++) {
-    const t = temas[i];
-    const diaRaw = String(t.dia || '').trim();
-    const codRaw = String(t.codigo || t.cod || '').trim();
-    const temaRaw = String(t.tema || t.nome || '').trim();
-
-    // Extrai número do mês a partir do nome da pasta (ex: "10 - Outubro" -> "10")
-    const matchNumMes = String(mes).match(/^(\d{2})/);
-    const numMesPadrao = matchNumMes ? matchNumMes[1] : String(new Date().getMonth() + 1).padStart(2, '0');
-
-    // Formata o dia no padrão DD/MM
-    let prefixoData = diaRaw;
+    var prefixoData = diaRaw;
     if (prefixoData) {
-      if (prefixoData.includes('-') && prefixoData.length >= 8) {
-        // Formato ISO: YYYY-MM-DD
-        const partes = prefixoData.split('-');
-        prefixoData = `${partes[2]}/${partes[1]}`;
-      } else if (!prefixoData.includes('/') && !prefixoData.includes('-')) {
-        prefixoData = `${prefixoData.padStart(2, '0')}/${numMesPadrao}`;
+      if (prefixoData.includes("-") && prefixoData.length >= 8) {
+        var partes = prefixoData.split("-");
+        prefixoData = partes[2] + "/" + partes[1];
+      } else if (!prefixoData.includes("/") && !prefixoData.includes("-")) {
+        prefixoData = prefixoData.padStart(2, "0") + "/" + numMesPadrao;
       }
     } else {
-      prefixoData = `01/${numMesPadrao}`;
+      prefixoData = "01/" + numMesPadrao;
     }
 
-    // Padrão de nomenclatura: [DD/MM] COD - TEMA ou [DD/MM] TEMA
-    let nomePastaTema = '';
-    if (codRaw) {
-      nomePastaTema = `[${prefixoData}] ${codRaw} - ${temaRaw}`;
-    } else {
-      nomePastaTema = `[${prefixoData}] ${temaRaw}`;
-    }
+    var nomePastaTema = codRaw ? ("[" + prefixoData + "] " + codRaw + " - " + temaRaw) : ("[" + prefixoData + "] " + temaRaw);
+    var prefixoAlt = prefixoData.replace("/", "-");
+    var pastaTema = getOrCreateTemaFolder(pastaMes, nomePastaTema, "[" + prefixoData + "]", "[" + prefixoAlt + "]", codRaw, temaRaw);
 
-    // Prefixo alternativo para compatibilidade/idempotência tolerante (ex: [01-10] vs [01/10])
-    const prefixoAlt = prefixoData.replace('/', '-');
-
-    // Localiza ou cria de forma estritamente idempotente
-    const pastaTema = getOrCreateTemaFolder(pastaMes, nomePastaTema, `[${prefixoData}]`, `[${prefixoAlt}]`, codRaw, temaRaw);
-
-    // Permissão de leitura pública por link
     try {
       pastaTema.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     } catch (_) {}
@@ -153,12 +156,12 @@ function criarEstruturaCronograma(data) {
       nomePasta: pastaTema.getName(),
       folderId: pastaTema.getId(),
       folderUrl: pastaTema.getUrl(),
-      caminho: `${ano} / ${mes} / ${pastaTema.getName()}`
+      caminho: ano + " / " + mes + " / " + pastaTema.getName()
     });
   }
 
   return ContentService.createTextOutput(JSON.stringify({
-    status: 'sucesso',
+    status: "sucesso",
     ano: ano,
     mes: mes,
     pastaMesId: pastaMes.getId(),
@@ -169,17 +172,14 @@ function criarEstruturaCronograma(data) {
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
-/**
- * AÇÃO 2: Criação individual de pasta de fotos e evidências operacionais
- */
 function criarPastaEvidenciasFotos(data) {
-  let rootFolderId = extrairIdPasta(data.rootFolderId || data.folderId || data.pastaRaizId);
-  const ano = String(data.ano || new Date().getFullYear());
-  const mes = data.mes || data.mesPasta || formatarMesPadrao(new Date());
-  const categoria = data.categoria || data.categoriaPasta || '01_Treinamentos';
-  const nomePastaFinal = data.nomePastaFinal || data.subpasta || data.subpastaFinal || 'Evidencias';
+  var rootFolderId = extrairIdPasta(data.rootFolderId || data.folderId || data.pastaRaizId);
+  var ano = String(data.ano || new Date().getFullYear());
+  var mes = data.mes || data.mesPasta || formatarMesPadrao(new Date());
+  var categoria = data.categoria || data.categoriaPasta || "01_Treinamentos";
+  var nomePastaFinal = data.nomePastaFinal || data.subpasta || data.subpastaFinal || "Evidencias";
 
-  let pastaAtual;
+  var pastaAtual;
   if (rootFolderId) {
     try {
       pastaAtual = DriveApp.getFolderById(rootFolderId);
@@ -190,127 +190,73 @@ function criarPastaEvidenciasFotos(data) {
     pastaAtual = DriveApp.getRootFolder();
   }
 
-  // Navega/cria recursivamente: Ano -> Mês -> Categoria -> Subpasta Final
   pastaAtual = getOrCreateSubFolder(pastaAtual, String(ano));
   pastaAtual = getOrCreateSubFolder(pastaAtual, mes);
   pastaAtual = getOrCreateSubFolder(pastaAtual, categoria);
-  const pastaFinal = getOrCreateSubFolder(pastaAtual, nomePastaFinal);
+  var pastaFinal = getOrCreateSubFolder(pastaAtual, nomePastaFinal);
 
   try {
     pastaFinal.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   } catch (_) {}
 
   return ContentService.createTextOutput(JSON.stringify({
-    status: 'sucesso',
+    status: "sucesso",
     folderId: pastaFinal.getId(),
     folderUrl: pastaFinal.getUrl(),
-    caminho: `${ano} / ${mes} / ${categoria} / ${nomePastaFinal}`,
+    caminho: ano + " / " + mes + " / " + categoria + " / " + nomePastaFinal,
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
-/**
- * Localiza subpasta existente pelo nome ou cria uma nova se não existir (Idempotente)
- */
 function getOrCreateSubFolder(parentFolder, folderName) {
-  const folders = parentFolder.getFoldersByName(folderName);
-  if (folders.hasNext()) {
-    return folders.next();
-  }
+  var folders = parentFolder.getFoldersByName(folderName);
+  if (folders.hasNext()) return folders.next();
   return parentFolder.createFolder(folderName);
 }
 
-/**
- * Localiza subpasta de tema com tolerância a variações de prefixo ([01/10] vs [01-10])
- * para assegurar que chamadas repetidas NÃO criem pastas duplicadas
- */
 function getOrCreateTemaFolder(parentFolder, folderName, prefixo1, prefixo2, cod, tema) {
-  // 1. Tenta correspondência exata
-  const exact = parentFolder.getFoldersByName(folderName);
+  var exact = parentFolder.getFoldersByName(folderName);
   if (exact.hasNext()) return exact.next();
 
-  // 2. Busca pastas existentes com prefixo compatível
-  const all = parentFolder.getFolders();
-  const tNorm = tema ? tema.toUpperCase().trim() : '';
-  const codNorm = cod ? cod.toUpperCase().trim() : '';
+  var all = parentFolder.getFolders();
+  var tNorm = tema ? tema.toUpperCase().trim() : "";
+  var codNorm = cod ? cod.toUpperCase().trim() : "";
 
   while (all.hasNext()) {
-    const f = all.next();
-    const fName = f.getName().trim().toUpperCase();
-
-    // Se começa com [DD/MM] ou [DD-MM]
-    if (prefixo1 && fName.indexOf(prefixo1.toUpperCase()) === 0) {
-      return f;
-    }
-    if (prefixo2 && fName.indexOf(prefixo2.toUpperCase()) === 0) {
-      return f;
-    }
-    // Se contém código e os primeiros 10 caracteres do tema
-    if (codNorm && tNorm && fName.includes(codNorm) && fName.includes(tNorm.substring(0, 10))) {
-      return f;
-    }
+    var f = all.next();
+    var fName = f.getName().trim().toUpperCase();
+    if (prefixo1 && fName.indexOf(prefixo1.toUpperCase()) === 0) return f;
+    if (prefixo2 && fName.indexOf(prefixo2.toUpperCase()) === 0) return f;
+    if (codNorm && tNorm && fName.includes(codNorm) && fName.includes(tNorm.substring(0, 10))) return f;
   }
 
-  // 3. Se não existir, cria a nova pasta
   return parentFolder.createFolder(folderName);
 }
 
-/**
- * Normaliza o nome do mês para o formato "MM - NomeDoMês" (ex: "10 - Outubro")
- */
 function normalizarNomeMes(mesValor) {
-  const meses = [
-    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-  ];
-
-  const str = String(mesValor || '').trim();
-
-  // Já está no formato "10 - Outubro"
-  if (/^\d{2}\s*-\s*[A-Za-zçãéíóú]+/i.test(str)) {
-    return str;
-  }
-
-  // Apenas número (0 a 11 ou 1 a 12)
+  var meses = ["Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  var str = String(mesValor || "").trim();
+  if (/^\d{2}\s*-\s*[A-Za-z]+/.test(str)) return str;
   if (/^\d{1,2}$/.test(str)) {
-    let num = parseInt(str, 10);
-    // Se for 0 a 11 (índice JS)
-    if (num >= 0 && num <= 11 && str === '0') num = 1;
-    if (num >= 1 && num <= 12) {
-      return `${String(num).padStart(2, '0')} - ${meses[num - 1]}`;
-    }
+    var num = parseInt(str, 10);
+    if (num >= 0 && num <= 11 && str === "0") num = 1;
+    if (num >= 1 && num <= 12) return String(num).padStart(2, "0") + " - " + meses[num - 1];
   }
-
-  // Nome do mês em texto
-  for (let i = 0; i < meses.length; i++) {
-    if (str.toLowerCase().includes(meses[i].toLowerCase())) {
-      return `${String(i + 1).padStart(2, '0')} - ${meses[i]}`;
-    }
+  for (var i = 0; i < meses.length; i++) {
+    if (str.toLowerCase().includes(meses[i].toLowerCase())) return String(i + 1).padStart(2, "0") + " - " + meses[i];
   }
-
   return formatarMesPadrao(new Date());
 }
 
-/**
- * Formatação auxiliar de fallback
- */
 function formatarMesPadrao(d) {
-  const meses = [
-    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-  ];
-  const mesNum = String(d.getMonth() + 1).padStart(2, '0');
-  const nomeMes = meses[d.getMonth()];
-  return `${mesNum} - ${nomeMes}`;
+  var meses = ["Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  return String(d.getMonth() + 1).padStart(2, "0") + " - " + meses[d.getMonth()];
 }
 
-/**
- * Extrai o ID do Google Drive de uma URL completa ou retorna o próprio ID
- */
 function extrairIdPasta(urlOuId) {
-  if (!urlOuId) return '';
-  const str = String(urlOuId).trim();
-  const match = str.match(/folders\/([a-zA-Z0-9_-]+)/);
+  if (!urlOuId) return "";
+  var str = String(urlOuId).trim();
+  var match = str.match(/folders\/([a-zA-Z0-9_-]+)/);
   if (match && match[1]) return match[1];
   return str;
 }

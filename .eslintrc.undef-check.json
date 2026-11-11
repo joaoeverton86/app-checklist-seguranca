@@ -24,6 +24,7 @@
     "sendPrompt": "readonly",
     "supabase": "readonly",
     "docx": "readonly",
+    "Swal": "readonly",
     "LOGO_COP_BASE64": "writable",
     "showToast": "readonly",
     "mostrarFeedbackToast": "readonly",

@@ -5,8 +5,10 @@
  * =============================================================================
  * - Escopo: Condutores de veículos e operadores de equipamentos (Próprios,
  *   Terceiros e PJ).
- * - Isolamento absoluto: Todas as leituras/gravações deste módulo operam
+ * - Isolamento: todas as leituras/gravações de CONDUTORES operam
  *   exclusivamente sobre `public.gestao_de_condutores_cnh` e suas RPCs.
+ *   Única exceção, apenas de LEITURA: consulta a `colaboradores_efetivo`
+ *   (base do módulo Efetivo) para sugerir nome/função/setor no formulário.
  *   NENHUMA escrita ou sincronização em `colaboradores_efetivo` ou
  *   `colaboradores_checklist`. Não altera RSA/ADA/HHT.
  * - Privacidade inicial: Não coleta número de CNH nem CPF/RG. Sem anexos,
@@ -263,6 +265,15 @@
         modalDados: null,
         erroModal: '',
         salvandoModal: false,
+        // Base do Efetivo (somente leitura) usada para autocompletar o cadastro.
+        // 'NAO_CARREGADA' | 'CARREGANDO' | 'PRONTA' | 'INDISPONIVEL'
+        baseColaboradores: [],
+        baseColaboradoresStatus: 'NAO_CARREGADA',
+        baseColaboradoresErro: '',
+        buscaBaseColaborador: '',
+        sugestoesBaseAbertas: false,
+        sugestoesBaseAtuais: [],
+        avisoBaseColaborador: '',
         ultimoTextoCopiado: '',
         avisoToastInterno: ''
     };
@@ -812,6 +823,14 @@
         state.salvandoModal = false;
         state.ultimoTextoCopiado = '';
         state.avisoToastInterno = '';
+        // Base do Efetivo (leitura) também é descartada ao trocar/perder sessão.
+        state.baseColaboradores = [];
+        state.baseColaboradoresStatus = 'NAO_CARREGADA';
+        state.baseColaboradoresErro = '';
+        state.buscaBaseColaborador = '';
+        state.sugestoesBaseAbertas = false;
+        state.sugestoesBaseAtuais = [];
+        state.avisoBaseColaborador = '';
     }
     function invalidarCacheDadosSessao() {
         state.geracaoSessao += 1;
@@ -2433,6 +2452,15 @@
                             <button type="button" class="db-clear-btn" data-cond-action="cancelar-modal" style="padding:4px 10px;">✕</button>
                         </div>
                         ${erroHtml}
+                        <div id="condBlocoBuscaBaseColaborador" style="margin-bottom:12px; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg);">
+                            <label for="condFormBuscaBase" style="font-size:12px; font-weight:700; display:block; margin-bottom:4px;">🔎 Buscar colaborador na base do Efetivo</label>
+                            <div style="position:relative;">
+                                <input type="text" id="condFormBuscaBase" autocomplete="off" value="${escaparHtml(state.buscaBaseColaborador || '')}" placeholder="Digite parte do nome, a matrícula ou a função..." data-cond-base-busca="1" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); box-sizing:border-box;">
+                                <div id="condListaSugestoesColaborador" role="listbox" aria-label="Colaboradores ativos da base do Efetivo" style="display:none; position:absolute; z-index:40; left:0; right:0; top:calc(100% + 4px); max-height:240px; overflow-y:auto; background:var(--card); border:1px solid var(--border); border-radius:8px; box-shadow:0 10px 24px rgba(0,0,0,0.28);"></div>
+                            </div>
+                            <div id="condBaseColaboradorStatus" style="font-size:11.5px; color:var(--text-light); margin-top:5px; line-height:1.4;">${escaparHtml(textoStatusBaseColaborador())}</div>
+                            ${state.avisoBaseColaborador ? `<div style="margin-top:6px; padding:8px 10px; border:1px solid var(--warning); border-radius:6px; background:var(--card); color:var(--warning); font-size:11.5px; font-weight:600; line-height:1.4;">${escaparHtml(state.avisoBaseColaborador)}</div>` : ''}
+                        </div>
                         <div class="cond-modal-form-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap:10px; margin-bottom:12px;">
                             <div>
                                 <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Nome Completo *</label>
@@ -2600,6 +2628,201 @@
         return '';
     }
     // =========================================================================
+    // 6.0 BASE DO EFETIVO (SOMENTE LEITURA) — AUTOCOMPLETAR O CADASTRO
+    // =========================================================================
+    // Consulta apenas leitura em `colaboradores_efetivo` para sugerir
+    // nome/função/setor de colaboradores ativos no formulário de condutor.
+    // Não grava, não sincroniza e não vincula registro: o cadastro CNH continua
+    // 100% independente e editável manualmente (Terceiros e PJ, por exemplo).
+    const LIMITE_SUGESTOES_BASE_COLABORADOR = 30;
+    function normalizarBuscaBaseColaborador(valor) {
+        return String(valor || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+    function colaboradorDaBaseEstaAtivo(item) {
+        if (!item) return false;
+        if (typeof window.colaboradorEstaAtivo === 'function') return window.colaboradorEstaAtivo(item);
+        if (item.dt_demissao) return false;
+        const status = String(item.status || '').trim().toUpperCase();
+        if (status === 'DEMITIDO' || status === 'INATIVO') return false;
+        return status === 'ATIVO' || Boolean(item.dt_admissao);
+    }
+    function textoStatusBaseColaborador() {
+        if (state.baseColaboradoresStatus === 'CARREGANDO') {
+            return '⏳ Carregando a base de colaboradores do Efetivo...';
+        }
+        if (state.baseColaboradoresStatus === 'PRONTA') {
+            const qtd = state.baseColaboradores.length;
+            if (qtd === 0) {
+                return '⚠️ Nenhum colaborador ativo encontrado na base do Efetivo. Preencha o nome manualmente.';
+            }
+            return `✅ ${qtd} colaboradores ativos na base do Efetivo. Selecione para preencher nome, função e setor automaticamente (pode editar depois).`;
+        }
+        if (state.baseColaboradoresStatus === 'INDISPONIVEL') {
+            const detalhe = String(state.baseColaboradoresErro || '').slice(0, 140);
+            return `⚠️ Base do Efetivo indisponível agora${detalhe ? ` (${detalhe})` : ''}. Preencha o nome manualmente — o cadastro não fica bloqueado.`;
+        }
+        return 'Digite parte do nome, a matrícula ou a função para localizar o colaborador na base do Efetivo (ou preencha o nome manualmente).';
+    }
+    async function carregarBaseColaboradoresDoEfetivo() {
+        if (state.baseColaboradoresStatus === 'CARREGANDO' || state.baseColaboradoresStatus === 'PRONTA') return;
+        state.baseColaboradoresStatus = 'CARREGANDO';
+        state.baseColaboradoresErro = '';
+        atualizarStatusBaseColaboradorNoDom();
+        try {
+            let lista = Array.isArray(window.allEfetivo) ? window.allEfetivo : [];
+            if (lista.length === 0) {
+                const consulta = '?select=id,nome,funcao,setor,status,dt_admissao,dt_demissao&order=nome.asc';
+                const buscarCacheado = typeof window.supabaseFetchCacheado === 'function' ? window.supabaseFetchCacheado : null;
+                const buscarSimples = typeof window.supabaseFetch === 'function' ? window.supabaseFetch : null;
+                if (buscarCacheado) {
+                    try {
+                        lista = await buscarCacheado('colaboradores_efetivo', consulta);
+                    } catch (_) {
+                        // Cache/IndexedDB indisponível no navegador: tenta a consulta direta antes de desistir.
+                        lista = buscarSimples ? await buscarSimples('colaboradores_efetivo', consulta) : [];
+                    }
+                } else if (buscarSimples) {
+                    lista = await buscarSimples('colaboradores_efetivo', consulta);
+                } else {
+                    throw new Error('Leitor de dados do painel não disponível nesta tela.');
+                }
+            }
+            state.baseColaboradores = (Array.isArray(lista) ? lista : [])
+                .filter(colaboradorDaBaseEstaAtivo)
+                .map(item => ({
+                    id: String(item && item.id !== undefined && item.id !== null ? item.id : '').trim(),
+                    nome: String(item && item.nome ? item.nome : '').trim(),
+                    funcao: String(item && item.funcao ? item.funcao : '').trim(),
+                    setor: String(item && item.setor ? item.setor : '').trim()
+                }))
+                .filter(item => item.nome.length >= 3)
+                .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+            state.baseColaboradoresStatus = 'PRONTA';
+        } catch (err) {
+            state.baseColaboradores = [];
+            state.baseColaboradoresStatus = 'INDISPONIVEL';
+            state.baseColaboradoresErro = err && err.message ? err.message : 'Falha ao consultar a base do Efetivo.';
+        } finally {
+            atualizarStatusBaseColaboradorNoDom();
+            if (state.sugestoesBaseAbertas) atualizarSugestoesBaseColaboradorNoDom();
+        }
+    }
+    function obterSugestoesBaseColaborador(termo) {
+        const alvo = normalizarBuscaBaseColaborador(termo);
+        const lista = Array.isArray(state.baseColaboradores) ? state.baseColaboradores : [];
+        if (!alvo) return lista.slice(0, LIMITE_SUGESTOES_BASE_COLABORADOR);
+        const exatos = [];
+        const comecam = [];
+        const contem = [];
+        for (let i = 0; i < lista.length; i++) {
+            const c = lista[i];
+            const nomeNorm = normalizarBuscaBaseColaborador(c.nome);
+            if (nomeNorm === alvo) {
+                exatos.push(c);
+                continue;
+            }
+            if (nomeNorm.startsWith(alvo)) {
+                comecam.push(c);
+                continue;
+            }
+            const chave = `${nomeNorm} ${normalizarBuscaBaseColaborador(c.id)} ${normalizarBuscaBaseColaborador(c.funcao)}`;
+            if (chave.includes(alvo)) contem.push(c);
+        }
+        return exatos.concat(comecam, contem).slice(0, LIMITE_SUGESTOES_BASE_COLABORADOR);
+    }
+    function renderizarSugestoesBaseColaboradorHtml() {
+        if (state.baseColaboradoresStatus === 'CARREGANDO') {
+            return '<div style="padding:10px; font-size:12px; color:var(--text-light);">Carregando base do Efetivo...</div>';
+        }
+        if (state.baseColaboradoresStatus === 'INDISPONIVEL') {
+            return '<div style="padding:10px; font-size:12px; color:var(--warning);">Base do Efetivo indisponível. Preencha o nome manualmente.</div>';
+        }
+        const sugestoes = Array.isArray(state.sugestoesBaseAtuais) ? state.sugestoesBaseAtuais : [];
+        if (sugestoes.length === 0) {
+            return '<div style="padding:10px; font-size:12px; color:var(--text-light);">Nenhum colaborador ativo encontrado com esse termo.</div>';
+        }
+        return sugestoes.map((c, idx) => {
+            const detalhes = [
+                c.id ? `Mat. ${escaparHtml(c.id)}` : '',
+                c.funcao ? escaparHtml(c.funcao) : '',
+                c.setor ? escaparHtml(c.setor) : ''
+            ].filter(Boolean).join(' · ');
+            return `<button type="button" role="option" data-cond-base-idx="${idx}" style="display:block; width:100%; text-align:left; padding:7px 10px; border:0; border-bottom:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; font-size:12px; line-height:1.35;">
+                <strong>${escaparHtml(c.nome)}</strong>
+                ${detalhes ? `<span style="display:block; color:var(--text-light); font-size:11px;">${detalhes}</span>` : ''}
+            </button>`;
+        }).join('');
+    }
+    function atualizarStatusBaseColaboradorNoDom() {
+        if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+        const el = document.getElementById('condBaseColaboradorStatus');
+        if (el) el.textContent = textoStatusBaseColaborador();
+    }
+    function atualizarSugestoesBaseColaboradorNoDom() {
+        if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+        const caixa = document.getElementById('condListaSugestoesColaborador');
+        if (!caixa) return;
+        state.sugestoesBaseAtuais = obterSugestoesBaseColaborador(state.buscaBaseColaborador);
+        if (!state.sugestoesBaseAbertas) {
+            caixa.style.display = 'none';
+            caixa.innerHTML = '';
+            return;
+        }
+        caixa.innerHTML = renderizarSugestoesBaseColaboradorHtml();
+        caixa.style.display = 'block';
+    }
+    function fecharSugestoesBaseColaboradorComAtraso() {
+        if (typeof setTimeout !== 'function') return;
+        setTimeout(function () {
+            if (!state.sugestoesBaseAbertas) return;
+            // Se o foco continua na busca (ex.: setas do teclado), mantém aberto.
+            if (typeof document !== 'undefined' && typeof document.activeElement !== 'undefined') {
+                const ativo = document.activeElement;
+                if (ativo && typeof ativo.getAttribute === 'function' && ativo.getAttribute('data-cond-base-busca') === '1') return;
+            }
+            state.sugestoesBaseAbertas = false;
+            atualizarSugestoesBaseColaboradorNoDom();
+        }, 140);
+    }
+    function obterAvisoCondutorDuplicado(nome, idAtual) {
+        const alvo = normalizarBuscaBaseColaborador(nome);
+        if (!alvo) return '';
+        const existente = (Array.isArray(state.condutores) ? state.condutores : []).find(
+            c => normalizarBuscaBaseColaborador(c.nome) === alvo && String(c.id) !== String(idAtual || '')
+        );
+        if (!existente) return '';
+        const situacao = existente.ativo === false ? 'inativo' : 'ativo';
+        const empresa = existente.empresa ? ` · ${existente.empresa}` : '';
+        return `⚠️ Já existe um condutor ${situacao} com este nome na Gestão de Condutores${empresa}. Prefira abrir o registro existente (✏️ Editar) em vez de criar um novo.`;
+    }
+    function selecionarColaboradorDaBase(indice) {
+        const lista = Array.isArray(state.sugestoesBaseAtuais) ? state.sugestoesBaseAtuais : [];
+        const c = lista[indice];
+        if (!c || !state.modalDados) return;
+        const d = state.modalDados;
+        d.nome = c.nome;
+        if (c.funcao) d.funcao = c.funcao;
+        if (c.setor) d.setor_frente = c.setor;
+        if (!String(d.empresa || '').trim()) d.empresa = 'COP';
+        if (!String(d.vinculo || '').trim()) d.vinculo = 'PROPRIO';
+        state.buscaBaseColaborador = '';
+        state.sugestoesBaseAbertas = false;
+        state.sugestoesBaseAtuais = [];
+        state.avisoBaseColaborador = obterAvisoCondutorDuplicado(d.nome, d.id);
+        renderizarInterfaceNoContainer();
+    }
+    function selecionarPrimeiraSugestaoBaseColaborador() {
+        const lista = Array.isArray(state.sugestoesBaseAtuais) ? state.sugestoesBaseAtuais : [];
+        if (lista.length === 0) return false;
+        selecionarColaboradorDaBase(0);
+        return true;
+    }
+    // =========================================================================
     // 7. DELEGAÇÃO DE EVENTOS INTERNA E REVALIDAÇÃO NA VIRADA DO DIA
     // =========================================================================
     function verificarViradaDeDiaSp() {
@@ -2642,6 +2865,13 @@
             }
         }
         container.addEventListener('click', async function (ev) {
+            const sugestaoBase = ev.target && typeof ev.target.closest === 'function'
+                ? ev.target.closest('[data-cond-base-idx]')
+                : null;
+            if (sugestaoBase) {
+                selecionarColaboradorDaBase(Number(sugestaoBase.getAttribute('data-cond-base-idx')));
+                return;
+            }
             const target = ev.target && typeof ev.target.closest === 'function'
                 ? ev.target.closest('[data-cond-action]')
                 : null;
@@ -2766,6 +2996,15 @@
         });
         const atualizarCampo = function (el) {
             if (!el) return;
+            if (el.getAttribute('data-cond-base-busca') === '1') {
+                state.buscaBaseColaborador = el.value;
+                state.sugestoesBaseAbertas = true;
+                if (state.baseColaboradoresStatus === 'NAO_CARREGADA') {
+                    Promise.resolve().then(() => carregarBaseColaboradoresDoEfetivo()).catch(() => {});
+                }
+                atualizarSugestoesBaseColaboradorNoDom();
+                return;
+            }
             const filterKey = el.getAttribute('data-cond-filter');
             if (filterKey) {
                 state.filtros[filterKey] = el.value;
@@ -2776,6 +3015,7 @@
             const formField = el.getAttribute('data-cond-form');
             if (formField && state.modalDados) {
                 state.modalDados[formField] = el.value;
+                if (formField === 'nome') state.avisoBaseColaborador = '';
                 if (formField === 'cnh_validade' && state.modalDados.id) {
                     // Atualiza apenas o bloco de justificativa de alteração da CNH sem recriar o modal!
                     atualizarBlocoAlteracaoCnhModalNoDom();
@@ -2814,9 +3054,48 @@
         container.addEventListener('change', function (ev) {
             atualizarCampo(ev.target);
         });
+        // Combobox de busca na base do Efetivo (somente leitura): abre ao focar,
+        // filtra ao digitar, seleciona com clique ou Enter e fecha com Escape/blur.
+        container.addEventListener('focusin', function (ev) {
+            const alvo = ev.target;
+            if (!alvo || typeof alvo.getAttribute !== 'function') return;
+            if (alvo.getAttribute('data-cond-base-busca') !== '1') return;
+            state.sugestoesBaseAbertas = true;
+            if (state.baseColaboradoresStatus === 'NAO_CARREGADA') {
+                Promise.resolve().then(() => carregarBaseColaboradoresDoEfetivo()).catch(() => {});
+            }
+            atualizarSugestoesBaseColaboradorNoDom();
+        });
+        container.addEventListener('focusout', function (ev) {
+            const alvo = ev.target;
+            if (!alvo || typeof alvo.getAttribute !== 'function') return;
+            if (alvo.getAttribute('data-cond-base-busca') !== '1') return;
+            fecharSugestoesBaseColaboradorComAtraso();
+        });
+        container.addEventListener('keydown', function (ev) {
+            const alvo = ev.target;
+            if (!alvo || typeof alvo.getAttribute !== 'function') return;
+            if (alvo.getAttribute('data-cond-base-busca') !== '1') return;
+            if (ev.key === 'Escape') {
+                state.sugestoesBaseAbertas = false;
+                atualizarSugestoesBaseColaboradorNoDom();
+                return;
+            }
+            if (ev.key === 'Enter') {
+                if (state.sugestoesBaseAbertas && selecionarPrimeiraSugestaoBaseColaborador()) {
+                    ev.preventDefault();
+                }
+            }
+        });
     }
     function abrirModalCadastroCondutor(condutorId) {
         state.erroModal = '';
+        state.buscaBaseColaborador = '';
+        state.sugestoesBaseAbertas = false;
+        state.sugestoesBaseAtuais = [];
+        state.avisoBaseColaborador = '';
+        // Pré-carrega a base do Efetivo (somente leitura) para sugerir nome/função/setor.
+        Promise.resolve().then(() => carregarBaseColaboradoresDoEfetivo()).catch(() => {});
         if (!condutorId) {
             state.modalAtivo = 'CADASTRO';
             state.modalDados = {
@@ -2899,6 +3178,10 @@
         state.modalDados = null;
         state.erroModal = '';
         state.salvandoModal = false;
+        state.buscaBaseColaborador = '';
+        state.sugestoesBaseAbertas = false;
+        state.sugestoesBaseAtuais = [];
+        state.avisoBaseColaborador = '';
         renderizarInterfaceNoContainer();
     }
     async function executarCopiaMensagemAlerta(condutorId) {
@@ -3049,6 +3332,8 @@
         } else {
             renderizarInterfaceNoContainer();
         }
+        // Base do Efetivo: leitura opcional em segundo plano, nunca bloqueia o módulo.
+        Promise.resolve().then(() => carregarBaseColaboradoresDoEfetivo()).catch(() => {});
     }
     // Exportação única permitida no escopo global
     window.renderGestaoDeCondutoresPanel = renderGestaoDeCondutoresPanel;

@@ -772,7 +772,11 @@ const codeCondutoresVm = codeCondutores.replace(
          submeterModalComunicacao,
          revalidarAoRetomarFocoOuVisibilidade,
          atualizarListaEKpisParcialNoDom,
-         renderizarInterfaceNoContainer
+         renderizarInterfaceNoContainer,
+         carregarBaseColaboradoresDoEfetivo,
+         obterSugestoesBaseColaborador,
+         selecionarColaboradorDaBase,
+         textoStatusBaseColaborador
      });`
 );
 vm.runInContext(codeCondutoresVm, sandbox);
@@ -2020,8 +2024,120 @@ console.log('✅ Teste 1: IIFE estrita verificada — expõe somente window.rend
     assert.ok(elements['page-gestao_de_condutores'].innerHTML.includes('cond-modal-header'));
     harness.fecharModalAtivo();
     console.log('✅ Teste 16: Segregação de respostas de escrita atrasadas (B1), revalidação de leitura ao retornar/focar (B2), fail-closed de formato RPC (B3) e responsividade interna dos 4 modais aprovados');
+    // -------------------------------------------------------------------------
+    // TESTE 17: Busca na base do Efetivo (somente leitura) — autocompletar
+    //           nome/função/setor, tolerância a acentos, filtro de ativos,
+    //           aviso de duplicidade e degradação sem bloquear o cadastro
+    // -------------------------------------------------------------------------
+    let consultasBase = 0;
+    harness.state.baseColaboradoresStatus = 'NAO_CARREGADA';
+    harness.state.baseColaboradores = [];
+    sandbox.supabaseFetch = async (tabela) => {
+        consultasBase += 1;
+        assert.strictEqual(tabela, 'colaboradores_efetivo', 'A base consultada deve ser a do Efetivo');
+        return [
+            {
+                id: '1042',
+                nome: 'João Éverton de Souza',
+                funcao: 'Motorista Carreteiro',
+                setor: 'Logística',
+                status: 'ATIVO',
+                dt_admissao: '2024-02-01',
+                dt_demissao: null
+            },
+            {
+                id: '2087',
+                nome: 'José Cláudio da Silva',
+                funcao: 'Operador de Munck',
+                setor: 'Frentes de Serviço',
+                status: 'ATIVO',
+                dt_admissao: '2023-05-10',
+                dt_demissao: null
+            },
+            {
+                id: '3099',
+                nome: 'Colaborador Inativo Teste',
+                funcao: 'Auxiliar',
+                setor: 'Campo',
+                status: 'INATIVO',
+                dt_admissao: '2020-01-01',
+                dt_demissao: null
+            },
+            {
+                id: '4001',
+                nome: 'Colaborador Demitido Teste',
+                funcao: 'Auxiliar',
+                setor: 'Campo',
+                status: 'ATIVO',
+                dt_admissao: '2020-01-01',
+                dt_demissao: '2025-01-10'
+            },
+            {
+                id: '5002',
+                nome: 'Sem Função Cadastrada',
+                funcao: '',
+                setor: '',
+                status: 'ATIVO',
+                dt_admissao: '2024-01-01',
+                dt_demissao: null
+            }
+        ];
+    };
+    await harness.carregarBaseColaboradoresDoEfetivo();
+    assert.strictEqual(consultasBase, 1, 'Base do Efetivo deve ser consultada apenas uma vez por sessão');
+    assert.strictEqual(harness.state.baseColaboradoresStatus, 'PRONTA');
+    assert.strictEqual(harness.state.baseColaboradores.length, 3, 'Somente colaboradores ativos entram na sugestão');
+    assert.deepStrictEqual(
+        harness.state.baseColaboradores.map(c => c.nome),
+        ['João Éverton de Souza', 'José Cláudio da Silva', 'Sem Função Cadastrada'],
+        'Sugestões devem vir ordenadas por nome (pt-BR)'
+    );
+    await harness.carregarBaseColaboradoresDoEfetivo();
+    assert.strictEqual(consultasBase, 1, 'Base já carregada não deve ser reconsultada a cada abertura');
+    harness.state.buscaBaseColaborador = 'joao everton';
+    const sugestoesSemAcento = harness.obterSugestoesBaseColaborador(harness.state.buscaBaseColaborador);
+    assert.strictEqual(sugestoesSemAcento.length, 1, 'Busca sem acento deve localizar nome acentuado');
+    assert.strictEqual(sugestoesSemAcento[0].id, '1042');
+    const sugestoesPorMatricula = harness.obterSugestoesBaseColaborador('2087');
+    assert.strictEqual(sugestoesPorMatricula[0]?.id, '2087', 'Busca pela matrícula deve funcionar');
+    const sugestoesPorFuncao = harness.obterSugestoesBaseColaborador('munck');
+    assert.strictEqual(sugestoesPorFuncao[0]?.id, '2087', 'Busca pela função deve funcionar');
+    // Seleção da base preenche nome/função/setor no cadastro sem gravar nada
+    harness.abrirModalCadastroCondutor(null);
+    assert.strictEqual(harness.state.modalDados.nome, '', 'Cadastro novo começa vazio');
+    harness.state.sugestoesBaseAtuais = [harness.state.baseColaboradores[1]];
+    harness.selecionarColaboradorDaBase(0);
+    assert.strictEqual(harness.state.modalDados.nome, 'José Cláudio da Silva');
+    assert.strictEqual(harness.state.modalDados.funcao, 'Operador de Munck');
+    assert.strictEqual(harness.state.modalDados.setor_frente, 'Frentes de Serviço');
+    assert.strictEqual(harness.state.modalDados.empresa, 'COP');
+    assert.strictEqual(harness.state.buscaBaseColaborador, '', 'Busca é limpa após a seleção');
+    assert.strictEqual(dbSimulado.tabelasEscritas.filter(e => e.url.includes('colaboradores_')).length, 0, 'Selecionar na base NÃO pode gravar no Efetivo');
+    // Aviso de duplicidade ao escolher alguém que já existe na Gestão de Condutores
+    const idDuplicado = harness.state.condutores[0].id;
+    harness.state.condutores[0].nome = 'José Cláudio da Silva';
+    harness.state.sugestoesBaseAtuais = [harness.state.baseColaboradores[1]];
+    harness.selecionarColaboradorDaBase(0);
+    assert.ok(harness.state.avisoBaseColaborador.includes('Já existe um condutor'), 'Deve avisar quando o nome já existe no módulo');
+    assert.ok(harness.state.avisoBaseColaborador.includes(idDuplicado) === false);
+    // Base indisponível não bloqueia o cadastro manual
+    harness.state.baseColaboradoresStatus = 'NAO_CARREGADA';
+    harness.state.baseColaboradores = [];
+    sandbox.supabaseFetch = async () => { throw new Error('sem rede simulada'); };
+    await harness.carregarBaseColaboradoresDoEfetivo();
+    assert.strictEqual(harness.state.baseColaboradoresStatus, 'INDISPONIVEL');
+    assert.ok(harness.state.baseColaboradoresErro.includes('sem rede simulada'));
+    harness.abrirModalCadastroCondutor(null);
+    const htmlBaseIndisponivel = elements['page-gestao_de_condutores'].innerHTML;
+    assert.ok(htmlBaseIndisponivel.includes('id="condFormBuscaBase"'), 'Campo de busca deve continuar presente');
+    assert.ok(htmlBaseIndisponivel.includes('id="condBaseColaboradorStatus"'), 'Status da base deve ser exibido');
+    assert.ok(htmlBaseIndisponivel.includes('id="condFormNome"'), 'Nome continua digitável manualmente quando a base falha');
+    assert.ok(harness.textoStatusBaseColaborador().includes('indisponível'));
+    harness.fecharModalAtivo();
+    delete sandbox.supabaseFetch;
+    console.log('✅ Teste 17: Busca na base do Efetivo (leitura), autopreenchimento, tolerância a acentos, aviso de duplicidade e degradação sem bloqueio aprovados');
 
-    console.log('\n🎉 TODOS OS 16 BLOCOS DE TESTES COMPORTAMENTAIS, DE REGRESSÃO E ESTÁTICOS PASSARAM COM SUCESSO!');
+    console.log('\n🎉 TODOS OS 17 BLOCOS DE TESTES COMPORTAMENTAIS, DE REGRESSÃO E ESTÁTICOS PASSARAM COM SUCESSO!');
 })().catch(err => {
     console.error('❌ Falha na suíte de testes:', err);
     process.exit(1);

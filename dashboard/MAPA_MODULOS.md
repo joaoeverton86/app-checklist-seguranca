@@ -59,3 +59,5 @@ O arquivo central agora atua estritamente como **Core do Dashboard**:
 3. **COMPATIBILIDADE GARANTIDA**: Todos os arquivos compartilham o escopo global nativo do navegador via tags `<script>` no [dashboard/index.html](file:///c:/Projetos/app-checklist-seguranca/dashboard/index.html), sem necessidade de `import/export` ou compiladores.
 
 Incremento local CNH v301.2: matriz interna aprovada por João; sete modelos, validação canônica de requisitos no servidor por migração adicional e reciclagem interna de 24 meses para Direção Defensiva e NR-11/NR-12. Ver MATRIZ_CONDUTORES_APROVADA.md. Teste local não equivale a publicação ou validação do schema operacional.
+
+Incremento local CNH v301.4 (2026-11-10): o cadastro de condutor passou a oferecer busca na base do Efetivo (`colaboradores_efetivo`, somente leitura) para preencher nome, função e setor automaticamente, com aviso quando já existe condutor com o mesmo nome. Nenhuma escrita/sincronização na base do Efetivo; o cadastro manual (Terceiros/PJ) continua livre e a tela degrada sem bloquear caso a base esteja indisponível.

@@ -6,6 +6,10 @@ Implementação e homologação local concluídas em 09/11/2026. Publicação au
 
 Módulo independente com sete modelos da matriz aprovada por João, requisitos aprovados apenas pelo catálogo do servidor, evidências individuais neutras, histórico preservado, categorias e treinamentos por atividade, novo aviso ao vencer CNH, conflitos de versão e bloqueio de perfis sem permissão. Correção adicional no login por email: guarda auth_user_id e email verificado na sessão visual; não remove checagem de identidade.
 
+## Atualização v301.4 — busca na base do Efetivo (10/11/2026)
+
+O formulário de cadastro/edição de condutor passou a ter um campo de busca na base de colaboradores do Efetivo (`colaboradores_efetivo`, consulta somente leitura e cacheada). Ao digitar parte do nome, a matrícula ou a função, a lista sugere colaboradores ativos; ao selecionar, o sistema preenche nome completo, função e setor/frente automaticamente (empresa permanece "COP" quando vazia), eliminando a digitação manual do nome completo. Regras de segurança mantidas: nenhuma escrita ou sincronização em `colaboradores_efetivo`/`colaboradores_checklist`, nenhum vínculo persistido na tabela CNH, termo livre continua aceito (Terceiros/PJ) e, se a base estiver indisponível, o cadastro manual segue funcionando sem bloqueio. Inclui aviso quando já existe condutor com o mesmo nome no módulo. Coberto pelo Teste 17 da suíte comportamental (17 blocos aprovados).
+
 ## Evidências finais
 
 - 16 blocos da suite comportamental e testes de consistência da matriz e identidade de login aprovados.

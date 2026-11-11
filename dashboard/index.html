@@ -33,7 +33,7 @@
         <div style="width:100%; max-width:380px; margin:20px; background:#fff; border:1px solid var(--border); border-radius:16px; padding:32px 28px; box-shadow:0 8px 32px rgba(0,0,0,0.08); box-sizing:border-box;">
             <div style="text-align:center; margin-bottom:22px;">
                 <div style="font-size:34px; margin-bottom:6px;">🛡️</div>
-                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v231</span></div>
+                <div style="font-weight:700; font-size:18px;">Painel Gerencial <span id="badgeVersaoDashboardLogin" style="font-size:11px; background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:6px; font-weight:700;">v235</span></div>
                 <div style="font-size:11px; color:var(--text-light); text-transform:uppercase; letter-spacing:.5px; margin-top:2px;">PISF Ramal do Agreste</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:12px;">
@@ -149,7 +149,7 @@
             <div class="db-brand">
                 <div class="db-brand-icon">🛡️</div>
                 <div>
-                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v231</span></div>
+                    <div class="db-brand-title">Painel Gerencial <span id="badgeVersaoDashboardSidebar" style="font-size:10px; background:rgba(37,99,235,0.15); color:#2563eb; border:1px solid rgba(37,99,235,0.25); padding:1px 6px; border-radius:10px; font-weight:700; vertical-align:middle; margin-left:4px;">v235</span></div>
                     <div class="db-brand-sub">PISF Ramal do Agreste</div>
                 </div>
             </div>
@@ -5614,6 +5614,7 @@
                         <button id="saudeSubtabBtn-pressao" class="db-filter-btn" onclick="showSaudeSubtab('pressao')">💉 Pressão Arterial</button>
                         <button id="saudeSubtabBtn-previsao" class="db-filter-btn" onclick="showSaudeSubtab('previsao')">📅 Previsão de Exames</button>
                         <button id="saudeSubtabBtn-recomendacoes" class="db-filter-btn" onclick="showSaudeSubtab('recomendacoes')">🩺 Recomendações e Exames (PCMSO)</button>
+                        <button id="saudeSubtabBtn-consulta-mensal" class="db-filter-btn" onclick="showSaudeSubtab('consulta-mensal')">📆 Consulta mensal de exames</button>
                         <button id="saudeSubtabBtn-relatorio" class="db-filter-btn" onclick="showSaudeSubtab('relatorio')">📄 Relatório</button>
                     </div>
                 </div>
@@ -6138,8 +6139,8 @@
                             </span>
                         </div>
                         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                            <button type="button" class="db-clear-btn" style="padding: 5px 12px; font-size: 11.5px; font-weight: 700; color: #6d28d9; border-color: #c084fc; background: #faf5ff;" onclick="selecionarPrimeirosPendentesPsico(20)" title="Selecionar os 20 colaboradores prioritários respeitando a capacidade sugerida">
-                                🎯 Selecionar Próximos 20 Pendentes
+                            <button type="button" class="db-clear-btn" style="padding: 5px 12px; font-size: 11.5px; font-weight: 700; color: #6d28d9; border-color: #c084fc; background: #faf5ff;" onclick="selecionarPrimeirosPendentesPsico()" title="Selecionar prioritários conforme a capacidade configurada">
+                                🎯 Selecionar conforme capacidade
                             </button>
                             <button type="button" class="db-clear-btn" id="btnSelTodosEquipePsico" style="padding: 5px 12px; font-size: 11.5px; font-weight: 700; color: #4338ca; border-color: #a5b4fc; background: #eef2ff;" onclick="selecionarTodosFiltradosPsico()" title="Selecionar todos os colaboradores da equipe ou filtro atual">
                                 👥 Selecionar Todos da Equipe
@@ -6192,6 +6193,10 @@
                             Nenhum colaborador encontrado para os filtros selecionados.
                         </div>
                     </div>
+                </div>
+
+                <div id="saudeSubtab-consulta-mensal" style="display:none;">
+                    <section id="consultaMensalPcmso" class="db-chart-card" style="margin-bottom:16px;"></section>
                 </div>
 
                 <div id="saudeSubtab-relatorio" style="display:none;">
@@ -10036,12 +10041,12 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js?v=231"></script>
     <script src="logo_cop_base64.js?v=231"></script>
-    <script src="dashboard.js?v=231"></script>
+    <script src="dashboard.js?v=235"></script>
     <script src="modules/treinamentos_ddsma.js?v=231"></script>
     <script src="modules/efetivo_ferias.js?v=231"></script>
     <script src="modules/ghe_os.js?v=231"></script>
     <script src="modules/relatorio_sms_nc.js?v=231"></script>
-    <script src="modules/saude_psicossocial.js?v=231"></script>
+    <script src="modules/saude_psicossocial.js?v=233"></script>
     <script src="modules/epi_estoque.js?v=231"></script>
     <script src="modules/ambiental_compras_hht.js?v=231"></script>
     <script src="modules/apr_cipa.js?v=231"></script>
@@ -10674,6 +10679,10 @@ function filterMatrizEpi(q) {
             <button type="button" class="placar-modal-close" onclick="fecharModalRegistrarPsicoRapido()">&times;</button>
         </div>
         <div class="placar-modal-body" style="padding: 18px 20px;">
+            <div id="modalPsico_exameGrupo" hidden style="margin-bottom:16px;">
+                <label for="modalPsico_exame" style="display:block;margin-bottom:4px;font-weight:700;">Exame a regularizar *</label>
+                <select id="modalPsico_exame" onchange="selecionarExameRegistroPcmso(this.value)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);"></select>
+            </div>
             <input type="hidden" id="modalPsico_matricula">
             <input type="hidden" id="psicoColaboradorMatricula">
             <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
@@ -10702,7 +10711,7 @@ function filterMatrizEpi(q) {
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                 <div>
-                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Nome da Psicóloga</label>
+                    <label style="display:block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--text);">Profissional responsável</label>
                     <input type="text" id="modalPsico_profissional" placeholder="Ex: Psicóloga Responsável" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--card); color: var(--text);">
                 </div>
                 <div>

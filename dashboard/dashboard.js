@@ -5,7 +5,7 @@
 // tela "Relatórios" do app, portados aqui pra funcionar sem IndexedDB.
 // ============================================
 
-var VERSAO_PAINEL = 'v231';
+var VERSAO_PAINEL = 'v235';
 try { ['badgeVersaoDashboardLogin', 'badgeVersaoDashboardSidebar'].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = VERSAO_PAINEL; }); } catch(e){}
 var DASHBOARD_VERSION = VERSAO_PAINEL;
 window.VERSAO_PAINEL = VERSAO_PAINEL;
@@ -26647,6 +26647,7 @@ async function loadSaudeData() {
             }
         }
         window.allAsoExames = allAsoExames;
+        if (document.getElementById('saudeSubtabBtn-consulta-mensal')?.classList.contains('active')) renderConsultaMensalPcmso();
         window.allAtestadosOcupacionais = allAtestadosOcupacionais;
         window.allEfetivo = allEfetivo;
         window.allColaboradoresFerias = allColaboradoresFerias;
@@ -28742,11 +28743,11 @@ function aoMudarExameComplementarFoco() {
 
 // Capacidade sugerida de atendimentos por dia (vagas)
 function obterCapacidadeMutiraoPsico() {
-    return parseInt(localStorage.getItem('psico_capacidade_vagas') || '20', 10);
+    const v = Number(localStorage.getItem('psico_capacidade_vagas')); return Number.isInteger(v) && v > 0 ? v : null;
 }
 
 function salvarCapacidadeMutiraoPsico(vagas) {
-    const v = parseInt(vagas, 10) || 20;
+    const v = Number(vagas); if (!Number.isInteger(v) || v <= 0) return;
     localStorage.setItem('psico_capacidade_vagas', String(v));
     supabaseUpsert('configuracoes_sistema', [{
         id: 'psico_capacidade_vagas',
@@ -28763,7 +28764,7 @@ var selecionadosPsicoConvocacao = new Set();
 // Data do próximo mutirão / visita clínica para o exame em foco
 function obterDataMutiraoPsico() {
     const chave = `exame_data_mutirao_${exameComplementarFocoAtual}`;
-    return localStorage.getItem(chave) || localStorage.getItem('psico_data_mutirao') || '2026-10-27';
+    return localStorage.getItem(chave) || (exameComplementarFocoAtual === 'psicossocial' ? localStorage.getItem('psico_data_mutirao') : '') || '';
 }
 
 function salvarDataMutiraoPsico(novaData) {
@@ -28808,7 +28809,7 @@ function verificarExamePsicossocialRealizado(matricula, asosDoColab) {
 
         // 2. Registro em exames_detalhe com realização efetiva confirmada
         if (Array.isArray(a.exames_detalhe)) {
-            for (const item of a.exames_detalhe) {
+            for (const item of [...a.exames_detalhe].reverse()) {
                 const nomeItem = (item.nome || '').toLowerCase();
                 if (nomeItem.includes('psico')) {
                     const dtItem = item.data_avaliacao || (item.resultado ? (item.data_exame || dataAso) : null);
@@ -29234,6 +29235,7 @@ function obterDadosRecomendacaoPsicossocial() {
             ? infoGheColab.exames.map(e => e.nome)
             : [exameCfg.nomeExame];
 
+        let pendenciasPcmso = [];
         let temExame = false;
         let dataExame = null;
         let vencExame = null;
@@ -29394,7 +29396,7 @@ function obterDadosRecomendacaoPsicossocial() {
                     let asoOrigem = null;
                     for (const a of asosGerais) {
                         if (Array.isArray(a.exames_detalhe)) {
-                            const item = a.exames_detalhe.find(ex => {
+                            const item = [...a.exames_detalhe].reverse().find(ex => {
                                 if (ex.nome === nomeEx) return true;
                                 if (cfg && nomeExameCorrespondeAoCatalogo(ex.nome, cfg)) return true;
                                 const dLower = String(ex.nome || '').toLowerCase().trim();
@@ -29448,13 +29450,14 @@ function obterDadosRecomendacaoPsicossocial() {
             tipoAsoExame = ultimoAso ? ultimoAso.tipo_aso : 'GHE';
             asoIdExame = ultimoAso ? ultimoAso.id : null;
 
+            pendenciasPcmso = [...listaPendentes, ...listaVencidos, ...listaVencendo];
             const qtdOk = listaEmDia.length + listaVencendo.length;
             const tooltipDetalhado = detalheStatusExames.join(' • ');
 
             if (listaPendentes.length > 0) {
                 statusKey = 'PENDENTE';
                 const exStr = listaPendentes.slice(0, 2).join(', ') + (listaPendentes.length > 2 ? ` +${listaPendentes.length - 2}` : '');
-                resumoMatrizHtml = `<div style="font-size:10.5px; color:#b91c1c; font-weight:700; margin-top:2px;" title="${escapeHTML(tooltipDetalhado)}">⚠️ ${qtdOk}/${totalExamesGhe} OK (Falta: ${escapeHTML(exStr)})</div>`;
+                resumoMatrizHtml = `<div style="font-size:10.5px; color:#b91c1c; font-weight:700; margin-top:2px;" title="${escapeHTML(tooltipDetalhado)}">⚠️ ${qtdOk}/${totalExamesGhe} OK — Falta: ${escapeHTML(exStr)}</div>`;
                 statusLabel = `🔴 Pendente (${listaPendentes.length} ${listaPendentes.length === 1 ? 'Exame' : 'Exames'})`;
                 statusBadge = `<span style="background:#fee2e2; color:#b91c1c; border:1px solid #f87171; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:4px;" title="${escapeHTML('Falta realizar: ' + listaPendentes.join(', '))}">🔴 PENDENTE (${listaPendentes.length})</span>`;
                 motivoDetalhado = `Pendência PCMSO: falta realizar ${listaPendentes.join(', ')}`;
@@ -29484,7 +29487,7 @@ function obterDadosRecomendacaoPsicossocial() {
             // ==============================================================
             for (const a of asosGerais) {
                 if (Array.isArray(a.exames_detalhe)) {
-                    const item = a.exames_detalhe.find(ex => nomeExameCorrespondeAoCatalogo(ex.nome, exameCfg));
+                    const item = [...a.exames_detalhe].reverse().find(ex => nomeExameCorrespondeAoCatalogo(ex.nome, exameCfg));
                     if (item) {
                         temExame = true;
                         dataExame = item.data_avaliacao || item.data_exame || a.data_exame;
@@ -29498,17 +29501,6 @@ function obterDadosRecomendacaoPsicossocial() {
                         break;
                     }
                 }
-            }
-
-            // Fallback inteligente: se o colaborador possui ASO Geral válido mas o registro antigo não detalhou exames_detalhe item a item
-            if (!temExame && ultimoAso && ultimoAso.data_exame) {
-                temExame = true;
-                dataExame = ultimoAso.data_exame;
-                vencExame = (exameCfg.periodicidadeMeses === null)
-                    ? null
-                    : ( addMeses(dataExame, exameCfg.periodicidadeMeses || 12) || ultimoAso.data_vencimento );
-                tipoAsoExame = ultimoAso.tipo_aso;
-                asoIdExame = ultimoAso.id;
             }
 
             if (!temExame) {
@@ -29636,7 +29628,7 @@ function obterDadosRecomendacaoPsicossocial() {
             ciclo1Fechado,
             ciclo2Fechado,
             badgeCiclo,
-            examesPcmsoGhe
+            examesPcmsoGhe, pendenciasPcmso
         });
     });
 
@@ -29663,84 +29655,9 @@ function renderBannerMutiraoPsico() {
     const container = document.getElementById('psicoBannerMutiraoContainer');
     if (!container) return;
 
-    const dataMutirao = obterDataMutiraoPsico();
-    const dataFmt = formatSimpleDate(dataMutirao);
-    const exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
-    const capacidadeVagas = obterCapacidadeMutiraoPsico();
-
-    // Calcular dias restantes
-    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    const dMut = parseLocalDate(dataMutirao); dMut.setHours(0, 0, 0, 0);
-    const diffDias = Math.ceil((dMut.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
-    const ehDataPassada = diffDias < 0;
-
-    let bannerHtml = '';
-
-    if (ehDataPassada) {
-        bannerHtml = `
-            <div style="background: var(--card); border: 1px solid var(--border); border-left: 5px solid #10b981; border-radius: 8px; padding: 12px 18px; margin-top: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                <div style="display: flex; align-items: center; gap: 14px;">
-                    <div style="font-size: 26px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">✅</div>
-                    <div>
-                        <div style="font-weight: 800; font-size: 13.5px; color: var(--text); display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <span>Último Atendimento Presencial: ${dataFmt} (${exameCfg.nomeExame})</span>
-                            <span style="background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;">Atendimento Concluído</span>
-                        </div>
-                        <div style="font-size: 12px; color: var(--text-light); margin-top: 2px;">
-                            Profissional: <b>${exameCfg.profissionalPadrao}</b> • Capacidade padrão: <b>${capacidadeVagas} vagas/dia</b> • Alinhe previamente com os líderes as próximas liberações de campo.
-                        </div>
-                    </div>
-                </div>
-                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <button type="button" onclick="abrirModalReprogramarDataMutirao()" style="background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%); color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-weight: 800; font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(124,58,237,0.25);">
-                        📅 + Agendar Próximo Atendimento
-                    </button>
-                    <button type="button" onclick="abrirModalBaixaLoteMutirao()" style="background: #10b981; color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-weight: 800; font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.15);">
-                        ✅ Baixa em Lote
-                    </button>
-                </div>
-            </div>
-        `;
-    } else {
-        let bannerStatusHtml = '';
-        if (diffDias > 1) {
-            bannerStatusHtml = `<span style="background: rgba(255,255,255,0.25); padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 11.5px; border: 1px solid rgba(255,255,255,0.4);">⏳ Faltam ${diffDias} dias</span>`;
-        } else if (diffDias === 1) {
-            bannerStatusHtml = '<span style="background: #ea580c; color: #fff; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 11.5px;">⏰ É AMANHÃ!</span>';
-        } else {
-            bannerStatusHtml = '<span style="background: #10b981; color: #fff; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 11.5px;">🎯 É HOJE!</span>';
-        }
-
-        bannerHtml = `
-            <div style="background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); color: #fff; border-radius: 8px; padding: 12px 18px; margin-top: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; box-shadow: 0 2px 6px rgba(124,58,237,0.25);">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="font-size: 26px;">🗓️</div>
-                    <div>
-                        <div style="font-weight: 800; font-size: 13.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <span>Atendimento Programado: ${dataFmt} (${exameCfg.nomeExame})</span>
-                            ${bannerStatusHtml}
-                        </div>
-                        <div style="font-size: 11.5px; opacity: 0.95; margin-top: 2px;">
-                            Profissional: <b>${exameCfg.profissionalPadrao}</b> • Capacidade: <b>${capacidadeVagas} vagas sugeridas</b> • Local: ${exameCfg.localPadrao}
-                        </div>
-                    </div>
-                </div>
-                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <button type="button" onclick="abrirModalReprogramarDataMutirao()" style="background: rgba(255,255,255,0.92); color: #6b21a8; border: none; border-radius: 6px; padding: 6px 12px; font-weight: 800; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.15);">
-                        📅 Alterar Data / Vagas
-                    </button>
-                    <button type="button" onclick="abrirModalBaixaLoteMutirao()" style="background: #10b981; color: #fff; border: none; border-radius: 6px; padding: 6px 12px; font-weight: 800; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.15);">
-                        ✅ Baixa em Lote
-                    </button>
-                </div>
-            </div>
-        `;
-    }
-
-    container.innerHTML = bannerHtml;
-
-    const btnImp = document.getElementById('btnImprimirConvocacaoPsico');
-    if (btnImp) btnImp.textContent = `🖨️ Imprimir Convocação (${dataFmt})`;
+    const data = obterDataMutiraoPsico();
+    const detalhes = data && pcmsoDataValida(data) ? '<details><summary>Referência de convocação: ' + formatSimpleDate(data) + '</summary><p>Esta referência não comprova agendamento individual nem realização. Capacidade sugerida: ' + (obterCapacidadeMutiraoPsico() || 'não configurada') + '.</p></details>' : '<p>Sem referência de convocação configurada.</p>';
+    container.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;"><button type="button" class="db-clear-btn" onclick="abrirModalReprogramarDataMutirao()">📅 Agendar / Reprogramar Data e Vagas</button><button type="button" class="db-apply-btn" onclick="abrirModalBaixaLoteMutirao()">✅ Baixa em Lote</button></div>' + detalhes;
 }
 
 function renderTextoGruposObrigatoriosPsico() {
@@ -29763,11 +29680,11 @@ function renderTextoGruposObrigatoriosPsico() {
         : '';
 
     el.innerHTML = `
-        <div>${exameCfg.descricaoBase}</div>
+        <details><summary>Orientações e grupos monitorados</summary><div>${exameCfg.descricaoBase}</div>
         ${infoMarcoTemporal}
         <div style="margin-top: 5px;">
             <span style="font-weight:700; color:var(--text);">Grupos Monitorados (${ghes.length}):</span> ${listaHtml}
-        </div>
+        </div></details>
     `;
 
     const thNome = document.getElementById('thExameFocoNome');
@@ -29949,7 +29866,12 @@ function selecionarTodosFiltradosPsico() {
     }
 }
 
-function selecionarPrimeirosPendentesPsico(limite = 20) {
+function selecionarPrimeirosPendentesPsico(limite = obterCapacidadeMutiraoPsico()) {
+    if (!Number.isInteger(Number(limite)) || Number(limite) <= 0) {
+        abrirModalReprogramarDataMutirao();
+        document.getElementById('reprogPsico_vagas')?.focus();
+        return;
+    }
     const dados = obterDadosRecomendacaoPsicossocial();
     const pendentes = dados.filter(d => d.statusKey === 'PENDENTE' || d.statusKey === 'VENCIDO' || d.statusKey === 'VENCENDO');
     selecionadosPsicoConvocacao.clear();
@@ -30168,7 +30090,7 @@ function fecharModalReprogramarDataMutirao() {
 
 function salvarReprogramacaoDataMutirao() {
     const novaData = document.getElementById('reprogPsico_data')?.value;
-    const novasVagas = document.getElementById('reprogPsico_vagas')?.value || 20;
+    const novasVagas = document.getElementById('reprogPsico_vagas')?.value;
 
     if (!novaData) {
         alert('Por favor, informe a data para o próximo atendimento.');
@@ -30180,7 +30102,7 @@ function salvarReprogramacaoDataMutirao() {
     fecharModalReprogramarDataMutirao();
     renderRecomendacaoPsicossocial();
     atualizarBarraSelecaoConvocacaoPsico();
-    alert(`✅ Atendimento agendado com sucesso para ${formatSimpleDate(novaData)} com capacidade de ${novasVagas} vagas sugeridas!`);
+    alert(`✅ Referência de convocação salva para ${formatSimpleDate(novaData)} com capacidade de ${novasVagas} vagas sugeridas!`);
 }
 
 // ============================================
@@ -30778,14 +30700,31 @@ function abrirModalPsicossocial(colaboradorOuMatricula) {
     let exameCfg = (typeof CATALOGO_EXAMES_COMPLEMENTARES !== 'undefined' && CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual]) 
         || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
 
-    // Se estiver na Matriz Geral e o colaborador for de GHE Psicossocial pendente, sugere Avaliação Psicossocial
-    const gNum = normalizarGhe(colab?.ghe);
-    const ghesPsico = new Set(CATALOGO_EXAMES_COMPLEMENTARES.psicossocial.ghesPadrao || []);
-    const asosColab = (allAsoExames || []).filter(a => String(a.matricula || '').trim() === matricula);
-    const infoPsico = ghesPsico.has(gNum) ? verificarExamePsicossocialRealizado(matricula, asosColab) : { realizado: true };
-    if (exameComplementarFocoAtual === 'matriz_geral' && ghesPsico.has(gNum) && !infoPsico.realizado) {
-        exameCfg = CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
+    const seletor = document.getElementById('modalPsico_exame');
+    const grupoSeletor = document.getElementById('modalPsico_exameGrupo');
+    const ehMatriz = exameCfg.id === 'matriz_geral';
+    modal._opcoesExamePcmso = [];
+    if (ehMatriz) {
+        const dados = obterDadosRecomendacaoPsicossocial().find(d => String(d.matricula) === matricula);
+        const nomes = dados?.pendenciasPcmso || [];
+        const detalhes = colab ? (examesGheColaborador(colab)?.exames || []) : [];
+        modal._opcoesExamePcmso = nomes.map(nome => {
+            const ex = detalhes.find(e => e.nome === nome) || { nome };
+            return /psico/i.test(ex.nome) ? CATALOGO_EXAMES_COMPLEMENTARES.psicossocial : {
+                id: 'complementar', nomeExame: ex.nome, termosBusca: [ex.nome],
+                periodicidadeMeses: ex.periodicidade, profissionalPadrao: 'Profissional responsável'
+            };
+        });
     }
+    if (grupoSeletor) grupoSeletor.hidden = !ehMatriz;
+    if (seletor) {
+        seletor.innerHTML = '<option value="">' + (modal._opcoesExamePcmso.length ? 'Selecione o exame a regularizar' : 'Nenhuma pendência disponível') + '</option>' +
+            modal._opcoesExamePcmso.map((ex, i) => '<option value="' + i + '">' + escapeHTML(ex.nomeExame) + '</option>').join('');
+        seletor.value = '';
+    }
+    modal._examePcmso = ehMatriz ? null : { ...exameCfg };
+    const titulo = modal.querySelector('h3');
+    if (titulo) titulo.textContent = ehMatriz ? 'Selecione o exame para registrar' : 'Registrar ' + exameCfg.nomeExame;
 
     const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
     const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -30840,6 +30779,21 @@ function abrirModalPsicossocial(colaboradorOuMatricula) {
     modal.style.display = 'flex';
 }
 
+function selecionarExameRegistroPcmso(indice) {
+    const modal = document.getElementById('modalRegistrarPsicoRapido') || document.getElementById('modalRegistrarPsicossocial');
+    if (!modal) return;
+    const exameCfg = indice !== '' ? modal._opcoesExamePcmso?.[Number(indice)] : null;
+    modal._examePcmso = exameCfg ? { ...exameCfg } : null;
+    const titulo = modal.querySelector('h3');
+    if (titulo) titulo.textContent = exameCfg ? 'Registrar ' + exameCfg.nomeExame : 'Selecione o exame para registrar';
+    const profissional = document.getElementById('modalPsico_profissional');
+    if (profissional) profissional.value = exameCfg?.profissionalPadrao || '';
+    const obs = document.getElementById('modalPsico_obs');
+    if (obs) obs.value = exameCfg ? exameCfg.nomeExame + ' realizado conforme PCMSO (NR-07).' : '';
+    const status = document.getElementById('modalPsico_statusMsg');
+    if (status) status.textContent = '';
+}
+
 function abrirModalRegistrarPsicoRapido(matricula) {
     return abrirModalPsicossocial(matricula);
 }
@@ -30886,6 +30840,12 @@ async function salvarRegistroPsicoRapido() {
     const btnSalvar = document.getElementById('btnSalvarPsicoModal') ||
                       modal?.querySelector('.db-apply-btn');
 
+    if (!modal?._examePcmso) {
+        if (statusMsg) statusMsg.textContent = 'Selecione o exame que será regularizado.';
+        document.getElementById('modalPsico_exame')?.focus();
+        return;
+    }
+
     if (!inputData) {
         if (statusMsg) {
             statusMsg.innerHTML = '<span style="color:var(--danger); font-weight:700;">⚠️ Por favor, informe a Data da Avaliação.</span>';
@@ -30918,18 +30878,10 @@ async function salvarRegistroPsicoRapido() {
         const funcaoColaborador = colab?.funcao || '';
         const setorColaborador = colab?.setor || '';
 
-        let exameCfg = CATALOGO_EXAMES_COMPLEMENTARES[exameComplementarFocoAtual] || CATALOGO_EXAMES_COMPLEMENTARES.psicossocial;
-        const gNum = normalizarGhe(colab?.ghe);
-        const ghesPsico = new Set(CATALOGO_EXAMES_COMPLEMENTARES.psicossocial.ghesPadrao || []);
-        const asosColab = (allAsoExames || []).filter(a => String(a.matricula || '').trim() === matricula)
-            .sort((a, b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
-        const infoPsico = ghesPsico.has(gNum) ? verificarExamePsicossocialRealizado(matricula, asosColab) : { realizado: true };
-
-        // Se estiver na Matriz Geral e o colaborador tiver pendência de Psicossocial, registra a Avaliação Psicossocial
-        const registrarComoPsico = (exameCfg.id === 'psicossocial') ||
-            (exameCfg.id === 'matriz_geral' && ghesPsico.has(gNum) && !infoPsico.realizado) ||
-            nomeProfissional.toLowerCase().includes('psic');
-
+        const exameCfg = modal?._examePcmso;
+        if (!exameCfg || exameCfg.id === 'matriz_geral') throw new Error('Selecione o exame para registrar.');
+        const asosColab = (allAsoExames || []).filter(a => String(a.matricula || '').trim() === matricula).sort((a,b) => (b.data_exame || '').localeCompare(a.data_exame || ''));
+        const registrarComoPsico = exameCfg.id === 'psicossocial';
         if (registrarComoPsico) {
             const periodicidadeMeses = 12;
             const dataVencimento = typeof addMeses === 'function' ? addMeses(inputData, periodicidadeMeses) : inputData;
@@ -32122,7 +32074,7 @@ async function confirmarSinalizarPsicoEmDia() {
             let examesDetalhe = Array.isArray(ultimoAso.exames_detalhe) ? [...ultimoAso.exames_detalhe] : [];
             const idx = examesDetalhe.findIndex(e => e.nome && e.nome.toLowerCase().includes('psico'));
             if (idx >= 0) {
-                examesDetalhe[idx] = { ...examesDetalhe[idx], ...itemExame };
+                    examesDetalhe[idx] = { ...examesDetalhe[idx], ...itemExame };
             } else {
                 examesDetalhe.push(itemExame);
             }
@@ -32534,7 +32486,7 @@ window.aoMudarFiltroStatusTriagem = aoMudarFiltroStatusTriagem;
 window.filtrarTabelaConvocacaoPsicossocial = renderTabelaConvocacaoPsicossocial;
 
 function showSaudeSubtab(tab) {
-    ['visao', 'aso', 'atestado', 'pressao', 'previsao', 'recomendacoes', 'relatorio'].forEach(t => {
+    ['visao', 'aso', 'atestado', 'pressao', 'previsao', 'recomendacoes', 'consulta-mensal', 'relatorio'].forEach(t => {
         const content = document.getElementById('saudeSubtab-' + t);
         const btn = document.getElementById('saudeSubtabBtn-' + t);
         if (content) content.style.display = (t === tab) ? 'block' : 'none';
@@ -32547,6 +32499,7 @@ function showSaudeSubtab(tab) {
     if (tab === 'pressao') { renderPressaoResumo(); filterPressaoLista(document.getElementById('pressaoSearchInput')?.value || ''); }
     if (tab === 'previsao') renderPrevisaoExames();
     if (tab === 'recomendacoes') renderRecomendacaoPsicossocial();
+    if (tab === 'consulta-mensal') renderConsultaMensalPcmso();
     // A aba de Relatório usa os mesmos números já calculados pela Visão Geral
     // (window.saudeReportData) - por isso, ao abrir ela, força um recálculo da Visão Geral
     // (com o período que já estava selecionado) pra garantir que o relatório nunca fique
@@ -32851,6 +32804,7 @@ async function salvarAso() {
             const periodicidade = cb.dataset.periodicidade ? parseInt(cb.dataset.periodicidade, 10) : null;
             return {
                 nome: cb.dataset.nome,
+                data_exame: data,
                 periodicidade,
                 data_vencimento: periodicidade ? addMeses(data, periodicidade) : null
             };
@@ -56348,3 +56302,65 @@ window.restaurarConfigAlertasPadrao = restaurarConfigAlertasPadrao;
 window.imprimirResumoPendenciasEquipe = imprimirResumoPendenciasEquipe;
 
 
+
+// Consulta histórica: somente procedimentos identificados e realização comprovada.
+function pcmsoDataValida(valor) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(valor || '')) return false;
+    const d = new Date(valor + 'T12:00:00Z');
+    return !isNaN(d) && d.toISOString().slice(0,10) === valor;
+}
+function calcularConsultaMensalPcmso(registros, periodo, exame, matriculasAtivas = new Set(), hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })) {
+    const realizados = [], previstos = [], vencidos = [], vistos = new Set(), ultimos = new Map();
+    let semDetalhamento = 0, invalidos = 0;
+    const normalizar = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    for (const a of registros || []) {
+        if (/cancel|remarc|agend|previst/i.test(a.status || '')) continue;
+        const itens = Array.isArray(a.exames_detalhe) ? a.exames_detalhe : [];
+        if (!itens.length) { semDetalhamento++; continue; }
+        for (const item of itens) {
+            if (/cancel|remarc|agend|previst/i.test(item.status || '')) continue;
+            const nome = normalizar(item.nome), matricula = String(a.matricula || '').trim();
+            if (!nome || !matricula) { invalidos++; continue; }
+            // O formulário ASO legado grava a realização no atendimento, não em cada item.
+            const data = item.data_avaliacao || item.data_exame || ((item.resultado || a.resultado) ? a.data_exame : '');
+            if (!pcmsoDataValida(data)) { invalidos++; continue; }
+            if (exame && nome !== exame) continue;
+            const chave = matricula + '|' + nome + '|' + data;
+            if (vistos.has(chave)) continue;
+            vistos.add(chave);
+            const linha = { matricula, nome: a.nome_colaborador || matricula, exame: item.nome, data };
+            if (data.startsWith(periodo)) realizados.push(linha);
+            const chaveUltimo = matricula + '|' + nome;
+            if (!ultimos.has(chaveUltimo) || data > ultimos.get(chaveUltimo).data) {
+                ultimos.set(chaveUltimo, { ...linha, vencimento: item.data_vencimento });
+            }
+        }
+    }
+    for (const linha of ultimos.values()) {
+        // Vencimentos operacionais usam somente vínculos atuais; realizados preservam o histórico.
+        if (!matriculasAtivas.has(linha.matricula)) continue;
+        if (!pcmsoDataValida(linha.vencimento) || !linha.vencimento.startsWith(periodo)) continue;
+        const destino = linha.vencimento < hoje ? vencidos : previstos;
+        destino.push({ ...linha, data: linha.vencimento });
+    }
+    return { realizados, previstos, vencidos, pessoasVencidas: new Set(vencidos.map(r => r.matricula)).size, pessoas: new Set(realizados.map(r => r.matricula)).size, pessoasPrevistas: new Set(previstos.map(r => r.matricula)).size, semDetalhamento, invalidos };
+}
+function renderConsultaMensalPcmso() {
+    const host = document.getElementById('consultaMensalPcmso');
+    if (!host) return;
+    if (!host.dataset.inicializado) {
+        host.dataset.inicializado = 'true';
+        const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+        host.innerHTML = '<h3>Consulta mensal de exames</h3><p>Exames realizados preservam o histórico, incluindo desligados. Vencidos e a vencer consideram somente colaboradores atualmente ativos, com vencimento no mês selecionado e situação em relação a hoje.</p><label>Mês e ano <input type="month" id="pcmsoPeriodo" value="' + hoje.slice(0,7) + '" onchange="renderConsultaMensalPcmso()"></label> <label>Tipo de exame <select id="pcmsoTipo" onchange="renderConsultaMensalPcmso()"></select></label><div id="pcmsoMensalResultado"></div>';
+    }
+    const select = document.getElementById('pcmsoTipo'), anterior = select.value;
+    const nomes = [...new Set((allAsoExames || []).flatMap(a => Array.isArray(a.exames_detalhe) ? a.exames_detalhe.map(e => e.nome).filter(Boolean) : []))].sort();
+    const normalizar = v => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    select.innerHTML = '<option value="">Todos os exames</option>' + nomes.map(n => '<option value="' + escapeHTML(normalizar(n)) + '">' + escapeHTML(n) + '</option>').join('');
+    select.value = anterior;
+    const matriculasAtivas = new Set((allEfetivo || []).filter(colaboradorEstaAtivo).map(e => String(e.id || '').trim()).filter(Boolean));
+    const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+    const r = calcularConsultaMensalPcmso(allAsoExames, document.getElementById('pcmsoPeriodo').value, select.value, matriculasAtivas, hoje);
+    const lista = (titulo, linhas, colunaData = 'Data de realização') => '<details><summary>' + titulo + '</summary>' + (linhas.length ? '<div style="overflow:auto"><table class="db-table"><thead><tr><th>Colaborador</th><th>Exame</th><th>' + colunaData + '</th></tr></thead><tbody>' + linhas.map(l => '<tr><td>' + escapeHTML(l.nome) + '</td><td>' + escapeHTML(l.exame) + '</td><td>' + escapeHTML(l.data) + '</td></tr>').join('') + '</tbody></table></div>' : '<p>Sem registros no período.</p>') + '</details>';
+    document.getElementById('pcmsoMensalResultado').innerHTML = lista('Colaboradores com exames realizados: ' + r.pessoas + ' • Exames realizados: ' + r.realizados.length, r.realizados) + '<p>Colaboradores com agendamento confirmado: indisponível. Este fluxo não mantém agenda individual com confirmação, cancelamento e remarcação.</p>' + '<p>Situação em ' + formatSimpleDate(hoje) + ' (horário de São Paulo). Vencimentos restritos ao mês selecionado.</p>' + lista('Colaboradores ativos com exames vencidos: ' + r.pessoasVencidas, r.vencidos, 'Vencimento') + lista('Colaboradores ativos com exames a vencer (inclui hoje): ' + r.pessoasPrevistas, r.previstos, 'Vencimento') + '<details><summary>Critérios e limitações</summary><p>Datas civis do exame, sem conversão de fuso. Sem data individual, usa-se a data do atendimento com resultado registrado. Cada procedimento identificado é contado; repetições da mesma pessoa, exame e data são consolidadas. Vencidos têm validade anterior a hoje; a vencer têm validade de hoje em diante. A previsão usa a validade explícita do último procedimento disponível de colaboradores atualmente ativos, sem representar agendamento. Demitidos, inativos e pessoas sem vínculo ativo identificado ficam fora desse indicador e de sua listagem; o histórico de realizados é preservado. Registros sem detalhamento: ' + r.semDetalhamento + '; procedimentos sem identificação/data válida: ' + r.invalidos + '. ASOs sem procedimentos não permitem inferir quais exames foram realizados.</p></details>';
+}

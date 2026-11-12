@@ -97,9 +97,12 @@ async function relSmsImportarFotosComPrevia() {
     if (!relSmsFotosPodeEditar()) return;
     if (s.editor || s.editando >= 0) { relSmsFotosMensagem('Aplique ou descarte o tema que está editando antes de importar.'); return; }
     const docInicial = s.doc;
+    // O diálogo nativo torna inerte o conteúdo externo: as etapas da importação
+    // precisam pertencer ao organizador para receber foco e cliques.
+    const alvoDialogo = document.getElementById('relSmsFotosModal') || document.body;
     let tipo, link;
     if (typeof Swal !== 'undefined') {
-        const r = await Swal.fire({ title: 'Consultar fotos da pasta do mês',
+        const r = await Swal.fire({ target: alvoDialogo, title: 'Consultar fotos da pasta do mês',
             html: '<label>Categoria<select id="rfImportTipo"><option value="treinamento">Treinamentos</option><option value="ddsma">DDSMA</option></select></label><label>Link da pasta do mês<input id="rfImportLink" type="url" class="swal2-input"></label><p>A consulta não altera compartilhamento. Confira tema, data e fotos na prévia antes de salvar.</p>',
             showCancelButton: true, confirmButtonText: 'Consultar prévia', cancelButtonText: 'Cancelar',
             preConfirm: () => ({ tipo: document.getElementById('rfImportTipo').value, link: document.getElementById('rfImportLink').value.trim() }) });
@@ -141,7 +144,7 @@ async function relSmsImportarFotosComPrevia() {
         if (typeof Swal !== 'undefined') {
             const el = document.createElement('div'); el.style.cssText = 'text-align:left;white-space:pre-wrap;max-height:45vh;overflow:auto';
             el.textContent = resumo + (pendencias ? '\n\nNão serão importados:\n' + pendencias : '') + '\n\nImportar não comprova a realização. Confira as datas e fotos antes de fechar a seleção. Fotos existentes serão preservadas.';
-            confirmado = (await Swal.fire({ title: 'Revisar importação', html: el, showCancelButton: true, confirmButtonText: 'Importar e salvar os itens conferidos', cancelButtonText: 'Cancelar' })).isConfirmed;
+            confirmado = (await Swal.fire({ target: alvoDialogo, title: 'Revisar importação', html: el, showCancelButton: true, confirmButtonText: 'Importar e salvar os itens conferidos', cancelButtonText: 'Cancelar' })).isConfirmed;
         } else confirmado = confirm(resumo + '\n\nPendências:\n' + pendencias + '\n\nSalvar somente os itens conferidos?');
         if (!confirmado || s.doc !== docInicial) return;
         s.doc = plano.candidato; s.dirty = true; s.sequencia++;

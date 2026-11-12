@@ -1,6 +1,6 @@
 # MAPA OFICIAL DE MÓDULOS — DASHBOARD GERENCIAL SST
 
-12/11/2026 — Publicação do conjunto autorizada por João. Migração 20261112085020_status_colaborador_atomico aplicada no projeto segtrab e negação HTTP anônima confirmada, sem gravações operacionais. Integração do painel em andamento. Ver STATUS_COLABORADOR_ATOMICO.md e registro final na ponte. Relatos anteriores de ausência da RPC/publicação descrevem etapas históricas.
+12/11/2026 — Conjunto publicado com autorização de João: migração 20261112085020_status_colaborador_atomico no projeto segtrab antes do painel, PR nº 2 integrada em e9ea39a, deployment READY. Oito recursos do painel e quatro do campo conferidos por SHA-256/HTTP200; fixture e SQL inacessíveis. Navegador operacional: shell, Efetivo/Terceiros e leitura de indicadores aprovados; sessão legada sem Supabase Auth, portanto gravação autenticada em produção não homologada. Sem dados fictícios ou alteração de cadastros para teste. Ver STATUS_COLABORADOR_ATOMICO.md e registro final na ponte. Relatos anteriores de ausência da RPC/publicação descrevem etapas históricas.
 
 Status de acesso conjunto implementado LOCALMENTE (núcleo/EPI 303.2): RPC transacional, conflito de estado, rollback e resposta incerta tratados. 20 cenários com backend/Auth locais reais e 13 simulados aprovados; sintaxe 64/64, testes 15/15 arquivos e lint 19 módulos aprovados. Proposta SQL fora de migrations e ausente de produção: NÃO publicar o frontend antes da ativação coordenada do banco. Ver STATUS_COLABORADOR_ATOMICO.md. As descrições anteriores abaixo são históricas.
 

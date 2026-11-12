@@ -141,6 +141,16 @@ test('HTML completo: sigilo psicossocial, ausência de acidentes e atrasos ocult
     const htmlDossie = c.construirHtmlDossieOficialRelSms(d, false);
     // No dossiê interno, as escalas críticas aparecem
     assert(htmlDossie.includes('Escalas com Alerta Preventivo'));
+    const fechamentoInterno = { status: 'fechado', revisao: 1, fechado_em: '2026-11-12T18:45:00Z', fechado_por: 'conta-interna@fixture.invalid', hash: 'hash-interno-fixture' };
+    const fechamentoAntes = JSON.stringify(fechamentoInterno);
+    for (const modoExecutivo of [true, false]) {
+        const htmlFinal = c.construirHtmlDossieOficialRelSms(d, modoExecutivo, fechamentoInterno);
+        assert.doesNotMatch(htmlFinal, /Snapshot Histórico|HOMOLOGADO E FECHADO|Hash:|fidelidade histórica permanente/);
+        assert(!htmlFinal.includes(fechamentoInterno.fechado_por));
+        assert(!htmlFinal.includes(fechamentoInterno.hash));
+        assert(htmlFinal.includes('Data de Emissão'));
+    }
+    assert.equal(JSON.stringify(fechamentoInterno), fechamentoAntes, 'Apresentação não altera a rastreabilidade interna');
 });
 
 test('Prévia do painel: sem inspeções não declara 100% Conforme (Achado 4)', () => {
@@ -700,6 +710,10 @@ test('SMS-03 (Bloqueio 2): congelamento integral do snapshot em montarDocRelSms 
     };
 
     const documento = await c.montarDocRelSms(9, 2026, true, null, snapshotCompleto);
+    const textoDocumento = JSON.stringify(documento);
+    assert.doesNotMatch(textoDocumento, /Snapshot Histórico|HOMOLOGADO E FECHADO|Hash de integridade|Atualizar campo/);
+    assert(!textoDocumento.includes(snapshotCompleto.fechado_por));
+    assert(!textoDocumento.includes(snapshotCompleto.hash));
     const secao = documento.sections[1];
     const pagina = secao.properties.page;
     const larguraUtil = pagina.size.width - pagina.margin.left - pagina.margin.right;

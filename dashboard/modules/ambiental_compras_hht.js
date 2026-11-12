@@ -128,7 +128,7 @@ async function carregarPastaAcervoDrive(pastaId, appendMode) {
         const params = new URLSearchParams({ categoria: acervoDriveCategoria });
         if (pastaId) params.set('pastaId', pastaId);
         if (appendMode && acervoDriveNextPageToken) params.set('pageToken', acervoDriveNextPageToken);
-        const resp = await fetch(`/api/anexos-drive-listar?${params.toString()}`);
+        const resp = await fetchApiAnexos(`/api/anexos-drive-listar?${params.toString()}`);
         const dados = await resp.json();
         if (!resp.ok) throw new Error(dados.erro || `HTTP ${resp.status}`);
 
@@ -1000,7 +1000,7 @@ async function iniciarUploadArquivosAcervo() {
 
         try {
             // 1. Inicia sessão de upload
-            const iniciarResp = await fetch('/api/anexo-iniciar', {
+            const iniciarResp = await fetchApiAnexos('/api/anexo-iniciar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1022,7 +1022,7 @@ async function iniciarUploadArquivosAcervo() {
 
             // 3. Finaliza permissão pública do arquivo
             try {
-                await fetch('/api/anexo-finalizar', {
+                await fetchApiAnexos('/api/anexo-finalizar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ driveFileId: arquivo.id })

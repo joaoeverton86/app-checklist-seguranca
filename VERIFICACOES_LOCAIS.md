@@ -10,7 +10,7 @@ Foram lidos a resposta `2026-11-11-2120-de-acordo-parecer-configuracoes-orca-cod
 
 | Comando | Cobertura e limites |
 | --- | --- |
-| `npm test` | 15 arquivos revisados de simulações/asserções estáticas; cada arquivo roda em processo próprio com rede, escrita e subprocessos não autorizados. |
+| `npm test` | 19 arquivos revisados de simulações/asserções estáticas; cada arquivo roda em processo próprio com rede, escrita e subprocessos não autorizados. |
 | `npm test -- --list` | Lista a seleção sem executar os testes. Novos arquivos não entram automaticamente. |
 | `npm run check:syntax` | `node --check` em JS/CJS da raiz, dashboard, api e scripts; sem executar código. Não cobre scripts inline do HTML. |
 | `npm run lint` | Mantém o lint legado de app.js, data.js e dashboard/dashboard.js. |
@@ -110,3 +110,15 @@ A implementação transacional substitui o aviso de gravação parcial no comand
 ## Publicação autorizada em 12/11/2026
 
 João autorizou a continuidade e publicação do conjunto. A migração 20261112085020_status_colaborador_atomico foi aplicada primeiro no projeto segtrab; metadados e negação HTTP anônima conferidos, sem gravação de dados operacionais. O corpo coincide com o validado localmente; a migração acrescenta recarga do schema. Painel publicado pela PR nº 2, commit e9ea39a, deployment READY. Doze recursos conferidos por SHA-256/HTTP200 e artefatos internos inacessíveis. Navegador operacional aprovou shell, Efetivo/Terceiros e consulta de indicadores em leitura; confirmação de Auth falhou por sessão legada sem AuthSession. Não houve teste de gravação em produção; o comando de status exige login por e-mail da conta responsável. Rastreio na ponte e scratch/governanca/publicacao. As menções anteriores a ausência de autorização/publicação são históricas.
+
+## Revisão posterior das URLs de anexos — somente local
+
+Branch fix/seguranca-urls-anexos: dois handlers e lib/urls-remotas.js passam a validar destinos, redirects, conteúdo e limites. Quatorze novos testes; agregado aprovado: sintaxe66/66, testes16/16 arquivos e lint19 módulos. check:syntax inclui lib/. Relatório api/REVISAO_SEGURANCA_ANEXOS.md. Autorização dos endpoints e vínculo de usuário/sessão/arquivo continuam pendentes; não confundir bloqueio de URLs arbitrárias com proteção de documentos privados. Nenhum push/deploy/serviço operacional nesta etapa.
+
+## Autorização de anexos — continuação local
+
+Implementação descrita em api/AUTORIZACAO_ANEXOS.md: autorização limitada por app_metadata administrativo, sessão assinada, Saúde restrita inclusive em chamada direta/pasta pública herdada, painel com transporte e descarte de respostas atrasadas. Agregado aprovado: sintaxe70/70, testes18/18 arquivos, lint19 módulos. Cenários focados: URLs14, servidor18, cliente9; navegador integrado7+recarga1 e regressão13. Todos com providers simulados nesta etapa, sem Auth/Google reais. Sem push/PR/deploy ou provisionamento remoto; uma futura publicação deve ser agrupada para respeitar as cotas de João.
+
+## Preparação de ativação — conferência posterior
+
+Ver api/PREPARACAO_ATIVACAO_ANEXOS.md. Dezesseis cenários com Auth/PostgreSQL/PostgREST reais LOCAIS aprovados, Drive de gravação simulado; instância encerrada e Docker desligado, volumes preservados. Operacional somente leitura de metadados: Saúde com e-mail pendente, pasta com acesso geral Restrito, raiz de fotos existente no painel mas não configurada no servidor. Plano de concessões local sem aplicação. Planejador com cinco testes; agregado72/72 sintaxe,19/19 arquivos de teste e lint19 módulos aprovado. Sem push/PR/build/deploy, concessões ou alterações de variáveis operacionais. João pedirá a confirmação do convite de Saúde; ainda não foi registrada como concluída.

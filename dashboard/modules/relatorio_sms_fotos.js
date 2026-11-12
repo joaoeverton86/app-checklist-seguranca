@@ -280,7 +280,7 @@ async function relSmsFotosListar(pastaId, pageToken = null) {
     if (alvo) q.set('pastaId', alvo); if (pageToken) q.set('pageToken', pageToken);
     relSmsFotosMensagem('Consultando somente esta pasta do Drive…');
     try {
-        const r = await fetch('/api/anexos-drive-listar?' + q, { signal: AbortSignal.timeout(15000) });
+        const r = await fetchApiAnexos('/api/anexos-drive-listar?' + q, { signal: AbortSignal.timeout(15000) });
         const dados = await r.json();
         if (seq !== s.sequencia || !document.getElementById('relSmsFotosModal').open) return;
         if (!r.ok) throw new Error(dados.erro || 'Falha ao listar pasta.');
@@ -314,7 +314,7 @@ window.addEventListener('beforeunload', event => { if (relSmsFotosEstado.dirty |
 async function relSmsFotosImagem(id) {
     relSmsFotosId(id);
     const url = `/api/proxy-imagem?url=${encodeURIComponent('https://lh3.googleusercontent.com/d/' + id + '=w1200')}&drive_id=${encodeURIComponent(id)}`;
-    const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    const r = await fetchApiAnexos(url, { signal: AbortSignal.timeout(20000) });
     if (!r.ok || !/^image\/(jpeg|png|webp)/i.test(r.headers.get('content-type') || '')) throw new Error('Foto indisponível ou formato não suportado.');
     const max = 8 * 1024 * 1024;
     if (Number(r.headers.get('content-length')) > max) { await r.body?.cancel(); throw new Error('Foto acima de 8 MB. Reduza a imagem no Drive.'); }

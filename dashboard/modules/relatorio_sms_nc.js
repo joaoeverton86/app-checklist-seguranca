@@ -761,7 +761,7 @@ function carregarImagemParaBufferDocx(url, maxW = 280, maxH = 200) {
                 })
                 .catch(() => {
                     const proxyUrl = `/api/proxy-imagem?url=${encodeURIComponent(urlFinal)}`;
-                    fetch(proxyUrl)
+                    fetchApiAnexos(proxyUrl)
                         .then(r => r.ok ? r.arrayBuffer() : null)
                         .then(buf => resolve(buf && buf.byteLength > 50 ? { buffer: buf, width: maxW, height: Math.round(maxW * 0.7) } : null))
                         .catch(() => resolve(null));
@@ -4554,7 +4554,7 @@ async function relSmsArquivarNoAcervo(mes, ano, blobOuArquivo, nomeArquivo, mime
     }
 
     // 1. Inicia sessão no Drive via API existente (/api/anexo-iniciar)
-    const iniciarResp = await fetch('/api/anexo-iniciar', {
+    const iniciarResp = await fetchApiAnexos('/api/anexo-iniciar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4577,18 +4577,12 @@ async function relSmsArquivarNoAcervo(mes, ano, blobOuArquivo, nomeArquivo, mime
         throw new Error('API do Drive não retornou URL de upload válida.');
     }
 
-    // 2. Transfere arquivo em pedaços ou direto
+    // 2. Exigir o fluxo autorizado, que preserva o vínculo do arquivo com a sessão.
     let arquivo = null;
     if (typeof enviarArquivoEmPedacos === 'function') {
         arquivo = await enviarArquivoEmPedacos(blobOuArquivo, iniciarDados.uploadUrl);
     } else {
-        const putResp = await fetch(iniciarDados.uploadUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': mimeType || 'application/octet-stream' },
-            body: blobOuArquivo
-        });
-        if (!putResp.ok) throw new Error(`Falha no upload direto para o Drive: HTTP ${putResp.status}`);
-        arquivo = await putResp.json().catch(() => null);
+        throw new Error('O fluxo autorizado de anexos não foi carregado. Recarregue o painel antes de enviar.');
     }
 
     if (!arquivo || !arquivo.id) {
@@ -4596,8 +4590,9 @@ async function relSmsArquivarNoAcervo(mes, ano, blobOuArquivo, nomeArquivo, mime
     }
 
     // 3. Permissão pública no Drive (APENAS se explicitamente autorizada)
+    let acessoPublicoConfirmado = false;
     if (opts.tornarPublico) {
-        const finResp = await fetch('/api/anexo-finalizar', {
+        const finResp = await fetchApiAnexos('/api/anexo-finalizar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ driveFileId: arquivo.id })
@@ -4607,6 +4602,8 @@ async function relSmsArquivarNoAcervo(mes, ano, blobOuArquivo, nomeArquivo, mime
             console.warn('[Relatório SMS] Aviso ao finalizar permissão do arquivo:', errTexto);
             throw new Error(`Falha ao conceder permissão pública no Drive (HTTP ${finResp.status}): ${errTexto}`);
         }
+        const permissao = await finResp.json();
+        acessoPublicoConfirmado = permissao.compartilhado === true;
     }
 
     // 4. Registra na tabela anexos_sms
@@ -4635,7 +4632,7 @@ async function relSmsArquivarNoAcervo(mes, ano, blobOuArquivo, nomeArquivo, mime
         webViewLink: arquivo.webViewLink || `https://drive.google.com/file/d/${arquivo.id}/view`,
         nomeArquivo: nomeArquivo,
         dataEnvio: new Date().toISOString(),
-        acesso_publico: Boolean(opts.tornarPublico)
+        acesso_publico: acessoPublicoConfirmado
     };
 }
 

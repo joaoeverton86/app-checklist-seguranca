@@ -37,6 +37,96 @@ async function authTokenDashboard() {
     }
 }
 
+// Estado transitório, separado por UID; nunca persistir URLs de sessão no armazenamento.
+var sessoesApiAnexos = new Map();
+var sessaoApiAnexosUid = null;
+var versaoSessaoApiAnexos = 0;
+function limparSessoesApiAnexos() {
+    sessoesApiAnexos.clear();
+    sessaoApiAnexosUid = null;
+    versaoSessaoApiAnexos++;
+}
+async function fetchApiAnexos(rota, opcoes = {}) {
+    if (typeof rota !== 'string' || !/^\/api\/(?:anexo-iniciar|anexo-enviar-pedaco|anexo-finalizar|anexos-drive-listar|proxy-imagem)(?:\?|$)/.test(rota)) {
+        throw new Error('Destino de anexo inválido.');
+    }
+    const negar = mensagem => Object.assign(new Error(mensagem), { bloquearFallback: true });
+    const versaoEntrada = versaoSessaoApiAnexos;
+    let usuario, error, sessao;
+    try {
+        ({ data: usuario, error } = await sbAuth.auth.getUser());
+        ({ data: sessao } = await sbAuth.auth.getSession());
+    } catch (_) {
+        limparSessoesApiAnexos();
+        throw negar('Não foi possível confirmar seu login. Entre com seu e-mail antes de enviar anexos.');
+    }
+    if (error || !usuario?.user?.id || !sessao?.session?.access_token || sessao.session.user?.id !== usuario.user.id) {
+        limparSessoesApiAnexos();
+        throw negar('Entre novamente com seu e-mail e senha do painel para acessar os anexos.');
+    }
+    const uid = usuario.user.id;
+    if (versaoEntrada !== versaoSessaoApiAnexos && sessaoApiAnexosUid !== uid) throw negar('A sessão mudou durante a operação. Confira o arquivo no Drive antes de continuar.');
+    if (sessaoApiAnexosUid !== uid) {
+        limparSessoesApiAnexos();
+        sessaoApiAnexosUid = uid;
+    }
+    const versaoPedido = versaoSessaoApiAnexos;
+    const conferirConta = () => {
+        if (versaoPedido !== versaoSessaoApiAnexos || sessaoApiAnexosUid !== uid) throw negar('A conta mudou durante o envio. Confira o arquivo no Drive antes de continuar.');
+    };
+    for (const [chave, envio] of sessoesApiAnexos) {
+        if (envio.uid !== uid || envio.expira <= Date.now()) sessoesApiAnexos.delete(chave);
+    }
+    const caminho = rota.split('?')[0];
+    const headers = new Headers(opcoes.headers || {});
+    headers.set('Authorization', 'Bearer ' + sessao.session.access_token);
+    headers.set('apikey', SUPABASE_KEY);
+    let body = opcoes.body;
+    if (caminho === '/api/anexo-enviar-pedaco' || caminho === '/api/anexo-finalizar') {
+        const dados = JSON.parse(body || '{}');
+        const envio = caminho === '/api/anexo-enviar-pedaco'
+            ? sessoesApiAnexos.get(uid + ':url:' + dados.uploadUrl)
+            : sessoesApiAnexos.get(uid + ':id:' + dados.driveFileId);
+        if (!envio) throw negar('Sessão de envio não encontrada. Confira o arquivo no Drive antes de tentar novamente.');
+        dados.sessionTicket = envio.ticket;
+        if (caminho === '/api/anexo-finalizar') {
+            if (!envio.permitePublico || !confirm('Qualquer pessoa com o link poderá visualizar este arquivo. Deseja compartilhar publicamente?')) {
+                return Response.json({ ok: true, compartilhado: false, restrito: true });
+            }
+            dados.confirmarCompartilhamento = true;
+        }
+        body = JSON.stringify(dados);
+    }
+    let resposta;
+    try { resposta = await fetch(rota, { ...opcoes, headers, body }); }
+    catch (_) { throw negar('A conexão foi interrompida. Confira o arquivo no Drive antes de repetir o envio.'); }
+    conferirConta();
+    if (!resposta.ok) {
+        const dados = await resposta.clone().json().catch(() => ({}));
+        throw negar(dados.erro || 'Não foi possível confirmar esta operação com anexos.');
+    }
+    if (resposta.ok && caminho === '/api/anexo-iniciar') {
+        const dados = await resposta.clone().json().catch(() => { throw negar('Resposta de envio não confirmada. Confira o Drive antes de tentar novamente.'); });
+        conferirConta();
+        const infoOnly = JSON.parse(body || '{}').infoOnly === true;
+        if (!infoOnly && (!dados || typeof dados.uploadUrl !== 'string' || !dados.uploadUrl || typeof dados.sessionTicket !== 'string' || !dados.sessionTicket
+            || typeof dados.compartilhamentoPublicoPermitido !== 'boolean')) throw negar('Sessão de envio não confirmada. Recarregue o painel antes de continuar.');
+        if (dados.uploadUrl && dados.sessionTicket) sessoesApiAnexos.set(uid + ':url:' + dados.uploadUrl, {
+            uid, ticket: dados.sessionTicket, permitePublico: dados.compartilhamentoPublicoPermitido === true,
+            expira: Date.now() + 60 * 60 * 1000
+        });
+    } else if (resposta.ok && caminho === '/api/anexo-enviar-pedaco') {
+        const dados = await resposta.clone().json().catch(() => { throw negar('Resposta do envio não confirmada. Confira o arquivo no Drive antes de tentar novamente.'); });
+        const pedido = JSON.parse(body);
+        conferirConta();
+        if (!dados || typeof dados.completo !== 'boolean' || (dados.completo && (typeof dados.id !== 'string' || !dados.id))) throw negar('Resultado do envio não confirmado. Confira o arquivo no Drive antes de continuar.');
+        const envio = sessoesApiAnexos.get(uid + ':url:' + pedido.uploadUrl);
+        if (dados.completo && dados.id && envio) sessoesApiAnexos.set(uid + ':id:' + dados.id, envio);
+    }
+    return resposta;
+}
+
+
 var REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutos (reduz consumo de Egress; dados persistem em cache local)
 
 // Pagina automaticamente via Range/Content-Range. O PostgREST corta em 1000 linhas por
@@ -860,6 +950,7 @@ async function realizarCadastroPrimeiroAcessoDashboard() {
 
 async function realizarLogoutDashboard() {
     if (!confirm('Deseja realmente sair do painel?')) return;
+    limparSessoesApiAnexos();
     localStorage.removeItem('active_session');
     try { await sbAuth.auth.signOut(); } catch (e) { /* sem sessão Auth pra encerrar, ou já expirada - tudo bem */ }
     pararAutoRefresh();
@@ -2772,7 +2863,7 @@ async function testarConexaoGoogleDrive() {
 
     try {
         // 1. Testa a API nativa Vercel -> Google Drive
-        const respVercel = await fetch('/api/anexo-iniciar', {
+        const respVercel = await fetchApiAnexos('/api/anexo-iniciar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -3178,7 +3269,7 @@ async function fazerUploadArquivoAoGoogleDrive(file, { tabela = 'checklists', re
 
     // 1. Tenta envio nativo via API Vercel -> Google Drive
     try {
-        const iniciarResp = await fetch('/api/anexo-iniciar', {
+        const iniciarResp = await fetchApiAnexos('/api/anexo-iniciar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -3198,7 +3289,7 @@ async function fazerUploadArquivoAoGoogleDrive(file, { tabela = 'checklists', re
             if (iniciarDados && iniciarDados.uploadUrl) {
                 const arquivo = await enviarArquivoEmPedacos(file, iniciarDados.uploadUrl, statusEl);
                 try {
-                    await fetch('/api/anexo-finalizar', {
+                    await fetchApiAnexos('/api/anexo-finalizar', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ driveFileId: arquivo.id })
@@ -3215,6 +3306,7 @@ async function fazerUploadArquivoAoGoogleDrive(file, { tabela = 'checklists', re
             }
         }
     } catch (errVercel) {
+        if (errVercel.bloquearFallback) throw errVercel;
         console.warn('Upload nativo Vercel falhou, tentando fallback Apps Script:', errVercel);
     }
 
@@ -21303,7 +21395,7 @@ function carregarImagemParaBufferDocx(url, maxW = 280, maxH = 200) {
                 })
                 .catch(() => {
                     const proxyUrl = `/api/proxy-imagem?url=${encodeURIComponent(urlFinal)}`;
-                    fetch(proxyUrl)
+                    fetchApiAnexos(proxyUrl)
                         .then(r => r.ok ? r.arrayBuffer() : null)
                         .then(buf => resolve(buf && buf.byteLength > 50 ? { buffer: buf, width: maxW, height: Math.round(maxW * 0.7) } : null))
                         .catch(() => resolve(null));
@@ -27651,7 +27743,7 @@ async function enviarArquivoEmPedacos(file, uploadUrl, statusEl) {
         const numeroPedaco = Math.floor(offset / ANEXO_TAMANHO_PEDACO) + 1;
         if (statusEl) statusEl.textContent = `Enviando pro Google Drive... (parte ${numeroPedaco}/${totalPedacos})`;
 
-        const resp = await fetch('/api/anexo-enviar-pedaco', {
+        const resp = await fetchApiAnexos('/api/anexo-enviar-pedaco', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ uploadUrl, chunkBase64, offset, tamanhoTotal: total, mimeType: file.type || 'application/octet-stream' })
@@ -27681,7 +27773,7 @@ async function enviarAnexoSelecionado() {
     statusEl.textContent = 'Preparando envio...';
     statusEl.style.color = 'var(--text-light)';
     try {
-        const iniciarResp = await fetch('/api/anexo-iniciar', {
+        const iniciarResp = await fetchApiAnexos('/api/anexo-iniciar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -27697,7 +27789,7 @@ async function enviarAnexoSelecionado() {
         const arquivo = await enviarArquivoEmPedacos(file, iniciarDados.uploadUrl, statusEl);
 
         try {
-            await fetch('/api/anexo-finalizar', {
+            await fetchApiAnexos('/api/anexo-finalizar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ driveFileId: arquivo.id })
@@ -38149,7 +38241,7 @@ async function carregarPastaAcervoDrive(pastaId, appendMode) {
         const params = new URLSearchParams({ categoria: acervoDriveCategoria });
         if (pastaId) params.set('pastaId', pastaId);
         if (appendMode && acervoDriveNextPageToken) params.set('pageToken', acervoDriveNextPageToken);
-        const resp = await fetch(`/api/anexos-drive-listar?${params.toString()}`);
+        const resp = await fetchApiAnexos(`/api/anexos-drive-listar?${params.toString()}`);
         const dados = await resp.json();
         if (!resp.ok) throw new Error(dados.erro || `HTTP ${resp.status}`);
 
@@ -39021,7 +39113,7 @@ async function iniciarUploadArquivosAcervo() {
 
         try {
             // 1. Inicia sessão de upload
-            const iniciarResp = await fetch('/api/anexo-iniciar', {
+            const iniciarResp = await fetchApiAnexos('/api/anexo-iniciar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -39043,7 +39135,7 @@ async function iniciarUploadArquivosAcervo() {
 
             // 3. Finaliza permissão pública do arquivo
             try {
-                await fetch('/api/anexo-finalizar', {
+                await fetchApiAnexos('/api/anexo-finalizar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ driveFileId: arquivo.id })

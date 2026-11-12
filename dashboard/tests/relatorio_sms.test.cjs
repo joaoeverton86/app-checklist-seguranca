@@ -513,70 +513,39 @@ test('SMS-03 e SMS-12 (Bloqueio 5): histórico de revisões múltiplas e confirm
     );
 });
 
-test('SMS-11 e SMS-12 (Bloqueio 1): relSmsArquivarNoAcervo preserva sigilo por padrão e valida response.ok', async () => {
+test('SMS-11 e SMS-12: sigilo padrão, cancelamento de compartilhamento e falha sem repetir envio', async () => {
     const c = contexto();
-    c.require = require;
-    for (const n of ['relSmsArquivarNoAcervo']) {
-        vm.runInContext(func(n), c);
+    vm.runInContext(func('relSmsArquivarNoAcervo'), c);
+    const nucleo = fs.readFileSync('dashboard/dashboard.js', 'utf8');
+    const analise = require('espree').parse(nucleo, { ecmaVersion: 2022, range: true });
+    Object.assign(c, {
+        Headers, Response, SUPABASE_KEY: 'fixture', sessoesApiAnexos: new Map(), sessaoApiAnexosUid: null, versaoSessaoApiAnexos: 0,
+        sbAuth: { auth: {
+            getUser: async () => ({ data: { user: { id: 'UID-FIXTURE', email: 'fixture@example.invalid' } } }),
+            getSession: async () => ({ data: { session: { user: { id: 'UID-FIXTURE' }, access_token: 'fixture' } } })
+        } }, confirm: () => true
+    });
+    for (const nome of ['limparSessoesApiAnexos', 'fetchApiAnexos']) {
+        const n = analise.body.find(n => n.type === 'FunctionDeclaration' && n.id.name === nome);
+        vm.runInContext(nucleo.slice(...n.range), c);
     }
-
-    let chamadaFinalizarOcorreu = false;
-    let urlFinalizarChamada = null;
-
-    c.fetch = async (url, opts) => {
-        if (url === '/api/anexo-iniciar') {
-            return {
-                ok: true,
-                status: 200,
-                json: async () => ({ uploadUrl: 'https://upload.google.com/session123' })
-            };
-        }
-        if (url === 'https://upload.google.com/session123') {
-            return {
-                ok: true,
-                status: 200,
-                json: async () => ({ id: 'drive_arq_123', webViewLink: 'https://drive.google.com/file/d/drive_arq_123/view' })
-            };
-        }
-        if (url === '/api/anexo-finalizar') {
-            chamadaFinalizarOcorreu = true;
-            urlFinalizarChamada = url;
-            return { ok: true, status: 200, json: async () => ({ ok: true }) };
-        }
-        throw new Error(`URL inesperada no mock: ${url}`);
+    let finalizar = 0, uploads = 0, falhar = false;
+    c.fetch = async (url) => {
+        if (url === '/api/anexo-iniciar') return Response.json({ uploadUrl: 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=fixture', sessionTicket: 'fixture-ticket', compartilhamentoPublicoPermitido: true });
+        if (url === '/api/anexo-enviar-pedaco') { uploads++; return Response.json({ completo: true, id: 'drive_arq_123', webViewLink: 'https://drive.google.com/file/d/drive_arq_123/view' }); }
+        if (url === '/api/anexo-finalizar') { finalizar++; return falhar ? Response.json({ erro: 'Não foi possível compartilhar o arquivo no Drive.' }, { status: 502 }) : Response.json({ ok: true, compartilhado: true }); }
+        throw Error('Destino inesperado na fixture');
     };
-
-    // 1. Arquivamento padrão (sem autorização de tornar público)
-    const resPadrao = await c.relSmsArquivarNoAcervo(9, 2026, Buffer.from('test'), 'Relatorio_Rev1.docx', 'application/docx');
-    assert.equal(resPadrao.driveFileId, 'drive_arq_123');
-    assert.equal(resPadrao.acesso_publico, false, 'Por padrão, acesso_publico deve ser false');
-    assert.equal(chamadaFinalizarOcorreu, false, 'NÃO deve chamar /api/anexo-finalizar por padrão para não tornar público a anyone');
-
-    // 2. Arquivamento com tornarPublico: true mas falha HTTP no endpoint de permissão
-    c.fetch = async (url, opts) => {
-        if (url === '/api/anexo-iniciar') {
-            return { ok: true, status: 200, json: async () => ({ uploadUrl: 'https://upload.google.com/session456' }) };
-        }
-        if (url === 'https://upload.google.com/session456') {
-            return { ok: true, status: 200, json: async () => ({ id: 'drive_arq_456' }) };
-        }
-        if (url === '/api/anexo-finalizar') {
-            return {
-                ok: false,
-                status: 500,
-                text: async () => 'Quota de permissões excedida no Google Drive'
-            };
-        }
-        throw new Error(`URL inesperada: ${url}`);
-    };
-
-    await assert.rejects(
-        async () => {
-            await c.relSmsArquivarNoAcervo(9, 2026, Buffer.from('test'), 'Relatorio_Rev2.docx', 'application/docx', { tornarPublico: true });
-        },
-        /Falha ao conceder permissão pública no Drive/,
-        'Deve lançar exceção explícita se o endpoint /api/anexo-finalizar retornar erro HTTP'
-    );
+    c.enviarArquivoEmPedacos = async (file, uploadUrl) => (await c.fetchApiAnexos('/api/anexo-enviar-pedaco', { method: 'POST', body: JSON.stringify({ uploadUrl, chunkBase64: 'AQ==', offset: 0, tamanhoTotal: 1 }) })).json();
+    const salvar = op => c.relSmsArquivarNoAcervo(9, 2026, Buffer.from('test'), 'Relatorio_Ficticio.docx', 'application/docx', op);
+    const padrao = await salvar(); assert.equal(padrao.acesso_publico, false); assert.equal(finalizar, 0);
+    c.confirm = () => false;
+    const cancelado = await salvar({ tornarPublico: true }); assert.equal(cancelado.acesso_publico, false); assert.equal(finalizar, 0);
+    c.confirm = () => true;
+    const publico = await salvar({ tornarPublico: true }); assert.equal(publico.acesso_publico, true); assert.equal(finalizar, 1);
+    falhar = true;
+    await assert.rejects(salvar({ tornarPublico: true }), /Não foi possível compartilhar/);
+    assert.equal(uploads, 4, 'Cada ação deve enviar uma vez, sem nova tentativa após falha de compartilhamento');
 });
 
 test('SMS-03: renderização de competência fechada preserva snapshot imutável e exibe badge de fechamento', () => {

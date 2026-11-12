@@ -1,6 +1,6 @@
 # Status conjunto de acesso — entrega local
 
-Implementado na branch `chore/governanca-testes-locais`, em 11/11/2026 (evidências em UTC de 12/11). João autorizou a publicação na conversa e pediu continuidade. **Função ativada no banco em 12/11/2026, migração `20261112085020_status_colaborador_atomico.sql`; integração/publicação do painel em andamento.**
+Implementado na branch `chore/governanca-testes-locais`, em 11/11/2026 (evidências em UTC de 12/11). João autorizou a publicação na conversa e pediu continuidade. **Publicado em 12/11/2026: função ativada pela migração `20261112085020_status_colaborador_atomico.sql` antes do painel, integrado pela PR nº 2.**
 
 ## Comportamento
 
@@ -32,7 +32,11 @@ Antes da autorização, o ambiente operacional recebeu somente consultas de leit
 
 ## Ativação e limites
 
-**Não publicar o frontend isoladamente:** a ausência da RPC bloqueia o comando com aviso explícito. A sequência autorizada é banco primeiro, conferir disponibilidade da RPC e autorização, depois publicar o painel. Banco e exposição HTTP já conferidos: `SECURITY INVOKER`, search_path fixo, sem EXECUTE para anon e chamada anônima recusada com HTTP 401/código 42501, sem gravar registros. Cache-buster 303.2 apenas no núcleo e EPI. Resultado final da publicação, commit e hashes serão registrados na ponte e em `scratch/governanca/publicacao/`.
+**Não publicar o frontend isoladamente:** a ausência da RPC bloqueia o comando com aviso explícito. A sequência autorizada foi cumprida: banco primeiro, conferir disponibilidade da RPC e autorização, depois publicar o painel. Banco e exposição HTTP conferidos: `SECURITY INVOKER`, search_path fixo, sem EXECUTE para anon e chamada anônima recusada com HTTP 401/código 42501, sem gravar registros. Cache-buster 303.2 apenas no núcleo e EPI.
+
+Publicação funcional: commit `e9ea39ad49f9b39da72d723e2a2e49c48d0e639c`, deployment `dpl_Rgu43SokM3kc8XzhTdwqqJDusVB8`, estado READY. Os oito recursos alterados do painel e quatro recursos preservados do campo responderam HTTP 200 no domínio oficial com SHA-256 igual ao conteúdo revisado em LF (Git). Fixture, servidor de simulação e SQL responderam 404. O MD5 do corpo SQL publicado coincide com o local: `61c8863a8ab83804e16ee71a1d1e44fc`. Evidências em `scratch/governanca/publicacao/` e resumo na ponte.
+
+No navegador operacional, o shell, Efetivo/Terceiros e a consulta dos indicadores de treinamentos passaram em modo somente leitura, sem erros no console. A captura foi conferida visualmente. Não havia terceiros na seleção, portanto a renderização operacional de uma linha com data não foi demonstrada; essa cobertura foi comprovada nas fixtures. A sessão legada existente não possui sessão Supabase Auth (`AuthSessionMissingError`): o teste de confirmação de identidade não passou. Isso permanece explicitamente registrado, não é homologação autenticada em produção. Autoria SMS usa a indicação neutra quando não há Auth; o novo comando de status exige entrar com o e-mail da conta responsável. Nenhum cadastro real foi alterado para teste e nenhuma credencial foi solicitada ou copiada.
 
 Reversão do frontend: deployment anterior `dpl_5nhmj4VXgPLk1JYgoT9exMHuLCb2`, commit `c5ee81d48cb919784199fc7edf0df8745491e447`. A função é adicional e pode permanecer sem uso durante uma reversão; não há necessidade de apagar dados ou remover tabelas. Rever a situação da branch de produção ao reverter para evitar republicação automática da versão defeituosa.
 

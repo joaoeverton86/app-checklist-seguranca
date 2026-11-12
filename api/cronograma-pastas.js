@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { autenticarAnexos, exigirModulo } from '../lib/autorizacao-anexos.js';
 
 const MIME = 'application/vnd.google-apps.folder';
 const MESES = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
@@ -12,28 +13,22 @@ export default async function handler(req, res) {
     try {
         const { mes, ano, fonte, pastaId, confirmar = false, assinatura } = req.body || {};
         if (!Number.isInteger(mes) || mes < 0 || mes > 11 || !Number.isInteger(ano) || ano < 2000 || ano > 2100 || !['ddsma', 'treinamentos'].includes(fonte) || !/^[\w-]{10,150}$/.test(pastaId || '') || typeof confirmar !== 'boolean') throw falha(400, 'Informe competência, calendário e pasta do mês válidos.');
+        const acesso = await autenticarAnexos(req);
+        if (acesso.saude) throw falha(403, 'Perfil restrito ao módulo de saúde.');
+        try { exigirModulo(acesso, 'relatoriosms', true); }
+        catch (err) {
+            if (err.status !== 403) throw err;
+            exigirModulo(acesso, fonte, true);
+        }
         const authorization = req.headers.authorization || '';
         const apikey = process.env.SUPABASE_ANON_KEY || req.headers.apikey;
         if (!authorization.startsWith('Bearer ') || !apikey) throw falha(401, 'Entre com uma conta autenticada para preparar pastas.');
         const base = process.env.SUPABASE_URL || 'https://qqtcwxvbjmybyzubocgd.supabase.co';
         async function banco(caminho, opcoes = {}) {
-            const r = await fetch(base + caminho, { ...opcoes, headers: { apikey, Authorization: authorization, 'Content-Type': 'application/json', ...opcoes.headers }, signal: AbortSignal.timeout(15000) });
+            const r = await fetch(base + caminho, { ...opcoes, redirect: 'error', headers: { apikey, Authorization: authorization, 'Content-Type': 'application/json', ...opcoes.headers }, signal: AbortSignal.timeout(15000) });
             if (!r.ok) throw falha(r.status === 401 || r.status === 403 ? r.status : 502, 'Não foi possível consultar ou reservar a pasta no sistema.');
             return r.status === 204 ? null : r.json();
         }
-        const user = await banco('/auth/v1/user');
-        if (!user.id || !user.email || user.is_anonymous) throw falha(401, 'É necessário login autenticado com e-mail.');
-        const usuarios = await banco('/rest/v1/painel_usuarios?select=*,painel_perfis(*)&auth_user_id=eq.' + encodeURIComponent(user.id));
-        if (usuarios.some(u => u.ativo === false || u.painel_perfis?.ativo === false)) throw falha(403, 'Conta ou perfil desativado.');
-        const perfil = usuarios.find(u => u.ativo !== false && u.painel_perfis?.ativo !== false);
-        if (perfil?.perfil_id === 'modulo_saude') throw falha(403, 'Perfil restrito ao módulo de saúde.');
-        const permitido = perfil && perfil.perfil_id !== 'modulo_saude' && (perfil.painel_perfis?.modulos_edicao || []).some(m => ['relatoriosms', fonte].includes(m));
-        let admin = false;
-        if (!permitido) {
-            const internos = await banco('/rest/v1/colaboradores_checklist?select=matricula,nivel_acesso,ativo&email=eq.' + encodeURIComponent(user.email));
-            admin = internos.some(u => u.ativo !== false && /admin/i.test(u.nivel_acesso || '') && String(u.matricula) !== '98');
-        }
-        if (!admin && !permitido) throw falha(403, 'Seu perfil não permite gerar pastas deste calendário.');
 
         const prefixo = `${ano}-${String(mes + 1).padStart(2, '0')}`;
         const inicio = prefixo + '-01';
@@ -59,13 +54,13 @@ export default async function handler(req, res) {
         const versao = hash([pastaId, fonte, mes, ano, plano]);
         if (confirmar && assinatura !== versao) throw falha(409, 'O cronograma mudou. Gere e confira uma nova prévia.');
         if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !process.env.GOOGLE_REFRESH_TOKEN) throw falha(503, 'A integração de escrita com o Drive não está configurada.');
-        const tokenResp = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID, client_secret: process.env.GOOGLE_CLIENT_SECRET, refresh_token: process.env.GOOGLE_REFRESH_TOKEN, grant_type: 'refresh_token' }), signal: AbortSignal.timeout(15000) });
+        const tokenResp = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', redirect: 'error', body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID, client_secret: process.env.GOOGLE_CLIENT_SECRET, refresh_token: process.env.GOOGLE_REFRESH_TOKEN, grant_type: 'refresh_token' }), signal: AbortSignal.timeout(15000) });
         const token = await tokenResp.json();
         if (!tokenResp.ok || !token.access_token) throw falha(503, 'Reconecte a integração com o Google Drive para permitir a criação de pastas.');
         async function drive(caminho, parametros = {}, opcoes = {}) {
             const url = new URL('https://www.googleapis.com/drive/v3/' + caminho);
             for (const [k, v] of Object.entries(parametros)) url.searchParams.set(k, v);
-            const r = await fetch(url, { ...opcoes, headers: { Authorization: 'Bearer ' + token.access_token, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(15000) });
+            const r = await fetch(url, { ...opcoes, redirect: 'error', headers: { Authorization: 'Bearer ' + token.access_token, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(15000) });
             if (!r.ok) throw falha(r.status === 409 ? 409 : 502, 'Não foi possível consultar ou criar a pasta no Drive.');
             return r.json();
         }
@@ -111,7 +106,7 @@ export default async function handler(req, res) {
             if (!reservas.length) {
                 const gerado = await drive('files/generateIds', { count: '1', space: 'drive', type: 'files' });
                 const valor = { driveId: gerado.ids[0], pastaId, nome: item.nome };
-                const gravar = await fetch(base + '/rest/v1/configuracoes_sistema', { method: 'POST', headers: { apikey, Authorization: authorization, 'Content-Type': 'application/json' }, body: JSON.stringify({ id, valor, descricao: 'Reserva de pasta do cronograma no Drive', atualizado_em: new Date().toISOString() }), signal: AbortSignal.timeout(15000) });
+                const gravar = await fetch(base + '/rest/v1/configuracoes_sistema', { method: 'POST', redirect: 'error', headers: { apikey, Authorization: authorization, 'Content-Type': 'application/json' }, body: JSON.stringify({ id, valor, descricao: 'Reserva de pasta do cronograma no Drive', atualizado_em: new Date().toISOString() }), signal: AbortSignal.timeout(15000) });
                 if (!gravar.ok && gravar.status !== 409) throw falha(403, 'Não foi possível reservar a pasta. Confira sua permissão de gravação.');
                 reservas = await banco(caminho);
             }

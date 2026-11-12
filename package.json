@@ -5,8 +5,13 @@
   "scripts": {
     "dev": "node server.js",
     "preview:dashboard": "node scripts/preview-dashboard.cjs",
+    "preview:isolated": "node scripts/preview-dashboard-isolado.cjs",
     "lint": "eslint --no-eslintrc -c .eslintrc.undef-check.json app.js data.js dashboard/dashboard.js",
     "lint:undef": "eslint --no-eslintrc -c .eslintrc.undef-check.json app.js data.js dashboard/dashboard.js",
+    "lint:modules": "node scripts/lint-dashboard-modules.cjs",
+    "check:syntax": "node scripts/check-syntax.cjs",
+    "test": "node scripts/test-local.cjs",
+    "check:local": "npm run check:syntax && npm run lint && npm test && npm run lint:modules",
     "deploy": "vercel --prod",
     "bump": "node scripts/bump-version.js"
   },

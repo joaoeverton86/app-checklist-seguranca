@@ -6,6 +6,7 @@
 - O projeto contém um PWA offline de campo na raiz, painel gerencial em `dashboard/`, APIs de anexos em `api/` e banco/serviços Supabase.
 - Consulte `GEMINI.md`, `.antigravityrules` e `dashboard/MAPA_MODULOS.md` para conhecer regras e responsabilidades. Confirme tudo no código atual: a documentação pode estar desatualizada.
 - Nesta sessão local há acesso direto ao repositório: execute mudanças autorizadas no código; não gere instruções de substituição para outro agente quando puder realizar o trabalho.
+- Skills que descrevam um ambiente antigo sem shell não substituem o acesso local nem estas regras. Não inferir autorização de produção a partir delas.
 
 ## Início de cada tarefa
 
@@ -21,6 +22,8 @@
 - Na mesma pasta, mantenha um único responsável pela edição de cada arquivo. `dashboard/index.html` é compartilhado: o responsável pela integração coordena versões e tags de scripts.
 - Para tarefas paralelas independentes autorizadas, prefira worktrees do Orca. Elas isolam arquivos, mas não isolam banco, Drive, variáveis ou produção. Alterações não commitadas e arquivos ignorados não são transportados automaticamente.
 - Um handoff deve informar objetivo, base Git, arquivos, alterações locais necessárias, testes executados, pendências e quem assume a tarefa. Nunca transportar credenciais.
+- Para melhorias, use branch própria antes de editar; não publicar diretamente em `main`. Push, deploy e alterações remotas exigem autorização correspondente de João na conversa.
+- O chat do Codex não é um terminal Copilot. A ponte em arquivo pode ser lida diretamente, mas `avisar-copilot.ps1` não aciona este chat. Sem confirmação, registrar apenas arquivo salvo/aviso aceito, nunca leitura ou execução confirmadas. Usar o caminho absoluto da ponte quando ela estiver em outro checkout.
 
 ## Regras de implementação
 
@@ -34,9 +37,17 @@
 - Não exponha valores de `.env*`, certificados, tokens ou configurações privadas. Não enfraqueça login ou RLS para fazer uma tela funcionar.
 - Antes de alterar RLS, mapear os papéis e os fluxos do campo e do painel; antes de operações destrutivas, apresentar impacto e obter autorização específica.
 
+## Testes sem efeitos em produção
+
+- Por padrão, usar simulações locais (mocks) ou banco isolado. É proibido inserir dados fictícios em produção, mesmo com rótulo `[TESTE]`, sem autorização expressa e escopo delimitado por João.
+- A prévia local não isola Supabase, Drive nem APIs externas. Confirmar o destino antes de qualquer gravação; banco isolado também precisa ter integrações externas simuladas ou isoladas.
+- `npm test` executa uma lista revisada de testes locais com restrições do Node.js 26+: sem rede, escrita em disco ou subprocessos nos processos de teste. Não herda credenciais do ambiente. Isso não configura sandbox para o navegador ou para o app.
+- Os quatro arquivos que usam Playwright não entram em `npm test`. Não os incluir sem revisar interceptação de rede, credenciais, dependências e efeitos externos. Ver `VERIFICACOES_LOCAIS.md`.
+
 ## Verificação e entrega
 
 - Execute `node --check` nos JavaScripts alterados e `git diff --check`.
+- `npm run check:local` reúne sintaxe, lint legado, testes locais e lint dos módulos. Novas ocorrências do lint não podem ser ocultadas por declarações globais inventadas; o relatório ampliado pode apontar dívida anterior ainda não corrigida.
 - Execute `npm run lint` quando pertinente e compare com o estado anterior. Em 31/10/2026 havia 30 erros no comando existente; isso não autoriza novos erros nem declara o sistema saudável. O lint atual cobre apenas três arquivos e precisa de revisão para considerar os scripts globais dos módulos.
 - Sintaxe aprovada não prova funcionamento. Valide navegação, salvar, recarregar, cancelar e troca de registros; para campo, offline e sincronização; para documentos, renderização e impressão.
 - Diferencie explicitamente: revisão estática, teste funcional local, teste autenticado e validação em produção. Nunca declare garantias absolutas de integridade ou conclusão com base só em sintaxe.

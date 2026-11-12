@@ -20,6 +20,7 @@
 // ============================================
 
 var allTreinamentosRealizados = [];
+var dossieColaboradorAtual = null;
 var allTreinamentosCatalogo = [];
 var allTreinamentosStatus = [];
 var allTreinamentosCronograma = [];
@@ -9345,6 +9346,16 @@ async function gerarKitCompletoTurmaKits() {
 }
 
 // Registra diretamente no banco (treinamentos_realizados) a presença da turma montada na aba Kits
+async function atualizarStatusTreinamentosAposPresenca() {
+    // Consultar a fonte existente, sem reconstruir regras de validade/aptidão no cliente.
+    prontidaoDadosCalculadosCache = null;
+    invalidarCacheTabela('treinamentos_realizados');
+    invalidarCacheTabela('treinamentos_status');
+    const statusAtualizado = await supabaseFetch('treinamentos_status', '?select=*');
+    if (!Array.isArray(statusAtualizado)) throw new Error('Resposta inválida ao atualizar os indicadores de treinamentos.');
+    allTreinamentosStatus = statusAtualizado;
+}
+
 async function salvarPresencaTurmaDiretoKits() {
     if (typeof bloquearEdicaoSeNaoAutorizado === 'function' && bloquearEdicaoSeNaoAutorizado('treinamentos')) return;
     const statusEl = document.getElementById('kitsLancamentoStatus');
@@ -9415,15 +9426,18 @@ async function salvarPresencaTurmaDiretoKits() {
         };
     });
 
+    let presencaSalva = false;
     try {
         await supabaseUpsert('treinamentos_realizados', rows);
+        presencaSalva = true;
         rows.forEach(nova => {
             const idx = allTreinamentosRealizados.findIndex(x => x.id === nova.id);
             if (idx >= 0) allTreinamentosRealizados[idx] = nova;
             else allTreinamentosRealizados.push(nova);
         });
-        if (typeof rebuildTreinamentosStatusInMemory === 'function') {
-            rebuildTreinamentosStatusInMemory();
+        await atualizarStatusTreinamentosAposPresenca();
+        if (typeof window.rebuildTreinamentosStatusInMemory === 'function') {
+            window.rebuildTreinamentosStatusInMemory();
         }
         renderKitsEquipeList();
         renderKitsDocsIndividuaisList();
@@ -9437,7 +9451,9 @@ async function salvarPresencaTurmaDiretoKits() {
         if (statusEl) {
             statusEl.style.background = '#fee2e2';
             statusEl.style.color = '#991b1b';
-            statusEl.textContent = '❌ Erro ao registrar presença: ' + err.message;
+            statusEl.textContent = presencaSalva
+                ? '⚠️ Presença salva, mas os indicadores não foram atualizados. Recarregue os dados antes de conferir os alertas; não repita o lançamento.'
+                : '❌ Erro ao registrar presença: ' + err.message;
         }
     }
 }

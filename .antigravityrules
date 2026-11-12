@@ -1,6 +1,13 @@
 # Diretrizes Permanentes de Governança — App Checklist Segurança
 # PISF Ramal do Agreste | Cursor & Antigravity AI Rules
 
+## Governança local consolidada em 11/11/2026
+- Aplicar `AGENTS.md` e `VERIFICACOES_LOCAIS.md`: branch própria por melhoria; publicação e operações remotas somente com autorização correspondente de João; um responsável pela edição de cada arquivo.
+- Testes operacionais por mocks ou banco isolado, com serviços externos também simulados/isolados. Proibido inserir dados fictícios em produção, mesmo `[TESTE]`, sem autorização expressa e escopo delimitado.
+- Worktree/prévia local não isola banco ou Drive. `npm test` usa lista revisada e restrições de rede, escrita e subprocessos nos testes (Node.js 26+).
+- O script `avisar-copilot.ps1` não aciona chats Codex. Arquivo salvo, aviso aceito e leitura confirmada são estados diferentes.
+- A autonomia técnica das seções abaixo não autoriza ampliar o escopo para produção nem prevalece sobre essas regras.
+
 ## 1. Autonomia Responsável e Resolução de Causa-Raiz (Zero Preguiça)
 - O assistente possui total autonomia técnica para editar código, criar rotinas, otimizar consultas e ajustar o banco de dados.
 - **PROIBIÇÃO EXPRESSA**: É TERMINANTEMENTE PROIBIDO resolver erros ou alertas apagando funcionalidades, removendo servidores MCP da configuração, comentando trechos de código úteis ou simplificando regras de negócio por conveniência para "esconder" mensagens de erro.

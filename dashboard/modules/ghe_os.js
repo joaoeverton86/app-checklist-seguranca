@@ -468,7 +468,7 @@ function renderMatrizViewSetor() {
                 <span><b>Gestão Integrada NR-01:</b> Fatores de Riscos Psicossociais e Ergonômicos devem ser monitorados periodicamente para este grupo operacional (<b>${Array.isArray(g.conclusoes?.fatores_psicossociais_nr01) ? g.conclusoes.fatores_psicossociais_nr01.length : 0}</b> fator(es) monitorado(s) no GHE).</span>
             </div>
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                <button class="db-apply-btn" data-ghe-id="${escapeHTML(g.id)}" onclick="abrirGestaoPsicossocialPorGhe(this.dataset.gheId)" style="padding:5px 12px; font-size:11.5px; background:#2563eb; color:#fff; white-space:nowrap;">🛡️ Gerenciar Fatores NR-01 deste GHE</button>
+                <button class="db-apply-btn" onclick="showDbPage('psicossocial'); showPsicossocialSubtab('visao');" style="padding:5px 12px; font-size:11.5px; background:#2563eb; color:#fff; white-space:nowrap;">🛡️ Abrir Psicossocial global</button>
                 <button class="db-clear-btn" onclick="showDbPage('psicossocial'); showPsicossocialSubtab('visao');" style="padding:4px 10px; font-size:11px; background:#fff; color:#1e40af; border-color:#93c5fd; white-space:nowrap;">📊 Ver COPSOQ II Global</button>
             </div>
         </div>
@@ -9548,16 +9548,16 @@ function vincularEventosDelegadosPgrDocBase(container) {
             const riscoIdx = btn.getAttribute('data-risco-idx');
             abrirGheRiscoParaRevisaoDesdeDocBase(gheId, riscoIdx);
         } else if (action === 'abrir-psico-ghe') {
-            const gheId = btn.getAttribute('data-ghe-id');
-            if (gheId && typeof navegarParaAvaliacaoPsicossocialDoGhe === 'function') {
+            if (typeof showDbPage === 'function' && typeof showPsicossocialSubtab === 'function') {
                 if (isPgrDocBaseDirty()) {
                     const ok = (typeof confirm === 'function')
-                        ? confirm('Existem alterações não salvas no Documento-Base do PGR. Deseja descartá-las e ir para os Fatores Psicossociais do GHE?')
+                        ? confirm('Existem alterações não salvas no Documento-Base do PGR. Deseja descartá-las e abrir a visão Psicossocial global?')
                         : true;
                     if (!ok) return;
                     restaurarDraftPgrDocBaseParaUltimoSalvo();
                 }
-                navegarParaAvaliacaoPsicossocialDoGhe(gheId);
+                showDbPage('psicossocial');
+                showPsicossocialSubtab('visao');
             }
         }
     });
@@ -9935,7 +9935,7 @@ function renderMatrizViewDocBase() {
                 <td style="padding:7px 8px; text-align:center;">${celulaPsicoHtml}</td>
                 <td style="padding:7px 8px; text-align:right; white-space:nowrap;">
                     <button type="button" class="db-clear-btn" data-pgr-docbase-action="abrir-ghe-revisao" data-ghe-id="${escapeHTML(g.id)}" data-risco-idx="0" style="font-size:11px; padding:4px 8px; margin-right:4px;">📋 Inventário GHE</button>
-                    <button type="button" class="db-clear-btn" data-pgr-docbase-action="abrir-psico-ghe" data-ghe-id="${escapeHTML(g.id)}" style="font-size:11px; padding:4px 8px; color:#7c3aed; border-color:rgba(124,58,237,0.35);">🧠 Fatores NR-01</button>
+                    <button type="button" class="db-clear-btn" data-pgr-docbase-action="abrir-psico-ghe" style="font-size:11px; padding:4px 8px; color:#7c3aed; border-color:rgba(124,58,237,0.35);">🧠 Psicossocial global</button>
                 </td>
             </tr>`;
     }).join('');

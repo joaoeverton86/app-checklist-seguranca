@@ -35,6 +35,8 @@ documentos-sms/
 *.zip
 
 # Scripts e arquivos auxiliares locais
+dashboard/tests/isolado/
+scripts/preview-dashboard-isolado.cjs
 server.js
 servir.bat
 servir.ps1

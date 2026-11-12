@@ -1,5 +1,17 @@
 # MAPA OFICIAL DE MÓDULOS — DASHBOARD GERENCIAL SST
 
+12/11/2026 — Publicação do conjunto autorizada por João. Migração 20261112085020_status_colaborador_atomico aplicada no projeto segtrab e negação HTTP anônima confirmada, sem gravações operacionais. Integração do painel em andamento. Ver STATUS_COLABORADOR_ATOMICO.md e registro final na ponte. Relatos anteriores de ausência da RPC/publicação descrevem etapas históricas.
+
+Status de acesso conjunto implementado LOCALMENTE (núcleo/EPI 303.2): RPC transacional, conflito de estado, rollback e resposta incerta tratados. 20 cenários com backend/Auth locais reais e 13 simulados aprovados; sintaxe 64/64, testes 15/15 arquivos e lint 19 módulos aprovados. Proposta SQL fora de migrations e ausente de produção: NÃO publicar o frontend antes da ativação coordenada do banco. Ver STATUS_COLABORADOR_ATOMICO.md. As descrições anteriores abaixo são históricas.
+
+Homologação local posterior em 11/11/2026: 15 cenários com GoTrue/PostgREST/PostgreSQL reais aprovados nos fluxos de login, colaboradores, treinamentos, autoria, recarga, perfil leitor e falhas parciais. Esquema e RLS de fixture exclusiva, não réplica operacional; módulos auxiliares/bibliotecas permanecem simulados. Instâncias encerradas e volumes preservados. Sem alterações de produto/publicação. Ver `HOMOLOGACAO_BACKEND_LOCAL.md` para evidências e limites.
+
+Validação local ampliada em 11/11/2026: `npm run preview:isolated` carrega a estrutura completa do painel com autenticação, dados e bibliotecas externas simulados, origem restrita e CSP sem conexões externas. Nove cenários de fluxos e quatro de recarga aprovados; captura visual do painel conferida. Sintaxe 63/63, testes 14/14 arquivos e lint 19 módulos sem ocorrências. Ferramentas em `dashboard/tests/isolado/` e `scripts/preview-dashboard-isolado.cjs`, excluídas no `.vercelignore`. Não equivale a backend/Auth/RLS reais; sem publicação. Detalhes em `../VERIFICACOES_LOCAIS.md`.
+
+Continuação local (cache 303.1 apenas em núcleo/treinamentos/GHE): segundo atalho GHE abre o Psicossocial global; presença em Kits invalida caches e recarrega status pela fonte existente, distinguindo gravação concluída de falha posterior de atualização. Onze testes na suíte de regressão; agregado com 58/58 arquivos de sintaxe, 13/13 arquivos de testes e 19 módulos sem ocorrências. Fixture HTTP local conferida visualmente em captura 1200×1200; não equivale a painel completo/autenticado. Ver atualização ao fim de `LINT_MODULOS_INVESTIGACAO.md`. Sem publicação.
+
+Correções locais de 11/11/2026 (cache-buster 303 somente nos sete recursos alterados): sincronização de status Checklist/Efetivo com aviso de falha parcial; datas de terceiros com utilitário do núcleo; botão do Documento-Base PGR direcionado ao Psicossocial global por escolha de João; autoria SMS verificada por Auth ou marcada como não verificada; estado do dossiê e propriedades de compatibilidade explícitos. Sintaxe 58/58, testes locais 13/13 e lint de 19 módulos sem ocorrências. Validação em fixture/DOM; captura visual do Orca falhou; painel completo autenticado e produção não homologados. Ver `LINT_MODULOS_INVESTIGACAO.md`. Sem publicação.
+
 Incremento local v301 (09/11/2026): `modules/gestao_de_condutores_cnh.js` (2.862 linhas, 165,1 KB) implementa o módulo independente de Gestão de Condutores – CNH (Próprios, Terceiros e PJ), expondo exclusivamente o ponto de entrada `window.renderGestaoDeCondutoresPanel` (rota `gestao_de_condutores`, container `page-gestao_de_condutores`) e operando apenas sobre `public.gestao_de_condutores_cnh` com ciclos UUID de CNH, avaliação individual por atividade/equipamento, proteção de regras/histórico e comunicações imutáveis. Minuta SQL (`supabase/migrations/20261109_modulo_gestao_condutores_cnh.sql`), políticas RLS/vínculo Auth real e validação visual em navegador permanecem bloqueadas/pendentes de ambiente isolado e homologação.
 
 Ativação oficial v298 (06/11/2026): `modules/gerador_prompts.js` integra a ferramenta interna de engenharia de prompts especialista em SST, arquitetura do App Checklist Segurança e regras inegociáveis de conformidade para agentes de IA.
@@ -17,7 +29,7 @@ Atualização pontual de 03/11/2026: `modules/relatorio_sms_fotos.js` mantém a 
 Atualização pontual de 03/11/2026: `modules/saude_prestadores.js` concentra o cadastro administrativo de estabelecimentos parceiros e médicos examinadores, com seleção para a prévia do ASO. Carrega após `saude_psicossocial.js` e `pcmso.js`; reutiliza `configuracoes_sistema` e preserva a separação entre coordenador e examinador. Detalhes em `ASO_MODELO.md`. As contagens históricas abaixo devem ser confirmadas no código atual.
 *Arquitetura Modular de Alta Performance (Versão v198)*
 
-O monólito original de 52.062 linhas foi integralmente refatorado e desacoplado em **10 módulos independentes** dentro de `dashboard/modules/`, mantendo no `dashboard/dashboard.js` apenas o Núcleo/Core do sistema (4.233 linhas).
+**Correção de leitura em 11/11/2026:** a descrição v198 é histórica e não comprova a estrutura atual. O núcleo ainda tem mais de 52 mil linhas não vazias e há 19 arquivos JavaScript em `dashboard/modules/` nesta revisão. Existem responsabilidades sobrepostas entre núcleo e módulos. Antes de editar, localizar todas as declarações homônimas e conferir a ordem dos scripts em `index.html`. As contagens da tabela abaixo são históricas; não usar como endereços atuais.
 
 ---
 
@@ -41,9 +53,9 @@ O monólito original de 52.062 linhas foi integralmente refatorado e desacoplado
 
 ---
 
-## 2. Estrutura do Núcleo Principal (`dashboard/dashboard.js` — 4.233 Linhas)
+## 2. Estrutura histórica do Núcleo Principal (v198; posições desatualizadas)
 
-O arquivo central agora atua estritamente como **Core do Dashboard**:
+O mapa v198 atribuía ao núcleo as funções abaixo. Atualmente o arquivo também contém funções de negócio presentes nos módulos; localizar por nome no código real, sem presumir exclusividade:
 - **Linhas 1 – 243**: Constantes de versão (`v198`), configuração do Supabase e Blindagem IDB de Cache Egress.
 - **Linhas 244 – 1.095**: Sistema de Login, autenticação com biometria/senha e auditoria de acessos.
 - **Linhas 1.096 – 3.753**: Roteamento principal (`renderAll`, `showDbPage`), Checklists operacionais, validações e importador de PDFs legados.
@@ -56,7 +68,7 @@ O arquivo central agora atua estritamente como **Core do Dashboard**:
 
 1. **PROIBIDO LER O ARQUIVO COMPLETO**: Nunca execute `view_file` sem passar `StartLine` e `EndLine`. Limite cada chamada a blocos de até 150 linhas.
 2. **EDIÇÃO DIRETA NO MÓDULO ALVO**: Qualquer manutenção deve ser feita diretamente no arquivo correspondente dentro de `dashboard/modules/` conforme a tabela acima.
-3. **COMPATIBILIDADE GARANTIDA**: Todos os arquivos compartilham o escopo global nativo do navegador via tags `<script>` no [dashboard/index.html](file:///c:/Projetos/app-checklist-seguranca/dashboard/index.html), sem necessidade de `import/export` ou compiladores.
+3. **ESCOPO GLOBAL COMPARTILHADO**: Os scripts clássicos são carregados por tags `<script>` em `dashboard/index.html`. Ordem de carregamento, exportações `window` e declarações duplicadas precisam ser conferidas; essa organização não garante compatibilidade. `npm run lint:modules` verifica referências nos 19 módulos considerando declarações e exportações dos scripts locais carregados, sem executar o painel.
 
 Incremento local CNH v301.2: matriz interna aprovada por João; sete modelos, validação canônica de requisitos no servidor por migração adicional e reciclagem interna de 24 meses para Direção Defensiva e NR-11/NR-12. Ver MATRIZ_CONDUTORES_APROVADA.md. Teste local não equivale a publicação ou validação do schema operacional.
 

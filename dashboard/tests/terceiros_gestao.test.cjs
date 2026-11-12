@@ -40,7 +40,6 @@ const sandbox = {
         const [y, m, d] = str.split('-').map(Number);
         return new Date(y, m - 1, d);
     },
-    formatarDataBr: (dt) => dt,
     escapeHTML: (str) => String(str || ''),
     colaboradorEstaAtivo: (e) => {
         if (!e) return false;
@@ -81,6 +80,11 @@ sandbox.fetch = async (url, opts) => {
 };
 
 vm.createContext(sandbox);
+// Carregar o utilitário que existe no app, em vez de simular uma função ausente.
+const fonteCore = fs.readFileSync('dashboard/dashboard.js', 'utf8');
+const astCore = require('espree').parse(fonteCore, { ecmaVersion: 2021, range: true });
+const utilData = astCore.body.find(n => n.type === 'FunctionDeclaration' && n.id.name === 'formatSimpleDate');
+vm.runInContext(fonteCore.slice(...utilData.range), sandbox);
 
 // Executa funções de terceiros e efetivo no sandbox
 vm.runInContext(efetivoCode, sandbox);

@@ -2418,7 +2418,7 @@ function renderTabelaTerceiros() {
             ? '<span style="display:inline-block; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700; background:rgba(124,58,237,0.15); color:#7c3aed; border:1px solid rgba(124,58,237,0.3);">📋 PJ</span>'
             : '<span style="display:inline-block; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700; background:rgba(2,132,199,0.15); color:#0284c7; border:1px solid rgba(2,132,199,0.3);">🏢 Terceirizado</span>';
 
-        const dtInicioFmt = c.dt_admissao ? formatarDataBr(c.dt_admissao) : '-';
+        const dtInicioFmt = c.dt_admissao ? formatSimpleDate(c.dt_admissao) : '-';
 
         return `
             <tr style="border-bottom:1px solid var(--border); transition:background 0.15s ease;" onmouseover="this.style.background='rgba(0,0,0,0.02)'" onmouseout="this.style.background='transparent'">
@@ -2799,8 +2799,8 @@ function exportarExcelTerceiros() {
             'GHE (Riscos SST)': c.ghe || '',
             'Sexo': c.sexo || '',
             'CPF': c.cpf || '',
-            'Data de Início / Mobilização': c.dt_admissao ? formatarDataBr(c.dt_admissao) : '',
-            'Data de Saída / Desmobilização': c.dt_demissao ? formatarDataBr(c.dt_demissao) : '',
+            'Data de Início / Mobilização': c.dt_admissao ? formatSimpleDate(c.dt_admissao) : '',
+            'Data de Saída / Desmobilização': c.dt_demissao ? formatSimpleDate(c.dt_demissao) : '',
             'Status': isAtivo ? 'ATIVO' : 'INATIVO',
             'Observações': c.os_obs || ''
         };

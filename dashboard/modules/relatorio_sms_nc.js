@@ -4329,8 +4329,8 @@ async function relSmsCalcularHash(dados) {
 
     // 2. Node.js crypto (Testes automatizados / Node vm)
     try {
-        if (typeof require === 'function') {
-            const nodeCrypto = require('crypto');
+        if (typeof globalThis.require === 'function') {
+            const nodeCrypto = globalThis.require('crypto');
             if (nodeCrypto?.createHash) {
                 const hex = nodeCrypto.createHash('sha256').update(texto).digest('hex');
                 return { hash: hex, tipo: 'sha256' };
@@ -4531,6 +4531,19 @@ function atualizarBotaoFechamentoToolbar(snapshot) {
     }
 }
 
+async function relSmsIdentificarAutorAtual() {
+    // Não atribuir autoria a partir de uma sessão local editável ou de nome genérico.
+    try {
+        if (typeof sbAuth !== 'undefined' && typeof sbAuth?.auth?.getUser === 'function') {
+            const { data, error } = await sbAuth.auth.getUser();
+            if (!error && data?.user?.id) return data.user.email || data.user.id;
+        }
+    } catch (_) {
+        console.warn('[Relatório SMS] Não foi possível verificar a autoria desta operação.');
+    }
+    return 'Autoria não verificada';
+}
+
 async function relSmsArquivarNoAcervo(mes, ano, blobOuArquivo, nomeArquivo, mimeType, opcoes = {}) {
     const mesFormatado = String(Number(mes) + 1).padStart(2, '0');
     const chave = `rel_sms_${ano}_${mesFormatado}`;
@@ -4604,7 +4617,7 @@ async function relSmsArquivarNoAcervo(mes, ano, blobOuArquivo, nomeArquivo, mime
         nome_arquivo: nomeArquivo,
         drive_file_id: arquivo.id,
         drive_view_link: arquivo.webViewLink || `https://drive.google.com/file/d/${arquivo.id}/view`,
-        enviado_por: (typeof supabaseUser !== 'undefined' && supabaseUser?.email) || 'Gestor SST'
+        enviado_por: await relSmsIdentificarAutorAtual()
     };
     try {
         if (typeof supabaseUpsert === 'function') {
@@ -4673,7 +4686,7 @@ async function relSmsHomologarEFecharCompetencia() {
         const snapAnterior = await relSmsObterSnapshotFechamento(mes, ano);
         const rev = (snapAnterior?.revisao || 0) + 1;
         const agoraIso = new Date().toISOString();
-        const usuarioLogado = (typeof supabaseUser !== 'undefined' && supabaseUser?.email) || 'Gestor SST';
+        const usuarioLogado = await relSmsIdentificarAutorAtual();
         const fotosSanitizadas = typeof relSmsFotosSanitizarParaSnapshot === 'function' ? relSmsFotosSanitizarParaSnapshot(fotos) : fotos;
         const anexosDescritores = Array.isArray(anexos) ? anexos.map((_a, i) => ({ id: `anexo_${i + 1}`, tipo: 'documento_complementar' })) : (anexos || []);
 
@@ -4813,7 +4826,7 @@ async function relSmsReabrirCompetencia() {
         if (snap) {
             snap.status = 'aberto';
             snap.reaberto_em = new Date().toISOString();
-            snap.reaberto_por = (typeof supabaseUser !== 'undefined' && supabaseUser?.email) || 'Gestor SST';
+            snap.reaberto_por = await relSmsIdentificarAutorAtual();
             await relSmsSalvarSnapshotFechamento(mes, ano, snap);
         }
 

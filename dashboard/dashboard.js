@@ -13514,13 +13514,16 @@ async function salvarPresencaTurmaDiretoKits() {
         };
     });
 
+    let presencaSalva = false;
     try {
         await supabaseUpsert('treinamentos_realizados', rows);
+        presencaSalva = true;
         rows.forEach(nova => {
             const idx = allTreinamentosRealizados.findIndex(x => x.id === nova.id);
             if (idx >= 0) allTreinamentosRealizados[idx] = nova;
             else allTreinamentosRealizados.push(nova);
         });
+        await window.atualizarStatusTreinamentosAposPresenca();
         if (typeof window.rebuildTreinamentosStatusInMemory === 'function') {
             window.rebuildTreinamentosStatusInMemory();
         }
@@ -13536,7 +13539,9 @@ async function salvarPresencaTurmaDiretoKits() {
         if (statusEl) {
             statusEl.style.background = '#fee2e2';
             statusEl.style.color = '#991b1b';
-            statusEl.textContent = '❌ Erro ao registrar presença: ' + err.message;
+            statusEl.textContent = presencaSalva
+                ? '⚠️ Presença salva, mas os indicadores não foram atualizados. Recarregue os dados antes de conferir os alertas; não repita o lançamento.'
+                : '❌ Erro ao registrar presença: ' + err.message;
         }
     }
 }
@@ -37375,47 +37380,27 @@ async function salvarEdicaoColaborador() {
 
 async function alternarAtivoColaborador(id, ativoAtual) {
     const novoStatus = !ativoAtual;
-    const acaoTexto = novoStatus ? 'reativar' : 'desativar';
     const colab = allColaboradoresInternos.find(c => String(c.id) === String(id));
     const nome = colab ? colab.nome : id;
-
-    if (!confirm(`Deseja realmente ${acaoTexto} o acesso de "${nome}" (Matrícula ${id})?`)) return;
-
+    if (!confirm(`Deseja realmente ${novoStatus ? 'reativar' : 'desativar'} o acesso de "${nome}" (Matrícula ${id})?`)) return;
+    let confirmado = false;
     try {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/colaboradores_checklist?id=eq.${encodeURIComponent(id)}`, {
-            method: 'PATCH',
-            headers: {
-                apikey: SUPABASE_KEY,
-                Authorization: `Bearer ${await authTokenDashboard()}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ ativo: novoStatus })
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        await registrarAuditLogDashboard('update', 'colaboradores_checklist', id, `${nome} (Mat. ${id})`, `Status alterado para ${novoStatus ? 'Ativo' : 'Inativo'}`);
-
-        // Sincroniza em colaboradores_efetivo se o colaborador existir no cadastro de efetivo
-        try {
-            const efColab = (allEfetivo || []).find(e => String(e.id) === String(id));
-            if (efColab) {
-                const novoStatusEfetivo = novoStatus ? 'ATIVO' : (efColab.dt_demissao ? 'DEMITIDO' : 'INATIVO');
-                await supabaseUpsert('colaboradores_efetivo', [{
-                    id: efColab.id,
-                    status: novoStatusEfetivo
-                }]);
-                efColab.status = novoStatusEfetivo;
-                renderEfetivoPanel();
-                renderEfetivoResumo();
-            }
-        } catch (errEfSync) {
-            console.warn('Aviso ao sincronizar colaboradores_efetivo a partir de colaboradores_checklist:', errEfSync);
-        }
-
+        const dados = await window.alterarStatusColaboradorAtomico(id, ativoAtual);
+        confirmado = true;
+        if (colab) colab.ativo = dados.ativo;
+        const efColab = (allEfetivo || []).find(e => String(e.id) === String(id));
+        if (efColab && dados.efetivo_presente) efColab.status = dados.efetivo_status;
+        invalidarCacheTabela('colaboradores_checklist');
+        invalidarCacheTabela('colaboradores_efetivo');
+        if (typeof _headcountMemoMap !== 'undefined' && _headcountMemoMap?.clear) _headcountMemoMap.clear();
+        if (efColab && dados.efetivo_presente) { renderEfetivoPanel(); renderEfetivoResumo(); }
+        await registrarAuditLogDashboard('update', 'colaboradores_checklist', id, `${nome} (Mat. ${id})`, `Status sincronizado atomicamente: ${dados.ativo ? 'Ativo' : 'Inativo'}`);
         await carregarColaboradoresInternos();
     } catch (e) {
         console.error('Erro ao alterar status:', e);
-        alert('❌ Falha ao alterar status do colaborador: ' + e.message);
+        alert(confirmado
+            ? '⚠️ A alteração foi confirmada no servidor, mas a tela não foi atualizada. Recarregue os dados; não repita o comando.'
+            : '❌ Não foi possível confirmar a alteração: ' + e.message);
     }
 }
 

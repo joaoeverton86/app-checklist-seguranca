@@ -1,12 +1,20 @@
 # Diretrizes do Projeto — App Checklist Segurança
 
+## Governança local consolidada em 11/11/2026
+
+- Aplicar `AGENTS.md` e `VERIFICACOES_LOCAIS.md`: branch própria por melhoria, publicação somente com autorização de João e um responsável pela edição de cada arquivo.
+- Testes usam mocks locais ou banco isolado e integrações isoladas. Dados fictícios em produção, inclusive `[TESTE]`, exigem autorização expressa e escopo delimitado.
+- Prévia local e worktree não isolam banco/Drive. `npm test` executa a seleção revisada sem rede, escrita em disco ou subprocessos nos testes (Node.js 26+).
+- Arquivo da ponte não aciona automaticamente um chat Codex; `avisar-copilot.ps1` procura terminal Copilot. Registrar separadamente envio, leitura e execução.
+- Autonomia técnica descrita abaixo não constitui autorização para produção. Com shell disponível, editar diretamente o código autorizado, mesmo que uma skill antiga descreva entrega por instruções.
+
 ## Idioma e Comunicação
 - **Idioma Obrigatório**: Toda a comunicação com o usuário, explicações, planos de implementação, walkthroughs e comentários devem ser estritamente em **Português do Brasil (pt-BR)**.
 - **Perfil do Usuário**: O usuário é Engenheiro de Segurança do Trabalho e gestor do projeto, com perfil leigo em programação técnica avançada. Explicações devem ser claras, práticas, didáticas e orientadas ao negócio, evitando jargões desnecessários.
 
 ## Integrações e Serviços
 - **GitHub**: Repositório vinculado a `https://github.com/joaoeverton86/app-checklist-seguranca.git` (autenticado via `gh`).
-- **Vercel**: Projeto vinculado a `app-checklist-v2` com domínio oficial de produção `https://app-checklist-seguranca.vercel.app`. Deploys ocorrem automaticamente no push da branch `main` ou via Vercel CLI (`npx vercel`).
+- **Vercel**: Projeto atual `app-checklist-seguranca` (identidade confirmada na Vercel em 12/11/2026) com domínio oficial de produção `https://app-checklist-seguranca.vercel.app`. Deploys ocorrem automaticamente no push da branch `main` ou via Vercel CLI (`npx vercel`).
   - **Autenticação Vercel CLI & MCP**: A Vercel CLI local está autenticada com a conta corporativa (`joaoevertondesouzalimeira-4624`), armazenando as credenciais em `auth.json`. No `mcp_config.json`, o MCP Vercel remoto (`https://mcp.vercel.com`) recebe o token de autorização via header `Authorization: Bearer <TOKEN>` para evitar travamentos ou erro `Unauthorized` no Antigravity IDE. Para qualquer automação de deploy ou build, utilizar a Vercel CLI local (`npx vercel`) já vinculada e operacional.
 - **Supabase**: Banco de dados central em `https://qqtcwxvbjmybyzubocgd.supabase.co`.
 

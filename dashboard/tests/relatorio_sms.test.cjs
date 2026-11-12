@@ -33,7 +33,7 @@ function contexto() {
     };
     for (const nome of new Set(coletor.match(/\ball[A-Z]\w*/g))) c[nome] = [];
     vm.createContext(c);
-    for (const nome of ['relSmsHhtCompetencia', 'relSmsPercentual', 'relSmsDiasAtestadoNaCompetencia', 'coletarDadosCompletosRelatorioMensalSms']) {
+    for (const nome of ['relSmsIdentificarAutorAtual', 'relSmsHhtCompetencia', 'relSmsPercentual', 'relSmsDiasAtestadoNaCompetencia', 'coletarDadosCompletosRelatorioMensalSms']) {
         vm.runInContext(func(nome), c);
     }
     return c;

@@ -381,7 +381,7 @@ async function relSmsFotosGarantirBuffers(fotosDoc) {
         if (Array.isArray(g.fotos)) {
             g.fotos.forEach(f => {
                 const b = f.img?.buffer;
-                const valido = b && (b instanceof ArrayBuffer || b instanceof Uint8Array || (typeof Buffer !== 'undefined' && Buffer.isBuffer(b))) && b.byteLength > 0;
+                const valido = b && (b instanceof ArrayBuffer || b instanceof Uint8Array || (typeof globalThis.Buffer !== 'undefined' && globalThis.Buffer.isBuffer(b))) && b.byteLength > 0;
                 if (!valido) pendentes.push(f);
             });
         }
@@ -407,7 +407,7 @@ function relSmsFotosDocx(selecao) {
         grupos.forEach(g => {
             const cells = g.fotos.map(f => {
                 const b = f.img?.buffer;
-                const temBufferValido = b && (b instanceof ArrayBuffer || b instanceof Uint8Array || (typeof Buffer !== 'undefined' && Buffer.isBuffer(b))) && b.byteLength > 0;
+                const temBufferValido = b && (b instanceof ArrayBuffer || b instanceof Uint8Array || (typeof globalThis.Buffer !== 'undefined' && globalThis.Buffer.isBuffer(b))) && b.byteLength > 0;
                 const conteudoImg = temBufferValido
                     ? new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, children: [new docx.ImageRun({ type: 'jpg', data: f.img.buffer, transformation: { width: f.img.width || 280, height: f.img.height || 190 } })] })
                     : new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 200, after: 200 }, children: [new docx.TextRun({ text: `📷 [Registro Fotográfico no Drive — ${f.nome || f.id}]`, italics: true, size: 18, color: '555555' })] });

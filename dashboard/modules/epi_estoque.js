@@ -3795,49 +3795,57 @@ async function salvarEdicaoColaborador() {
     }
 }
 
+async function alterarStatusColaboradorAtomico(id, ativoAtual) {
+    if (!String(id || '').trim() || typeof ativoAtual !== 'boolean') throw new Error('Dados de status inválidos. Recarregue a lista antes de continuar.');
+    let res;
+    try {
+        res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/alterar_status_colaborador_atomico`, {
+            method: 'POST',
+            headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${await authTokenDashboard()}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ p_id: String(id), p_ativo_esperado: ativoAtual, p_ativo_novo: !ativoAtual })
+        });
+    } catch (_) {
+        throw new Error('A conexão foi interrompida. Recarregue a lista antes de repetir o comando.');
+    }
+    const dados = await res.json().catch(() => null);
+    if (!res.ok) {
+        if (res.status === 409 || dados?.code === '40001') throw new Error('O status mudou em outra operação. Recarregue a lista antes de continuar.');
+        if (res.status === 404 || dados?.code === 'PGRST202') throw new Error('A atualização conjunta de status ainda não está habilitada neste ambiente. Procure o responsável pela publicação.');
+        if (res.status === 401 || res.status === 403) throw new Error('Sem autorização para esta alteração. Use a conta responsável pelo painel.');
+        throw new Error('O servidor não confirmou o resultado. Recarregue a lista antes de tentar novamente.');
+    }
+    const temEfetivo = dados?.efetivo_presente;
+    const statusValido = !ativoAtual ? dados?.efetivo_status === 'ATIVO' : ['INATIVO', 'DEMITIDO'].includes(dados?.efetivo_status);
+    if (!dados || dados.id !== String(id) || dados.ativo !== !ativoAtual || typeof temEfetivo !== 'boolean'
+        || (temEfetivo ? !statusValido : dados.efetivo_status !== null)) {
+        throw new Error('Resposta do servidor não confirmada. Recarregue os dados antes de continuar; não repita a operação automaticamente.');
+    }
+    return dados;
+}
+
 async function alternarAtivoColaborador(id, ativoAtual) {
     const novoStatus = !ativoAtual;
-    const acaoTexto = novoStatus ? 'reativar' : 'desativar';
     const colab = allColaboradoresInternos.find(c => String(c.id) === String(id));
     const nome = colab ? colab.nome : id;
-
-    if (!confirm(`Deseja realmente ${acaoTexto} o acesso de "${nome}" (Matrícula ${id})?`)) return;
-
+    if (!confirm(`Deseja realmente ${novoStatus ? 'reativar' : 'desativar'} o acesso de "${nome}" (Matrícula ${id})?`)) return;
+    let confirmado = false;
     try {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/colaboradores_checklist?id=eq.${encodeURIComponent(id)}`, {
-            method: 'PATCH',
-            headers: {
-                apikey: SUPABASE_KEY,
-                Authorization: `Bearer ${await authTokenDashboard()}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ ativo: novoStatus })
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        await registrarAuditLogDashboard('update', 'colaboradores_checklist', id, `${nome} (Mat. ${id})`, `Status alterado para ${novoStatus ? 'Ativo' : 'Inativo'}`);
-
-        // Sincroniza em colaboradores_efetivo se o colaborador existir no cadastro de efetivo
-        try {
-            const efColab = (allEfetivo || []).find(e => String(e.id) === String(matricula));
-            if (efColab) {
-                const novoStatusEfetivo = novoStatus ? 'ATIVO' : (efColab.dt_demissao ? 'DEMITIDO' : 'INATIVO');
-                await supabaseUpsert('colaboradores_efetivo', [{
-                    id: efColab.id,
-                    status: novoStatusEfetivo
-                }]);
-                efColab.status = novoStatusEfetivo;
-                renderEfetivoPanel();
-                renderEfetivoResumo();
-            }
-        } catch (errEfSync) {
-            console.warn('Aviso ao sincronizar colaboradores_efetivo a partir de colaboradores_checklist:', errEfSync);
-        }
-
+        const dados = await window.alterarStatusColaboradorAtomico(id, ativoAtual);
+        confirmado = true;
+        if (colab) colab.ativo = dados.ativo;
+        const efColab = (allEfetivo || []).find(e => String(e.id) === String(id));
+        if (efColab && dados.efetivo_presente) efColab.status = dados.efetivo_status;
+        invalidarCacheTabela('colaboradores_checklist');
+        invalidarCacheTabela('colaboradores_efetivo');
+        if (typeof _headcountMemoMap !== 'undefined' && _headcountMemoMap?.clear) _headcountMemoMap.clear();
+        if (efColab && dados.efetivo_presente) { renderEfetivoPanel(); renderEfetivoResumo(); }
+        await registrarAuditLogDashboard('update', 'colaboradores_checklist', id, `${nome} (Mat. ${id})`, `Status sincronizado atomicamente: ${dados.ativo ? 'Ativo' : 'Inativo'}`);
         await carregarColaboradoresInternos();
     } catch (e) {
         console.error('Erro ao alterar status:', e);
-        alert('❌ Falha ao alterar status do colaborador: ' + e.message);
+        alert(confirmado
+            ? '⚠️ A alteração foi confirmada no servidor, mas a tela não foi atualizada. Recarregue os dados; não repita o comando.'
+            : '❌ Não foi possível confirmar a alteração: ' + e.message);
     }
 }
 

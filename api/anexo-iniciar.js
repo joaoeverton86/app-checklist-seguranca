@@ -7,6 +7,10 @@
 // passar por esta function - o limite de 4,5 MB por requisição do Vercel só
 // vale pra function em si, não pro envio direto navegador -> Google.
 
+import { randomUUID } from 'node:crypto';
+import { autenticarAnexos, criarSessaoAnexo, exigirModulo, moduloTabela, responderErroAnexo } from '../lib/autorizacao-anexos.js';
+import { descendenteDaPasta, exigirPastaRestrita, metadadosDrive, tokenGoogle } from '../lib/drive-anexos.js';
+import { falhaRemota, idDriveValido, validarUrlUpload } from '../lib/urls-remotas.js';
 const PASTA_RAIZ = 'SMS_COP';
 const SUBPASTA_POR_TABELA = {
     acervo: 'Acervo',
@@ -14,6 +18,8 @@ const SUBPASTA_POR_TABELA = {
     checklists: 'Checklists',
     dds_realizados: 'DDSMA',
     treinamentos_realizados: 'Treinamentos',
+    treinamentos: 'Treinamentos',
+    dds: 'DDSMA',
     cipa_reunioes: 'CIPA',
     cipa_processos_eleitorais: 'CIPA',
     epi_entregas: 'EPI',
@@ -38,44 +44,33 @@ function sanitizarNome(texto) {
     return String(texto).replace(/[\\/:*?"<>|]/g, '_');
 }
 
-async function obterAccessToken() {
-    const params = new URLSearchParams({
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
-        grant_type: 'refresh_token'
-    });
-    const res = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params.toString()
-    });
-    const dados = await res.json();
-    if (!res.ok) throw new Error('Falha ao renovar access token do Google: ' + (dados.error_description || dados.error || res.status));
-    return dados.access_token;
-}
 
-async function encontrarOuCriarPasta(nome, idPai, accessToken) {
+
+async function encontrarOuCriarPasta(nome, idPai, accessToken, criar = true) {
+    if (!idPai) return null;
     const nomeEscapado = nome.replace(/'/g, "\\'");
     const q = encodeURIComponent(`name='${nomeEscapado}' and mimeType='application/vnd.google-apps.folder' and '${idPai}' in parents and trashed=false`);
     const buscaRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
-        headers: { Authorization: `Bearer ${accessToken}` }
+        headers: { Authorization: `Bearer ${accessToken}` }, redirect:'error', signal:AbortSignal.timeout(15000)
     });
     const busca = await buscaRes.json();
-    if (!buscaRes.ok) throw new Error('Falha ao buscar pasta no Drive: ' + JSON.stringify(busca));
+    if (!buscaRes.ok || !Array.isArray(busca.files)) throw falhaRemota(502,'Falha ao consultar pasta no Drive.');
+    if (busca.files.length > 1) throw falhaRemota(409,'Mais de uma pasta com o mesmo nome. Confira a configuração do acervo.');
     if (busca.files && busca.files.length > 0) return busca.files[0].id;
+    if (!criar) return null;
 
     const criarRes = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
-        method: 'POST',
+        method: 'POST', redirect:'error', signal:AbortSignal.timeout(15000),
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: nome, mimeType: 'application/vnd.google-apps.folder', parents: [idPai] })
     });
     const criada = await criarRes.json();
-    if (!criarRes.ok) throw new Error('Falha ao criar pasta no Drive: ' + JSON.stringify(criada));
+    if (!criarRes.ok || !idDriveValido(criada.id)) throw falhaRemota(502,'Falha ao criar pasta no Drive.');
     return criada.id;
 }
 
 export default async function handler(req, res) {
+    res.setHeader('Cache-Control','no-store');
     if (req.method !== 'POST') {
         res.status(405).json({ erro: 'Método não permitido' });
         return;
@@ -100,29 +95,55 @@ export default async function handler(req, res) {
     const subpasta = SUBPASTA_POR_TABELA[tabela] || 'Acervo';
 
     try {
-        const accessToken = await obterAccessToken();
+        const acesso=await autenticarAnexos(req), modulo=moduloTabela(tabela);
+        exigirModulo(acesso,modulo,true);
+        if (req.body?.infoOnly && !acesso.admin) throw falhaRemota(403,'Somente o administrador pode consultar a conexão do Drive.');
+        if ((!req.body?.infoOnly && (typeof nomeArquivo!=='string' || !nomeArquivo.trim() || nomeArquivo.length>255))
+            || (mimeType!==undefined && (typeof mimeType!=='string' || mimeType.length>127 || !/^[\w.+-]+\/[\w.+-]+$/.test(mimeType)))
+            || (customNomeFinal!==undefined && (typeof customNomeFinal!=='string' || customNomeFinal.length>255))
+            || (customPastaRaiz!==undefined && (typeof customPastaRaiz!=='string' || !customPastaRaiz.trim() || customPastaRaiz.length>120))
+            || (registroChave!==undefined && (typeof registroChave!=='string' || registroChave.length>200))
+            || (pastaDestinoId!=null && !idDriveValido(pastaDestinoId))) throw falhaRemota(400,'Dados do anexo inválidos.');
+        const accessToken = await tokenGoogle();
         const agora = new Date();
         const ano = customAno ? String(customAno) : String(agora.getFullYear());
         const mes = customMes ? String(customMes) : String(agora.getMonth() + 1).padStart(2, '0');
         const pastaRaiz = customPastaRaiz || PASTA_RAIZ;
+        if (!/^20\d{2}$/.test(ano) || !/^(?:0?[1-9]|1[0-2])(?:\s*-\s*[A-Za-zÀ-ú ]{1,40})?$/.test(mes)) throw falhaRemota(400,'Competência inválida.');
+        if (!acesso.admin && pastaRaiz!=='SMS_COP' && !(modulo==='checklists' && pastaRaiz==='Checklists SST')) throw falhaRemota(403,'Raiz de acervo não autorizada para este perfil.');
+        if (pastaDestinoId && !acesso.admin) {
+            const raiz=await encontrarOuCriarPasta(pastaRaiz,'root',accessToken,false);
+            const base=raiz && (pastaRaiz==='SMS_COP' ? await encontrarOuCriarPasta(subpasta,raiz,accessToken,false) : raiz);
+            const legadas={treinamentos:'1gIjh4Cea8mU_X8hnpgOXkIe8Q1ZnOnCA',ddsma:'1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms'};
+            const bases=[base,legadas[modulo],modulo==='relatoriosms'?process.env.GOOGLE_DRIVE_FOTOS_ROOT_ID:null].filter(Boolean);
+            let permitida=false;
+            for (const candidata of bases) if (await descendenteDaPasta(pastaDestinoId,candidata,accessToken)) {permitida=true;break;}
+            if (!permitida) throw falhaRemota(403,'Pasta de destino fora do módulo autorizado.');
+        }
+        if (pastaDestinoId && (await metadadosDrive(pastaDestinoId,accessToken)).mimeType!=='application/vnd.google-apps.folder') throw falhaRemota(400,'O destino não é uma pasta.');
 
         let idPastaAlvo = pastaDestinoId;
         let idRaizAlvo = null;
+        const localizarPasta=async(nome,pai)=>{
+            const id=await encontrarOuCriarPasta(nome,pai,accessToken,!req.body?.infoOnly);
+            if(id && modulo==='saude')await exigirPastaRestrita(id,accessToken);
+            return id;
+        };
 
         if (!idPastaAlvo) {
             if (pastaRaiz === 'SMS_COP') {
                 // Hierarquia padrão SMS_COP / {subpasta} / {ano} / {mes}
-                const idRaiz = await encontrarOuCriarPasta(pastaRaiz, 'root', accessToken);
+                const idRaiz = await localizarPasta(pastaRaiz, 'root');
                 idRaizAlvo = idRaiz;
-                const idSubpasta = await encontrarOuCriarPasta(subpasta, idRaiz, accessToken);
-                const idAno = await encontrarOuCriarPasta(ano, idSubpasta, accessToken);
-                idPastaAlvo = await encontrarOuCriarPasta(mes, idAno, accessToken);
+                const idSubpasta = await localizarPasta(subpasta, idRaiz);
+                const idAno = await localizarPasta(ano, idSubpasta);
+                idPastaAlvo = await localizarPasta(mes, idAno);
             } else {
                 // Hierarquia dedicada (ex: Checklists SST / {ano} / {mes})
-                const idRaiz = await encontrarOuCriarPasta(pastaRaiz, 'root', accessToken);
+                const idRaiz = await localizarPasta(pastaRaiz, 'root');
                 idRaizAlvo = idRaiz;
-                const idAno = await encontrarOuCriarPasta(ano, idRaiz, accessToken);
-                idPastaAlvo = await encontrarOuCriarPasta(mes, idAno, accessToken);
+                const idAno = await localizarPasta(ano, idRaiz);
+                idPastaAlvo = await localizarPasta(mes, idAno);
             }
         }
 
@@ -155,12 +176,15 @@ export default async function handler(req, res) {
             ? `${sanitizarNome(registroChave)}_${sanitizarNome(nomeArquivo)}` 
             : sanitizarNome(nomeArquivo));
         
-        let metadata = { name: nomeFinal, parents: [idPastaAlvo] };
+        const nonce=randomUUID();
+        if(modulo==='saude')await exigirPastaRestrita(idPastaAlvo,accessToken);
+        const appProperties={checklist_uid:acesso.uid,checklist_nonce:nonce,checklist_tabela:tabela};
+        let metadata = { name: nomeFinal, parents: [idPastaAlvo], appProperties };
 
         const origemNavegador = req.headers.origin || `https://${req.headers.host}`;
 
         let sessaoRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink', {
-            method: 'POST',
+            method: 'POST', redirect:'error', signal:AbortSignal.timeout(15000),
             headers: {
                 Authorization: `Bearer ${accessToken}`,
                 'Content-Type': 'application/json; charset=UTF-8',
@@ -173,16 +197,16 @@ export default async function handler(req, res) {
         // Se falhar ao tentar salvar na pasta direta (ex: permissão na pasta legada), faz fallback pra hierarquia padrão SMS_COP
         if (!sessaoRes.ok && pastaDestinoId) {
             console.warn('Tentativa em pastaDestinoId falhou. Tentando hierarquia padrão SMS_COP...');
-            const idRaiz = await encontrarOuCriarPasta(pastaRaiz, 'root', accessToken);
+            const idRaiz = await localizarPasta(pastaRaiz, 'root');
             idRaizAlvo = idRaiz;
-            const idSubpasta = await encontrarOuCriarPasta(subpasta, idRaiz, accessToken);
-            const idAno = await encontrarOuCriarPasta(ano, idSubpasta, accessToken);
-            const idMes = await encontrarOuCriarPasta(mes, idAno, accessToken);
+            const idSubpasta = await localizarPasta(subpasta, idRaiz);
+            const idAno = await localizarPasta(ano, idSubpasta);
+            const idMes = await localizarPasta(mes, idAno);
             idPastaAlvo = idMes;
-            metadata = { name: nomeFinal, parents: [idMes] };
+            metadata = { name: nomeFinal, parents: [idMes], appProperties };
 
             sessaoRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink', {
-                method: 'POST',
+                method: 'POST', redirect:'error', signal:AbortSignal.timeout(15000),
                 headers: {
                     Authorization: `Bearer ${accessToken}`,
                     'Content-Type': 'application/json; charset=UTF-8',
@@ -194,14 +218,17 @@ export default async function handler(req, res) {
         }
 
         if (!sessaoRes.ok) {
-            const erroTexto = await sessaoRes.text();
-            throw new Error('Falha ao abrir sessão de envio no Drive: ' + erroTexto);
+            throw falhaRemota(502,'Falha ao abrir sessão de envio no Drive.');
         }
         const uploadUrl = sessaoRes.headers.get('location');
         if (!uploadUrl) throw new Error('O Google não devolveu a URL de envio (Location).');
+        validarUrlUpload(uploadUrl);
+        const sessao=criarSessaoAnexo(acesso.uid,tabela,uploadUrl,idPastaAlvo,nonce);
 
         res.status(200).json({ 
             uploadUrl,
+            sessionTicket:sessao.ticket,
+            compartilhamentoPublicoPermitido:modulo!=='saude',
             emailConta,
             pastaDestinoId: idPastaAlvo,
             pastaDestinoUrl: idPastaAlvo ? `https://drive.google.com/drive/folders/${idPastaAlvo}` : null,
@@ -209,7 +236,6 @@ export default async function handler(req, res) {
             pastaRaizUrl: idRaizAlvo ? `https://drive.google.com/drive/folders/${idRaizAlvo}` : null
         });
     } catch (err) {
-        console.error('Erro em /api/anexo-iniciar:', err);
-        res.status(500).json({ erro: err.message || 'Erro desconhecido ao iniciar envio' });
+        responderErroAnexo(res,err);
     }
 }

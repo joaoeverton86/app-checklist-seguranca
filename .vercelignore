@@ -35,6 +35,9 @@ documentos-sms/
 *.zip
 
 # Scripts e arquivos auxiliares locais
+api/tests/
+dashboard/tests/
+scripts/tests/
 dashboard/tests/isolado/
 scripts/preview-dashboard-isolado.cjs
 server.js

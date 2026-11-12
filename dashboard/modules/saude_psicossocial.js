@@ -1536,7 +1536,7 @@ async function enviarArquivoEmPedacos(file, uploadUrl, statusEl) {
         const numeroPedaco = Math.floor(offset / ANEXO_TAMANHO_PEDACO) + 1;
         if (statusEl) statusEl.textContent = `Enviando pro Google Drive... (parte ${numeroPedaco}/${totalPedacos})`;
 
-        const resp = await fetch('/api/anexo-enviar-pedaco', {
+        const resp = await fetchApiAnexos('/api/anexo-enviar-pedaco', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ uploadUrl, chunkBase64, offset, tamanhoTotal: total, mimeType: file.type || 'application/octet-stream' })
@@ -1566,7 +1566,7 @@ async function enviarAnexoSelecionado() {
     statusEl.textContent = 'Preparando envio...';
     statusEl.style.color = 'var(--text-light)';
     try {
-        const iniciarResp = await fetch('/api/anexo-iniciar', {
+        const iniciarResp = await fetchApiAnexos('/api/anexo-iniciar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1582,7 +1582,7 @@ async function enviarAnexoSelecionado() {
         const arquivo = await enviarArquivoEmPedacos(file, iniciarDados.uploadUrl, statusEl);
 
         try {
-            await fetch('/api/anexo-finalizar', {
+            await fetchApiAnexos('/api/anexo-finalizar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ driveFileId: arquivo.id })

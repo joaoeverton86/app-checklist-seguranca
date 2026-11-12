@@ -4,6 +4,9 @@
 // Utiliza OAuth Bearer Token quando disponível (para acesso total) e faz fallback
 // para a Chave de API de leitura (GOOGLE_DRIVE_API_KEY_LEITURA) para pastas públicas.
 
+import { autenticarAnexos, exigirModulo, MODULOS_CATEGORIAS, responderErroAnexo } from '../lib/autorizacao-anexos.js';
+import { falhaRemota, idDriveValido } from '../lib/urls-remotas.js';
+
 const RAIZES_ESTATICAS = {
     treinamentos: '1gIjh4Cea8mU_X8hnpgOXkIe8Q1ZnOnCA', // SCAN (Treinamentos)
     dds: '1283y-rY2ePFUGi2FGX26aOUhDY9jz5Ms'            // SCAN - DDS (DDSMA)
@@ -21,7 +24,7 @@ async function obterAccessToken() {
             grant_type: 'refresh_token'
         });
         const res = await fetch('https://oauth2.googleapis.com/token', {
-            method: 'POST',
+            method: 'POST', redirect:'error', signal:AbortSignal.timeout(15000),
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: params.toString()
         });
@@ -47,13 +50,13 @@ async function chamarDrive(caminho, params = {}, token = null) {
         url.searchParams.set('key', process.env.GOOGLE_DRIVE_API_KEY_LEITURA);
     }
 
-    let res = await fetch(url.toString(), { headers });
+    let res = await fetch(url.toString(), { headers, redirect:'error', signal:AbortSignal.timeout(15000) });
 
     // Fallback: se a chamada com Bearer Token falhar e temos a Chave de Leitura pública, tenta via Chave
     if (!res.ok && token && process.env.GOOGLE_DRIVE_API_KEY_LEITURA) {
         const urlFallback = new URL(url.toString());
         urlFallback.searchParams.set('key', process.env.GOOGLE_DRIVE_API_KEY_LEITURA);
-        const resFallback = await fetch(urlFallback.toString());
+        const resFallback = await fetch(urlFallback.toString(),{redirect:'error',signal:AbortSignal.timeout(15000)});
         if (resFallback.ok) {
             return await resFallback.json();
         }
@@ -121,12 +124,18 @@ async function pastaEhPermitida(pastaId, raizesValidas, token, somentePais = fal
 }
 
 export default async function handler(req, res) {
+    res.setHeader('Cache-Control','private, no-store');
     if (req.method !== 'GET') {
         res.status(405).json({ erro: 'Método não permitido' });
         return;
     }
     try {
         const { categoria, pastaId, pageToken } = req.query;
+        const acesso=await autenticarAnexos(req);
+        if (typeof categoria!=='string' || !Object.hasOwn(MODULOS_CATEGORIAS,categoria)
+            || (pastaId!==undefined && !idDriveValido(pastaId))
+            || (pageToken!==undefined && (typeof pageToken!=='string' || pageToken.length>2048))) throw falhaRemota(400,'Parâmetros de acervo inválidos.');
+        exigirModulo(acesso,MODULOS_CATEGORIAS[categoria],false);
         const accessToken = await obterAccessToken();
 
         // Categorias públicas históricas (treinamentos e dds) utilizam a Chave de API de Leitura.
@@ -246,7 +255,6 @@ export default async function handler(req, res) {
             nextPageToken: dados.nextPageToken || null
         });
     } catch (err) {
-        console.error('Erro em /api/anexos-drive-listar:', err);
-        res.status(500).json({ erro: err.message || 'Erro desconhecido ao listar Drive' });
+        responderErroAnexo(res,err);
     }
 }

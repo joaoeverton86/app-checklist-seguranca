@@ -10,7 +10,7 @@ function arquivos(pasta) {
 }
 const alvos = [
     ...fs.readdirSync(raiz).filter(nome => /\.(?:js|cjs)$/.test(nome)),
-    ...['dashboard', 'api', 'scripts'].flatMap(arquivos)
+    ...['dashboard', 'api', 'scripts', 'lib'].flatMap(arquivos)
 ].sort();
 let falhas = 0;
 for (const arquivo of alvos) {

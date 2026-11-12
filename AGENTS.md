@@ -23,6 +23,7 @@
 - Para tarefas paralelas independentes autorizadas, prefira worktrees do Orca. Elas isolam arquivos, mas não isolam banco, Drive, variáveis ou produção. Alterações não commitadas e arquivos ignorados não são transportados automaticamente.
 - Um handoff deve informar objetivo, base Git, arquivos, alterações locais necessárias, testes executados, pendências e quem assume a tarefa. Nunca transportar credenciais.
 - Para melhorias, use branch própria antes de editar; não publicar diretamente em `main`. Push, deploy e alterações remotas exigem autorização correspondente de João na conversa.
+- Respeite as cotas de uso de João: concentre testes locais e agrupe código, testes e documentação antes da publicação. Evite push/PR/deploy extra apenas de documentação; registre comprovantes posteriores na ponte/scratch.
 - O chat do Codex não é um terminal Copilot. A ponte em arquivo pode ser lida diretamente, mas `avisar-copilot.ps1` não aciona este chat. Sem confirmação, registrar apenas arquivo salvo/aviso aceito, nunca leitura ou execução confirmadas. Usar o caminho absoluto da ponte quando ela estiver em outro checkout.
 
 ## Regras de implementação

@@ -2057,6 +2057,12 @@ function relSmsTipoImagemBufferDocx(buffer) {
 }
 
 async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapshot, opcoes = {}) {
+    const pagina = { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } };
+    const larguraUtilPagina = pagina.size.width - pagina.margin.left - pagina.margin.right;
+    const larguraLogo = Math.round(larguraUtilPagina * .30);
+    const largurasCabecalho = [larguraLogo, larguraUtilPagina - larguraLogo];
+    const largurasRodape = [Math.round(larguraUtilPagina * .45), Math.round(larguraUtilPagina * .25)];
+    largurasRodape.push(larguraUtilPagina - largurasRodape[0] - largurasRodape[1]);
     const fotosManuais = opcoes.fotosManuais === true;
     const camposFotos = fotosManuais ? await relSmsColetarCamposFotos(mes, ano) : null;
     if (!snapshot && typeof relSmsObterSnapshotFechamento === 'function') {
@@ -2214,7 +2220,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
     const headerTabelaFilhos = [];
     if (logoCopBuffer && logoCopBuffer.byteLength > 100) {
         headerTabelaFilhos.push(new docx.TableCell({
-            width: { size: 30, type: docx.WidthType.PERCENTAGE },
+            width: { size: largurasCabecalho[0], type: docx.WidthType.DXA },
             borders: { top: { style: docx.BorderStyle.NONE }, bottom: { style: docx.BorderStyle.NONE }, left: { style: docx.BorderStyle.NONE }, right: { style: docx.BorderStyle.NONE } },
             verticalAlign: docx.VerticalAlign.CENTER,
             children: [
@@ -2232,7 +2238,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
         }));
     } else {
         headerTabelaFilhos.push(new docx.TableCell({
-            width: { size: 30, type: docx.WidthType.PERCENTAGE },
+            width: { size: largurasCabecalho[0], type: docx.WidthType.DXA },
             borders: { top: { style: docx.BorderStyle.NONE }, bottom: { style: docx.BorderStyle.NONE }, left: { style: docx.BorderStyle.NONE }, right: { style: docx.BorderStyle.NONE } },
             verticalAlign: docx.VerticalAlign.CENTER,
             children: [
@@ -2247,7 +2253,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
     }
 
     headerTabelaFilhos.push(new docx.TableCell({
-        width: { size: 70, type: docx.WidthType.PERCENTAGE },
+        width: { size: largurasCabecalho[1], type: docx.WidthType.DXA },
         borders: { top: { style: docx.BorderStyle.NONE }, bottom: { style: docx.BorderStyle.NONE }, left: { style: docx.BorderStyle.NONE }, right: { style: docx.BorderStyle.NONE } },
         verticalAlign: docx.VerticalAlign.CENTER,
         children: [
@@ -2269,7 +2275,10 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
     const header = new docx.Header({
         children: [
             new docx.Table({
-                width: { size: 100, type: docx.WidthType.PERCENTAGE },
+                // Grade e células explícitas evitam colunas de 100 DXA no Google Docs.
+                width: { size: larguraUtilPagina, type: docx.WidthType.DXA },
+                columnWidths: largurasCabecalho,
+                layout: docx.TableLayoutType.FIXED,
                 borders: {
                     top: { style: docx.BorderStyle.NONE },
                     bottom: { style: docx.BorderStyle.SINGLE, size: 6, color: 'BFBFBF' },
@@ -2282,7 +2291,9 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
     });
     const footer = new docx.Footer({
         children: [new docx.Table({
-            width: { size: 100, type: docx.WidthType.PERCENTAGE },
+            width: { size: larguraUtilPagina, type: docx.WidthType.DXA },
+            columnWidths: largurasRodape,
+            layout: docx.TableLayoutType.FIXED,
             borders: {
                 top: { style: docx.BorderStyle.SINGLE, size: 4, color: 'BFBFBF' },
                 bottom: { style: docx.BorderStyle.NONE },
@@ -2292,7 +2303,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
             rows: [new docx.TableRow({
                 children: [
                     new docx.TableCell({
-                        width: { size: 45, type: docx.WidthType.PERCENTAGE },
+                        width: { size: largurasRodape[0], type: docx.WidthType.DXA },
                         borders: { top: { style: docx.BorderStyle.NONE }, bottom: { style: docx.BorderStyle.NONE }, left: { style: docx.BorderStyle.NONE }, right: { style: docx.BorderStyle.NONE } },
                         children: [new docx.Paragraph({
                             alignment: docx.AlignmentType.LEFT,
@@ -2300,7 +2311,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
                         })],
                     }),
                     new docx.TableCell({
-                        width: { size: 25, type: docx.WidthType.PERCENTAGE },
+                        width: { size: largurasRodape[1], type: docx.WidthType.DXA },
                         borders: { top: { style: docx.BorderStyle.NONE }, bottom: { style: docx.BorderStyle.NONE }, left: { style: docx.BorderStyle.NONE }, right: { style: docx.BorderStyle.NONE } },
                         children: [new docx.Paragraph({
                             alignment: docx.AlignmentType.CENTER,
@@ -2308,7 +2319,7 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
                         })],
                     }),
                     new docx.TableCell({
-                        width: { size: 30, type: docx.WidthType.PERCENTAGE },
+                        width: { size: largurasRodape[2], type: docx.WidthType.DXA },
                         borders: { top: { style: docx.BorderStyle.NONE }, bottom: { style: docx.BorderStyle.NONE }, left: { style: docx.BorderStyle.NONE }, right: { style: docx.BorderStyle.NONE } },
                         children: [new docx.Paragraph({
                             alignment: docx.AlignmentType.RIGHT,
@@ -2328,8 +2339,8 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
     return new docx.Document({
         styles: { default: { document: { run: { font: 'Calibri' } } } },
         sections: [
-            { properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, children: capa },
-            { properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, headers: { default: header }, footers: { default: footer }, children: [...indice, ...sumario, ...secao1, ...secaoPgr, ...secao2, ...secao3, ...secaoErgonomia, ...secaoPericulosidade, ...secaoMeioAmbiente, ...secao4, ...secao5, ...anexos] },
+            { properties: { page: pagina }, children: capa },
+            { properties: { page: pagina }, headers: { default: header }, footers: { default: footer }, children: [...indice, ...sumario, ...secao1, ...secaoPgr, ...secao2, ...secao3, ...secaoErgonomia, ...secaoPericulosidade, ...secaoMeioAmbiente, ...secao4, ...secao5, ...anexos] },
         ],
     });
 }

@@ -648,7 +648,8 @@ test('SMS-03 (Bloqueio 2): congelamento integral do snapshot em montarDocRelSms 
     c.docx = {
         AlignmentType: { CENTER: 'center', LEFT: 'left', RIGHT: 'right' },
         BorderStyle: { SINGLE: 'single', NONE: 'none' },
-        WidthType: { PERCENTAGE: 'pct' },
+        WidthType: { PERCENTAGE: 'pct', DXA: 'dxa' },
+        TableLayoutType: { FIXED: 'fixed' },
         VerticalAlign: { CENTER: 'center' },
         PageNumber: { CURRENT: 'current', TOTAL_PAGES: 'totalPages' },
         Paragraph: class { constructor(opts) { Object.assign(this, opts); } },
@@ -698,7 +699,20 @@ test('SMS-03 (Bloqueio 2): congelamento integral do snapshot em montarDocRelSms 
         anexos: [{ id: 'a1', titulo: 'Anexo 1' }]
     };
 
-    await c.montarDocRelSms(9, 2026, true, null, snapshotCompleto);
+    const documento = await c.montarDocRelSms(9, 2026, true, null, snapshotCompleto);
+    const secao = documento.sections[1];
+    const pagina = secao.properties.page;
+    const larguraUtil = pagina.size.width - pagina.margin.left - pagina.margin.right;
+    for (const tabela of [secao.headers.default.children[0], secao.footers.default.children[0]]) {
+        assert.equal(tabela.width.type, 'dxa', 'Cabeçalho/rodapé precisam de largura física para importadores DOCX');
+        assert.equal(tabela.width.size, larguraUtil);
+        assert.equal(tabela.layout, 'fixed');
+        assert.equal(tabela.columnWidths.reduce((soma, n) => soma + n, 0), larguraUtil);
+        tabela.rows[0].children.forEach((celula, i) => {
+            assert.equal(celula.width.type, 'dxa');
+            assert.equal(celula.width.size, tabela.columnWidths[i], 'A célula deve respeitar a grade da tabela');
+        });
+    }
 
     assert.equal(buscaControleChamada, false, 'Documentos de controle vivos NÃO devem ser consultados em mês fechado');
     assert.equal(buscaSecao1Chamada, false, 'Dados da Seção 1 vivos NÃO devem ser consultados em mês fechado');

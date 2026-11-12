@@ -700,7 +700,7 @@ function extrairIdPastaDrive(urlOuId) {
 
 async function abrirPastaFotosOperacional(tipoOuCategoria, dataStr, temaStr) {
     const info = montarEstruturaPastaFotos(tipoOuCategoria, dataStr, temaStr);
-    const webhookUrl = getDriveGasWebhookUrl();
+
     const raizFotosUrl = getDriveFolderFotosUrl();
     const temSwal = (typeof Swal !== 'undefined');
 
@@ -722,7 +722,7 @@ async function abrirPastaFotosOperacional(tipoOuCategoria, dataStr, temaStr) {
 
     let urlDestino = null;
 
-    if (webhookUrl) {
+    if (raizFotosUrl) {
         try {
             const payload = {
                 action: 'criar_pasta_fotos',
@@ -740,9 +740,9 @@ async function abrirPastaFotosOperacional(tipoOuCategoria, dataStr, temaStr) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 12000);
 
-            const resp = await fetch(webhookUrl, {
+            const resp = await fetchApiAnexos('/api/pastas-drive', {
                 method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
                 signal: controller.signal
             });
@@ -755,7 +755,7 @@ async function abrirPastaFotosOperacional(tipoOuCategoria, dataStr, temaStr) {
                 }
             }
         } catch (err) {
-            console.warn('Webhook do Google Drive offline ou com timeout, acionando fallback:', err);
+            console.warn('Não foi possível preparar a pasta; oferecendo navegação manual:', err);
         }
     }
 

@@ -2066,33 +2066,6 @@ async function sincronizarPastasDriveCronograma(anoParam, mesParam) {
         };
     });
 
-    const webhookUrl = getDriveGasWebhookUrl();
-    if (!webhookUrl) {
-        if (typeof Swal !== 'undefined') {
-            Swal.fire({
-                icon: 'error',
-                title: 'Web App não configurado',
-                html: `
-                    <p style="font-size:13px; color:#475569; line-height:1.5;">
-                        A <b>URL do Web App Apps Script</b> não está configurada no painel.
-                    </p>
-                    <p style="font-size:12px; color:#64748b; margin-top:8px;">
-                        Abra as configurações do Google Drive e configure a URL do seu aplicativo da Web implantado.
-                    </p>
-                `,
-                showCancelButton: true,
-                confirmButtonText: '⚙️ Abrir Configurações',
-                cancelButtonText: 'Fechar',
-                confirmButtonColor: '#0284c7'
-            }).then(r => {
-                if (r.isConfirmed) abrirModalConfigGoogleDrive();
-            });
-        } else {
-            alert('URL do Web App do Google Apps Script não configurada.');
-        }
-        return;
-    }
-
     const pastaRaizId = getDriveFolderTreinamentosId();
 
     if (typeof Swal !== 'undefined') {
@@ -2121,9 +2094,9 @@ async function sincronizarPastasDriveCronograma(anoParam, mesParam) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 40000);
 
-        const resp = await fetch(webhookUrl, {
+        const resp = await fetchApiAnexos('/api/pastas-drive', {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'criarEstruturaCronograma',
                 pastaRaizId: pastaRaizId,
@@ -2209,7 +2182,7 @@ async function sincronizarPastasDriveCronograma(anoParam, mesParam) {
                         ${escapeHTML(err.message)}
                     </div>
                     <p style="font-size:11px; color:#64748b; margin-top:10px;">
-                        Dica: Certifique-se de que o Web App Apps Script foi implantado como "Qualquer pessoa" (Anyone) com o script atualizado.
+                        Confira seu login e teste a integração de pastas nas configurações do Drive. Se a resposta foi interrompida, consulte as pastas antes de repetir.
                     </p>
                 `,
                 confirmButtonColor: '#0284c7'

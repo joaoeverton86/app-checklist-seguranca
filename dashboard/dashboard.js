@@ -47,7 +47,7 @@ function limparSessoesApiAnexos() {
     versaoSessaoApiAnexos++;
 }
 async function fetchApiAnexos(rota, opcoes = {}) {
-    if (typeof rota !== 'string' || !/^\/api\/(?:anexo-iniciar|anexo-enviar-pedaco|anexo-finalizar|anexos-drive-listar|proxy-imagem)(?:\?|$)/.test(rota)) {
+    if (typeof rota !== 'string' || !/^\/api\/(?:anexo-iniciar|anexo-enviar-pedaco|anexo-finalizar|anexos-drive-listar|proxy-imagem|pastas-drive)(?:\?|$)/.test(rota)) {
         throw new Error('Destino de anexo inválido.');
     }
     const negar = mensagem => Object.assign(new Error(mensagem), { bloquearFallback: true });
@@ -2798,58 +2798,17 @@ function salvarConfigGoogleDrive() {
 }
 
 async function testarWebhookFotosDrive() {
-    const inpGasFotos = document.getElementById('cfgDriveGasWebhookUrl');
     const status = document.getElementById('cfgDriveTestStatus');
     const btn = document.getElementById('btnTestarWebhookFotos');
-    const url = (inpGasFotos?.value || getDriveGasWebhookUrl() || '').trim();
-
-    if (!url) {
-        if (status) {
-            status.textContent = '❌ Por favor preencha a URL do Web App Apps Script de Fotos.';
-            status.style.color = '#ef4444';
-        }
-        return;
-    }
-
-    if (status) { status.textContent = 'Testando Web App de Fotos...'; status.style.color = '#0284c7'; }
+    if (status) { status.textContent = 'Conferindo a integração de pastas…'; status.style.color = '#0284c7'; }
     if (btn) btn.disabled = true;
-
     try {
-        const resp = await fetch(url, {
-            method: 'GET'
-        });
-        if (resp.ok) {
-            const data = await resp.json().catch(() => null);
-            if (status) {
-                status.innerHTML = `✅ Web App conectado e operacional! ${data?.servico ? `(${data.servico})` : ''}`;
-                status.style.color = '#10b981';
-            }
-        } else {
-            throw new Error(`Servidor respondeu com código HTTP ${resp.status}`);
-        }
-    } catch (err) {
-        try {
-            const respPost = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ action: 'ping' })
-            });
-            if (respPost.ok) {
-                if (status) {
-                    status.innerHTML = `✅ Web App respondeu à chamada POST com sucesso!`;
-                    status.style.color = '#10b981';
-                }
-                return;
-            }
-        } catch (_) {}
-
-        if (status) {
-            status.innerHTML = `⚠️ Teste: Verifique se o Web App foi implantado como "Qualquer pessoa" (Anyone). Erro: ${escapeHTML(err.message)}`;
-            status.style.color = '#f59e0b';
-        }
-    } finally {
-        if (btn) btn.disabled = false;
-    }
+        const r = await fetchApiAnexos('/api/pastas-drive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'diagnostico' }) });
+        const d = await r.json();
+        if (d.status !== 'sucesso') throw new Error('A integração não confirmou a conexão.');
+        if (status) { status.textContent = 'Conexão confirmada. Nenhuma pasta foi criada.'; status.style.color = '#10b981'; }
+    } catch (e) { if (status) { status.textContent = 'Não foi possível confirmar a conexão: ' + e.message; status.style.color = '#ef4444'; } }
+    finally { if (btn) btn.disabled = false; }
 }
 
 
@@ -6675,32 +6634,8 @@ async function sincronizarPastasDriveCronograma(anoParam, mesParam) {
         };
     });
 
-    const webhookUrl = getDriveGasWebhookUrl();
-    if (!webhookUrl) {
-        if (typeof Swal !== 'undefined') {
-            Swal.fire({
-                icon: 'error',
-                title: 'Web App não configurado',
-                html: `
-                    <p style="font-size:13px; color:#475569; line-height:1.5;">
-                        A <b>URL do Web App Apps Script</b> não está configurada no painel.
-                    </p>
-                    <p style="font-size:12px; color:#64748b; margin-top:8px;">
-                        Abra as configurações do Google Drive e configure a URL do seu aplicativo da Web implantado.
-                    </p>
-                `,
-                showCancelButton: true,
-                confirmButtonText: '⚙️ Abrir Configurações',
-                cancelButtonText: 'Fechar',
-                confirmButtonColor: '#0284c7'
-            }).then(r => {
-                if (r.isConfirmed) abrirModalConfigGoogleDrive();
-            });
-        } else {
-            alert('URL do Web App do Google Apps Script não configurada.');
-        }
-        return;
-    }
+
+
 
     const pastaRaizId = getDriveFolderTreinamentosId();
 
@@ -6730,9 +6665,9 @@ async function sincronizarPastasDriveCronograma(anoParam, mesParam) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 40000);
 
-        const resp = await fetch(webhookUrl, {
+        const resp = await fetchApiAnexos('/api/pastas-drive', {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'criarEstruturaCronograma',
                 pastaRaizId: pastaRaizId,
@@ -6818,7 +6753,7 @@ async function sincronizarPastasDriveCronograma(anoParam, mesParam) {
                         ${escapeHTML(err.message)}
                     </div>
                     <p style="font-size:11px; color:#64748b; margin-top:10px;">
-                        Dica: Certifique-se de que o Web App Apps Script foi implantado como "Qualquer pessoa" (Anyone) com o script atualizado.
+                        Confira seu login e teste a integração de pastas nas configurações do Drive. Se a resposta foi interrompida, consulte as pastas antes de repetir.
                     </p>
                 `,
                 confirmButtonColor: '#0284c7'
@@ -38813,7 +38748,7 @@ function extrairIdPastaDrive(urlOuId) {
 
 async function abrirPastaFotosOperacional(tipoOuCategoria, dataStr, temaStr) {
     const info = montarEstruturaPastaFotos(tipoOuCategoria, dataStr, temaStr);
-    const webhookUrl = getDriveGasWebhookUrl();
+
     const raizFotosUrl = getDriveFolderFotosUrl();
     const temSwal = (typeof Swal !== 'undefined');
 
@@ -38835,7 +38770,7 @@ async function abrirPastaFotosOperacional(tipoOuCategoria, dataStr, temaStr) {
 
     let urlDestino = null;
 
-    if (webhookUrl) {
+    if (raizFotosUrl) {
         try {
             const payload = {
                 action: 'criar_pasta_fotos',
@@ -38853,9 +38788,9 @@ async function abrirPastaFotosOperacional(tipoOuCategoria, dataStr, temaStr) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 12000);
 
-            const resp = await fetch(webhookUrl, {
+            const resp = await fetchApiAnexos('/api/pastas-drive', {
                 method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
                 signal: controller.signal
             });
@@ -38868,7 +38803,7 @@ async function abrirPastaFotosOperacional(tipoOuCategoria, dataStr, temaStr) {
                 }
             }
         } catch (err) {
-            console.warn('Webhook do Google Drive offline ou com timeout, acionando fallback:', err);
+            console.warn('Não foi possível preparar a pasta; oferecendo navegação manual:', err);
         }
     }
 

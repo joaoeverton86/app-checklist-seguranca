@@ -116,25 +116,17 @@ async function relSmsImportarFotosComPrevia() {
     }
     const pastaId = relSmsFotosExtrairIdPasta(link);
     if (!['treinamento', 'ddsma'].includes(tipo) || !pastaId) { relSmsFotosMensagem('Informe a categoria e o link da pasta do mês.'); return; }
-    const webhook = typeof getDriveGasWebhookUrl === 'function' ? getDriveGasWebhookUrl() : '';
-    if (!webhook) { relSmsFotosMensagem('Configure a integração do Drive para consultar a pasta. O Word manual permanece disponível.'); return; }
     if (s.doc !== docInicial || !relSmsFotosPodeEditar()) return;
     s.busy = true;
     try {
         relSmsFotosMensagem('Consultando pasta e calendário para preparar a prévia…');
-        // GET antigo é inofensivo. Não acionar POST de versão que altera permissões.
-        const consultaVersao = await fetch(webhook, { signal: AbortSignal.timeout(15000) });
-        if (!consultaVersao.ok) throw new Error('Não foi possível conferir a versão da integração do Drive.');
-        const capacidade = await consultaVersao.json();
-        if (capacidade.protocolo !== 'fotos-leitura-v292' || capacidade.somenteLeitura !== true) throw new Error('Atualize o Apps Script para a versão de consulta somente leitura antes de importar.');
-        if (!capacidade.raizConfigurada) throw new Error('Configure FOTOS_ROOT_ID no Apps Script para identificar a raiz oficial de fotos.');
         const [resposta, calendario] = await Promise.all([
-            fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'listarFotosSubpastas', pastaId }), signal: AbortSignal.timeout(60000) }),
+            fetchApiAnexos('/api/pastas-drive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'listarFotosSubpastas', pastaId }), signal: AbortSignal.timeout(60000) }),
             relSmsImportacaoCalendario(tipo, docInicial.mes, docInicial.ano)
         ]);
         if (!resposta.ok) throw new Error(`Falha na integração do Drive (HTTP ${resposta.status}).`);
         const dados = await resposta.json();
-        if (dados.status !== 'sucesso' || dados.somenteLeitura !== true || !Array.isArray(dados.subpastas)) throw new Error(dados.message || 'Resposta de listagem inválida. Confira a versão do Apps Script.');
+        if (dados.status !== 'sucesso' || dados.somenteLeitura !== true || !Array.isArray(dados.subpastas)) throw new Error(dados.message || 'Resposta de listagem inválida. Confira a integração de pastas.');
         const plano = relSmsImportacaoPlanejar(docInicial, dados.subpastas, calendario, tipo);
         relSmsFotosValidar(plano.candidato);
         const resumo = plano.itens.map(i => `${i.data.split('-').reverse().join('/')} — ${i.tema}: 2 fotos. ${i.referencia}`).join('\n');

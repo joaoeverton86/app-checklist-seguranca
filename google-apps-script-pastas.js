@@ -1,29 +1,65 @@
 function doGet(e) {
   var raiz = PropertiesService.getScriptProperties().getProperty("FOTOS_ROOT_ID");
   return ContentService.createTextOutput(JSON.stringify({
-    status: "ok", protocolo: "fotos-leitura-v292", somenteLeitura: true,
-    raizConfigurada: Boolean(raiz)
+    status: "ok", protocolo: "pastas-assinadas-v1", somenteLeitura: true,
+    assinaturaObrigatoria: true,
+    assinaturaConfigurada: String(PropertiesService.getScriptProperties().getProperty("DRIVE_PASTAS_SIGNING_SECRET") || "").length >= 32,
+    raizConfigurada: Boolean(raiz),
+    raizHash: raiz ? bytesHexPastas(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, raiz, Utilities.Charset.UTF_8)) : null
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
+  var lock;
   try {
     if (!e || !e.postData || !e.postData.contents) {
       return ContentService.createTextOutput(JSON.stringify({ status: "erro", message: "Sem dados" })).setMimeType(ContentService.MimeType.JSON);
     }
-    var data = JSON.parse(e.postData.contents);
+    if (e.postData.contents.length > 520000) throw new Error("Pedido excede o limite da integração.");
+    var autorizado = validarEnvelopePastas(JSON.parse(e.postData.contents));
+    lock = LockService.getScriptLock();
+    if (!lock.tryLock(10000)) throw new Error("Outra operação de pastas está em andamento. Consulte novamente.");
+    var cache = CacheService.getScriptCache();
+    if (cache.get(autorizado.nonce)) throw new Error("Pedido já utilizado. Consulte novamente antes de repetir.");
+    cache.put(autorizado.nonce, "utilizado", 120);
+    var data = autorizado.data;
     var action = String(data.action || "").trim();
 
-    if (action === "listarFotosSubpastas" || action === "extrairFotosDaPasta") {
+    if (action === "diagnostico") {
+      return ContentService.createTextOutput(JSON.stringify({status:"sucesso", somenteLeitura:true})).setMimeType(ContentService.MimeType.JSON);
+    }
+    if (action === "listarFotosSubpastas") {
       return listarFotosSubpastas(data);
     }
-    if (action === "criarEstruturaCronograma" || (Array.isArray(data.temas) && data.temas.length > 0)) {
+    if (action === "criarEstruturaCronograma") {
       return criarEstruturaCronograma(data);
     }
-    return criarPastaEvidenciasFotos(data);
+    if (action === "criar_pasta_fotos") return criarPastaEvidenciasFotos(data);
+    throw new Error("Ação não autorizada.");
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({ status: "erro", message: String(error) })).setMimeType(ContentService.MimeType.JSON);
-  }
+  } finally { if (lock) lock.releaseLock(); }
+}
+
+function bytesHexPastas(bytes) {
+  return bytes.map(function(b) { return ("0" + (b & 255).toString(16)).slice(-2); }).join("");
+}
+function validarEnvelopePastas(pedido) {
+  var segredo = PropertiesService.getScriptProperties().getProperty("DRIVE_PASTAS_SIGNING_SECRET");
+  if (!segredo || segredo.length < 32 || typeof pedido.envelope !== "string" || pedido.envelope.length > 250000 || !/^[a-f0-9]{64}$/.test(pedido.assinatura || "")) throw new Error("Pedido sem autorização válida do painel.");
+  var esperado = bytesHexPastas(Utilities.computeHmacSha256Signature(pedido.envelope, segredo, Utilities.Charset.UTF_8));
+  var diferenca = 0;
+  for (var i=0;i<64;i++) diferenca |= esperado.charCodeAt(i) ^ pedido.assinatura.charCodeAt(i);
+  if (diferenca) throw new Error("Assinatura inválida.");
+  var env = JSON.parse(pedido.envelope);
+  if (env.v !== 1 || !env.uid || !Number.isSafeInteger(env.exp) || env.exp <= Date.now() || env.exp > Date.now()+90000 || !/^[a-f0-9-]{36}$/.test(env.nonce || "")) throw new Error("Autorização expirada ou inválida.");
+  var raiz = PropertiesService.getScriptProperties().getProperty("FOTOS_ROOT_ID");
+  if (!raiz || env.raiz !== raiz || !Array.isArray(env.raizes) || !env.raizes.includes(raiz) || !env.data) throw new Error("Raiz não autorizada.");
+  var action = env.data.action;
+  if (!["listarFotosSubpastas","criar_pasta_fotos","criarEstruturaCronograma","diagnostico"].includes(action)) throw new Error("Ação não autorizada.");
+  if (action === "criar_pasta_fotos" && env.data.rootFolderId !== raiz) throw new Error("Raiz de fotos não autorizada.");
+  if (action === "criarEstruturaCronograma" && !env.raizes.includes(env.data.pastaRaizId)) throw new Error("Raiz de escaneados não autorizada.");
+  return env;
 }
 
 function listarFotosSubpastas(data) {
@@ -52,6 +88,7 @@ function listarFotosSubpastas(data) {
 
   var subpastas = pastaMae.getFolders();
   var resultado = [];
+  var totalFotosConsulta = 0;
 
   while (subpastas.hasNext()) {
     if (resultado.length >= 200) throw new Error("Mais de 200 subpastas: consulte uma pasta mensal menor.");
@@ -63,6 +100,8 @@ function listarFotosSubpastas(data) {
       var arq = arquivos.next();
       var mime = arq.getMimeType();
       if (mime.indexOf("image/") === 0 || mime === "application/vnd.google-apps.photo") {
+        totalFotosConsulta++;
+        if (totalFotosConsulta > 2000) throw new Error("Mais de 2000 fotos: consulte uma pasta mensal menor.");
         if (fotos.length >= 200) throw new Error("Mais de 200 fotos em uma subpasta.");
         fotos.push({
           id: arq.getId(),
@@ -104,16 +143,8 @@ function criarEstruturaCronograma(data) {
   var mes = normalizarNomeMes(data.mes || (new Date().getMonth() + 1));
   var temas = Array.isArray(data.temas) ? data.temas : [];
 
-  var pastaRaiz;
-  if (rootFolderId) {
-    try {
-      pastaRaiz = DriveApp.getFolderById(rootFolderId);
-    } catch (eRaiz) {
-      pastaRaiz = DriveApp.getRootFolder();
-    }
-  } else {
-    pastaRaiz = DriveApp.getRootFolder();
-  }
+  if (!rootFolderId) throw new Error("Informe a raiz autorizada.");
+  var pastaRaiz = DriveApp.getFolderById(rootFolderId);
 
   var pastaAno = getOrCreateSubFolder(pastaRaiz, String(ano));
   var pastaMes = getOrCreateSubFolder(pastaAno, String(mes));
@@ -144,9 +175,6 @@ function criarEstruturaCronograma(data) {
     var prefixoAlt = prefixoData.replace("/", "-");
     var pastaTema = getOrCreateTemaFolder(pastaMes, nomePastaTema, "[" + prefixoData + "]", "[" + prefixoAlt + "]", codRaw, temaRaw);
 
-    try {
-      pastaTema.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    } catch (_) {}
 
     pastasResultado.push({
       id: t.id || null,
@@ -179,25 +207,14 @@ function criarPastaEvidenciasFotos(data) {
   var categoria = data.categoria || data.categoriaPasta || "01_Treinamentos";
   var nomePastaFinal = data.nomePastaFinal || data.subpasta || data.subpastaFinal || "Evidencias";
 
-  var pastaAtual;
-  if (rootFolderId) {
-    try {
-      pastaAtual = DriveApp.getFolderById(rootFolderId);
-    } catch (_) {
-      pastaAtual = DriveApp.getRootFolder();
-    }
-  } else {
-    pastaAtual = DriveApp.getRootFolder();
-  }
+  if (!rootFolderId) throw new Error("Informe a raiz autorizada.");
+  var pastaAtual = DriveApp.getFolderById(rootFolderId);
 
   pastaAtual = getOrCreateSubFolder(pastaAtual, String(ano));
   pastaAtual = getOrCreateSubFolder(pastaAtual, mes);
   pastaAtual = getOrCreateSubFolder(pastaAtual, categoria);
   var pastaFinal = getOrCreateSubFolder(pastaAtual, nomePastaFinal);
 
-  try {
-    pastaFinal.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  } catch (_) {}
 
   return ContentService.createTextOutput(JSON.stringify({
     status: "sucesso",
@@ -210,27 +227,38 @@ function criarPastaEvidenciasFotos(data) {
 
 function getOrCreateSubFolder(parentFolder, folderName) {
   var folders = parentFolder.getFoldersByName(folderName);
-  if (folders.hasNext()) return folders.next();
+  if (folders.hasNext()) {
+    var existente = folders.next();
+    if (folders.hasNext()) throw new Error("Há pastas duplicadas para " + folderName + ". Confira o Drive.");
+    return existente;
+  }
   return parentFolder.createFolder(folderName);
 }
 
 function getOrCreateTemaFolder(parentFolder, folderName, prefixo1, prefixo2, cod, tema) {
   var exact = parentFolder.getFoldersByName(folderName);
-  if (exact.hasNext()) return exact.next();
+  if (exact.hasNext()) {
+    var existente = exact.next();
+    if (exact.hasNext()) throw new Error("Há pastas duplicadas para " + folderName + ". Confira o Drive.");
+    return existente;
+  }
 
   var all = parentFolder.getFolders();
-  var tNorm = tema ? tema.toUpperCase().trim() : "";
-  var codNorm = cod ? cod.toUpperCase().trim() : "";
+  var normalizar = function(v) { return String(v).normalize("NFC").toUpperCase().replace(/\s+/g," ").trim(); };
+  var esperado = normalizar(folderName);
+  var alternativo = normalizar(folderName.replace(prefixo1, prefixo2));
+  var encontrado = null;
 
   while (all.hasNext()) {
     var f = all.next();
     var fName = f.getName().trim().toUpperCase();
-    if (prefixo1 && fName.indexOf(prefixo1.toUpperCase()) === 0) return f;
-    if (prefixo2 && fName.indexOf(prefixo2.toUpperCase()) === 0) return f;
-    if (codNorm && tNorm && fName.includes(codNorm) && fName.includes(tNorm.substring(0, 10))) return f;
+    if (normalizar(fName) === esperado || normalizar(fName) === alternativo) {
+      if (encontrado) throw new Error("Há pastas duplicadas para o tema e a data.");
+      encontrado = f;
+    }
   }
 
-  return parentFolder.createFolder(folderName);
+  return encontrado || parentFolder.createFolder(folderName);
 }
 
 function normalizarNomeMes(mesValor) {

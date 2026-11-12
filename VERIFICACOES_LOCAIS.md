@@ -1,5 +1,7 @@
 # Verificações locais e governança
 
+Atualização de12/11/2026 — integração de pastas assinada: `npm test` agora revisa21 arquivos, incluindo API/Apps Script com HMAC e cliente de pastas. Agregado75/75 sintaxe,21/21 testes e lint19 módulos aprovado. Serviços de criação/compartilhamento totalmente simulados. Os quatro arquivos Playwright continuam excluídos do runner. Conferência externa de ativação limita-se a diagnóstico assinado e recusa de pedido sem assinatura, sem criar pastas de teste. Ver api/PASTAS_DRIVE_ASSINADAS.md; os registros seguintes são históricos.
+
 Primeira etapa aplicada em 11/11/2026 na branch `chore/governanca-testes-locais`, base `c5ee81d`. Não inclui publicação ou alteração de dados/serviços.
 
 ## Evidência do alinhamento com Antigravity

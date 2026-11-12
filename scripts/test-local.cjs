@@ -5,10 +5,12 @@ const raiz = path.resolve(__dirname, '..');
 const testes = [
     'scripts/tests/planejar-acessos-anexos.test.cjs',
     'api/tests/cronograma-pastas.test.cjs',
+    'api/tests/pastas-drive.test.cjs',
     'api/tests/urls-remotas.test.cjs',
     'api/tests/autorizacao_anexos.test.cjs',
     'dashboard/tests/correcoes_lint_modulos.test.cjs',
     'dashboard/tests/anexos_autorizados_cliente.test.cjs',
+    'dashboard/tests/pastas_drive_cliente.test.cjs',
     'dashboard/tests/consulta_mensal_pcmso.test.cjs',
     'dashboard/tests/frentes_efetivo_ddsma.test.cjs',
     'dashboard/tests/frentes_exclusao.test.cjs',

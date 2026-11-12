@@ -26,6 +26,15 @@ async function enviar(c) {
     await c.fetchApiAnexos('/api/anexo-iniciar',{method:'POST',body:'{}'});
     await c.fetchApiAnexos('/api/anexo-enviar-pedaco',{method:'POST',body:JSON.stringify({uploadUrl:upload,chunkBase64:'AQ==',offset:0,tamanhoTotal:1})});
 }
+test('pastas usam a API fixa autenticada e recusam URL externa sem transmitir token',async()=>{
+    const {c,s}=ambiente();
+    await c.fetchApiAnexos('/api/pastas-drive',{method:'POST',body:JSON.stringify({action:'diagnostico'})});
+    assert.equal(s.chamadas.length,1);
+    assert.equal(s.chamadas[0].headers.get('Authorization'),'Bearer token-UID-A');
+    await assert.rejects(()=>c.fetchApiAnexos('https://attacker.invalid/pastas-drive'),/Destino/);
+    assert.equal(s.chamadas.length,1);
+    assert.equal(s.appsScript,0);
+});
 test('Auth ausente ou em erro não chama API e limpa tickets antigos',async()=>{
     for(const modo of ['ausente','erro']) {const {c,s}=ambiente();c.sessoesApiAnexos.set('antigo',{});s.auth=modo!=='ausente';s.authErro=modo==='erro';
         await assert.rejects(c.fetchApiAnexos('/api/anexo-iniciar'),e=>e.bloquearFallback===true);assert.equal(s.chamadas.length,0);assert.equal(c.sessoesApiAnexos.size,0);}

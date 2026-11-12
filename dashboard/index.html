@@ -10453,21 +10453,21 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="../data.js?v=295"></script>
     <script src="logo_cop_base64.js?v=295"></script>
-    <script src="dashboard.js?v=303.3"></script>
-    <script src="modules/treinamentos_ddsma.js?v=303.1"></script>
+    <script src="dashboard.js?v=303.6"></script>
+    <script src="modules/treinamentos_ddsma.js?v=303.6"></script>
     <script src="modules/kits_admissionais.js?v=3"></script>
     <script src="modules/efetivo_ferias.js?v=303"></script>
     <script src="modules/ghe_os.js?v=303.1"></script>
     <script src="modules/relatorio_sms_nc.js?v=303.5"></script>
     <script src="modules/relatorio_sms_fotos.js?v=303.3"></script>
-    <script src="modules/relsms_importacao_segura.js?v=295.1"></script>
+    <script src="modules/relsms_importacao_segura.js?v=296"></script>
     <script src="modules/relsms_fotos_manuais.js?v=295"></script>
     <script src="modules/cronograma_pastas.js?v=295"></script>
     <script src="modules/saude_psicossocial.js?v=303.3"></script>
     <script src="modules/pcmso.js?v=295"></script>
     <script src="modules/saude_prestadores.js?v=295"></script>
     <script src="modules/epi_estoque.js?v=303.2"></script>
-    <script src="modules/ambiental_compras_hht.js?v=303.3"></script>
+    <script src="modules/ambiental_compras_hht.js?v=303.6"></script>
     <script src="modules/apr_cipa.js?v=295"></script>
     <script src="modules/documentos_brigada.js?v=295"></script>
     <script src="modules/ergonomia_periculosidade_pgr.js?v=295"></script>
@@ -11936,11 +11936,11 @@ function filterMatrizEpi(q) {
 
             <div>
                 <label style="display:block; font-size:12px; font-weight:700; color:#0284c7; margin-bottom:4px;">
-                    <i class="fas fa-bolt"></i> URL do Web App Apps Script (Automação Recursiva de Pastas)
+                    <i class="fas fa-bolt"></i> Integração de pastas do Drive
                 </label>
-                <input type="text" id="cfgDriveGasWebhookUrl" placeholder="https://script.google.com/macros/s/.../exec" style="width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
+                <input type="text" id="cfgDriveGasWebhookUrl" readonly style="width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; box-sizing:border-box; background:var(--card); color:var(--text);">
                 <div style="font-size:11px; color:var(--text-light); margin-top:4px;">
-                    URL gerada ao implantar o script como <b>Aplicativo da Web</b> (Executar como: Eu / Acesso: Qualquer pessoa).
+                    Conexão administrada pelo responsável pelo sistema. O teste abaixo confere o acesso sem criar pastas.
                 </div>
             </div>
 
@@ -11949,7 +11949,7 @@ function filterMatrizEpi(q) {
                     <i class="fas fa-plug"></i> Testar Conexão Checklists
                 </button>
                 <button type="button" class="db-clear-btn" id="btnTestarWebhookFotos" style="padding:8px 14px; font-size:12px; display:inline-flex; align-items:center; gap:6px; color:#ec4899; border-color:#fbcfe8;" onclick="testarWebhookFotosDrive()">
-                    <i class="fas fa-magic"></i> Testar Web App Fotos
+                    <i class="fas fa-magic"></i> Testar integração de pastas
                 </button>
                 <a href="#" id="cfgDriveLinkPasta" onclick="abrirPastaChecklistsNoDrive(event)" target="_blank" rel="noopener noreferrer" style="font-size:12px; color:#0284c7; text-decoration:underline; font-weight:700; display:inline-flex; align-items:center; gap:4px;">
                     <i class="fab fa-google-drive"></i> Abrir Pasta Checklists ↗

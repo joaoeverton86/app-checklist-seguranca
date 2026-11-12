@@ -2145,12 +2145,9 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'CONSÓRCIO OPERADOR RAMAL DO AGRESTE', bold: true, color: RELSMS_NAVY, size: 20 })] }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 80 }, children: [new docx.TextRun({ text: 'CNPJ: ' + (EMPRESA_INFO.cnpj || '55.623.017/0001-97') + ' — Engenharia de Segurança do Trabalho', color: RELSMS_GREY, size: 18 })] }),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'Código de Controle: ' + codigoRev, bold: true, color: RELSMS_GREY, size: 18 })] }),
-        ...(fechado && !fotosManuais ? [
-            new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 30 }, children: [new docx.TextRun({ text: 'Status: 🔒 HOMOLOGADO E FECHADO (Rev. ' + (snapshot.revisao || 1) + ')', bold: true, color: '107C41', size: 18 })] }),
-            new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: 'Homologado em: ' + (snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleDateString('pt-BR') : '—') + ' por ' + (snapshot.fechado_por || 'Gestor SST') + ' • Hash: ' + (snapshot.hash ? snapshot.hash.slice(0, 16) + '...' : '—'), color: RELSMS_GREY, size: 16 })] }),
-        ] : [
-            new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: fotosManuais ? 'Status: Em edição — completar registro fotográfico' : 'Status: 🟢 Minuta em Aberto (Cálculo Dinâmico ao Vivo)', color: RELSMS_BLUE, size: 18 })] }),
-        ]),
+        ...(!fechado || fotosManuais ? [
+            new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: fotosManuais ? 'Em edição — completar registro fotográfico' : 'Minuta para revisão', color: RELSMS_BLUE, size: 18 })] }),
+        ] : []),
         new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, children: [new docx.TextRun({ text: 'Data de emissão: ' + dataEmissao, color: RELSMS_GREY, size: 18 })] }),
         new docx.Paragraph({ children: [new docx.PageBreak()] })
     );
@@ -2159,18 +2156,16 @@ async function montarDocRelSms(mes, ano, fiscalizacao, dadosPrecoletados, snapsh
         relSmsH1('Sumário / Índice'),
         new docx.TableOfContents('Sumário / Índice', { hyperlink: true, headingStyleRange: '1-3' }),
         new docx.Paragraph({ spacing: { after: 150 }, children: [] }),
-        new docx.Paragraph({ spacing: { after: 200 }, children: [new docx.TextRun({ text: 'Sumário gerado automaticamente pelo Word a partir dos títulos do documento. Se os números de página não aparecerem ao abrir o arquivo, clique com o botão direito sobre o índice acima e selecione "Atualizar campo" (ou selecione o índice e pressione F9).', italics: true, size: 18, color: RELSMS_GREY })] }),
+        ...(!fechado || fotosManuais ? [new docx.Paragraph({ spacing: { after: 200 }, children: [new docx.TextRun({ text: 'Sumário gerado automaticamente pelo Word a partir dos títulos do documento. Se os números de página não aparecerem ao abrir o arquivo, clique com o botão direito sobre o índice acima e selecione "Atualizar campo" (ou selecione o índice e pressione F9).', italics: true, size: 18, color: RELSMS_GREY })] })] : []),
         new docx.Paragraph({ children: [new docx.PageBreak()] }),
     ];
 
     const sumario = [
         relSmsH1('Sumário Executivo'),
         relSmsP('Este relatório reúne indicadores de Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste para ' + nomeMes.toLowerCase() + ' de ' + ano + ', com base nos registros disponíveis no sistema na data de emissão.'),
-        ...(fechado && !fotosManuais ? [
-            relSmsNota('COMPETÊNCIA HOMOLOGADA E FECHADA (Snapshot Histórico Imutável) em ' + (snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleDateString('pt-BR') : '—') + ' às ' + (snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : '—') + ' por ' + (snapshot.fechado_por || 'Gestor SST') + ' • Revisão: ' + (snapshot.revisao || 1) + ' • Hash de integridade: ' + (snapshot.hash || '—') + '. Os dados foram congelados na homologação e preservam fidelidade histórica permanente.')
-        ] : [
+        ...(!fechado || fotosManuais ? [
             relSmsNota('Indicadores mensais referem-se à competência. Cadastros, validades e pendências atuais refletem a data de emissão e não constituem retrato histórico fechado. A ausência de registro não comprova conformidade ou inexistência de ocorrência.')
-        ]),
+        ] : []),
         relSmsNota('HHT mensal: ' + dadosCompletos.hht.hhtMes + ' h' + (dadosCompletos.hht.hhtEstimado ? ' (estimativa operacional: efetivo × 220 h)' : '') + '; acumulado: ' + dadosCompletos.hht.hhtAcumuladoAno + ' h' + (dadosCompletos.hht.hhtAcumuladoEstimado ? ' (inclui estimativas)' : '') + '. Taxas dependentes acompanham esta base.'),
         ...(fotosManuais ? [relSmsNota('Edição para complementação manual do registro fotográfico. Conferir as fotos, temas e datas antes da emissão final.')] : []),
         relSmsH2('Destaques do Período'),
@@ -3411,19 +3406,9 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao, snapshot) {
                     <div style="margin-top: 8px; font-weight: 700; color: #1f3864;">${escapeHTML(meta.empresa)}</div>
                     <div>CNPJ: ${escapeHTML(EMPRESA_INFO.cnpj || '55.623.017/0001-97')}</div>
                     <div style="margin-top: 8px;"><strong>Código de Controle:</strong> ${escapeHTML(meta.codigoRev)}</div>
-                    ${snapshot && snapshot.status === 'fechado' ? `
-                    <div style="margin-top: 6px; color: #047857; font-weight: 700; font-size: 11px;">
-                        🔒 HOMOLOGADO E FECHADO (Rev. ${snapshot.revisao || 1})
-                    </div>
-                    <div style="font-size: 9.5px; color: #065f46;">
-                        Fechado em: ${snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleDateString('pt-BR') : '—'} às ${snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : '—'} por ${escapeHTML(snapshot.fechado_por || 'Gestor SST')}
-                    </div>
-                    <div style="font-size: 9px; color: #64748b; font-family: monospace;">
-                        Hash: ${escapeHTML(snapshot.hash ? snapshot.hash.slice(0, 20) + '...' : '—')}
-                    </div>
-                    ` : `
+                    ${snapshot && snapshot.status === 'fechado' ? '' : `
                     <div style="margin-top: 6px; color: #1e40af; font-weight: 600; font-size: 10.5px;">
-                        🟢 Minuta em Aberto (Cálculo Dinâmico ao Vivo)
+                        Minuta para revisão
                     </div>
                     `}
                     <div><strong>Data de Emissão:</strong> ${meta.dataEmissao}</div>
@@ -3438,11 +3423,6 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao, snapshot) {
             <p class="rel-p">
                 Este relatório reúne os indicadores de Segurança do Trabalho, Saúde Ocupacional e Meio Ambiente do Consórcio Operador do PISF – Ramal do Agreste para <strong>${nomeMes.toLowerCase()} de ${ano}</strong>, com base nos registros disponíveis no sistema na data de emissão.
             </p>
-            ${snapshot && snapshot.status === 'fechado' ? `
-            <div style="background:#ecfdf5; border:1px solid #10b981; border-radius:6px; padding:6px 10px; margin:6px 0 10px 0; font-size:8.5px; color:#065f46; line-height:1.4;">
-                <strong>COMPETÊNCIA HOMOLOGADA E FECHADA (Snapshot Histórico Imutável):</strong> Este documento reflete o conjunto consolidado homologado em ${snapshot.fechado_em ? new Date(snapshot.fechado_em).toLocaleDateString('pt-BR') : '—'} por ${escapeHTML(snapshot.fechado_por || 'Gestor SST')} (Rev. ${snapshot.revisao || 1}, Hash: ${escapeHTML(snapshot.hash ? snapshot.hash.slice(0, 16) + '...' : '—')}). Os dados foram congelados na homologação e preservam fidelidade histórica permanente.
-            </div>
-            ` : ''}
 
             <div class="rel-h2">Destaques do Período</div>
             <ul style="padding-left: 16px; margin: 2px 0 6px 0; font-size: 8.5px; line-height: 1.35; color: #1e293b;">
@@ -3453,7 +3433,7 @@ function construirHtmlDossieOficialRelSms(dados, fiscalizacao, snapshot) {
                 `).join('')}
             </ul>
 
-            <div class="rel-h2">Metadados de Exposição Operacional do Mês</div>
+            <div class="rel-h2">Dados de exposição operacional do mês</div>
             <table class="rel-tabela" style="width: 100%; margin-bottom: 6px;">
                 <thead>
                     <tr>

@@ -1,5 +1,7 @@
 # MAPA OFICIAL DE MÓDULOS — DASHBOARD GERENCIAL SST
 
+12/11/2026 — Correção pontual da importação de fotos SMS: consulta e revisão SweetAlert passam a abrir dentro do diálogo nativo do organizador, permitindo foco, digitação e cliques. Reprodução local confirmou o campo inerte antes; depois, entrada do link, cancelamento sem gravação, revisão, salvamento simulado de duas fotos e fechamento/reabertura passaram. Cache somente do importador em 295.1. Não altera Apps Script, API, autenticação, fotos reais ou regras de homologação.
+
 12/11/2026 — Ativação dos anexos autorizada por João: concessões do responsável e de Saúde provisionadas; referência de fotos cadastrada em Production/Preview. Saúde ainda precisa concluir o convite e definir senha. Publicação e verificações operacionais em andamento; registros seguintes são históricos. Ver ../api/PREPARACAO_ATIVACAO_ANEXOS.md.
 
 12/11/2026 — Preparação de ativação dos anexos, ainda SEM publicação: 16 cenários adicionais com Auth/PostgreSQL reais locais e Drive simulado aprovados. Planejamento de contas sem aplicação; Saúde aguarda confirmação de e-mail; pasta de Saúde observada como Restrita; referência de fotos do painel localizada, ajuste de configuração proposto e ainda não aplicado. Agregado72/72 sintaxe,19/19 arquivos, lint19 módulos. Ver ../api/PREPARACAO_ATIVACAO_ANEXOS.md. Nenhum build remoto ou mudança de contas/configuração operacional.

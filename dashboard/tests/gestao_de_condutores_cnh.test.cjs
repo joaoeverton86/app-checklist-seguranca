@@ -777,6 +777,10 @@ const codeCondutoresVm = codeCondutores.replace(
          selecionarColaboradorDaBase,
          textoStatusBaseColaborador,
          calcularProntidaoPorFrente,
+         carregarFontesResumo,
+         obterFrenteCondutor,
+         confirmarVinculoEfetivo,
+         limparDadosEModaisPorPerdaDeAcesso,
          renderizarBlocoProntidaoEquipesHtml
      });`
 );
@@ -2265,6 +2269,13 @@ console.log('✅ Teste 1: IIFE estrita verificada — expõe somente window.rend
         { nome: 'Colab 7', responsavel: 'Frente 03 - Concretagem (Sem Condutor)', status: 'ATIVO' }
     ];
 
+    const efetivoResumoSimulado = sandbox.window.allEfetivo;
+    const catalogoResumoSimulado = sandbox.window.allFrentesCatalogo;
+    sandbox.window.allEfetivo = [];
+    sandbox.window.allFrentesCatalogo = [];
+    sandbox.supabaseFetch = async tabela => tabela === 'colaboradores_efetivo'
+        ? efetivoResumoSimulado : [{valor: catalogoResumoSimulado}];
+    await harness.carregarFontesResumo();
     const avaliadosProntidao = harness.state.condutores.map(c => harness.avaliarCondutorCompleto(c, '2026-11-09'));
     const prontidao = harness.calcularProntidaoPorFrente(avaliadosProntidao);
     assert.strictEqual(prontidao.length, 3, 'Deve incluir todas as frentes ativas do catálogo/efetivo, inclusive as sem condutor');
@@ -2282,7 +2293,7 @@ console.log('✅ Teste 1: IIFE estrita verificada — expõe somente window.rend
     assert.strictEqual(f1.cnhsVencendo, 1, 'Frente 01 deve ter 1 CNH com alerta de vencimento');
     assert.strictEqual(f1.cnhsVencidas, 0, 'Frente 01 não tem CNH vencida');
     assert.strictEqual(f1.totalEfetivoObra, 4, 'Frente 01 deve cruzar com os 4 colaboradores do Efetivo');
-    assert.strictEqual(f1.percentualCobertura, 50, 'Cobertura própria deve ser 50% (2 próprios aptos / 4 no efetivo)');
+    assert.strictEqual(f1.percentualCobertura, null, 'Sem vínculo confirmado não pode haver percentual');
     assert.strictEqual(f1.condutoresAptosLista.length, 2, 'Deve listar nominalmente os 2 aptos');
     assert.strictEqual(f1.condutoresAptosLista[0].nome, 'Carlos Henrique Alves');
 
@@ -2358,7 +2369,83 @@ console.log('✅ Teste 1: IIFE estrita verificada — expõe somente window.rend
 
     console.log('✅ Teste 18: Prontidão por equipe/frente, separação em subabas, frentes vazias preservadas e filtros aprovados');
 
-    console.log('\n🎉 TODOS OS 18 BLOCOS DE TESTES COMPORTAMENTAIS, DE REGRESSÃO E ESTÁTICOS PASSARAM COM SUCESSO!');
+    assert.ok(!htmlProntidao.includes('% do efetivo próprio'), 'Não exibir percentual com populações sem vínculo');
+    sandbox.supabaseFetch = async tabela => {
+        if (tabela === 'colaboradores_efetivo') throw new Error('falha simulada');
+        return [{valor: [{nome:'SÓ CATÁLOGO',ativo:true}]}];
+    };
+    await harness.carregarFontesResumo();
+    assert.strictEqual(harness.state.fontesResumo.status, 'INCOMPLETA');
+    assert.strictEqual(harness.state.fontesResumo.efetivo.length, 0, 'Falha não reutiliza efetivo antigo');
+    let listaResumo = harness.calcularProntidaoPorFrente([]);
+    assert.strictEqual(listaResumo[0].nome, 'SÓ CATÁLOGO');
+    assert.ok(harness.renderizarBlocoProntidaoEquipesHtml(listaResumo, 'TODOS').includes('Resumo incompleto'));
+    sandbox.supabaseFetch = async () => { throw new Error('falha total'); };
+    await harness.carregarFontesResumo();
+    assert.ok(harness.renderizarBlocoProntidaoEquipesHtml([], 'TODOS').includes('Resumo incompleto'));
+    sandbox.supabaseFetch = async tabela => tabela === 'colaboradores_efetivo'
+        ? [{id:'transferido',nome:'Simulado',responsavel:'NOVA',status:'ATIVO'}] : [];
+    await harness.carregarFontesResumo();
+    assert.strictEqual(harness.state.fontesResumo.status, 'PRONTA', 'Nova consulta recupera falha');
+    listaResumo = harness.calcularProntidaoPorFrente([{...condutorMultiAtiv,condutor:{id:'legado',nome:'Legado',setor_frente:'ANTIGA',ativo:true}}]);
+    assert.ok(listaResumo.some(f=>f.nome==='NOVA' && f.condutoresAtivos===0));
+    assert.ok(listaResumo.some(f=>f.nome==='ANTIGA' && f.condutoresAtivos===1), 'Não transferir legado por inferência');
+    let liberarResumo;
+    sandbox.supabaseFetch = async tabela => tabela === 'colaboradores_efetivo'
+        ? new Promise(resolve=>{liberarResumo=resolve;}) : [];
+    const leituraAntiga = harness.carregarFontesResumo();
+    harness.limparDadosEModaisPorPerdaDeAcesso();
+    liberarResumo(efetivoResumoSimulado);
+    assert.strictEqual(await leituraAntiga, false);
+    assert.strictEqual(harness.state.fontesResumo.efetivo.length, 0, 'Resposta após logout descartada');
+    console.log('✅ Teste 19: fontes próprias, falhas parciais/totais, recuperação e descarte após sessão; legados preservados e percentual ausente');
+
+    const vinculado = {...condutorMultiAtiv, condutor:{id:'vinculado',nome:'Simulado',vinculo:'PROPRIO',efetivo_id:'matricula-1',setor_frente:'ANTIGA',ativo:true}};
+    harness.state.fontesResumo.efetivo = [{id:'matricula-1',nome:'Simulado',status:'ATIVO',responsavel:'NOVA'}];
+    assert.strictEqual(harness.obterFrenteCondutor(vinculado.condutor), 'NOVA');
+    harness.state.fontesResumo.efetivo[0].responsavel='TRANSFERIDA';
+    assert.strictEqual(harness.obterFrenteCondutor(vinculado.condutor), 'TRANSFERIDA');
+    harness.state.fontesResumo.efetivo[0].status='AFASTADO';
+    assert.strictEqual(harness.calcularProntidaoPorFrente([vinculado])[0].condutoresAptos,0);
+    harness.state.fontesResumo.efetivo=[];
+    assert.ok(harness.obterFrenteCondutor(vinculado.condutor).includes('pendente de revisão'));
+    assert.strictEqual(harness.obterFrenteCondutor({...vinculado.condutor,efetivo_id:null}), 'ANTIGA', 'Legado sem vínculo preservado');
+    assert.strictEqual(harness.obterFrenteCondutor({...vinculado.condutor,vinculo:'TERCEIRO',efetivo_id:null}), 'ANTIGA');
+    console.log('✅ Teste 20: vínculo por ID, transferência, afastamento, indisponibilidade e preservação de legados/terceiros');
+
+    await harness.verificarSessaoEAutorizacaoModulo({revalidarCapacidadeBanco:true});
+    const registroVinculo = {...dbSimulado.condutores.values().next().value, vinculo:'PROPRIO',efetivo_id:null};
+    harness.state.condutores=[registroVinculo];
+    harness.abrirModalCadastroCondutor(registroVinculo.id);
+    harness.state.modalDados.efetivo_id_selecionado='MAT-CONFIRMADA';
+    const fetchAntesVinculo=sandbox.fetch;
+    let requisicoesVinculo=0;
+    sandbox.fetch=async (url,opcoes)=>{
+        if(String(url).includes('/rpc/vincular_condutor_efetivo')) {
+            requisicoesVinculo++;
+            const corpo=JSON.parse(opcoes.body);
+            assert.strictEqual(corpo.p_efetivo_id,'MAT-CONFIRMADA');
+            assert.strictEqual(corpo.p_versao_esperada,registroVinculo.versao);
+            return {ok:true,status:200,text:async()=>JSON.stringify({...registroVinculo,efetivo_id:corpo.p_efetivo_id,versao:registroVinculo.versao+1})};
+        }
+        return fetchAntesVinculo(url,opcoes);
+    };
+    assert.strictEqual(requisicoesVinculo,0,'Seleção não grava vínculo');
+    await harness.confirmarVinculoEfetivo(false);
+    assert.strictEqual(requisicoesVinculo,1);
+    assert.strictEqual(harness.state.modalDados.efetivo_id,'MAT-CONFIRMADA');
+    assert.strictEqual(harness.state.modalDados.versao_esperada,registroVinculo.versao+1);
+    sandbox.fetch=async (url,opcoes)=>String(url).includes('/rpc/vincular_condutor_efetivo')
+        ? {ok:false,status:409,text:async()=>JSON.stringify({message:'Conflito simulado'})} : fetchAntesVinculo(url,opcoes);
+    await harness.confirmarVinculoEfetivo(true);
+    assert.strictEqual(harness.state.modalDados.efetivo_id,'MAT-CONFIRMADA','Recusa não remove vínculo em memória');
+    assert.ok(harness.state.erroModal.includes('Conflito'));
+    harness.fecharModalAtivo();
+    assert.strictEqual(harness.state.condutores[0].efetivo_id,'MAT-CONFIRMADA','Cancelar edição não desfaz confirmação já salva');
+    sandbox.fetch=fetchAntesVinculo;
+    console.log('✅ Teste 21: confirmação explícita, persistência simulada, versão renovada, recusa preservada e cancelamento');
+
+    console.log('\n🎉 TODOS OS 21 BLOCOS DE TESTES COMPORTAMENTAIS, DE REGRESSÃO E ESTÁTICOS PASSARAM COM SUCESSO!');
 })().catch(err => {
     console.error('❌ Falha na suíte de testes:', err);
     process.exit(1);

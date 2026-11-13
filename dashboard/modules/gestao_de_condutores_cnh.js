@@ -254,6 +254,7 @@
         condutores: [],
         filtros: {
             buscaNome: '',
+            setorFrente: 'TODOS',
             empresa: 'TODAS',
             vinculo: 'TODOS',
             atividade: 'TODAS',
@@ -261,6 +262,9 @@
             vencimento: 'TODOS',
             incluirInativos: true
         },
+        abaAtiva: 'CONDUTORES', // 'CONDUTORES' | 'PRONTIDAO_EQUIPES'
+        buscaFrenteProntidao: '',
+        prontidaoEquipesAberta: true,
         modalAtivo: null, // 'CADASTRO' | 'INATIVAR' | 'COMUNICACAO' | 'HISTORICO' | null
         modalDados: null,
         erroModal: '',
@@ -1842,6 +1846,138 @@
             decisoesReavisoPendentes
         };
     }
+    function calcularProntidaoPorFrente(avaliadosCompletos) {
+        const mapaFrentes = new Map();
+
+        function obterOuCriarFrente(nomeFrenteRaw) {
+            const nomeFrente = String(nomeFrenteRaw || '').trim();
+            if (!nomeFrente) return null;
+            const chaveFrente = nomeFrente.toUpperCase();
+            if (!mapaFrentes.has(chaveFrente)) {
+                mapaFrentes.set(chaveFrente, {
+                    chave: chaveFrente,
+                    nome: nomeFrente,
+                    totalCondutores: 0,
+                    condutoresAtivos: 0,
+                    condutoresAptos: 0,
+                    condutoresAptosProprios: 0,
+                    condutoresAptosTerceiros: 0,
+                    cnhsVencendo: 0,
+                    cnhsVencidas: 0,
+                    condutoresPendentesOuInaptos: 0,
+                    condutoresAptosLista: [],
+                    todosCondutoresLista: [],
+                    totalEfetivoObra: null,
+                    percentualCobertura: null
+                });
+            }
+            return mapaFrentes.get(chaveFrente);
+        }
+
+        // 1. Catálogo global de frentes (frentes ativas sem condutores NÃO desaparecem do resumo!)
+        if (typeof window !== 'undefined' && Array.isArray(window.allFrentesCatalogo)) {
+            for (let cIdx = 0; cIdx < window.allFrentesCatalogo.length; cIdx++) {
+                const fCat = window.allFrentesCatalogo[cIdx];
+                if (!fCat || fCat.excluida === true || fCat.ativo === false) continue;
+                const nomeCat = typeof fCat === 'string' ? fCat : (fCat.nome || '');
+                obterOuCriarFrente(nomeCat);
+            }
+        }
+
+        // 2. Frentes a partir do Efetivo global (prioriza responsavel como frente de trabalho)
+        const efetivoPorFrente = {};
+        if (typeof window !== 'undefined' && Array.isArray(window.allEfetivo)) {
+            for (let j = 0; j < window.allEfetivo.length; j++) {
+                const colab = window.allEfetivo[j];
+                const ehAtivo = typeof window.colaboradorEstaAtivo === 'function'
+                    ? window.colaboradorEstaAtivo(colab)
+                    : (String(colab.status || '').toUpperCase() === 'ATIVO' && !colab.dt_demissao);
+                if (!ehAtivo) continue;
+                const fColab = String(colab.responsavel || colab.setor || '').trim();
+                if (fColab) {
+                    obterOuCriarFrente(fColab);
+                    const chaveF = fColab.toUpperCase();
+                    efetivoPorFrente[chaveF] = (efetivoPorFrente[chaveF] || 0) + 1;
+                }
+            }
+        }
+
+        // 3. Mapeia condutores cadastrados para suas frentes
+        const listaAvaliados = Array.isArray(avaliadosCompletos) ? avaliadosCompletos : [];
+        for (let i = 0; i < listaAvaliados.length; i++) {
+            const item = listaAvaliados[i];
+            const c = item.condutor;
+            if (!c) continue;
+            const nomeFrente = String(c.setor_frente || 'Não informado').trim();
+            const frente = obterOuCriarFrente(nomeFrente);
+            if (!frente) continue;
+
+            frente.totalCondutores++;
+            const ativo = c.ativo !== false;
+            if (ativo) {
+                frente.condutoresAtivos++;
+                const cnhVencida = Boolean(item.situacaoCnh && item.situacaoCnh.vencida);
+                const cnhAlerta = Boolean(item.situacaoCnh && (item.situacaoCnh.venceHoje || item.situacaoCnh.aVencer));
+                if (cnhVencida) {
+                    frente.cnhsVencidas++;
+                } else if (cnhAlerta) {
+                    frente.cnhsVencendo++;
+                }
+
+                const atividadesAptas = Array.isArray(item.avaliacoesCalculadas)
+                    ? item.avaliacoesCalculadas
+                        .filter(av => av.statusPrioritario === 'APTO')
+                        .map(av => av.atividadeNome)
+                    : [];
+                const ehApto = !cnhVencida && atividadesAptas.length > 0;
+
+                const vinculoUpper = String(c.vinculo || 'PROPRIO').toUpperCase();
+                if (ehApto) {
+                    frente.condutoresAptos++;
+                    if (vinculoUpper === 'PROPRIO') {
+                        frente.condutoresAptosProprios++;
+                    } else {
+                        frente.condutoresAptosTerceiros++;
+                    }
+                } else {
+                    frente.condutoresPendentesOuInaptos++;
+                }
+
+                const infoCondutor = {
+                    id: c.id,
+                    nome: c.nome,
+                    funcao: c.funcao,
+                    empresa: c.empresa,
+                    vinculo: c.vinculo,
+                    cnhCategoria: c.cnh_categoria || 'N/D',
+                    cnhValidade: c.cnh_validade,
+                    ehApto,
+                    cnhAlerta,
+                    cnhVencida,
+                    statusCnh: (item.situacaoCnh && item.situacaoCnh.statusLabel) || '',
+                    atividadesAptas
+                };
+                if (ehApto) {
+                    frente.condutoresAptosLista.push(infoCondutor);
+                }
+                frente.todosCondutoresLista.push(infoCondutor);
+            }
+        }
+
+        // 4. População de efetivo próprio e percentual restrito a celetistas próprios
+        const lista = Array.from(mapaFrentes.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+        for (let k = 0; k < lista.length; k++) {
+            const f = lista[k];
+            f.totalEfetivoObra = typeof efetivoPorFrente[f.chave] === 'number' ? efetivoPorFrente[f.chave] : null;
+            if (f.totalEfetivoObra && f.totalEfetivoObra > 0) {
+                // Cobertura própria (próprios / efetivo próprio da obra): nunca excede 100% e não mistura terceiros no numerador
+                f.percentualCobertura = Math.min(100, Math.round((f.condutoresAptosProprios / f.totalEfetivoObra) * 1000) / 10);
+            } else {
+                f.percentualCobertura = null;
+            }
+        }
+        return lista;
+    }
     function filtrarAvaliados(avaliadosCompletos) {
         const f = state.filtros;
         const termo = String(f.buscaNome || '').trim().toLowerCase();
@@ -1851,21 +1987,33 @@
             if (termo && !String(c.nome || '').toLowerCase().includes(termo)) {
                 return false;
             }
+            if (f.setorFrente && f.setorFrente !== 'TODOS') {
+                const sf = String(c.setor_frente || '').trim().toUpperCase();
+                if (sf !== f.setorFrente.toUpperCase()) return false;
+            }
             if (f.empresa !== 'TODAS' && String(c.empresa || '').toUpperCase() !== f.empresa.toUpperCase()) {
                 return false;
             }
             if (f.vinculo !== 'TODOS' && String(c.vinculo || '').toUpperCase() !== f.vinculo.toUpperCase()) {
                 return false;
             }
-            if (f.atividade !== 'TODAS') {
+            // Casamento estrito: quando atividade E aptidão são filtradas, a MESMA avaliação deve atender ambos os critérios!
+            if (f.atividade !== 'TODAS' && f.aptidao !== 'TODAS') {
+                const temCasado = item.avaliacoesCalculadas.some(
+                    av =>
+                        (av.atividadeCodigo.toUpperCase() === f.atividade.toUpperCase() ||
+                         av.atividadeNome.toUpperCase() === f.atividade.toUpperCase()) &&
+                        av.statusPrioritario === f.aptidao
+                );
+                if (!temCasado) return false;
+            } else if (f.atividade !== 'TODAS') {
                 const temAtiv = item.avaliacoesCalculadas.some(
                     av =>
                         av.atividadeCodigo.toUpperCase() === f.atividade.toUpperCase() ||
                         av.atividadeNome.toUpperCase() === f.atividade.toUpperCase()
                 );
                 if (!temAtiv) return false;
-            }
-            if (f.aptidao !== 'TODAS') {
+            } else if (f.aptidao !== 'TODAS') {
                 const temApt = item.avaliacoesCalculadas.some(av => av.statusPrioritario === f.aptidao);
                 if (!temApt) return false;
             }
@@ -1919,6 +2067,28 @@
      * Atualiza apenas a lista de condutores e os KPIs sem recriar os campos de filtro,
      * preservando integralmente o foco e a seleção de cursor durante a digitação.
      */
+    function atualizarCardsProntidaoNoDom() {
+        const container = obterContainerModulo();
+        if (!container) return;
+        const cardsEl = typeof container.querySelector === 'function'
+            ? container.querySelector('#condProntidaoCardsLista')
+            : (typeof document !== 'undefined' ? document.getElementById('condProntidaoCardsLista') : null);
+        if (!cardsEl) return;
+        const refHoje = state.ultimaDataCivilSpRenderizada || obterDataCivilSaoPauloHoje();
+        const avaliadosCompletos = state.condutores.map(c => avaliarCondutorCompleto(c, refHoje));
+        const prontidaoLista = calcularProntidaoPorFrente(avaliadosCompletos);
+        const termoBusca = String(state.buscaFrenteProntidao || '').trim().toLowerCase();
+        const listaExibicao = termoBusca
+            ? prontidaoLista.filter(f => f.nome.toLowerCase().includes(termoBusca) || (f.condutoresAptosLista && f.condutoresAptosLista.some(c => c.nome.toLowerCase().includes(termoBusca))))
+            : prontidaoLista;
+        cardsEl.innerHTML = renderizarCardsProntidaoListaHtml(listaExibicao, state.filtros.setorFrente, termoBusca);
+        const countEl = typeof container.querySelector === 'function'
+            ? container.querySelector('#condProntidaoCountLabel')
+            : (typeof document !== 'undefined' ? document.getElementById('condProntidaoCountLabel') : null);
+        if (countEl) {
+            countEl.innerHTML = `Mostrando <strong>${listaExibicao.length}</strong> de <strong>${prontidaoLista.length}</strong> frentes da obra`;
+        }
+    }
     function atualizarListaEKpisParcialNoDom() {
         const container = obterContainerModulo();
         if (!container) return;
@@ -1958,10 +2128,144 @@
         if (elSlotDecisao) {
             elSlotDecisao.innerHTML = renderizarBannerDecisaoPendenteHtml(kpis.decisoesReavisoPendentes);
         }
+        const elCountCond = buscarEl('condListagemCountLabel');
+        if (elCountCond) {
+            elCountCond.innerHTML = `Mostrando <strong>${filtrados.length}</strong> de <strong>${state.condutores.length}</strong> condutores cadastrados`;
+        }
+        const elSlotProntidao = buscarEl('condSlotProntidaoEquipes');
+        if (elSlotProntidao) {
+            atualizarCardsProntidaoNoDom();
+        }
         const elDataRef = buscarEl('condDataRefLabel');
         if (elDataRef) {
             elDataRef.textContent = `${formatarDataBr(refHoje)} (${refHoje})`;
         }
+    }
+    function renderizarCardsProntidaoListaHtml(listaExibicao, frenteFiltradaAtual, termoBusca) {
+        if (!listaExibicao || listaExibicao.length === 0) {
+            return `<div style="padding:24px; text-align:center; color:var(--text-light); font-size:13px; background:var(--bg); border:1px solid var(--border); border-radius:8px;">
+                ${termoBusca ? `Nenhuma frente encontrada para a busca "<strong>${escaparHtml(termoBusca)}</strong>".` : 'Nenhuma frente cadastrada.'}
+            </div>`;
+        }
+        return listaExibicao.map(f => {
+            const estaSelecionada = frenteFiltradaAtual && frenteFiltradaAtual !== 'TODOS' && frenteFiltradaAtual.toUpperCase() === f.chave;
+            const bordaCard = estaSelecionada ? '2px solid var(--primary, #0288d1)' : '1px solid var(--border)';
+            const fundoCard = estaSelecionada ? 'rgba(2, 136, 209, 0.05)' : 'var(--bg)';
+
+            let statusBadge = '';
+            if (f.condutoresAptos === 0) {
+                statusBadge = `<span style="font-size:11px; font-weight:700; color:var(--danger); background:rgba(211,47,47,0.12); padding:3px 7px; border-radius:6px;">⛔ Sem Condutor Apto</span>`;
+            } else if (f.cnhsVencendo > 0) {
+                statusBadge = `<span style="font-size:11px; font-weight:700; color:var(--warning); background:rgba(237,108,2,0.12); padding:3px 7px; border-radius:6px;">⚠️ ${f.condutoresAptos} Apto(s) · ${f.cnhsVencendo} vencendo</span>`;
+            } else {
+                statusBadge = `<span style="font-size:11px; font-weight:700; color:var(--success); background:rgba(46,125,50,0.12); padding:3px 7px; border-radius:6px;">✅ ${f.condutoresAptos} Apto(s)</span>`;
+            }
+
+            const nomesAptosHtml = f.condutoresAptosLista.length > 0
+                ? f.condutoresAptosLista.map(c => {
+                    const alertaCnhTag = c.cnhAlerta ? ' ⚠️' : '';
+                    const ativTooltip = c.atividadesAptas.length > 0 ? ` (${c.atividadesAptas.join(', ')})` : '';
+                    return `<span title="CNH Cat. ${escaparHtml(c.cnhCategoria)} · Validade: ${escaparHtml(formatarDataBr(c.cnhValidade))}${escaparHtml(ativTooltip)}" style="display:inline-block; font-size:11.5px; padding:3px 8px; margin:2px; border-radius:6px; background:var(--card); border:1px solid var(--border); color:var(--text);">
+                        👤 <strong>${escaparHtml(c.nome)}</strong> <span style="font-size:10.5px; color:var(--text-light); font-weight:600;">[Cat. ${escaparHtml(c.cnhCategoria)}${alertaCnhTag}]</span>
+                    </span>`;
+                }).join(' ')
+                : `<span style="font-size:11.5px; color:var(--text-light); font-style:italic;">Nenhum condutor com requisitos documentais em dia nesta frente.</span>`;
+
+            // Detalhe de composição (próprios vs terceiros) e efetivo próprio sem misturar populações
+            let composicaoDet = `Condutores cadastrados: <strong>${f.condutoresAtivos}</strong>`;
+            if (f.condutoresAptos > 0) {
+                const partesComp = [];
+                if (f.condutoresAptosProprios > 0) partesComp.push(`${f.condutoresAptosProprios} próprio(s)`);
+                if (f.condutoresAptosTerceiros > 0) partesComp.push(`${f.condutoresAptosTerceiros} terceiro(s)`);
+                composicaoDet += ` · Aptos: <strong>${f.condutoresAptos}</strong> (${partesComp.join(', ')})`;
+            }
+            if (f.totalEfetivoObra !== null) {
+                const percTxt = f.percentualCobertura !== null ? ` (${f.percentualCobertura}% do efetivo próprio)` : '';
+                composicaoDet += ` · Efetivo COP: <strong>${f.totalEfetivoObra}</strong>${percTxt}`;
+            }
+
+            return `
+                <div style="background:${fundoCard}; border:${bordaCard}; border-radius:8px; padding:12px; margin-bottom:10px;">
+                    <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
+                        <div>
+                            <strong style="font-size:13.5px; color:var(--text);">📍 ${escaparHtml(f.nome)}</strong>
+                            <span style="font-size:11.5px; color:var(--text-light); margin-left:6px;">
+                                (${composicaoDet})
+                            </span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            ${statusBadge}
+                            ${estaSelecionada
+                                ? `<button type="button" class="db-clear-btn" data-cond-action="limpar-filtro-frente" style="padding:4px 9px; font-size:11.5px;">✕ Limpar Filtro</button>`
+                                : `<button type="button" class="db-apply-btn" data-cond-action="filtrar-frente" data-cond-frente="${escaparHtml(f.nome)}" style="padding:4px 10px; font-size:11.5px;">🔍 Ver Condutores no Cadastro</button>`
+                            }
+                        </div>
+                    </div>
+                    <div style="margin-top:4px;">
+                        <div style="font-size:11px; font-weight:600; color:var(--text-light); margin-bottom:4px;">Condutores com requisitos documentais em dia (Aptos):</div>
+                        <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                            ${nomesAptosHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+    function renderizarBlocoProntidaoEquipesHtml(prontidaoLista, frenteFiltradaAtual) {
+        if (!prontidaoLista || prontidaoLista.length === 0) {
+            return `
+                <div class="db-chart-card" id="condSlotProntidaoEquipes" style="margin-bottom:14px; padding:24px; text-align:center; background:var(--card); border:1px solid var(--border);">
+                    <div style="font-size:14px; font-weight:700; margin-bottom:6px;">🚩 Nenhuma frente de serviço identificada</div>
+                    <p style="font-size:12.5px; color:var(--text-light);">Não foram encontradas frentes cadastradas no catálogo ou no cadastro de efetivo.</p>
+                </div>
+            `;
+        }
+        const totalFrentes = prontidaoLista.length;
+        const frentesComAptos = prontidaoLista.filter(f => f.condutoresAptos > 0).length;
+        const frentesSemAptos = totalFrentes - frentesComAptos;
+        const frentesComAlerta = prontidaoLista.filter(f => f.cnhsVencendo > 0).length;
+
+        let resumoBadges = `<span style="display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px; background:rgba(46,125,50,0.12); color:var(--success); border:1px solid rgba(46,125,50,0.3);">✅ ${frentesComAptos} equipes com condutor apto</span>`;
+        if (frentesSemAptos > 0) {
+            resumoBadges += ` <span style="display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px; background:rgba(211,47,47,0.12); color:var(--danger); border:1px solid rgba(211,47,47,0.3);">⛔ ${frentesSemAptos} sem condutor apto</span>`;
+        }
+        if (frentesComAlerta > 0) {
+            resumoBadges += ` <span style="display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px; background:rgba(237,108,2,0.12); color:var(--warning); border:1px solid rgba(237,108,2,0.3);">⚠️ ${frentesComAlerta} com CNH a vencer</span>`;
+        }
+
+        const termoBusca = String(state.buscaFrenteProntidao || '').trim().toLowerCase();
+        const listaExibicao = termoBusca
+            ? prontidaoLista.filter(f => f.nome.toLowerCase().includes(termoBusca) || (f.condutoresAptosLista && f.condutoresAptosLista.some(c => c.nome.toLowerCase().includes(termoBusca))))
+            : prontidaoLista;
+
+        const cardsHtml = renderizarCardsProntidaoListaHtml(listaExibicao, frenteFiltradaAtual, termoBusca);
+
+        return `
+            <div class="db-chart-card" id="condSlotProntidaoEquipes" style="margin-bottom:14px; padding:16px 18px; background:var(--card); border:1px solid var(--border);">
+                <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:12px;">
+                    <div>
+                        <div style="font-size:15px; font-weight:700; color:var(--text);">🚩 Prontidão de Condutores por Frente / Equipe</div>
+                        <div style="font-size:12px; color:var(--text-light); margin-top:2px;">
+                            Conferência de condutores com requisitos documentais em dia (CNH e Treinamentos SST) e capacidade logística por frente de serviço.
+                        </div>
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
+                        ${resumoBadges}
+                    </div>
+                </div>
+                <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px; margin-bottom:12px;">
+                    <div id="condProntidaoCountLabel" style="font-size:12px; color:var(--text-light);">
+                        Mostrando <strong>${listaExibicao.length}</strong> de <strong>${totalFrentes}</strong> frentes da obra
+                    </div>
+                    <div style="min-width:220px; max-width:320px; width:100%;">
+                        <input type="search" id="condBuscaFrenteProntidao" value="${escaparHtml(state.buscaFrenteProntidao || '')}" placeholder="🔍 Buscar frente/equipe..." data-cond-filter="buscaFrenteProntidao" style="width:100%; padding:6px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:12px;">
+                    </div>
+                </div>
+                <div id="condProntidaoCardsLista">
+                    ${cardsHtml}
+                </div>
+            </div>
+        `;
     }
     function renderizarEstiloResponsivoInternoHtml() {
         return `
@@ -2152,10 +2456,14 @@
         }
         const avaliadosCompletos = state.condutores.map(c => avaliarCondutorCompleto(c, refHoje));
         const kpis = calcularIndicadoresGerais(avaliadosCompletos);
+        const prontidaoLista = calcularProntidaoPorFrente(avaliadosCompletos);
         const filtrados = filtrarAvaliados(avaliadosCompletos);
-        // Coleta opções dinâmicas para filtros de Empresa e Atividade
+        // Coleta opções dinâmicas para filtros de Empresa, Atividade e Setor/Frente
         const empresasUnicas = Array.from(
             new Set(state.condutores.map(c => String(c.empresa || '').trim()).filter(Boolean))
+        ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        const setoresFrentesUnicos = Array.from(
+            new Set(state.condutores.map(c => String(c.setor_frente || '').trim()).filter(Boolean))
         ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
         const atividadesUnicas = [];
         const setAtiv = new Set();
@@ -2199,83 +2507,119 @@
                     </div>
                 </div>
             </div>
-            <!-- 4 Indicadores Principais (KPIs) -->
-            <div class="db-kpis" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap:12px; margin-bottom:14px;">
-                <div class="db-kpi-card" style="background:var(--card); border:1px solid var(--border); padding:14px; border-radius:10px;">
-                    <div class="db-kpi-value" id="kpiCondutoresAtivosDistintos" style="font-size:24px; font-weight:700; color:var(--text);">${kpis.condutoresDistintosAtivos}</div>
-                    <div class="db-kpi-label" style="font-size:12px; color:var(--text-light);">Condutores Distintos Ativos</div>
+            <!-- Navegação por Subabas (Evita rolagem infinita e organiza visão de Condutores vs Frentes) -->
+            <div class="db-filters" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; padding:8px 12px; background:var(--card); border:1px solid var(--border); border-radius:10px;">
+                <button type="button" id="condSubtabBtnCondutores" class="db-filter-btn ${state.abaAtiva === 'CONDUTORES' ? 'active' : ''}" data-cond-action="trocar-aba" data-cond-aba="CONDUTORES" style="padding:8px 16px; font-size:13px; font-weight:600; border-radius:6px; cursor:pointer;">
+                    🪪 Cadastro de Condutores (${state.condutores.length})
+                </button>
+                <button type="button" id="condSubtabBtnProntidao" class="db-filter-btn ${state.abaAtiva === 'PRONTIDAO_EQUIPES' ? 'active' : ''}" data-cond-action="trocar-aba" data-cond-aba="PRONTIDAO_EQUIPES" style="padding:8px 16px; font-size:13px; font-weight:600; border-radius:6px; cursor:pointer;">
+                    🚩 Frentes de Serviço & Prontidão (${prontidaoLista.length})
+                </button>
+            </div>
+
+            <!-- SUBABA 1: CADASTRO E LISTA DE CONDUTORES -->
+            <div id="condSubtabConteudoCondutores" style="display:${state.abaAtiva === 'CONDUTORES' ? 'block' : 'none'};">
+                <!-- 4 Indicadores Principais (KPIs) -->
+                <div class="db-kpis" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap:12px; margin-bottom:14px;">
+                    <div class="db-kpi-card" style="background:var(--card); border:1px solid var(--border); padding:14px; border-radius:10px;">
+                        <div class="db-kpi-value" id="kpiCondutoresAtivosDistintos" style="font-size:24px; font-weight:700; color:var(--text);">${kpis.condutoresDistintosAtivos}</div>
+                        <div class="db-kpi-label" style="font-size:12px; color:var(--text-light);">Condutores Distintos Ativos</div>
+                    </div>
+                    <div class="db-kpi-card" style="background:var(--card); border:1px solid var(--border); padding:14px; border-radius:10px;">
+                        <div class="db-kpi-value" id="kpiCnhsAVencer" style="font-size:24px; font-weight:700; color:var(--warning);">${kpis.cnhsAVencerIncluiHoje}</div>
+                        <div class="db-kpi-label" style="font-size:12px; color:var(--text-light);">CNHs a Vencer (inclui Vence Hoje)</div>
+                    </div>
+                    <div class="db-kpi-card" style="background:var(--card); border:1px solid var(--border); padding:14px; border-radius:10px;">
+                        <div class="db-kpi-value" id="kpiCnhsVencidas" style="font-size:24px; font-weight:700; color:var(--danger);">${kpis.cnhsVencidas}</div>
+                        <div class="db-kpi-label" style="font-size:12px; color:var(--text-light);">CNHs Vencidas (Ativos)</div>
+                    </div>
+                    <div class="db-kpi-card" style="background:var(--card); border:1px solid var(--border); padding:14px; border-radius:10px;">
+                        <div class="db-kpi-value" id="kpiComunicacoesPendentes" style="font-size:24px; font-weight:700; color:${kpis.comunicacoesPendentes > 0 ? 'var(--danger)' : 'var(--success)'};">${kpis.comunicacoesPendentes}</div>
+                        <div class="db-kpi-label" style="font-size:12px; color:var(--text-light);">Comunicações Pendentes (Validade Atual)</div>
+                    </div>
                 </div>
-                <div class="db-kpi-card" style="background:var(--card); border:1px solid var(--border); padding:14px; border-radius:10px;">
-                    <div class="db-kpi-value" id="kpiCnhsAVencer" style="font-size:24px; font-weight:700; color:var(--warning);">${kpis.cnhsAVencerIncluiHoje}</div>
-                    <div class="db-kpi-label" style="font-size:12px; color:var(--text-light);">CNHs a Vencer (inclui Vence Hoje)</div>
+
+                <!-- Filtros e Busca -->
+                <div class="db-chart-card" style="margin-bottom:14px; padding:14px 16px; background:var(--card); border:1px solid var(--border);">
+                    <div class="cond-filtros-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 165px), 1fr)); gap:10px; align-items:end;">
+                        <div>
+                            <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Buscar por nome</label>
+                            <input type="search" id="condFiltroBuscaNome" value="${escaparHtml(state.filtros.buscaNome)}" placeholder="Digite o nome..." data-cond-filter="buscaNome" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:12.5px;">
+                        </div>
+                        <div>
+                            <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Setor / Frente</label>
+                            <select id="condFiltroSetorFrente" data-cond-filter="setorFrente" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:12.5px;">
+                                <option value="TODOS" ${state.filtros.setorFrente === 'TODOS' ? 'selected' : ''}>Todas as frentes/setores</option>
+                                ${setoresFrentesUnicos.map(sf => `<option value="${escaparHtml(sf)}" ${state.filtros.setorFrente.toUpperCase() === sf.toUpperCase() ? 'selected' : ''}>${escaparHtml(sf)}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Empresa</label>
+                            <select id="condFiltroEmpresa" data-cond-filter="empresa" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:12.5px;">
+                                <option value="TODAS">Todas as empresas</option>
+                                ${empresasUnicas.map(emp => `<option value="${escaparHtml(emp)}" ${state.filtros.empresa.toUpperCase() === emp.toUpperCase() ? 'selected' : ''}>${escaparHtml(emp)}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Vínculo</label>
+                            <select id="condFiltroVinculo" data-cond-filter="vinculo" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:12.5px;">
+                                <option value="TODOS" ${state.filtros.vinculo === 'TODOS' ? 'selected' : ''}>Todos os vínculos</option>
+                                <option value="PROPRIO" ${state.filtros.vinculo === 'PROPRIO' ? 'selected' : ''}>Próprio</option>
+                                <option value="TERCEIRO" ${state.filtros.vinculo === 'TERCEIRO' ? 'selected' : ''}>Terceiro</option>
+                                <option value="PJ" ${state.filtros.vinculo === 'PJ' ? 'selected' : ''}>PJ</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Atividade / Equipamento</label>
+                            <select id="condFiltroAtividade" data-cond-filter="atividade" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:12.5px;">
+                                <option value="TODAS">Todas as atividades</option>
+                                ${atividadesUnicas.map(at => `<option value="${escaparHtml(at.codigo)}" ${state.filtros.atividade.toUpperCase() === at.codigo.toUpperCase() ? 'selected' : ''}>${escaparHtml(at.nome)} (${escaparHtml(at.codigo)})</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Aptidão por Atividade</label>
+                            <select id="condFiltroAptidao" data-cond-filter="aptidao" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:12.5px;">
+                                <option value="TODAS" ${state.filtros.aptidao === 'TODAS' ? 'selected' : ''}>Todas as situações</option>
+                                <option value="INAPTO" ${state.filtros.aptidao === 'INAPTO' ? 'selected' : ''}>⛔ Inapto</option>
+                                <option value="PENDENTE" ${state.filtros.aptidao === 'PENDENTE' ? 'selected' : ''}>⚠️ Pendente</option>
+                                <option value="APTO" ${state.filtros.aptidao === 'APTO' ? 'selected' : ''}>✅ Apto nos requisitos cadastrados</option>
+                                <option value="INATIVO" ${state.filtros.aptidao === 'INATIVO' ? 'selected' : ''}>⏸️ Inativo</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Vencimento CNH / Alerta</label>
+                            <select id="condFiltroVencimento" data-cond-filter="vencimento" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:12.5px;">
+                                <option value="TODOS" ${state.filtros.vencimento === 'TODOS' ? 'selected' : ''}>Todos os prazos</option>
+                                <option value="VENCIDA" ${state.filtros.vencimento === 'VENCIDA' ? 'selected' : ''}>CNH Vencida</option>
+                                <option value="VENCE_HOJE" ${state.filtros.vencimento === 'VENCE_HOJE' ? 'selected' : ''}>Vence Hoje</option>
+                                <option value="A_VENCER_INCLUI_HOJE" ${state.filtros.vencimento === 'A_VENCER_INCLUI_HOJE' ? 'selected' : ''}>A Vencer (inclui hoje)</option>
+                                <option value="FORA_DA_JANELA" ${state.filtros.vencimento === 'FORA_DA_JANELA' ? 'selected' : ''}>Vigente fora da janela</option>
+                                <option value="AUSENTE" ${state.filtros.vencimento === 'AUSENTE' ? 'selected' : ''}>Sem CNH / Sem validade</option>
+                                <option value="COMUNICACAO_PENDENTE" ${state.filtros.vencimento === 'COMUNICACAO_PENDENTE' ? 'selected' : ''}>Comunicação Pendente</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
-                <div class="db-kpi-card" style="background:var(--card); border:1px solid var(--border); padding:14px; border-radius:10px;">
-                    <div class="db-kpi-value" id="kpiCnhsVencidas" style="font-size:24px; font-weight:700; color:var(--danger);">${kpis.cnhsVencidas}</div>
-                    <div class="db-kpi-label" style="font-size:12px; color:var(--text-light);">CNHs Vencidas (Ativos)</div>
+
+                <!-- Barra de status da listagem (Exibe quantidade visível vs total) -->
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-size:12px; color:var(--text-light);">
+                    <span id="condListagemCountLabel">Mostrando <strong>${filtrados.length}</strong> de <strong>${state.condutores.length}</strong> condutores cadastrados</span>
+                    ${(state.filtros.buscaNome || state.filtros.setorFrente !== 'TODOS' || state.filtros.empresa !== 'TODAS' || state.filtros.vinculo !== 'TODOS' || state.filtros.atividade !== 'TODAS' || state.filtros.aptidao !== 'TODAS' || state.filtros.vencimento !== 'TODOS')
+                        ? `<button type="button" class="db-clear-btn" data-cond-action="limpar-filtros" style="padding:3px 8px; font-size:11px;">✕ Limpar Filtros</button>`
+                        : ''}
                 </div>
-                <div class="db-kpi-card" style="background:var(--card); border:1px solid var(--border); padding:14px; border-radius:10px;">
-                    <div class="db-kpi-value" id="kpiComunicacoesPendentes" style="font-size:24px; font-weight:700; color:${kpis.comunicacoesPendentes > 0 ? 'var(--danger)' : 'var(--success)'};">${kpis.comunicacoesPendentes}</div>
-                    <div class="db-kpi-label" style="font-size:12px; color:var(--text-light);">Comunicações Pendentes (Validade Atual)</div>
+
+                <!-- Lista de Condutores e Avaliações por Atividade (Sem selo geral enganoso) -->
+                <div id="condutoresListaContainer">
+                    ${renderizarListaCondutoresHtml(filtrados, auth.autorizadoEscrita)}
                 </div>
             </div>
-            <!-- Filtros e Busca -->
-            <div class="db-chart-card" style="margin-bottom:14px; padding:14px 16px; background:var(--card); border:1px solid var(--border);">
-                <div class="cond-filtros-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 165px), 1fr)); gap:10px; align-items:end;">
-                    <div>
-                        <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Buscar por nome</label>
-                        <input type="search" id="condFiltroBuscaNome" value="${escaparHtml(state.filtros.buscaNome)}" placeholder="Digite o nome..." data-cond-filter="buscaNome" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:12.5px;">
-                    </div>
-                    <div>
-                        <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Empresa</label>
-                        <select id="condFiltroEmpresa" data-cond-filter="empresa" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:12.5px;">
-                            <option value="TODAS">Todas as empresas</option>
-                            ${empresasUnicas.map(emp => `<option value="${escaparHtml(emp)}" ${state.filtros.empresa.toUpperCase() === emp.toUpperCase() ? 'selected' : ''}>${escaparHtml(emp)}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div>
-                        <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Vínculo</label>
-                        <select id="condFiltroVinculo" data-cond-filter="vinculo" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:12.5px;">
-                            <option value="TODOS" ${state.filtros.vinculo === 'TODOS' ? 'selected' : ''}>Todos os vínculos</option>
-                            <option value="PROPRIO" ${state.filtros.vinculo === 'PROPRIO' ? 'selected' : ''}>Próprio</option>
-                            <option value="TERCEIRO" ${state.filtros.vinculo === 'TERCEIRO' ? 'selected' : ''}>Terceiro</option>
-                            <option value="PJ" ${state.filtros.vinculo === 'PJ' ? 'selected' : ''}>PJ</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Atividade / Equipamento</label>
-                        <select id="condFiltroAtividade" data-cond-filter="atividade" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:12.5px;">
-                            <option value="TODAS">Todas as atividades</option>
-                            ${atividadesUnicas.map(at => `<option value="${escaparHtml(at.codigo)}" ${state.filtros.atividade.toUpperCase() === at.codigo.toUpperCase() ? 'selected' : ''}>${escaparHtml(at.nome)} (${escaparHtml(at.codigo)})</option>`).join('')}
-                        </select>
-                    </div>
-                    <div>
-                        <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Aptidão por Atividade</label>
-                        <select id="condFiltroAptidao" data-cond-filter="aptidao" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:12.5px;">
-                            <option value="TODAS" ${state.filtros.aptidao === 'TODAS' ? 'selected' : ''}>Todas as situações</option>
-                            <option value="INAPTO" ${state.filtros.aptidao === 'INAPTO' ? 'selected' : ''}>⛔ Inapto</option>
-                            <option value="PENDENTE" ${state.filtros.aptidao === 'PENDENTE' ? 'selected' : ''}>⚠️ Pendente</option>
-                            <option value="APTO" ${state.filtros.aptidao === 'APTO' ? 'selected' : ''}>✅ Apto nos requisitos cadastrados</option>
-                            <option value="INATIVO" ${state.filtros.aptidao === 'INATIVO' ? 'selected' : ''}>⏸️ Inativo</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label style="font-size:11.5px; font-weight:600; color:var(--text-light); display:block; margin-bottom:4px;">Vencimento CNH / Alerta</label>
-                        <select id="condFiltroVencimento" data-cond-filter="vencimento" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:12.5px;">
-                            <option value="TODOS" ${state.filtros.vencimento === 'TODOS' ? 'selected' : ''}>Todos os prazos</option>
-                            <option value="VENCIDA" ${state.filtros.vencimento === 'VENCIDA' ? 'selected' : ''}>CNH Vencida</option>
-                            <option value="VENCE_HOJE" ${state.filtros.vencimento === 'VENCE_HOJE' ? 'selected' : ''}>Vence Hoje</option>
-                            <option value="A_VENCER_INCLUI_HOJE" ${state.filtros.vencimento === 'A_VENCER_INCLUI_HOJE' ? 'selected' : ''}>A Vencer (inclui hoje)</option>
-                            <option value="FORA_DA_JANELA" ${state.filtros.vencimento === 'FORA_DA_JANELA' ? 'selected' : ''}>Vigente fora da janela</option>
-                            <option value="AUSENTE" ${state.filtros.vencimento === 'AUSENTE' ? 'selected' : ''}>Sem CNH / Sem validade</option>
-                            <option value="COMUNICACAO_PENDENTE" ${state.filtros.vencimento === 'COMUNICACAO_PENDENTE' ? 'selected' : ''}>Comunicação Pendente</option>
-                        </select>
-                    </div>
-                </div>
+
+            <!-- SUBABA 2: FRENTES DE SERVIÇO & PRONTIDÃO -->
+            <div id="condSubtabConteudoProntidao" style="display:${state.abaAtiva === 'PRONTIDAO_EQUIPES' ? 'block' : 'none'};">
+                ${renderizarBlocoProntidaoEquipesHtml(prontidaoLista, state.filtros.setorFrente)}
             </div>
-            <!-- Lista de Condutores e Avaliações por Atividade (Sem selo geral enganoso) -->
-            <div id="condutoresListaContainer">
-                ${renderizarListaCondutoresHtml(filtrados, auth.autorizadoEscrita)}
-            </div>
+
             <!-- Área de Modal Interno -->
             ${renderizarModalAtivoHtml(auth.autorizadoEscrita)}
         `;
@@ -2670,13 +3014,15 @@
     }
     async function carregarBaseColaboradoresDoEfetivo() {
         if (state.baseColaboradoresStatus === 'CARREGANDO' || state.baseColaboradoresStatus === 'PRONTA') return;
+        const snapChaveAntes = state.chaveIdentidadeAtiva;
+        const geracaoAntes = state.geracaoSessao;
         state.baseColaboradoresStatus = 'CARREGANDO';
         state.baseColaboradoresErro = '';
         atualizarStatusBaseColaboradorNoDom();
         try {
             let lista = Array.isArray(window.allEfetivo) ? window.allEfetivo : [];
             if (lista.length === 0) {
-                const consulta = '?select=id,nome,funcao,setor,status,dt_admissao,dt_demissao&order=nome.asc';
+                const consulta = '?select=id,nome,funcao,setor,responsavel,status,dt_admissao,dt_demissao&order=nome.asc';
                 const buscarCacheado = typeof window.supabaseFetchCacheado === 'function' ? window.supabaseFetchCacheado : null;
                 const buscarSimples = typeof window.supabaseFetch === 'function' ? window.supabaseFetch : null;
                 if (buscarCacheado) {
@@ -2692,24 +3038,42 @@
                     throw new Error('Leitor de dados do painel não disponível nesta tela.');
                 }
             }
+            // Se a sessão mudou ou foi limpa durante o await, descarta a resposta atrasada imediatamente!
+            if (
+                state.baseColaboradoresStatus === 'NAO_CARREGADA' ||
+                state.geracaoSessao !== geracaoAntes ||
+                state.chaveIdentidadeAtiva !== snapChaveAntes
+            ) {
+                return;
+            }
             state.baseColaboradores = (Array.isArray(lista) ? lista : [])
                 .filter(colaboradorDaBaseEstaAtivo)
                 .map(item => ({
                     id: String(item && item.id !== undefined && item.id !== null ? item.id : '').trim(),
                     nome: String(item && item.nome ? item.nome : '').trim(),
                     funcao: String(item && item.funcao ? item.funcao : '').trim(),
-                    setor: String(item && item.setor ? item.setor : '').trim()
+                    setor: String(item && item.setor ? item.setor : '').trim(),
+                    responsavel: String(item && item.responsavel ? item.responsavel : '').trim()
                 }))
                 .filter(item => item.nome.length >= 3)
                 .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
             state.baseColaboradoresStatus = 'PRONTA';
         } catch (err) {
+            if (
+                state.baseColaboradoresStatus === 'NAO_CARREGADA' ||
+                state.geracaoSessao !== geracaoAntes ||
+                state.chaveIdentidadeAtiva !== snapChaveAntes
+            ) {
+                return;
+            }
             state.baseColaboradores = [];
             state.baseColaboradoresStatus = 'INDISPONIVEL';
             state.baseColaboradoresErro = err && err.message ? err.message : 'Falha ao consultar a base do Efetivo.';
         } finally {
-            atualizarStatusBaseColaboradorNoDom();
-            if (state.sugestoesBaseAbertas) atualizarSugestoesBaseColaboradorNoDom();
+            if (state.baseColaboradoresStatus !== 'NAO_CARREGADA') {
+                atualizarStatusBaseColaboradorNoDom();
+                if (state.sugestoesBaseAbertas) atualizarSugestoesBaseColaboradorNoDom();
+            }
         }
     }
     function obterSugestoesBaseColaborador(termo) {
@@ -2750,7 +3114,7 @@
             const detalhes = [
                 c.id ? `Mat. ${escaparHtml(c.id)}` : '',
                 c.funcao ? escaparHtml(c.funcao) : '',
-                c.setor ? escaparHtml(c.setor) : ''
+                (c.responsavel || c.setor) ? escaparHtml(c.responsavel || c.setor) : ''
             ].filter(Boolean).join(' · ');
             return `<button type="button" role="option" data-cond-base-idx="${idx}" style="display:block; width:100%; text-align:left; padding:7px 10px; border:0; border-bottom:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; font-size:12px; line-height:1.35;">
                 <strong>${escaparHtml(c.nome)}</strong>
@@ -2807,7 +3171,8 @@
         const d = state.modalDados;
         d.nome = c.nome;
         if (c.funcao) d.funcao = c.funcao;
-        if (c.setor) d.setor_frente = c.setor;
+        const frenteSugerida = String(c.responsavel || c.setor || '').trim();
+        if (frenteSugerida) d.setor_frente = frenteSugerida;
         if (!String(d.empresa || '').trim()) d.empresa = 'COP';
         if (!String(d.vinculo || '').trim()) d.vinculo = 'PROPRIO';
         state.buscaBaseColaborador = '';
@@ -2891,6 +3256,7 @@
             if (action === 'limpar-filtros') {
                 state.filtros = {
                     buscaNome: '',
+                    setorFrente: 'TODOS',
                     empresa: 'TODAS',
                     vinculo: 'TODOS',
                     atividade: 'TODAS',
@@ -2898,6 +3264,31 @@
                     vencimento: 'TODOS',
                     incluirInativos: true
                 };
+                renderizarInterfaceNoContainer();
+                return;
+            }
+            if (action === 'trocar-aba') {
+                const aba = target.getAttribute('data-cond-aba');
+                if (aba && (aba === 'CONDUTORES' || aba === 'PRONTIDAO_EQUIPES')) {
+                    state.abaAtiva = aba;
+                    renderizarInterfaceNoContainer();
+                }
+                return;
+            }
+            if (action === 'alternar-prontidao-equipes') {
+                state.prontidaoEquipesAberta = !state.prontidaoEquipesAberta;
+                renderizarInterfaceNoContainer();
+                return;
+            }
+            if (action === 'filtrar-frente') {
+                const fAlvo = target.getAttribute('data-cond-frente') || 'TODOS';
+                state.filtros.setorFrente = fAlvo;
+                state.abaAtiva = 'CONDUTORES';
+                renderizarInterfaceNoContainer();
+                return;
+            }
+            if (action === 'limpar-filtro-frente') {
+                state.filtros.setorFrente = 'TODOS';
                 renderizarInterfaceNoContainer();
                 return;
             }
@@ -3003,6 +3394,11 @@
                     Promise.resolve().then(() => carregarBaseColaboradoresDoEfetivo()).catch(() => {});
                 }
                 atualizarSugestoesBaseColaboradorNoDom();
+                return;
+            }
+            if (el.id === 'condBuscaFrenteProntidao' || el.getAttribute('data-cond-filter') === 'buscaFrenteProntidao') {
+                state.buscaFrenteProntidao = el.value;
+                atualizarCardsProntidaoNoDom();
                 return;
             }
             const filterKey = el.getAttribute('data-cond-filter');

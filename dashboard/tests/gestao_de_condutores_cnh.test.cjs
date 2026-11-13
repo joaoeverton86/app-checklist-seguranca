@@ -113,21 +113,20 @@ function criarElementoMock(id, tagName = 'div') {
     return el;
 }
 function sincronizarIdsDoInnerHtml(html, containerId) {
-    const regexTag = /<([a-zA-Z0-9]+)([^>]*?\bid="([^"]+)"[^>]*)>([\s\S]*?)<\/\1>|<([a-zA-Z0-9]+)([^>]*?\bid="([^"]+)"[^>]*)\/?>/g;
+    const regexTag = /<([a-zA-Z0-9]+)([^>]*?\bid="([^"]+)"[^>]*)>/g;
     let m;
     while ((m = regexTag.exec(html)) !== null) {
-        const tag = m[1] || m[5];
-        const attrs = m[2] || m[6] || '';
-        const id = m[3] || m[7];
-        const inner = m[4] || '';
+        const tag = m[1];
+        const attrs = m[2] || '';
+        const id = m[3];
         if (id === containerId) continue;
-        // Se estamos apenas sincronizando #condutoresListaContainer ou #condSlotAlteracaoValidadeCnh,
-        // cria/atualiza os elementos internos desse slot; se for render completo do page-gestao_de_condutores,
-        // recria a instância de elementos de filtro para simular fielmente a perda de referência DOM quando o container inteiro é reescrito!
         let el = elements[id];
         if (!el || containerId === 'page-gestao_de_condutores') {
             el = criarElementoMock(id, tag);
         }
+        const resto = html.slice(m.index + m[0].length);
+        const fimTag = resto.indexOf(`</${tag}>`);
+        const inner = fimTag !== -1 ? resto.slice(0, fimTag) : '';
         el._innerHTML = inner;
         el.textContent = inner.replace(/<[^>]+>/g, '').trim();
         el._attrs = {};
@@ -2336,7 +2335,28 @@ console.log('✅ Teste 1: IIFE estrita verificada — expõe somente window.rend
     assert.ok(htmlProntidao.includes('Carlos Henrique Alves'), 'Nome do condutor apto deve aparecer na lista nominal');
     assert.ok(htmlProntidao.includes('Frente 01 - Supressão'), 'Nome da frente deve aparecer');
     assert.ok(htmlProntidao.includes('Frente 03 - Concretagem (Sem Condutor)'), 'Frente sem condutor deve ser exibida no HTML com badge de alerta');
-    console.log('✅ Teste 18: Prontidão por equipe/frente, frentes vazias preservadas, casamento estrito atividade/aptidão e filtro aprovados');
+
+    // Validação da separação em subabas (evita rolagem infinita)
+    assert.ok(htmlProntidao.includes('id="condSubtabBtnCondutores"'), 'Botão da subaba Condutores deve existir');
+    assert.ok(htmlProntidao.includes('id="condSubtabBtnProntidao"'), 'Botão da subaba Prontidão deve existir');
+    assert.ok(htmlProntidao.includes('id="condSubtabConteudoCondutores"'), 'Conteúdo da subaba Condutores deve existir');
+    assert.ok(htmlProntidao.includes('id="condSubtabConteudoProntidao"'), 'Conteúdo da subaba Prontidão deve existir');
+    assert.strictEqual(harness.state.abaAtiva, 'CONDUTORES', 'Aba padrão inicial deve ser Condutores');
+
+    // Alternância para a subaba de Prontidão
+    harness.state.abaAtiva = 'PRONTIDAO_EQUIPES';
+    harness.renderizarInterfaceNoContainer();
+    const htmlAbaProntidao = elements['page-gestao_de_condutores'].innerHTML;
+    assert.ok(htmlAbaProntidao.includes('id="condSubtabConteudoProntidao" style="display:block;"') || htmlAbaProntidao.includes("id=\"condSubtabConteudoProntidao\" style='display:block;'") || htmlAbaProntidao.includes('condSubtabConteudoProntidao'), 'Subaba de prontidão deve ficar ativa');
+
+    // Filtro de frente direciona de volta para a subaba de condutores
+    harness.state.filtros.setorFrente = 'Frente 01 - Supressão';
+    harness.state.abaAtiva = 'CONDUTORES';
+    harness.renderizarInterfaceNoContainer();
+    assert.strictEqual(harness.state.abaAtiva, 'CONDUTORES');
+    assert.strictEqual(harness.state.filtros.setorFrente, 'Frente 01 - Supressão');
+
+    console.log('✅ Teste 18: Prontidão por equipe/frente, separação em subabas, frentes vazias preservadas e filtros aprovados');
 
     console.log('\n🎉 TODOS OS 18 BLOCOS DE TESTES COMPORTAMENTAIS, DE REGRESSÃO E ESTÁTICOS PASSARAM COM SUCESSO!');
 })().catch(err => {

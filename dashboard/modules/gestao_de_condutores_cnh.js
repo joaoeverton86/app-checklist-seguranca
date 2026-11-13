@@ -265,6 +265,8 @@
         abaAtiva: 'CONDUTORES', // 'CONDUTORES' | 'PRONTIDAO_EQUIPES'
         buscaFrenteProntidao: '',
         prontidaoEquipesAberta: true,
+        fontesResumo: { efetivo: [], catalogo: [], status: 'NAO_CARREGADA', falhas: [] },
+        requisicaoResumo: 0,
         modalAtivo: null, // 'CADASTRO' | 'INATIVAR' | 'COMUNICACAO' | 'HISTORICO' | null
         modalDados: null,
         erroModal: '',
@@ -817,6 +819,8 @@
     // 3. AUTENTICAÇÃO E AUTORIZAÇÃO VERIFICÁVEL (COM SEGREGAÇÃO DE SESSÃO/CACHE)
     // =========================================================================
     function limparDadosEModaisPorPerdaDeAcesso() {
+        state.requisicaoResumo += 1;
+        state.fontesResumo = { efetivo: [], catalogo: [], status: 'NAO_CARREGADA', falhas: [] };
         state.carregando = false;
         state.condutores = [];
         state.carregadoUmaVez = false;
@@ -1635,6 +1639,7 @@
         }
         const nome = String(payloadModal.nome || '').trim();
         const vinculo = String(payloadModal.vinculo || '').trim().toUpperCase();
+        if (payloadModal.efetivo_id && vinculo !== 'PROPRIO') throw new Error('Remova o vínculo confirmado com o Efetivo antes de mudar para Terceiro/PJ.');
         const empresa = String(payloadModal.empresa || '').trim();
         const funcao = String(payloadModal.funcao || '').trim();
         const setorFrente = String(payloadModal.setor_frente || '').trim();
@@ -1846,6 +1851,49 @@
             decisoesReavisoPendentes
         };
     }
+    async function carregarFontesResumo() {
+        const requisicao = ++state.requisicaoResumo;
+        const geracao = state.geracaoSessao;
+        const identidade = state.chaveIdentidadeAtiva;
+        const sessaoVisual = lerSnapshotSessaoVisualSincrono();
+        state.fontesResumo = { efetivo: [], catalogo: [], status: 'CARREGANDO', falhas: [] };
+        const consultar = async (tabela, consulta) => {
+            if (typeof window.supabaseFetch !== 'function') throw new Error('Leitor indisponível');
+            const dados = await window.supabaseFetch(tabela, consulta);
+            if (!Array.isArray(dados)) throw new Error('Resposta inválida');
+            return dados;
+        };
+        const resultados = await Promise.allSettled([
+            consultar('colaboradores_efetivo', '?select=id,nome,funcao,setor,responsavel,status,dt_admissao,dt_demissao&order=nome.asc'),
+            consultar('configuracoes_sistema', '?id=eq.efetivo_frentes_catalogo&select=valor&limit=1').then(dados => {
+                if (!dados.length) return [];
+                if (!Array.isArray(dados[0].valor)) throw new Error('Catálogo inválido');
+                return dados[0].valor;
+            })
+        ]);
+        if (requisicao !== state.requisicaoResumo || geracao !== state.geracaoSessao || identidade !== state.chaveIdentidadeAtiva ||
+            !mesmaSessaoVisualSincrona(sessaoVisual, lerSnapshotSessaoVisualSincrono())) return false;
+        const falhas = [];
+        if (resultados[0].status === 'rejected') falhas.push('Efetivo');
+        if (resultados[1].status === 'rejected') falhas.push('catálogo de frentes');
+        state.fontesResumo = {
+            efetivo: resultados[0].status === 'fulfilled' ? resultados[0].value : [],
+            catalogo: resultados[1].status === 'fulfilled' ? resultados[1].value : [],
+            status: falhas.length ? 'INCOMPLETA' : 'PRONTA',
+            falhas
+        };
+        return true;
+    }
+    function obterVinculoEfetivo(c) {
+        if (c.vinculo !== 'PROPRIO' || !c.efetivo_id) return null;
+        return state.fontesResumo.efetivo.find(p => String(p.id) === String(c.efetivo_id)) || null;
+    }
+    function obterFrenteCondutor(c) {
+        if (c.vinculo !== 'PROPRIO' || !c.efetivo_id) return String(c.setor_frente || 'Não informado').trim();
+        const pessoa = obterVinculoEfetivo(c);
+        if (!pessoa || !colaboradorDaBaseEstaAtivo(pessoa)) return 'Vínculo com Efetivo pendente de revisão';
+        return String(pessoa.responsavel || pessoa.setor || 'Frente não informada no Efetivo').trim();
+    }
     function calcularProntidaoPorFrente(avaliadosCompletos) {
         const mapaFrentes = new Map();
 
@@ -1874,21 +1922,21 @@
             return mapaFrentes.get(chaveFrente);
         }
 
-        // 1. Catálogo global de frentes (frentes ativas sem condutores NÃO desaparecem do resumo!)
-        if (typeof window !== 'undefined' && Array.isArray(window.allFrentesCatalogo)) {
-            for (let cIdx = 0; cIdx < window.allFrentesCatalogo.length; cIdx++) {
-                const fCat = window.allFrentesCatalogo[cIdx];
+        // 1. Catálogo consultado pelo módulo, inclusive frentes sem condutores.
+        if (Array.isArray(state.fontesResumo.catalogo)) {
+            for (let cIdx = 0; cIdx < state.fontesResumo.catalogo.length; cIdx++) {
+                const fCat = state.fontesResumo.catalogo[cIdx];
                 if (!fCat || fCat.excluida === true || fCat.ativo === false) continue;
                 const nomeCat = typeof fCat === 'string' ? fCat : (fCat.nome || '');
                 obterOuCriarFrente(nomeCat);
             }
         }
 
-        // 2. Frentes a partir do Efetivo global (prioriza responsavel como frente de trabalho)
+        // 2. Efetivo consultado pelo módulo (responsavel como frente de trabalho).
         const efetivoPorFrente = {};
-        if (typeof window !== 'undefined' && Array.isArray(window.allEfetivo)) {
-            for (let j = 0; j < window.allEfetivo.length; j++) {
-                const colab = window.allEfetivo[j];
+        if (Array.isArray(state.fontesResumo.efetivo)) {
+            for (let j = 0; j < state.fontesResumo.efetivo.length; j++) {
+                const colab = state.fontesResumo.efetivo[j];
                 const ehAtivo = typeof window.colaboradorEstaAtivo === 'function'
                     ? window.colaboradorEstaAtivo(colab)
                     : (String(colab.status || '').toUpperCase() === 'ATIVO' && !colab.dt_demissao);
@@ -1908,7 +1956,7 @@
             const item = listaAvaliados[i];
             const c = item.condutor;
             if (!c) continue;
-            const nomeFrente = String(c.setor_frente || 'Não informado').trim();
+            const nomeFrente = obterFrenteCondutor(c);
             const frente = obterOuCriarFrente(nomeFrente);
             if (!frente) continue;
 
@@ -1929,7 +1977,9 @@
                         .filter(av => av.statusPrioritario === 'APTO')
                         .map(av => av.atividadeNome)
                     : [];
-                const ehApto = !cnhVencida && atividadesAptas.length > 0;
+                const pessoaVinculada = obterVinculoEfetivo(c);
+                const vinculoRegular = !c.efetivo_id || (pessoaVinculada && colaboradorDaBaseEstaAtivo(pessoaVinculada));
+                const ehApto = Boolean(vinculoRegular && !cnhVencida && atividadesAptas.length > 0);
 
                 const vinculoUpper = String(c.vinculo || 'PROPRIO').toUpperCase();
                 if (ehApto) {
@@ -1964,17 +2014,13 @@
             }
         }
 
-        // 4. População de efetivo próprio e percentual restrito a celetistas próprios
+        // 4. Contagem separada do Efetivo, sem inferir vínculo individual.
         const lista = Array.from(mapaFrentes.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
         for (let k = 0; k < lista.length; k++) {
             const f = lista[k];
             f.totalEfetivoObra = typeof efetivoPorFrente[f.chave] === 'number' ? efetivoPorFrente[f.chave] : null;
-            if (f.totalEfetivoObra && f.totalEfetivoObra > 0) {
-                // Cobertura própria (próprios / efetivo próprio da obra): nunca excede 100% e não mistura terceiros no numerador
-                f.percentualCobertura = Math.min(100, Math.round((f.condutoresAptosProprios / f.totalEfetivoObra) * 1000) / 10);
-            } else {
-                f.percentualCobertura = null;
-            }
+            // Sem vínculo individual confirmado, as contagens não formam um percentual.
+            f.percentualCobertura = null;
         }
         return lista;
     }
@@ -1988,7 +2034,7 @@
                 return false;
             }
             if (f.setorFrente && f.setorFrente !== 'TODOS') {
-                const sf = String(c.setor_frente || '').trim().toUpperCase();
+                const sf = obterFrenteCondutor(c).toUpperCase();
                 if (sf !== f.setorFrente.toUpperCase()) return false;
             }
             if (f.empresa !== 'TODAS' && String(c.empresa || '').toUpperCase() !== f.empresa.toUpperCase()) {
@@ -2180,8 +2226,7 @@
                 composicaoDet += ` · Aptos: <strong>${f.condutoresAptos}</strong> (${partesComp.join(', ')})`;
             }
             if (f.totalEfetivoObra !== null) {
-                const percTxt = f.percentualCobertura !== null ? ` (${f.percentualCobertura}% do efetivo próprio)` : '';
-                composicaoDet += ` · Efetivo COP: <strong>${f.totalEfetivoObra}</strong>${percTxt}`;
+                composicaoDet += ` · Efetivo COP: <strong>${f.totalEfetivoObra}</strong>`;
             }
 
             return `
@@ -2212,11 +2257,17 @@
         }).join('');
     }
     function renderizarBlocoProntidaoEquipesHtml(prontidaoLista, frenteFiltradaAtual) {
+        const fontes = state.fontesResumo;
+        const aviso = fontes.status === 'PRONTA' ? '' : `<p role="status" style="font-size:12.5px; color:var(--text-light);">${
+            fontes.status === 'CARREGANDO' ? 'Carregando Efetivo e catálogo de frentes…' :
+            fontes.status === 'NAO_CARREGADA' ? 'Efetivo e catálogo de frentes ainda não consultados. Resumo incompleto.' :
+            `Resumo incompleto: não foi possível carregar ${escaparHtml(fontes.falhas.join(' e '))}. Tente atualizar o módulo.`
+        }</p>`;
         if (!prontidaoLista || prontidaoLista.length === 0) {
             return `
                 <div class="db-chart-card" id="condSlotProntidaoEquipes" style="margin-bottom:14px; padding:24px; text-align:center; background:var(--card); border:1px solid var(--border);">
-                    <div style="font-size:14px; font-weight:700; margin-bottom:6px;">🚩 Nenhuma frente de serviço identificada</div>
-                    <p style="font-size:12.5px; color:var(--text-light);">Não foram encontradas frentes cadastradas no catálogo ou no cadastro de efetivo.</p>
+                    <div style="font-size:14px; font-weight:700; margin-bottom:6px;">🚩 ${fontes.status === 'PRONTA' ? 'Nenhuma frente de serviço identificada' : 'Conferência de frentes incompleta'}</div>
+                    ${aviso || '<p style="font-size:12.5px; color:var(--text-light);">Não foram encontradas frentes nas fontes consultadas.</p>'}
                 </div>
             `;
         }
@@ -2244,9 +2295,11 @@
             <div class="db-chart-card" id="condSlotProntidaoEquipes" style="margin-bottom:14px; padding:16px 18px; background:var(--card); border:1px solid var(--border);">
                 <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:12px;">
                     <div>
+                        ${aviso}
                         <div style="font-size:15px; font-weight:700; color:var(--text);">🚩 Prontidão de Condutores por Frente / Equipe</div>
                         <div style="font-size:12px; color:var(--text-light); margin-top:2px;">
                             Conferência de condutores com requisitos documentais em dia (CNH e Treinamentos SST) e capacidade logística por frente de serviço.
+                            Próprios sem vínculo confirmado usam a frente informada no CNH; confirme os legados para acompanhar transferências no Efetivo.
                         </div>
                     </div>
                     <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
@@ -2463,7 +2516,7 @@
             new Set(state.condutores.map(c => String(c.empresa || '').trim()).filter(Boolean))
         ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
         const setoresFrentesUnicos = Array.from(
-            new Set(state.condutores.map(c => String(c.setor_frente || '').trim()).filter(Boolean))
+            new Set(state.condutores.map(c => obterFrenteCondutor(c)).filter(Boolean))
         ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
         const atividadesUnicas = [];
         const setAtiv = new Set();
@@ -2690,7 +2743,7 @@
                                 <span style="font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid ${inativo ? 'var(--text-light)' : 'var(--success)'}; color:${inativo ? 'var(--text-light)' : 'var(--success)'};">Cadastro: ${inativo ? 'Inativo' : 'Ativo'}</span>
                             </div>
                             <div style="font-size:12px; color:var(--text-light); margin-top:4px;">
-                                Empresa: <strong>${escaparHtml(c.empresa)}</strong> · Função: <strong>${escaparHtml(c.funcao)}</strong> · Setor/Frente: <strong>${escaparHtml(c.setor_frente)}</strong>
+                                Empresa: <strong>${escaparHtml(c.empresa)}</strong> · Função: <strong>${escaparHtml(c.funcao)}</strong> · Setor/Frente: <strong>${escaparHtml(obterFrenteCondutor(c))}</strong>
                             </div>
                             ${c.observacoes ? `<div style="font-size:11.5px; color:var(--text-light); margin-top:3px;">Obs.: ${escaparHtml(c.observacoes)}</div>` : ''}
                             ${inativo && c.inativado_motivo ? `<div style="font-size:11.5px; color:var(--warning); margin-top:3px;">Motivo da inativação: ${escaparHtml(c.inativado_motivo)}</div>` : ''}
@@ -2805,6 +2858,15 @@
                             <div id="condBaseColaboradorStatus" style="font-size:11.5px; color:var(--text-light); margin-top:5px; line-height:1.4;">${escaparHtml(textoStatusBaseColaborador())}</div>
                             ${state.avisoBaseColaborador ? `<div style="margin-top:6px; padding:8px 10px; border:1px solid var(--warning); border-radius:6px; background:var(--card); color:var(--warning); font-size:11.5px; font-weight:600; line-height:1.4;">${escaparHtml(state.avisoBaseColaborador)}</div>` : ''}
                         </div>
+                        ${d.vinculo === 'PROPRIO' ? `<div style="padding:12px; border:1px solid var(--border); border-radius:8px; margin-bottom:12px; font-size:12.5px; line-height:1.5;">
+                            <strong>Vínculo confirmado com o Efetivo:</strong> ${escaparHtml(d.efetivo_id || 'Ainda não confirmado')}
+                            <p>A frente acompanha o Efetivo após a confirmação. A busca acima apenas preenche o formulário.</p>
+                            ${d.id ? `<label>Selecione a pessoa e confira a matrícula:
+                                <select aria-label="Pessoa do Efetivo para vínculo confirmado" data-cond-form="efetivo_id_selecionado" style="display:block; width:100%; padding:8px; margin:6px 0; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px;"><option value="">Selecione para confirmar</option>${state.fontesResumo.efetivo.filter(colaboradorDaBaseEstaAtivo).map(p => `<option value="${escaparHtml(p.id)}" ${String(d.efetivo_id_selecionado || '') === String(p.id) ? 'selected' : ''}>${escaparHtml(p.nome)} — ${escaparHtml(p.id)} — ${escaparHtml(p.responsavel || p.setor || '')}</option>`).join('')}</select></label>
+                                <button type="button" class="db-apply-btn" data-cond-action="confirmar-vinculo-efetivo" ${state.salvandoModal ? 'disabled' : ''}>Confirmar pessoa selecionada</button>
+                                ${d.efetivo_id ? `<button type="button" class="db-clear-btn" data-cond-action="remover-vinculo-efetivo" ${state.salvandoModal ? 'disabled' : ''}>Remover vínculo confirmado</button>` : ''}
+                                <p>Esta ação salva somente o vínculo. Salve ou cancele as demais alterações antes de confirmar.</p>` : '<p>Salve o cadastro primeiro; depois abra Editar para confirmar o vínculo.</p>'}
+                        </div>` : ''}
                         <div class="cond-modal-form-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap:10px; margin-bottom:12px;">
                             <div>
                                 <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Nome Completo *</label>
@@ -2828,7 +2890,7 @@
                             </div>
                             <div>
                                 <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Setor / Frente *</label>
-                                <input type="text" id="condFormSetorFrente" value="${escaparHtml(d.setor_frente || '')}" data-cond-form="setor_frente" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text);">
+                                <input type="text" id="condFormSetorFrente" value="${escaparHtml(d.efetivo_id ? obterFrenteCondutor(d) : (d.setor_frente || ''))}" ${d.efetivo_id ? 'readonly title="Frente atual do Efetivo; a frente anterior do CNH permanece preservada."' : 'data-cond-form="setor_frente"'} style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text);">
                             </div>
                             <div>
                                 <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">CNH Categoria (sem nº doc.)</label>
@@ -2976,8 +3038,8 @@
     // =========================================================================
     // Consulta apenas leitura em `colaboradores_efetivo` para sugerir
     // nome/função/setor de colaboradores ativos no formulário de condutor.
-    // Não grava, não sincroniza e não vincula registro: o cadastro CNH continua
-    // 100% independente e editável manualmente (Terceiros e PJ, por exemplo).
+    // A busca não grava nem confirma vínculo. A confirmação por ID é uma ação
+    // explícita e separada, restrita aos próprios, com RPC e histórico próprios.
     const LIMITE_SUGESTOES_BASE_COLABORADOR = 30;
     function normalizarBuscaBaseColaborador(valor) {
         return String(valor || '')
@@ -2989,10 +3051,9 @@
     }
     function colaboradorDaBaseEstaAtivo(item) {
         if (!item) return false;
-        if (typeof window.colaboradorEstaAtivo === 'function') return window.colaboradorEstaAtivo(item);
         if (item.dt_demissao) return false;
         const status = String(item.status || '').trim().toUpperCase();
-        if (status === 'DEMITIDO' || status === 'INATIVO') return false;
+        if (status !== 'ATIVO') return false;
         return status === 'ATIVO' || Boolean(item.dt_admissao);
     }
     function textoStatusBaseColaborador() {
@@ -3245,7 +3306,7 @@
             const condId = target.getAttribute('data-cond-id');
             const avIdx = Number(target.getAttribute('data-av-idx'));
             if (action === 'recarregar') {
-                await carregarCondutoresDoBanco();
+                await renderGestaoDeCondutoresPanel({ forcarRecarregamento: true });
                 return;
             }
             if (action === 'fechar-toast') {
@@ -3375,6 +3436,10 @@
             }
             if (action === 'salvar-cadastro') {
                 await submeterModalCadastro();
+                return;
+            }
+            if (action === 'confirmar-vinculo-efetivo' || action === 'remover-vinculo-efetivo') {
+                await confirmarVinculoEfetivo(action === 'remover-vinculo-efetivo');
                 return;
             }
             if (action === 'salvar-status') {
@@ -3521,6 +3586,8 @@
         state.modalDados = {
             id: c.id,
             versao_esperada: c.versao,
+            efetivo_id: c.efetivo_id || null,
+            efetivo_id_selecionado: '',
             nome: c.nome || '',
             vinculo: c.vinculo || 'PROPRIO',
             empresa: c.empresa || '',
@@ -3627,6 +3694,38 @@
             state.modalDados === ctx.modalDadosRef
         );
     }
+    async function confirmarVinculoEfetivo(remover) {
+        if (state.salvandoModal || state.modalAtivo !== 'CADASTRO' || !state.modalDados?.id) return;
+        const ctx = capturarContextoSubmissaoModal();
+        const d = ctx.modalDadosRef;
+        const idEfetivo = remover ? null : String(d.efetivo_id_selecionado || '').trim();
+        state.erroModal = '';
+        state.salvandoModal = true;
+        try {
+            if (d.vinculo !== 'PROPRIO' || (!remover && !idEfetivo)) throw new Error('Selecione explicitamente uma pessoa do Efetivo para confirmar o vínculo.');
+            const auth = await verificarSessaoEAutorizacaoModulo({ revalidarCapacidadeBanco: true });
+            if (!operacaoModalAindaPertenceASessaoEModal(ctx)) return;
+            if (!auth.autorizadoEscrita || !contextoAuthAindaAtivo(auth, ctx.snapVisualInicial)) throw new Error('Sem permissão de escrita verificada.');
+            const resposta = await requisitarBancoCondutores('/rest/v1/rpc/vincular_condutor_efetivo', {
+                method: 'POST', authConfirmada: auth, snapVisualInicial: ctx.snapVisualInicial, exigirEscrita: true,
+                body: { p_condutor_id: d.id, p_versao_esperada: d.versao_esperada, p_efetivo_id: idEfetivo }
+            });
+            if (!operacaoModalAindaPertenceASessaoEModal(ctx)) return;
+            const salvo = Array.isArray(resposta) ? resposta[0] : resposta;
+            if (!salvo?.id) throw new Error('O banco não confirmou o vínculo. Recarregue antes de tentar novamente.');
+            atualizarRegistroEmMemoria(salvo, auth, ctx.snapVisualInicial);
+            d.versao_esperada = salvo.versao;
+            d.efetivo_id = salvo.efetivo_id || null;
+            d.efetivo_id_selecionado = '';
+        } catch (err) {
+            if (operacaoModalAindaPertenceASessaoEModal(ctx)) state.erroModal = err.message || 'Falha ao confirmar vínculo. Recarregue para conferir.';
+        } finally {
+            if (operacaoModalAindaPertenceASessaoEModal(ctx)) {
+                state.salvandoModal = false;
+                renderizarInterfaceNoContainer();
+            }
+        }
+    }
     async function submeterModalCadastro() {
         if (!state.modalDados || state.salvandoModal) return;
         const ctxModal = capturarContextoSubmissaoModal();
@@ -3723,6 +3822,9 @@
             renderizarInterfaceNoContainer();
             return;
         }
+        const fontesPendentes = carregarFontesResumo();
+        renderizarInterfaceNoContainer();
+        if (!await fontesPendentes) return;
         if (opts.forcarRecarregamento || !state.carregadoUmaVez) {
             await carregarCondutoresDoBanco();
         } else {

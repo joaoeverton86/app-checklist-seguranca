@@ -776,7 +776,9 @@ const codeCondutoresVm = codeCondutores.replace(
          carregarBaseColaboradoresDoEfetivo,
          obterSugestoesBaseColaborador,
          selecionarColaboradorDaBase,
-         textoStatusBaseColaborador
+         textoStatusBaseColaborador,
+         calcularProntidaoPorFrente,
+         renderizarBlocoProntidaoEquipesHtml
      });`
 );
 vm.runInContext(codeCondutoresVm, sandbox);
@@ -2137,7 +2139,206 @@ console.log('✅ Teste 1: IIFE estrita verificada — expõe somente window.rend
     delete sandbox.supabaseFetch;
     console.log('✅ Teste 17: Busca na base do Efetivo (leitura), autopreenchimento, tolerância a acentos, aviso de duplicidade e degradação sem bloqueio aprovados');
 
-    console.log('\n🎉 TODOS OS 17 BLOCOS DE TESTES COMPORTAMENTAIS, DE REGRESSÃO E ESTÁTICOS PASSARAM COM SUCESSO!');
+    // -------------------------------------------------------------------------
+    // TESTE 18: Prontidão por Equipe / Frente e Filtro de Frente
+    // -------------------------------------------------------------------------
+    harness.state.condutores = [
+        {
+            id: 'c-frente-1',
+            nome: 'Carlos Henrique Alves',
+            funcao: 'Motorista de Veículo Pesado',
+            setor_frente: 'Frente 01 - Supressão',
+            empresa: 'COP',
+            vinculo: 'PROPRIO',
+            ativo: true,
+            cnh_categoria: 'D',
+            cnh_validade: '2027-01-15',
+            cnh_ciclo_id: 'ciclo-1',
+            antecedencia_alerta_dias: 30,
+            avaliacoes: [
+                {
+                    avaliacao_id: 'av-1',
+                    atividade_codigo: 'VEICULO_LEVE_OPERACIONAL',
+                    atividade_nome: 'Veículo Leve / Camionete',
+                    exige_cnh: 'SIM',
+                    categorias_aceitas: ['B', 'C', 'D', 'E'],
+                    regra_aprovada: true,
+                    regra_versao: 'v1',
+                    regra_aprovada_por_uid: 'uid-gestor-sst-1',
+                    regra_aprovada_por_nome: 'João Everton',
+                    regra_aprovada_em: '2026-05-01',
+                    treinamentos: [
+                        {
+                            codigo: 'DIR_DEFENSIVA',
+                            nome: 'Direção Defensiva',
+                            status_aplicabilidade: 'OBRIGATORIO',
+                            exige_validade: 'SIM',
+                            data_realizacao: '2026-05-10',
+                            validade: '2028-05-10',
+                            comprovacao_ref: 'Certificado 101/2026',
+                            conferido_por: 'João Everton',
+                            conferido_em: '2026-05-11'
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            id: 'c-frente-1-alerta',
+            nome: 'José Tiago Gomes',
+            funcao: 'Operador de Máquinas',
+            setor_frente: 'Frente 01 - Supressão',
+            empresa: 'COP',
+            vinculo: 'PROPRIO',
+            ativo: true,
+            cnh_categoria: 'C',
+            cnh_validade: '2026-11-20',
+            cnh_ciclo_id: 'ciclo-2',
+            antecedencia_alerta_dias: 30,
+            avaliacoes: [
+                {
+                    avaliacao_id: 'av-2',
+                    atividade_codigo: 'LINHA_AMARELA_TERRAPLENAGEM',
+                    atividade_nome: 'Linha Amarela / Terraplenagem',
+                    exige_cnh: 'SIM',
+                    categorias_aceitas: ['C', 'D', 'E'],
+                    regra_aprovada: true,
+                    regra_versao: 'v1',
+                    regra_aprovada_por_uid: 'uid-gestor-sst-1',
+                    regra_aprovada_por_nome: 'João Everton',
+                    regra_aprovada_em: '2026-05-01',
+                    treinamentos: [
+                        {
+                            codigo: 'NR11_NR12_LINHA_AMARELA',
+                            nome: 'Linha Amarela',
+                            status_aplicabilidade: 'OBRIGATORIO',
+                            exige_validade: 'SIM',
+                            data_realizacao: '2026-01-10',
+                            validade: '2028-01-10',
+                            comprovacao_ref: 'Certificado 202/2026',
+                            conferido_por: 'João Everton',
+                            conferido_em: '2026-01-11'
+                        },
+                        {
+                            codigo: 'DIR_DEFENSIVA',
+                            nome: 'Direção Defensiva',
+                            status_aplicabilidade: 'OBRIGATORIO',
+                            exige_validade: 'SIM',
+                            data_realizacao: '2026-01-10',
+                            validade: '2028-01-10',
+                            comprovacao_ref: 'Certificado 203/2026',
+                            conferido_por: 'João Everton',
+                            conferido_em: '2026-01-11'
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            id: 'c-frente-2',
+            nome: 'Marcos Antônio da Silva',
+            funcao: 'Ajudante Geral',
+            setor_frente: 'Frente 02 - Obras Civis',
+            empresa: 'TERCEIRO LTDA',
+            vinculo: 'TERCEIRO',
+            ativo: true,
+            cnh_categoria: 'B',
+            cnh_validade: '2025-01-01',
+            cnh_ciclo_id: 'ciclo-3',
+            antecedencia_alerta_dias: 30,
+            avaliacoes: []
+        }
+    ];
+
+    sandbox.window.allFrentesCatalogo = [
+        { nome: 'Frente 01 - Supressão', ativo: true },
+        { nome: 'Frente 02 - Obras Civis', ativo: true },
+        { nome: 'Frente 03 - Concretagem (Sem Condutor)', ativo: true }
+    ];
+
+    sandbox.window.allEfetivo = [
+        { nome: 'Colab 1', responsavel: 'Frente 01 - Supressão', status: 'ATIVO' },
+        { nome: 'Colab 2', responsavel: 'Frente 01 - Supressão', status: 'ATIVO' },
+        { nome: 'Colab 3', responsavel: 'Frente 01 - Supressão', status: 'ATIVO' },
+        { nome: 'Colab 4', responsavel: 'Frente 01 - Supressão', status: 'ATIVO' },
+        { nome: 'Colab 5', responsavel: 'Frente 02 - Obras Civis', status: 'ATIVO' },
+        { nome: 'Colab 6', responsavel: 'Frente 02 - Obras Civis', status: 'ATIVO' },
+        { nome: 'Colab 7', responsavel: 'Frente 03 - Concretagem (Sem Condutor)', status: 'ATIVO' }
+    ];
+
+    const avaliadosProntidao = harness.state.condutores.map(c => harness.avaliarCondutorCompleto(c, '2026-11-09'));
+    const prontidao = harness.calcularProntidaoPorFrente(avaliadosProntidao);
+    assert.strictEqual(prontidao.length, 3, 'Deve incluir todas as frentes ativas do catálogo/efetivo, inclusive as sem condutor');
+
+    const fSemCond = prontidao.find(f => f.nome === 'Frente 03 - Concretagem (Sem Condutor)');
+    assert.ok(fSemCond, 'Frente sem condutores cadastrados NÃO pode desaparecer do resumo');
+    assert.strictEqual(fSemCond.condutoresAtivos, 0, 'Frente sem condutor deve ter 0 condutores');
+    assert.strictEqual(fSemCond.condutoresAptos, 0, 'Frente sem condutor deve ter 0 aptos');
+    assert.strictEqual(fSemCond.totalEfetivoObra, 1, 'Deve exibir o efetivo da frente');
+
+    const f1 = prontidao.find(f => f.nome === 'Frente 01 - Supressão');
+    assert.ok(f1, 'Frente 01 deve existir no resumo');
+    assert.strictEqual(f1.condutoresAtivos, 2, 'Frente 01 deve ter 2 condutores ativos');
+    assert.strictEqual(f1.condutoresAptos, 2, 'Ambos condutores da Frente 01 devem estar aptos');
+    assert.strictEqual(f1.cnhsVencendo, 1, 'Frente 01 deve ter 1 CNH com alerta de vencimento');
+    assert.strictEqual(f1.cnhsVencidas, 0, 'Frente 01 não tem CNH vencida');
+    assert.strictEqual(f1.totalEfetivoObra, 4, 'Frente 01 deve cruzar com os 4 colaboradores do Efetivo');
+    assert.strictEqual(f1.percentualCobertura, 50, 'Cobertura própria deve ser 50% (2 próprios aptos / 4 no efetivo)');
+    assert.strictEqual(f1.condutoresAptosLista.length, 2, 'Deve listar nominalmente os 2 aptos');
+    assert.strictEqual(f1.condutoresAptosLista[0].nome, 'Carlos Henrique Alves');
+
+    const f2 = prontidao.find(f => f.nome === 'Frente 02 - Obras Civis');
+    assert.ok(f2, 'Frente 02 deve existir no resumo');
+    assert.strictEqual(f2.condutoresAtivos, 1);
+    assert.strictEqual(f2.condutoresAptos, 0, 'Condutor com CNH vencida e sem atividade não está apto');
+    assert.strictEqual(f2.cnhsVencidas, 1);
+    assert.strictEqual(f2.condutoresAptosLista.length, 0, 'Nenhum condutor apto na Frente 02');
+
+    // Teste do Filtro por Frente
+    harness.state.filtros.setorFrente = 'Frente 01 - Supressão';
+    const filtradosF1 = harness.filtrarAvaliados(avaliadosProntidao);
+    assert.strictEqual(filtradosF1.length, 2, 'Filtro por frente deve retornar apenas os condutores da Frente 01');
+
+    harness.state.filtros.setorFrente = 'Frente 02 - Obras Civis';
+    const filtradosF2 = harness.filtrarAvaliados(avaliadosProntidao);
+    assert.strictEqual(filtradosF2.length, 1, 'Filtro por frente deve retornar apenas o condutor da Frente 02');
+
+    harness.state.filtros.setorFrente = 'TODOS';
+    const filtradosTodos = harness.filtrarAvaliados(avaliadosProntidao);
+    assert.strictEqual(filtradosTodos.length, 3, 'TODOS deve retornar todos os 3 condutores');
+
+    // Teste do Casamento Estrito Atividade + Aptidão (Sonda Codex)
+    const condutorMultiAtiv = {
+        condutor: { id: 'c-multi', nome: 'Multi Atividades', ativo: true },
+        situacaoCnh: { vencida: false, statusCodigo: 'VIGENTE' },
+        alertaCom: { comunicacaoPendente: false },
+        avaliacoesCalculadas: [
+            { atividadeCodigo: 'CAMINHAO', atividadeNome: 'Caminhão', statusPrioritario: 'INAPTO' },
+            { atividadeCodigo: 'AUTOMOVEL', atividadeNome: 'Automóvel', statusPrioritario: 'APTO' }
+        ]
+    };
+    harness.state.filtros.buscaNome = '';
+    harness.state.filtros.setorFrente = 'TODOS';
+    harness.state.filtros.empresa = 'TODAS';
+    harness.state.filtros.vinculo = 'TODOS';
+    harness.state.filtros.atividade = 'CAMINHAO';
+    harness.state.filtros.aptidao = 'APTO';
+    const filtradoIncompativel = harness.filtrarAvaliados([condutorMultiAtiv]);
+    assert.strictEqual(filtradoIncompativel.length, 0, 'Filtro casado Atividade + Aptidão não pode incluir pessoa inapta para a atividade buscada');
+
+    // Renderização do HTML do container com o bloco e o filtro de frente
+    harness.state.filtros.atividade = 'TODAS';
+    harness.state.filtros.aptidao = 'TODAS';
+    harness.renderizarInterfaceNoContainer();
+    const htmlProntidao = elements['page-gestao_de_condutores'].innerHTML;
+    assert.ok(htmlProntidao.includes('id="condSlotProntidaoEquipes"'), 'Slot de prontidão deve ser renderizado');
+    assert.ok(htmlProntidao.includes('id="condFiltroSetorFrente"'), 'Dropdown de filtro de frente deve ser renderizado');
+    assert.ok(htmlProntidao.includes('Carlos Henrique Alves'), 'Nome do condutor apto deve aparecer na lista nominal');
+    assert.ok(htmlProntidao.includes('Frente 01 - Supressão'), 'Nome da frente deve aparecer');
+    assert.ok(htmlProntidao.includes('Frente 03 - Concretagem (Sem Condutor)'), 'Frente sem condutor deve ser exibida no HTML com badge de alerta');
+    console.log('✅ Teste 18: Prontidão por equipe/frente, frentes vazias preservadas, casamento estrito atividade/aptidão e filtro aprovados');
+
+    console.log('\n🎉 TODOS OS 18 BLOCOS DE TESTES COMPORTAMENTAIS, DE REGRESSÃO E ESTÁTICOS PASSARAM COM SUCESSO!');
 })().catch(err => {
     console.error('❌ Falha na suíte de testes:', err);
     process.exit(1);

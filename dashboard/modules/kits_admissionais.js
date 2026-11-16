@@ -49,10 +49,72 @@ function distribuirAgendaAdmissional(data, hora, cursos, ocupados = []) {
     });
 }
 
+var pessoaKitAdmissional = null;
+
+function filtrarPessoaKitAdmissional(valor) {
+    const box = document.getElementById('admPessoaResultados');
+    if (!box) return;
+    const q = String(valor || '').trim().toLowerCase();
+    if (q.length < 2) { box.innerHTML = ''; return; }
+    const lista = (allEfetivo || []).filter(e => typeof colaboradorEstaAtivo === 'function' && colaboradorEstaAtivo(e) && (
+        String(e.nome || '').toLowerCase().includes(q) || String(e.id || '').toLowerCase().includes(q)
+    )).slice(0, 12);
+    if (!lista.length) {
+        box.innerHTML = '<div class="db-list-empty">Nenhuma pessoa ativa encontrada.</div>';
+        return;
+    }
+    box.innerHTML = lista.map(e => `<button type="button" class="db-list-item" style="display:block;width:100%;text-align:left;cursor:pointer;" onclick="escolherPessoaKitAdmissional('${escapeHTML(String(e.id))}')"><strong>${escapeHTML(e.nome || '')}</strong><div class="db-list-item-sub">Matrícula ${escapeHTML(String(e.id))} — ${escapeHTML(e.funcao || '')}</div></button>`).join('');
+}
+
+function escolherPessoaKitAdmissional(matricula) {
+    const e = (allEfetivo || []).find(x => String(x.id) === String(matricula) && (typeof colaboradorEstaAtivo !== 'function' || colaboradorEstaAtivo(x)));
+    if (!e) return alert('Pessoa não encontrada entre os ativos.');
+    pessoaKitAdmissional = { matricula: String(e.id), nome: e.nome || '', funcao: e.funcao || '', responsavel: e.responsavel || '' };
+    const editor = document.getElementById('kitAdmissionalEditor');
+    if (editor) {
+        editor.innerHTML = '';
+        delete editor.dataset.matricula;
+        delete editor.dataset.agenda;
+    }
+    const busca = document.getElementById('admPessoaBusca');
+    if (busca) busca.value = '';
+    const box = document.getElementById('admPessoaResultados');
+    if (box) box.innerHTML = '';
+    renderPessoaKitAdmissional();
+}
+
+function cancelarPessoaKitAdmissional() {
+    pessoaKitAdmissional = null;
+    const editor = document.getElementById('kitAdmissionalEditor');
+    if (editor) {
+        editor.innerHTML = '';
+        delete editor.dataset.matricula;
+        delete editor.dataset.agenda;
+    }
+    renderPessoaKitAdmissional();
+}
+
+function renderPessoaKitAdmissional() {
+    const alvo = document.getElementById('admPessoaSelecionada');
+    if (!alvo) return;
+    if (!pessoaKitAdmissional) {
+        alvo.innerHTML = '<span style="color:var(--text-light);">Nenhuma pessoa escolhida.</span>';
+        return;
+    }
+    const p = pessoaKitAdmissional;
+    alvo.innerHTML = `<strong>${escapeHTML(p.nome)}</strong> — Matrícula ${escapeHTML(p.matricula)} — ${escapeHTML(p.funcao || '')} <button type="button" class="db-clear-btn" style="margin-left:8px;" onclick="cancelarPessoaKitAdmissional()">Trocar / cancelar</button>`;
+}
+
+function contextoAdmissional() {
+    const base = contextoKits();
+    if (!pessoaKitAdmissional) throw new Error('Escolha a pessoa pelo nome ou pela matrícula.');
+    return Object.assign({}, base, { colaboradores: [pessoaKitAdmissional] });
+}
+
 function abrirKitAdmissional() {
-    const ctx = contextoKits();
-    if (ctx.colaboradores.length !== 1) return alert('Marque apenas um colaborador na turma para montar seu kit admissional.');
-    const r = ctx.colaboradores[0];
+    if (!pessoaKitAdmissional) return alert('Escolha a pessoa pelo nome ou pela matrícula antes de montar o kit.');
+    const r = pessoaKitAdmissional;
+    const ctx = contextoAdmissional();
     const gaps = calcularDiagnosticoGapsTreinamentos().filter(d => String(d.matricula) === String(r.matricula) && d.obrigatorioAdmissao);
     const cursos = gaps.map(d => {
         const cat = allTreinamentosCatalogo.find(c => String(c.id) === String(d.treinamentoCod));
@@ -113,9 +175,9 @@ function obterOcupacaoKitAdmissional(registros, matricula) {
 }
 
 function lerAgendaKitAdmissional() {
-    const ctx = contextoKits();
+    const ctx = contextoAdmissional();
     const mat = document.getElementById('kitAdmissionalEditor').dataset.matricula;
-    if (ctx.colaboradores.length !== 1 || String(ctx.colaboradores[0].matricula) !== mat) throw new Error('A turma mudou. Carregue novamente o kit admissional.');
+    if (!pessoaKitAdmissional || String(pessoaKitAdmissional.matricula) !== String(mat)) throw new Error('A pessoa mudou. Carregue novamente o kit admissional.');
     const cursos = Array.from(document.querySelectorAll('.admCurso')).filter(el => el.querySelector('input').checked).map(el => {
         const inputs = el.querySelectorAll('input');
         const cat = allTreinamentosCatalogo.find(c => String(c.id) === el.dataset.codigo);

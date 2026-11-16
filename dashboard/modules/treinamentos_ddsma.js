@@ -7777,6 +7777,38 @@ var DOC_INDIVIDUAL_CSS = `
         line-height: 1.15;
         font-size: 8pt;
     }
+    /* OS com espaçamento proporcional ao conteúdo, sem ocultar texto. */
+    .folha-os.os-layout-ajustavel { width:194mm; max-width:none; display:flow-root; }
+    .folha-os .cabecalho-os { display:flow-root; }
+    .folha-os.os-layout-distribuido > :not(script):not(.assinaturas-os) { padding-bottom:var(--os-espaco-extra, 0px); }
+    .folha-os.os-layout-confortavel { font-size:10pt !important; line-height:1.3 !important; }
+    .folha-os.os-layout-confortavel img { max-height:32px !important; }
+    .folha-os.os-layout-confortavel .texto-os { font-size:10pt; line-height:1.3; }
+    .folha-os.os-layout-confortavel .bloco-os { margin-top:4px; }
+    .folha-os.os-layout-confortavel .bloco-titulo-os { font-size:10pt; line-height:1.2; margin-top:3px; margin-bottom:2px; }
+    .folha-os.os-layout-confortavel .tabela-os-identificacao { font-size:9pt; margin-bottom:4px; }
+    .folha-os.os-layout-confortavel .tabela-os-identificacao td { padding:3px 4px; line-height:1.18; }
+    .folha-os.os-layout-confortavel .tabela-os-agentes,
+    .folha-os.os-layout-confortavel .tabela-os-agentes th,
+    .folha-os.os-layout-confortavel .tabela-os-agentes td { font-size:9pt; line-height:1.18; padding:2px 3px; }
+    .folha-os.os-layout-confortavel .lista-itens-os { font-size:9.5pt; line-height:1.22; }
+    .folha-os.os-layout-confortavel .declaracao-os { font-size:9pt; line-height:1.22; margin-top:6px; padding-top:4px; }
+    .folha-os.os-layout-confortavel .assinaturas-os { margin-top:12px; }
+    .folha-os.os-layout-confortavel .assinaturas-os .linha-nome { font-size:9pt; line-height:1.2; }
+    .folha-os.os-layout-intermediario { font-size:9.25pt !important; line-height:1.22 !important; }
+    .folha-os.os-layout-intermediario img { max-height:28px !important; }
+    .folha-os.os-layout-intermediario .texto-os { font-size:9.25pt; line-height:1.22; }
+    .folha-os.os-layout-intermediario .bloco-os { margin-top:2px; }
+    .folha-os.os-layout-intermediario .bloco-titulo-os { font-size:9pt; line-height:1.15; margin-top:2px; margin-bottom:1px; }
+    .folha-os.os-layout-intermediario .tabela-os-identificacao { font-size:8.5pt; margin-bottom:3px; }
+    .folha-os.os-layout-intermediario .tabela-os-identificacao td { padding:2px 3px; line-height:1.15; }
+    .folha-os.os-layout-intermediario .tabela-os-agentes,
+    .folha-os.os-layout-intermediario .tabela-os-agentes th,
+    .folha-os.os-layout-intermediario .tabela-os-agentes td { font-size:8.25pt; line-height:1.15; padding:2px; }
+    .folha-os.os-layout-intermediario .lista-itens-os { font-size:8.75pt; line-height:1.16; }
+    .folha-os.os-layout-intermediario .declaracao-os { font-size:8.25pt; line-height:1.18; margin-top:4px; padding-top:3px; }
+    .folha-os.os-layout-intermediario .assinaturas-os { margin-top:8px; }
+    .folha-os.os-layout-intermediario .assinaturas-os .linha-nome { font-size:8.5pt; line-height:1.18; }
     /* ---- 2. CERTIFICADO DE CAPACITAÇÃO (A4 PAISAGEM / LANDSCAPE) ---- */
     .folha-certificado {
         box-sizing: border-box;
@@ -9685,6 +9717,36 @@ function textoAvisoCargoOs({ ghe, funcao, ambiguo, candidatos }) {
 // (ghe) → ghe_catalogo (cargos[].descricao_atividade/agentes/epis_necessarios/
 // epcs_necessarios) - campos que ainda não tiverem sido preenchidos pelo usuário para
 // aquele cargo aparecem em branco, nunca com um valor fabricado.
+function ajustarLayoutOsParaUmaPagina(folha) {
+    if (!folha || !folha.classList.contains('folha-os')) return;
+    const ajustar = () => {
+        const classes = ['os-layout-confortavel', 'os-layout-intermediario', 'os-layout-compacto'];
+        const alturaUtil = Math.floor(277 * 96 / 25.4);
+        folha.classList.remove('os-layout-distribuido', ...classes);
+        folha.style.removeProperty('--os-espaco-extra');
+        for (const classe of classes) {
+            folha.classList.remove(...classes);
+            folha.classList.add(classe);
+            if (Math.ceil(folha.getBoundingClientRect().height) <= alturaUtil) {
+                const blocos = Array.from(folha.children).filter(el => el.tagName !== 'SCRIPT' && !el.classList.contains('assinaturas-os'));
+                const sobra = alturaUtil - Math.ceil(folha.getBoundingClientRect().height) - 2;
+                folha.style.setProperty('--os-espaco-extra', Math.max(0, sobra / Math.max(1, blocos.length)) + 'px');
+                folha.classList.add('os-layout-distribuido');
+                if (Math.ceil(folha.getBoundingClientRect().height) > alturaUtil) {
+                    folha.classList.remove('os-layout-distribuido');
+                    folha.style.removeProperty('--os-espaco-extra');
+                }
+                return;
+            }
+        }
+        // Se nem o compacto couber, continuar o fluxo: nunca ocultar conteúdo.
+    };
+    const doc = folha.ownerDocument;
+    if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', ajustar, { once:true });
+    else ajustar();
+    doc.defaultView.addEventListener('beforeprint', ajustar);
+}
+
 function construirFolhaOrdemServico(matricula, r, campos, data) {
     const colab = allEfetivo.find(e => e.id === matricula);
     const ghe = colab?.ghe ? allGheCatalogo.find(g => g.id === normalizarGhe(colab.ghe)) : null;
@@ -9699,7 +9761,8 @@ function construirFolhaOrdemServico(matricula, r, campos, data) {
     // em vez de criar uma tela nova só pra esse texto.
     const responsabilidadesEmpregado = allDocumentosControle.find(d => d.id === 'ordem_servico')?.observacoes || '';
 
-    return `<div class="folha-os print-os-portrait">
+    return `<div class="folha-os print-os-portrait os-layout-ajustavel">
+        <div class="cabecalho-os">
         <div style="text-align:center; margin-bottom: 3px;"><img src="${LOGO_COP_BASE64}" alt="COP" style="max-height:36px; object-fit:contain;"></div>
         <div class="titulo-os">ORDEM DE SERVIÇO DE SEGURANÇA E SAÚDE NO TRABALHO</div>
         ${codigoOs ? `<div class="subtitulo-os">${escapeHTML(codigoOs)} — Requisitos da NR-01 (Item 1.4.1)</div>` : '<div class="subtitulo-os">OS.SMS.001 — Requisitos da NR-01 (Item 1.4.1)</div>'}
@@ -9715,6 +9778,7 @@ function construirFolhaOrdemServico(matricula, r, campos, data) {
                 <td><b>Cargo Oficial / CBO:</b> ${escapeHTML(cargoInfo?.cargo || r.funcao || '—')}${cargoInfo?.cbo ? ` &nbsp; <b>(CBO: ${escapeHTML(cargoInfo.cbo)})</b>` : ''}</td></tr>
         </table>
 
+        </div>
         <div class="bloco-os">
             <div class="bloco-titulo-os">1. Descrição das Atividades:</div>
             <div class="texto-os">${escapeHTML(cargoInfo?.descricao_atividade || '')}</div>
@@ -9764,6 +9828,7 @@ function construirFolhaOrdemServico(matricula, r, campos, data) {
             ${blocoAssinatura(`${escapeHTML(r.nome)}<br>Colaborador`)}
             ${blocoAssinatura(`${escapeHTML(campos.responsavel_tecnico_nome || '')}<br>${escapeHTML(campos.responsavel_tecnico_qualificacao || '')}${campos.responsavel_tecnico_registro ? '<br>' + escapeHTML(campos.responsavel_tecnico_registro) : ''}`)}
         </div>
+        <script>(${ajustarLayoutOsParaUmaPagina.toString()})(document.currentScript.parentElement);</script>
     </div>`;
 }
 

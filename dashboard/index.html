@@ -1397,20 +1397,46 @@
                 </div>
 
                 <div id="treinSubtab-kits" style="display:none;">
+                <div class="db-chart-card" style="margin-bottom:16px;">
+                    <p style="margin:0 0 10px; font-size:14px; line-height:1.45;">Prepare os documentos de admissão de uma pessoa ou monte e imprima os documentos de uma turma.</p>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button type="button" id="kitsModoBtnAdmissao" class="db-filter-btn" onclick="mostrarModoKits('admissao')">Admissão de uma pessoa</button>
+                        <button type="button" id="kitsModoBtnTurma" class="db-filter-btn active" onclick="mostrarModoKits('turma')">Treinamento de uma turma</button>
+                    </div>
+                    <details style="margin-top:10px;">
+                        <summary style="cursor:pointer; font-size:12px; font-weight:700; color:var(--primary);">O que esta tela emite</summary>
+                        <p style="font-size:12px; color:var(--text-light); margin:8px 0 0; line-height:1.45;">Lista de presença, certificado, anuência, ordem de serviço, declaração de integração e termo de recusa. As três assinaturas impressas são do instrutor ou responsável técnico, do engenheiro de segurança e do trabalhador. Imprimir não grava presença no histórico.</p>
+                    </details>
+                </div>
+
+                <div id="kitsModoAdmissao" style="display:none;">
                 <div class="db-chart-card" style="margin-bottom:16px">
-                    <div class="db-chart-title">Treinamentos iniciais — kit admissional</div>
-                    <p>Marque um colaborador na turma abaixo e carregue os cursos definidos nas Regras de Recomendação.</p>
+                    <div class="db-chart-title">Admissão de uma pessoa</div>
+                    <p style="font-size:12.5px; color:var(--text-light);">Escolha a pessoa pelo nome ou pela matrícula. A turma de treinamento não é alterada.</p>
+                    <label style="display:block; margin-bottom:4px; font-weight:600; font-size:12.5px;">Nome ou matrícula</label>
+                    <input type="text" id="admPessoaBusca" oninput="filtrarPessoaKitAdmissional(this.value)" placeholder="Digite pelo menos 2 letras ou a matrícula" style="width:100%; max-width:480px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;">
+                    <div id="admPessoaResultados" class="db-list"></div>
+                    <div id="admPessoaSelecionada" style="margin:10px 0; font-size:13px;"><span style="color:var(--text-light);">Nenhuma pessoa escolhida.</span></div>
                     <button type="button" class="db-apply-btn" onclick="abrirKitAdmissional()">Montar sequência admissional</button>
                     <div id="kitAdmissionalEditor"></div>
                 </div>
-                <!-- Banner e Passo 1: Seleção do Treinamento, Modalidade (Inicial/Reciclagem) e Período -->
+                </div>
+
+                <div id="kitsModoTurma">
+                <div class="db-chart-card" style="margin-bottom:12px;">
+                    <div id="kitsResumoFixo" style="font-size:13px; line-height:1.4;">Curso: nenhum curso escolhido. Modalidade: não escolhida. Pessoas marcadas: 0. Período: —.</div>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;">
+                        <button type="button" id="kitsPassoBtn1" class="db-filter-btn active" onclick="mostrarPassoKits(1)">1. Curso</button>
+                        <button type="button" id="kitsPassoBtn2" class="db-filter-btn" onclick="mostrarPassoKits(2)">2. Participantes</button>
+                        <button type="button" id="kitsPassoBtn3" class="db-filter-btn" onclick="mostrarPassoKits(3)">3. Assinaturas</button>
+                        <button type="button" id="kitsPassoBtn4" class="db-filter-btn" onclick="mostrarPassoKits(4)">4. Documentos</button>
+                    </div>
+                </div>
+                <div id="kitsPassoCurso">
                 <div class="db-chart-card" style="margin-bottom: 16px; border-left: 4px solid var(--primary, #2563eb);">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
                         <div>
-                            <div class="db-chart-title" style="margin-bottom:4px;">🪪 Central de Kits Normativos, Certificados e Anuência Formal (NR-01 / NR-10 / NR-18 / NR-35)<span id="kitsBannerNormaAtiva" style="font-size:12.5px; font-weight:600; color:var(--primary); margin-left:8px;"></span></div>
-                            <p style="font-size: 11.5px; color: var(--text-light); margin: 0; line-height:1.45;">
-                                Monte turmas combinando <strong>múltiplas equipes</strong>, filtre automaticamente <strong>apenas colaboradores vencidos</strong>, defina a modalidade (<strong>Inicial</strong> ou <strong>Reciclagem Periódica</strong>) e emita o Kit Regulamentar Completo (Lista de Presença + Certificados Normativos + Termos de Anuência Formal e Autorização da Empresa + Ordens de Serviço) com as <strong>03 assinaturas exigidas pelas NRs</strong>.
-                            </p>
+                            <div class="db-chart-title" style="margin-bottom:4px;">Curso e período<span id="kitsBannerNormaAtiva" style="font-size:12.5px; font-weight:600; color:var(--primary); margin-left:8px;"></span></div>
                         </div>
                     </div>
 
@@ -1465,30 +1491,23 @@
                         </div>
                     </div>
 
-                    <div style="margin-top:8px; padding:8px 12px; background:rgba(37,99,235,0.05); border:1px dashed rgba(37,99,235,0.25); border-radius:8px; font-size:11.5px; color:var(--text-light); line-height:1.4;">
-                        💡 <strong>Como preencher as Datas (Inicial vs. Reciclagem):</strong> Para treinamentos de <strong>1 único dia</strong> (ex: Reciclagem), deixe a Data de Início igual à Data de Conclusão (sai <em>"realizado em DD/MM/AAAA"</em>). Para treinamentos de <strong>vários dias</strong> (ex: NR-10 Inicial de 40h = 5 dias de 8h), informe a Data de Início e a Data de Conclusão: o certificado e a lista exibirão automaticamente <strong><em>"realizado no período de DD/MM/AAAA a DD/MM/AAAA"</em></strong>, usando a <strong>Data de Conclusão</strong> para emissão e contagem da validade de 24 meses.
+                    <details style="margin-top:8px;">
+                        <summary style="cursor:pointer; font-size:12px; font-weight:700; color:var(--primary);">Como preencher as datas</summary>
+                        <p style="font-size:12px; color:var(--text-light); margin:8px 0 0; line-height:1.45;">Em treinamento de um dia, deixe a data de início igual à data de conclusão. Em treinamento de vários dias, informe as duas datas. O certificado usa a data de conclusão para a emissão e para a validade.</p>
+                    </details>
+                    <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+                        <button type="button" class="db-apply-btn" onclick="mostrarPassoKits(2)">Avançar para participantes</button>
                     </div>
                 </div>
+                </div>
 
-                <!-- Passo 2: Composição da Turma (Múltiplas Equipes + Filtro de Vencidos) -->
+                <div id="kitsPassoPessoas" style="display:none;">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
-                        <div class="db-chart-title" style="font-size: 13.5px; margin-bottom: 0;">👥 2. Seleção de Equipes e Colaboradores da Turma (Multi-Equipes &amp; Vencidos)</div>
-                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                            <button type="button" class="db-apply-btn" style="padding:5px 11px; font-size:11.5px; background:#dc2626; border-color:#b91c1c;" onclick="carregarKitsAtalhoGlobalStatus('vencidos')" title="Busca automaticamente em todas as equipes todos os colaboradores ativos cujo treinamento selecionado já está vencido">
-                                🔴 Juntar Todos os Vencidos neste Curso (Qualquer Equipe)
-                            </button>
-                            <button type="button" class="db-clear-btn" style="padding:5px 10px; font-size:11.5px; font-weight:600; color:#d97706; border-color:#fcd34d; background:#fffbeb;" onclick="carregarKitsAtalhoGlobalStatus('vencidos_a_vencer')" title="Busca todos os colaboradores vencidos ou que vencem nos próximos 60 dias">
-                                🟠 Vencidos + A Vencer (60d)
-                            </button>
-                            <button type="button" class="db-clear-btn" style="padding:5px 10px; font-size:11.5px; font-weight:600; color:#475569;" onclick="carregarKitsAtalhoGlobalStatus('sem_registro')" title="Busca quem ainda não possui registro deste treinamento">
-                                ⚪ Apenas Sem Registro (Inicial)
-                            </button>
-                            <button type="button" class="db-clear-btn" style="padding:5px 10px; font-size:11.5px; color:var(--danger);" onclick="limparTurmaKits()">
-                                🗑️ Limpar Turma
-                            </button>
-                        </div>
+                        <div class="db-chart-title" style="font-size: 13.5px; margin-bottom: 0;">Participantes</div>
+                        <button type="button" class="db-clear-btn" style="padding:5px 10px; font-size:11.5px; color:var(--danger);" onclick="limparTurmaKits()">Limpar turma</button>
                     </div>
+                    <p style="font-size:12px; color:var(--text-light); margin:0 0 8px;">Montar a turma substitui a lista atual, inclusive quem foi incluído pelo nome. Voltar de passo não mexe na lista.</p>
 
                     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; align-items:start; margin-top:8px;">
                         <!-- Caixa Multi-Equipes -->
@@ -1511,17 +1530,20 @@
                         <!-- Filtro de Status ao Juntar Equipes + Busca Avulsa -->
                         <div style="display:flex; flex-direction:column; gap:8px;">
                             <div>
-                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600; font-size:12px;">Critério ao carregar as equipes marcadas ao lado:</label>
-                                <div style="display:flex; gap:6px;">
-                                    <select id="kitsFiltroStatusEquipe" onchange="aplicarSelecaoMultiEquipesKits()" style="flex:1; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; font-weight:600;">
-                                        <option value="todos">👥 Todos os colaboradores das equipes marcadas</option>
-                                        <option value="vencidos">🔴 Apenas os VENCIDOS no curso selecionado</option>
-                                        <option value="vencidos_a_vencer">🟠 Apenas VENCIDOS + A VENCER (próx. 60 dias)</option>
-                                        <option value="pendentes">🚨 Todos com Pendência (Vencidos + A Vencer + Sem registro)</option>
-                                        <option value="sem_registro">⚪ Apenas SEM REGISTRO anterior (Inicial)</option>
-                                    </select>
-                                    <button type="button" class="db-apply-btn" style="padding:8px 12px; font-size:12px; white-space:nowrap;" onclick="aplicarSelecaoMultiEquipesKits()">🔄 Aplicar Filtro</button>
-                                </div>
+                                <label style="display:block; margin-bottom:4px; color:var(--text-light); font-weight:600; font-size:12px;">Situação no curso escolhido</label>
+                                <select id="kitsFiltroStatusEquipe" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; font-weight:600;">
+                                    <option value="todos">Todos</option>
+                                    <option value="vencidos">Vencidos</option>
+                                    <option value="vencidos_a_vencer">Vencidos e a vencer em 60 dias</option>
+                                    <option value="pendentes">Todas as pendências (vencidos, a vencer e sem registro)</option>
+                                    <option value="sem_registro">Sem registro</option>
+                                </select>
+                                <label style="display:block; margin:8px 0 4px; color:var(--text-light); font-weight:600; font-size:12px;">Alcance</label>
+                                <select id="kitsAlcanceTurma" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; font-weight:600;">
+                                    <option value="equipes">Equipes marcadas</option>
+                                    <option value="efetivo">Todo o efetivo ativo, inclusive quem está sem equipe</option>
+                                </select>
+                                <button type="button" class="db-apply-btn" style="margin-top:8px; padding:8px 12px; font-size:12px;" onclick="montarTurmaKits()">Montar turma</button>
                             </div>
 
                             <div>
@@ -1542,11 +1564,16 @@
                         </div>
                         <div id="kitsEquipeList" class="db-list" style="margin-top: 4px; max-height: 260px; overflow-y: auto; border:1px solid var(--border); border-radius:8px; padding:4px;"></div>
                     </div>
+                    <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+                        <button type="button" class="db-clear-btn" onclick="mostrarPassoKits(1)">Voltar ao curso</button>
+                        <button type="button" class="db-apply-btn" onclick="mostrarPassoKits(3)">Avançar para assinaturas</button>
+                    </div>
+                </div>
                 </div>
 
-                <!-- Passo 3: Dados da Sessão + 03 Assinaturas (Eng. Eletricista / Eng. Seg. Trabalho / Colaborador) -->
+                <div id="kitsPassoAssinaturas" style="display:none;">
                 <div class="db-chart-card" style="margin-bottom: 16px;">
-                    <div class="db-chart-title" style="font-size: 13.5px; margin-bottom: 6px;">✍️ 3. Dados da Sessão &amp; 03 Campos de Assinatura (Eng. Eletricista / Eng. Seg. Trabalho / Colaborador)</div>
+                    <div class="db-chart-title" style="font-size: 13.5px; margin-bottom: 6px;">Dados da sessão e assinaturas</div>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 12.5px; margin-bottom: 12px;">
                         <div>
                             <label style="display:block; margin-bottom: 4px; color: var(--text-light); font-weight: 600;">Nº Turma</label>
@@ -1610,31 +1637,39 @@
                         <!-- Assinatura 3: Colaborador Treinado -->
                         <div style="border:1px solid #bbf7d0; background:rgba(16,185,129,0.04); border-radius:8px; padding:10px 12px; display:flex; flex-direction:column; justify-content:space-between;">
                             <div>
-                                <label style="color:#065f46; font-weight:700; font-size:12px; display:block; margin-bottom:6px;">👷 3ª Assinatura: Colaborador Treinado / Autorizado</label>
+                                <label style="color:#065f46; font-weight:700; font-size:12px; display:block; margin-bottom:6px;">3ª identificação: trabalhador</label>
                                 <div style="font-size:11.5px; color:var(--text); line-height:1.45;">
-                                    Impressa automaticamente em cada documento com o <strong>Nome Completo</strong>, <strong>CPF</strong>, <strong>Matrícula</strong> e <strong>Função</strong> de cada trabalhador selecionado na turma:
-                                    <ul style="margin:6px 0 0 16px; padding:0; font-size:11px; color:var(--text-light);">
-                                        <li>Linha individual na <strong>Lista de Presença (FOR.001)</strong></li>
-                                        <li>Campo de assinatura no <strong>Certificado de Capacitação</strong></li>
-                                        <li>Termo de <strong>Anuência Formal / Autorização da Empresa</strong></li>
-                                    </ul>
+                                    Cada documento imprime nome, CPF, matrícula e função da pessoa marcada. Isso não recolhe assinatura eletrônica nem comprova presença.
+                                    <details style="margin-top:6px;">
+                                        <summary style="cursor:pointer; font-size:11.5px; font-weight:700; color:var(--primary);">Onde essa identificação aparece</summary>
+                                        <ul style="margin:6px 0 0 16px; padding:0; font-size:11px; color:var(--text-light);">
+                                            <li>Linha da lista de presença</li>
+                                            <li>Campo do certificado</li>
+                                            <li>Termo de anuência</li>
+                                        </ul>
+                                    </details>
                                 </div>
                             </div>
-                            <div style="font-size:10.5px; color:#047857; font-weight:600; margin-top:6px;">✅ 03 Campos de Assinatura ativos em todos os documentos do Kit.</div>
+                            <div style="font-size:10.5px; color:#047857; font-weight:600; margin-top:6px;">Os dois responsáveis técnicos e o trabalhador continuam nos documentos.</div>
                         </div>
                     </div>
+                    <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+                        <button type="button" class="db-clear-btn" onclick="mostrarPassoKits(2)">Voltar aos participantes</button>
+                        <button type="button" class="db-apply-btn" onclick="mostrarPassoKits(4)">Avançar para documentos</button>
+                    </div>
+                </div>
                 </div>
 
-                <!-- Passo 4: Composição do Kit, Conteúdo Programático Normativo e Emissão -->
+                <div id="kitsPassoEmissao" style="display:none;">
                 <div class="db-chart-card">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; flex-wrap:wrap; gap:8px;">
                         <div>
-                            <div class="db-chart-title" style="font-size: 13.5px; margin-bottom: 2px;">📦 4. Composição do Kit de Documentos &amp; Emissão (Turma ou Individual)</div>
+                            <div class="db-chart-title" style="font-size: 13.5px; margin-bottom: 2px;">Documentos e emissão</div>
                             <div id="kitsSubtituloPasso4" style="font-size:11.5px; color:var(--text-light);">Todo Kit inclui no mínimo <strong>Lista de Presença + Certificado</strong>. Para <strong>NR-10 e NR-35</strong>, inclui automaticamente a <strong>Anuência Formal e Autorização da Empresa</strong>.</div>
                         </div>
                         <div style="display:flex; gap:6px; flex-wrap:wrap;">
                             <button type="button" class="db-apply-btn" style="padding:7px 14px; font-size:12px; font-weight:700;" onclick="gerarKitCompletoTurmaKits()">
-                                🖨️ Emitir Kit Completo da Turma (Lote)
+                                Imprimir documentos
                             </button>
                             <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:600; color:#0f172a;" onclick="gerarListaPresencaKits()">
                                 📋 Lista de Presença
@@ -1648,15 +1683,15 @@
                             <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:600; color:#b45309; border-color:#fcd34d; background:#fffbeb;" id="btnKitsAnuenciaLote" onclick="gerarAnuenciaFormalTurma(contextoKits())">
                                 ⚡ Anuência Formal (Lote)
                             </button>
-                            <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:700; color:#047857; border-color:#6ee7b7; background:#ecfdf5;" onclick="salvarPresencaTurmaDiretoKits()" title="Registra oficialmente este treinamento no histórico da turma e atualiza a validade de 24 meses na Matriz">
-                                💾 Lançar Presença no Histórico
+                            <button type="button" class="db-clear-btn" style="padding:7px 12px; font-size:11.5px; font-weight:700; color:#047857; border-color:#6ee7b7; background:#ecfdf5;" onclick="salvarPresencaTurmaDiretoKits()" title="Registra este treinamento no histórico da turma. Não é disparado ao imprimir.">
+                                Lançar presença no histórico
                             </button>
                         </div>
                     </div>
 
                     <!-- Checkboxes de Documentos do Kit -->
                     <div style="display:flex; flex-wrap:wrap; gap:10px 18px; padding:10px 14px; background:var(--bg, #f8fafc); border:1px solid var(--border); border-radius:8px; margin-bottom:12px; font-size:12px;">
-                        <span style="font-weight:700; color:var(--text);">Documentos incluídos no botão "🖨️ Kit Completo":</span>
+                        <span style="font-weight:700; color:var(--text);">Documentos incluídos em Imprimir documentos:</span>
                         <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">
                             <input type="checkbox" id="kitsDocCheck_lista" checked onchange="renderKitsDocsIndividuaisList()"> 📋 Lista de Presença (FOR.001)
                         </label>
@@ -1704,6 +1739,11 @@
                     <div id="kitsLancamentoStatus" style="display:none; margin-bottom:10px; padding:8px 12px; border-radius:8px; font-size:12px; font-weight:600;"></div>
 
                     <div id="kitsDocsIndividuaisLista" style="display:flex; flex-direction:column; gap:6px;"></div>
+                    <p style="font-size:12px; color:var(--text-light); margin:12px 0 0;">Imprimir abre o documento. Lançar presença grava o histórico e pede confirmação. Um não faz o outro.</p>
+                    <div style="margin-top:12px;">
+                        <button type="button" class="db-clear-btn" onclick="mostrarPassoKits(3)">Voltar às assinaturas</button>
+                    </div>
+                </div>
                 </div>
                 </div>
 
@@ -10455,8 +10495,8 @@
     <script src="../data.js?v=295"></script>
     <script src="logo_cop_base64.js?v=295"></script>
     <script src="dashboard.js?v=303.13"></script>
-    <script src="modules/treinamentos_ddsma.js?v=303.10"></script>
-    <script src="modules/kits_admissionais.js?v=3"></script>
+    <script src="modules/treinamentos_ddsma.js?v=303.12"></script>
+    <script src="modules/kits_admissionais.js?v=4"></script>
     <script src="modules/efetivo_ferias.js?v=303"></script>
     <script src="modules/ghe_os.js?v=303.6"></script>
     <script src="modules/relatorio_sms_nc.js?v=303.5"></script>

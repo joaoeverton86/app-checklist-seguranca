@@ -6082,6 +6082,8 @@ var kitsDataAtual = '';
 var kitsDataInicioAtual = '';
 var kitsTipoCapacitacaoAtual = 'reciclagem';
 var kitsEquipesSelecionadas = new Set();
+var kitsModoAtual = 'turma';
+var kitsPassoAtual = 1;
 // Rastreia se Horário Início/Término/Local/CargaHoraria ainda estão no valor que NÓS preenchemos
 // (então é seguro atualizar quando o treinamento mudar) ou se o usuário editou na mão
 // (aí o valor dele nunca é sobrescrito, mesmo trocando de treinamento depois).
@@ -6417,13 +6419,11 @@ function onKitsEquipeMultiCheckboxChange() {
         Array.from(wrap.querySelectorAll('input[type=checkbox]:checked')).map(el => el.value)
     );
     renderKitsEquipesMultiCheckboxes();
-    aplicarSelecaoMultiEquipesKits();
 }
 
 function marcarTodasEquipesKits(marcar) {
     kitsEquipesSelecionadas = marcar ? new Set(todasFrentesAtivas()) : new Set();
     renderKitsEquipesMultiCheckboxes();
-    aplicarSelecaoMultiEquipesKits();
 }
 
 // Avalia o status atual do colaborador no curso selecionado (Vencido, A Vencer, Em Dia ou Sem Registro)
@@ -6557,6 +6557,66 @@ function carregarKitsAtalhoGlobalStatus(modo) {
     renderKitsDocsIndividuaisList();
 }
 
+function mostrarModoKits(modo) {
+    kitsModoAtual = modo === 'admissao' ? 'admissao' : 'turma';
+    const admissao = document.getElementById('kitsModoAdmissao');
+    const turma = document.getElementById('kitsModoTurma');
+    if (admissao) admissao.style.display = kitsModoAtual === 'admissao' ? 'block' : 'none';
+    if (turma) turma.style.display = kitsModoAtual === 'turma' ? 'block' : 'none';
+    document.getElementById('kitsModoBtnAdmissao')?.classList.toggle('active', kitsModoAtual === 'admissao');
+    document.getElementById('kitsModoBtnTurma')?.classList.toggle('active', kitsModoAtual === 'turma');
+}
+
+function mostrarPassoKits(passo) {
+    const n = Math.min(4, Math.max(1, Number(passo) || 1));
+    kitsPassoAtual = n;
+    ['Curso', 'Pessoas', 'Assinaturas', 'Emissao'].forEach((nome, i) => {
+        const el = document.getElementById('kitsPasso' + nome);
+        if (el) el.style.display = (i + 1 === n) ? 'block' : 'none';
+        document.getElementById('kitsPassoBtn' + (i + 1))?.classList.toggle('active', i + 1 === n);
+    });
+    atualizarResumoFixoKits();
+}
+
+function atualizarResumoFixoKits() {
+    const el = document.getElementById('kitsResumoFixo');
+    if (!el) return;
+    const cat = (typeof allTreinamentosCatalogo !== 'undefined' && Array.isArray(allTreinamentosCatalogo))
+        ? allTreinamentosCatalogo.find(c => String(c.id) === String(kitsCodigoAtual))
+        : null;
+    const tipoSel = document.getElementById('kitsTipoCapacitacaoSelect');
+    const tipo = tipoSel && tipoSel.selectedIndex >= 0 ? tipoSel.options[tipoSel.selectedIndex].text : '';
+    const marcadas = Array.from(kitsEquipe.values()).filter(c => c.checked).length;
+    const ini = document.getElementById('kitsDataInicioInput')?.value || '';
+    const fim = document.getElementById('kitsDataInput')?.value || '';
+    const periodo = ini && fim && ini !== fim
+        ? `${formatSimpleDate(ini)} a ${formatSimpleDate(fim)}`
+        : formatSimpleDate(fim || ini);
+    const curso = cat ? cat.nome : (kitsCodigoAtual ? 'curso não encontrado no catálogo' : 'nenhum curso escolhido');
+    el.textContent = `Curso: ${curso}. Modalidade: ${tipo || 'não escolhida'}. Pessoas marcadas: ${marcadas}. Período: ${periodo}.`;
+}
+
+function montarTurmaKits() {
+    const alcance = document.getElementById('kitsAlcanceTurma')?.value || 'equipes';
+    const filtro = document.getElementById('kitsFiltroStatusEquipe')?.value || 'todos';
+    if (alcance === 'efetivo') {
+        if (!kitsCodigoAtual) {
+            alert('Escolha o treinamento no passo Curso antes de montar a turma com todo o efetivo.');
+            return;
+        }
+    } else if (!kitsEquipesSelecionadas || kitsEquipesSelecionadas.size === 0) {
+        alert('Marque ao menos uma equipe, ou mude o alcance para todo o efetivo ativo.');
+        return;
+    }
+    if (kitsEquipe.size > 0) {
+        const segue = confirm('Montar a turma substitui as pessoas já escolhidas, inclusive quem foi incluído pelo nome. Continuar?');
+        if (!segue) return;
+    }
+    if (alcance === 'efetivo') carregarKitsAtalhoGlobalStatus(filtro);
+    else aplicarSelecaoMultiEquipesKits();
+    atualizarResumoFixoKits();
+}
+
 function limparTurmaKits() {
     kitsEquipe = new Map();
     kitsEquipesSelecionadas = new Set();
@@ -6610,6 +6670,8 @@ function inicializarKitsTab() {
     }
     renderKitsEquipeList();
     renderKitsDocsIndividuaisList();
+    mostrarModoKits(kitsModoAtual);
+    mostrarPassoKits(kitsPassoAtual);
 }
 
 function aplicarDefaultsSessaoKits(codigo) {
@@ -6779,6 +6841,7 @@ function renderKitsInfoResumo() {
 
     infoEl.style.color = 'var(--text)';
     infoEl.innerHTML = `${badgeTipo} <strong>${escapeHTML(cat.nome)}</strong> — Carga desta sessão: <strong>${escapeHTML(String(cargaSessao))}h</strong> — ${cat.meses_validade ? `Validade: <strong>${cat.meses_validade} meses</strong>` : 'Sem validade periódica'}`;
+    atualizarResumoFixoKits();
 }
 
 function onKitsCodigoChange() {
@@ -6802,6 +6865,7 @@ function onKitsCodigoChange() {
     renderKitsInfoResumo();
     renderKitsEquipeList();
     renderKitsDocsIndividuaisList();
+    atualizarResumoFixoKits();
 }
 
 function atualizarBotaoListaDiariaPeriodoKits() {
@@ -6822,6 +6886,7 @@ function onKitsDataInicioChange() {
         kitsDataAtual = kitsDataInicioAtual;
     }
     atualizarBotaoListaDiariaPeriodoKits();
+    atualizarResumoFixoKits();
 }
 
 function onKitsDataChange() {
@@ -6832,6 +6897,7 @@ function onKitsDataChange() {
         kitsDataInicioAtual = kitsDataAtual;
     }
     atualizarBotaoListaDiariaPeriodoKits();
+    atualizarResumoFixoKits();
 }
 
 function carregarKitsEquipeResponsavel() {
@@ -6907,10 +6973,12 @@ function renderKitsEquipeList() {
     }
 
     if (kitsEquipe.size === 0) {
-        container.innerHTML = '<div class="db-list-empty">Nenhum colaborador na turma ainda — marque 1 ou mais equipes acima ou clique em "🔴 Juntar Todos os Vencidos".</div>';
+        container.innerHTML = '<div class="db-list-empty">Nenhuma pessoa na turma. Marque as equipes e use Montar turma, ou inclua alguém pelo nome.</div>';
+        atualizarResumoFixoKits();
         return;
     }
     const entries = Array.from(kitsEquipe.entries()).sort((a, b) => (a[1].nome || '').localeCompare(b[1].nome || ''));
+    atualizarResumoFixoKits();
     container.innerHTML = entries.map(([matricula, c]) => {
         const colabEf = allEfetivo.find(x => x.id === matricula);
         const respNome = c.responsavel || colabEf?.responsavel || '';
@@ -6976,7 +7044,7 @@ function renderKitsDocsIndividuaisList() {
         .map(([matricula, c]) => ({ matricula, nome: c.nome, funcao: c.funcao, responsavel: c.responsavel }))
         .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR', { sensitivity: 'base' }));
     if (colaboradores.length === 0) {
-        container.innerHTML = '<div class="db-list-empty">Nenhum colaborador selecionado na turma ainda — marque as equipes acima ou clique em "🔴 Juntar Todos os Vencidos".</div>';
+        container.innerHTML = '<div class="db-list-empty">Nenhuma pessoa marcada. A lista individual aparece depois de montar a turma.</div>';
         return;
     }
     const cat = allTreinamentosCatalogo.find(c => c.id === kitsCodigoAtual);
@@ -14204,6 +14272,10 @@ var excluirRegraTrein = excluirRegraRecomendacao;
         if (typeof marcarTodasEquipesKits === 'function') window.marcarTodasEquipesKits = marcarTodasEquipesKits;
         if (typeof aplicarSelecaoMultiEquipesKits === 'function') window.aplicarSelecaoMultiEquipesKits = aplicarSelecaoMultiEquipesKits;
         if (typeof carregarKitsAtalhoGlobalStatus === 'function') window.carregarKitsAtalhoGlobalStatus = carregarKitsAtalhoGlobalStatus;
+        if (typeof mostrarModoKits === 'function') window.mostrarModoKits = mostrarModoKits;
+        if (typeof mostrarPassoKits === 'function') window.mostrarPassoKits = mostrarPassoKits;
+        if (typeof atualizarResumoFixoKits === 'function') window.atualizarResumoFixoKits = atualizarResumoFixoKits;
+        if (typeof montarTurmaKits === 'function') window.montarTurmaKits = montarTurmaKits;
         if (typeof limparTurmaKits === 'function') window.limparTurmaKits = limparTurmaKits;
         if (typeof limparCampoEncResponsavelKits === 'function') window.limparCampoEncResponsavelKits = limparCampoEncResponsavelKits;
         if (typeof preencherAutoEncResponsavelKits === 'function') window.preencherAutoEncResponsavelKits = preencherAutoEncResponsavelKits;

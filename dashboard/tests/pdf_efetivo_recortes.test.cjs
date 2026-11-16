@@ -233,7 +233,7 @@ for (const origem of [src, core]) {
 }
 
 const html = fs.readFileSync(path.join(painel, 'index.html'), 'utf8');
-assert.match(html, /dashboard\.js\?v=303\.9/);
+assert.match(html, /dashboard\.js\?v=303\.10/);
 assert.match(html, /modules\/ghe_os\.js\?v=303\.4/);
 assert.match(html, /sem setor escolhido/);
 

@@ -12443,7 +12443,38 @@ var CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01 =
 4. Equipamentos de proteção coletiva (EPC) e individual (EPI);
 5. Diretrizes do PGR da obra, plano de emergência e direito de recusa.`;
 
+function obterConteudoProgramaticoCertificado(cat, campos, customParams = {}) {
+    const normalizar = valor => typeof valor === 'string'
+        ? valor.replace(/[\u200B-\u200D\uFEFF]/g, '').trim()
+        : '';
+    // Um campo apagado explicitamente no modal não pode ser substituído pelo catálogo.
+    if (Object.prototype.hasOwnProperty.call(customParams, 'conteudoProgramatico')) {
+        return normalizar(customParams.conteudoProgramatico);
+    }
+    return normalizar(campos?.conteudo_programatico_custom) || normalizar(cat?.conteudo_programatico);
+}
+
+function validarConteudoProgramaticoCertificado(cat, campos, customParams = {}) {
+    if (obterConteudoProgramaticoCertificado(cat, campos, customParams)) return true;
+    const aviso = 'Certificado não emitido: preencha o conteúdo programático ministrado no treinamento antes de gerar o documento.';
+    const modal = document.getElementById('modalEmissaoCertificado');
+    const noModal = modal && modal.style.display !== 'none';
+    const status = noModal ? document.getElementById('certModalStatusMsg') : null;
+    if (status) {
+        status.style.display = 'block';
+        status.style.background = '#fef2f2';
+        status.style.color = '#b91c1c';
+        status.textContent = aviso;
+    }
+    alert(aviso);
+    const campo = document.getElementById(noModal ? 'certModalConteudoProgramatico' : 'kitsForm_conteudoProgramatico');
+    if (campo) campo.focus();
+    return false;
+}
+
 function construirFolhaCertificado(r, colab, cat, codigo, campos, data, customParams = {}) {
+    const conteudo = obterConteudoProgramaticoCertificado(cat, campos, customParams);
+    if (!conteudo) throw new Error('Certificado exige conteúdo programático preenchido.');
     const codigoDoc = codigoRevisaoDocumento('certificado_individual') || 'CERT.SMS.001';
     const ehNr10 = ehCursoNr10(codigo, cat);
 
@@ -12462,19 +12493,7 @@ function construirFolhaCertificado(r, colab, cat, codigo, campos, data, customPa
         aproveitamentoHtml = `<u>&nbsp;${escapeHTML(displayVal)}&nbsp;</u>`;
     }
 
-    let conteudo = customParams.conteudoProgramatico;
-    if (conteudo === undefined || conteudo === null || !String(conteudo).trim()) {
-        conteudo = campos?.conteudo_programatico_custom || cat?.conteudo_programatico || '';
-    }
     const { titulo: tituloTreinamento, cargaHoraria } = obterTituloECargaSessao(cat, codigo, campos);
-    const nomeNorm = (tituloTreinamento || '').toLowerCase();
-    if (!conteudo.trim()) {
-        if (ehNr10) {
-            conteudo = campos?.tipo_capacitacao === 'reciclagem' ? CONTEUDO_NR10_RECICLAGEM_BIENAL : CONTEUDO_NR10_INICIAL_ANEXO_III;
-        } else if (codigo === '1' || nomeNorm.includes('integra') || nomeNorm.includes('18') || nomeNorm.includes('capacita')) {
-            conteudo = CONTEUDO_PROGRAMATICO_PADRAO_NR18_NR01;
-        }
-    }
 
     const baseLegal = customParams.certificadoBaseLegal
         || campos?.base_legal_custom
@@ -12527,11 +12546,10 @@ function construirFolhaCertificado(r, colab, cat, codigo, campos, data, customPa
                 e <b>concluiu com aproveitamento satisfatório: ${aproveitamentoHtml}</b>.
             </div>
 
-            ${conteudo.trim() ? `
             <div class="bloco-conteudo-cert" style="padding:6px 12px;">
                 <div class="bloco-conteudo-titulo-cert">Conteúdo Programático Ministrado:</div>
                 <div class="bloco-conteudo-texto-cert" style="font-size:${fontConteudoCert}; line-height:${lineConteudoCert};">${escapeHTML(conteudo.trim())}</div>
-            </div>` : ''}
+            </div>
 
             <div class="meta-cert">
                 <div><b>Local de realização:</b> ${escapeHTML(localRealizacao)}</div>
@@ -12784,8 +12802,9 @@ async function gerarCertificadoIndividual(matricula, ctx = contextoRegistroPadra
     const { colaboradores, codigo, data, campos } = ctx;
     const r = colaboradores.find(x => x.matricula === matricula);
     if (!r) return;
-    await garantirDocumentosControleCarregados();
     const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+    if (!validarConteudoProgramaticoCertificado(cat, campos, customParams)) return;
+    await garantirDocumentosControleCarregados();
     const colab = allEfetivo.find(e => e.id === matricula);
 
     const html = `<!DOCTYPE html>
@@ -12816,8 +12835,9 @@ async function gerarCertificadosTurma(ctx = contextoRegistroPadrao(), customPara
         alert('Nenhum colaborador na turma atual.');
         return;
     }
-    await garantirDocumentosControleCarregados();
     const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
+    if (!validarConteudoProgramaticoCertificado(cat, campos, customParams)) return;
+    await garantirDocumentosControleCarregados();
 
     const folhas = colaboradores.map(r => {
         const colab = allEfetivo.find(e => e.id === r.matricula);
@@ -13047,6 +13067,9 @@ async function executarEmissaoCertificadoModal() {
         respTecnicoQualificacao,
         respTecnicoRegistro
     };
+
+    const catCertificado = allTreinamentosCatalogo.find(c => c.id === certModalCtxAtual.codigo);
+    if (!validarConteudoProgramaticoCertificado(catCertificado, certModalCtxAtual.campos, customParams)) return;
 
     // Salvar no catálogo se solicitado
     if (salvarNoCatalogo && certModalCtxAtual.codigo) {
@@ -13372,6 +13395,7 @@ async function gerarKitCompletoIntegracao(matricula, ctx = contextoRegistroPadra
         recusa: codigo === '1'
     };
 
+    if (docs.certificado && !validarConteudoProgramaticoCertificado(cat, campos)) return;
     const partes = [];
     if (docs.os) partes.push(construirFolhaOrdemServico(matricula, r, campos, data));
     if (docs.lista) partes.push(construirFolhaRegistroTreinamento(sessaoRows, campos, codigo, cat, data));
@@ -13428,6 +13452,7 @@ async function gerarKitCompletoTurmaKits() {
     await garantirDocumentosControleCarregados();
     const cat = allTreinamentosCatalogo.find(c => c.id === codigo);
     const docs = obterDocumentosMarcadosNoKit();
+    if (docs.certificado && !validarConteudoProgramaticoCertificado(cat, campos)) return;
 
     const partes = [];
     // 1. Lista de Presença Coletiva da Turma

@@ -13,6 +13,7 @@ const testes = [
     'dashboard/tests/pastas_drive_cliente.test.cjs',
     'dashboard/tests/consulta_mensal_pcmso.test.cjs',
     'dashboard/tests/frentes_efetivo_ddsma.test.cjs',
+    'dashboard/tests/pdf_efetivo_recortes.test.cjs',
     'dashboard/tests/frentes_exclusao.test.cjs',
     'dashboard/tests/gerador_prompts_integracao.test.cjs',
     'dashboard/tests/gestao_de_condutores_cnh.test.cjs',

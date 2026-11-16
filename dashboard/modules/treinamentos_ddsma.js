@@ -7566,7 +7566,7 @@ function renderRegistroDocsIndividuaisList() {
 
 var DOC_INDIVIDUAL_CSS = `
     @page { size: A4 portrait; margin: 12mm; }
-    @page os_portrait { size: A4 portrait; margin: 12mm; }
+    @page os_portrait { size: A4 portrait; margin: 8mm; }
     @page registro_portrait { size: A4 portrait; margin: 6mm 8mm; }
     @page cert_landscape { size: A4 landscape; margin: 8mm; }
     @page decl_portrait { size: A4 portrait; margin: 8mm 10mm; }
@@ -7583,6 +7583,10 @@ var DOC_INDIVIDUAL_CSS = `
             page: os_portrait;
             page-break-after: always !important;
             break-after: page !important;
+        }
+        .print-os-portrait:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
         }
         .print-registro-portrait {
             page: registro_portrait;
@@ -7650,127 +7654,129 @@ var DOC_INDIVIDUAL_CSS = `
         margin: 0 auto;
         font-family: Arial, Helvetica, sans-serif !important;
         color: #111 !important;
-        font-size: 10pt !important;
-        line-height: 1.28 !important;
+        font-size: 8.5pt !important;
+        line-height: 1.1 !important;
+    }
+    .folha-os img {
+        max-height: 22px !important;
     }
     .folha-os .titulo-os {
         text-align: center;
         font-weight: 700;
-        font-size: 12pt;
+        font-size: 11pt;
         letter-spacing: 0.3px;
-        line-height: 1.2;
-        margin-top: 2px;
-        margin-bottom: 2px;
+        line-height: 1.1;
+        margin-top: 0;
+        margin-bottom: 0;
         color: #0f172a;
     }
     .folha-os .subtitulo-os {
         text-align: center;
-        font-size: 9pt;
+        font-size: 8pt;
         color: #475569;
         margin-top: 0;
-        margin-bottom: 4px;
+        margin-bottom: 2px;
         font-weight: 600;
     }
     .folha-os .tabela-os-identificacao {
         width: 100%;
         border-collapse: collapse;
-        font-size: 9.5pt;
-        margin-bottom: 4px;
+        font-size: 8pt;
+        margin-bottom: 2px;
     }
     .folha-os .tabela-os-identificacao td {
         border: 1px solid #334155;
-        padding: 3px 5px;
-        line-height: 1.22;
+        padding: 1px 3px;
+        line-height: 1.1;
     }
     .folha-os .bloco-os {
-        margin-top: 4px;
+        margin-top: 1px;
     }
     .folha-os .bloco-titulo-os {
         font-weight: 700;
-        font-size: 10.5pt;
-        margin-top: 4px;
-        margin-bottom: 2px;
+        font-size: 8.5pt;
+        margin-top: 1px;
+        margin-bottom: 0;
         color: #0f172a;
         text-transform: uppercase;
-        line-height: 1.2;
+        line-height: 1.1;
     }
     .folha-os .texto-os {
-        font-size: 10pt;
-        line-height: 1.28;
+        font-size: 8.5pt;
+        line-height: 1.12;
         text-align: justify;
     }
     .folha-os .tabela-os-agentes {
         width: 100%;
         border-collapse: collapse;
-        font-size: 9pt;
-        margin-top: 2px;
+        font-size: 7.5pt;
+        margin-top: 1px;
     }
     .folha-os .tabela-os-agentes th {
         background: #f1f5f9;
         border: 1px solid #334155;
-        padding: 2px 4px;
+        padding: 1px 2px;
         font-weight: 700;
         text-align: center;
-        font-size: 9pt;
-        line-height: 1.2;
+        font-size: 7.5pt;
+        line-height: 1.08;
     }
     .folha-os .tabela-os-agentes td {
         border: 1px solid #334155;
-        padding: 3px 4px;
-        line-height: 1.22;
-        font-size: 9pt;
+        padding: 1px 2px;
+        line-height: 1.08;
+        font-size: 7.5pt;
         vertical-align: top;
     }
     .folha-os .grid-epis-epcs-os {
         display: flex;
-        gap: 10px;
-        margin-top: 4px;
+        gap: 6px;
+        margin-top: 1px;
     }
     .folha-os .lista-itens-os {
         columns: 2;
         column-gap: 8px;
-        font-size: 9.5pt;
-        line-height: 1.22;
+        font-size: 8pt;
+        line-height: 1.08;
     }
     .folha-os .lista-itens-os > div {
         break-inside: avoid;
     }
     .folha-os .declaracao-os {
-        margin-top: 6px;
-        padding-top: 4px;
+        margin-top: 2px;
+        padding-top: 2px;
         border-top: 1px solid #94a3b8;
-        font-size: 9pt;
-        line-height: 1.25;
+        font-size: 7.5pt;
+        line-height: 1.12;
         text-align: justify;
     }
     .folha-os .assinaturas-os {
         display: flex;
         justify-content: space-around;
-        margin-top: 22px;
+        margin-top: 2px;
         margin-bottom: 0;
-        gap: 16px;
+        gap: 8px;
         page-break-inside: avoid !important;
         break-inside: avoid !important;
     }
     .folha-os .assinaturas-os .assinatura-item {
         text-align: center;
-        font-size: 9pt;
+        font-size: 8pt;
         width: 46%;
         page-break-inside: avoid !important;
         break-inside: avoid !important;
     }
     .folha-os .assinaturas-os .assinatura-item .linha-assinatura {
-        margin-top: 18px;
-        font-size: 10pt;
+        margin-top: 3px;
+        font-size: 9pt;
         letter-spacing: 0.5px;
         line-height: 1;
     }
     .folha-os .assinaturas-os .assinatura-item .linha-nome {
         margin-top: 2px;
-        line-height: 1.18;
-        font-size: 9pt;
+        line-height: 1.15;
+        font-size: 8pt;
     }
-
     /* ---- 2. CERTIFICADO DE CAPACITAÇÃO (A4 PAISAGEM / LANDSCAPE) ---- */
     .folha-certificado {
         box-sizing: border-box;
@@ -8982,7 +8988,7 @@ async function gerarOrdemServicoIndividual(matricula, ctx = contextoRegistroPadr
 <title>Ordem de Serviço - ${escapeHTML(r.nome)} - ${formatSimpleDate(data)}</title>
 <style>
     ${DOC_INDIVIDUAL_CSS}
-    @page { size: A4 portrait; margin: 12mm; }
+    @page { size: A4 portrait; margin: 8mm; }
 </style>
 <script>
     window.addEventListener('load', function() {

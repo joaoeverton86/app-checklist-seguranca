@@ -7566,7 +7566,7 @@ async function imprimirOsIndividualEfetivo(matricula) {
 <title>Ordem de Serviço (NR-01) - ${escapeHTML(colab.nome)}</title>
 <style>
     ${typeof DOC_INDIVIDUAL_CSS !== 'undefined' ? DOC_INDIVIDUAL_CSS : ''}
-    @page { size: A4 portrait; margin: 12mm; }
+    @page { size: A4 portrait; margin: 8mm; }
 </style>
 <script>
     window.addEventListener('load', function() {
@@ -7631,15 +7631,15 @@ async function imprimirOsEmLotePendentes() {
     }).join('');
 
     const cssLote = `
-        @page { size: A4 portrait; margin: 12mm !important; }
+        @page { size: A4 portrait; margin: 8mm !important; }
         @media print {
             body { margin: 0; background: #fff !important; }
             .no-print { display: none !important; }
             .folha { page-break-after: always !important; box-shadow: none !important; margin: 0 auto !important; }
             .folha-os {
                 page-break-after: always !important;
-                page-break-inside: avoid !important;
-                break-inside: avoid !important;
+                page-break-inside: auto !important;
+                break-inside: auto !important;
                 box-sizing: border-box !important;
                 padding: 0 !important;
             }

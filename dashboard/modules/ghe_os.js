@@ -5272,14 +5272,18 @@ var efetivoPdfStatusFiltro = 'ativos';
 
 function toggleFormPdfEfetivo() {
     const card = document.getElementById('efetivoPdfCard');
+    if (!card) return;
     const abrindo = card.style.display === 'none';
     card.style.display = abrindo ? 'block' : 'none';
-    if (abrindo && document.getElementById('efetivoPdfColunas').children.length === 0) {
-        document.getElementById('efetivoPdfColunas').innerHTML = EFETIVO_PDF_COLUNAS.map(c => `
-            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                <input type="checkbox" class="efetivoPdfColunaCheckbox" value="${c.id}" ${EFETIVO_PDF_COLUNAS_PADRAO.has(c.id) ? 'checked' : ''} style="width:15px; height:15px;">
-                <span>${escapeHTML(c.label)}</span>
-            </label>`).join('');
+    if (abrindo) {
+        if (document.getElementById('efetivoPdfColunas').children.length === 0) {
+            document.getElementById('efetivoPdfColunas').innerHTML = EFETIVO_PDF_COLUNAS.map(c => `
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                    <input type="checkbox" class="efetivoPdfColunaCheckbox" value="${c.id}" ${EFETIVO_PDF_COLUNAS_PADRAO.has(c.id) ? 'checked' : ''} style="width:15px; height:15px;">
+                    <span>${escapeHTML(c.label)}</span>
+                </label>`).join('');
+        }
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 }
 
@@ -5290,66 +5294,147 @@ function setEfetivoPdfStatus(status) {
 
 function gerarPdfEfetivo() {
     const statusEl = document.getElementById('efetivoPdfStatus');
-    const colunasMarcadas = Array.from(document.querySelectorAll('.efetivoPdfColunaCheckbox:checked')).map(cb => cb.value);
-    if (colunasMarcadas.length === 0) {
-        statusEl.textContent = '❌ Selecione pelo menos uma coluna.';
-        statusEl.style.color = 'var(--danger)';
-        return;
-    }
-    let colunas = EFETIVO_PDF_COLUNAS.filter(c => colunasMarcadas.includes(c.id));
-    if (colunas.length === 0) {
+    const cardEl = document.getElementById('efetivoPdfCard');
+    const cardAberto = cardEl && cardEl.style.display !== 'none';
+    const buscaInput = document.getElementById('efetivoSearchInput');
+    const buscaDigitada = buscaInput ? buscaInput.value.trim() : '';
+    const buscaAtual = buscaDigitada.toLowerCase();
+    const excluirTerceiro = typeof window.colaboradorEhTerceiro === 'function' ? window.colaboradorEhTerceiro : () => false;
+
+    let colunas = [];
+    let lista = (allEfetivo || []).filter(e => !excluirTerceiro(e));
+    let filtroLabel = 'Ativos';
+    let origemSituacao = 'situação da tela';
+
+    if (cardAberto) {
+        const colunasMarcadas = Array.from(document.querySelectorAll('.efetivoPdfColunaCheckbox:checked')).map(cb => cb.value);
+        if (colunasMarcadas.length === 0) {
+            const aviso = 'Selecione pelo menos uma coluna para imprimir.';
+            if (statusEl) { statusEl.textContent = aviso; statusEl.style.color = 'var(--danger)'; }
+            alert(aviso);
+            return;
+        }
+        colunas = EFETIVO_PDF_COLUNAS.filter(c => colunasMarcadas.includes(c.id));
+        origemSituacao = 'situação escolhida na personalização';
+
+        if (efetivoPdfStatusFiltro === 'ativos') {
+            lista = lista.filter(colaboradorEstaAtivo);
+            filtroLabel = 'Ativos';
+        } else if (efetivoPdfStatusFiltro === 'demitidos') {
+            lista = lista.filter(e => !colaboradorEstaAtivo(e));
+            filtroLabel = 'Demitidos/Inativos';
+        } else {
+            filtroLabel = 'Completo (Ativos + Demitidos)';
+        }
+    } else {
         colunas = EFETIVO_PDF_COLUNAS.filter(c => EFETIVO_PDF_COLUNAS_PADRAO.has(c.id));
+        const situacaoAtual = document.getElementById('filtroEfetivoSituacao')?.value || 'ativos';
+        if (situacaoAtual === 'ativos') {
+            lista = lista.filter(colaboradorEstaAtivo);
+            filtroLabel = 'Ativos';
+        } else if (situacaoAtual === 'demitidos') {
+            lista = lista.filter(e => !colaboradorEstaAtivo(e));
+            filtroLabel = 'Demitidos/Inativos';
+        } else {
+            filtroLabel = 'Completo (Ativos + Demitidos)';
+        }
     }
 
-    let lista = allEfetivo.slice();
-    let filtroLabel = 'Completo (Ativos + Demitidos)';
-    const situacaoAtual = efetivoPdfStatusFiltro || document.getElementById('filtroEfetivoSituacao')?.value || 'ativos';
-    if (situacaoAtual === 'ativos') { lista = lista.filter(colaboradorEstaAtivo); filtroLabel = 'Ativos'; }
-    else if (situacaoAtual === 'demitidos') { lista = lista.filter(e => !colaboradorEstaAtivo(e)); filtroLabel = 'Demitidos/Inativos'; }
+    if (buscaAtual.length >= 2) {
+        lista = lista.filter(e => (e.nome && e.nome.toLowerCase().includes(buscaAtual)) || (e.id && String(e.id).toLowerCase().includes(buscaAtual)) || (e.funcao && e.funcao.toLowerCase().includes(buscaAtual)));
+        filtroLabel += ` — busca "${buscaDigitada}"`;
+    }
+    filtroLabel += ` — efetivo próprio, sem terceiros/PJ — ${origemSituacao}`;
+
+    if (colunas.length === 0) {
+        const aviso = 'Selecione pelo menos uma coluna para imprimir.';
+        if (statusEl) { statusEl.textContent = aviso; statusEl.style.color = 'var(--danger)'; }
+        alert(aviso);
+        return;
+    }
+
     lista.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
     if (lista.length === 0) {
-        statusEl.textContent = 'Nenhum colaborador encontrado para esse filtro.';
-        statusEl.style.color = 'var(--text-light)';
+        const msgVazia = 'Nenhum colaborador encontrado para esse filtro.';
+        if (statusEl) { statusEl.textContent = msgVazia; statusEl.style.color = 'var(--text-light)'; }
+        alert(msgVazia);
         return;
     }
 
     const agora = new Date();
+    const dataFmt = typeof formatSimpleDate === 'function' ? formatSimpleDate(agora.toISOString().slice(0, 10)) : agora.toLocaleDateString('pt-BR');
+    const horaFmt = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
     const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Lista de Colaboradores - ${escapeHTML(filtroLabel)}</title>
 <style>
-    @page { size: landscape; margin: 12mm; }
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #111; margin: 20px; }
-    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:6px; gap:10px; }
-    .cabecalho img { max-height:40px; }
-    .cabecalho .titulo { font-weight:700; font-size:16px; text-align:center; flex:1; }
-    .info-geracao { font-size:10.5px; color:#444; margin-bottom:12px; }
+    @page { size: A4 landscape; margin: 10mm 12mm 12mm 12mm; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #0f172a; margin: 16px; background: #fff; line-height: 1.35; }
+    .cabecalho { display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #0f172a; padding-bottom:8px; margin-bottom:8px; gap:12px; }
+    .cabecalho img { max-height:44px; max-width:140px; object-fit:contain; }
+    .cabecalho .titulo-bloco { flex:1; text-align:center; }
+    .cabecalho .empresa { font-size:11px; font-weight:800; color:#334155; text-transform:uppercase; letter-spacing:0.5px; }
+    .cabecalho .titulo { font-weight:800; font-size:15px; color:#0f172a; margin-top:2px; }
+    .cabecalho .subtitulo { font-size:10px; color:#64748b; font-weight:600; margin-top:2px; }
+    .info-geracao { font-size:10px; color:#475569; margin-bottom:12px; display:flex; justify-content:space-between; background:#f8fafc; padding:6px 10px; border-radius:6px; border:1px solid #e2e8f0; }
     table { width:100%; border-collapse:collapse; font-size:9.5px; }
-    th, td { border:1px solid #999; padding:4px 6px; text-align:left; }
-    th { background:#e5e5e5; }
-    tbody tr:nth-child(even) { background:#f7f7f7; }
-    .no-print { text-align:center; margin:16px 0; }
-    .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
-    @media print { .no-print { display:none; } body { margin:0; } thead { display: table-header-group; } }
-</style></head>
+    th, td { border:1px solid #cbd5e1; padding:5px 6px; text-align:left; vertical-align:middle; overflow-wrap:anywhere; }
+    th { background:#f1f5f9; color:#0f172a; font-weight:800; text-transform:uppercase; font-size:9px; letter-spacing:0.3px; }
+    tbody tr:nth-child(even) { background:#f8fafc; }
+    .no-print { text-align:center; margin-bottom:14px; padding:10px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:8px; display:flex; justify-content:center; gap:10px; }
+    .no-print button { padding:9px 20px; font-size:13px; font-weight:700; cursor:pointer; border-radius:6px; border:none; background:#4f46e5; color:#fff; }
+    .rodape-doc { border-top:1px solid #cbd5e1; padding-top:6px; margin-top:14px; font-size:8.5px; color:#64748b; display:flex; justify-content:space-between; page-break-inside:avoid; }
+    @media print { .no-print { display:none !important; } body { margin:0; } thead { display: table-header-group; } tr { page-break-inside:avoid; } }
+</style>
+<script>
+    window.onload = function() {
+        setTimeout(function() { window.print(); }, 400);
+    };
+</script>
+</head>
 <body>
-    <div class="no-print"><button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button></div>
-    <div class="cabecalho">
-        <img src="${LOGO_COP_BASE64}" alt="COP">
-        <div class="titulo">LISTA DE COLABORADORES — ${escapeHTML(filtroLabel.toUpperCase())}</div>
-        <div style="width:40px;"></div>
+    <div class="no-print">
+        <button onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button>
+        <button style="background:#64748b;" onclick="window.close()">✕ Fechar</button>
     </div>
-    <div class="info-geracao">${escapeHTML(EMPRESA_INFO.razaoSocial)} — Gerado em ${formatSimpleDate(agora.toISOString().slice(0, 10))} às ${agora.toLocaleTimeString('pt-BR')} — ${lista.length} colaborador(es)</div>
+    <div class="cabecalho">
+        <img src="${typeof LOGO_COP_BASE64 !== 'undefined' ? LOGO_COP_BASE64 : ''}" alt="COP">
+        <div class="titulo-bloco">
+            <div class="empresa">${escapeHTML(EMPRESA_INFO.razaoSocial)} — PISF RAMAL DO AGRESTE</div>
+            <div class="titulo">RELAÇÃO NOMINAL DE COLABORADORES</div>
+            <div class="subtitulo">Acompanhamento Cadastral de Efetivo • Gestão de SST e Recursos Humanos</div>
+        </div>
+        <div style="width:50px;"></div>
+    </div>
+    <div class="info-geracao">
+        <span>Filtro: <b>${escapeHTML(filtroLabel)}</b></span>
+        <span>Total: <b>${lista.length} colaborador(es)</b></span>
+        <span>Emissão: <b>${dataFmt} às ${horaFmt}</b></span>
+    </div>
     <table>
-        <thead><tr>${colunas.map(c => `<th>${escapeHTML(c.label)}</th>`).join('')}</tr></thead>
-        <tbody>${lista.map(e => `<tr>${colunas.map(c => `<td>${escapeHTML(c.get(e) || '')}</td>`).join('')}</tr>`).join('')}</tbody>
+        <thead><tr>
+            <th style="width:30px; text-align:center;">Nº</th>
+            ${colunas.map(c => `<th>${escapeHTML(c.label)}</th>`).join('')}
+        </tr></thead>
+        <tbody>${lista.map((e, idx) => `<tr>
+            <td style="text-align:center; font-weight:700;">${idx + 1}</td>
+            ${colunas.map(c => `<td>${escapeHTML(c.get(e) || '—')}</td>`).join('')}
+        </tr>`).join('')}</tbody>
     </table>
+    <div class="rodape-doc">
+        <span>Documento oficial de controle cadastral de colaboradores — PISF Ramal do Agreste</span>
+        <span>Sistema Integrado de Gestão SST • Emitido por Engenharia de Segurança do Trabalho</span>
+    </div>
 </body></html>`;
 
     abrirDocumentoHtmlParaImpressao(html, 'Lista de Colaboradores - ' + filtroLabel);
-    statusEl.textContent = `✅ PDF gerado com ${lista.length} colaborador(es).`;
-    statusEl.style.color = 'var(--success)';
+    if (statusEl) {
+        statusEl.textContent = `✅ PDF gerado com ${lista.length} colaborador(es).`;
+        statusEl.style.color = 'var(--success)';
+    }
 }
 
 // ---- Gerar Planilha Excel de Colaboradores (com autofiltro e todas as colunas) ----
@@ -5551,17 +5636,21 @@ function popularFiltrosRelatorioEquipe() {
         const ehLider = regexLider.test(e.funcao || '');
         if (!ehLider) return;
         const nomeUpper = (e.nome || '').trim().toUpperCase();
-        const respUpper = (e.responsavel || '').trim().toUpperCase();
 
         let achou = false;
         for (let [k, item] of lideresMap.entries()) {
-            if (nomeUpper.includes(k) || k.includes(nomeUpper) || respUpper === k) {
+            if (nomeUpper !== k || item.identidadeAmbiguo) continue;
+            if (item.nomeCompleto) {
+                item.nomeCompleto = '';
+                item.identidadeAmbiguo = true;
+                item.funcao = 'Equipe / Frente de Campo';
+            } else {
                 item.nomeCompleto = e.nome;
                 item.funcao = e.funcao;
                 if (e.setor) item.setor = e.setor;
-                achou = true;
-                break;
             }
+            achou = true;
+            break;
         }
 
         if (!achou && colaboradorEstaAtivo(e)) {
@@ -5579,7 +5668,7 @@ function popularFiltrosRelatorioEquipe() {
 
     const listaLideres = Array.from(lideresMap.values()).sort((a, b) => a.nome.localeCompare(b.nome));
 
-    let htmlLider = '<option value="">Todos os Encarregados / Lideranças</option>';
+    let htmlLider = '<option value="">📋 Todos os Encarregados / Lideranças (Geral)</option>';
     listaLideres.forEach(item => {
         const qtdTxt = item.totalAtivos > 0 ? ` (${item.totalAtivos} ativos)` : '';
         const descTxt = item.nomeCompleto ? `${item.nome} — ${item.nomeCompleto} [${item.funcao}]${qtdTxt}` : `${item.nome} [${item.funcao}]${qtdTxt}`;
@@ -5628,14 +5717,14 @@ function obterListaEquipeFiltrada() {
             lista = lista.filter(e => {
                 const r = (e.responsavel || '').trim().toUpperCase();
                 const n = (e.nome || '').trim().toUpperCase();
-                return n === nomeLider || r === nomeLider || (r && nomeLider.includes(r));
+                return n === nomeLider || r === nomeLider;
             });
         } else {
             const respNorm = liderSel.toUpperCase();
             lista = lista.filter(e => {
                 const r = (e.responsavel || '').trim().toUpperCase();
                 const n = (e.nome || '').trim().toUpperCase();
-                return r === respNorm || n === respNorm || (respNorm.length >= 4 && n.includes(respNorm)) || (r && respNorm.includes(r));
+                return r === respNorm || n === respNorm;
             });
         }
     }
@@ -5741,34 +5830,63 @@ function obterAsoColaboradorRelatorio(colab) {
     }
 }
 
+function descreverRecorteRelatorioEquipe(liderSel, setorSel, situacaoSel) {
+    let situacaoDesc = 'Ativos';
+    if (situacaoSel === 'demitidos') situacaoDesc = 'Demitidos / Inativos';
+    else if (situacaoSel === 'todos') situacaoDesc = 'Completo (Ativos e Desligados)';
+    const lider = (liderSel || '').trim();
+    const setor = (setorSel || '').trim();
+    if (!lider && !setor) {
+        return {
+            geral: true,
+            rotulo: 'Efetivo geral de todas as frentes',
+            situacaoDesc: situacaoDesc
+        };
+    }
+    const partes = [];
+    if (lider) {
+        const nome = lider.startsWith('NOME:') ? lider.slice(5).trim() : lider;
+        partes.push('Equipe: ' + nome);
+    }
+    if (setor) partes.push('Setor: ' + setor);
+    return {
+        geral: false,
+        rotulo: partes.join(' • '),
+        situacaoDesc: situacaoDesc
+    };
+}
+
 function atualizarPreviaRelatorioEquipe() {
     const lista = obterListaEquipeFiltrada();
     const textoEl = document.getElementById('relEquipePreviaTexto');
     const badgeEl = document.getElementById('relEquipePreviaBadge');
     const liderSel = (document.getElementById('relEquipeFiltroLider')?.value || '').trim();
     const setorSel = (document.getElementById('relEquipeFiltroSetor')?.value || '').trim();
+    const situacaoSel = document.getElementById('relEquipeFiltroSituacao')?.value || 'ativos';
+    const recorte = descreverRecorteRelatorioEquipe(liderSel, setorSel, situacaoSel);
 
-    let liderNome = 'Geral';
-    if (liderSel) {
-        liderNome = liderSel.startsWith('NOME:') ? liderSel.replace('NOME:', '') : liderSel;
-    }
-
-    let msg = `Equipe: <b>${escapeHTML(liderNome)}</b>`;
-    if (setorSel) msg += ` • Setor: <b>${escapeHTML(setorSel)}</b>`;
+    let msg = `<b>${escapeHTML(recorte.rotulo)}</b>`;
+    msg += ` • <span>Situação: ${escapeHTML(recorte.situacaoDesc)}</span>`;
 
     let vencidos = 0;
     let avencer = 0;
+    let semData = 0;
     lista.forEach(c => {
         const aso = obterAsoColaboradorRelatorio(c);
         if (aso.status === 'vencido') vencidos++;
         else if (aso.status === 'avencer') avencer++;
+        else if (aso.status === 'sem_data') semData++;
     });
 
     if (vencidos > 0) {
         msg += ` • <span style="color:#b91c1c; font-weight:700;">🚨 ${vencidos} ASO(s) vencido(s)</span>`;
-    } else if (avencer > 0) {
+    }
+    if (avencer > 0) {
         msg += ` • <span style="color:#b45309; font-weight:600;">⚠️ ${avencer} a vencer</span>`;
-    } else {
+    }
+    if (semData > 0) {
+        msg += ` • <span style="color:#475569; font-weight:600;">${semData} sem data de ASO (pendência / ausência de informação)</span>`;
+    } else if (vencidos === 0 && avencer === 0 && lista.length > 0) {
         msg += ` • <span style="color:#047857; font-weight:600;">✓ ASOs em dia</span>`;
     }
 
@@ -5791,15 +5909,24 @@ function imprimirRelatorioEquipeEncarregado() {
     const qtdExtras = Math.max(1, Math.min(30, parseInt(document.getElementById('relEquipeQtdLinhasExtras')?.value || '5', 10)));
     const destacarAso = document.getElementById('relEquipeDestacarAsoVencido')?.checked !== false;
 
-    // Resolução de nomes
-    let nomeLiderHeader = 'TODAS AS EQUIPES / FRENTES';
-    let nomeLiderAssinatura = 'Encarregado / Responsável de Campo';
+    // Resolução de nomes e liderança responsável
+    const recorteEquipe = descreverRecorteRelatorioEquipe(liderSel, setorSel, situacaoSel);
+    let nomeLiderHeader = recorteEquipe.geral
+        ? 'TODAS AS EQUIPES / FRENTES (EFETIVO GERAL)'
+        : (liderSel
+            ? (liderSel.startsWith('NOME:') ? liderSel.slice(5).trim() : liderSel)
+            : 'Todos os encarregados');
+    let nomeLiderAssinatura = '';
+    let funcaoAssinatura = 'Encarregado / Responsável de Campo';
+
     if (liderSel) {
-        nomeLiderHeader = liderSel.startsWith('NOME:') ? liderSel.replace('NOME:', '') : liderSel;
-        const liderObj = lista.find(e => /ENCARREGADO|SUPERVISOR|L[ÍI]DER|MESTRE|COORDENADOR|GERENTE/i.test(e.funcao || '')) || lista[0];
-        nomeLiderAssinatura = liderObj ? liderObj.nome : nomeLiderHeader;
-    } else if (lista.length > 0 && /ENCARREGADO|SUPERVISOR|L[ÍI]DER|MESTRE|COORDENADOR|GERENTE/i.test(lista[0].funcao || '')) {
-        nomeLiderAssinatura = lista[0].nome;
+        const nomeSelecionado = (liderSel.startsWith('NOME:') ? liderSel.slice(5) : liderSel).trim();
+        const alvo = nomeSelecionado.toUpperCase();
+        const exatos = (allEfetivo || []).filter(e => (e.nome || '').trim().toUpperCase() === alvo);
+        if (exatos.length === 1) {
+            nomeLiderAssinatura = exatos[0].nome;
+            funcaoAssinatura = exatos[0].funcao || 'Encarregado / Responsável de Campo';
+        }
     }
 
     const nomeSetorHeader = setorSel || 'TODOS OS SETORES / FRENTES DE SERVIÇO';
@@ -5900,7 +6027,12 @@ function imprimirRelatorioEquipeEncarregado() {
         `<img src="${LOGO_COP_BASE64}" alt="Consórcio Operador Ramal">` :
         `<div style="font-weight:900; font-size:18px; color:#1e3a8a;">COP</div>`;
 
-    const tituloDoc = `Relação de Efetivo - ${nomeLiderHeader.toUpperCase()} - ${dataEmissaoFmt.replace(/\//g, '-')}`;
+    const tituloDoc = recorteEquipe.geral
+        ? `Relação de Efetivo Geral - Todas as Frentes - ${dataEmissaoFmt.replace(/\//g, '-')}`
+        : `Relação de Efetivo - ${recorteEquipe.rotulo} - ${recorteEquipe.situacaoDesc} - ${dataEmissaoFmt.replace(/\//g, '-')}`;
+    const tituloDocCabecalho = recorteEquipe.geral
+        ? 'RELAÇÃO DE EFETIVO GERAL — TODAS AS FRENTES DE SERVIÇO'
+        : `RELAÇÃO DE EFETIVO — ${recorteEquipe.rotulo.toUpperCase()} — ${recorteEquipe.situacaoDesc.toUpperCase()}`;
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -6161,7 +6293,7 @@ function imprimirRelatorioEquipeEncarregado() {
         ${logoHtml}
         <div class="cabecalho-texto">
             <div class="cabecalho-empresa">CONSÓRCIO OPERADOR RAMAL — PISF RAMAL DO AGRESTE</div>
-            <div class="cabecalho-titulo">RELAÇÃO DE EFETIVO POR EQUIPE / FRENTE DE SERVIÇO</div>
+            <div class="cabecalho-titulo">${escapeHTML(tituloDocCabecalho)}</div>
             <div class="cabecalho-sub">Controle Operacional de Canteiro • Liberação Diária de Frente • Registro de Presença em DDSMA (NR-01 / NR-18)</div>
         </div>
         <div class="cabecalho-badge">
@@ -6214,8 +6346,8 @@ function imprimirRelatorioEquipeEncarregado() {
 
     <div class="secao-assinaturas">
         <div class="bloco-assinatura">
-            <b>${escapeHTML(nomeLiderAssinatura)}</b>
-            <span>Encarregado / Responsável de Campo</span>
+            ${nomeLiderAssinatura ? `<b>${escapeHTML(nomeLiderAssinatura)}</b>` : '<b>Encarregado / Responsável de Campo</b>'}
+            <span>${nomeLiderAssinatura ? escapeHTML(funcaoAssinatura) : 'Assinatura da Liderança da Frente de Serviço'}</span>
         </div>
         <div class="bloco-assinatura">
             <b>Técnico / Engenheiro de Segurança do Trabalho</b>

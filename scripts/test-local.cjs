@@ -18,6 +18,7 @@ const testes = [
     'dashboard/tests/os_layout_pagina.test.cjs',
     'dashboard/tests/frentes_exclusao.test.cjs',
     'dashboard/tests/gerador_prompts_integracao.test.cjs',
+    'dashboard/tests/gerador_prompts.test.cjs',
     'dashboard/tests/gestao_de_condutores_cnh.test.cjs',
     'dashboard/tests/kits_admissionais.test.cjs',
     'dashboard/tests/login_painel_identidade_cnh.test.cjs',

@@ -23,18 +23,23 @@
     // 1. BASE DE CONHECIMENTO OFICIAL DA ARQUITETURA SST DO SISTEMA
     // =========================================================================
     const BASE_CONHECIMENTO_SST_PADRAO = {
-        versao: '2.6.0',
-        ultimaAtualizacao: '2026-11-05',
+        versao: '2.7.0',
+        ultimaAtualizacao: '2026-11-17',
         regrasOuroGlobais: [
             'NUNCA usar window.open() ou manipulação direta de popup. Utilizar sempre abrirDocumentoHtmlParaImpressao(html, titulo) ou Blob com URL.createObjectURL.',
             'Sincronização Dupla Obrigatória: qualquer alteração de status (Ativo/Inativo/Demitido) ou validade de ASO de colaborador próprio da COP deve refletir SIMULTANEAMENTE em public.colaboradores_efetivo e public.colaboradores_checklist.',
             'Isolamento de Efetivo de Terceiros/PJ: Mecânicos de empresas parceiras (ex: ARTEC), terceiros e pessoas contratadas como PJ NUNCA devem ser inseridos em public.colaboradores_efetivo para não inflar o headcount CLT da COP, cálculos de HHT próprio e relatórios de Mão de Obra Local (RSA Quadros 1 e 2). Terceiros devem ter tabela própria.',
             'Preservação do App Mobile PWA de Campo: demandas do painel gerencial ficam estritamente em dashboard/ e api/; nunca alterar app.js, index.html ou sw.js da raiz sem autorização expressa.',
             'Leitura Cirúrgica: arquivos como dashboard.js e módulos possuem milhares de linhas. Proibido ler arquivo completo; use buscas direcionadas e leia até 150 linhas por vez.',
-            'Roteamento Duplo em Novos Módulos: ao criar nova rota no painel, registrar showDbPage, navMap e DB_PAGE_TITLES tanto em dashboard/dashboard.js quanto em dashboard/modules/epi_estoque.js (devido à declaração homônima existente no projeto) para evitar tela em branco.',
-            'Atualização de Cache-Buster: sempre atualizar ?v=... nos scripts e links modificados para invalidar cache em produção (Vercel).',
+            'Roteamento Duplo em Novos Módulos: ao criar nova rota no painel, registrar showDbPage, navMap, DB_PAGE_TITLES e NAV_GROUP_POR_PAGINA tanto em dashboard/dashboard.js quanto em dashboard/modules/epi_estoque.js (devido à declaração homônima existente no projeto) para evitar tela em branco.',
+            'Atualização de Cache-Buster: aumentar só o ?v= do arquivo modificado, a partir do valor que já está em dashboard/index.html. Não copiar um número antigo.',
             'Zero Preguiça e Causa-Raiz: proibido silenciar erros apagando código ou removendo validações úteis. Investigar e corrigir a causa-raiz.',
-            'Suporte a Dark Mode (NR-17): todo elemento visual criado deve respeitar as variáveis de tema (--bg, --card, --text, --border).'
+            'Suporte a Dark Mode (NR-17): todo elemento visual criado deve respeitar as variáveis de tema (--bg, --card, --text, --border).',
+            'Não inventar CA, CBO, limite de exposição, diagnóstico ou conclusão técnica. Preservar o texto oficial já gravado.',
+            'Não preencher probabilidade nem gravidade de risco no lugar do engenheiro.',
+            'Planos gratuitos: não enviar foto nem arquivo binário ao Storage. Texto curto basta.',
+            'Ao editar dashboard/index.html, fechar cada bloco novo. node --check não detecta aba engolida por div sem fechar. Conferir as telas vizinhas no navegador.',
+            'Confirmar com busca no código se a função citada existe antes de reutilizá-la. Se o nome não existir, não criar outra com o mesmo nome.'
         ],
         modulos: [
             {
@@ -165,9 +170,9 @@
                         id: 'ordem_servico_nr01',
                         nome: 'Ordens de Serviço (OS NR-01) & Rastreabilidade',
                         descricao: 'Geração da OS oficial por colaborador/GHE com riscos, medidas preventivas, EPIs obrigatórios e campo de assinatura.',
-                        funcoesChave: ['gerarOrdemServicoHtml', 'registrarEntregaOrdemServico', 'abrirDocumentoHtmlParaImpressao'],
-                        tabelasSupabase: ['ordens_servico', 'ordens_servico_entregas', 'colaboradores_efetivo'],
-                        regrasNegocio: 'Ao mudar de função ou GHE, deve ser emitida nova OS com rastreabilidade da entrega.'
+                        funcoesChave: ['imprimirOsIndividualEfetivo', 'imprimirOsEmLotePendentes', 'imprimirOsDoModal', 'abrirDocumentoHtmlParaImpressao'],
+                        tabelasSupabase: ['colaboradores_efetivo', 'ghe_catalogo'],
+                        regrasNegocio: 'A OS vigente cabe em uma página, sem cortar atividade, risco, EPI ou declaração. Não inventar CA. Visualizar não grava emissão.'
                     },
                     {
                         id: 'matriz_epi_ghe',
@@ -176,6 +181,24 @@
                         funcoesChave: ['renderMatrizEpiGhe', 'salvarEpiPorGhe', 'filterMatrizEpi'],
                         tabelasSupabase: ['ghe_catalogo', 'epi_catalogo', 'ghe_epis'],
                         regrasNegocio: 'EPIs selecionados devem constar automaticamente na Ordem de Serviço e na ficha de entrega.'
+                    }
+                ]
+            },
+            {
+                id: 'apr',
+                nome: 'APR — ANÁLISE PRELIMINAR DE RISCO',
+                icone: '📋',
+                arquivoPrincipal: 'dashboard/modules/apr_cipa.js',
+                arquivosRelacionados: ['dashboard/index.html', 'dashboard/modules/epi_estoque.js'],
+                descricao: 'Emissão da APR da frente, com modelos reutilizáveis separados das APR já emitidas.',
+                submodulos: [
+                    {
+                        id: 'nova_apr',
+                        nome: 'Nova APR',
+                        descricao: 'Formulário da APR com título, descrição, riscos, EPIs e classificação feita pelo engenheiro.',
+                        funcoesChave: ['renderAprPanel', 'abrirFormNovaApr', 'salvarApr', 'imprimirApr', 'usarModeloComoBase'],
+                        tabelasSupabase: ['apr_registros', 'apr_modelos'],
+                        regrasNegocio: 'Modelo reutilizável não é APR emitida. Probabilidade e gravidade ficam em branco para o engenheiro classificar na atividade do dia. Não gravar rascunho por cima de uma APR aberta sem confirmação.'
                     }
                 ]
             },
@@ -629,28 +652,35 @@
             const padrao = JSON.parse(JSON.stringify(BASE_CONHECIMENTO_SST_PADRAO));
             if (!custom || !custom.modulos) return padrao;
 
-            const modulosMesclados = [...padrao.modulos];
+            const desatualizado = custom.versao !== padrao.versao;
+            const modulosMesclados = JSON.parse(JSON.stringify(padrao.modulos));
 
             custom.modulos.forEach(modCustom => {
                 const indexExistente = modulosMesclados.findIndex(m => m.id === modCustom.id);
-                if (indexExistente >= 0) {
-                    const modExistente = modulosMesclados[indexExistente];
-                    (modCustom.submodulos || []).forEach(subCustom => {
-                        const subIndex = modExistente.submodulos.findIndex(s => s.id === subCustom.id);
-                        if (subIndex >= 0) {
-                            modExistente.submodulos[subIndex] = { ...modExistente.submodulos[subIndex], ...subCustom };
-                        } else {
-                            modExistente.submodulos.push(subCustom);
-                        }
-                    });
-                } else {
+                if (indexExistente < 0) {
                     modulosMesclados.push(modCustom);
+                    return;
                 }
+                if (desatualizado) return;
+                const modExistente = modulosMesclados[indexExistente];
+                (modCustom.submodulos || []).forEach(subCustom => {
+                    const subIndex = modExistente.submodulos.findIndex(s => s.id === subCustom.id);
+                    if (subIndex >= 0) {
+                        modExistente.submodulos[subIndex] = { ...modExistente.submodulos[subIndex], ...subCustom };
+                    } else {
+                        modExistente.submodulos.push(subCustom);
+                    }
+                });
+            });
+
+            const regras = [...padrao.regrasOuroGlobais];
+            (custom.regrasOuroGlobais || []).forEach(regra => {
+                if (regra && !regras.includes(regra)) regras.push(regra);
             });
 
             return {
                 ...padrao,
-                ...custom,
+                regrasOuroGlobais: regras,
                 modulos: modulosMesclados
             };
         }
@@ -737,6 +767,45 @@
         return String(texto || '').replace(/(?:^|_)([a-z0-9])/g, (_, g) => g.toUpperCase());
     }
 
+    function identificadorSeguro(texto, reserva) {
+        const limpo = String(texto || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9_]+/g, '_')
+            .replace(/^_+|_+$/g, '')
+            .slice(0, 40);
+        if (/^[a-z][a-z0-9_]{0,39}$/.test(limpo)) return limpo;
+        return reserva;
+    }
+
+    function pareceCadastroDePessoas(nome, descricao) {
+        return /terceir|prestador|\bpj\b|pessoa jur|visitante|artec|colaborador|efetivo/i
+            .test(`${nome || ''} ${descricao || ''}`);
+    }
+
+    function diretrizDaIntencao(intencaoId) {
+        const mapa = {
+            inclusao_funcao: 'Acrescentar só o que foi pedido. Não reescrever o módulo nem criar uma segunda cópia da rotina que já existe.',
+            correcao_funcao: 'Corrigir a causa do defeito descrito. Não aproveitar a correção para incluir tela, campo ou regra nova.',
+            regra_sst: 'Ajustar a regra que o engenheiro descreveu. Não inventar CA, CBO, limite de exposição, diagnóstico ou conclusão. Se o número não estiver no pedido, deixe em branco e pergunte.',
+            banco_sync: 'Propor a mudança de dados em texto. Não executar SQL no banco remoto, não enfraquecer o acesso e não gravar conteúdo crescente em configuracoes_sistema.',
+            impressao_relatorio: 'Usar abrirDocumentoHtmlParaImpressao(html, titulo). Não abrir janela com window.open. Não cortar texto oficial do documento.',
+            performance_ux: 'Reduzir consulta repetida e peso de arquivo. Não enviar foto nem binário ao Storage do plano gratuito.',
+            novo_modulo_completo: 'Criar só o módulo pedido, em arquivo próprio. Não reaproveitar cadastro de terceiros, coluna de CPF nem número antigo de cache se o pedido for outro assunto.'
+        };
+        return mapa[intencaoId] || 'Executar somente a demanda escrita pelo engenheiro.';
+    }
+
+    function lerCampoGerador(id, campos) {
+        if (campos && Object.prototype.hasOwnProperty.call(campos, id)) {
+            return String(campos[id] == null ? '' : campos[id]).trim();
+        }
+        if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return '';
+        const el = document.getElementById(id);
+        return el && el.value ? String(el.value).trim() : '';
+    }
+
     // =========================================================================
     // 4. MOTOR GERADOR DE PROMPTS (MODO MÓDULO EXISTENTE & NOVO MÓDULO)
     // =========================================================================
@@ -744,7 +813,8 @@
         intencaoId,
         moduloId,
         submoduloId,
-        descricaoUsuario
+        descricaoUsuario,
+        campos
     }) {
         const intencao = INTENCOES_DISPONIVEIS.find(i => i.id === intencaoId) || INTENCOES_DISPONIVEIS[0];
         const ehNovoModulo = (intencaoId === 'novo_modulo_completo') || (moduloId === '__novo_modulo__');
@@ -752,17 +822,25 @@
         if (ehNovoModulo) {
             return construirPromptNovoModulo({
                 intencao,
-                descricaoUsuario
+                descricaoUsuario,
+                campos
             });
         }
 
-        const modulo = gerenciadorConhecimento.dados.modulos.find(m => m.id === moduloId) || gerenciadorConhecimento.dados.modulos[0];
-        const submodulo = (modulo.submodulos || []).find(s => s.id === submoduloId) || (modulo.submodulos && modulo.submodulos[0]) || {
-            id: 'geral',
-            nome: 'Geral do Módulo',
-            descricao: modulo.descricao,
+        const modulo = gerenciadorConhecimento.dados.modulos.find(m => m.id === moduloId);
+        if (!modulo) {
+            return `# TAREFA SST\n\nO módulo "${moduloId || ''}" não está na base do gerador. Confirme o arquivo real com busca no código antes de editar. Não troque pelo primeiro módulo da lista.\n\nDemanda:\n"""\n${(descricaoUsuario || '').trim()}\n"""\n`;
+        }
+        const subEncontrado = (modulo.submodulos || []).find(s => s.id === submoduloId);
+        const submodulo = subEncontrado || (!submoduloId && modulo.submodulos && modulo.submodulos[0]) || {
+            id: submoduloId || 'geral',
+            nome: submoduloId ? 'Submódulo não cadastrado' : 'Geral do Módulo',
+            descricao: submoduloId
+                ? 'Esse identificador não está na base. Confirme no código e não reutilize a rotina de outro submódulo.'
+                : modulo.descricao,
             funcoesChave: [],
-            tabelasSupabase: []
+            tabelasSupabase: [],
+            regrasNegocio: submoduloId ? 'Não reutilize função de outro submódulo.' : ''
         };
 
         const descricaoTratada = (descricaoUsuario || '').trim();
@@ -790,13 +868,18 @@
 
         prompt += `## 3. Demanda Específica a Executar\n`;
         prompt += `**Tipo de Solicitação**: ${intencao.label}\n`;
-        prompt += `**Módulo/Submódulo**: ${modulo.nome} -> ${submodulo.nome}\n\n`;
+        prompt += `**Módulo/Submódulo**: ${modulo.nome} -> ${submodulo.nome}\n`;
+        if (!subEncontrado && submoduloId) {
+            prompt += `**Aviso:** ${submodulo.descricao}\n`;
+        }
+        prompt += `\n`;
+        prompt += `**Como executar esta intenção:** ${diretrizDaIntencao(intencao.id)}\n\n`;
         prompt += `**Instrução Detalhada do Engenheiro:**\n`;
-        prompt += `"""\n${descricaoTratada || 'Implementar melhoria/correção na rotina selecionada conforme regras de negócio de SST.'}\n"""\n\n`;
+        prompt += `"""\n${descricaoTratada || 'Descreva o que deve mudar. Sem esse texto, não invente a demanda.'}\n"""\n\n`;
 
         if (submodulo.funcoesChave && submodulo.funcoesChave.length > 0) {
             prompt += `## 4. Funções e Componentes Existentes a REUTILIZAR (Não Reinventar a Roda)\n`;
-            prompt += `O sistema já possui estruturas prontas para este submódulo. O agente DEVE reaproveitá-las em vez de criar funções concorrentes ou duplicadas:\n`;
+            prompt += `Confirme com busca no código se cada nome abaixo existe. Se não existir, não crie uma função com o mesmo nome:\n`;
             submodulo.funcoesChave.forEach(fn => {
                 prompt += `- \`${fn}\`\n`;
             });
@@ -828,20 +911,25 @@
         prompt += `- [ ] Localização precisa da rotina no arquivo \`${modulo.arquivoPrincipal}\` antes de editar.\n`;
         prompt += `- [ ] Edição cirúrgica sem apagar código existente nem comentar trechos úteis.\n`;
         prompt += `- [ ] Execução de validação de sintaxe (\`node --check [arquivo]\`).\n`;
-        prompt += `- [ ] Atualização do cache-buster (?v=...) no arquivo modificado.\n`;
+        prompt += `- [ ] Atualização só do cache-buster (?v=...) do arquivo modificado, somando um passo ao valor que já está em dashboard/index.html. Não copiar um número antigo.\n`;
         prompt += `- [ ] Teste da interface e verificação no console para garantir zero erros de runtime.\n`;
         prompt += `- [ ] Resumo didático e conciso entregue em Português (pt-BR) informando exatamente o que foi alterado e como João pode testar no painel (\`https://app-checklist-seguranca.vercel.app/dashboard/\`).\n`;
 
         return prompt;
     }
 
-    function construirPromptNovoModulo({ intencao, descricaoUsuario }) {
-        const nomeModulo = document.getElementById('novoModuloNome')?.value.trim() || 'Gestão de Terceiros, PJ & Temporários';
-        const arquivoModular = document.getElementById('novoModuloArquivo')?.value.trim() || 'dashboard/modules/terceiros_prestadores.js';
-        const chaveRota = document.getElementById('novoModuloChave')?.value.trim() || 'terceiros';
-        const grupoMenu = document.getElementById('novoModuloGrupo')?.value || 'pessoas';
-        const tabelaSupabase = document.getElementById('novoModuloTabela')?.value.trim() || 'terceiros_prestadores';
+    function construirPromptNovoModulo({ intencao, descricaoUsuario, campos }) {
+        const nomeDigitado = lerCampoGerador('novoModuloNome', campos);
         const descricaoTratada = (descricaoUsuario || '').trim();
+        if (!nomeDigitado) {
+            return `# TAREFA SST: CRIAÇÃO DE NOVO MÓDULO\n\nO nome do módulo ainda não foi preenchido. Não invente tela, tabela, CPF, limite de exposição nem conclusão técnica. Peça o nome da tela e o que ela precisa fazer.\n\nDemanda já escrita:\n"""\n${descricaoTratada}\n"""\n`;
+        }
+        const nomeModulo = nomeDigitado;
+        const arquivoModular = lerCampoGerador('novoModuloArquivo', campos) || `dashboard/modules/${identificadorSeguro(nomeModulo, 'novo_modulo')}.js`;
+        const chaveRota = identificadorSeguro(lerCampoGerador('novoModuloChave', campos) || nomeModulo, 'novo_modulo');
+        const grupoMenu = identificadorSeguro(lerCampoGerador('novoModuloGrupo', campos) || 'seguranca', 'seguranca');
+        const tabelaSupabase = identificadorSeguro(lerCampoGerador('novoModuloTabela', campos) || nomeModulo, 'novo_modulo');
+        const cadastroDePessoas = pareceCadastroDePessoas(nomeModulo, descricaoTratada);
 
         const nomeArquivoApenas = arquivoModular.split('/').pop() || 'novo_modulo.js';
         const idCapitalizado = capitalizarCamel(chaveRota);
@@ -874,74 +962,63 @@
 
         prompt += `## 3. Demanda e Especificação do Novo Módulo\n`;
         prompt += `**Nome do Módulo**: ${nomeModulo}\n`;
-        prompt += `**Tabela Própria Supabase**: \`public.${tabelaSupabase}\`\n\n`;
+        prompt += `**Tabela Própria Supabase**: \`public.${tabelaSupabase}\`\n`;
+        prompt += `**Como executar esta intenção:** ${diretrizDaIntencao(intencao && intencao.id)}\n\n`;
         prompt += `**Instrução Detalhada do Engenheiro:**\n`;
-        prompt += `"""\n${descricaoTratada || 'Criar módulo completo de ' + nomeModulo + ' com formulários, listagem e persistência no Supabase.'}\n"""\n\n`;
+        prompt += `"""\n${descricaoTratada || 'Descreva o que a tela precisa fazer. Sem esse texto, não invente campos, limites nem conclusões.'}\n"""\n\n`;
 
-        prompt += `## 4. REGRA DE OURO CRÍTICA: NÃO CONTAMINAÇÃO DO HEADCOUNT CLT DA OBRA\n`;
-        prompt += `⚠️ **ATENÇÃO MÁXIMA**: Terceiros, mecânicos terceirizados (ex: empresa ARTEC) e prestadores pessoa jurídica (PJ) **NUNCA DEVEM SER MISTURADOS COM A TABELA OFICIAL \`public.colaboradores_efetivo\`**!\n`;
-        prompt += `- A tabela \`colaboradores_efetivo\` alimenta relatórios contratuais de Mão de Obra Local (RSA - Quadros 1 e 2 - ADA) e taxas de HHT de funcionários próprios.\n`;
-        prompt += `- Este novo módulo DEVE utilizar estritamente sua própria tabela dedicada: \`public.${tabelaSupabase}\`, garantindo controle rigoroso de segurança (ASOs, integrações, NRs) sem distorcer o headcount CLT da COP.\n\n`;
+        if (cadastroDePessoas) {
+            prompt += `## 4. Isolamento do efetivo próprio\n`;
+            prompt += `Este pedido fala de pessoas. Não grave esses registros em \`public.colaboradores_efetivo\` nem em \`public.colaboradores_checklist\`. Use somente \`public.${tabelaSupabase}\`. Não invente CPF, CA, CBO, limite nem conclusão de ASO.\n\n`;
+        } else {
+            prompt += `## 4. Escopo do cadastro\n`;
+            prompt += `Este pedido não é cadastro de pessoas. Não crie coluna de CPF, empresa parceira, vínculo de terceiro nem aviso de headcount. A tabela \`public.${tabelaSupabase}\` guarda só o que a demanda descreve.\n\n`;
+        }
 
-        prompt += `## 5. Roteiro Passo a Passo de Integração na Interface (Sem Tela em Branco)\n`;
-        prompt += `Para que o novo módulo apareça no painel e funcione perfeitamente sem ficar em branco, o agente DEVE executar os seguintes passos:\n\n`;
-        prompt += `1. **Criar o Arquivo Modular (\`${arquivoModular}\`)**:\n`;
-        prompt += `   - Implementar a função principal \`render${idCapitalizado}Panel()\` e modais de cadastro/edição.\n`;
-        prompt += `   - Exportar \`window.render${idCapitalizado}Panel = render${idCapitalizado}Panel;\`.\n`;
-        prompt += `2. **Adicionar o Script em \`dashboard/index.html\`**:\n`;
-        prompt += `   - Inserir a tag \`<script src="modules/${nomeArquivoApenas}?v=296"></script>\` logo após os demais módulos.\n`;
-        prompt += `3. **Adicionar o Botão no Menu Lateral (\`dashboard/index.html\`)**:\n`;
-        prompt += `   - Inserir dentro do grupo \`#navGroupItems-${grupoMenu}\`:\n`;
-        prompt += `     \`<button class="db-nav-item" id="nav${idCapitalizado}" onclick="showDbPage('${chaveRota}')"><span class="db-nav-icon">🚀</span> ${nomeModulo}</button>\`\n`;
-        prompt += `4. **Adicionar o Container da Página (\`dashboard/index.html\`)**:\n`;
-        prompt += `   - Inserir \`<section class="db-page" id="page-${chaveRota}"></section>\` dentro de \`<main class="db-main">\` antes do footer.\n`;
-        prompt += `5. **Roteamento Duplo e Sincronizado (REGRA DE PREVENÇÃO DE TELA EM BRANCO)**:\n`;
-        prompt += `   - Em \`dashboard/dashboard.js\` E TAMBÉM em \`dashboard/modules/epi_estoque.js\` (que possui declaração homônima de \`showDbPage\` e \`DB_PAGE_TITLES\`):\n`;
-        prompt += `     - Adicionar \`${chaveRota}: 'nav${idCapitalizado}'\` no objeto \`navMap\`.\n`;
-        prompt += `     - Adicionar \`${chaveRota}: '${nomeModulo}'\` em \`DB_PAGE_TITLES\`.\n`;
-        prompt += `     - Adicionar no \`showDbPage\`: \`if (pageId === '${chaveRota}') { if (typeof window.render${idCapitalizado}Panel === 'function') window.render${idCapitalizado}Panel(); }\`.\n`;
-        prompt += `6. **Atualizar a Documentação em \`dashboard/MAPA_MODULOS.md\`**:\n`;
-        prompt += `   - Incluir a linha do novo módulo na tabela de módulos desacoplados com seu arquivo e responsabilidade técnica.\n\n`;
+        prompt += `## 5. Roteiro de integração na interface\n`;
+        prompt += `1. **Criar o arquivo (\`${arquivoModular}\`)** com a função \`render${idCapitalizado}Panel()\` e a exportação \`window.render${idCapitalizado}Panel = render${idCapitalizado}Panel;\`.\n`;
+        prompt += `2. **Script em \`dashboard/index.html\`**: inserir \`<script src="modules/${nomeArquivoApenas}?v=..."></script>\` depois dos módulos já existentes. Se o arquivo é novo, comece em \`?v=1\`. Se já existir, some um passo ao \`?v=\` que já está nessa tag. Não copie um número antigo.\n`;
+        prompt += `3. **Botão no grupo \`#navGroupItems-${grupoMenu}\`**: \`<button class="db-nav-item" id="nav${idCapitalizado}" onclick="showDbPage('${chaveRota}')"><span class="db-nav-icon">🚀</span> ${nomeModulo}</button>\`.\n`;
+        prompt += `4. **Página**: inserir \`<section class="db-page" id="page-${chaveRota}"></section>\` dentro de \`<main class="db-main">\`, antes do rodapé, e fechar essa section. Uma div sem fechar engole as telas seguintes. \`node --check\` não acusa isso.\n`;
+        prompt += `5. **Roteamento nas duas cópias** (\`dashboard/dashboard.js\` e \`dashboard/modules/epi_estoque.js\`):\n`;
+        prompt += `   - \`${chaveRota}: 'nav${idCapitalizado}'\` em \`navMap\`.\n`;
+        prompt += `   - \`${chaveRota}: '${nomeModulo}'\` em \`DB_PAGE_TITLES\`.\n`;
+        prompt += `   - \`${chaveRota}: '${grupoMenu}'\` em \`NAV_GROUP_POR_PAGINA\`.\n`;
+        prompt += `   - Em \`showDbPage\`: \`if (pageId === '${chaveRota}') { if (typeof window.render${idCapitalizado}Panel === 'function') window.render${idCapitalizado}Panel(); }\`.\n`;
+        prompt += `6. **Registrar a linha do módulo em \`dashboard/MAPA_MODULOS.md\`**.\n\n`;
 
-        prompt += `## 6. Proposta de Estrutura de Banco de Dados (Supabase DDL / SQL)\n`;
-        prompt += `O agente deve fornecer o comando SQL completo para criação da tabela no Supabase:\n`;
+        prompt += `## 6. Proposta de tabela (somente texto; não executar no banco remoto)\n`;
+        prompt += `Entregue o SQL para revisão. Não aplique no Supabase nesta tarefa e não enfraqueça o acesso.\n`;
         prompt += `\`\`\`sql\n`;
-        prompt += `-- Criação da tabela dedicada para o novo módulo ${nomeModulo}\n`;
         prompt += `CREATE TABLE IF NOT EXISTS public.${tabelaSupabase} (\n`;
-        prompt += `    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n`;
+        prompt += `    id TEXT PRIMARY KEY,\n`;
         prompt += `    nome TEXT NOT NULL,\n`;
-        prompt += `    cpf_ou_documento TEXT,\n`;
-        prompt += `    empresa_parceira TEXT NOT NULL, -- Ex: ARTEC, PJ Individual, etc.\n`;
-        prompt += `    tipo_vinculo TEXT DEFAULT 'Terceiro_PJ', -- 'Mecanico', 'PJ', 'Temporario', 'Prestador'\n`;
-        prompt += `    funcao TEXT NOT NULL,\n`;
-        prompt += `    setor_frente TEXT,\n`;
-        prompt += `    data_integracao DATE DEFAULT CURRENT_DATE,\n`;
-        prompt += `    aso_validade DATE,\n`;
-        prompt += `    treinamentos_obrigatorios JSONB DEFAULT '[]'::jsonb,\n`;
+        if (cadastroDePessoas) {
+            prompt += `    empresa_ou_origem TEXT,\n`;
+            prompt += `    funcao TEXT,\n`;
+            prompt += `    setor_frente TEXT,\n`;
+        }
         prompt += `    ativo BOOLEAN DEFAULT TRUE,\n`;
         prompt += `    observacoes TEXT,\n`;
         prompt += `    criado_em TIMESTAMPTZ DEFAULT NOW(),\n`;
         prompt += `    atualizado_em TIMESTAMPTZ DEFAULT NOW()\n`;
-        prompt += `);\n\n`;
-        prompt += `-- Índice para consultas rápidas\n`;
-        prompt += `CREATE INDEX IF NOT EXISTS idx_${tabelaSupabase}_empresa ON public.${tabelaSupabase}(empresa_parceira);\n`;
-        prompt += `CREATE INDEX IF NOT EXISTS idx_${tabelaSupabase}_ativo ON public.${tabelaSupabase}(ativo);\n`;
+        prompt += `);\n`;
         prompt += `\`\`\`\n\n`;
 
         prompt += `## 7. Regras de Ouro Técnicas e de SST Inegociáveis\n`;
-        prompt += `1. **NUNCA usar window.open()**. Usar sempre abrirDocumentoHtmlParaImpressao(html, titulo) ou Blob com URL.createObjectURL.\n`;
-        prompt += `2. **Suporte a Dark Mode (NR-17)**: todo elemento deve respeitar --bg, --card, --text, --border.\n`;
-        prompt += `3. **Preservação do App Mobile PWA de Campo**: não alterar app.js, index.html ou sw.js da raiz.\n`;
-        prompt += `4. **Leitura cirúrgica**: ler blocos de até 150 linhas em torno dos pontos de inserção nos arquivos existentes.\n`;
-        prompt += `5. **Atualização de Cache-Buster (?v=296)** em todas as tags e scripts modificados.\n\n`;
+        (gerenciadorConhecimento.dados.regrasOuroGlobais || []).forEach((regra, idx) => {
+            prompt += `${idx + 1}. **${regra}**\n`;
+        });
+        prompt += `\n`;
 
         prompt += `## 8. Critérios de Aceite e Checklist de Entrega\n`;
-        prompt += `- [ ] Arquivo modular \`${arquivoModular}\` criado com código limpo e responsivo.\n`;
-        prompt += `- [ ] Botão do menu funcionando no grupo \`${grupoMenu}\` e abrindo a tela sem erros.\n`;
-        prompt += `- [ ] Rota configurada nos dois arquivos centrais (\`dashboard.js\` e \`epi_estoque.js\`) para garantir exibição sem tela em branco.\n`;
-        prompt += `- [ ] Script SQL fornecido para execução segura no Supabase.\n`;
-        prompt += `- [ ] \`node --check\` e \`npm run lint\` executados e aprovados com 0 erros.\n`;
-        prompt += `- [ ] Resumo didático e passo a passo de teste entregue em Português (pt-BR).\n`;
+        prompt += `- [ ] Arquivo modular \`${arquivoModular}\` criado, com a section da página fechada.\n`;
+        prompt += `- [ ] Botão do menu no grupo \`${grupoMenu}\` abre a tela sem erros.\n`;
+        prompt += `- [ ] Rota em \`navMap\`, \`DB_PAGE_TITLES\`, \`NAV_GROUP_POR_PAGINA\` e \`showDbPage\` nas duas cópias (\`dashboard.js\` e \`epi_estoque.js\`).\n`;
+        prompt += `- [ ] SQL entregue em texto, sem execução no banco remoto.\n`;
+        prompt += `- [ ] Cache aumentado só no arquivo modificado, a partir do \`?v=\` que já está no index.html.\n`;
+        prompt += `- [ ] \`node --check\` no JavaScript alterado e conferência das telas vizinhas no navegador.\n`;
+        prompt += `- [ ] Resumo em português do que mudou e de como testar no painel.\n`;
 
         return prompt;
     }
@@ -1065,7 +1142,7 @@
                                             <label style="display:block; font-size:11.5px; font-weight:700; color:var(--text); margin-bottom:3px;">
                                                 Nome do Novo Módulo *
                                             </label>
-                                            <input type="text" id="novoModuloNome" value="Gestão de Terceiros, PJ &amp; Temporários" style="width:100%; padding:8px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:6px; box-sizing:border-box; background:var(--card); color:var(--text); font-weight:600;" oninput="aoDigitarNomeNovoModulo()">
+                                            <input type="text" id="novoModuloNome" value="" placeholder="Ex.: Higiene ocupacional" style="width:100%; padding:8px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:6px; box-sizing:border-box; background:var(--card); color:var(--text); font-weight:600;" oninput="aoDigitarNomeNovoModulo()">
                                         </div>
                                         <div>
                                             <label style="display:block; font-size:11.5px; font-weight:700; color:var(--text); margin-bottom:3px;">
@@ -1073,7 +1150,7 @@
                                             </label>
                                             <select id="novoModuloGrupo" style="width:100%; padding:8px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-weight:600;" onchange="aoMudarParametrosPrompt()">
                                                 <option value="pessoas">👥 Gestão de Pessoas</option>
-                                                <option value="seguranca">🛡️ Segurança do Trabalho</option>
+                                                <option value="seguranca" selected>🛡️ Segurança do Trabalho</option>
                                                 <option value="gestao">📋 Gestão &amp; Administração</option>
                                                 <option value="saude">🩺 Saúde Ocupacional</option>
                                                 <option value="ambiente">🌱 Meio Ambiente</option>
@@ -1088,23 +1165,23 @@
                                             <label style="display:block; font-size:11px; font-weight:700; color:var(--primary); margin-bottom:3px;">
                                                 Novo Arquivo (Desacoplado)
                                             </label>
-                                            <input type="text" id="novoModuloArquivo" value="dashboard/modules/terceiros_prestadores.js" style="width:100%; padding:6px 8px; font-size:11.5px; font-family:monospace; border:1px solid var(--border); border-radius:6px; box-sizing:border-box; background:var(--card); color:var(--text);" oninput="aoMudarParametrosPrompt()">
+                                            <input type="text" id="novoModuloArquivo" value="" placeholder="Preenchido pelo nome, se ficar vazio" style="width:100%; padding:6px 8px; font-size:11.5px; font-family:monospace; border:1px solid var(--border); border-radius:6px; box-sizing:border-box; background:var(--card); color:var(--text);" oninput="aoMudarParametrosPrompt()">
                                         </div>
                                         <div>
                                             <label style="display:block; font-size:11px; font-weight:700; color:var(--primary); margin-bottom:3px;">
                                                 Tabela Dedicada Supabase
                                             </label>
-                                            <input type="text" id="novoModuloTabela" value="terceiros_prestadores" style="width:100%; padding:6px 8px; font-size:11.5px; font-family:monospace; border:1px solid var(--border); border-radius:6px; box-sizing:border-box; background:var(--card); color:var(--text);" oninput="aoMudarParametrosPrompt()">
+                                            <input type="text" id="novoModuloTabela" value="" placeholder="Preenchida pelo nome, se ficar vazia" style="width:100%; padding:6px 8px; font-size:11.5px; font-family:monospace; border:1px solid var(--border); border-radius:6px; box-sizing:border-box; background:var(--card); color:var(--text);" oninput="aoMudarParametrosPrompt()">
                                         </div>
                                     </div>
 
-                                    <input type="hidden" id="novoModuloChave" value="terceiros">
+                                    <input type="hidden" id="novoModuloChave" value="">
 
                                     <!-- Alerta Crítico de Isolamento de Headcount CLT -->
                                     <div style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:6px; padding:10px 12px; font-size:11px; color:#92400e; line-height:1.45; display:flex; gap:8px;">
                                         <span style="font-size:16px;">⚠️</span>
                                         <div>
-                                            <strong>Regra de Ouro da Obra (Headcount):</strong> Terceiros, mecânicos parceiros (ex: ARTEC) e prestadores PJ <strong>NUNCA</strong> devem ser gravados em <code>public.colaboradores_efetivo</code>. A tabela do efetivo próprio CLT da COP e os relatórios do RSA (Quadros 1 e 2 - ADA) permanecem 100% blindados.
+                                            <strong>Só quando a tela for de pessoas de outra empresa:</strong> terceiro, mecânico parceiro (ex.: ARTEC) e prestador PJ não entram em <code>public.colaboradores_efetivo</code>. Medição, documento ou rotina da obra não viram esse cadastro.
                                         </div>
                                     </div>
 
@@ -1429,13 +1506,6 @@
         if (ehNovoModulo) {
             if (blocoNovo) blocoNovo.style.display = 'block';
             if (wrapSub) wrapSub.style.display = 'none';
-
-            // Garante que o input de nome tenha sugestão inicial se vazio
-            const inputNome = document.getElementById('novoModuloNome');
-            if (inputNome && !inputNome.value) {
-                inputNome.value = 'Gestão de Terceiros, PJ & Temporários';
-                aoDigitarNomeNovoModulo();
-            }
             atualizarContextoModulo();
             return;
         }
@@ -1472,15 +1542,26 @@
         const ehNovoModulo = (intencaoId === 'novo_modulo_completo') || (modId === '__novo_modulo__');
 
         if (ehNovoModulo) {
-            const nomeNovo = document.getElementById('novoModuloNome')?.value.trim() || 'Gestão de Terceiros';
-            const arqNovo = document.getElementById('novoModuloArquivo')?.value.trim() || 'dashboard/modules/terceiros_prestadores.js';
-            const tabNovo = document.getElementById('novoModuloTabela')?.value.trim() || 'terceiros_prestadores';
-            const grpNovo = document.getElementById('novoModuloGrupo')?.value || 'pessoas';
+            const nomeNovo = document.getElementById('novoModuloNome')?.value.trim() || '';
+            const arqNovo = document.getElementById('novoModuloArquivo')?.value.trim() || '';
+            const tabNovo = document.getElementById('novoModuloTabela')?.value.trim() || '';
+            const grpNovo = document.getElementById('novoModuloGrupo')?.value || 'seguranca';
+            const textoDemanda = document.getElementById('promptDescricaoTexto')?.value || '';
 
-            if (ctxArquivo) ctxArquivo.textContent = `📁 Novo Arquivo: ${arqNovo}`;
-            if (ctxTabelas) ctxTabelas.textContent = `Tabela Própria: public.${tabNovo} (isolada)`;
-            if (ctxDesc) ctxDesc.textContent = `Módulo independente e desacoplado no menu "${grpNovo}". Não interfere na contagem de colaboradores_efetivo da COP.`;
-            if (lblDesc) lblDesc.textContent = `4. O que você pretende implementar no NOVO MÓDULO "${nomeNovo}":`;
+            if (ctxArquivo) ctxArquivo.textContent = arqNovo ? `Novo arquivo: ${arqNovo}` : 'Arquivo: ainda sem nome';
+            if (ctxTabelas) ctxTabelas.textContent = tabNovo ? `Tabela própria: public.${tabNovo}` : 'Tabela: ainda sem nome';
+            if (ctxDesc) {
+                if (!nomeNovo) {
+                    ctxDesc.textContent = 'Informe o nome da tela. O gerador não escolhe um exemplo sozinho.';
+                } else if (pareceCadastroDePessoas(nomeNovo, textoDemanda)) {
+                    ctxDesc.textContent = `Módulo de pessoas no menu "${grpNovo}". Não gravar em colaboradores_efetivo.`;
+                } else {
+                    ctxDesc.textContent = `Módulo do assunto pedido, no menu "${grpNovo}". Sem coluna de CPF.`;
+                }
+            }
+            if (lblDesc) lblDesc.textContent = nomeNovo
+                ? `O que a nova tela "${nomeNovo}" precisa fazer:`
+                : 'O que a nova tela precisa fazer:';
             return;
         }
 
@@ -1619,11 +1700,6 @@
                 lblDesc.textContent = 'Instruções Detalhadas para o Novo Módulo:';
             }
 
-            // Garante que os inputs do novo módulo tenham valores válidos
-            const inputNome = document.getElementById('novoModuloNome');
-            if (inputNome && !inputNome.value) {
-                inputNome.value = 'Gestão de Terceiros, PJ & Temporários';
-            }
             aoDigitarNomeNovoModulo();
 
             // Sugestões para novo módulo
@@ -1704,7 +1780,12 @@
             }
         }
 
-        aoDigitarNomeNovoModulo();
+        const chaveDoModelo = document.getElementById('novoModuloChave');
+        const tabelaDoModelo = document.getElementById('novoModuloTabela');
+        if (chaveDoModelo && tabelaDoModelo && tabelaDoModelo.value.trim()) {
+            chaveDoModelo.value = identificadorSeguro(tabelaDoModelo.value, 'novo_modulo');
+        }
+        atualizarContextoModulo();
         aoDigitarDescricaoPrompt();
         executarGeracaoPrompt();
     };
@@ -1740,15 +1821,23 @@
         const inputNome = document.getElementById('novoModuloNome');
         if (!inputNome) return;
         const nome = inputNome.value.trim();
-        const slug = gerarSlug(nome);
+        if (!nome) {
+            atualizarContextoModulo();
+            return;
+        }
+        const slug = identificadorSeguro(nome, '');
+        if (!slug) {
+            atualizarContextoModulo();
+            return;
+        }
 
         const arqInput = document.getElementById('novoModuloArquivo');
         const tabInput = document.getElementById('novoModuloTabela');
         const chvInput = document.getElementById('novoModuloChave');
 
-        if (arqInput) arqInput.value = `dashboard/modules/${slug}.js`;
-        if (tabInput) tabInput.value = slug;
-        if (chvInput) chvInput.value = slug.slice(0, 20);
+        if (arqInput && !arqInput.value.trim()) arqInput.value = `dashboard/modules/${slug}.js`;
+        if (tabInput && !tabInput.value.trim()) tabInput.value = slug;
+        if (chvInput && !chvInput.value.trim()) chvInput.value = slug.slice(0, 20);
 
         atualizarContextoModulo();
     };
@@ -1796,11 +1885,14 @@
             const arqInput = document.getElementById('novoModuloArquivo');
             const tabInput = document.getElementById('novoModuloTabela');
             const grpInput = document.getElementById('novoModuloGrupo');
+            const chvInput = document.getElementById('novoModuloChave');
             if (inputNome) inputNome.value = item.nome;
+            aoDigitarNomeNovoModulo();
             if (arqInput && item.arquivo) arqInput.value = item.arquivo;
             if (tabInput && item.tabela) tabInput.value = item.tabela;
             if (grpInput && item.grupo) grpInput.value = item.grupo;
-            aoDigitarNomeNovoModulo();
+            if (chvInput && item.tabela) chvInput.value = identificadorSeguro(item.tabela, 'novo_modulo');
+            atualizarContextoModulo();
         }
 
         const textarea = document.getElementById('promptDescricaoTexto');
@@ -1846,14 +1938,6 @@
         if (badge) {
             badge.textContent = `~${tokensAprox} tokens (${palavrasTotais} palavras)`;
         }
-
-        salvarNoHistoricoPrompts({
-            dataHora: new Date().toISOString(),
-            intencaoId,
-            moduloId,
-            submoduloId,
-            resumo: descricaoUsuario.slice(0, 80)
-        });
     };
 
     function copiarPromptGerado() {
@@ -1881,6 +1965,13 @@
         }
 
         function exibirFeedback() {
+            salvarNoHistoricoPrompts({
+                dataHora: new Date().toISOString(),
+                intencaoId: (window._modoOperacaoGerador === 'novo_modulo') ? 'novo_modulo_completo' : (document.getElementById('promptSelectIntencao')?.value || ''),
+                moduloId: (window._modoOperacaoGerador === 'novo_modulo') ? '__novo_modulo__' : (document.getElementById('promptSelectModulo')?.value || ''),
+                submoduloId: document.getElementById('promptSelectSubmodulo')?.value || '',
+                resumo: (document.getElementById('promptDescricaoTexto')?.value || '').slice(0, 80)
+            });
             if (btn) {
                 const htmlAntigo = btn.innerHTML;
                 btn.innerHTML = '<span>✅</span> Copiado!';
@@ -1905,9 +1996,9 @@
             alert('Por favor, informe o Nome do Novo Módulo antes de salvar.');
             return;
         }
-        const arquivo = document.getElementById('novoModuloArquivo')?.value.trim() || 'dashboard/modules/novo_modulo.js';
-        const tabela = document.getElementById('novoModuloTabela')?.value.trim() || 'terceiros_prestadores';
-        const chave = document.getElementById('novoModuloChave')?.value.trim() || gerarSlug(nome);
+        const arquivo = document.getElementById('novoModuloArquivo')?.value.trim() || `dashboard/modules/${identificadorSeguro(nome, 'novo_modulo')}.js`;
+        const tabela = identificadorSeguro(document.getElementById('novoModuloTabela')?.value.trim() || nome, 'novo_modulo');
+        const chave = identificadorSeguro(document.getElementById('novoModuloChave')?.value.trim() || nome, 'novo_modulo');
 
         const novoMod = {
             id: chave,
@@ -1923,7 +2014,9 @@
                     descricao: `Gestão e cadastro de registros de ${nome}.`,
                     funcoesChave: [`render${capitalizarCamel(chave)}Panel`, `salvar${capitalizarCamel(chave)}`],
                     tabelasSupabase: [tabela],
-                    regrasNegocio: 'Isolamento estrito do headcount de colaboradores_efetivo da COP.'
+                    regrasNegocio: pareceCadastroDePessoas(nome, '')
+                        ? 'Não gravar em colaboradores_efetivo. Tabela própria, sem inventar CPF ou conclusão.'
+                        : 'Cadastro só do assunto pedido. Não transformar em cadastro de terceiros nem inventar limite.'
                 }
             ]
         };
@@ -2212,19 +2305,23 @@
      <button class="db-nav-item" id="navGeradorPrompts" onclick="showDbPage('geradorprompts')"><span class="db-nav-icon">💡</span> Gerador de Prompts IA</button>
    - Adicionar o container antes do rodapé de <main class="db-main">:
      <section class="db-page" id="page-geradorprompts"></section>
-   - Adicionar a tag de script após os módulos:
-     <script src="modules/gerador_prompts.js?v=297"></script>
+   - Adicionar a tag de script após os módulos e fechar a section da página:
+     <script src="modules/gerador_prompts.js"></script>
+   - Aumente só o ?v= desse script a partir do valor que já está no index.html. Não copie um número antigo.
 
 2. Em dashboard/dashboard.js E TAMBÉM em dashboard/modules/epi_estoque.js:
    - Adicionar 'geradorprompts' no navMap: geradorprompts: 'navGeradorPrompts'
    - Adicionar 'geradorprompts' em DB_PAGE_TITLES: geradorprompts: 'Gerador de Prompts IA'
+   - Adicionar 'geradorprompts' em NAV_GROUP_POR_PAGINA nas duas cópias
    - Adicionar no showDbPage:
      if (pageId === 'geradorprompts') { if (typeof window.inicializarGeradorPrompts === 'function') window.inicializarGeradorPrompts(); }
 
 3. Atualizar dashboard/MAPA_MODULOS.md registrando o módulo #11 (gerador_prompts.js).`;
 
     function baixarArquivoGeradorPrompts() {
-        fetch('modules/gerador_prompts.js?v=297')
+        const tag = document.querySelector('script[src*="gerador_prompts.js"]');
+        const endereco = (tag && tag.getAttribute('src')) || 'modules/gerador_prompts.js';
+        fetch(endereco)
             .then(res => {
                 if (!res.ok) throw new Error('Não foi possível carregar o arquivo (HTTP ' + res.status + ')');
                 return res.text();
@@ -2313,6 +2410,7 @@
     window.limparDescricaoPrompt = limparDescricaoPrompt;
     window.aplicarExemploSugerido = aplicarExemploSugerido;
     window.preencherExemploDemonstracao = preencherExemploDemonstracao;
+    window.construirPromptGeradorPrompts = construirPromptCompleto;
     window.executarGeracaoPrompt = executarGeracaoPrompt;
     window.copiarPromptGerado = copiarPromptGerado;
     window.salvarNovoModuloDiretoNaBase = salvarNovoModuloDiretoNaBase;

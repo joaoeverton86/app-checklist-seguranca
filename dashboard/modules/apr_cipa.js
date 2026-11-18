@@ -757,9 +757,9 @@ function renderRiscosAprForm() {
     container.innerHTML = aprRiscosForm.map((r, i) => {
         const puro = nivelRiscoApr(r.p_puro, r.s_puro);
         const residual = nivelRiscoApr(r.p_residual, r.s_residual);
-        const residualRuim = puro.valor !== null && residual.valor !== null && residual.valor >= puro.valor;
+        const residualPior = puro.valor !== null && residual.valor !== null && residual.valor > puro.valor;
         return `
-        <div style="border:1px solid ${residualRuim ? 'var(--danger)' : 'var(--border)'}; border-radius:10px; padding:12px; margin-bottom:12px; background:var(--bg); box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+        <div style="border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:12px; background:var(--bg); box-shadow:0 1px 3px rgba(0,0,0,0.04);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px dashed var(--border); padding-bottom:6px;">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <b style="font-size:12.5px; color:var(--primary);">Risco ${i + 1}</b>
@@ -806,9 +806,9 @@ function renderRiscosAprForm() {
                 <input type="text" placeholder="Responsável" value="${escapeHTML(r.responsavel)}" oninput="aprRiscosForm[${i}].responsavel=this.value" style="${campoEstilo}">
             </div>
 
-            ${residualRuim ? `
-            <div style="margin-top:8px; padding:6px 10px; border-radius:6px; background:#fdf2f2; color:var(--danger); font-size:11px; font-weight:600; display:flex; align-items:center; justify-content:space-between; gap:8px;">
-                <span>⚠️ O Risco Residual não reduziu em relação ao Puro. Ajuste a nota ou a medida se isso não for intencional.</span>
+            ${residualPior ? `
+            <div style="margin-top:8px; padding:6px 10px; border-radius:6px; background:var(--bg); color:var(--text); font-size:11px; font-weight:600;">
+                <span>Revise a coerência entre os controles e a classificação residual. Redução não é presumida.</span>
             </div>` : ''}
         </div>`;
     }).join('');
@@ -838,22 +838,19 @@ async function salvarApr() {
         return;
     }
 
-    // Aviso (não bloqueio) igual ao padrão já usado no lançamento de DDS duplicado: se
-    // algum risco está salvando com o Residual igual ou pior que o Puro, confirma antes de
-    // gravar - dá pra voltar e corrigir, ou confirmar que é intencional mesmo.
-    const riscosResidualRuim = riscosValidos.filter(r => {
+    const riscosResidualPior = riscosValidos.filter(r => {
         const puro = nivelRiscoApr(r.p_puro, r.s_puro);
         const residual = nivelRiscoApr(r.p_residual, r.s_residual);
-        return puro.valor !== null && residual.valor !== null && residual.valor >= puro.valor;
+        return puro.valor !== null && residual.valor !== null && residual.valor > puro.valor;
     });
-    if (riscosResidualRuim.length > 0) {
-        const listaRiscos = riscosResidualRuim.map(r => `- ${r.evento_risco || r.perigo_fonte || 'Risco sem descrição'}`).join('\n');
-        const confirmaResidualRuim = confirm(
-            `⚠️ ${riscosResidualRuim.length} risco(s) estão com o Risco Residual igual ou pior que o Risco Puro (a medida de prevenção não reduziu o risco na prática):\n\n` +
+    if (riscosResidualPior.length > 0) {
+        const listaRiscos = riscosResidualPior.map(r => `- ${r.evento_risco || r.perigo_fonte || 'Risco sem descrição'}`).join('\n');
+        const confirmaResidualPior = confirm(
+            `Revise a coerência entre os controles e a classificação residual. Redução não é presumida.\n\n` +
             listaRiscos + '\n\n' +
-            `Revise as Medidas de Prevenção e o P/S do Residual antes de salvar, ou confirme pra salvar assim mesmo.\n\nSalvar mesmo assim?`
+            `A nota residual igual à do risco puro não é um erro. Salvar com a classificação que você marcou?`
         );
-        if (!confirmaResidualRuim) return;
+        if (!confirmaResidualPior) return;
     }
 
     const ativCriticas = Array.from(document.querySelectorAll('.aprAtivCriticaCheckbox:checked')).map(cb => cb.value);

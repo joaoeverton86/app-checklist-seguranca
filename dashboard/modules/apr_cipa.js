@@ -172,61 +172,24 @@ function inferirPsApr(passo, perigo, evento, danos) {
     return { pPuro, sPuro, pResidual, sResidual };
 }
 
-// Calibra um risco individual
-function autoCalibrarRiscoIndividual(i) {
-    if (!aprRiscosForm[i]) return;
-    const r = aprRiscosForm[i];
-    const inf = inferirPsApr(r.passo_tarefa, r.perigo_fonte, r.evento_risco, r.danos_provaveis);
-    r.p_puro = inf.pPuro;
-    r.s_puro = inf.sPuro;
-    r.p_residual = inf.pResidual;
-    r.s_residual = inf.sResidual;
-    renderRiscosAprForm();
-}
-
-// Calibra todos os riscos da APR de uma vez só
-function autoCalibrarTodosRiscosApr() {
-    if (!aprRiscosForm || aprRiscosForm.length === 0) return;
-    let count = 0;
-    aprRiscosForm.forEach(r => {
-        if ((r.passo_tarefa || '').trim() || (r.perigo_fonte || '').trim() || (r.evento_risco || '').trim()) {
-            const inf = inferirPsApr(r.passo_tarefa, r.perigo_fonte, r.evento_risco, r.danos_provaveis);
-            r.p_puro = inf.pPuro;
-            r.s_puro = inf.sPuro;
-            r.p_residual = inf.pResidual;
-            r.s_residual = inf.sResidual;
-            count++;
-        }
-    });
-    renderRiscosAprForm();
-    if (typeof showToast === 'function') {
-        showToast(`🪄 ${count} risco(s) calibrados automaticamente!`);
-    } else {
-        const st = document.getElementById('aprFormStatus');
-        if (st) {
-            st.textContent = `✅ ${count} risco(s) calibrados com P/S Puro e Residual automáticos.`;
-            st.style.color = 'var(--success)';
-        }
+// A nota não é mais preenchida por palavra-chave. Estas funções continuam
+// declaradas para substituir a cópia antiga do núcleo e não gravar P/S.
+function autoCalibrarRiscoIndividual() {
+    const st = document.getElementById('aprFormStatus');
+    if (st) {
+        st.textContent = 'A probabilidade e a gravidade ficam com o engenheiro.';
+        st.style.color = 'var(--text)';
     }
 }
 
-// Ao alterar P ou S Puro manualmente, ajusta automaticamente o Residual caso não tenha sido alterado
+function autoCalibrarTodosRiscosApr() {
+    autoCalibrarRiscoIndividual();
+}
+
+// Guarda só o número que o engenheiro escolheu. Não calcula o residual no lugar dele.
 function onMudarPuroApr(i, campo, valor) {
     if (!aprRiscosForm[i]) return;
     aprRiscosForm[i][campo] = valor;
-    
-    const pPuro = parseInt(aprRiscosForm[i].p_puro, 10);
-    const sPuro = parseInt(aprRiscosForm[i].s_puro, 10);
-
-    // Se ambos P e S Puro estiverem preenchidos, sugere automaticamente o Residual reduzido
-    if (pPuro && sPuro) {
-        if (!aprRiscosForm[i].p_residual || aprRiscosForm[i].p_residual >= pPuro) {
-            aprRiscosForm[i].p_residual = Math.max(1, Math.min(2, pPuro - 2));
-        }
-        if (!aprRiscosForm[i].s_residual || aprRiscosForm[i].s_residual >= sPuro) {
-            aprRiscosForm[i].s_residual = sPuro === 5 ? 3 : Math.max(1, sPuro - 1);
-        }
-    }
     renderRiscosAprForm();
 }
 
@@ -347,7 +310,13 @@ function inserirPacoteRiscosDaBiblioteca(idxCat) {
     }
 
     cat.riscos.forEach(r => {
-        aprRiscosForm.push({ ...r });
+        aprRiscosForm.push({
+            ...r,
+            p_puro: '',
+            s_puro: '',
+            p_residual: '',
+            s_residual: ''
+        });
     });
 
     renderRiscosAprForm();
@@ -537,7 +506,7 @@ function abrirModalBibliotecaRiscos() {
                     </button>
                 </div>
                 <div style="font-size:11.5px; color:var(--text-light); line-height:1.5;">
-                    ${cat.riscos.map(r => `<div>• <b>${escapeHTML(r.passo_tarefa)}</b>: ${escapeHTML(r.evento_risco)} (Risco Puro: ${r.p_puro}x${r.s_puro} → Residual: ${r.p_residual}x${r.s_residual})</div>`).join('')}
+                    ${cat.riscos.map(r => `<div>• <b>${escapeHTML(r.passo_tarefa)}</b>: ${escapeHTML(r.evento_risco)}. A nota de probabilidade e gravidade fica em branco na APR.</div>`).join('')}
                 </div>
             </div>
         `).join('');
@@ -794,7 +763,6 @@ function renderRiscosAprForm() {
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px dashed var(--border); padding-bottom:6px;">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <b style="font-size:12.5px; color:var(--primary);">Risco ${i + 1}</b>
-                    <button type="button" class="db-clear-btn" onclick="autoCalibrarRiscoIndividual(${i})" style="font-size:11px; padding:2px 8px; color:#2563eb; border-color:#93c5fd; background:#eff6ff;" title="Preenche automaticamente P e S Puro e Residual">🪄 Sugerir P/S</button>
                 </div>
                 <div style="display:flex; gap:2px; align-items:center;">
                     <button onclick="moverRiscoAprForm(${i}, -1)" title="Mover para cima" ${i === 0 ? 'disabled' : ''} style="border:none; background:none; color:${i === 0 ? 'var(--text-light)' : 'var(--text)'}; cursor:${i === 0 ? 'default' : 'pointer'}; font-size:15px; padding:2px 4px;">▲</button>
@@ -840,8 +808,7 @@ function renderRiscosAprForm() {
 
             ${residualRuim ? `
             <div style="margin-top:8px; padding:6px 10px; border-radius:6px; background:#fdf2f2; color:var(--danger); font-size:11px; font-weight:600; display:flex; align-items:center; justify-content:space-between; gap:8px;">
-                <span>⚠️ O Risco Residual não reduziu em relação ao Puro.</span>
-                <button type="button" class="db-clear-btn" onclick="autoCalibrarRiscoIndividual(${i})" style="font-size:10.5px; padding:2px 6px; color:#2563eb; border-color:#93c5fd; background:#fff;">Ajustar Automaticamente</button>
+                <span>⚠️ O Risco Residual não reduziu em relação ao Puro. Ajuste a nota ou a medida se isso não for intencional.</span>
             </div>` : ''}
         </div>`;
     }).join('');
@@ -1122,16 +1089,13 @@ function usarModeloComoBase(id) {
     document.querySelectorAll('.aprEpiEspecificoCheckbox').forEach(cb => { cb.checked = episEspecificos.includes(cb.value); });
     document.getElementById('aprForm_extintorTipo').value = m.epi_extintor_tipo || '';
 
-    aprRiscosForm = Array.isArray(m.riscos) && m.riscos.length > 0 ? m.riscos.map(r => ({ ...r })) : [rowRiscoVazio()];
-    aprRiscosForm.forEach(r => {
-        if (!r.p_puro || !r.s_puro) {
-            const inf = inferirPsApr(r.passo_tarefa, r.perigo_fonte, r.evento_risco, r.danos_provaveis);
-            r.p_puro = r.p_puro || inf.pPuro;
-            r.s_puro = r.s_puro || inf.sPuro;
-            r.p_residual = r.p_residual || inf.pResidual;
-            r.s_residual = r.s_residual || inf.sResidual;
-        }
-    });
+    aprRiscosForm = Array.isArray(m.riscos) && m.riscos.length > 0 ? m.riscos.map(r => ({
+        ...r,
+        p_puro: '',
+        s_puro: '',
+        p_residual: '',
+        s_residual: ''
+    })) : [rowRiscoVazio()];
     renderRiscosAprForm();
     renderEquipeAprPreview();
 

@@ -270,6 +270,40 @@
         if (!estadoModulo.contextoSelecionadoId || !estadoModulo.contextos.some(function (c) { return c.id === estadoModulo.contextoSelecionadoId; })) {
             estadoModulo.contextoSelecionadoId = estadoModulo.contextos[0] ? estadoModulo.contextos[0].id : '';
         }
+
+        // Migração automática transparente de itens legados que tinham Passo da Tarefa genérico repetido ("Atividade de ... em ...")
+        var migrouLegado = false;
+        estadoModulo.sugestoesFila.forEach(function (sug, idx) {
+            if (!sug || !sug.acao_proposta) return;
+            var ctxRef = (sug.contexto_id && buscarContextoPorId(sug.contexto_id)) || estadoModulo.contextos[0] || null;
+            if (ehPropostaGenericaLegada(sug.acao_proposta, ctxRef)) {
+                var refinada = construirPropostaTecnicaPorPerigo(sug.acao_proposta.perigo_fonte, idx, ctxRef);
+                sug.acao_proposta.passo_tarefa = refinada.passo_tarefa;
+                sug.acao_proposta.evento_risco = refinada.evento_risco;
+                sug.acao_proposta.danos_provaveis = refinada.danos_provaveis;
+                sug.acao_proposta.medidas_prevencao = refinada.medidas_prevencao;
+                sug.fase_operacional = refinada.fase_operacional || sug.fase_operacional;
+                migrouLegado = true;
+            }
+        });
+        estadoModulo.regrasAprendidas.forEach(function (regra, idx) {
+            if (!regra) return;
+            var ctxRef = (regra.contexto_aplicavel_id && buscarContextoPorId(regra.contexto_aplicavel_id)) || estadoModulo.contextos[0] || null;
+            if (ehPropostaGenericaLegada(regra, ctxRef)) {
+                var refinada = construirPropostaTecnicaPorPerigo(regra.perigo_fonte, idx, ctxRef);
+                regra.passo_tarefa = refinada.passo_tarefa;
+                regra.evento_risco = refinada.evento_risco;
+                regra.danos_provaveis = refinada.danos_provaveis;
+                regra.medidas_prevencao = refinada.medidas_prevencao;
+                regra.fase = refinada.fase_operacional || regra.fase;
+                migrouLegado = true;
+            }
+        });
+        if (migrouLegado && chaveSessao && chaveSessao !== 'sem_sessao') {
+            try {
+                localStorage.setItem(chaveStorage, serializarEstadoAtual());
+            } catch (e) { /* preserva em memória mesmo se o storage estiver cheio */ }
+        }
     }
 
     function sincronizarDoStorageParaConcorrencia() {
@@ -706,6 +740,7 @@
                 if (jaExiste) return;
 
                 var fonteDoc = ctx.fonte_procedimento || 'Pendente: vincular procedimento operacional / PGR';
+                var propostaDetalhada = construirPropostaTecnicaPorPerigo(perigoTxt, idx, ctx);
                 lacunasPropostas.push({
                     id: 'sug_ctx_' + Date.now() + '_' + idx,
                     versao: 1,
@@ -713,27 +748,27 @@
                     regra_gerada_id: null,
                     contexto_id: ctx.id,
                     modulo_destino: 'APR',
-                    fase_operacional: inferirFaseRoteiro(perigoTxt),
+                    fase_operacional: propostaDetalhada.fase_operacional,
                     titulo_insight: 'Hipótese de Risco do Cenário: ' + perigoTxt,
                     descricao_analise: 'Origem: cenário "' + ctx.cargo_equipe + '" (v' + (ctx.versao || 1) + ', status: ' + (ctx.status_cenario || 'RASCUNHO') + ').',
                     acao_proposta: {
-                        passo_tarefa: 'Atividade de ' + ctx.cargo_equipe + ' em ' + (ctx.frente_servico || 'campo'),
+                        passo_tarefa: propostaDetalhada.passo_tarefa,
                         perigo_fonte: perigoTxt,
-                        evento_risco: 'Exposição ou falha de barreira associada a: ' + perigoTxt,
-                        danos_provaveis: 'A avaliar pela Engenharia na APR',
+                        evento_risco: propostaDetalhada.evento_risco,
+                        danos_provaveis: propostaDetalhada.danos_provaveis,
                         p_puro: '',
                         s_puro: '',
-                        medidas_prevencao: ctx.regras_engenheiro || 'Definir barreira de engenharia/administrativa, área de ação segura e EPIs aplicáveis conforme procedimento.',
+                        medidas_prevencao: propostaDetalhada.medidas_prevencao,
                         p_residual: '',
                         s_residual: '',
                         responsavel: 'Definir na APR',
                         epis_sugeridos: Array.isArray(ctx.epis_validados) ? ctx.epis_validados.slice() : [],
-                        norma_referencia: 'NR-01 / NR-18',
+                        norma_referencia: propostaDetalhada.norma_referencia || 'NR-01 / NR-18',
                         gatilhos: extrairGatilhosTexto(perigoTxt),
                         evidencia_campo: 'Relato/observação no cenário ' + (ctx.codigo_cenario || ctx.id),
                         fonte_consultada: fonteDoc,
                         hipotese_risco: 'Possível ponto cego caso a APR não detalhe controle específico para "' + perigoTxt + '".',
-                        pergunta_pendente: 'Qual a barreira física/procedimental e o distanciamento exigidos pelo procedimento desta frente?'
+                        pergunta_pendente: propostaDetalhada.pergunta_pendente || 'Qual a barreira física/procedimental e o distanciamento exigidos pelo procedimento desta frente?'
                     },
                     status: 'RASCUNHO',
                     feedback_engenheiro: '',
@@ -812,6 +847,232 @@
             .split(/[^a-z0-9]+/)
             .filter(function (w) { return w.length >= 4 && !stop[w]; })
             .slice(0, 4);
+    }
+
+    var PERFIS_TECNICOS_POR_PERIGO = [
+        {
+            regex: /movimentacao|transporte manual|levantamento|carga|descarga|carrinho de mao|peso|ergonom/,
+            fase: 'EXECUCAO_FERRAMENTAS',
+            passo_tarefa: 'Transporte manual, carga, descarga e posicionamento de materiais e insumos na frente de serviço',
+            evento_risco: 'Esforço físico excessivo, postura inadequada, queda de materiais ou prensamento de membros durante o manuseio',
+            danos_provaveis: 'Lombalgia, distensão muscular, contusões ou escoriações em mãos e pés',
+            medida_base: 'Fracionar cargas ou utilizar auxílio mecânico/carrinho de mão; manter postura ergonômica (flexionar joelhos e manter coluna alinhada); desobstruir o trajeto de transporte e utilizar luvas de proteção e calçado de segurança com biqueira.',
+            norma: 'NR-01 / NR-17 / NR-18',
+            pergunta: 'O trajeto de transporte está nivelado/desobstruído e há carrinho de mão ou auxílio para peças pesadas?',
+            palavrasDiretriz: ['carga', 'material', 'materiais', 'transporte', 'carrinho', 'peso', 'ergonom', 'postura', 'levantamento']
+        },
+        {
+            regex: /cimento|argamassa|concreto|\bcal\b|alcalin|quimic|silica|poeira mineral|massa/,
+            fase: 'EXECUCAO_FERRAMENTAS',
+            passo_tarefa: 'Preparo, dosagem, mistura e aplicação de cimento, argamassa ou concreto nas estruturas',
+            evento_risco: 'Contato dérmico direto com pasta/massa alcalina, projeção de respingos nos olhos ou inalação de poeira mineral de cimento',
+            danos_provaveis: 'Dermatite de contato, queimadura química alcalina, irritação ocular e das vias respiratórias',
+            medida_base: 'Utilizar luvas impermeáveis (látex/nitrílica), óculos de proteção vedados, respirador semifacial PFF2 no manuseio de cimento em pó e calçado impermeável; evitar contato direto da pele com a massa úmida e manter água limpa para lavagem imediata.',
+            norma: 'NR-01 / NR-06 / NR-18',
+            pergunta: 'A equipe dispõe de máscara PFF2, luvas impermeáveis e óculos de proteção para o manuseio de cimento/argamassa?',
+            palavrasDiretriz: ['cimento', 'pff2', 'mascara', 'respirador', 'luva', 'impermeav', 'argamassa', 'concreto', 'poeira', 'quimic', 'hidratacao']
+        },
+        {
+            regex: /queda|desnivel|altura|andaime|escada|borda|vala|canaleta|bueiro|caixa coletora|tropeco|escorregao/,
+            fase: 'AMBIENTE_INTERFERENCIAS',
+            passo_tarefa: 'Acesso, circulação e execução de serviços junto a bordas de valas, canaletas, bueiros, taludes ou em diferença de nível',
+            evento_risco: 'Desequilíbrio, escorregão em piso irregular/inclinado ou queda para o interior de valas, caixas ou nível inferior',
+            danos_provaveis: 'Entorses, luxações, escoriações, contusões ou fraturas por queda',
+            medida_base: 'Manter isolamento e sinalização física ativa no entorno das valas, caixas e bordas de desnível; inspecionar previamente a estabilidade do terreno e manter vias de acesso desobstruídas; quando aplicável acima de 2,0 m, adotar proteção contra quedas (NR-35).',
+            norma: 'NR-01 / NR-18 / NR-35',
+            pergunta: 'As bordas de valas, bueiros ou desníveis estão sinalizadas/isoladas e os acessos estão firmes e desobstruídos?',
+            palavrasDiretriz: ['isolamento', 'sinalizacao', 'vala', 'valas', 'acesso', 'talude', 'taludes', 'queda', 'altura', 'cinto', 'escada', 'andaime', 'borda']
+        },
+        {
+            regex: /choque|eletric|betoneira|energiz|cabo|extensao|qgbt|arco|curto|aterramento/,
+            fase: 'EXECUCAO_FERRAMENTAS',
+            passo_tarefa: 'Operação de betoneira, equipamentos elétricos portáteis e manuseio de extensões e quadros de alimentação',
+            evento_risco: 'Contato acidental com condutores danificados, falha de isolamento/aterramento em área úmida ou aprisionamento em partes móveis',
+            danos_provaveis: 'Choque elétrico, queimaduras ou lesões traumáticas por partes móveis',
+            medida_base: 'Garantir o aterramento elétrico efetivo, dispositivo DR e proteção física das partes móveis da betoneira; inspecionar previamente cabos, tomadas e plugues industriais, proibindo emendas improvisadas ou cabos expostos à umidade e ao tráfego.',
+            norma: 'NR-10 / NR-12 / NR-18',
+            pergunta: 'A betoneira e os equipamentos elétricos possuem aterramento validado, coifa nas partes móveis e cabos íntegros sem emendas?',
+            palavrasDiretriz: ['aterramento', 'betoneira', 'eletric', 'choque', 'partes moveis', 'cabo', 'extensao', 'energia', 'bloqueio', 'loto']
+        },
+        {
+            regex: /chibanca|foice|estrovenga|enxada|rastelo|facao|marreta|talhadeira|ponteiro|ferramenta|corte|raio de acao|rebote/,
+            fase: 'EXECUCAO_FERRAMENTAS',
+            passo_tarefa: 'Roço, capina, limpeza e escavação manual com uso de ferramentas de corte e impacto',
+            evento_risco: 'Interferência física no raio de ação entre trabalhadores, desvio ou rebote da ferramenta ao atingir rocha oculta',
+            danos_provaveis: 'Ferimentos cortantes, lacerações, contusões ou projeção de fragmentos nos olhos',
+            medida_base: 'Inspecionar fixação de cabos e lâminas antes do início; manter distanciamento seguro fora do raio de ação da ferramenta; realizar varredura visual prévia do local de golpe e utilizar óculos de proteção, luvas, botina e perneira de segurança.',
+            norma: 'NR-01 / NR-06 / NR-18',
+            pergunta: 'Qual o distanciamento operacional definido entre os colaboradores durante o manuseio de ferramentas de corte/impacto?',
+            palavrasDiretriz: ['ferramenta', 'corte', 'chibanca', 'foice', 'estrovenga', 'enxada', 'distancia', 'raio', 'perneira']
+        },
+        {
+            regex: /peconhent|serpente|cobra|escorpiao|aranha|abelha|vespa|marimbondo|inseto|fauna|fresta/,
+            fase: 'AMBIENTE_INTERFERENCIAS',
+            passo_tarefa: 'Inspeção visual prévia, remoção de vegetação/entulho e limpeza de frestas, bueiros, canaletas e taludes',
+            evento_risco: 'Picada, mordedura ou ferroada de animais peçonhentos abrigados sob pedras, frestas, caixas ou vegetação',
+            danos_provaveis: 'Envenenamento, reação alérgica/anafilática, edema local e complicações sistêmicas',
+            medida_base: 'Inspecionar visualmente com auxílio de ferramenta longa antes de posicionar mãos ou pés em frestas, blocos de rocha ou vegetação; utilizar obrigatoriamente perneira de segurança, botina e luvas de proteção; manter comunicação e fluxo do PAE ativos.',
+            norma: 'NR-01 / NR-06 / NR-18',
+            pergunta: 'A equipe está utilizando perneira de segurança e conhece o fluxo de acionamento imediato do PAE para acidentes ofídicos/escorpiônicos?',
+            palavrasDiretriz: ['peconhent', 'perneira', 'inspecionar', 'terreno', 'cobra', 'escorpiao', 'fresta', 'pae', 'resgate']
+        },
+        {
+            regex: /pedra|rocha|enrocado|enrocamento|rolamento|desmoronamento|soterramento|talude|instabilidade/,
+            fase: 'AMBIENTE_INTERFERENCIAS',
+            passo_tarefa: 'Posicionamento, circulação e intervenção em taludes enrocados, encostas ou bordas de escavação',
+            evento_risco: 'Desprendimento, rolamento de blocos de rocha soltos ou escorregamento de talude sobre colaboradores',
+            danos_provaveis: 'Prensamento de membros inferiores, contusões, fraturas ou soterramento',
+            medida_base: 'Inspecionar previamente o terreno quanto à estabilidade de taludes e blocos de rocha; proibir trabalho simultâneo na mesma linha vertical (um colaborador acima de outro) em talude inclinado e estabilizar/afastar pedras soltas.',
+            norma: 'NR-01 / NR-18',
+            pergunta: 'O talude/enrocamento foi inspecionado antes do acesso e o posicionamento escalonado (sem sobreposição vertical) está garantido?',
+            palavrasDiretriz: ['talude', 'taludes', 'pedra', 'rocha', 'estabilidade', 'enrocado', 'vala', 'soterramento']
+        },
+        {
+            regex: /atropelamento|veiculo|caminhao|onibus|maquina|transito|trafego|embarque|desembarque|berma|colisao/,
+            fase: 'DESLOCAMENTO_ACESSO',
+            passo_tarefa: 'Deslocamento da equipe, embarque/desembarque e execução de serviços próximo a vias de circulação de veículos e máquinas',
+            evento_risco: 'Atropelamento, invasão da frente de serviço por veículos/máquinas ou queda no embarque/desembarque',
+            danos_provaveis: 'Traumatismos múltiplos, fraturas graves ou atropelamento',
+            medida_base: 'Manter isolamento e sinalização ativa com cones/fitas nas vias de acesso e entorno da frente; realizar embarque e desembarque apenas com o veículo totalmente parado em local seguro e respeitar o raio de manobra de máquinas.',
+            norma: 'NR-01 / NR-18',
+            pergunta: 'A frente de serviço próxima à via/berma está sinalizada com cones e há área segura para estacionamento e desembarque?',
+            palavrasDiretriz: ['acesso', 'vias', 'isolamento', 'sinalizacao', 'veiculo', 'caminhao', 'onibus', 'transito', 'maquina']
+        },
+        {
+            regex: /tenda|vivencia|banheiro|lavatorio|vento|ancoragem|estaiamento/,
+            fase: 'VIVENCIA_APOIO',
+            passo_tarefa: 'Montagem, posicionamento, nivelamento e fixação da estrutura de vivência (tenda, banheiro químico e lavatório)',
+            evento_risco: 'Tombamento ou deslocamento da tenda/banheiro químico sob ação de ventos fortes ou terreno irregular',
+            danos_provaveis: 'Contusões, cortes ou atingimento de colaboradores por hastes e partes da estrutura',
+            medida_base: 'Posicionar tenda e banheiro químico em local plano e firme, fora de bordas de talude; ancorar e estaiar todos os pontos de fixação da tenda e suspender a permanência sob ventos intensos ou descargas atmosféricas.',
+            norma: 'NR-01 / NR-18',
+            pergunta: 'A tenda de vivência e o banheiro químico estão nivelados e devidamente estaiados/ancorados contra ação do vento?',
+            palavrasDiretriz: ['tenda', 'vivencia', 'banheiro', 'vento', 'ancoragem', 'fixacao']
+        },
+        {
+            regex: /solar|radiacao|calor|\bsol\b|termic|desidratacao|insolacao|ceu aberto/,
+            fase: 'AMBIENTE_INTERFERENCIAS',
+            passo_tarefa: 'Permanência e execução continuada de atividades operacionais a céu aberto nas frentes de serviço',
+            evento_risco: 'Exposição prolongada à radiação solar ultravioleta e sobrecarga térmica em campo',
+            danos_provaveis: 'Desidratação, insolação, exaustão térmica, cefaleia e queimaduras solares',
+            medida_base: 'Disponibilizar água potável fresca, abrigo sombreado na frente de serviço e pausas regulares para hidratação; utilizar protetor solar e vestimenta com proteção UV/touca árabe.',
+            norma: 'NR-01 / NR-18 / NR-21',
+            pergunta: 'Há suprimento de água potável fresca, tenda sombreada, protetor solar e pausas de hidratação definidas na frente?',
+            palavrasDiretriz: ['hidratacao', 'pausa', 'pausas', 'agua', 'solar', 'sol', 'calor', 'protetor solar']
+        },
+        {
+            regex: /ruido|vibracao|barulho|compactador|martelete|motosserra|rocadeira|serra/,
+            fase: 'EXECUCAO_FERRAMENTAS',
+            passo_tarefa: 'Operação de máquinas e equipamentos portáteis geradores de ruído e vibração',
+            evento_risco: 'Exposição ocupacional a níveis elevados de pressão sonora, vibração localizada e projeção de fragmentos',
+            danos_provaveis: 'Perda auditiva induzida por ruído, desconforto osteomuscular e lesões oculares',
+            medida_base: 'Utilizar protetor auditivo (plug ou concha), óculos de proteção/protetor facial e luvas adequadas; inspecionar proteções do equipamento e promover revezamento operacional.',
+            norma: 'NR-01 / NR-06 / NR-12 / NR-15',
+            pergunta: 'Os operadores e auxiliares próximos utilizam protetor auditivo e proteção ocular compatíveis com o equipamento?',
+            palavrasDiretriz: ['ruido', 'protetor auditivo', 'vibracao', 'compactador', 'martelete', 'serra']
+        },
+        {
+            regex: /confinado|asfixia|oxigenio|\bgas\b|gases|galeria|poco|adutora/,
+            fase: 'AMBIENTE_INTERFERENCIAS',
+            passo_tarefa: 'Acesso e intervenção no interior de galerias, bueiros profinados, poços de visita ou tubulações',
+            evento_risco: 'Atmosfera deficiente de oxigênio, presença de gases tóxicos/inflamáveis ou dificuldade de resgate',
+            danos_provaveis: 'Asfixia, intoxicação aguda, perda de consciência ou trauma no acesso',
+            medida_base: 'Avaliar previamente se o local caracteriza espaço confinado (NR-33); havendo enquadramento, exigir PET, monitoramento atmosférico multigás, ventilação forçada e vigia dedicado.',
+            norma: 'NR-01 / NR-33',
+            pergunta: 'A intervenção exige entrada em espaço confinado (NR-33) com emissão de PET e monitoramento multigás?',
+            palavrasDiretriz: ['confinado', 'bueiro', 'caixa', 'ventilacao', 'gas', 'resgate', 'nr-33']
+        }
+    ];
+
+    function extrairDiretrizesRelevantesParaPerigo(regrasTexto, palavrasDiretriz, perigoTxt) {
+        var bruto = String(regrasTexto || '').trim();
+        if (!bruto) return [];
+        var clausulas = bruto
+            .split(/[;\r\n]+/)
+            .map(function (c) { return c.trim().replace(/^[•\-*]\s*/, '').replace(/\.+$/, ''); })
+            .filter(Boolean);
+        if (clausulas.length === 0) return [];
+
+        var termosAlvo = (Array.isArray(palavrasDiretriz) ? palavrasDiretriz.slice() : []).concat(
+            normalizar(perigoTxt).split(/[^a-z0-9]+/).filter(function (w) { return w.length >= 4 && w !== 'risco' && w !== 'contato'; })
+        );
+
+        return clausulas.filter(function (cl) {
+            var clNorm = normalizar(cl);
+            return termosAlvo.some(function (t) {
+                var tn = normalizar(t);
+                return tn && clNorm.indexOf(tn) !== -1;
+            });
+        });
+    }
+
+    function construirPropostaTecnicaPorPerigo(perigoTxt, idx, ctx) {
+        var pTexto = String(perigoTxt || '').trim();
+        var pNorm = normalizar(pTexto);
+        var regrasEng = ctx && ctx.regras_engenheiro ? String(ctx.regras_engenheiro).trim() : '';
+        var frente = ctx && ctx.frente_servico ? String(ctx.frente_servico).trim() : '';
+
+        var perfil = PERFIS_TECNICOS_POR_PERIGO.find(function (p) {
+            return p.regex.test(pNorm);
+        });
+
+        if (perfil) {
+            var diretrizesRel = extrairDiretrizesRelevantesParaPerigo(regrasEng, perfil.palavrasDiretriz, pTexto);
+            var medidaFinal = perfil.medida_base;
+            if (diretrizesRel.length > 0) {
+                var textoDir = diretrizesRel.map(function (d) {
+                    return d.charAt(0).toUpperCase() + d.slice(1);
+                }).join('; ');
+                if (normalizar(medidaFinal).indexOf(normalizar(diretrizesRel[0]).slice(0, 20)) === -1) {
+                    medidaFinal = textoDir + '; ' + medidaFinal.charAt(0).toLowerCase() + medidaFinal.slice(1);
+                } else {
+                    medidaFinal = textoDir + '.';
+                }
+            }
+            return {
+                fase_operacional: perfil.fase,
+                passo_tarefa: perfil.passo_tarefa,
+                evento_risco: perfil.evento_risco,
+                danos_provaveis: perfil.danos_provaveis,
+                medidas_prevencao: medidaFinal.slice(0, 600),
+                norma_referencia: perfil.norma,
+                pergunta_pendente: perfil.pergunta
+            };
+        }
+
+        var faseInf = inferirFaseRoteiro(pTexto);
+        var labelFaseLimpo = obterLabelFase(faseInf).replace(/^\d+\.\s*/, '');
+        var descFaseCtx = (ctx && ctx.fases_operacionais && ctx.fases_operacionais[faseInf])
+            ? String(ctx.fases_operacionais[faseInf]).trim()
+            : '';
+        var passoFallback = descFaseCtx
+            ? (descFaseCtx.slice(0, 120) + ' (' + pTexto + ')')
+            : (labelFaseLimpo + (frente ? ' em ' + frente : '') + ' — Controle para ' + pTexto);
+
+        var dirFallback = extrairDiretrizesRelevantesParaPerigo(regrasEng, [], pTexto);
+        var medidaFallback = dirFallback.length > 0
+            ? dirFallback.join('; ') + '.'
+            : (regrasEng || ('Adotar barreira de controle operacional, isolamento/sinalização aplicável e EPIs específicos para neutralizar "' + pTexto + '".'));
+
+        return {
+            fase_operacional: faseInf,
+            passo_tarefa: passoFallback.slice(0, 300),
+            evento_risco: 'Exposição ocupacional ou falha de controle associada a ' + pTexto.toLowerCase(),
+            danos_provaveis: 'Lesões físicas ou agravos ocupacionais decorrentes de ' + pTexto.toLowerCase() + ' (avaliar severidade na APR)',
+            medidas_prevencao: medidaFallback.slice(0, 600),
+            norma_referencia: 'NR-01 / NR-18',
+            pergunta_pendente: 'Qual a barreira específica e o procedimento aplicável na frente para controlar "' + pTexto + '"?'
+        };
+    }
+
+    function ehPropostaGenericaLegada(obj) {
+        if (!obj || typeof obj !== 'object') return false;
+        var passo = String(obj.passo_tarefa || '').trim();
+        var evento = String(obj.evento_risco || '').trim();
+        var danos = String(obj.danos_provaveis || '').trim();
+        return /^Atividade de .+ em .+$/i.test(passo) ||
+            /^Exposi[cç][aã]o ou falha de barreira associada a:/i.test(evento) ||
+            danos === 'A avaliar pela Engenharia na APR';
     }
 
     // =========================================================================
@@ -1410,7 +1671,7 @@
     }
 
     function sugestaoTemRegraAtivaValida(sug) {
-        if (!sug || sug.status !== 'APROVADO') return false;
+        if (!sug || (sug.status !== 'APROVADO' && sug.status !== 'INCORPORADO_APR')) return false;
         var regraId = sug.regra_gerada_id || sug.origem_regra_id;
         if (!regraId) return false;
         var regra = estadoModulo.regrasAprendidas.find(function (r) { return r.id === regraId; });
@@ -1485,15 +1746,33 @@
         var linhasCalculadas = linhasBase.slice();
         var novasInseridas = 0;
         var episParaMarcar = new Set();
+        var ctxParaRefino = ctxAlvoId ? buscarContextoPorId(ctxAlvoId) : null;
 
         // 1. Primeiro persiste a transação em estadoModulo/localStorage ANTES de limpar ou mutar o formulário da APR!
         executarMutacaoPersistida(function () {
-            elegiveis.forEach(function (s) {
+            elegiveis.forEach(function (s, idxElegivel) {
                 var a = s.acao_proposta || {};
+                var passoCalculado = a.passo_tarefa || '';
+                var eventoCalculado = a.evento_risco || '';
+                var danosCalculados = a.danos_provaveis || '';
+                var medidasCalculadas = a.medidas_prevencao || '';
+
+                if (ehPropostaGenericaLegada(a)) {
+                    var propRefinada = construirPropostaTecnicaPorPerigo(a.perigo_fonte, idxElegivel, ctxParaRefino);
+                    passoCalculado = propRefinada.passo_tarefa;
+                    eventoCalculado = propRefinada.evento_risco;
+                    danosCalculados = propRefinada.danos_provaveis;
+                    medidasCalculadas = propRefinada.medidas_prevencao;
+                    a.passo_tarefa = passoCalculado;
+                    a.evento_risco = eventoCalculado;
+                    a.danos_provaveis = danosCalculados;
+                    a.medidas_prevencao = medidasCalculadas;
+                }
+
                 var chaveOrigem = s.regra_gerada_id || s.id;
                 var jaNaApr = linhasCalculadas.some(function (r) {
                     return (r.origem_ia_id && r.origem_ia_id === chaveOrigem) ||
-                        (normalizar(r.passo_tarefa) === normalizar(a.passo_tarefa) &&
+                        (normalizar(r.passo_tarefa) === normalizar(passoCalculado) &&
                          normalizar(r.perigo_fonte) === normalizar(a.perigo_fonte));
                 });
                 if (jaNaApr) return;
@@ -1501,13 +1780,13 @@
                 linhasCalculadas.push({
                     origem_ia_id: chaveOrigem,
                     origem_sugestao_id: s.id,
-                    passo_tarefa: a.passo_tarefa || '',
+                    passo_tarefa: passoCalculado,
                     perigo_fonte: a.perigo_fonte || '',
-                    evento_risco: a.evento_risco || '',
-                    danos_provaveis: a.danos_provaveis || '',
+                    evento_risco: eventoCalculado,
+                    danos_provaveis: danosCalculados,
                     p_puro: '',
                     s_puro: '',
-                    medidas_prevencao: a.medidas_prevencao || '',
+                    medidas_prevencao: medidasCalculadas,
                     p_residual: '',
                     s_residual: '',
                     responsavel: a.responsavel || ''
@@ -1572,7 +1851,7 @@
             var confirmadas = 0;
             estadoModulo.sugestoesFila.forEach(function (s) {
                 var chave = s.regra_gerada_id || s.id;
-                var elegivel = s.status === 'APROVADO' && s.status_transferencia === 'EM_RASCUNHO_APR' &&
+                var elegivel = (s.status === 'APROVADO' || s.status === 'INCORPORADO_APR') && s.status_transferencia === 'EM_RASCUNHO_APR' &&
                     (!filtroOrigens || filtroOrigens.has(chave) || filtroOrigens.has(s.id));
                 if (elegivel) {
                     s.status = 'INCORPORADO_APR';
@@ -1598,13 +1877,37 @@
         var local = (document.getElementById('aprForm_local') || {}).value || '';
         var textoApr = [titulo, desc, local].join(' ').trim();
 
+        var linhasExistentes = Array.isArray(window.aprRiscosForm) ? window.aprRiscosForm.filter(linhaAprTemQualquerDado) : [];
+        var ctxAtivo = buscarContextoPorId(estadoModulo.contextoSelecionadoId) || estadoModulo.contextos[0] || null;
+
+        // Se a APR aberta tiver linhas com Passo da Tarefa genérico repetido ("Atividade de ... em ..."), desmembra especificamente por perigo preservando P×S!
+        var linhasRefinadas = 0;
+        linhasExistentes.forEach(function (r, idx) {
+            if (ehPropostaGenericaLegada(r) && String(r.perigo_fonte || '').trim()) {
+                var prop = construirPropostaTecnicaPorPerigo(r.perigo_fonte, idx, ctxAtivo);
+                r.passo_tarefa = prop.passo_tarefa;
+                r.evento_risco = prop.evento_risco;
+                r.danos_provaveis = prop.danos_provaveis;
+                r.medidas_prevencao = prop.medidas_prevencao;
+                linhasRefinadas++;
+            }
+        });
+        if (linhasRefinadas > 0) {
+            window.aprRiscosForm = linhasExistentes;
+            if (typeof window.renderRiscosAprForm === 'function') {
+                window.renderRiscosAprForm();
+            }
+        }
+
         if (!textoApr) {
+            if (linhasRefinadas > 0) {
+                return { encontrados: linhasRefinadas, inseridos: 0, refinados: linhasRefinadas };
+            }
             alert('Preencha o Título ou a Descrição da Atividade na APR para buscar regras aprovadas pela Engenharia.');
             return { encontrados: 0, inseridos: 0 };
         }
 
         var recuperadas = recuperarExemplosERegrasRelevantes(textoApr).regrasRecuperadas;
-        var linhasExistentes = Array.isArray(window.aprRiscosForm) ? window.aprRiscosForm.filter(linhaAprTemQualquerDado) : [];
 
         var candidatas = recuperadas.filter(function (item) {
             var r = item.regra;
@@ -1616,6 +1919,10 @@
         });
 
         if (candidatas.length === 0) {
+            if (linhasRefinadas > 0) {
+                alert('✅ ' + linhasRefinadas + ' linha(s) da APR tiveram o Passo da Tarefa, Evento, Danos e Medidas desmembrados especificamente para cada perigo (preservando P×S).');
+                return { encontrados: linhasRefinadas, inseridos: 0, refinados: linhasRefinadas };
+            }
             alert('Nenhuma regra aprovada adicional foi encontrada para "' + titulo + '".');
             return { encontrados: 0, inseridos: 0 };
         }

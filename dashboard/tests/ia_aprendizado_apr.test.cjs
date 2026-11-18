@@ -13,7 +13,7 @@ const iaCode = fs.readFileSync(path.join(painelDir, 'modules', 'ia_aprendizado.j
 // 1. Verificações estáticas e de hierarquia real de DOM em dashboard/index.html
 assert.match(html, /id="navIaAprendizado"/, 'Botão navIaAprendizado deve existir na sidebar');
 assert.match(html, /<section class="db-page" id="page-ia_aprendizado"><\/section>/, 'Seção page-ia_aprendizado deve ser irmã fechada');
-assert.match(html, /modules\/ia_aprendizado\.js\?v=1/, 'Script ia_aprendizado.js deve estar no HTML');
+assert.match(html, /modules\/ia_aprendizado\.js\?v=\d+/, 'Script ia_aprendizado.js deve estar no HTML');
 assert.match(coreCode, /ia_aprendizado:\s*'navIaAprendizado'/, 'Rota ia_aprendizado deve constar no dashboard.js');
 assert.match(epiCode, /ia_aprendizado:\s*'navIaAprendizado'/, 'Rota ia_aprendizado deve constar no epi_estoque.js');
 
@@ -170,6 +170,11 @@ function criarAmbienteTeste(sessaoInicial, storageCompartilhado) {
         },
         alert: msg => contexto.alertas.push(msg),
         confirm: () => contexto.confirmacaoResposta,
+        parseLocalDate: s => {
+            const p = String(s || '').split('-').map(Number);
+            return new Date(p[0] || 2026, (p[1] || 1) - 1, p[2] || 1);
+        },
+        formatDateISO: d => d.toISOString().slice(0, 10),
         Date, Math, JSON, Array, Object, Set, Map, RegExp, Error, Number, String, Boolean, parseInt
     });
     contexto.window = contexto;
@@ -581,6 +586,72 @@ async function testarReauditoria1035() {
     const sugAprovadaUI = getSavedU().sugestoesFila.find(s => s.id === idSugAlvo);
     assert.equal(sugAprovadaUI.status, 'APROVADO');
     assert.equal(sugAprovadaUI.versao, 3);
+
+    // 8. Reprodução exata do caso operacional relatado por João (APR Nº 006 — CIVIL - MANUTENÇÃO (ESTRUTURAS)):
+    // Verifica que os 4 perigos geram Passos da Tarefa, Eventos, Danos e Medidas DISTINTOS e específicos por perigo (zero repetição genérica)
+    const m = criarAmbienteTeste();
+    const cenCivil = m.contexto.salvarContextoOperacional({
+        cargo_equipe: 'CIVIL - MANUTENÇÃO (ESTRUTURAS)',
+        frente_servico: 'Estruturas',
+        rotina_detalhada: 'Realização de manutenções nas infra-estruturas da obra (Canaletas de Drenagem, Bueiros e Caixas Coletoras, Pontos de Captação e Redes Locais)',
+        perigos_observados: [
+            'Movimentação de materiais',
+            'Contato com Cimento',
+            'Risco de Queda',
+            'Risco de Choque elétrico'
+        ],
+        regras_engenheiro: 'Manter isolamento e sinalização ativa no entorno das valas e vias de acesso; inspecionar previamente o terreno quanto à estabilidade de taludes e animais peçonhentos; garantir o aterramento e a proteção das partes móveis da betoneira; utilizar todos os EPIs obrigatórios (incluindo perneira de segurança e máscara PFF2 no manuseio de cimento) e manter pausas para hidratação.'
+    });
+
+    m.contexto.executarVarreduraRiscosOcultos({});
+    const getSavedM = () => JSON.parse([...m.storage.values()][0]);
+    const filaCivil = getSavedM().sugestoesFila;
+    assert.equal(filaCivil.length, 4);
+    for (const s of filaCivil) {
+        m.contexto.aprovarSugestaoIa(s.id);
+    }
+
+    const resAprCivil = m.contexto.enviarRiscosAprovadosParaApr('nova');
+    assert.equal(resAprCivil.linhasInjetadas, 4);
+    const riscosGerados = m.contexto.aprRiscosForm;
+    assert.equal(riscosGerados.length, 4);
+
+    // Nenhum risco pode ter o passo genérico repetido "Atividade de CIVIL - MANUTENÇÃO (ESTRUTURAS) em Estruturas"
+    const passosUnicos = new Set(riscosGerados.map(r => r.passo_tarefa));
+    assert.equal(passosUnicos.size, 4, 'Todos os 4 riscos devem ter Passos da Tarefa distintos e específicos');
+    for (const r of riscosGerados) {
+        assert.doesNotMatch(r.passo_tarefa, /^Atividade de /i, 'Não deve repetir Passo genérico Atividade de...');
+        assert.notEqual(r.danos_provaveis, 'A avaliar pela Engenharia na APR', 'Danos prováveis devem ser específicos por perigo');
+        assert.doesNotMatch(r.evento_risco, /^Exposi[cç][aã]o ou falha de barreira associada a:/i, 'Evento de risco deve ser específico por perigo');
+    }
+
+    // As medidas de prevenção também devem ser direcionadas por perigo (não repetir o mesmo texto inteiro nas 4 linhas)
+    const medidasUnicas = new Set(riscosGerados.map(r => r.medidas_prevencao));
+    assert.equal(medidasUnicas.size, 4, 'Cada risco deve receber medidas de prevenção específicas ao seu perigo');
+    const riscoCimento = riscosGerados.find(r => /cimento/i.test(r.perigo_fonte));
+    const riscoChoque = riscosGerados.find(r => /choque/i.test(r.perigo_fonte));
+    assert.match(riscoCimento.medidas_prevencao, /PFF2|cimento/i);
+    assert.doesNotMatch(riscoCimento.medidas_prevencao, /betoneira/i, 'Linha de Contato com Cimento não deve repetir cláusula de betoneira');
+    assert.match(riscoChoque.medidas_prevencao, /aterramento|betoneira/i);
+
+    // Testa também a migração/refino em tempo real de linhas legadas já abertas na APR preservando P×S preenchidos pelo usuário!
+    m.contexto.aprRiscosForm = [
+        {
+            passo_tarefa: 'Atividade de CIVIL - MANUTENÇÃO (ESTRUTURAS) em Estruturas',
+            perigo_fonte: 'Movimentação de materiais',
+            evento_risco: 'Exposição ou falha de barreira associada a: Movimentação de materiais',
+            danos_provaveis: 'A avaliar pela Engenharia na APR',
+            p_puro: 3, s_puro: 3,
+            medidas_prevencao: 'Texto repetido legado',
+            p_residual: 1, s_residual: 2,
+            responsavel: 'Definir na APR'
+        }
+    ];
+    const resRefino = m.contexto.acionarAssistenteIaNaAprAtual();
+    assert.equal(resRefino.refinados, 1);
+    assert.match(m.contexto.aprRiscosForm[0].passo_tarefa, /Transporte manual/i);
+    assert.equal(m.contexto.aprRiscosForm[0].p_puro, 3, 'Deve preservar P puro já preenchido pelo usuário');
+    assert.equal(m.contexto.aprRiscosForm[0].s_residual, 2, 'Deve preservar S residual já preenchido pelo usuário');
 }
 
 testarReauditoria1035().then(() => {

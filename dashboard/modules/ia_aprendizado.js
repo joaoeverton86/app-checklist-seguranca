@@ -28,11 +28,13 @@
     'use strict';
 
     var STORAGE_PREFIX = 'sst_ia_apr_local_v2_';
+    var FORMATO_BACKUP_LOCAL = 'ia_aprendizado_backup_v1';
     var LIMITE_BYTES_FICHA_IMPORTACAO = 20480; // 20 KB em bytes UTF-8 reais
     var LIMITE_MAX_ITENS_IMPORTACAO = 20;
     var LIMITE_MAX_CONTEXTOS = 40;
     var LIMITE_MAX_SUGESTOES = 80;
     var LIMITE_BYTES_STORAGE_SESSAO = 204800; // 200 KB em bytes UTF-8 reais
+    var LIMITE_BYTES_BACKUP_ARQUIVO = LIMITE_BYTES_STORAGE_SESSAO + 32768; // margem p/ envelope do arquivo .json; gravação continua limitada a 200 KB UTF-8
 
     var FASES_ROTEIRO_PERGUNTAS = [
         {
@@ -89,12 +91,22 @@
         'norma_referencia', 'responsavel'
     ]);
 
+    var CAMPOS_NOTA_IGNORADOS_JSON = new Set([
+        'p_puro', 's_puro', 'p_residual', 's_residual',
+        'risco_puro', 'risco_residual', 'probabilidade', 'severidade', 'gravidade'
+    ]);
+
     var estadoModulo = {
         identidadeChave: null,
         geracaoSessaoId: 0,
         abaAtiva: 'exemplos',
         contextoSelecionadoId: '',
         aprSelecionadaId: '',
+        textoLivreAnalise: '',
+        previaImportacaoIa: null,
+        previaBackupRestauracao: null,
+        ultimoBackupEm: '',
+        alteracoesAposBackup: false,
         filtroFilaStatus: 'TODOS',
         opcoesExportacaoPrompt: {
             incluirRotinaFases: true,
@@ -243,11 +255,16 @@
             estadoModulo.ultimoDiagnostico = null;
             estadoModulo.contextoSelecionadoId = '';
             estadoModulo.aprSelecionadaId = '';
+            estadoModulo.textoLivreAnalise = '';
+            estadoModulo.previaImportacaoIa = null;
+            estadoModulo.previaBackupRestauracao = null;
             if (chaveAtual === 'sem_sessao') {
                 estadoModulo.contextos = [];
                 estadoModulo.regrasAprendidas = [];
                 estadoModulo.sugestoesFila = [];
                 estadoModulo.historicoAuditoria = [];
+                estadoModulo.ultimoBackupEm = '';
+                estadoModulo.alteracoesAposBackup = false;
             } else {
                 carregarEstadoPersistido(chaveAtual);
             }
@@ -267,6 +284,8 @@
         estadoModulo.regrasAprendidas = (salvo && Array.isArray(salvo.regrasAprendidas)) ? salvo.regrasAprendidas : [];
         estadoModulo.sugestoesFila = (salvo && Array.isArray(salvo.sugestoesFila)) ? salvo.sugestoesFila : [];
         estadoModulo.historicoAuditoria = (salvo && Array.isArray(salvo.historicoAuditoria)) ? salvo.historicoAuditoria : [];
+        estadoModulo.ultimoBackupEm = (salvo && typeof salvo.ultimoBackupEm === 'string') ? salvo.ultimoBackupEm : '';
+        estadoModulo.alteracoesAposBackup = !!(salvo && salvo.alteracoesAposBackup);
         if (!estadoModulo.contextoSelecionadoId || !estadoModulo.contextos.some(function (c) { return c.id === estadoModulo.contextoSelecionadoId; })) {
             estadoModulo.contextoSelecionadoId = estadoModulo.contextos[0] ? estadoModulo.contextos[0].id : '';
         }
@@ -321,7 +340,9 @@
             contextos: estadoModulo.contextos,
             regrasAprendidas: estadoModulo.regrasAprendidas,
             sugestoesFila: estadoModulo.sugestoesFila,
-            historicoAuditoria: estadoModulo.historicoAuditoria
+            historicoAuditoria: estadoModulo.historicoAuditoria,
+            ultimoBackupEm: estadoModulo.ultimoBackupEm || '',
+            alteracoesAposBackup: !!estadoModulo.alteracoesAposBackup
         });
     }
 
@@ -331,6 +352,8 @@
         estadoModulo.regrasAprendidas = obj.regrasAprendidas || [];
         estadoModulo.sugestoesFila = obj.sugestoesFila || [];
         estadoModulo.historicoAuditoria = obj.historicoAuditoria || [];
+        estadoModulo.ultimoBackupEm = obj.ultimoBackupEm || '';
+        estadoModulo.alteracoesAposBackup = !!obj.alteracoesAposBackup;
         estadoModulo.contextoSelecionadoId = selAnterior || (estadoModulo.contextos[0] ? estadoModulo.contextos[0].id : '');
     }
 
@@ -369,13 +392,16 @@
         }
     }
 
-    function executarMutacaoPersistida(fnMutacao) {
+    function executarMutacaoPersistida(fnMutacao, opcoesMutacao) {
         sincronizarDoStorageParaConcorrencia();
         var snapshotAnterior = serializarEstadoAtual();
         var selAnterior = estadoModulo.contextoSelecionadoId;
         var resultado;
         try {
             resultado = fnMutacao();
+            if (!opcoesMutacao || !opcoesMutacao.preservarFlagBackup) {
+                estadoModulo.alteracoesAposBackup = true;
+            }
         } catch (errMutacao) {
             restaurarEstadoDeJson(snapshotAnterior, selAnterior);
             throw errMutacao;
@@ -637,12 +663,12 @@
                     medidaAtual: 'P×S incompleto',
                     motivo: 'Probabilidade ou Severidade ainda não avaliada manualmente pelo responsável.'
                 });
-            } else if ((pRes * sRes) >= (pPuro * sPuro) && (pPuro * sPuro) >= 6) {
+            } else if ((pRes * sRes) > (pPuro * sPuro)) {
                 alertas.push({
                     linha: idx + 1,
                     passo: r.passo_tarefa || 'Linha ' + (idx + 1),
                     medidaAtual: 'P×S Puro (' + pPuro + '×' + sPuro + ') vs Residual (' + pRes + '×' + sRes + ')',
-                    motivo: 'Revisar manualmente: pontuação residual igual ou superior à pura em nível moderado/alto.'
+                    motivo: 'Revisar manualmente: pontuação residual superior à pura.'
                 });
             }
         });
@@ -683,12 +709,18 @@
 
         var recuperacao = recuperarExemplosERegrasRelevantes(corpus);
         var lacunasPropostas = [];
+        var itensJaContemplados = [];
         var s = obterSessaoSegura() || {};
 
         recuperacao.regrasRecuperadas.forEach(function (item) {
             var r = item.regra;
             var chavePerigo = normalizar(r.perigo_fonte).slice(0, 24);
             if (textoAprExistente && chavePerigo && textoAprExistente.indexOf(chavePerigo) !== -1) {
+                itensJaContemplados.push({
+                    origem: 'Regra Aprovada v' + (r.versao || 1),
+                    passo_tarefa: r.passo_tarefa,
+                    perigo_fonte: r.perigo_fonte
+                });
                 return;
             }
             lacunasPropostas.push({
@@ -733,7 +765,14 @@
             ctx.perigos_observados.forEach(function (perigoTxt, idx) {
                 var pNorm = normalizar(perigoTxt);
                 if (!pNorm) return;
-                if (textoAprExistente && textoAprExistente.indexOf(pNorm.slice(0, 22)) !== -1) return;
+                if (textoAprExistente && textoAprExistente.indexOf(pNorm.slice(0, 22)) !== -1) {
+                    itensJaContemplados.push({
+                        origem: 'Cenário ' + (ctx.codigo_cenario || ctx.id),
+                        passo_tarefa: ctx.cargo_equipe,
+                        perigo_fonte: perigoTxt
+                    });
+                    return;
+                }
                 var jaExiste = lacunasPropostas.some(function (l) {
                     return normalizar(l.acao_proposta.perigo_fonte) === pNorm;
                 });
@@ -802,21 +841,48 @@
             });
         }
 
-        var fasesPendentes = FASES_ROTEIRO_PERGUNTAS.filter(function (f) {
-            var val = ctx && ctx.fases_operacionais ? String(ctx.fases_operacionais[f.id] || '').trim() : '';
-            return !val;
-        }).map(function (f) { return f.label; });
+        var fasesPendentes = ctx
+            ? FASES_ROTEIRO_PERGUNTAS.filter(function (f) {
+                var val = ctx.fases_operacionais ? String(ctx.fases_operacionais[f.id] || '').trim() : '';
+                return !val;
+            }).map(function (f) { return f.label; })
+            : [];
+
+        var motivoZero = '';
+        if (lacunasPropostas.length === 0) {
+            if (!ctx && estadoModulo.regrasAprendidas.filter(function (r) { return r.ativo === true && r.status_regra === 'APROVADO'; }).length === 0) {
+                motivoZero = 'Nenhum cenário cadastrado na Aba 1 e nenhuma regra aprovada neste navegador. A verificação local só consulta seus cenários e regras aprovadas — para analisar uma atividade nova agora, crie um rascunho de cenário ou use o Modo 2 abaixo para consultar ChatGPT / Gemini / Claude.';
+            } else if (aprAlvo && itensJaContemplados.length > 0) {
+                motivoZero = 'Todos os perigos listados no cenário/regras encontradas já aparecem mencionados na APR ' + aprAlvo.id + ' (diferença de redação não comprova ausência de lacuna técnica — revise manualmente).';
+            } else if (ctx && (!Array.isArray(ctx.perigos_observados) || ctx.perigos_observados.length === 0)) {
+                motivoZero = 'O cenário "' + ctx.cargo_equipe + '" ainda não possui Perigos Observados cadastrados e nenhuma regra aprovada casou com os termos informados. Edite o cenário ou use o Modo 2 para consultar uma IA externa.';
+            } else {
+                motivoZero = 'Nenhuma regra aprovada adicional ou perigo não contemplado foi encontrado para os termos atuais.';
+            }
+        }
 
         estadoModulo.ultimoDiagnostico = {
             executadoEm: new Date().toISOString(),
             modoMotor: 'Lista de Verificação Local & Busca por Palavras-Chave/Sinônimos (Não é LLM treinada)',
-            avisoEscopo: 'Ausência de apontamento nesta verificação não comprova ausência de risco nem conformidade normativa.',
+            avisoEscopo: 'Ausência de apontamento nesta verificação não comprova ausência de risco nem conformidade normativa. Diferença de palavras não comprova lacuna técnica.',
             escopoIntegracaoAdiadas: 'Cruzamento automático com banco remoto de NCs/GHE não executado neste modo local.',
-            contextoNome: ctx ? ctx.cargo_equipe : 'Consulta Livre',
+            temCenario: !!ctx,
+            contextoNome: ctx ? ctx.cargo_equipe : 'Nenhum cenário selecionado',
             contextoVersao: ctx ? (ctx.versao || 1) : null,
             aprAuditadaId: aprAlvo ? aprAlvo.id : null,
+            aprAuditadaTitulo: aprAlvo ? (aprAlvo.titulo || '') : '',
+            aprAuditadaData: aprAlvo ? (aprAlvo.data_emissao || '') : '',
             totalLacunas: lacunasPropostas.length,
             novosNaFila: adicionadas,
+            motivoZero: motivoZero,
+            perigosPossivelmenteAusentes: lacunasPropostas.map(function (l) {
+                return {
+                    passo_tarefa: l.acao_proposta.passo_tarefa,
+                    perigo_fonte: l.acao_proposta.perigo_fonte,
+                    origem: l.descricao_analise
+                };
+            }),
+            itensJaContemplados: itensJaContemplados,
             fasesSemInformacao: fasesPendentes,
             exemplosRecuperados: recuperacao.exemplosRecuperados,
             regrasRecuperadas: recuperacao.regrasRecuperadas.map(function (x) { return x.motivo; }),
@@ -1082,19 +1148,26 @@
         garantirEstadoSessao();
         opcoes = Object.assign({}, estadoModulo.opcoesExportacaoPrompt, opcoes || {});
         var ctx = opcoes.contexto || buscarContextoPorId(estadoModulo.contextoSelecionadoId) || estadoModulo.contextos[0] || null;
+        var textoLivre = String(opcoes.textoLivre !== undefined ? opcoes.textoLivre : (estadoModulo.textoLivreAnalise || '')).trim();
         var aprAlvo = opcoes.apr || null;
         if (!aprAlvo && estadoModulo.aprSelecionadaId && Array.isArray(window.allAprRegistros)) {
             aprAlvo = window.allAprRegistros.find(function (a) { return String(a.id) === String(estadoModulo.aprSelecionadaId); }) || null;
         }
 
-        var corpusBusca = ctx
-            ? [ctx.cargo_equipe, ctx.frente_servico, ctx.rotina_detalhada, (ctx.ferramentas_reais || []).join(' '), (ctx.perigos_observados || []).join(' ')].join(' ')
-            : '';
+        var corpusBusca = [
+            ctx ? ctx.cargo_equipe : '',
+            ctx ? ctx.frente_servico : '',
+            ctx ? ctx.rotina_detalhada : '',
+            ctx ? (ctx.ferramentas_reais || []).join(' ') : '',
+            ctx ? (ctx.perigos_observados || []).join(' ') : '',
+            textoLivre,
+            aprAlvo ? (aprAlvo.titulo || '') : ''
+        ].join(' ').trim();
         var recuperados = recuperarExemplosERegrasRelevantes(corpusBusca);
 
         var linhas = [
-            '# PACOTE DE CONTEXTO TÉCNICO SST PARA ANÁLISE EXTERNA DE APR',
-            'Aviso de Privacidade e Governança: Filtro automático de CPF/CNPJ/e-mail/telefone aplicado. Revise a prévia antes de copiar para garantir que não há nomes ou dados pessoais em texto livre. Toda resposta deverá ser revisada e pontuada (P×S) manualmente pela Engenharia de Segurança.',
+            '# PEDIDO DE ANÁLISE TÉCNICA SST PARA APOIO À APR',
+            'Aviso de Privacidade e Governança: Filtro automático de CPF/CNPJ/e-mail/telefone aplicado. Revise este texto antes de enviar à IA externa para garantir ausência de nomes de pessoas ou dados sensíveis. NÃO atribua notas de Probabilidade (P) ou Severidade (S) — a pontuação será feita manualmente pela Engenharia de Segurança na APR.',
             ''
         ];
 
@@ -1116,7 +1189,13 @@
             }
             linhas.push('');
         } else {
-            linhas.push('## 1. CENÁRIO EM ANÁLISE: Nenhum cenário selecionado.');
+            linhas.push('## 1. CENÁRIO EM ANÁLISE: Nenhum cenário cadastrado selecionado na Aba 1.');
+            linhas.push('');
+        }
+
+        if (textoLivre) {
+            linhas.push('## DESCRIÇÃO DA ATIVIDADE / CONDIÇÃO INFORMADA PELO ENGENHEIRO');
+            linhas.push(sanitizarDadosPessoaisParaExportacao(textoLivre));
             linhas.push('');
         }
 
@@ -1129,7 +1208,7 @@
         }
 
         if (opcoes.incluirAprRiscos && aprAlvo) {
-            linhas.push('## 3. RISCOS ATUAIS DA APR (' + sanitizarDadosPessoaisParaExportacao(aprAlvo.id) + ')');
+            linhas.push('## 3. RISCOS ATUAIS DA APR Nº ' + sanitizarDadosPessoaisParaExportacao(aprAlvo.id) + ' — ' + sanitizarDadosPessoaisParaExportacao(aprAlvo.titulo || 'Sem título') + (aprAlvo.data_emissao ? ' (Emissão: ' + sanitizarDadosPessoaisParaExportacao(aprAlvo.data_emissao) + ')' : ''));
             (aprAlvo.riscos || []).forEach(function (r, idx) {
                 linhas.push('  ' + (idx + 1) + '. Etapa: ' + sanitizarDadosPessoaisParaExportacao(r.passo_tarefa) + ' | Perigo: ' + sanitizarDadosPessoaisParaExportacao(r.perigo_fonte) + ' | Medida: ' + sanitizarDadosPessoaisParaExportacao(r.medidas_prevencao));
             });
@@ -1149,8 +1228,8 @@
             linhas.push('');
         }
 
-        linhas.push('## 5. ESQUEMA JSON PARA IMPORTAÇÃO DE RASCUNHO (SEM PONTUAÇÃO P×S)');
-        linhas.push('Retorne exclusivamente um array JSON (máx. ' + LIMITE_MAX_ITENS_IMPORTACAO + ' itens, sem URLs e sem HTML) contendo:');
+        linhas.push('## 5. FORMATO DE RESPOSTA PARA IMPORTAÇÃO NO PAINEL (SEM NOTAS P×S)');
+        linhas.push('Responda com uma lista JSON válida (máximo ' + LIMITE_MAX_ITENS_IMPORTACAO + ' itens, sem links/URLs, sem HTML e sem campos p_puro/s_puro/p_residual/s_residual) no formato:');
         linhas.push('[{"fase_operacional":"EXECUCAO_FERRAMENTAS","passo_tarefa":"...","perigo_fonte":"...","evento_risco":"...","danos_provaveis":"...","medidas_prevencao":"...","evidencia_campo":"...","fonte_consultada":"...","hipotese_risco":"...","pergunta_pendente":"...","epis_sugeridos":["..."],"gatilhos":["..."]}]');
 
         // Verificação final sobre todo o texto gerado para garantir que nenhum CPF/CNPJ/e-mail/telefone passe
@@ -1158,9 +1237,58 @@
     }
 
     // =========================================================================
-    // 6. IMPORTAÇÃO VALIDADA (CONTAGEM UTF-8 + TRANSAÇÃO DE STORAGE)
+    // 6. IMPORTAÇÃO VALIDADA (EXTRAÇÃO SEGURA + PRÉVIA + DESCARTE DE P×S)
     // =========================================================================
-    function importarRespostaIaParaFila(textoBruto, contextoId) {
+    function extrairArrayJsonDeTexto(limpo) {
+        var matchBloco = limpo.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        if (matchBloco && matchBloco[1]) {
+            try {
+                return JSON.parse(matchBloco[1].trim());
+            } catch (eBloco) { /* tenta scanner balanceado abaixo */ }
+        }
+        try {
+            return JSON.parse(limpo);
+        } catch (eDireto) { /* tenta localizar array JSON cercado por texto livre */ }
+
+        var inicio = -1;
+        while ((inicio = limpo.indexOf('[', inicio + 1)) !== -1) {
+            var depth = 0;
+            var emString = false;
+            var escapado = false;
+            for (var i = inicio; i < limpo.length; i++) {
+                var ch = limpo.charAt(i);
+                if (escapado) {
+                    escapado = false;
+                    continue;
+                }
+                if (ch === '\\' && emString) {
+                    escapado = true;
+                    continue;
+                }
+                if (ch === '"') {
+                    emString = !emString;
+                    continue;
+                }
+                if (!emString) {
+                    if (ch === '[') depth++;
+                    else if (ch === ']') {
+                        depth--;
+                        if (depth === 0) {
+                            var candidato = limpo.slice(inicio, i + 1);
+                            try {
+                                var objCand = JSON.parse(candidato);
+                                if (Array.isArray(objCand)) return objCand;
+                            } catch (eCand) { /* segue buscando */ }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        throw new Error('Não foi possível reconhecer uma lista válida de riscos na resposta colada. Peça à IA para responder no formato solicitado no Passo 1.');
+    }
+
+    function analisarRespostaIaParaPrevia(textoBruto, contextoId) {
         garantirEstadoSessao();
         var papel = obterPapelUsuarioIa();
         if (papel !== 'editor' && papel !== 'validador') {
@@ -1168,7 +1296,7 @@
         }
 
         var limpo = String(textoBruto || '').trim();
-        if (!limpo) throw new Error('Cole o JSON de resposta antes de importar.');
+        if (!limpo) throw new Error('Cole a resposta da IA antes de continuar.');
         if (medirBytesUtf8(limpo) > LIMITE_BYTES_FICHA_IMPORTACAO) {
             throw new Error('Resposta excede o teto de ' + (LIMITE_BYTES_FICHA_IMPORTACAO / 1024) + ' KB (' + LIMITE_BYTES_FICHA_IMPORTACAO + ' bytes UTF-8).');
         }
@@ -1176,81 +1304,135 @@
         var erroSeg = contemConteudoProibidoImportacao(limpo);
         if (erroSeg) throw new Error(erroSeg);
 
-        var extraido = limpo;
-        var matchBloco = limpo.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        if (matchBloco && matchBloco[1]) {
-            extraido = matchBloco[1].trim();
-        }
-
-        var parsed = null;
-        try {
-            parsed = JSON.parse(extraido);
-        } catch (e) {
-            throw new Error('JSON malformado. A importação exige JSON estrito conforme o contrato.');
-        }
+        var parsed = extrairArrayJsonDeTexto(limpo);
 
         if (!Array.isArray(parsed)) {
-            throw new Error('O JSON importado deve ser um array de objetos de risco.');
+            throw new Error('A resposta importada precisa conter uma lista de riscos.');
         }
         if (parsed.length === 0 || parsed.length > LIMITE_MAX_ITENS_IMPORTACAO) {
             throw new Error('Quantidade de itens inválida (mínimo 1, máximo ' + LIMITE_MAX_ITENS_IMPORTACAO + ' por importação).');
         }
 
+        var notasIgnoradas = 0;
+        var itensNormalizados = [];
+        var ctxDestinoId = contextoId !== undefined ? contextoId : (estadoModulo.contextoSelecionadoId || null);
+
+        parsed.forEach(function (item, idx) {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) {
+                throw new Error('Item #' + (idx + 1) + ' inválido na resposta.');
+            }
+            var chaves = Object.keys(item);
+            chaves.forEach(function (k) {
+                if (CAMPOS_NOTA_IGNORADOS_JSON.has(k)) {
+                    if (item[k] !== '' && item[k] !== null && item[k] !== undefined) {
+                        notasIgnoradas++;
+                    }
+                    return;
+                }
+                if (!CAMPOS_PERMITIDOS_SUGESTAO_JSON.has(k)) {
+                    throw new Error('Campo não permitido no contrato JSON: "' + k + '".');
+                }
+            });
+
+            var passo = String(item.passo_tarefa || '').trim();
+            var perigo = String(item.perigo_fonte || '').trim();
+            if (!passo || !perigo) {
+                throw new Error('Item #' + (idx + 1) + ' sem passo_tarefa ou perigo_fonte.');
+            }
+
+            var fase = FASES_ROTEIRO_PERGUNTAS.some(function (f) { return f.id === item.fase_operacional; })
+                ? item.fase_operacional
+                : inferirFaseRoteiro(passo + ' ' + perigo);
+
+            var gatilhosLimpos = Array.isArray(item.gatilhos)
+                ? item.gatilhos.slice(0, 8).map(function (x) { return sanitizarDadosPessoaisParaExportacao(String(x)).slice(0, 40); })
+                : extrairGatilhosTexto(passo + ' ' + perigo);
+
+            itensNormalizados.push({
+                contexto_id: ctxDestinoId,
+                fase_operacional: fase,
+                passo_tarefa: passo.slice(0, 300),
+                perigo_fonte: perigo.slice(0, 300),
+                evento_risco: String(item.evento_risco || perigo).trim().slice(0, 300),
+                danos_provaveis: String(item.danos_provaveis || 'A definir pela Engenharia').trim().slice(0, 300),
+                medidas_prevencao: String(item.medidas_prevencao || 'Definir controle específico com base no procedimento aplicável.').trim().slice(0, 600),
+                responsavel: String(item.responsavel || 'Definir na APR').trim().slice(0, 120),
+                epis_sugeridos: Array.isArray(item.epis_sugeridos) ? item.epis_sugeridos.slice(0, 12).map(function (x) { return String(x).slice(0, 80); }) : [],
+                norma_referencia: String(item.norma_referencia || 'NR-01 / NR-18').trim().slice(0, 80),
+                gatilhos: gatilhosLimpos,
+                evidencia_campo: String(item.evidencia_campo || 'Rascunho importado de análise externa').trim().slice(0, 300),
+                fonte_consultada: String(item.fonte_consultada || 'Pendente de confirmação documental').trim().slice(0, 200),
+                hipotese_risco: String(item.hipotese_risco || perigo).trim().slice(0, 300),
+                pergunta_pendente: String(item.pergunta_pendente || 'Confirmar em campo e atribuir P×S manualmente na APR.').trim().slice(0, 300)
+            });
+        });
+
+        return {
+            itens: itensNormalizados,
+            notasIgnoradas: notasIgnoradas,
+            contextoId: ctxDestinoId,
+            identidadeChave: estadoModulo.identidadeChave,
+            geracaoSessaoId: estadoModulo.geracaoSessaoId
+        };
+    }
+
+    function gravarItensPreviaNaFila(previa) {
+        garantirEstadoSessao();
+        var papelAtual = obterPapelUsuarioIa();
+        if (papelAtual !== 'editor' && papelAtual !== 'validador') {
+            throw new Error('Permissão negada: seu perfil atual não possui autorização para importar itens para a fila.');
+        }
+        if (!previa || !Array.isArray(previa.itens) || previa.itens.length === 0) {
+            throw new Error('Nenhum item validado para importar.');
+        }
+        if (previa.identidadeChave && previa.identidadeChave !== estadoModulo.identidadeChave) {
+            throw new Error('A sessão/conta ativa mudou desde a geração da prévia. Gere uma nova prévia antes de confirmar.');
+        }
         return executarMutacaoPersistida(function () {
+            var papelNoCommit = obterPapelUsuarioIa();
+            if (papelNoCommit !== 'editor' && papelNoCommit !== 'validador') {
+                throw new Error('Permissão negada: concessão de gravação revogada antes da confirmação.');
+            }
+            if (previa.contextoId && !buscarContextoPorId(previa.contextoId)) {
+                throw new Error('O cenário vinculado à prévia não existe mais nesta sessão. Selecione um cenário válido e gere a prévia novamente.');
+            }
+            if (estadoModulo.sugestoesFila.length + previa.itens.length > LIMITE_MAX_SUGESTOES) {
+                throw new Error('Limite local de ' + LIMITE_MAX_SUGESTOES + ' sugestões na fila seria excedido (' + (estadoModulo.sugestoesFila.length + previa.itens.length) + '). Limpe itens antigos antes de importar.');
+            }
             var s = obterSessaoSegura() || {};
             var importados = 0;
-            parsed.forEach(function (item, idx) {
-                if (!item || typeof item !== 'object' || Array.isArray(item)) {
-                    throw new Error('Item #' + (idx + 1) + ' inválido no JSON.');
+            previa.itens.forEach(function (item, idx) {
+                if (!item || !String(item.passo_tarefa || '').trim() || !String(item.perigo_fonte || '').trim()) {
+                    throw new Error('Item #' + (idx + 1) + ' da prévia está incompleto (passo_tarefa ou perigo_fonte ausente).');
                 }
-                var chaves = Object.keys(item);
-                var chaveDesconhecida = chaves.find(function (k) { return !CAMPOS_PERMITIDOS_SUGESTAO_JSON.has(k); });
-                if (chaveDesconhecida) {
-                    throw new Error('Campo não permitido no contrato JSON: "' + chaveDesconhecida + '".');
-                }
-
-                var passo = String(item.passo_tarefa || '').trim();
-                var perigo = String(item.perigo_fonte || '').trim();
-                if (!passo || !perigo) {
-                    throw new Error('Item #' + (idx + 1) + ' sem passo_tarefa ou perigo_fonte.');
-                }
-
-                var fase = FASES_ROTEIRO_PERGUNTAS.some(function (f) { return f.id === item.fase_operacional; })
-                    ? item.fase_operacional
-                    : inferirFaseRoteiro(passo + ' ' + perigo);
-
-                var gatilhosLimpos = Array.isArray(item.gatilhos)
-                    ? item.gatilhos.slice(0, 8).map(function (x) { return sanitizarDadosPessoaisParaExportacao(String(x)).slice(0, 40); })
-                    : extrairGatilhosTexto(passo + ' ' + perigo);
-
                 estadoModulo.sugestoesFila.unshift({
                     id: gerarIdUnico('sug_imp_' + idx),
                     versao: 1,
                     origem_regra_id: null,
                     regra_gerada_id: null,
-                    contexto_id: contextoId !== undefined ? contextoId : (estadoModulo.contextoSelecionadoId || null),
+                    contexto_id: item.contexto_id,
                     modulo_destino: 'APR',
-                    fase_operacional: fase,
-                    titulo_insight: 'Rascunho Importado: ' + passo.slice(0, 80),
+                    fase_operacional: item.fase_operacional,
+                    titulo_insight: 'Rascunho Importado: ' + item.passo_tarefa.slice(0, 80),
                     descricao_analise: 'Rascunho externo não validado — requer revisão da Engenharia e avaliação manual de P×S.',
                     acao_proposta: {
-                        passo_tarefa: passo.slice(0, 300),
-                        perigo_fonte: perigo.slice(0, 300),
-                        evento_risco: String(item.evento_risco || perigo).trim().slice(0, 300),
-                        danos_provaveis: String(item.danos_provaveis || 'A definir pela Engenharia').trim().slice(0, 300),
+                        passo_tarefa: item.passo_tarefa,
+                        perigo_fonte: item.perigo_fonte,
+                        evento_risco: item.evento_risco,
+                        danos_provaveis: item.danos_provaveis,
                         p_puro: '',
                         s_puro: '',
-                        medidas_prevencao: String(item.medidas_prevencao || 'Definir controle específico com base no procedimento aplicável.').trim().slice(0, 600),
+                        medidas_prevencao: item.medidas_prevencao,
                         p_residual: '',
                         s_residual: '',
-                        responsavel: String(item.responsavel || 'Definir na APR').trim().slice(0, 120),
-                        epis_sugeridos: Array.isArray(item.epis_sugeridos) ? item.epis_sugeridos.slice(0, 12).map(function (x) { return String(x).slice(0, 80); }) : [],
-                        norma_referencia: String(item.norma_referencia || 'NR-01 / NR-18').trim().slice(0, 80),
-                        gatilhos: gatilhosLimpos,
-                        evidencia_campo: String(item.evidencia_campo || 'Rascunho importado de análise externa').trim().slice(0, 300),
-                        fonte_consultada: String(item.fonte_consultada || 'Pendente de confirmação documental').trim().slice(0, 200),
-                        hipotese_risco: String(item.hipotese_risco || perigo).trim().slice(0, 300),
-                        pergunta_pendente: String(item.pergunta_pendente || 'Confirmar em campo e atribuir P×S manualmente na APR.').trim().slice(0, 300)
+                        responsavel: item.responsavel,
+                        epis_sugeridos: Array.isArray(item.epis_sugeridos) ? item.epis_sugeridos.slice() : [],
+                        norma_referencia: item.norma_referencia,
+                        gatilhos: Array.isArray(item.gatilhos) ? item.gatilhos.slice() : [],
+                        evidencia_campo: item.evidencia_campo,
+                        fonte_consultada: item.fonte_consultada,
+                        hipotese_risco: item.hipotese_risco,
+                        pergunta_pendente: item.pergunta_pendente
                     },
                     status: 'RASCUNHO',
                     feedback_engenheiro: '',
@@ -1261,8 +1443,755 @@
                 importados++;
             });
 
-            registrarEventoAuditoria('IMPORTAR_RESPOSTA_JSON', contextoId || 'fila', importados + ' rascunho(s)');
+            registrarEventoAuditoria('IMPORTAR_RESPOSTA_JSON', previa.contextoId || 'fila', importados + ' rascunho(s)' + (previa.notasIgnoradas ? ' (' + previa.notasIgnoradas + ' nota(s) P/S ignorada(s))' : ''));
             return importados;
+        });
+    }
+
+    // Contrato programático direto (compatibilidade e testes): valida esquema, segurança e revalida permissão no ponto de escrita.
+    // Na interface do usuário, o fluxo exige pré-visualização explícita antes da confirmação (preVisualizarRespostaIaUI -> confirmarImportacaoPreviaIaUI).
+    function importarRespostaIaParaFila(textoBruto, contextoId) {
+        var previa = analisarRespostaIaParaPrevia(textoBruto, contextoId);
+        return gravarItensPreviaNaFila(previa);
+    }
+
+    // =========================================================================
+    // 6B. BACKUP E RESTAURAÇÃO DO CADERNO LOCAL (INTEGRAL, COM PRÉVIA E CONFLITOS)
+    // =========================================================================
+    function normalizarListaStringsBackup(arr, nomeCampo, rotuloItem) {
+        if (arr === undefined || arr === null) return [];
+        if (!Array.isArray(arr)) {
+            throw new Error('Backup inválido: ' + rotuloItem + ' possui campo "' + nomeCampo + '" que não é uma lista.');
+        }
+        return arr.map(function (v) { return String(v == null ? '' : v); });
+    }
+
+    function normalizarFasesObjetoBackup(fases, rotuloItem) {
+        if (fases === undefined || fases === null) return {};
+        if (typeof fases !== 'object' || Array.isArray(fases)) {
+            throw new Error('Backup inválido: ' + rotuloItem + ' possui campo "fases_operacionais" inválido.');
+        }
+        var out = {};
+        Object.keys(fases).forEach(function (k) {
+            if (fases[k] !== undefined && fases[k] !== null) {
+                out[k] = String(fases[k]);
+            }
+        });
+        return out;
+    }
+
+    function assinaturaFasesCanonica(fasesObj) {
+        var obj = (fasesObj && typeof fasesObj === 'object' && !Array.isArray(fasesObj)) ? fasesObj : {};
+        var chaves = Object.keys(obj).sort();
+        return chaves.map(function (k) { return k + '=' + String(obj[k] || '').trim(); }).join('|');
+    }
+
+    function compararConteudoContexto(existente, candidato) {
+        var camposDiferentes = [];
+        var checarTexto = function (campo, a, b) {
+            if (String(a || '').trim() !== String(b || '').trim()) camposDiferentes.push(campo);
+        };
+        var checarLista = function (campo, a, b) {
+            var la = Array.isArray(a) ? a.map(String) : [];
+            var lb = Array.isArray(b) ? b.map(String) : [];
+            if (la.length !== lb.length || la.some(function (v, idx) { return v !== lb[idx]; })) {
+                camposDiferentes.push(campo);
+            }
+        };
+        checarTexto('cargo_equipe', existente.cargo_equipe, candidato.cargo_equipe);
+        checarTexto('ghe_codigo', existente.ghe_codigo, candidato.ghe_codigo);
+        checarTexto('frente_servico', existente.frente_servico, candidato.frente_servico);
+        checarTexto('fonte_procedimento', existente.fonte_procedimento, candidato.fonte_procedimento);
+        checarTexto('rotina_detalhada', existente.rotina_detalhada, candidato.rotina_detalhada);
+        checarTexto('regras_engenheiro', existente.regras_engenheiro, candidato.regras_engenheiro);
+        if (assinaturaFasesCanonica(existente.fases_operacionais) !== assinaturaFasesCanonica(candidato.fases_operacionais)) {
+            camposDiferentes.push('fases_operacionais');
+        }
+        checarLista('ferramentas_reais', existente.ferramentas_reais, candidato.ferramentas_reais);
+        checarLista('perigos_observados', existente.perigos_observados, candidato.perigos_observados);
+        checarLista('epis_validados', existente.epis_validados, candidato.epis_validados);
+        return {
+            igual: camposDiferentes.length === 0,
+            camposDiferentes: camposDiferentes
+        };
+    }
+
+    // Prepara o snapshot compacto e sincronizado do caderno local SEM alterar ultimoBackupEm/alteracoesAposBackup.
+    // A marcação de backup concluído só ocorre via registrarBackupExportadoLocal após o download ser efetivamente iniciado.
+    function gerarBackupCadernoLocal() {
+        sincronizarDoStorageParaConcorrencia();
+        var papel = obterPapelUsuarioIa();
+        if (papel === 'sem_acesso' || papel === 'sem_sessao') {
+            throw new Error('Sessão sem permissão para exportar o caderno local.');
+        }
+        var agoraIso = new Date().toISOString();
+        var payload = {
+            formato: FORMATO_BACKUP_LOCAL,
+            gerado_em: agoraIso,
+            contextos: estadoModulo.contextos,
+            regrasAprendidas: estadoModulo.regrasAprendidas,
+            sugestoesFila: estadoModulo.sugestoesFila
+        };
+        // Serialização compacta para garantir round-trip fiel dentro do teto de armazenamento local (200 KB UTF-8)
+        var json = JSON.stringify(payload);
+        return {
+            nomeArquivo: 'backup_inteligencia_sst_' + agoraIso.slice(0, 10) + '.json',
+            geradoEm: agoraIso,
+            json: json,
+            bytesUtf8: medirBytesUtf8(json),
+            totalContextos: estadoModulo.contextos.length,
+            totalRegras: estadoModulo.regrasAprendidas.length,
+            totalFila: estadoModulo.sugestoesFila.length
+        };
+    }
+
+    function registrarBackupExportadoLocal(geradoEmIso, resumoTexto) {
+        garantirEstadoSessao();
+        var papel = obterPapelUsuarioIa();
+        if (papel !== 'editor' && papel !== 'validador') return false;
+        executarMutacaoPersistida(function () {
+            estadoModulo.ultimoBackupEm = String(geradoEmIso || new Date().toISOString());
+            estadoModulo.alteracoesAposBackup = false;
+            registrarEventoAuditoria('EXPORTAR_BACKUP_LOCAL', 'caderno', resumoTexto || (estadoModulo.contextos.length + ' cenário(s), ' + estadoModulo.regrasAprendidas.length + ' regra(s)'));
+        }, { preservarFlagBackup: true });
+        return true;
+    }
+
+    function analisarBackupCadernoLocal(textoBruto) {
+        sincronizarDoStorageParaConcorrencia();
+        var papel = obterPapelUsuarioIa();
+        if (papel !== 'editor' && papel !== 'validador') {
+            throw new Error('Permissão negada: apenas editores ou validadores podem restaurar backup.');
+        }
+
+        var limpo = String(textoBruto || '').trim();
+        if (!limpo) throw new Error('Selecione ou cole um arquivo de backup (.json) antes de pré-visualizar.');
+        if (medirBytesUtf8(limpo) > LIMITE_BYTES_BACKUP_ARQUIVO) {
+            throw new Error('Arquivo de backup excede o limite máximo permitido para leitura (' + Math.round(LIMITE_BYTES_BACKUP_ARQUIVO / 1024) + ' KB UTF-8).');
+        }
+        var erroSeg = contemConteudoProibidoImportacao(limpo);
+        if (erroSeg) throw new Error(erroSeg);
+
+        var obj = null;
+        try {
+            obj = JSON.parse(limpo);
+        } catch (e) {
+            throw new Error('Arquivo de backup inválido (JSON malformado).');
+        }
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+            throw new Error('Estrutura de backup inválida.');
+        }
+        if (obj.formato !== FORMATO_BACKUP_LOCAL) {
+            throw new Error('Formato ou versão de backup não reconhecido ("' + String(obj.formato || 'ausente') + '"). Esperado: "' + FORMATO_BACKUP_LOCAL + '".');
+        }
+        if (obj.contextos !== undefined && !Array.isArray(obj.contextos)) {
+            throw new Error('Backup inválido: campo "contextos" deve ser uma lista.');
+        }
+        if (obj.regrasAprendidas !== undefined && !Array.isArray(obj.regrasAprendidas)) {
+            throw new Error('Backup inválido: campo "regrasAprendidas" deve ser uma lista.');
+        }
+        if (obj.sugestoesFila !== undefined && !Array.isArray(obj.sugestoesFila)) {
+            throw new Error('Backup inválido: campo "sugestoesFila" deve ser uma lista.');
+        }
+
+        var contextosBrutos = Array.isArray(obj.contextos) ? obj.contextos : [];
+        var regrasBrutas = Array.isArray(obj.regrasAprendidas) ? obj.regrasAprendidas : [];
+        var filaBruta = Array.isArray(obj.sugestoesFila) ? obj.sugestoesFila : [];
+
+        // Validação integral de cada registro ANTES de autorizar prévia ou qualquer mutação (sem truncamento silencioso)
+        var contextosValidos = [];
+        var idsContextoNoArquivo = new Set();
+        contextosBrutos.forEach(function (c, idx) {
+            var rotulo = 'cenário #' + (idx + 1);
+            if (!c || typeof c !== 'object' || Array.isArray(c)) {
+                throw new Error('Backup inválido: ' + rotulo + ' não é um objeto válido.');
+            }
+            var cargo = String(c.cargo_equipe || '').trim();
+            if (!cargo) {
+                throw new Error('Backup inválido: ' + rotulo + ' está sem Cargo / Equipe (cargo_equipe).');
+            }
+            var idOriginal = c.id ? String(c.id).trim() : '';
+            if (idOriginal) idsContextoNoArquivo.add(idOriginal);
+            contextosValidos.push({
+                idOriginal: idOriginal,
+                codigo_cenario: String(c.codigo_cenario || '').trim(),
+                cargo_equipe: cargo,
+                ghe_codigo: String(c.ghe_codigo || '').trim(),
+                frente_servico: String(c.frente_servico || 'Geral').trim() || 'Geral',
+                fonte_procedimento: String(c.fonte_procedimento || '').trim(),
+                rotina_detalhada: String(c.rotina_detalhada || '').trim(),
+                fases_operacionais: normalizarFasesObjetoBackup(c.fases_operacionais, rotulo),
+                ferramentas_reais: normalizarListaStringsBackup(c.ferramentas_reais, 'ferramentas_reais', rotulo),
+                perigos_observados: normalizarListaStringsBackup(c.perigos_observados, 'perigos_observados', rotulo),
+                epis_validados: normalizarListaStringsBackup(c.epis_validados, 'epis_validados', rotulo),
+                regras_engenheiro: String(c.regras_engenheiro || '').trim(),
+                ativo: c.ativo !== false
+            });
+        });
+
+        var itensRevalidacaoValidos = [];
+        var ignoradosPorStatus = 0;
+        var itensDuplicadosNoArquivo = 0;
+        var totalRegrasAtivasNoArquivo = 0;
+        var totalFilaAtivaNoArquivo = 0;
+
+        function assinaturaTecnicaCompletaItemBackup(it, ctxChave) {
+            return JSON.stringify([
+                String(ctxChave || 'sem_ctx'),
+                String(it.fase_operacional || '').trim(),
+                String(it.passo_tarefa || '').trim(),
+                String(it.perigo_fonte || '').trim(),
+                String(it.evento_risco || '').trim(),
+                String(it.danos_provaveis || '').trim(),
+                String(it.medidas_prevencao || '').trim(),
+                String(it.responsavel || '').trim(),
+                String(it.norma_referencia || '').trim(),
+                Array.isArray(it.epis_sugeridos) ? it.epis_sugeridos.map(function (x) { return String(x || '').trim(); }) : [],
+                Array.isArray(it.gatilhos) ? it.gatilhos.map(function (x) { return String(x || '').trim(); }) : [],
+                String(it.evidencia_campo || '').trim(),
+                String(it.fonte_consultada || '').trim(),
+                String(it.hipotese_risco || '').trim(),
+                String(it.pergunta_pendente || '').trim()
+            ]);
+        }
+
+        function assinaturaComumRegraSugestaoBackup(it, ctxChave) {
+            return JSON.stringify([
+                String(ctxChave || 'sem_ctx'),
+                String(it.fase_operacional || '').trim(),
+                String(it.passo_tarefa || '').trim(),
+                String(it.perigo_fonte || '').trim(),
+                String(it.evento_risco || '').trim(),
+                String(it.danos_provaveis || '').trim(),
+                String(it.medidas_prevencao || '').trim(),
+                String(it.norma_referencia || '').trim(),
+                Array.isArray(it.epis_sugeridos) ? it.epis_sugeridos.map(function (x) { return String(x || '').trim(); }) : [],
+                Array.isArray(it.gatilhos) ? it.gatilhos.map(function (x) { return String(x || '').trim(); }) : [],
+                String(it.evidencia_campo || '').trim(),
+                String(it.fonte_consultada || '').trim(),
+                String(it.pergunta_pendente || '').trim()
+            ]);
+        }
+
+        function saoVinculadosRegraSugestao(a, b) {
+            if (!a || !b) return false;
+            var aRegra = a.tipoOrigem === 'regra';
+            var bRegra = b.tipoOrigem === 'regra';
+            if (aRegra === bRegra) return false;
+            var regra = aRegra ? a : b;
+            var sug = aRegra ? b : a;
+            if (regra.sugestaoOrigemId && sug.idOriginal && regra.sugestaoOrigemId === sug.idOriginal) return true;
+            if (sug.regraGeradaId && regra.idOriginal && sug.regraGeradaId === regra.idOriginal) return true;
+            if (sug.origemRegraId && regra.idOriginal && sug.origemRegraId === regra.idOriginal) return true;
+            return false;
+        }
+
+        function ehDuplicataIntegralItemBackup(a, b, ctxChaveA, ctxChaveB) {
+            if (String(ctxChaveA || 'sem_ctx') !== String(ctxChaveB || 'sem_ctx')) return false;
+            if (assinaturaTecnicaCompletaItemBackup(a, ctxChaveA) === assinaturaTecnicaCompletaItemBackup(b, ctxChaveB)) {
+                return true;
+            }
+            if (saoVinculadosRegraSugestao(a, b) && assinaturaComumRegraSugestaoBackup(a, ctxChaveA) === assinaturaComumRegraSugestaoBackup(b, ctxChaveB)) {
+                return true;
+            }
+            return false;
+        }
+
+        function converterSugestaoFilaParaComparacaoBackup(ex) {
+            var a = ex && ex.acao_proposta ? ex.acao_proposta : {};
+            var passo = String(a.passo_tarefa || '').trim();
+            var perigo = String(a.perigo_fonte || '').trim();
+            return {
+                tipoOrigem: 'fila',
+                idOriginal: ex && ex.id ? String(ex.id).trim() : '',
+                regraGeradaId: ex && ex.regra_gerada_id ? String(ex.regra_gerada_id).trim() : '',
+                origemRegraId: ex && ex.origem_regra_id ? String(ex.origem_regra_id).trim() : '',
+                sugestaoOrigemId: '',
+                fase_operacional: ex ? ex.fase_operacional : '',
+                passo_tarefa: passo,
+                perigo_fonte: perigo,
+                evento_risco: String(a.evento_risco || perigo).trim(),
+                danos_provaveis: String(a.danos_provaveis || 'A avaliar pela Engenharia').trim(),
+                medidas_prevencao: String(a.medidas_prevencao || 'Revisar medida de controle aplicável.').trim(),
+                responsavel: String(a.responsavel || 'Definir na APR').trim(),
+                epis_sugeridos: Array.isArray(a.epis_sugeridos) ? a.epis_sugeridos.map(String) : [],
+                norma_referencia: String(a.norma_referencia || 'NR-01 / NR-18').trim(),
+                gatilhos: Array.isArray(a.gatilhos) ? a.gatilhos.map(String) : [],
+                evidencia_campo: String(a.evidencia_campo || '').trim(),
+                fonte_consultada: String(a.fonte_consultada || '').trim(),
+                hipotese_risco: String(a.hipotese_risco || a.evento_risco || perigo).trim(),
+                pergunta_pendente: String(a.pergunta_pendente || '').trim()
+            };
+        }
+
+        function registrarItemValidado(dadosItem) {
+            var idxDup = itensRevalidacaoValidos.findIndex(function (ex) {
+                return ehDuplicataIntegralItemBackup(ex, dadosItem, ex.contextoOrigemId, dadosItem.contextoOrigemId);
+            });
+            if (idxDup !== -1) {
+                // Se o já registrado era regra e chegou a sugestão vinculada equivalente, preserva os campos extras da sugestão (responsavel/hipotese) mantendo vínculo
+                if (itensRevalidacaoValidos[idxDup].tipoOrigem === 'regra' && dadosItem.tipoOrigem === 'fila') {
+                    var regraAnterior = itensRevalidacaoValidos[idxDup];
+                    itensRevalidacaoValidos[idxDup] = Object.assign({}, dadosItem, {
+                        regraGeradaId: dadosItem.regraGeradaId || regraAnterior.idOriginal,
+                        origemLabel: 'Regra e sugestão equivalentes do backup (revalidação obrigatória)'
+                    });
+                }
+                itensDuplicadosNoArquivo++;
+                return;
+            }
+            itensRevalidacaoValidos.push(dadosItem);
+        }
+
+        regrasBrutas.forEach(function (r, idx) {
+            var rotulo = 'regra #' + (idx + 1);
+            if (!r || typeof r !== 'object' || Array.isArray(r)) {
+                throw new Error('Backup inválido: ' + rotulo + ' não é um objeto válido.');
+            }
+            if (r.status_regra === 'REVOGADO') {
+                ignoradosPorStatus++;
+                return;
+            }
+            var passo = String(r.passo_tarefa || '').trim();
+            var perigo = String(r.perigo_fonte || '').trim();
+            if (!passo || !perigo) {
+                throw new Error('Backup inválido: ' + rotulo + ' sem passo_tarefa ou perigo_fonte.');
+            }
+            totalRegrasAtivasNoArquivo++;
+            registrarItemValidado({
+                tipoOrigem: 'regra',
+                idOriginal: r.id ? String(r.id).trim() : '',
+                sugestaoOrigemId: r.sugestao_origem_id ? String(r.sugestao_origem_id).trim() : '',
+                regraGeradaId: '',
+                origemRegraId: '',
+                origemLabel: 'Regra do backup (revalidação obrigatória)',
+                contextoOrigemId: r.contexto_aplicavel_id ? String(r.contexto_aplicavel_id).trim() : null,
+                fase_operacional: FASES_ROTEIRO_PERGUNTAS.some(function (f) { return f.id === r.fase; }) ? r.fase : inferirFaseRoteiro(passo + ' ' + perigo),
+                passo_tarefa: passo,
+                perigo_fonte: perigo,
+                evento_risco: String(r.evento_risco || perigo).trim(),
+                danos_provaveis: String(r.danos_provaveis || 'A avaliar pela Engenharia').trim(),
+                medidas_prevencao: String(r.medidas_prevencao || 'Revisar medida de controle aplicável.').trim(),
+                responsavel: String(r.responsavel || 'Definir na APR').trim(),
+                epis_sugeridos: normalizarListaStringsBackup(r.epis_sugeridos, 'epis_sugeridos', rotulo),
+                norma_referencia: String(r.norma_referencia || 'NR-01 / NR-18').trim(),
+                gatilhos: Array.isArray(r.gatilhos)
+                    ? r.gatilhos.map(function (g) { return sanitizarDadosPessoaisParaExportacao(String(g)); })
+                    : extrairGatilhosTexto(passo + ' ' + perigo),
+                evidencia_campo: String(r.evidencia_campo || 'Restaurado de backup local').trim(),
+                fonte_consultada: String(r.fonte_consultada || 'Backup local — conferir fonte original').trim(),
+                hipotese_risco: String(r.hipotese_risco || r.evento_risco || perigo).trim(),
+                pergunta_pendente: String(r.pergunta_pendente || 'Confirmar validade atual e reaprovar antes de usar na APR.').trim()
+            });
+        });
+
+        filaBruta.forEach(function (item, idx) {
+            var rotulo = 'item da fila #' + (idx + 1);
+            if (!item || typeof item !== 'object' || Array.isArray(item)) {
+                throw new Error('Backup inválido: ' + rotulo + ' não é um objeto válido.');
+            }
+            if (item.status === 'DESCARTADO' || item.status === 'REVOGADO') {
+                ignoradosPorStatus++;
+                return;
+            }
+            if (!item.acao_proposta || typeof item.acao_proposta !== 'object' || Array.isArray(item.acao_proposta)) {
+                throw new Error('Backup inválido: ' + rotulo + ' sem acao_proposta válida.');
+            }
+            var a = item.acao_proposta;
+            var passo = String(a.passo_tarefa || '').trim();
+            var perigo = String(a.perigo_fonte || '').trim();
+            if (!passo || !perigo) {
+                throw new Error('Backup inválido: ' + rotulo + ' sem passo_tarefa ou perigo_fonte.');
+            }
+            totalFilaAtivaNoArquivo++;
+            registrarItemValidado({
+                tipoOrigem: 'fila',
+                idOriginal: item.id ? String(item.id).trim() : '',
+                sugestaoOrigemId: '',
+                regraGeradaId: item.regra_gerada_id ? String(item.regra_gerada_id).trim() : '',
+                origemRegraId: item.origem_regra_id ? String(item.origem_regra_id).trim() : '',
+                origemLabel: 'Item da fila do backup',
+                contextoOrigemId: item.contexto_id ? String(item.contexto_id).trim() : null,
+                fase_operacional: FASES_ROTEIRO_PERGUNTAS.some(function (f) { return f.id === item.fase_operacional; }) ? item.fase_operacional : inferirFaseRoteiro(passo + ' ' + perigo),
+                passo_tarefa: passo,
+                perigo_fonte: perigo,
+                evento_risco: String(a.evento_risco || perigo).trim(),
+                danos_provaveis: String(a.danos_provaveis || 'A avaliar pela Engenharia').trim(),
+                medidas_prevencao: String(a.medidas_prevencao || 'Revisar medida de controle aplicável.').trim(),
+                responsavel: String(a.responsavel || 'Definir na APR').trim(),
+                epis_sugeridos: normalizarListaStringsBackup(a.epis_sugeridos, 'epis_sugeridos', rotulo),
+                norma_referencia: String(a.norma_referencia || 'NR-01 / NR-18').trim(),
+                gatilhos: Array.isArray(a.gatilhos)
+                    ? a.gatilhos.map(function (g) { return sanitizarDadosPessoaisParaExportacao(String(g)); })
+                    : extrairGatilhosTexto(passo + ' ' + perigo),
+                evidencia_campo: String(a.evidencia_campo || 'Restaurado de backup local').trim(),
+                fonte_consultada: String(a.fonte_consultada || 'Backup local — conferir fonte original').trim(),
+                hipotese_risco: String(a.hipotese_risco || a.evento_risco || perigo).trim(),
+                pergunta_pendente: String(a.pergunta_pendente || 'Confirmar validade atual e reaprovar antes de usar na APR.').trim()
+            });
+        });
+
+        if (contextosValidos.length === 0 && itensRevalidacaoValidos.length === 0) {
+            throw new Error('O arquivo de backup não contém cenários, regras ou rascunhos válidos para restaurar.');
+        }
+        if (contextosValidos.length > LIMITE_MAX_CONTEXTOS) {
+            throw new Error('O backup contém ' + contextosValidos.length + ' cenários, acima do limite local de ' + LIMITE_MAX_CONTEXTOS + '. Reduza a quantidade antes de importar.');
+        }
+        if (itensRevalidacaoValidos.length > LIMITE_MAX_SUGESTOES) {
+            throw new Error('O backup contém ' + itensRevalidacaoValidos.length + ' itens restauráveis para a fila, acima do limite local de ' + LIMITE_MAX_SUGESTOES + '.');
+        }
+
+        // Classificação detalhada de novos, idênticos e conflitos de conteúdo para o modo Mesclar
+        var contextosNovos = 0;
+        var contextosIdenticos = 0;
+        var conflitosContexto = [];
+        var mapaIdsContextoPrevisto = {};
+        contextosValidos.forEach(function (c) {
+            var existente = estadoModulo.contextos.find(function (ex) {
+                return (c.idOriginal && ex.id === c.idOriginal) ||
+                    (normalizar(ex.cargo_equipe) === normalizar(c.cargo_equipe) && normalizar(ex.frente_servico) === normalizar(c.frente_servico));
+            });
+            if (!existente) {
+                contextosNovos++;
+                if (c.idOriginal) mapaIdsContextoPrevisto[c.idOriginal] = '__novo_ctx_' + c.idOriginal;
+                return;
+            }
+            if (c.idOriginal) mapaIdsContextoPrevisto[c.idOriginal] = existente.id;
+            var comp = compararConteudoContexto(existente, c);
+            if (comp.igual) {
+                contextosIdenticos++;
+            } else {
+                conflitosContexto.push({
+                    idBackup: c.idOriginal,
+                    idExistente: existente.id,
+                    cargo_equipe: c.cargo_equipe,
+                    frente_servico: c.frente_servico,
+                    camposDiferentes: comp.camposDiferentes
+                });
+            }
+        });
+
+        var itensOrfaos = 0;
+        var itensFilaJaExistentesMesclar = 0;
+        var itensMesmoPassoPerigoConteudoDiferente = 0;
+        itensRevalidacaoValidos.forEach(function (it) {
+            var ctxPrevisto = null;
+            if (it.contextoOrigemId) {
+                if (mapaIdsContextoPrevisto[it.contextoOrigemId]) {
+                    ctxPrevisto = mapaIdsContextoPrevisto[it.contextoOrigemId];
+                } else if (estadoModulo.contextos.some(function (ex) { return ex.id === it.contextoOrigemId; })) {
+                    ctxPrevisto = it.contextoOrigemId;
+                } else {
+                    itensOrfaos++;
+                    ctxPrevisto = null;
+                }
+            }
+            var dupAtual = estadoModulo.sugestoesFila.some(function (ex) {
+                if (ex.status === 'DESCARTADO') return false;
+                return ehDuplicataIntegralItemBackup(converterSugestaoFilaParaComparacaoBackup(ex), it, ex.contexto_id, ctxPrevisto);
+            });
+            if (dupAtual) {
+                itensFilaJaExistentesMesclar++;
+                return;
+            }
+            var mesmoPassoPerigoDiferente = estadoModulo.sugestoesFila.some(function (ex) {
+                return ex.status !== 'DESCARTADO' &&
+                    ex.contexto_id === ctxPrevisto &&
+                    ex.acao_proposta &&
+                    (
+                        (it.idOriginal && ex.id === it.idOriginal) ||
+                        (normalizar(ex.acao_proposta.passo_tarefa) === normalizar(it.passo_tarefa) &&
+                         normalizar(ex.acao_proposta.perigo_fonte) === normalizar(it.perigo_fonte))
+                    );
+            });
+            if (mesmoPassoPerigoDiferente) {
+                itensMesmoPassoPerigoConteudoDiferente++;
+            }
+        });
+
+        var novosItensFilaMesclar = Math.max(0, itensRevalidacaoValidos.length - itensFilaJaExistentesMesclar);
+        var excedenteContextosMesclar = Math.max(0, (estadoModulo.contextos.length + contextosNovos) - LIMITE_MAX_CONTEXTOS);
+        var excedenteFilaMesclar = Math.max(0, (estadoModulo.sugestoesFila.length + novosItensFilaMesclar) - LIMITE_MAX_SUGESTOES);
+
+        return {
+            textoOriginal: limpo,
+            identidadeChave: estadoModulo.identidadeChave,
+            geradoEm: String(obj.gerado_em || 'Data não informada'),
+            contextos: contextosValidos,
+            itensRevalidacao: itensRevalidacaoValidos,
+            conflitosContexto: conflitosContexto,
+            comparadores: {
+                ehDuplicataIntegralItemBackup: ehDuplicataIntegralItemBackup,
+                converterSugestaoFilaParaComparacaoBackup: converterSugestaoFilaParaComparacaoBackup
+            },
+            resumo: {
+                totalContextos: contextosValidos.length,
+                contextosNovos: contextosNovos,
+                contextosIdenticos: contextosIdenticos,
+                contextosDuplicados: contextosIdenticos + conflitosContexto.length,
+                conflitosConteudo: conflitosContexto.length,
+                totalRegras: totalRegrasAtivasNoArquivo,
+                totalFila: totalFilaAtivaNoArquivo,
+                totalItensRevalidacao: itensRevalidacaoValidos.length,
+                filaDuplicados: itensFilaJaExistentesMesclar,
+                itensMesmoPassoPerigoConteudoDiferente: itensMesmoPassoPerigoConteudoDiferente,
+                itensDuplicadosNoArquivo: itensDuplicadosNoArquivo,
+                ignoradosPorStatus: ignoradosPorStatus,
+                itensOrfaos: itensOrfaos,
+                excedenteContextosMesclar: excedenteContextosMesclar,
+                excedenteFilaMesclar: excedenteFilaMesclar,
+                efetivamenteRestauraveisMesclar: contextosNovos + novosItensFilaMesclar,
+                efetivamenteRestauraveisSubstituir: contextosValidos.length + itensRevalidacaoValidos.length,
+                atualContextos: estadoModulo.contextos.length,
+                atualRegras: estadoModulo.regrasAprendidas.length,
+                atualFila: estadoModulo.sugestoesFila.length
+            }
+        };
+    }
+
+    function aplicarRestauracaoBackupLocal(textoBruto, modo, opcoes) {
+        opcoes = opcoes || {};
+        var modoFinal = modo === 'substituir' ? 'substituir' : 'mesclar';
+        var politicaConflito = String(opcoes.politicaConflito || '').trim();
+        var analise = analisarBackupCadernoLocal(textoBruto);
+
+        if (modoFinal === 'mesclar' && analise.conflitosContexto.length > 0) {
+            if (politicaConflito !== 'manter_existente' && politicaConflito !== 'restaurar_copia' && politicaConflito !== 'substituir_versao') {
+                var nomesConflito = analise.conflitosContexto.map(function (c) { return c.cargo_equipe; }).join(', ');
+                throw new Error('Conflito de versão detectado em ' + analise.conflitosContexto.length + ' cenário(s) com conteúdo diferente (' + nomesConflito + '). Escolha explicitamente como tratar: manter existente, restaurar como cópia ou substituir versão.');
+            }
+        }
+
+        // Snapshot de segurança do estado atual preparado ANTES de qualquer alteração
+        var copiaSegurancaAntes = null;
+        if (modoFinal === 'substituir' && (estadoModulo.contextos.length > 0 || estadoModulo.regrasAprendidas.length > 0 || estadoModulo.sugestoesFila.length > 0)) {
+            var agoraCopiaIso = new Date().toISOString();
+            copiaSegurancaAntes = {
+                nomeArquivo: 'copia_seguranca_antes_substituir_' + agoraCopiaIso.slice(0, 10) + '.json',
+                geradoEm: agoraCopiaIso,
+                json: JSON.stringify({
+                    formato: FORMATO_BACKUP_LOCAL,
+                    gerado_em: agoraCopiaIso,
+                    contextos: estadoModulo.contextos,
+                    regrasAprendidas: estadoModulo.regrasAprendidas,
+                    sugestoesFila: estadoModulo.sugestoesFila
+                })
+            };
+        }
+
+        return executarMutacaoPersistida(function () {
+            var papelNoCommit = obterPapelUsuarioIa();
+            if (papelNoCommit !== 'editor' && papelNoCommit !== 'validador') {
+                throw new Error('Permissão negada: apenas editores ou validadores podem restaurar backup.');
+            }
+            var s = obterSessaoSegura() || {};
+            var agoraIso = new Date().toISOString();
+
+            // Construção integral em área temporária ANTES de alterar estadoModulo (zero limpeza prematura e zero truncamento silencioso)
+            var proxContextos = modoFinal === 'substituir' ? [] : JSON.parse(JSON.stringify(estadoModulo.contextos));
+            var proxRegras = modoFinal === 'substituir' ? [] : JSON.parse(JSON.stringify(estadoModulo.regrasAprendidas));
+            var proxFila = modoFinal === 'substituir' ? [] : JSON.parse(JSON.stringify(estadoModulo.sugestoesFila));
+
+            var mapaIdsContexto = {};
+            var ctxAdicionados = 0;
+            var ctxAtualizados = 0;
+            var ctxCopiados = 0;
+            var ctxMantidos = 0;
+            var itensRevalidacaoAdicionados = 0;
+
+            analise.contextos.forEach(function (c, idx) {
+                var existente = proxContextos.find(function (ex) {
+                    return (c.idOriginal && ex.id === c.idOriginal) ||
+                        (normalizar(ex.cargo_equipe) === normalizar(c.cargo_equipe) && normalizar(ex.frente_servico) === normalizar(c.frente_servico));
+                });
+
+                if (existente) {
+                    var comp = compararConteudoContexto(existente, c);
+                    if (comp.igual) {
+                        if (c.idOriginal) mapaIdsContexto[c.idOriginal] = existente.id;
+                        ctxMantidos++;
+                        return;
+                    }
+                    if (politicaConflito === 'manter_existente') {
+                        if (c.idOriginal) mapaIdsContexto[c.idOriginal] = existente.id;
+                        ctxMantidos++;
+                        return;
+                    }
+                    if (politicaConflito === 'substituir_versao') {
+                        existente.versao = (Number(existente.versao) || 1) + 1;
+                        existente.status_cenario = 'RASCUNHO_NAO_APROVADO';
+                        existente.cargo_equipe = c.cargo_equipe;
+                        existente.ghe_codigo = c.ghe_codigo;
+                        existente.frente_servico = c.frente_servico;
+                        existente.fonte_procedimento = c.fonte_procedimento || 'Restaurado de backup local — conferir versão vigente';
+                        existente.rotina_detalhada = c.rotina_detalhada;
+                        existente.fases_operacionais = JSON.parse(JSON.stringify(c.fases_operacionais));
+                        existente.ferramentas_reais = c.ferramentas_reais.slice();
+                        existente.perigos_observados = c.perigos_observados.slice();
+                        existente.epis_validados = c.epis_validados.slice();
+                        existente.regras_engenheiro = c.regras_engenheiro;
+                        existente.updated_at = agoraIso;
+                        if (c.idOriginal) mapaIdsContexto[c.idOriginal] = existente.id;
+                        ctxAtualizados++;
+                        return;
+                    }
+                    // politicaConflito === 'restaurar_copia': preserva o existente e adiciona cópia integral
+                    var idCopia = gerarIdUnico('ctx_bkp_copia_' + idx);
+                    if (c.idOriginal) mapaIdsContexto[c.idOriginal] = idCopia;
+                    proxContextos.push({
+                        id: idCopia,
+                        versao: 1,
+                        status_cenario: 'RASCUNHO_NAO_APROVADO',
+                        codigo_cenario: String(c.codigo_cenario || ('BKP-' + String(proxContextos.length + 1).padStart(3, '0'))),
+                        cargo_equipe: c.cargo_equipe + ' (Cópia Backup)',
+                        ghe_codigo: c.ghe_codigo,
+                        frente_servico: c.frente_servico,
+                        fonte_procedimento: c.fonte_procedimento || 'Restaurado de backup local — conferir versão vigente',
+                        rotina_detalhada: c.rotina_detalhada,
+                        fases_operacionais: JSON.parse(JSON.stringify(c.fases_operacionais)),
+                        ferramentas_reais: c.ferramentas_reais.slice(),
+                        perigos_observados: c.perigos_observados.slice(),
+                        epis_validados: c.epis_validados.slice(),
+                        regras_engenheiro: c.regras_engenheiro,
+                        ativo: true,
+                        criado_por_matricula: String(s.matricula || ''),
+                        updated_at: agoraIso
+                    });
+                    ctxCopiados++;
+                    ctxAdicionados++;
+                    return;
+                }
+
+                var novoId = gerarIdUnico('ctx_bkp_' + idx);
+                if (c.idOriginal) mapaIdsContexto[c.idOriginal] = novoId;
+                proxContextos.push({
+                    id: novoId,
+                    versao: 1,
+                    status_cenario: 'RASCUNHO_NAO_APROVADO',
+                    codigo_cenario: String(c.codigo_cenario || ('BKP-' + String(proxContextos.length + 1).padStart(3, '0'))),
+                    cargo_equipe: c.cargo_equipe,
+                    ghe_codigo: c.ghe_codigo,
+                    frente_servico: c.frente_servico,
+                    fonte_procedimento: c.fonte_procedimento || 'Restaurado de backup local — conferir versão vigente',
+                    rotina_detalhada: c.rotina_detalhada,
+                    fases_operacionais: JSON.parse(JSON.stringify(c.fases_operacionais)),
+                    ferramentas_reais: c.ferramentas_reais.slice(),
+                    perigos_observados: c.perigos_observados.slice(),
+                    epis_validados: c.epis_validados.slice(),
+                    regras_engenheiro: c.regras_engenheiro,
+                    ativo: true,
+                    criado_por_matricula: String(s.matricula || ''),
+                    updated_at: agoraIso
+                });
+                ctxAdicionados++;
+            });
+
+            if (proxContextos.length > LIMITE_MAX_CONTEXTOS) {
+                throw new Error('Capacidade excedida: o resultado da restauração teria ' + proxContextos.length + ' cenários (limite local: ' + LIMITE_MAX_CONTEXTOS + '). Remova cenários antigos antes de mesclar ou use o modo Substituir após guardar cópia de segurança.');
+            }
+
+            // Regras e sugestões de arquivo externo NUNCA entram auto-aprovadas: entram na fila como RASCUNHO aguardando revalidação explícita!
+            var ehDupIntegral = analise.comparadores.ehDuplicataIntegralItemBackup;
+            var convFilaComp = analise.comparadores.converterSugestaoFilaParaComparacaoBackup;
+            var itensDuplicatasIntegraisIgnorados = 0;
+
+            analise.itensRevalidacao.forEach(function (it, idx) {
+                var ctxMapeado = null;
+                if (it.contextoOrigemId) {
+                    if (mapaIdsContexto[it.contextoOrigemId]) {
+                        ctxMapeado = mapaIdsContexto[it.contextoOrigemId];
+                    } else if (proxContextos.some(function (ex) { return ex.id === it.contextoOrigemId; })) {
+                        ctxMapeado = it.contextoOrigemId;
+                    }
+                }
+                var jaExiste = proxFila.some(function (ex) {
+                    if (ex.status === 'DESCARTADO') return false;
+                    return ehDupIntegral(convFilaComp(ex), it, ex.contexto_id, ctxMapeado);
+                });
+                if (jaExiste) {
+                    itensDuplicatasIntegraisIgnorados++;
+                    return;
+                }
+
+                proxFila.push({
+                    id: gerarIdUnico('sug_bkp_' + idx),
+                    versao: 1,
+                    origem_regra_id: null,
+                    regra_gerada_id: null,
+                    contexto_id: ctxMapeado,
+                    modulo_destino: 'APR',
+                    fase_operacional: it.fase_operacional,
+                    titulo_insight: '[Backup — Revalidar] ' + it.passo_tarefa.slice(0, 80),
+                    descricao_analise: it.origemLabel + ' — restaurado de arquivo externo; requer confirmação/aprovação explícita do Validador Técnico antes de enviar à APR.',
+                    acao_proposta: {
+                        passo_tarefa: it.passo_tarefa,
+                        perigo_fonte: it.perigo_fonte,
+                        evento_risco: it.evento_risco,
+                        danos_provaveis: it.danos_provaveis,
+                        p_puro: '',
+                        s_puro: '',
+                        medidas_prevencao: it.medidas_prevencao,
+                        p_residual: '',
+                        s_residual: '',
+                        responsavel: it.responsavel,
+                        epis_sugeridos: it.epis_sugeridos.slice(),
+                        norma_referencia: it.norma_referencia,
+                        gatilhos: it.gatilhos.slice(),
+                        evidencia_campo: it.evidencia_campo,
+                        fonte_consultada: it.fonte_consultada,
+                        hipotese_risco: it.hipotese_risco,
+                        pergunta_pendente: it.pergunta_pendente
+                    },
+                    status: 'RASCUNHO',
+                    feedback_engenheiro: '',
+                    criado_por_matricula: String(s.matricula || ''),
+                    aprovado_por_matricula: '',
+                    created_at: agoraIso
+                });
+                itensRevalidacaoAdicionados++;
+            });
+
+            if (proxFila.length > LIMITE_MAX_SUGESTOES) {
+                throw new Error('Capacidade excedida: o resultado da restauração teria ' + proxFila.length + ' itens na fila (limite local: ' + LIMITE_MAX_SUGESTOES + '). Descarte ou finalize itens antigos na Aba 3 antes de mesclar.');
+            }
+
+            if (modoFinal === 'substituir' && proxContextos.length === 0 && proxFila.length === 0) {
+                throw new Error('Restauração cancelada: nenhum registro válido pôde ser construído a partir do backup.');
+            }
+
+            // Verifica tamanho UTF-8 final antes de substituir as referências em estadoModulo
+            var jsonSimulado = JSON.stringify({
+                contextos: proxContextos,
+                regrasAprendidas: proxRegras,
+                sugestoesFila: proxFila,
+                historicoAuditoria: estadoModulo.historicoAuditoria,
+                ultimoBackupEm: estadoModulo.ultimoBackupEm || '',
+                alteracoesAposBackup: true
+            });
+            var bytesFinais = medirBytesUtf8(jsonSimulado);
+            if (bytesFinais > LIMITE_BYTES_STORAGE_SESSAO) {
+                throw new Error('Tamanho final excede o limite de armazenamento local (' + (Math.round((bytesFinais / 1024) * 10) / 10) + ' KB / ' + Math.round(LIMITE_BYTES_STORAGE_SESSAO / 1024) + ' KB UTF-8). Remova itens antigos antes de restaurar.');
+            }
+
+            // Tudo validado com 100% de integridade — aplica a troca atômica
+            estadoModulo.contextos = proxContextos;
+            estadoModulo.regrasAprendidas = proxRegras;
+            estadoModulo.sugestoesFila = proxFila;
+            if (!estadoModulo.contextoSelecionadoId || !estadoModulo.contextos.some(function (c) { return c.id === estadoModulo.contextoSelecionadoId; })) {
+                estadoModulo.contextoSelecionadoId = estadoModulo.contextos[0] ? estadoModulo.contextos[0].id : '';
+            }
+            registrarEventoAuditoria('RESTAURAR_BACKUP_LOCAL', modoFinal, ctxAdicionados + ' novo(s), ' + ctxAtualizados + ' atualizado(s), ' + ctxCopiados + ' cópia(s), ' + itensRevalidacaoAdicionados + ' item(ns) para revalidação na Aba 3');
+            return {
+                modo: modoFinal,
+                politicaConflito: politicaConflito || null,
+                contextosAdicionados: ctxAdicionados,
+                contextosAtualizados: ctxAtualizados,
+                contextosCopiados: ctxCopiados,
+                contextosMantidosExistentes: ctxMantidos,
+                itensRevalidacaoAdicionados: itensRevalidacaoAdicionados,
+                itensDuplicatasIntegraisIgnorados: itensDuplicatasIntegraisIgnorados,
+                copiaSegurancaAntes: copiaSegurancaAntes
+            };
         });
     }
 
@@ -2180,6 +3109,62 @@
             }).join('')
             : '<div style="font-size:12px; color:var(--text-light);">Nenhuma regra aprovada ainda. As regras aparecem aqui somente após aprovação formal pelo Validador Técnico na Aba 3.</div>';
 
+        var ultimoBkpTexto = estadoModulo.ultimoBackupEm
+            ? new Date(estadoModulo.ultimoBackupEm).toLocaleString('pt-BR')
+            : 'Nenhum backup exportado neste dispositivo';
+        var temDadosCaderno = estadoModulo.contextos.length > 0 || estadoModulo.regrasAprendidas.length > 0 || estadoModulo.sugestoesFila.length > 0;
+        var previaBkp = estadoModulo.previaBackupRestauracao;
+        var previaBkpHtml = '';
+        if (previaBkp && previaBkp.resumo) {
+            var rb = previaBkp.resumo;
+            var conflitosHtml = '';
+            if (Array.isArray(previaBkp.conflitosContexto) && previaBkp.conflitosContexto.length > 0) {
+                var itensConflito = previaBkp.conflitosContexto.map(function (cf) {
+                    return '<li><b>' + esc(cf.cargo_equipe) + '</b> (' + esc(cf.frente_servico) + ') — campos alterados: <code>' + esc(cf.camposDiferentes.join(', ')) + '</code></li>';
+                }).join('');
+                conflitosHtml = '<div style="margin-top:8px; padding:8px 10px; border:1px solid var(--warning, #d97706); border-radius:6px; background:var(--bg);">' +
+                    '<div style="font-size:11.5px; font-weight:800; color:var(--warning, #d97706); margin-bottom:4px;">⚠️ ' + previaBkp.conflitosContexto.length + ' cenário(s) com mesma identidade e conteúdo diferente:</div>' +
+                    '<ul style="margin:0 0 6px 16px; padding:0; font-size:11px; color:var(--text);">' + itensConflito + '</ul>' +
+                    '<label style="font-size:11.5px; font-weight:700; display:block; margin-bottom:4px;">Ao mesclar, escolha explicitamente o que fazer com os cenários em conflito:</label>' +
+                    '<select id="selectPoliticaConflitoBackupIa" style="width:100%; max-width:460px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px; background:var(--card); color:var(--text);">' +
+                        '<option value="">— Selecione uma ação para os conflitos antes de mesclar —</option>' +
+                        '<option value="manter_existente">Conservar o cenário já salvo neste navegador (ignorar alteração do arquivo)</option>' +
+                        '<option value="restaurar_copia">Restaurar o do arquivo como cópia separada "(Cópia Backup)"</option>' +
+                        '<option value="substituir_versao">Substituir o cenário existente pela versão do arquivo</option>' +
+                    '</select>' +
+                '</div>';
+            }
+            var alertasCapacidadeHtml = '';
+            if (rb.excedenteContextosMesclar > 0 || rb.excedenteFilaMesclar > 0) {
+                alertasCapacidadeHtml = '<div style="margin-top:6px; padding:6px 8px; border-radius:6px; border:1px solid var(--danger); font-size:11px; color:var(--danger); font-weight:700;">' +
+                    '🚫 Capacidade no modo Mesclar: ' +
+                    (rb.excedenteContextosMesclar > 0 ? (rb.excedenteContextosMesclar + ' cenário(s) excederiam o limite de ' + LIMITE_MAX_CONTEXTOS + '. ') : '') +
+                    (rb.excedenteFilaMesclar > 0 ? (rb.excedenteFilaMesclar + ' item(ns) excederiam o limite de ' + LIMITE_MAX_SUGESTOES + ' na fila. ') : '') +
+                    'A mesclagem será bloqueada sem descartar dados silenciosamente até liberar espaço ou optar por Substituir.' +
+                '</div>';
+            }
+            previaBkpHtml = '<div id="boxPreviaBackupIa" style="margin-top:10px; padding:10px 12px; border:1px solid var(--primary); border-radius:8px; background:var(--card);">' +
+                '<div style="font-weight:800; font-size:12.5px; color:var(--primary); margin-bottom:4px;">🔎 Prévia do Backup Validado (gerado em: ' + esc(previaBkp.geradoEm) + ')</div>' +
+                '<div style="font-size:11.5px; color:var(--text); line-height:1.55;">' +
+                    '• <b>Cenários válidos no arquivo:</b> ' + rb.totalContextos + ' (' + rb.contextosNovos + ' novo(s), ' + rb.contextosIdenticos + ' idêntico(s), ' + rb.conflitosConteudo + ' com conflito de conteúdo)<br>' +
+                    '• <b>Regras ativas no arquivo:</b> ' + rb.totalRegras + ' &nbsp;|&nbsp; <b>Itens ativos da fila:</b> ' + rb.totalFila + ' &nbsp;|&nbsp; <b>Total p/ revalidação na Aba 3:</b> ' + rb.totalItensRevalidacao + ' (' + rb.filaDuplicados + ' duplicata(s) integral(is) já na fila atual)<br>' +
+                    '• <b>Efetivamente restauráveis:</b> ' + rb.efetivamenteRestauraveisMesclar + ' no modo Mesclar | ' + rb.efetivamenteRestauraveisSubstituir + ' no modo Substituir' +
+                    (rb.itensDuplicadosNoArquivo > 0 ? '<br>• <b>Duplicatas integrais unificadas dentro do arquivo:</b> ' + rb.itensDuplicadosNoArquivo + ' (conteúdo técnico idêntico)' : '') +
+                    (rb.itensMesmoPassoPerigoConteudoDiferente > 0 ? '<br>• <b>Itens com mesma etapa/perigo e conteúdo técnico diferente:</b> ' + rb.itensMesmoPassoPerigoConteudoDiferente + ' (serão preservados separadamente na Aba 3, sem sobrescrever nem fundir)' : '') +
+                    (rb.itensOrfaos > 0 ? '<br>• <b>Itens sem cenário correspondente (órfãos):</b> ' + rb.itensOrfaos + ' (entrarão na Aba 3 sem vínculo de cenário até revisão)' : '') +
+                    (rb.ignoradosPorStatus > 0 ? '<br>• <b>Ignorados por status (revogados/descartados no arquivo):</b> ' + rb.ignoradosPorStatus : '') + '<br>' +
+                    '<span style="color:var(--warning, #d97706); font-weight:700;">⚠️ Governança SST: nenhum item restaurado de arquivo externo entra auto-aprovado. Regras e itens restaurados vão para a Aba 3 como rascunhos aguardando sua confirmação explícita.</span>' +
+                '</div>' +
+                conflitosHtml +
+                alertasCapacidadeHtml +
+                '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">' +
+                    '<button type="button" class="db-apply-btn" onclick="window.confirmarRestauracaoBackupIaUI(\'mesclar\')">🔀 Mesclar com Caderno Atual (Recomendado)</button>' +
+                    '<button type="button" class="db-clear-btn" style="color:var(--danger);" onclick="window.confirmarRestauracaoBackupIaUI(\'substituir\')">♻️ Substituir Caderno Atual (Baixa Cópia de Segurança Antes)</button>' +
+                    '<button type="button" class="db-clear-btn" onclick="window.cancelarPreviaBackupIaUI()">Cancelar</button>' +
+                '</div>' +
+            '</div>';
+        }
+
         return '' +
             '<div class="db-chart-card">' +
                 '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">' +
@@ -2208,50 +3193,212 @@
             '<div class="db-chart-card" style="margin-top:14px;">' +
                 '<div class="db-chart-title">🧠 Biblioteca de Regras Validadas pela Engenharia (' + estadoModulo.regrasAprendidas.length + ')</div>' +
                 '<div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">' + regrasHtml + '</div>' +
+            '</div>' +
+            '<div class="db-chart-card" style="margin-top:14px;">' +
+                '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
+                    '<div>' +
+                        '<div class="db-chart-title" style="margin:0;">💾 Backup e Restauração do Caderno Local</div>' +
+                        '<div style="font-size:11.5px; color:var(--text-light); margin-top:2px;">' +
+                            '<b>Último backup:</b> ' + esc(ultimoBkpTexto) +
+                            (estadoModulo.alteracoesAposBackup && temDadosCaderno ? ' &nbsp;<span style="color:var(--warning, #d97706); font-weight:700;">⚠️ Há alterações posteriores ao último backup</span>' : '') +
+                        '</div>' +
+                        '<div style="font-size:11px; color:var(--text-light); margin-top:2px;">Guarde uma cópia (.json) no computador para levar para outro dispositivo ou proteger contra limpeza do navegador.</div>' +
+                    '</div>' +
+                    '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+                        '<button type="button" class="db-clear-btn" onclick="window.exportarBackupCadernoIaUI()">💾 Exportar Backup (.json)</button>' +
+                        (podeEditar ? '<button type="button" class="db-clear-btn" onclick="window.alternarBoxBackupIaUI()">📂 Restaurar Backup (.json)</button>' : '') +
+                    '</div>' +
+                '</div>' +
+                '<div id="boxRestaurarBackupIa" style="display:' + (previaBkp ? 'block' : 'none') + '; margin-top:12px; padding:12px; border:1px solid var(--border); border-radius:8px; background:var(--bg);">' +
+                    '<div style="font-size:12px; font-weight:700; margin-bottom:6px;">Selecione o arquivo de backup (.json) ou cole o conteúdo para pré-visualizar antes de restaurar:</div>' +
+                    '<input type="file" id="inputArquivoBackupIa" accept=".json" onchange="window.lerArquivoBackupLocalIa(this)" style="margin-bottom:8px; font-size:12px;">' +
+                    '<textarea id="textareaBackupIa" rows="3" placeholder="Conteúdo do arquivo de backup (.json)..." style="width:100%; padding:8px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:11.5px; font-family:monospace; background:var(--card); color:var(--text);">' + esc(previaBkp ? previaBkp.textoOriginal : '') + '</textarea>' +
+                    '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">' +
+                        '<button type="button" class="db-apply-btn" onclick="window.preVisualizarBackupIaUI()">🔎 Pré-visualizar Backup</button>' +
+                        '<button type="button" class="db-clear-btn" onclick="window.cancelarPreviaBackupIaUI()">Cancelar</button>' +
+                    '</div>' +
+                    previaBkpHtml +
+                '</div>' +
             '</div>';
     }
 
     function renderizarAbaAnalise(ctxAtual, papel) {
         var podeEditar = papel === 'editor' || papel === 'validador';
-        var promptRag = gerarPacotePromptRag({ contexto: ctxAtual });
+        var promptRag = gerarPacotePromptRag({ contexto: ctxAtual, textoLivre: estadoModulo.textoLivreAnalise });
         var diag = estadoModulo.ultimoDiagnostico;
+        var listaAprs = Array.isArray(window.allAprRegistros) ? window.allAprRegistros : [];
 
+        // Banner de Cenário Ativo (estado vazio ou selecionado)
+        var bannerCenarioHtml = '';
+        if (ctxAtual) {
+            var opcoesCtx = estadoModulo.contextos.length > 1
+                ? '<select id="selectCenarioAtivoAba2" onchange="window.selecionarContextoIaAprendizado(this.value)" style="padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px; background:var(--card); color:var(--text);">' +
+                    estadoModulo.contextos.map(function (c) {
+                        return '<option value="' + esc(c.id) + '"' + (c.id === ctxAtual.id ? ' selected' : '') + '>' + esc(c.cargo_equipe + ' — ' + c.frente_servico) + '</option>';
+                    }).join('') +
+                  '</select>'
+                : '';
+            bannerCenarioHtml = '<div class="db-chart-card" style="margin-bottom:14px; border-left:4px solid var(--success, #10b981); padding:10px 14px;">' +
+                '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
+                    '<div style="font-size:12px;">' +
+                        '<b>📂 Cenário selecionado:</b> ' + esc(ctxAtual.cargo_equipe) + ' (' + esc(ctxAtual.frente_servico) + ') • v' + esc(ctxAtual.versao || 1) +
+                    '</div>' +
+                    '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' +
+                        opcoesCtx +
+                        (podeEditar ? '<button type="button" class="db-clear-btn" style="font-size:11.5px;" onclick="window.irParaEditarCenarioAtualIaUI()">✏️ Editar Cenário na Aba 1</button>' : '') +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+        } else {
+            bannerCenarioHtml = '<div class="db-chart-card" style="margin-bottom:14px; border-left:4px solid var(--warning, #d97706); padding:12px 14px;">' +
+                '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">' +
+                    '<div style="flex:1; min-width:240px; font-size:12px; line-height:1.45;">' +
+                        '<b>⚠️ Nenhum cenário cadastrado neste navegador (0 cenários na Aba 1).</b><br>' +
+                        '<span style="color:var(--text-light);">A verificação local só consulta seus cenários cadastrados e suas regras já aprovadas. Para começar agora, cadastre um cenário na Aba 1, inicie um rascunho de cenário com a descrição abaixo, ou use o <b>Modo 2</b> para consultar ChatGPT / Gemini / Claude.</span>' +
+                    '</div>' +
+                    (podeEditar ? '<button type="button" class="db-apply-btn" onclick="window.irParaNovoCenarioIaUI()">➕ Novo Cenário (Aba 1)</button>' : '') +
+                '</div>' +
+            '</div>';
+        }
+
+        // Opções de APRs cadastradas para comparação
+        var opcoesAprHtml = '<option value="">-- Nenhuma APR selecionada (verificar apenas pelo cenário e regras) --</option>' +
+            listaAprs.map(function (a) {
+                var rotulo = 'APR Nº ' + (a.id || '?') + ' — ' + (a.titulo || a.descricao_atividade || 'Sem título') + (a.data_emissao ? ' (Emissão: ' + a.data_emissao + ')' : '');
+                var sel = String(estadoModulo.aprSelecionadaId || '') === String(a.id) ? ' selected' : '';
+                return '<option value="' + esc(a.id) + '"' + sel + '>' + esc(rotulo) + '</option>';
+            }).join('');
+
+        // Diagnóstico detalhado em 4 blocos (preservando APR original)
         var diagHtml = '';
         if (diag) {
+            var blocoAusentes = (diag.perigosPossivelmenteAusentes && diag.perigosPossivelmenteAusentes.length > 0)
+                ? '<ul style="margin:4px 0 0 18px; padding:0; font-size:11.5px;">' + diag.perigosPossivelmenteAusentes.map(function (item) {
+                    return '<li><b>' + esc(item.perigo_fonte) + '</b> — ' + esc(item.passo_tarefa) + ' <span style="color:var(--text-light);">(' + esc(item.origem) + ')</span></li>';
+                }).join('') + '</ul>'
+                : '<div style="font-size:11.5px; color:var(--text-light); margin-top:2px;">Nenhum item pendente apontado nesta verificação.</div>';
+
+            var blocoMedidas = (diag.alertasMedidasFracas && diag.alertasMedidasFracas.length > 0)
+                ? '<ul style="margin:4px 0 0 18px; padding:0; font-size:11.5px;">' + diag.alertasMedidasFracas.map(function (al) {
+                    return '<li><b>Linha ' + esc(al.linha) + ' (' + esc(al.passo) + '):</b> ' + esc(al.motivo) + '</li>';
+                }).join('') + '</ul>'
+                : '<div style="font-size:11.5px; color:var(--text-light); margin-top:2px;">' + (diag.aprAuditadaId ? 'Nenhuma medida genérica ou P×S incompleto detectado na APR selecionada.' : 'Selecione uma APR cadastrada acima para revisar medidas genéricas e P×S incompletos.') + '</div>';
+
+            var blocoConfirmacao = diag.temCenario
+                ? (diag.fasesSemInformacao && diag.fasesSemInformacao.length > 0
+                    ? '<div style="font-size:11.5px; color:var(--warning, #d97706); margin-top:2px;">Fases ainda sem resposta no cenário selecionado: ' + esc(diag.fasesSemInformacao.join(' | ')) + '</div>'
+                    : '<div style="font-size:11.5px; color:var(--success, #10b981); margin-top:2px;">Todas as 5 fases operacionais do cenário selecionado estão preenchidas.</div>')
+                : '<div style="font-size:11.5px; color:var(--text-light); margin-top:2px;">Nenhum cenário selecionado — cadastre ou inicie um rascunho de cenário para acompanhar as 5 fases operacionais.</div>';
+
+            var blocoContemplados = (diag.itensJaContemplados && diag.itensJaContemplados.length > 0)
+                ? '<ul style="margin:4px 0 0 18px; padding:0; font-size:11.5px;">' + diag.itensJaContemplados.map(function (it) {
+                    return '<li><b>' + esc(it.perigo_fonte) + '</b> <span style="color:var(--text-light);">(' + esc(it.origem) + ')</span></li>';
+                }).join('') + '</ul>'
+                : '<div style="font-size:11.5px; color:var(--text-light); margin-top:2px;">' + (diag.aprAuditadaId ? 'Nenhum item do cenário/regras coincidiu por texto com a APR selecionada.' : 'Selecione uma APR acima para conferir quais itens já constam nela.') + '</div>';
+
             diagHtml = '<div class="db-chart-card" style="margin-top:14px; border-left:4px solid var(--primary);">' +
-                '<div class="db-chart-title">📋 Diagnóstico da Lista de Verificação Local</div>' +
-                '<div style="font-size:11.5px; color:var(--text-light); margin-bottom:6px;">' + esc(diag.avisoEscopo) + '</div>' +
-                '<div style="font-size:12px;"><b>Lacunas geradas como rascunho:</b> ' + diag.totalLacunas + ' (' + diag.novosNaFila + ' nova(s) na fila)</div>' +
-                (diag.fasesSemInformacao && diag.fasesSemInformacao.length
-                    ? '<div style="font-size:11.5px; color:var(--warning, #d97706); margin-top:4px;">⚠️ Fases com pergunta pendente de resposta no cenário: ' + esc(diag.fasesSemInformacao.join(' | ')) + '</div>'
-                    : '') +
+                '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px;">' +
+                    '<div class="db-chart-title" style="margin:0;">📋 Resultado da Verificação Local' + (diag.aprAuditadaId ? ' — Comparado com APR Nº ' + esc(diag.aprAuditadaId) + (diag.aprAuditadaTitulo ? ' (' + esc(diag.aprAuditadaTitulo) + ')' : '') : '') + '</div>' +
+                    (diag.novosNaFila > 0
+                        ? '<button type="button" class="db-apply-btn" onclick="window.selecionarAbaIaAprendizado(\'fila\')">➡️ Ir para a Aba 3 revisar e aprovar (' + diag.novosNaFila + ' novo(s))</button>'
+                        : '') +
+                '</div>' +
+                '<div style="font-size:11.5px; color:var(--text-light); margin-bottom:8px;">' + esc(diag.avisoEscopo) + (diag.aprAuditadaId ? ' A APR original permanece intacta — qualquer alteração só entra após sua revisão na Aba 3.' : '') + '</div>' +
+                (diag.totalLacunas === 0
+                    ? '<div style="padding:10px 12px; border-radius:8px; background:var(--bg); border:1px solid var(--border); font-size:12px; line-height:1.45; margin-bottom:10px;"><b>Resultado: 0 rascunhos gerados.</b><br>' + esc(diag.motivoZero) + '</div>'
+                    : '<div style="font-size:12px; margin-bottom:10px;"><b>Propostas encontradas:</b> ' + diag.totalLacunas + ' (' + diag.novosNaFila + ' nova(s) adicionada(s) na Aba 3)</div>') +
+                '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:10px;">' +
+                    '<div style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg);">' +
+                        '<div style="font-size:11.5px; font-weight:800; color:var(--primary);">1. Perigos possivelmente ausentes</div>' +
+                        blocoAusentes +
+                    '</div>' +
+                    '<div style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg);">' +
+                        '<div style="font-size:11.5px; font-weight:800; color:var(--warning, #d97706);">2. Medidas genéricas ou P×S incompleto na APR</div>' +
+                        blocoMedidas +
+                    '</div>' +
+                    '<div style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg);">' +
+                        '<div style="font-size:11.5px; font-weight:800; color:var(--text);">3. Informações para confirmar em campo</div>' +
+                        blocoConfirmacao +
+                    '</div>' +
+                    '<div style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg);">' +
+                        '<div style="font-size:11.5px; font-weight:800; color:var(--success, #10b981);">4. Itens já contemplados na APR</div>' +
+                        blocoContemplados +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+        }
+
+        // Prévia obrigatória da resposta colada no Modo 2
+        var previaImp = estadoModulo.previaImportacaoIa;
+        var previaImpHtml = '';
+        if (previaImp && Array.isArray(previaImp.itens) && previaImp.itens.length > 0) {
+            var linhasPrevia = previaImp.itens.map(function (it, idx) {
+                return '<div style="padding:6px 8px; border-bottom:1px dashed var(--border); font-size:11.5px; line-height:1.4;">' +
+                    '<b>' + (idx + 1) + '. ' + esc(it.passo_tarefa) + '</b> — <b>Perigo:</b> ' + esc(it.perigo_fonte) + '<br>' +
+                    '<span style="color:var(--text-light);">Controle: ' + esc(it.medidas_prevencao) + ' | Fonte: ' + esc(it.fonte_consultada) + '</span>' +
+                '</div>';
+            }).join('');
+            previaImpHtml = '<div id="boxPreviaImportacaoIa" style="margin-top:10px; padding:10px 12px; border:1px solid var(--primary); border-radius:8px; background:var(--bg);">' +
+                '<div style="font-weight:800; font-size:12.5px; color:var(--primary); margin-bottom:4px;">🔎 Prévia dos Riscos Reconhecidos (' + previaImp.itens.length + ' item(ns)) — Confira antes de enviar para a Aba 3</div>' +
+                '<div style="font-size:11.5px; color:var(--text-light); margin-bottom:6px;">' +
+                    'Todos entrarão como <b>RASCUNHO</b> e com <b>P×S em branco</b> para sua revisão e aprovação.' +
+                    (previaImp.notasIgnoradas > 0 ? ' <b style="color:var(--warning, #d97706);">(' + previaImp.notasIgnoradas + ' nota(s) de P/S enviada(s) pela IA foram ignoradas automaticamente.)</b>' : '') +
+                '</div>' +
+                '<div style="max-height:220px; overflow-y:auto; background:var(--card); border:1px solid var(--border); border-radius:6px;">' + linhasPrevia + '</div>' +
+                '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">' +
+                    '<button type="button" class="db-apply-btn" onclick="window.confirmarImportacaoPreviaIaUI()">✅ Confirmar e Enviar para a Aba 3</button>' +
+                    '<button type="button" class="db-clear-btn" onclick="window.cancelarPreviaImportacaoIaUI()">Cancelar</button>' +
+                '</div>' +
             '</div>';
         }
 
         return '' +
+            bannerCenarioHtml +
             '<div class="db-chart-card">' +
-                '<div class="db-chart-title">🔍 Modo 1: Lista de Verificação Local (5 Fases + Regras Aprovadas)</div>' +
+                '<div class="db-chart-title">🔍 Modo 1: Verificação Local (Seus Cenários + Regras Aprovadas + Comparação com APR)</div>' +
                 '<div style="margin-top:8px;">' +
-                    '<input type="text" id="inputTextoExtraAnaliseIa" placeholder="Descreva a atividade, ferramentas ou condição específica para buscar exemplos e regras aprovadas..." style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--card); color:var(--text);">' +
+                    '<label for="inputTextoExtraAnaliseIa" style="font-size:11.5px; font-weight:700; display:block; margin-bottom:4px;">Descreva a atividade, ferramentas ou condição da frente de serviço (este texto também entra automaticamente no pedido do Modo 2):</label>' +
+                    '<input type="text" id="inputTextoExtraAnaliseIa" value="' + esc(estadoModulo.textoLivreAnalise || '') + '" oninput="window.atualizarTextoLivreAnaliseIaUI(this.value)" placeholder="Ex.: Manutenção de canaleta de drenagem e bueiro com betoneira, cimento e trabalho próximo à borda de vala..." style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--card); color:var(--text);">' +
+                '</div>' +
+                '<div style="margin-top:8px;">' +
+                    '<label for="selectAprComparacaoIa" style="font-size:11.5px; font-weight:700; display:block; margin-bottom:4px;">Comparar com uma APR já cadastrada (opcional — preserva a APR original):</label>' +
+                    '<select id="selectAprComparacaoIa" onchange="window.selecionarAprAuditoriaIa(this.value)" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:var(--card); color:var(--text); font-size:12px;">' +
+                        opcoesAprHtml +
+                    '</select>' +
                 '</div>' +
                 '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">' +
                     '<button type="button" class="db-apply-btn" onclick="window.executarVarreduraIaUI()">🔍 Executar Verificação Local</button>' +
+                    (podeEditar ? '<button type="button" class="db-clear-btn" onclick="window.criarRascunhoCenarioDaDescricaoUI()">📋 Iniciar Rascunho de Cenário com esta Descrição</button>' : '') +
                 '</div>' +
             '</div>' +
             diagHtml +
             '<div class="db-chart-card" style="margin-top:14px;">' +
-                '<div class="db-chart-title">📋 Modo 2: Pacote Copiável para LLM Externa + Importação Manual de Rascunho</div>' +
-                '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px; margin-top:8px;">' +
-                    '<div>' +
-                        '<label style="font-size:11.5px; font-weight:700; display:block; margin-bottom:4px;">Prévia do Pacote (Revise antes de copiar para garantir ausência de dados pessoais em texto livre):</label>' +
-                        '<textarea id="textareaPromptRagGerado" rows="7" readonly style="width:100%; padding:8px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:11px; font-family:monospace; background:var(--bg); color:var(--text);">' + esc(promptRag) + '</textarea>' +
+                '<div class="db-chart-title">🤖 Modo 2: Consultar sua IA Externa (ChatGPT, Gemini ou Claude) em 3 Passos</div>' +
+                '<div style="font-size:11.5px; color:var(--text-light); margin:4px 0 10px 0;">' +
+                    'Este fluxo evita cobrança de API dentro do painel, mas utiliza armazenamento local do navegador e os limites/cotas da sua conta externa.' +
+                '</div>' +
+                '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(290px, 1fr)); gap:14px;">' +
+                    '<div style="padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg);">' +
+                        '<div style="font-size:12px; font-weight:800; color:var(--primary); margin-bottom:4px;">Passo 1 — Copie o pedido pronto (cenário + descrição + APR)</div>' +
+                        '<div style="font-size:11px; color:var(--warning, #d97706); margin-bottom:6px;">⚠️ Filtro automático de CPF/CNPJ/e-mail/telefone aplicado. Revise o texto para garantir que não há nomes de pessoas antes de colar na IA externa.</div>' +
+                        '<textarea id="textareaPromptRagGerado" rows="7" readonly style="width:100%; padding:8px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:11px; font-family:monospace; background:var(--card); color:var(--text);">' + esc(promptRag) + '</textarea>' +
+                        '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px;">' +
+                            '<button type="button" class="db-apply-btn" onclick="window.copiarPacotePromptIaUI()">📋 Copiar Pedido para IA</button>' +
+                            '<span id="statusCopiaPromptIa" style="font-size:11.5px; font-weight:700; color:var(--success, #10b981);"></span>' +
+                        '</div>' +
                     '</div>' +
-                    '<div>' +
-                        '<label style="font-size:11.5px; font-weight:700; display:block; margin-bottom:4px;">📥 Colar Array JSON de Rascunho (máx. 20 KB / 20 itens):</label>' +
-                        '<textarea id="textareaRespostaIaImportar" rows="5" placeholder="Cole aqui o array JSON..." style="width:100%; padding:8px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:11.5px; font-family:monospace; background:var(--card); color:var(--text);"></textarea>' +
-                        (podeEditar ? '<button type="button" class="db-apply-btn" onclick="window.importarRespostaIaUI()" style="margin-top:6px; width:100%;">📥 Validar Esquema e Importar como Rascunho</button>' : '') +
+                    '<div style="padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg);">' +
+                        '<div style="font-size:12px; font-weight:800; color:var(--primary); margin-bottom:4px;">Passo 2 e 3 — Cole no ChatGPT / Gemini / Claude e traga a resposta de volta</div>' +
+                        '<div style="font-size:11px; color:var(--text-light); margin-bottom:6px;">Depois que a IA responder, copie a resposta (mesmo com texto antes ou depois da lista) e cole abaixo. Notas de P/S eventualmente enviadas pela IA serão ignoradas automaticamente.</div>' +
+                        '<textarea id="textareaRespostaIaImportar" rows="6" placeholder="Cole aqui a resposta da IA externa (máx. 20 KB / até 20 riscos)..." style="width:100%; padding:8px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:11.5px; font-family:monospace; background:var(--card); color:var(--text);"></textarea>' +
+                        (podeEditar ? (
+                            '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">' +
+                                '<button type="button" class="db-apply-btn" onclick="window.preVisualizarRespostaIaUI()" style="flex:1;">🔎 Pré-visualizar Resposta da IA</button>' +
+                            '</div>'
+                        ) : '') +
                     '</div>' +
                 '</div>' +
+                previaImpHtml +
             '</div>';
     }
 
@@ -2314,25 +3461,330 @@
     }
 
     // Handlers de UI
-    function selecionarAbaIaAprendizado(aba) { estadoModulo.abaAtiva = aba; renderIaAprendizadoPanel(); }
-    function selecionarContextoIaAprendizado(id) { estadoModulo.contextoSelecionadoId = id; renderIaAprendizadoPanel(); }
-    function selecionarAprAuditoriaIa(id) { estadoModulo.aprSelecionadaId = id; }
-    function filtrarFilaIaAprendizado(status) { estadoModulo.filtroFilaStatus = status; renderIaAprendizadoPanel(); }
+    function selecionarAbaIaAprendizado(aba) {
+        garantirEstadoSessao();
+        estadoModulo.abaAtiva = aba;
+        renderIaAprendizadoPanel();
+    }
+    function selecionarContextoIaAprendizado(id) {
+        garantirEstadoSessao();
+        estadoModulo.contextoSelecionadoId = id;
+        renderIaAprendizadoPanel();
+    }
+    function selecionarAprAuditoriaIa(id) {
+        garantirEstadoSessao();
+        estadoModulo.aprSelecionadaId = String(id || '');
+        if (estadoModulo.abaAtiva === 'analise') {
+            renderIaAprendizadoPanel();
+        }
+    }
+    function filtrarFilaIaAprendizado(status) {
+        garantirEstadoSessao();
+        estadoModulo.filtroFilaStatus = status;
+        renderIaAprendizadoPanel();
+    }
+
+    function irParaNovoCenarioIaUI() {
+        garantirEstadoSessao();
+        estadoModulo.abaAtiva = 'exemplos';
+        renderIaAprendizadoPanel();
+        abrirModalNovoContextoIa();
+    }
+
+    function irParaEditarCenarioAtualIaUI() {
+        garantirEstadoSessao();
+        var atualId = estadoModulo.contextoSelecionadoId || (estadoModulo.contextos[0] ? estadoModulo.contextos[0].id : '');
+        estadoModulo.abaAtiva = 'exemplos';
+        renderIaAprendizadoPanel();
+        if (atualId) abrirModalNovoContextoIa(atualId);
+    }
+
+    function atualizarTextoLivreAnaliseIaUI(valor) {
+        garantirEstadoSessao();
+        estadoModulo.textoLivreAnalise = String(valor || '');
+        var ta = document.getElementById('textareaPromptRagGerado');
+        if (ta) {
+            var ctxAtual = buscarContextoPorId(estadoModulo.contextoSelecionadoId) || estadoModulo.contextos[0] || null;
+            ta.value = gerarPacotePromptRag({ contexto: ctxAtual, textoLivre: estadoModulo.textoLivreAnalise });
+        }
+    }
+
+    function criarRascunhoCenarioDaDescricaoUI() {
+        try {
+            garantirEstadoSessao();
+            var elExtra = document.getElementById('inputTextoExtraAnaliseIa');
+            var desc = String((elExtra ? elExtra.value : estadoModulo.textoLivreAnalise) || '').trim();
+            if (!desc) {
+                alert('Descreva primeiro a atividade ou condição da frente de serviço no campo acima.');
+                return;
+            }
+            estadoModulo.textoLivreAnalise = desc;
+            var tituloCurto = desc.split(/[\r\n.;]+/)[0].trim().slice(0, 75) || 'Rascunho de Atividade';
+            salvarContextoOperacional({
+                cargo_equipe: tituloCurto + ' (Rascunho)',
+                frente_servico: 'A definir na revisão',
+                fonte_procedimento: 'Rascunho iniciado pela descrição na Aba 2 — pendente de revisão',
+                rotina_detalhada: desc,
+                fases_operacionais: {},
+                ferramentas_reais: [],
+                perigos_observados: [],
+                epis_validados: [],
+                regras_engenheiro: ''
+            });
+            renderIaAprendizadoPanel();
+        } catch (err) {
+            alert(err.message);
+        }
+    }
+
+    function copiarPacotePromptIaUI() {
+        garantirEstadoSessao();
+        var ta = document.getElementById('textareaPromptRagGerado');
+        var texto = ta ? String(ta.value || '') : gerarPacotePromptRag({ textoLivre: estadoModulo.textoLivreAnalise });
+        var st = document.getElementById('statusCopiaPromptIa');
+        var msgSucesso = '✅ Pedido copiado! Confira se não há nomes/dados pessoais antes de colar no ChatGPT / Gemini / Claude.';
+        var msgManual = '⚠️ Não foi possível copiar automaticamente neste navegador. Selecione o texto na caixa acima e use Ctrl+C.';
+        function tentarFallbackExecCommand() {
+            var ok = false;
+            if (ta && typeof ta.select === 'function') {
+                ta.select();
+                try {
+                    ok = typeof document.execCommand === 'function' && !!document.execCommand('copy');
+                } catch (e) {
+                    ok = false;
+                }
+            }
+            if (st) st.textContent = ok ? msgSucesso : msgManual;
+            return ok;
+        }
+        if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            navigator.clipboard.writeText(texto).then(function () {
+                if (st) st.textContent = msgSucesso;
+            }).catch(function () {
+                tentarFallbackExecCommand();
+            });
+        } else {
+            tentarFallbackExecCommand();
+        }
+        return texto;
+    }
+
+    function preVisualizarRespostaIaUI() {
+        try {
+            garantirEstadoSessao();
+            var el = document.getElementById('textareaRespostaIaImportar');
+            var texto = el ? el.value : '';
+            estadoModulo.previaImportacaoIa = analisarRespostaIaParaPrevia(texto, estadoModulo.contextoSelecionadoId);
+            renderIaAprendizadoPanel();
+        } catch (err) {
+            estadoModulo.previaImportacaoIa = null;
+            alert(err.message);
+        }
+    }
+
+    function confirmarImportacaoPreviaIaUI() {
+        try {
+            garantirEstadoSessao();
+            var papelAtual = obterPapelUsuarioIa();
+            if (papelAtual !== 'editor' && papelAtual !== 'validador') {
+                estadoModulo.previaImportacaoIa = null;
+                renderIaAprendizadoPanel();
+                alert('Permissão negada: seu perfil atual não possui autorização para confirmar a importação.');
+                return;
+            }
+            if (!estadoModulo.previaImportacaoIa) {
+                alert('Pré-visualize a resposta da IA antes de confirmar.');
+                return;
+            }
+            gravarItensPreviaNaFila(estadoModulo.previaImportacaoIa);
+            estadoModulo.previaImportacaoIa = null;
+            estadoModulo.abaAtiva = 'fila';
+            renderIaAprendizadoPanel();
+        } catch (err) {
+            alert(err.message);
+            renderIaAprendizadoPanel();
+        }
+    }
+
+    function cancelarPreviaImportacaoIaUI() {
+        garantirEstadoSessao();
+        estadoModulo.previaImportacaoIa = null;
+        renderIaAprendizadoPanel();
+    }
+
+    function baixarArquivoJsonLocal(nomeArquivo, conteudoJson) {
+        if (typeof Blob === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function' || typeof document.createElement !== 'function' || !document.body || typeof document.body.appendChild !== 'function') {
+            return false;
+        }
+        try {
+            var blob = new Blob([conteudoJson], { type: 'application/json;charset=utf-8' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = nomeArquivo;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            if (typeof setTimeout === 'function') {
+                setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) { /* ignora */ } }, 1000);
+            } else if (typeof URL.revokeObjectURL === 'function') {
+                try { URL.revokeObjectURL(url); } catch (e) { /* ignora */ }
+            }
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function exportarBackupCadernoIaUI() {
+        try {
+            var bkp = gerarBackupCadernoLocal();
+            var baixou = baixarArquivoJsonLocal(bkp.nomeArquivo, bkp.json);
+            if (!baixou) {
+                renderIaAprendizadoPanel();
+                alert('Não foi possível iniciar o download do arquivo de backup neste navegador. O status de backup não foi atualizado.');
+                return null;
+            }
+            registrarBackupExportadoLocal(bkp.geradoEm, bkp.totalContextos + ' cenário(s), ' + bkp.totalRegras + ' regra(s)');
+            renderIaAprendizadoPanel();
+            return Object.assign({}, bkp, { baixado: true });
+        } catch (err) {
+            alert(err.message);
+            return null;
+        }
+    }
+
+    function alternarBoxBackupIaUI() {
+        var box = document.getElementById('boxRestaurarBackupIa');
+        if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function lerArquivoBackupLocalIa(inputEl) {
+        if (!inputEl || !inputEl.files || !inputEl.files[0]) return;
+        var file = inputEl.files[0];
+        if (file.size > LIMITE_BYTES_BACKUP_ARQUIVO) {
+            alert('Arquivo de backup excede o limite de ' + Math.round(LIMITE_BYTES_BACKUP_ARQUIVO / 1024) + ' KB.');
+            inputEl.value = '';
+            return;
+        }
+        var reader = new FileReader();
+        reader.onload = function (ev) {
+            var ta = document.getElementById('textareaBackupIa');
+            if (ta) ta.value = String(ev.target.result || '');
+        };
+        reader.readAsText(file, 'utf-8');
+    }
+
+    function preVisualizarBackupIaUI() {
+        try {
+            garantirEstadoSessao();
+            var ta = document.getElementById('textareaBackupIa');
+            estadoModulo.previaBackupRestauracao = analisarBackupCadernoLocal(ta ? ta.value : '');
+            renderIaAprendizadoPanel();
+        } catch (err) {
+            estadoModulo.previaBackupRestauracao = null;
+            renderIaAprendizadoPanel();
+            alert(err.message);
+        }
+    }
+
+    function confirmarRestauracaoBackupIaUI(modo) {
+        try {
+            garantirEstadoSessao();
+            var papelAtual = obterPapelUsuarioIa();
+            if (papelAtual !== 'editor' && papelAtual !== 'validador') {
+                estadoModulo.previaBackupRestauracao = null;
+                renderIaAprendizadoPanel();
+                alert('Permissão negada: seu perfil atual não possui autorização para restaurar backup.');
+                return;
+            }
+            if (!estadoModulo.previaBackupRestauracao) {
+                alert('Pré-visualize o backup antes de restaurar.');
+                return;
+            }
+            if (estadoModulo.previaBackupRestauracao.identidadeChave && estadoModulo.previaBackupRestauracao.identidadeChave !== estadoModulo.identidadeChave) {
+                estadoModulo.previaBackupRestauracao = null;
+                renderIaAprendizadoPanel();
+                alert('A conta/sessão mudou desde a pré-visualização do backup. Gere uma nova prévia.');
+                return;
+            }
+
+            var modoFinal = modo === 'substituir' ? 'substituir' : 'mesclar';
+            var politicaConflito = '';
+
+            if (modoFinal === 'mesclar' && Array.isArray(estadoModulo.previaBackupRestauracao.conflitosContexto) && estadoModulo.previaBackupRestauracao.conflitosContexto.length > 0) {
+                var selConf = document.getElementById('selectPoliticaConflitoBackupIa');
+                politicaConflito = selConf ? String(selConf.value || '').trim() : '';
+                if (!politicaConflito) {
+                    alert('Selecione explicitamente como tratar os cenários em conflito antes de mesclar.');
+                    return;
+                }
+            }
+
+            // Revalida integridade do backup ANTES de disparar cópia de segurança ou mutação
+            var analiseAtual = analisarBackupCadernoLocal(estadoModulo.previaBackupRestauracao.textoOriginal);
+
+            if (modoFinal === 'substituir') {
+                var temDadosAtuais = estadoModulo.contextos.length > 0 || estadoModulo.regrasAprendidas.length > 0 || estadoModulo.sugestoesFila.length > 0;
+                if (temDadosAtuais) {
+                    // Cópia de segurança disparada ANTES da substituição; falha no download ou cancelamento aborta sem tocar no caderno!
+                    var copiaSeg = gerarBackupCadernoLocal();
+                    var nomeCopia = 'copia_seguranca_antes_substituir_' + copiaSeg.geradoEm.slice(0, 10) + '.json';
+                    var baixouCopia = baixarArquivoJsonLocal(nomeCopia, copiaSeg.json);
+                    if (!baixouCopia) {
+                        alert('Substituição cancelada: não foi possível iniciar o download da cópia de segurança do caderno atual. Nenhum dado foi apagado.');
+                        return;
+                    }
+                    var confirmouGuarda = typeof confirm === 'function'
+                        ? confirm('A cópia de segurança do caderno atual (' + nomeCopia + ') foi enviada para download.\n\nO navegador não consegue verificar se o arquivo foi guardado no disco. Confirme que você recebeu a cópia e deseja substituir o caderno atual pelos ' + analiseAtual.resumo.totalContextos + ' cenário(s) e ' + analiseAtual.resumo.totalItensRevalidacao + ' item(ns) do backup?')
+                        : true;
+                    if (!confirmouGuarda) {
+                        return;
+                    }
+                }
+            }
+
+            var res = aplicarRestauracaoBackupLocal(estadoModulo.previaBackupRestauracao.textoOriginal, modoFinal, {
+                politicaConflito: politicaConflito
+            });
+            estadoModulo.previaBackupRestauracao = null;
+            renderIaAprendizadoPanel();
+            alert('✅ Restauração concluída (' + res.modo + '): ' +
+                res.contextosAdicionados + ' cenário(s) novo(s), ' +
+                res.contextosAtualizados + ' atualizado(s), ' +
+                res.contextosMantidosExistentes + ' mantido(s) e ' +
+                res.itensRevalidacaoAdicionados + ' item(ns) enviado(s) para revalidação na Aba 3.');
+        } catch (err) {
+            alert(err.message);
+            renderIaAprendizadoPanel();
+        }
+    }
+
+    function cancelarPreviaBackupIaUI() {
+        garantirEstadoSessao();
+        estadoModulo.previaBackupRestauracao = null;
+        renderIaAprendizadoPanel();
+    }
 
     function carregarRascunhoEstudoUI() {
         try { carregarRascunhoEstudoOpcional(); renderIaAprendizadoPanel(); } catch (err) { alert(err.message); }
     }
 
     function executarVarreduraIaUI() {
+        garantirEstadoSessao();
         var elExtra = document.getElementById('inputTextoExtraAnaliseIa');
-        executarVarreduraRiscosOcultos({ textoLivre: elExtra ? elExtra.value : '' });
+        var textoVal = elExtra ? elExtra.value : estadoModulo.textoLivreAnalise;
+        estadoModulo.textoLivreAnalise = String(textoVal || '');
+        executarVarreduraRiscosOcultos({ textoLivre: estadoModulo.textoLivreAnalise });
         renderIaAprendizadoPanel();
     }
 
     function importarRespostaIaUI() {
         try {
+            garantirEstadoSessao();
             var el = document.getElementById('textareaRespostaIaImportar');
             importarRespostaIaParaFila(el ? el.value : '', estadoModulo.contextoSelecionadoId);
+            estadoModulo.previaImportacaoIa = null;
             estadoModulo.abaAtiva = 'fila';
             renderIaAprendizadoPanel();
         } catch (err) { alert(err.message); }
@@ -2668,8 +4120,12 @@
     window.salvarContextoOperacional = salvarContextoOperacional;
     window.executarVarreduraRiscosOcultos = executarVarreduraRiscosOcultos;
     window.gerarPacotePromptRag = gerarPacotePromptRag;
+    window.analisarRespostaIaParaPrevia = analisarRespostaIaParaPrevia;
     window.importarRespostaIaParaFila = importarRespostaIaParaFila;
     window.importarExemploDeTextoOuJson = importarExemploDeTextoOuJson;
+    window.gerarBackupCadernoLocal = gerarBackupCadernoLocal;
+    window.analisarBackupCadernoLocal = analisarBackupCadernoLocal;
+    window.aplicarRestauracaoBackupLocal = aplicarRestauracaoBackupLocal;
     window.ajustarSugestaoIa = ajustarSugestaoIa;
     window.aprovarSugestaoIa = aprovarSugestaoIa;
     window.revogarRegraAprendida = revogarRegraAprendida;
@@ -2685,6 +4141,20 @@
     window.selecionarContextoIaAprendizado = selecionarContextoIaAprendizado;
     window.selecionarAprAuditoriaIa = selecionarAprAuditoriaIa;
     window.filtrarFilaIaAprendizado = filtrarFilaIaAprendizado;
+    window.irParaNovoCenarioIaUI = irParaNovoCenarioIaUI;
+    window.irParaEditarCenarioAtualIaUI = irParaEditarCenarioAtualIaUI;
+    window.atualizarTextoLivreAnaliseIaUI = atualizarTextoLivreAnaliseIaUI;
+    window.criarRascunhoCenarioDaDescricaoUI = criarRascunhoCenarioDaDescricaoUI;
+    window.copiarPacotePromptIaUI = copiarPacotePromptIaUI;
+    window.preVisualizarRespostaIaUI = preVisualizarRespostaIaUI;
+    window.confirmarImportacaoPreviaIaUI = confirmarImportacaoPreviaIaUI;
+    window.cancelarPreviaImportacaoIaUI = cancelarPreviaImportacaoIaUI;
+    window.exportarBackupCadernoIaUI = exportarBackupCadernoIaUI;
+    window.alternarBoxBackupIaUI = alternarBoxBackupIaUI;
+    window.lerArquivoBackupLocalIa = lerArquivoBackupLocalIa;
+    window.preVisualizarBackupIaUI = preVisualizarBackupIaUI;
+    window.confirmarRestauracaoBackupIaUI = confirmarRestauracaoBackupIaUI;
+    window.cancelarPreviaBackupIaUI = cancelarPreviaBackupIaUI;
     window.carregarRascunhoEstudoUI = carregarRascunhoEstudoUI;
     window.executarVarreduraIaUI = executarVarreduraIaUI;
     window.importarRespostaIaUI = importarRespostaIaUI;

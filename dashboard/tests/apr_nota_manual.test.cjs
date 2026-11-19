@@ -9,8 +9,8 @@ const html = fs.readFileSync(path.join(painel, 'index.html'), 'utf8');
 const nucleo = fs.readFileSync(path.join(painel, 'dashboard.js'), 'utf8');
 
 assert.match(html, /modules\/apr_cipa\.js\?v=296/);
-assert.match(html, /modules\/ia_aprendizado\.js\?v=2/);
-assert.doesNotMatch(html, /ia_aprendizado\.js\?v=1/);
+assert.match(html, /modules\/ia_aprendizado\.js\?v=3/);
+assert.doesNotMatch(html, /ia_aprendizado\.js\?v=[12]\b/);
 assert.doesNotMatch(html, /autoCalibrarTodosRiscosApr|Sugerir P\/S/);
 assert.match(html, /Detectar Riscos Ocultos \(IA SST\)/);
 assert.doesNotMatch(codigo, /Sugerir P\/S|Ajustar Automaticamente|Ajuste a nota|Salvar mesmo assim/);

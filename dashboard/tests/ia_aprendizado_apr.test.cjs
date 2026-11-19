@@ -652,6 +652,403 @@ async function testarReauditoria1035() {
     assert.match(m.contexto.aprRiscosForm[0].passo_tarefa, /Transporte manual/i);
     assert.equal(m.contexto.aprRiscosForm[0].p_puro, 3, 'Deve preservar P puro já preenchido pelo usuário');
     assert.equal(m.contexto.aprRiscosForm[0].s_residual, 2, 'Deve preservar S residual já preenchido pelo usuário');
+
+    // 9. Consenso v3 (Usabilidade Aba 2, Modo 2 com Copiar + Prévia + Descarte P/S, Comparação APR em 4 blocos e Backup sem auto-aprovação)
+    const v3 = criarAmbienteTeste();
+    v3.contexto.allAprRegistros = [{
+        id: '006',
+        titulo: 'CIVIL - MANUTENÇÃO (ESTRUTURAS)',
+        data_emissao: '2026-11-17',
+        descricao_atividade: 'Manutenção em canaletas e bueiros',
+        riscos: [
+            { passo_tarefa: 'Acesso', perigo_fonte: 'Contato com Cimento', medidas_prevencao: 'Usar EPI', p_puro: '', s_puro: '', p_residual: '', s_residual: '' }
+        ]
+    }];
+
+    // 9.1. Estado vazio na Aba 2: não fabrica riscos de frase solta, explica motivoZero, não mostra botão "Ir para a Aba 3", e inclui descrição no pacote do Modo 2
+    v3.contexto.selecionarAbaIaAprendizado('analise');
+    assert.match(v3.el('page-ia_aprendizado').innerHTML, /Nenhum cenário cadastrado neste navegador/);
+    assert.match(v3.el('page-ia_aprendizado').innerHTML, /Copiar Pedido para IA/);
+    assert.doesNotMatch(v3.el('page-ia_aprendizado').innerHTML, /100% Free/i);
+
+    v3.el('inputTextoExtraAnaliseIa').value = 'Manutenção em bueiro com betoneira e vala';
+    v3.contexto.atualizarTextoLivreAnaliseIaUI(v3.el('inputTextoExtraAnaliseIa').value);
+    assert.match(v3.el('textareaPromptRagGerado').value, /Manutenção em bueiro com betoneira e vala/);
+
+    v3.contexto.executarVarreduraIaUI();
+    const htmlVazioAposScan = v3.el('page-ia_aprendizado').innerHTML;
+    assert.match(htmlVazioAposScan, /Resultado: 0 rascunhos gerados/);
+    assert.match(htmlVazioAposScan, /Nenhum cenário cadastrado na Aba 1/);
+    assert.doesNotMatch(htmlVazioAposScan, /Ir para a Aba 3 revisar e aprovar/, 'Com 0 rascunhos gerados não deve exibir botão para Aba 3');
+
+    // 9.2. Iniciar rascunho de cenário direto da descrição na Aba 2 sem sair dela
+    v3.contexto.criarRascunhoCenarioDaDescricaoUI();
+    const getSavedV3 = () => JSON.parse([...v3.storage.values()][0]);
+    assert.equal(getSavedV3().contextos.length, 1);
+    assert.equal(getSavedV3().contextos[0].status_cenario, 'RASCUNHO_NAO_APROVADO');
+    assert.match(getSavedV3().contextos[0].rotina_detalhada, /betoneira/);
+
+    // 9.3. Comparação com APR existente: seletor mostra número/título/data, separa em 4 blocos e preserva APR original
+    v3.contexto.salvarContextoOperacional({
+        id: getSavedV3().contextos[0].id,
+        versaoEsperada: 1,
+        cargo_equipe: 'Civil Estruturas',
+        perigos_observados: ['Contato com Cimento', 'Risco de Choque elétrico']
+    });
+    v3.contexto.selecionarAprAuditoriaIa('006');
+    assert.match(v3.el('page-ia_aprendizado').innerHTML, /APR Nº 006 — CIVIL - MANUTENÇÃO \(ESTRUTURAS\) \(Emissão: 2026-11-17\)/);
+    v3.contexto.executarVarreduraIaUI();
+    const htmlCompApr = v3.el('page-ia_aprendizado').innerHTML;
+    assert.match(htmlCompApr, /1\. Perigos possivelmente ausentes/);
+    assert.match(htmlCompApr, /2\. Medidas genéricas ou P×S incompleto na APR/);
+    assert.match(htmlCompApr, /3\. Informações para confirmar em campo/);
+    assert.match(htmlCompApr, /4\. Itens já contemplados na APR/);
+    assert.match(htmlCompApr, /Ir para a Aba 3 revisar e aprovar/);
+    assert.equal(v3.contexto.allAprRegistros[0].riscos.length, 1, 'Comparação não deve alterar a APR original');
+
+    // 9.4. Modo 2: extrai lista cercada por texto livre (sem ```json), descarta P/S da IA e exige prévia antes de gravar na Aba 3
+    const qtdFilaAntesPrevia = getSavedV3().sugestoesFila.length;
+    v3.el('textareaRespostaIaImportar').value = 'Claro! Aqui estão os riscos sugeridos para sua revisão:\n' +
+        JSON.stringify([{
+            passo_tarefa: 'Acesso à borda da vala',
+            perigo_fonte: 'Desmoronamento lateral',
+            evento_risco: 'Soterramento parcial',
+            danos_provaveis: 'Fraturas',
+            medidas_prevencao: 'Implantar escoramento e manter bota-fora afastado.',
+            p_puro: 4,
+            s_puro: 5,
+            p_residual: 1,
+            s_residual: 2
+        }]) + '\nEspero que ajude na elaboração da APR.';
+    v3.contexto.preVisualizarRespostaIaUI();
+    assert.equal(getSavedV3().sugestoesFila.length, qtdFilaAntesPrevia, 'Pré-visualizar NÃO deve gravar na fila antes da confirmação');
+    assert.match(v3.el('page-ia_aprendizado').innerHTML, /Prévia dos Riscos Reconhecidos/);
+    assert.match(v3.el('page-ia_aprendizado').innerHTML, /4 nota\(s\) de P\/S enviada\(s\) pela IA foram ignoradas/);
+
+    v3.contexto.confirmarImportacaoPreviaIaUI();
+    assert.equal(getSavedV3().sugestoesFila.length, qtdFilaAntesPrevia + 1);
+    const sugImportadaV3 = getSavedV3().sugestoesFila[0];
+    assert.equal(sugImportadaV3.status, 'RASCUNHO');
+    assert.equal(sugImportadaV3.acao_proposta.p_puro, '');
+    assert.equal(sugImportadaV3.acao_proposta.s_puro, '');
+    assert.equal(sugImportadaV3.acao_proposta.p_residual, '');
+    assert.equal(sugImportadaV3.acao_proposta.s_residual, '');
+
+    // Helper para simular download de arquivo no ambiente VM
+    function habilitarDownloadMock(envObj, downloadsRegistrados) {
+        envObj.contexto.Blob = function (parts) { this.parts = parts; };
+        envObj.contexto.URL = {
+            createObjectURL: (blob) => 'blob:mock/' + String(blob.parts.join('').length),
+            revokeObjectURL: () => {}
+        };
+        envObj.contexto.document.body = {
+            appendChild: () => {},
+            removeChild: () => {}
+        };
+        envObj.contexto.document.createElement = (tag) => {
+            const elMock = { tagName: tag, href: '', download: '', click() { downloadsRegistrados.push({ nome: this.download, href: this.href }); } };
+            return elMock;
+        };
+    }
+
+    // 9.5. Backup e Restauração: só registra data quando download é iniciado, detecta alterações posteriores, gera cópia de segurança e NUNCA auto-aprova regras externas
+    v3.contexto.aprovarSugestaoIa(sugImportadaV3.id);
+
+    // Sem suporte a download: NÃO deve marcar ultimoBackupEm nem limpar alteracoesAposBackup!
+    const bkpSemDownload = v3.contexto.exportarBackupCadernoIaUI();
+    assert.equal(bkpSemDownload, null, 'Sem capacidade de download não deve confirmar exportação');
+    assert.equal(getSavedV3().ultimoBackupEm, '', 'Falha de download não pode preencher ultimoBackupEm');
+    assert.equal(getSavedV3().alteracoesAposBackup, true, 'Falha de download não pode limpar flag de alterações pendentes');
+
+    // Com suporte a download: inicia download, preenche data e limpa flag
+    const downloadsV3 = [];
+    habilitarDownloadMock(v3, downloadsV3);
+    const bkpExportado = v3.contexto.exportarBackupCadernoIaUI();
+    assert.ok(bkpExportado && bkpExportado.json && bkpExportado.baixado === true);
+    assert.equal(downloadsV3.length, 1);
+    assert.equal(getSavedV3().alteracoesAposBackup, false, 'Logo após backup baixado não há alterações pendentes');
+    assert.ok(getSavedV3().ultimoBackupEm);
+
+    // Nova alteração após backup aciona aviso de alterações posteriores
+    v3.contexto.salvarContextoOperacional({ cargo_equipe: 'Equipe Pós-Backup', frente_servico: 'Canal' });
+    assert.equal(getSavedV3().alteracoesAposBackup, true);
+
+    // Restaura esse backup em outro navegador limpo (modo substituir) -> regra aprovada no arquivo externo NÃO entra como regra ativa!
+    const v3NovoPc = criarAmbienteTeste();
+    v3NovoPc.contexto.salvarContextoOperacional({ cargo_equipe: 'Cenário Antigo Local', frente_servico: 'Frente X' });
+    const previaBkp = v3NovoPc.contexto.analisarBackupCadernoLocal(bkpExportado.json);
+    assert.equal(previaBkp.resumo.totalContextos, 1);
+    assert.equal(previaBkp.resumo.totalRegras, 1);
+
+    const resRest = v3NovoPc.contexto.aplicarRestauracaoBackupLocal(bkpExportado.json, 'substituir');
+    assert.ok(resRest.copiaSegurancaAntes && resRest.copiaSegurancaAntes.json.includes('Cenário Antigo Local'), 'Modo substituir deve gerar cópia de segurança do estado anterior');
+    const savedNovoPc = JSON.parse([...v3NovoPc.storage.values()][0]);
+    assert.equal(savedNovoPc.regrasAprendidas.length, 0, 'Backup externo NÃO pode auto-aprovar regras na biblioteca ativa');
+    assert.ok(savedNovoPc.sugestoesFila.length >= 1 && savedNovoPc.sugestoesFila.every(s => s.status === 'RASCUNHO'), 'Itens do backup devem entrar como RASCUNHO aguardando revalidação na Aba 3');
+
+    // 10. Testes Adversos da Auditoria Codex v3-1436 (Bloqueios 1, 2, 3, 4 e Lacuna Mesclar)
+    // 10.1. Bloqueio 1: Backup com objeto inválido, array misto ou versão desconhecida é recusado SEM esvaziar caderno em Substituir
+    const adv1 = criarAmbienteTeste();
+    adv1.contexto.salvarContextoOperacional({ cargo_equipe: 'Caderno Existente Protegido', rotina_detalhada: 'Conteúdo essencial' });
+    const getSavedAdv1 = () => JSON.parse([...adv1.storage.values()][0]);
+
+    const backupObjInvalido = JSON.stringify({ formato: 'ia_aprendizado_backup_v1', contextos: [{}] });
+    assert.throws(() => adv1.contexto.analisarBackupCadernoLocal(backupObjInvalido), /sem Cargo \/ Equipe/i);
+    assert.throws(() => adv1.contexto.aplicarRestauracaoBackupLocal(backupObjInvalido, 'substituir'), /sem Cargo \/ Equipe/i);
+    assert.equal(getSavedAdv1().contextos.length, 1, 'Backup inválido não pode esvaziar o caderno existente');
+
+    const backupArrayMisto = JSON.stringify({ formato: 'ia_aprendizado_backup_v1', contextos: [{ cargo_equipe: 'OK' }, 'invalido'] });
+    assert.throws(() => adv1.contexto.analisarBackupCadernoLocal(backupArrayMisto), /não é um objeto válido/i);
+    assert.throws(() => adv1.contexto.aplicarRestauracaoBackupLocal(backupArrayMisto, 'substituir'), /não é um objeto válido/i);
+    assert.equal(getSavedAdv1().contextos.length, 1);
+
+    const backupVersaoDesconhecida = JSON.stringify({ formato: 'ia_aprendizado_backup_v99', contextos: [{ cargo_equipe: 'Futuro' }] });
+    assert.throws(() => adv1.contexto.analisarBackupCadernoLocal(backupVersaoDesconhecida), /Formato ou versão de backup não reconhecido/i);
+    assert.equal(getSavedAdv1().contextos.length, 1);
+
+    // 10.2. Bloqueio 2: Round-trip integral sem truncamento silencioso (rotina 6000 chars, 45 ferramentas, 45 perigos, regras longas) e JSON compacto
+    const adv2 = criarAmbienteTeste();
+    const rotinaLonga = 'R'.repeat(6000);
+    const regrasLongas = 'D'.repeat(4000);
+    const ferramentas45 = Array.from({ length: 45 }, (_, i) => 'Ferramenta ' + (i + 1));
+    const perigos45 = Array.from({ length: 45 }, (_, i) => 'Perigo ' + (i + 1));
+    adv2.contexto.salvarContextoOperacional({
+        cargo_equipe: 'Cenário Extenso Round-Trip',
+        frente_servico: 'Canal Principal',
+        fonte_procedimento: 'P'.repeat(400),
+        rotina_detalhada: rotinaLonga,
+        ferramentas_reais: ferramentas45,
+        perigos_observados: perigos45,
+        regras_engenheiro: regrasLongas
+    });
+    const bkpLongo = adv2.contexto.gerarBackupCadernoLocal();
+    assert.doesNotMatch(bkpLongo.json, /\n  /, 'Backup exportado deve ser compacto para não inflar além do teto de 200 KB');
+    const adv2Destino = criarAmbienteTeste();
+    adv2Destino.contexto.aplicarRestauracaoBackupLocal(bkpLongo.json, 'mesclar');
+    const savedAdv2Dest = JSON.parse([...adv2Destino.storage.values()][0]);
+    assert.equal(savedAdv2Dest.contextos[0].rotina_detalhada.length, 6000, 'Rotina longa não pode ser truncada silenciosamente');
+    assert.equal(savedAdv2Dest.contextos[0].regras_engenheiro.length, 4000, 'Diretrizes longas não podem ser truncadas silenciosamente');
+    assert.equal(savedAdv2Dest.contextos[0].fonte_procedimento.length, 400, 'Fonte documental não pode ser truncada silenciosamente');
+    assert.equal(savedAdv2Dest.contextos[0].ferramentas_reais.length, 45, 'Lista de ferramentas não pode ser cortada em 40');
+    assert.equal(savedAdv2Dest.contextos[0].perigos_observados.length, 45, 'Lista de perigos não pode ser cortada em 40');
+
+    // 10.3. Lacuna Mesclar: Conflito de mesma identidade com conteúdo diferente exige escolha explícita (manter_existente, restaurar_copia, substituir_versao)
+    const adv3 = criarAmbienteTeste();
+    adv3.contexto.salvarContextoOperacional({ cargo_equipe: 'Versao1', frente_servico: 'F', rotina_detalhada: '' });
+    const getSavedAdv3 = () => JSON.parse([...adv3.storage.values()][0]);
+    const bkpConflitoObj = JSON.parse(adv3.contexto.gerarBackupCadernoLocal().json);
+    bkpConflitoObj.contextos[0].rotina_detalhada = 'Atualizacao feita em outro computador';
+    const bkpConflitoJson = JSON.stringify(bkpConflitoObj);
+
+    const previaConflito = adv3.contexto.analisarBackupCadernoLocal(bkpConflitoJson);
+    assert.equal(previaConflito.conflitosContexto.length, 1);
+    assert.ok(previaConflito.conflitosContexto[0].camposDiferentes.includes('rotina_detalhada'));
+    assert.throws(() => adv3.contexto.aplicarRestauracaoBackupLocal(bkpConflitoJson, 'mesclar'), /Conflito de versão detectado/i, 'Sem política explícita não deve descartar alteração do backup silenciosamente');
+
+    // Política manter_existente
+    const resManter = adv3.contexto.aplicarRestauracaoBackupLocal(bkpConflitoJson, 'mesclar', { politicaConflito: 'manter_existente' });
+    assert.equal(resManter.contextosMantidosExistentes, 1);
+    assert.equal(getSavedAdv3().contextos[0].rotina_detalhada, '');
+
+    // Política restaurar_copia
+    const resCopia = adv3.contexto.aplicarRestauracaoBackupLocal(bkpConflitoJson, 'mesclar', { politicaConflito: 'restaurar_copia' });
+    assert.equal(resCopia.contextosCopiados, 1);
+    assert.equal(getSavedAdv3().contextos.length, 2);
+    assert.equal(getSavedAdv3().contextos[1].rotina_detalhada, 'Atualizacao feita em outro computador');
+
+    // Política substituir_versao
+    const adv3Sub = criarAmbienteTeste();
+    adv3Sub.contexto.salvarContextoOperacional({ cargo_equipe: 'Versao1', frente_servico: 'F', rotina_detalhada: 'Antiga' });
+    const resSubVer = adv3Sub.contexto.aplicarRestauracaoBackupLocal(bkpConflitoJson, 'mesclar', { politicaConflito: 'substituir_versao' });
+    assert.equal(resSubVer.contextosAtualizados, 1);
+    const savedAdv3Sub = JSON.parse([...adv3Sub.storage.values()][0]);
+    assert.equal(savedAdv3Sub.contextos[0].rotina_detalhada, 'Atualizacao feita em outro computador');
+    assert.equal(savedAdv3Sub.contextos[0].versao, 2);
+
+    // 10.4. Capacidade (40 cenários e 80 sugestões): sem descarte silencioso ao mesclar
+    const advCap = criarAmbienteTeste();
+    for (let i = 1; i <= 40; i++) {
+        advCap.contexto.salvarContextoOperacional({ cargo_equipe: 'Cenário Limite ' + i, frente_servico: 'F' + i });
+    }
+    const bkpExtraCtx = JSON.stringify({ formato: 'ia_aprendizado_backup_v1', contextos: [{ cargo_equipe: 'Cenário 41', frente_servico: 'F41' }] });
+    const prevCapCtx = advCap.contexto.analisarBackupCadernoLocal(bkpExtraCtx);
+    assert.equal(prevCapCtx.resumo.excedenteContextosMesclar, 1);
+    assert.throws(() => advCap.contexto.aplicarRestauracaoBackupLocal(bkpExtraCtx, 'mesclar'), /Capacidade excedida.*41.*40/i);
+
+    const advCapFila = criarAmbienteTeste();
+    for (let i = 0; i < 4; i++) {
+        const lote20 = Array.from({ length: 20 }, (_, j) => ({ passo_tarefa: 'Passo ' + i + '_' + j, perigo_fonte: 'Perigo ' + i + '_' + j }));
+        advCapFila.contexto.importarRespostaIaParaFila(JSON.stringify(lote20), null);
+    }
+    const bkpExtraFila = JSON.stringify({
+        formato: 'ia_aprendizado_backup_v1',
+        sugestoesFila: [{ status: 'RASCUNHO', acao_proposta: { passo_tarefa: 'Passo 81', perigo_fonte: 'Perigo 81' } }]
+    });
+    const prevCapFila = advCapFila.contexto.analisarBackupCadernoLocal(bkpExtraFila);
+    assert.equal(prevCapFila.resumo.excedenteFilaMesclar, 1);
+    assert.throws(() => advCapFila.contexto.aplicarRestauracaoBackupLocal(bkpExtraFila, 'mesclar'), /Capacidade excedida.*81.*80/i);
+
+    // 10.5. Bloqueio 3: Cópia de segurança disparada ANTES de substituir + falha de download ou cancelamento aborta sem apagar caderno
+    const advSub = criarAmbienteTeste();
+    advSub.contexto.salvarContextoOperacional({ cargo_equipe: 'Caderno Original Intocavel', frente_servico: 'Sede' });
+    const getSavedAdvSub = () => JSON.parse([...advSub.storage.values()][0]);
+    const bkpNovoSub = JSON.stringify({ formato: 'ia_aprendizado_backup_v1', contextos: [{ cargo_equipe: 'Caderno Novo Backup', frente_servico: 'Obra' }] });
+
+    // 10.5a. Sem suporte a download -> aborta substituição e mantém caderno original
+    advSub.el('textareaBackupIa').value = bkpNovoSub;
+    advSub.contexto.preVisualizarBackupIaUI();
+    advSub.contexto.confirmarRestauracaoBackupIaUI('substituir');
+    assert.equal(getSavedAdvSub().contextos[0].cargo_equipe, 'Caderno Original Intocavel', 'Falha de download da cópia de segurança deve abortar substituição');
+
+    // 10.5b. Com download OK mas confirm() = false -> aborta substituição e mantém caderno original
+    const downloadsSub = [];
+    habilitarDownloadMock(advSub, downloadsSub);
+    advSub.contexto.confirm = () => false;
+    advSub.contexto.confirmarRestauracaoBackupIaUI('substituir');
+    assert.equal(downloadsSub.length, 1, 'Download da cópia de segurança deve ocorrer antes da confirmação final');
+    assert.equal(getSavedAdvSub().contextos[0].cargo_equipe, 'Caderno Original Intocavel', 'Cancelar confirmação após download deve manter caderno original intacto');
+
+    // 10.5c. Com download OK e confirm() = true -> download da cópia ocorre ANTES da mutação no storage
+    const ordemEventosSub = [];
+    advSub.contexto.document.createElement = () => ({
+        href: '',
+        download: '',
+        click() {
+            const atualNoClick = JSON.parse([...advSub.storage.values()][0]);
+            ordemEventosSub.push('download_antes:' + atualNoClick.contextos[0].cargo_equipe);
+        }
+    });
+    advSub.contexto.confirm = () => {
+        const atualNoConfirm = JSON.parse([...advSub.storage.values()][0]);
+        ordemEventosSub.push('confirm_antes:' + atualNoConfirm.contextos[0].cargo_equipe);
+        return true;
+    };
+    advSub.contexto.confirmarRestauracaoBackupIaUI('substituir');
+    assert.deepEqual(ordemEventosSub, [
+        'download_antes:Caderno Original Intocavel',
+        'confirm_antes:Caderno Original Intocavel'
+    ], 'Cópia de segurança e confirmação devem ocorrer estritamente ANTES de substituir o caderno');
+    assert.equal(getSavedAdvSub().contextos[0].cargo_equipe, 'Caderno Novo Backup');
+
+    // 10.6. Rollback em falha de localStorage (QuotaExceededError) durante restauração
+    const advQuota = criarAmbienteTeste();
+    advQuota.contexto.salvarContextoOperacional({ cargo_equipe: 'Preservado Em Quota', frente_servico: 'A' });
+    const setItemOrigQuota = advQuota.contexto.localStorage.setItem;
+    advQuota.contexto.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+    assert.throws(() => advQuota.contexto.aplicarRestauracaoBackupLocal(bkpNovoSub, 'substituir'), /QuotaExceededError/);
+    advQuota.contexto.localStorage.setItem = setItemOrigQuota;
+    assert.equal(JSON.parse([...advQuota.storage.values()][0]).contextos[0].cargo_equipe, 'Preservado Em Quota');
+
+    // 10.7. Bloqueio 4: Permissão revogada entre prévia e confirmação bloqueia gravação
+    const advPerm = criarAmbienteTeste();
+    advPerm.contexto.renderIaAprendizadoPanel();
+    advPerm.el('textareaRespostaIaImportar').value = 'Aqui estão: [{"passo_tarefa":"Limpeza","perigo_fonte":"Pedras"}]';
+    advPerm.contexto.preVisualizarRespostaIaUI();
+    advPerm.contexto.permissaoGravacao.ia_aprendizado = false;
+    advPerm.contexto.confirmarImportacaoPreviaIaUI();
+    const savedAdvPerm = advPerm.storage.size ? JSON.parse([...advPerm.storage.values()][0]) : { sugestoesFila: [] };
+    assert.equal(advPerm.contexto.obterPapelUsuarioIa(), 'leitor');
+    assert.equal(savedAdvPerm.sugestoesFila.length, 0, 'Permissão revogada entre prévia e confirmação não pode gravar itens na fila');
+
+    // 10.8. Troca de conta com prévia pendente bloqueia confirmação na conta nova
+    const advConta = criarAmbienteTeste();
+    advConta.contexto.renderIaAprendizadoPanel();
+    advConta.el('textareaRespostaIaImportar').value = '[{"passo_tarefa":"Escavação","perigo_fonte":"Talude"}]';
+    advConta.contexto.preVisualizarRespostaIaUI();
+    // Troca de usuário para outra matrícula
+    advConta.contexto.sessaoAtual.matricula = '999';
+    advConta.contexto.sessaoAtual.email = 'outro@obra.local';
+    advConta.contexto.confirmarImportacaoPreviaIaUI();
+    const chaveOutro = 'sst_ia_apr_local_v2_999';
+    assert.equal(advConta.storage.has(chaveOutro), false, 'Prévia gerada na conta A não pode ser gravada na conta B após troca de sessão');
+
+    // 10.9. Sincronização entre duas abas antes de gerar backup
+    const storageBkpSync = new Map();
+    const abaBkp1 = criarAmbienteTeste(null, storageBkpSync);
+    const abaBkp2 = criarAmbienteTeste(null, storageBkpSync);
+    abaBkp1.contexto.salvarContextoOperacional({ cargo_equipe: 'Cenário Aba 1', frente_servico: 'F1' });
+    abaBkp2.contexto.salvarContextoOperacional({ cargo_equipe: 'Cenário Aba 2', frente_servico: 'F2' });
+    const bkpSync = abaBkp1.contexto.gerarBackupCadernoLocal();
+    const bkpSyncParsed = JSON.parse(bkpSync.json);
+    assert.equal(bkpSyncParsed.contextos.length, 2, 'Backup gerado na Aba 1 deve sincronizar antes do storage e incluir alteração da Aba 2');
+
+    // 10.10. Ajustes da revisão Grok: residual igual à pura NÃO é erro (somente residual > pura) e falha de cópia avisa Ctrl+C
+    const alertasResidualIgual = v3.contexto.auditarMedidasFracasApr({
+        riscos: [
+            { passo_tarefa: 'Escavação com escoramento', perigo_fonte: 'Talude', medidas_prevencao: 'Implantar escoramento metálico e escada de acesso fixa.', p_puro: 3, s_puro: 3, p_residual: 3, s_residual: 3 },
+            { passo_tarefa: 'Içamento crítico', perigo_fonte: 'Queda de carga', medidas_prevencao: 'Isolar raio de giro e inspecionar cintas antes do içamento.', p_puro: 3, s_puro: 3, p_residual: 4, s_residual: 3 }
+        ]
+    });
+    assert.equal(alertasResidualIgual.length, 1, 'Residual igual à pura (3x3 vs 3x3) não deve gerar alerta; somente residual > pura');
+    assert.match(alertasResidualIgual[0].motivo, /superior à pura/i);
+
+    v3.el('statusCopiaPromptIa').textContent = '';
+    v3.contexto.copiarPacotePromptIaUI();
+    assert.match(v3.el('statusCopiaPromptIa').textContent, /Ctrl\+C/i, 'Quando o navegador recusa cópia, não deve afirmar Pedido copiado');
+
+    // 10.11. Reauditoria Codex v3/15:09: preservar riscos distintos com mesma etapa/perigo mas eventos/medidas diferentes
+    // 10.11a. Ida/volta 2->2 (mesmo passo/perigo, eventos e medidas diferentes)
+    const advDup = criarAmbienteTeste();
+    advDup.contexto.importarRespostaIaParaFila(JSON.stringify([
+        { passo_tarefa: 'Limpeza', perigo_fonte: 'Pedras', evento_risco: 'Projecao', medidas_prevencao: 'Controle A' },
+        { passo_tarefa: 'Limpeza', perigo_fonte: 'Pedras', evento_risco: 'Queda', medidas_prevencao: 'Controle B' }
+    ]), null);
+    const bkpDoisDistintos = advDup.contexto.gerarBackupCadernoLocal();
+    const advDupDest = criarAmbienteTeste();
+    const prevDoisDistintos = advDupDest.contexto.analisarBackupCadernoLocal(bkpDoisDistintos.json);
+    assert.equal(prevDoisDistintos.resumo.totalItensRevalidacao, 2, 'Prévia deve preservar ambos os riscos distintos com mesma etapa/perigo');
+    assert.equal(prevDoisDistintos.resumo.itensDuplicadosNoArquivo, 0);
+    advDupDest.contexto.aplicarRestauracaoBackupLocal(bkpDoisDistintos.json, 'substituir');
+    const savedDoisDistintos = JSON.parse([...advDupDest.storage.values()][0]);
+    assert.equal(savedDoisDistintos.sugestoesFila.length, 2, 'Restauração deve manter 2->2 sem fundir Controle A e Controle B');
+    const controlesRest = savedDoisDistintos.sugestoesFila.map(s => s.acao_proposta.medidas_prevencao).sort();
+    assert.deepEqual(controlesRest, ['Controle A', 'Controle B']);
+
+    // 10.11b. Duplicata integral 2->1 explicitamente informada na prévia
+    const bkpDupIntegral = JSON.stringify({
+        formato: 'ia_aprendizado_backup_v1',
+        sugestoesFila: [
+            { id: 's1', status: 'RASCUNHO', contexto_id: null, fase_operacional: 'EXECUCAO_FERRAMENTAS', acao_proposta: { passo_tarefa: 'Limpeza', perigo_fonte: 'Pedras', evento_risco: 'Projecao', medidas_prevencao: 'Controle A' } },
+            { id: 's2', status: 'RASCUNHO', contexto_id: null, fase_operacional: 'EXECUCAO_FERRAMENTAS', acao_proposta: { passo_tarefa: 'Limpeza', perigo_fonte: 'Pedras', evento_risco: 'Projecao', medidas_prevencao: 'Controle A' } }
+        ]
+    });
+    const prevDupIntegral = advDupDest.contexto.analisarBackupCadernoLocal(bkpDupIntegral);
+    assert.equal(prevDupIntegral.resumo.totalItensRevalidacao, 1, 'Duplicata integral 2->1 deve resultar em 1 item');
+    assert.equal(prevDupIntegral.resumo.itensDuplicadosNoArquivo, 1, 'Prévia deve informar explicitamente 1 duplicata integral unificada');
+
+    // 10.11c. Merge em caderno com mesmo passo/perigo (e até mesmo ID) mas medida diferente preserva ambos
+    const advMergeDiff = criarAmbienteTeste();
+    advMergeDiff.contexto.importarRespostaIaParaFila(JSON.stringify([
+        { passo_tarefa: 'Limpeza', perigo_fonte: 'Pedras', evento_risco: 'Projecao', medidas_prevencao: 'Controle A' }
+    ]), null);
+    const idExistenteMerge = JSON.parse([...advMergeDiff.storage.values()][0]).sugestoesFila[0].id;
+    const bkpMesmoIdMedidaDiff = JSON.stringify({
+        formato: 'ia_aprendizado_backup_v1',
+        sugestoesFila: [
+            { id: idExistenteMerge, status: 'RASCUNHO', contexto_id: null, fase_operacional: 'EXECUCAO_FERRAMENTAS', acao_proposta: { passo_tarefa: 'Limpeza', perigo_fonte: 'Pedras', evento_risco: 'Queda', medidas_prevencao: 'Controle B' } }
+        ]
+    });
+    const prevMergeDiff = advMergeDiff.contexto.analisarBackupCadernoLocal(bkpMesmoIdMedidaDiff);
+    assert.equal(prevMergeDiff.resumo.filaDuplicados, 0, 'Medida diferente com mesmo passo/perigo/ID não é duplicata integral');
+    assert.equal(prevMergeDiff.resumo.itensMesmoPassoPerigoConteudoDiferente, 1, 'Prévia deve destacar item com mesma etapa/perigo e conteúdo distinto');
+    advMergeDiff.contexto.aplicarRestauracaoBackupLocal(bkpMesmoIdMedidaDiff, 'mesclar');
+    const filaAposMergeDiff = JSON.parse([...advMergeDiff.storage.values()][0]).sugestoesFila;
+    assert.equal(filaAposMergeDiff.length, 2, 'Merge deve preservar Controle A e Controle B sem sobrescrever');
+    assert.deepEqual(filaAposMergeDiff.map(s => s.acao_proposta.medidas_prevencao).sort(), ['Controle A', 'Controle B']);
+
+    // 10.11d. Capacidade reavaliada considerando itens distintos (79 + 2 = 81 > 80 -> bloqueia sem cortar)
+    const advCapDiff = criarAmbienteTeste();
+    for (let i = 0; i < 3; i++) {
+        const lote20 = Array.from({ length: 20 }, (_, j) => ({ passo_tarefa: 'Etapa ' + i + '_' + j, perigo_fonte: 'Perigo ' + i + '_' + j }));
+        advCapDiff.contexto.importarRespostaIaParaFila(JSON.stringify(lote20), null);
+    }
+    const lote19 = Array.from({ length: 19 }, (_, j) => ({ passo_tarefa: 'Etapa 3_' + j, perigo_fonte: 'Perigo 3_' + j }));
+    advCapDiff.contexto.importarRespostaIaParaFila(JSON.stringify(lote19), null);
+    assert.equal(JSON.parse([...advCapDiff.storage.values()][0]).sugestoesFila.length, 79);
+    const prevCapDiff = advCapDiff.contexto.analisarBackupCadernoLocal(bkpDoisDistintos.json);
+    assert.equal(prevCapDiff.resumo.excedenteFilaMesclar, 1, '79 + 2 distintos = 81 (excedente 1)');
+    assert.throws(() => advCapDiff.contexto.aplicarRestauracaoBackupLocal(bkpDoisDistintos.json, 'mesclar'), /Capacidade excedida.*81.*80/i);
+    assert.equal(JSON.parse([...advCapDiff.storage.values()][0]).sugestoesFila.length, 79, 'Bloqueio por capacidade preserva os 79 itens intactos');
 }
 
 testarReauditoria1035().then(() => {

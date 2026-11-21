@@ -21,6 +21,7 @@ const testes = [
     'dashboard/tests/gerador_prompts.test.cjs',
     'dashboard/tests/apr_nota_manual.test.cjs',
   'dashboard/tests/ia_aprendizado_apr.test.cjs',
+    'dashboard/tests/ia_mapa_mental.test.cjs',
     'dashboard/tests/gestao_de_condutores_cnh.test.cjs',
     'dashboard/tests/kits_admissionais.test.cjs',
     'dashboard/tests/login_painel_identidade_cnh.test.cjs',

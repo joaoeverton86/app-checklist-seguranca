@@ -3030,6 +3030,7 @@
                     '<button type="button" id="btnTabIa-exemplos" class="' + (estadoModulo.abaAtiva === 'exemplos' ? 'db-apply-btn' : 'db-clear-btn') + '" onclick="window.selecionarAbaIaAprendizado(\'exemplos\')" style="font-weight:700;">1️⃣ Cenários &amp; Regras da Engenharia (' + estadoModulo.contextos.length + ')</button>' +
                     '<button type="button" id="btnTabIa-analise" class="' + (estadoModulo.abaAtiva === 'analise' ? 'db-apply-btn' : 'db-clear-btn') + '" onclick="window.selecionarAbaIaAprendizado(\'analise\')" style="font-weight:700;">2️⃣ Verificação de Lacunas &amp; Pacote Externo LLM</button>' +
                     '<button type="button" id="btnTabIa-fila" class="' + (estadoModulo.abaAtiva === 'fila' ? 'db-apply-btn' : 'db-clear-btn') + '" onclick="window.selecionarAbaIaAprendizado(\'fila\')" style="font-weight:700;">3️⃣ Fila de Validação &amp; Preparar APR (' + estadoModulo.sugestoesFila.length + ')</button>' +
+                    '<button type="button" id="btnTabIa-mapa" class="' + (estadoModulo.abaAtiva === 'mapa' ? 'db-apply-btn' : 'db-clear-btn') + '" onclick="window.selecionarAbaIaAprendizado(\'mapa\')" style="font-weight:700;">🗺️ Mapa Mental SST (Adicional)</button>' +
                 '</div>' +
             '</div>';
 
@@ -3037,6 +3038,8 @@
             html += renderizarAbaExemplos(ctxAtual, papel);
         } else if (estadoModulo.abaAtiva === 'analise') {
             html += renderizarAbaAnalise(ctxAtual, papel);
+        } else if (estadoModulo.abaAtiva === 'mapa' && typeof window.renderizarAbaMapaMentalIa === 'function') {
+            html += window.renderizarAbaMapaMentalIa(papel);
         } else {
             html += renderizarAbaFila(ctxAtual, papel);
         }

@@ -3747,6 +3747,7 @@
                     '<button type="button" class="' + (estadoMapa.modoVisao === 'tabela' ? 'db-apply-btn' : 'db-clear-btn') + '" onclick="window.alternarModoVisaoMapaIaUI(\'tabela\')">📊 Tabela</button>' +
                     (podeEditar ? '<button type="button" class="db-clear-btn" onclick="window.alternarBoxBackupMapaIaUI()">📦 Backup</button>' : '') +
                     (mapaAtual ? '<button type="button" class="db-clear-btn" onclick="window.imprimirMapaMentalIaUI()">🖨️ Imprimir</button>' : '') +
+                    '<button type="button" class="db-clear-btn" onclick="if(typeof window.abrirApresentacoesDoMapaMentalUI===\'function\'){window.abrirApresentacoesDoMapaMentalUI(\'' + esc(mapaAtual ? mapaAtual.id : '') + '\');}else if(typeof window.showDbPage===\'function\'){window.showDbPage(\'apresentacoes_sst\');}" style="font-weight:700;">📽️ Apresentações</button>' +
                 '</div>' +
             '</div>' +
         '</div>';

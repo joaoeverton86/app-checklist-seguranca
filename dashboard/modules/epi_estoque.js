@@ -3418,7 +3418,8 @@ var DB_PAGE_TITLES = {
     placarlideres: '🏆 Placar das Lideranças & Rotinas de Encarregados',
     geradorprompts: 'Gerador de Prompts IA',
     gestao_de_condutores: 'GESTÃO DE CONDUTORES - CNH',
-    ia_aprendizado: 'Inteligência SST & Aprendizado Contínuo (IA aplicada à APR)'
+    ia_aprendizado: 'Inteligência SST & Aprendizado Contínuo (IA aplicada à APR)',
+    apresentacoes_sst: 'Apresentações SST & Evolução do Conhecimento da Obra'
 };
 
 // ============================================
@@ -4228,7 +4229,7 @@ async function salvarPerfilPainel() {
 // ================================================================
 var NAV_GROUP_POR_PAGINA = {
     checklists: 'seguranca', treinamentos: 'seguranca', ddsma: 'seguranca', apr: 'seguranca', matrizrisco: 'seguranca', planoacao: 'seguranca',
-    epi: 'seguranca', periculosidade: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca', brigada: 'seguranca', gestao_de_condutores: 'seguranca', ia_aprendizado: 'seguranca',
+    epi: 'seguranca', periculosidade: 'seguranca', extintores: 'seguranca', acidentes: 'seguranca', relatos: 'seguranca', cipa: 'seguranca', brigada: 'seguranca', gestao_de_condutores: 'seguranca', ia_aprendizado: 'seguranca', apresentacoes_sst: 'seguranca',
     saude: 'saude', psicossocial: 'saude', ergonomia: 'saude',
     ambiental: 'ambiente',
     efetivo: 'pessoas',
@@ -4314,7 +4315,7 @@ function showDbPage(pageId) {
     document.getElementById('page-' + pageId)?.classList.add('active');
 
     document.querySelectorAll('.db-nav-item').forEach(el => el.classList.remove('active'));
-    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', planoacao: 'navPlanoAcao', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', placarlideres: 'navPlacarLideres', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia', periculosidade: 'navPericulosidade', geradorprompts: 'navGeradorPrompts', gestao_de_condutores: 'navGestaoDeCondutores', ia_aprendizado: 'navIaAprendizado' };
+    const navMap = { checklists: 'navChecklists', extintores: 'navExtintores', relatos: 'navRelatos', treinamentos: 'navTreinamentos', ddsma: 'navDdsma', efetivo: 'navEfetivo', matrizrisco: 'navMatrizRisco', planoacao: 'navPlanoAcao', acidentes: 'navAcidentes', saude: 'navSaude', psicossocial: 'navPsicossocial', epi: 'navEpi', apr: 'navApr', placarlideres: 'navPlacarLideres', ambiental: 'navAmbiental', compras: 'navCompras', cipa: 'navCipa', brigada: 'navBrigada', documentos: 'navDocumentos', acervodrive: 'navAcervoDrive', relatoriosms: 'navRelatorioSms', importexport: 'navImportExport', config: 'navConfig', usuariospainel: 'navUsuariosPainel', ergonomia: 'navErgonomia', periculosidade: 'navPericulosidade', geradorprompts: 'navGeradorPrompts', gestao_de_condutores: 'navGestaoDeCondutores', ia_aprendizado: 'navIaAprendizado', apresentacoes_sst: 'navApresentacoesSst' };
     document.getElementById(navMap[pageId])?.classList.add('active');
     abrirGrupoNavPagina(pageId);
     destacarGrupoAtivo(pageId);
@@ -4333,6 +4334,9 @@ function showDbPage(pageId) {
     }
     if (pageId === 'ia_aprendizado') {
         if (typeof window.renderIaAprendizadoPanel === 'function') window.renderIaAprendizadoPanel();
+    }
+    if (pageId === 'apresentacoes_sst') {
+        if (typeof window.renderApresentacoesSstPanel === 'function') window.renderApresentacoesSstPanel();
     }
     if (pageId === 'gestao_de_condutores') {
         const elCond = document.getElementById('page-gestao_de_condutores');

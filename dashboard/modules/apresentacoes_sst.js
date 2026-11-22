@@ -58,6 +58,8 @@
         'fonte_colada'
     ];
     var LAYOUTS_SLIDE_SUPORTADOS = [
+        'CAPA_OFICIAL',
+        'INSTITUCIONAL_PROJETO',
         'PADRAO_TOPICOS',
         'APLICACAO_OBRA_FUNCAO',
         'DEBATE_CASO_REAL',
@@ -561,7 +563,7 @@
             numero_revisao_editorial: numRev, // Contador de revisões editoriais (R1, R2...)
             revisao_id: limparTexto(ap.revisao_id || ('R' + numRev), 40),
             status: status,
-            norma_referencia: limparTexto(ap.norma_referencia || 'NR-35', 80),
+            norma_referencia: limparTexto(ap.norma_referencia || 'SST-GERAL', 80),
             titulo: titulo,
             publico_alvo: limparTexto(ap.publico_alvo || '', 260),
             carga_horaria: limparTexto(ap.carga_horaria || '', 60),
@@ -1612,7 +1614,7 @@
                 var existente = exigirApresentacaoEConcorrencia(idExistente, dados.versaoEsperada, versoesConhecidas);
                 preservarSnapshotAprovadoSeNecessario(existente, 'Edição de metadados da apresentação');
 
-                existente.norma_referencia = limparTexto(dados.norma_referencia != null ? dados.norma_referencia : existente.norma_referencia, 80) || 'NR-35';
+                existente.norma_referencia = limparTexto(dados.norma_referencia != null ? dados.norma_referencia : existente.norma_referencia, 80) || 'SST-GERAL';
                 existente.titulo = titulo;
                 if (dados.publico_alvo != null) existente.publico_alvo = limparTexto(dados.publico_alvo, 260);
                 if (dados.carga_horaria != null) existente.carga_horaria = limparTexto(dados.carga_horaria, 60);
@@ -1631,7 +1633,7 @@
             }
 
             var seq = estadoApres.apresentacoes.length + 1;
-            var norma = limparTexto(dados.norma_referencia || 'NR-35', 80);
+            var norma = limparTexto(dados.norma_referencia || 'SST-GERAL', 80);
             var nova = sanitizarApresentacaoEstrutura({
                 id: gerarId('apres'),
                 codigo: limparTexto(dados.codigo || ('AULA-' + norma.replace(/[^A-Z0-9]/gi, '').toUpperCase() + '-' + ('0' + seq).slice(-2)), 40),
@@ -1656,11 +1658,77 @@
             });
 
             sincronizarVinculosPrincipaisAutomaticos(nova);
+            if (dados.incluirSlidesAberturaPadrao === true && (!Array.isArray(nova.slides) || nova.slides.length === 0)) {
+                nova.slides = criarSlidesAberturaPadraoInstitucional(nova);
+            }
             estadoApres.apresentacoes.unshift(nova);
             estadoApres.apresentacaoSelecionadaId = nova.id;
             sincronizarSlideSelecionado();
             return clonarProfundo(nova);
         });
+    }
+
+    // Cria o par de slides obrigatórios de abertura institucional exigidos por João:
+    // - Slide 1 (CAPA_OFICIAL): Capa Oficial da Apresentação (Título, Norma, Público, Carga Horária, Frente e Responsável Técnico)
+    // - Slide 2 (INSTITUCIONAL_PROJETO): Apresentação Institucional da Empresa (Consórcio Operador) & do Projeto PISF — Ramal do Agreste
+    function criarSlidesAberturaPadraoInstitucional(ap) {
+        var norma = (ap && ap.norma_referencia) ? ap.norma_referencia : 'SST-GERAL';
+        var titulo = (ap && ap.titulo) ? ap.titulo : 'Capacitação Técnica de Segurança do Trabalho';
+        var frente = (ap && ap.frente_obra) ? ap.frente_obra : 'Consórcio Operador — PISF Ramal do Agreste';
+        var publico = (ap && ap.publico_alvo) ? ap.publico_alvo : '[Definir público-alvo e funções/GHE aplicáveis]';
+        var carga = (ap && ap.carga_horaria) ? ap.carga_horaria : '[Definir carga horária conforme Catálogo]';
+        var resp = (ap && ap.responsavel_tecnico) ? ap.responsavel_tecnico : 'Engenharia de Segurança do Trabalho';
+
+        var prefixoTituloCapa = (norma && titulo.toUpperCase().indexOf(norma.toUpperCase()) === 0)
+            ? titulo
+            : (norma + ' — ' + titulo);
+
+        return [
+            sanitizarSlideEstrutura({
+                id: gerarId('slide'),
+                ordem: 1,
+                layout: 'CAPA_OFICIAL',
+                secao_norma: norma + ' • 1. Capa Oficial da Capacitação',
+                titulo: prefixoTituloCapa,
+                objetivo_didatico: 'Apresentar a identificação oficial do treinamento, o escopo programático da capacitação e o público-alvo aplicável nas frentes de serviço.',
+                topicos: [
+                    'Empreendimento / Frente: ' + frente,
+                    'Público-Alvo / Funções: ' + publico,
+                    'Carga Horária Programada: ' + carga,
+                    'Coordenação Técnica: ' + resp
+                ],
+                aplicacao_obra_funcao: 'Capacitação estruturada conforme diretrizes da Engenharia de Segurança do Trabalho para aplicação prática nas frentes operacionais e de manutenção.',
+                caso_real_obra: '',
+                pergunta_debate: '',
+                nota_instrutor: 'Slide 1 (Capa Oficial): realizar a abertura da turma, confirmar lista de presença/ASO apto das funções convocadas e apresentar os objetivos da capacitação.',
+                referencias: [],
+                origem_geracao: 'MOLDE_PILOTO_RASCUNHO',
+                status_revisao_slide: 'RASCUNHO_PENDENTE_REVISAO',
+                editado_manual: false
+            }, 0),
+
+            sanitizarSlideEstrutura({
+                id: gerarId('slide'),
+                ordem: 2,
+                layout: 'INSTITUCIONAL_PROJETO',
+                secao_norma: 'Institucional • 2. A Empresa e o Projeto PISF — Ramal do Agreste',
+                titulo: 'Consórcio Operador & Projeto PISF — Ramal do Agreste: Compromisso com a Vida e SST',
+                objetivo_didatico: 'Contextualizar o papel do Consórcio Operador, as características técnicas das frentes do Ramal do Agreste e as premissas inegociáveis de Segurança do Trabalho.',
+                topicos: [
+                    'A Empresa (' + frente + '): Gestão integrada de operação, manutenção civil, eletromecânica e segurança operacional com foco em Zero Acidente.',
+                    'O Projeto PISF — Ramal do Agreste: Infraestrutura hídrica estratégica composta por estações de bombeamento, adutoras, canais, estruturas de concreto, taludes e reservatórios.',
+                    'Premissa Inegociável de SST: Nenhuma meta operacional, prazo ou emergência de manutenção justifica executar atividade sem análise de risco (APR/PT) e proteção coletiva/individual.'
+                ],
+                aplicacao_obra_funcao: 'Diretrizes institucionais aplicáveis a todo o efetivo próprio e terceiros nas frentes do Ramal do Agreste: planejamento prévio, inspeção de equipamentos, uso dos EPIs do GHE e Direito de Recusa diante de risco grave e iminente.',
+                caso_real_obra: 'Contexto das Frentes do Ramal do Agreste: atividades em estruturas hidromecânicas, canais, taludes, subestações, oficinas e vias operacionais exigem comunicação imediata com a supervisão e a Engenharia SST.',
+                pergunta_debate: 'Como a sua função contribui diretamente para a operação segura do Ramal do Agreste hoje?',
+                nota_instrutor: 'Slide 2 (Institucional Empresa & Projeto): reforçar a identidade do Consórcio Operador no PISF — Ramal do Agreste e revisar se algum dado específico do contrato/frente precisa ser personalizado antes de homologar.',
+                referencias: [],
+                origem_geracao: 'MOLDE_PILOTO_RASCUNHO',
+                status_revisao_slide: 'RASCUNHO_PENDENTE_REVISAO',
+                editado_manual: false
+            }, 1)
+        ];
     }
 
     function sincronizarVinculosPrincipaisAutomaticos(ap) {
@@ -2303,15 +2371,14 @@
         });
     }
 
-    function excluirApresentacao(apresentacaoId) {
+    function excluirApresentacao(apresentacaoId, opcoes) {
         exigirPapelMinimo('editor', 'excluir apresentação local');
-        return executarTransacaoApres(function () {
-            var antes = estadoApres.apresentacoes.length;
-            estadoApres.apresentacoes = estadoApres.apresentacoes.filter(function (a) { return String(a.id) !== String(apresentacaoId); });
-            if (estadoApres.apresentacoes.length === antes) {
-                throw new Error('Apresentação não encontrada para exclusão.');
-            }
-            if (estadoApres.apresentacaoSelecionadaId === apresentacaoId) {
+        return executarTransacaoApres(function (versoesConhecidas) {
+            var idAlvo = apresentacaoId || estadoApres.apresentacaoSelecionadaId;
+            // P1 (Codex 063d): Valida existência e concorrência entre abas antes de excluir para jamais apagar edição recente feita em outra aba!
+            var ap = exigirApresentacaoEConcorrencia(idAlvo, opcoes && opcoes.versaoEsperada, versoesConhecidas);
+            estadoApres.apresentacoes = estadoApres.apresentacoes.filter(function (a) { return String(a.id) !== String(ap.id); });
+            if (String(estadoApres.apresentacaoSelecionadaId) === String(ap.id)) {
                 estadoApres.apresentacaoSelecionadaId = estadoApres.apresentacoes[0] ? estadoApres.apresentacoes[0].id : '';
             }
             sincronizarSlideSelecionado();
@@ -2337,6 +2404,10 @@
                 ? ap.slides.filter(function (s) { return s.editado_manual === true; })
                 : [];
 
+            var jaTemCapaEInstitucional = slidesManuais.some(function (s) { return s.layout === 'CAPA_OFICIAL'; }) &&
+                slidesManuais.some(function (s) { return s.layout === 'INSTITUCIONAL_PROJETO'; });
+            var slidesAbertura = jaTemCapaEInstitucional ? [] : criarSlidesAberturaPadraoInstitucional(ap);
+
             var novosSlides = [];
             var fontes = ap.fontes_vinculadas.filter(function (f) { return f.uso_na_aula !== 'DISPENSADO_NESTA_AULA'; });
             if (fontes.length === 0) {
@@ -2345,7 +2416,7 @@
 
             // Cada fonte vinculada gera um slide esqueleto em RASCUNHO_PENDENTE_REVISAO citando APENAS a fonte que sustenta aquele slide!
             fontes.forEach(function (fv, idx) {
-                if (slidesManuais.length + novosSlides.length >= LIMITE_MAX_SLIDES_POR_APRES) return;
+                if (slidesAbertura.length + slidesManuais.length + novosSlides.length >= LIMITE_MAX_SLIDES_POR_APRES) return;
 
                 var layout = 'PADRAO_TOPICOS';
                 var secao = ap.norma_referencia + ' • Fonte Vinculada';
@@ -2394,7 +2465,7 @@
                 fv.uso_na_aula = 'CITADO';
             });
 
-            ap.slides = slidesManuais.concat(novosSlides).slice(0, LIMITE_MAX_SLIDES_POR_APRES);
+            ap.slides = slidesAbertura.concat(slidesManuais, novosSlides).slice(0, LIMITE_MAX_SLIDES_POR_APRES);
             ap.slides.forEach(function (s, i) { s.ordem = i + 1; });
             ap.versao += 1;
             ap.atualizado_em = new Date().toISOString();
@@ -2587,14 +2658,18 @@
                 }];
             }
 
-            // Monta 4 quadros-esqueleto no Molde Institucional com os 4 layouts,
-            // TODOS marcados como RASCUNHO_PENDENTE_REVISAO e citando APENAS a fonte específica que sustenta cada slide
-            ap.slides = [
+            // Monta o Molde Piloto com o padrão institucional solicitado por João:
+            // - Slide 1 (CAPA_OFICIAL): Capa Oficial da Apresentação (Título, Norma, Público, Carga Horária, Frente e Responsável Técnico)
+            // - Slide 2 (INSTITUCIONAL_PROJETO): Informações sobre a Empresa (Consórcio Operador) e o Projeto PISF — Ramal do Agreste
+            // - Slides 3 a 6: Quadros Técnicos Ricos nos 4 layouts (SINTESE_NORMATIVA, APLICACAO_OBRA_FUNCAO, DEBATE_CASO_REAL, PADRAO_TOPICOS),
+            //   TODOS marcados como RASCUNHO_PENDENTE_REVISAO e citando APENAS a fonte específica que sustenta cada slide
+            var slidesAberturaPiloto = criarSlidesAberturaPadraoInstitucional(ap);
+            ap.slides = slidesAberturaPiloto.concat([
                 sanitizarSlideEstrutura({
                     id: gerarId('slide'),
-                    ordem: 1,
+                    ordem: 3,
                     layout: 'SINTESE_NORMATIVA',
-                    secao_norma: 'NR-35 • 1. Escopo Programático e Trecho Normativo',
+                    secao_norma: 'NR-35 • 3. Escopo Programático e Trecho Normativo',
                     titulo: 'NR-35 — Escopo da Capacitação e Requisitos Normativos Aplicáveis',
                     objetivo_didatico: '[Rascunho — revisar objetivo didático conforme curso do Catálogo e trecho oficial da NR-35]',
                     topicos: vinculoCatalogo
@@ -2615,13 +2690,13 @@
                     origem_geracao: 'MOLDE_PILOTO_RASCUNHO',
                     status_revisao_slide: 'RASCUNHO_PENDENTE_REVISAO',
                     editado_manual: false
-                }, 0),
+                }, 2),
 
                 sanitizarSlideEstrutura({
                     id: gerarId('slide'),
-                    ordem: 2,
+                    ordem: 4,
                     layout: 'APLICACAO_OBRA_FUNCAO',
-                    secao_norma: 'NR-35 • 2. Diferenciação por Função, Etapa e GHE',
+                    secao_norma: 'NR-35 • 4. Diferenciação por Função, Etapa e GHE',
                     titulo: 'Exposição, Controles e EPIs por Função × Etapa (GHE & Mapa Mental)',
                     objetivo_didatico: '[Rascunho — detalhar a exposição específica de cada função e etapa na atividade]',
                     topicos: (vinculoGhe || vinculoMapa)
@@ -2642,13 +2717,13 @@
                     origem_geracao: 'MOLDE_PILOTO_RASCUNHO',
                     status_revisao_slide: 'RASCUNHO_PENDENTE_REVISAO',
                     editado_manual: false
-                }, 1),
+                }, 3),
 
                 sanitizarSlideEstrutura({
                     id: gerarId('slide'),
-                    ordem: 3,
+                    ordem: 5,
                     layout: 'DEBATE_CASO_REAL',
-                    secao_norma: 'NR-35 • 3. Cenário Operacional e Regras da Engenharia',
+                    secao_norma: 'NR-35 • 5. Cenário Operacional e Regras da Engenharia',
                     titulo: 'Aplicação nas 5 Fases Operacionais da Frente e Controles da APR',
                     objetivo_didatico: '[Rascunho — cruzar o cenário real da frente com as regras aprovadas pela Engenharia]',
                     topicos: (vinculoCenario || vinculoRegra)
@@ -2667,13 +2742,13 @@
                     origem_geracao: 'MOLDE_PILOTO_RASCUNHO',
                     status_revisao_slide: 'RASCUNHO_PENDENTE_REVISAO',
                     editado_manual: false
-                }, 2),
+                }, 4),
 
                 sanitizarSlideEstrutura({
                     id: gerarId('slide'),
-                    ordem: 4,
+                    ordem: 6,
                     layout: 'PADRAO_TOPICOS',
-                    secao_norma: 'NR-35 • 4. Procedimento de Emergência (PAE) & Fechamento',
+                    secao_norma: 'NR-35 • 6. Procedimento de Emergência (PAE) & Fechamento',
                     titulo: 'Resposta a Emergências, Resgate e Verificação de Entendimento',
                     objetivo_didatico: '[Rascunho — definir fluxo de emergência e resgate aplicável à frente]',
                     topicos: [
@@ -2688,8 +2763,9 @@
                     origem_geracao: 'MOLDE_PILOTO_RASCUNHO',
                     status_revisao_slide: 'RASCUNHO_PENDENTE_REVISAO',
                     editado_manual: false
-                }, 3)
-            ];
+                }, 5)
+            ]);
+            ap.slides.forEach(function (s, i) { s.ordem = i + 1; });
 
             estadoApres.apresentacoes.unshift(ap);
             estadoApres.apresentacaoSelecionadaId = ap.id;
@@ -2790,6 +2866,7 @@
             '- Respeite a diferenciação por Função × Etapa: itens marcados como RESTRICAO_ESCOPO representam exclusão/restrição e NUNCA devem ser transformados em obrigação genérica para funções não expostas.',
             '- Não trate fontes da seção 3 (rascunho) como regra aprovada.',
             '- O molde visual institucional (bordas, logo, cabeçalho e rodapé) é aplicado pelo sistema.',
+            '- PADRÃO INSTITUCIONAL DE ABERTURA: O Slide #1 deve ser sempre a Capa Oficial da Capacitação (layout: CAPA_OFICIAL) com o título e dados da aula; o Slide #2 deve ser sempre a Apresentação Institucional da Empresa (Consórcio Operador) e do Projeto PISF — Ramal do Agreste (layout: INSTITUCIONAL_PROJETO). Os slides técnicos da norma começam a partir do Slide #3.',
             '',
             '6. CONTRATO JSON PARA IMPORTAÇÃO NO PAINEL:',
             '```json',
@@ -2797,7 +2874,7 @@
             '  "slides": [',
             '    {',
             '      "id": "opcional_id_do_slide_existente_ou_vazio_para_novo",',
-            '      "layout": "PADRAO_TOPICOS | APLICACAO_OBRA_FUNCAO | DEBATE_CASO_REAL | SINTESE_NORMATIVA",',
+            '      "layout": "CAPA_OFICIAL | INSTITUCIONAL_PROJETO | PADRAO_TOPICOS | APLICACAO_OBRA_FUNCAO | DEBATE_CASO_REAL | SINTESE_NORMATIVA",',
             '      "secao_norma": "Ex.: NR-35 • Sistemas de Ancoragem",',
             '      "titulo": "Título objetivo do slide",',
             '      "objetivo_didatico": "O que o trabalhador deve aprender neste slide",',
@@ -3333,41 +3410,99 @@
             ? '<span style="background:#dcfce7; color:#15803d; border:1px solid #22c55e; padding:2px 8px; border-radius:999px; font-size:10.5px; font-weight:800;">✅ APROVADO ENGENHARIA SST (' + esc(ap.revisao_id) + ')</span>'
             : '<span style="background:#fef3c7; color:#b45309; border:1px solid #f59e0b; padding:2px 8px; border-radius:999px; font-size:10.5px; font-weight:800;">⚠️ ' + esc(ap.status) + ' • ' + esc(slide.status_revisao_slide) + ' (' + esc(ap.revisao_id) + ')</span>';
 
-        var tamTitulo = modoImpressao ? '20pt' : (modoProjetor16x9 ? '26px' : '21px');
-        var tamTopico = modoImpressao ? '13.5pt' : (modoProjetor16x9 ? '18px' : '15px');
+        var tamTitulo = modoImpressao ? (mostrarNota ? '15pt' : '18pt') : (modoProjetor16x9 ? '26px' : '21px');
+        var tamTopico = modoImpressao ? (mostrarNota ? '11pt' : '12.5pt') : (modoProjetor16x9 ? '18px' : '15px');
+        var tamBlocoExtra = modoImpressao ? (mostrarNota ? '10pt' : '11pt') : '13.5px';
+        var padBlocoExtra = modoImpressao ? '8px 10px' : '12px 14px';
 
         var topicosHtml = (Array.isArray(slide.topicos) && slide.topicos.length > 0)
-            ? '<ul style="margin:6px 0 10px 20px; padding:0; font-size:' + tamTopico + '; line-height:1.55; color:#0f172a;">' +
+            ? '<ul style="margin:4px 0 8px 18px; padding:0; font-size:' + tamTopico + '; line-height:1.45; color:#0f172a;">' +
                 slide.topicos.map(function (t) {
-                    return '<li style="margin-bottom:6px;">' + esc(t) + '</li>';
+                    return '<li style="margin-bottom:4px;">' + esc(t) + '</li>';
                 }).join('') +
               '</ul>'
             : '';
 
         var blocoAplicacaoFuncaoHtml = slide.aplicacao_obra_funcao
-            ? '<div class="ap-layout-bloco-funcao" style="padding:12px 14px; border-left:5px solid #0284c7; background:#f0f9ff; border-radius:8px; font-size:' + (modoImpressao ? '11.5pt' : '13.5px') + '; color:#0c4a6e;">' +
-                '<div style="font-weight:800; font-size:11.5px; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:4px;">👷 Aplicação Real na Obra / Diferenciação por Função &amp; Etapa</div>' +
-                '<div style="white-space:pre-line; line-height:1.48;">' + esc(slide.aplicacao_obra_funcao) + '</div>' +
+            ? '<div class="ap-layout-bloco-funcao" style="padding:' + padBlocoExtra + '; border-left:5px solid #0284c7; background:#f0f9ff; border-radius:8px; font-size:' + tamBlocoExtra + '; color:#0c4a6e;">' +
+                '<div style="font-weight:800; font-size:11px; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:3px;">👷 Aplicação Real na Obra / Diferenciação por Função &amp; Etapa</div>' +
+                '<div style="white-space:pre-line; line-height:1.38;">' + esc(slide.aplicacao_obra_funcao) + '</div>' +
               '</div>'
             : '';
 
         var blocoCasoRealHtml = slide.caso_real_obra
-            ? '<div class="ap-layout-bloco-caso" style="padding:12px 14px; border-left:5px solid #059669; background:#ecfdf5; border-radius:8px; font-size:' + (modoImpressao ? '11.5pt' : '13.5px') + '; color:#065f46;">' +
-                '<div style="font-weight:800; font-size:11.5px; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:4px;">🏗️ Cenário / Registro Operacional da Frente</div>' +
-                '<div style="white-space:pre-line; line-height:1.48;">' + esc(slide.caso_real_obra) + '</div>' +
+            ? '<div class="ap-layout-bloco-caso" style="padding:' + padBlocoExtra + '; border-left:5px solid #059669; background:#ecfdf5; border-radius:8px; font-size:' + tamBlocoExtra + '; color:#065f46;">' +
+                '<div style="font-weight:800; font-size:11px; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:3px;">🏗️ Cenário / Registro Operacional da Frente</div>' +
+                '<div style="white-space:pre-line; line-height:1.38;">' + esc(slide.caso_real_obra) + '</div>' +
               '</div>'
             : '';
 
         var blocoPerguntaHtml = slide.pergunta_debate
-            ? '<div class="ap-layout-bloco-pergunta" style="margin-top:10px; padding:10px 14px; border:2px dashed #d97706; background:#fffbeb; border-radius:8px; font-size:' + (modoImpressao ? '11.5pt' : '13.5px') + '; color:#92400e;">' +
+            ? '<div class="ap-layout-bloco-pergunta" style="margin-top:6px; padding:7px 12px; border:2px dashed #d97706; background:#fffbeb; border-radius:8px; font-size:' + tamBlocoExtra + '; color:#92400e;">' +
                 '<b>💬 Pergunta para Debate com a Turma:</b> ' + esc(slide.pergunta_debate) +
               '</div>'
             : '';
 
-        // P2: Composição visual distinta para cada um dos 4 layouts suportados
+        // P2 + Padrão Institucional Rico (João): Composição visual distinta para CAPA_OFICIAL, INSTITUCIONAL_PROJETO e os 4 layouts técnicos
         var layout = String(slide.layout || 'PADRAO_TOPICOS').toUpperCase();
         var corpoLayoutHtml = '';
-        if (layout === 'APLICACAO_OBRA_FUNCAO' && (topicosHtml && blocoAplicacaoFuncaoHtml)) {
+        if (layout === 'CAPA_OFICIAL') {
+            var logoCapaHtml = logoSrc
+                ? '<img src="' + esc(logoSrc) + '" alt="Logo Consórcio" style="height:56px; width:auto; object-fit:contain; background:#fff; padding:6px 12px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.2);">'
+                : '<div style="font-weight:900; font-size:15px; background:#fff; color:#1e3a8a; padding:6px 12px; border-radius:8px;">SST • PISF</div>';
+            var cartoesCapaHtml = (Array.isArray(slide.topicos) && slide.topicos.length > 0)
+                ? '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:10px; margin-top:12px;">' +
+                    slide.topicos.map(function (t) {
+                        var partes = String(t).split(':');
+                        var rotulo = partes.length > 1 ? partes[0] : 'Informação';
+                        var valor = partes.length > 1 ? partes.slice(1).join(':').trim() : t;
+                        return '<div style="padding:10px 12px; border-radius:8px; background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.22); color:#f8fafc;">' +
+                            '<div style="font-size:10px; font-weight:800; text-transform:uppercase; color:#7dd3fc; letter-spacing:0.5px;">' + esc(rotulo) + '</div>' +
+                            '<div style="font-size:12.5px; font-weight:700; margin-top:3px;">' + esc(valor) + '</div>' +
+                        '</div>';
+                    }).join('') +
+                  '</div>'
+                : '';
+            corpoLayoutHtml = '<div class="ap-layout-capa-oficial" style="padding:20px 24px; border-radius:12px; background:linear-gradient(135deg, #0f172a 0%, #1e3a8a 60%, #0369a1 100%); color:#ffffff; box-shadow:inset 0 0 0 2px rgba(56,189,248,0.35);">' +
+                '<div style="display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:14px;">' +
+                    logoCapaHtml +
+                    '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' +
+                        '<span style="background:#38bdf8; color:#0f172a; font-weight:900; font-size:12px; padding:4px 12px; border-radius:999px; letter-spacing:0.5px;">CAPACITAÇÃO OFICIAL SST • ' + esc(ap.norma_referencia) + '</span>' +
+                        '<span style="background:rgba(255,255,255,0.16); color:#e0f2fe; font-weight:800; font-size:11px; padding:4px 10px; border-radius:999px;">Código: ' + esc(ap.codigo) + ' (' + esc(ap.revisao_id) + ')</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div style="font-size:' + (modoImpressao ? '22pt' : (modoProjetor16x9 ? '28px' : '23px')) + '; font-weight:900; line-height:1.22; color:#ffffff; margin-bottom:8px;">' + esc(slide.titulo) + '</div>' +
+                (slide.aplicacao_obra_funcao
+                    ? '<div style="font-size:13px; color:#bae6fd; line-height:1.45; margin-bottom:10px;">' + esc(slide.aplicacao_obra_funcao) + '</div>'
+                    : '') +
+                cartoesCapaHtml +
+            '</div>';
+        } else if (layout === 'INSTITUCIONAL_PROJETO') {
+            var cardsInstitucionais = (Array.isArray(slide.topicos) && slide.topicos.length > 0)
+                ? '<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:8px;">' +
+                    slide.topicos.map(function (t, i) {
+                        var cores = ['#1e3a8a', '#0284c7', '#059669'];
+                        var fundos = ['#eff6ff', '#f0f9ff', '#ecfdf5'];
+                        var icones = ['🏢 Consórcio Operador', '💧 Projeto PISF — Ramal do Agreste', '🛡️ Compromisso SST & Vida'];
+                        var cor = cores[i % cores.length];
+                        var bg = fundos[i % fundos.length];
+                        var cab = icones[i] || ('📌 Pilar Institucional #' + (i + 1));
+                        return '<div style="padding:' + (modoImpressao ? '7px 10px' : '12px 14px') + '; border-top:4px solid ' + cor + '; border-radius:8px; background:' + bg + '; border-left:1px solid #cbd5e1; border-right:1px solid #cbd5e1; border-bottom:1px solid #cbd5e1;">' +
+                            '<div style="font-size:10.5px; font-weight:900; color:' + cor + '; text-transform:uppercase; margin-bottom:3px;">' + cab + '</div>' +
+                            '<div style="font-size:' + (modoImpressao ? '9.8pt' : '12.5px') + '; color:#0f172a; line-height:1.36;">' + esc(t) + '</div>' +
+                        '</div>';
+                    }).join('') +
+                  '</div>'
+                : topicosHtml;
+            corpoLayoutHtml = '<div class="ap-layout-institucional-projeto" style="display:flex; flex-direction:column; gap:8px;">' +
+                cardsInstitucionais +
+                '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">' +
+                    blocoAplicacaoFuncaoHtml +
+                    blocoCasoRealHtml +
+                '</div>' +
+                blocoPerguntaHtml +
+            '</div>';
+        } else if (layout === 'APLICACAO_OBRA_FUNCAO' && (topicosHtml && blocoAplicacaoFuncaoHtml)) {
             corpoLayoutHtml = '<div class="ap-layout-grid-2col" style="display:grid; grid-template-columns:1.1fr 1fr; gap:16px; align-items:start;">' +
                 '<div>' + topicosHtml + '</div>' +
                 '<div>' + blocoAplicacaoFuncaoHtml + blocoCasoRealHtml + '</div>' +
@@ -3395,20 +3530,20 @@
             : 'Sem fonte vinculada neste slide (rascunho pendente de citação)';
 
         var notaInstrutorHtml = (mostrarNota && slide.nota_instrutor)
-            ? '<div class="ap-nota-instrutor-box" style="margin-top:10px; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; color:#334155; font-size:12px;">' +
-                '<div style="font-weight:800; color:#1e3a8a; margin-bottom:3px;">🎙️ Nota Exclusiva do Instrutor (Oculta na Projeção Limpa):</div>' +
-                '<div style="white-space:pre-line; line-height:1.45;">' + esc(slide.nota_instrutor) + '</div>' +
+            ? '<div class="ap-nota-instrutor-box" style="margin-top:' + (modoImpressao ? '6px' : '10px') + '; padding:' + (modoImpressao ? '7px 10px' : '10px 12px') + '; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; color:#334155; font-size:' + (modoImpressao ? '9.8pt' : '12px') + ';">' +
+                '<div style="font-weight:800; color:#1e3a8a; margin-bottom:2px;">🎙️ Nota Exclusiva do Instrutor (Oculta na Projeção Limpa):</div>' +
+                '<div style="white-space:pre-line; line-height:1.38;">' + esc(slide.nota_instrutor) + '</div>' +
               '</div>'
             : '';
 
         var estiloGeometria16x9 = modoImpressao
-            ? (mostrarNota ? 'min-height:132mm;' : 'min-height:168mm;')
+            ? (mostrarNota ? 'min-height:124mm;' : 'min-height:162mm;')
             : 'aspect-ratio: 16 / 9; min-height: 450px; width: 100%;';
 
         return '' +
             '<div class="ap-molde-slide-institucional" data-layout="' + esc(layout) + '" style="border:3px solid ' + corBorda + '; border-radius:12px; background:#ffffff; color:#0f172a; overflow:hidden; box-shadow:0 4px 16px rgba(15,23,42,0.08); display:flex; flex-direction:column; justify-content:space-between; ' + estiloGeometria16x9 + ' box-sizing:border-box;">' +
                 '<!-- Cabeçalho Institucional Fixo -->' +
-                '<div style="background:' + corFaixaTopo + '; color:#ffffff; padding:10px 16px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; border-bottom:3px solid #38bdf8;">' +
+                '<div style="background:' + corFaixaTopo + '; color:#ffffff; padding:' + (modoImpressao ? '7px 14px' : '10px 16px') + '; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; border-bottom:3px solid #38bdf8;">' +
                     '<div style="display:flex; align-items:center; gap:10px;">' +
                         logoHtml +
                         '<div>' +
@@ -3423,19 +3558,21 @@
                 '</div>' +
 
                 '<!-- Corpo Didático Padronizado 16:9 -->' +
-                '<div style="padding:18px 24px; flex:1; display:flex; flex-direction:column; justify-content:flex-start;">' +
-                    '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">' +
-                        '<span style="font-size:11px; font-weight:800; color:#0284c7; text-transform:uppercase; letter-spacing:0.5px;">' + esc(slide.secao_norma || ap.norma_referencia) + ' • Layout: ' + esc(layout) + '</span>' +
+                '<div style="padding:' + (modoImpressao ? '11px 18px' : '18px 24px') + '; flex:1; display:flex; flex-direction:column; justify-content:flex-start;">' +
+                    '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:4px;">' +
+                        '<span style="font-size:10.5px; font-weight:800; color:#0284c7; text-transform:uppercase; letter-spacing:0.5px;">' + esc(slide.secao_norma || ap.norma_referencia) + ' • Layout: ' + esc(layout) + '</span>' +
                     '</div>' +
-                    '<h3 style="margin:0 0 8px 0; font-size:' + tamTitulo + '; font-weight:900; color:#0f172a; line-height:1.25;">' + esc(slide.titulo) + '</h3>' +
-                    (slide.objetivo_didatico
-                        ? '<div style="font-size:12.5px; color:#475569; font-style:italic; margin-bottom:10px;">🎯 Objetivo: ' + esc(slide.objetivo_didatico) + '</div>'
+                    (layout !== 'CAPA_OFICIAL'
+                        ? '<h3 style="margin:0 0 6px 0; font-size:' + tamTitulo + '; font-weight:900; color:#0f172a; line-height:1.22;">' + esc(slide.titulo) + '</h3>'
+                        : '') +
+                    (slide.objetivo_didatico && layout !== 'CAPA_OFICIAL'
+                        ? '<div style="font-size:' + (modoImpressao ? '10pt' : '12.5px') + '; color:#475569; font-style:italic; margin-bottom:7px;">🎯 Objetivo: ' + esc(slide.objetivo_didatico) + '</div>'
                         : '') +
                     corpoLayoutHtml +
                 '</div>' +
 
                 '<!-- Rodapé Técnico Fixo com Citação de Fontes -->' +
-                '<div style="background:#f1f5f9; border-top:1px solid #cbd5e1; padding:8px 16px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; font-size:11px; color:#334155;">' +
+                '<div style="background:#f1f5f9; border-top:1px solid #cbd5e1; padding:' + (modoImpressao ? '6px 14px' : '8px 16px') + '; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; font-size:10.5px; color:#334155;">' +
                     '<div style="flex:1; min-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' +
                         '<b>📚 Fonte(s) Citada(s):</b> ' + esc(refsResumo) +
                     '</div>' +
@@ -4217,6 +4354,7 @@
             criarOuAtualizarApresentacao({
                 id: editId || undefined,
                 versaoEsperada: verCap ? Number(verCap) : undefined,
+                incluirSlidesAberturaPadrao: !editId,
                 norma_referencia: valorCampo('apForm_norma'),
                 titulo: valorCampo('apForm_titulo'),
                 carga_horaria: valorCampo('apForm_carga'),
@@ -4425,7 +4563,11 @@
     function excluirApresentacaoSstUI(id) {
         try {
             if (typeof confirm === 'function' && !confirm('Deseja excluir esta apresentação local?')) return;
-            excluirApresentacao(id);
+            var idAlvo = id || estadoApres.apresentacaoSelecionadaId;
+            var ap = buscarApresentacaoPorId(idAlvo);
+            excluirApresentacao(idAlvo, {
+                versaoEsperada: ap ? ap.versao : undefined
+            });
             renderApresentacoesSstPanel();
         } catch (err) {
             alert(err.message);

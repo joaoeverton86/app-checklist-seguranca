@@ -230,7 +230,7 @@ function revisarTodosSlidesDaApresentacao(sandbox, apId) {
 test('1. Verificações estáticas, rota Opção 2 no menu lateral, cache-busters e governança', () => {
     assert.match(html, /id="navApresentacoesSst"/, 'Botão navApresentacoesSst deve existir no menu lateral');
     assert.match(html, /id="page-apresentacoes_sst"/, 'Seção page-apresentacoes_sst deve existir no HTML');
-    assert.match(html, /modules\/apresentacoes_sst\.js\?v=1/, 'apresentacoes_sst.js?v=1 deve estar carregado no HTML');
+    assert.match(html, /modules\/apresentacoes_sst\.js\?v=2/, 'apresentacoes_sst.js?v=2 deve estar carregado no HTML');
     assert.match(html, /modules\/ia_mapa_mental\.js\?v=2/, 'ia_mapa_mental.js?v=2 deve estar carregado');
     assert.match(html, /modules\/ia_aprendizado\.js\?v=5/, 'ia_aprendizado.js?v=5 deve estar carregado');
     assert.match(html, /dashboard\.js\?v=303\.15/, 'dashboard.js?v=303.15 deve estar atualizado');
@@ -239,7 +239,7 @@ test('1. Verificações estáticas, rota Opção 2 no menu lateral, cache-buster
 
     const posMapa = html.indexOf('modules/ia_mapa_mental.js?v=2');
     const posIa = html.indexOf('modules/ia_aprendizado.js?v=5');
-    const posApres = html.indexOf('modules/apresentacoes_sst.js?v=1');
+    const posApres = html.indexOf('modules/apresentacoes_sst.js?v=2');
     assert.ok(posMapa > 0 && posIa > posMapa && posApres > posIa, 'Ordem de carregamento: Mapa Mental -> Inteligência SST -> Apresentações SST');
 
     assert.match(codigoNucleo, /apresentacoes_sst:\s*'navApresentacoesSst'/);
@@ -477,7 +477,14 @@ test('6. Bloqueio de incorporação de regra revogada e concorrência entre duas
         /Conflito de concorrência/i
     );
 
+    // P1 (Codex 063d): Aba B desatualizada tenta EXCLUIR a apresentação que recebeu novo slide na Aba A -> DEVE SER BLOQUEADA!
+    assert.throws(
+        () => abaB.sandbox.excluirApresentacao(ap.id),
+        /Conflito de concorrência/i
+    );
+
     const estadoFinal = abaA.sandbox.obterEstadoApresentacoesSst().apresentacoes.find(a => a.id === ap.id);
+    assert.ok(estadoFinal, 'Apresentação não pode ter sido excluída por aba desatualizada');
     assert.equal(estadoFinal.slides[0].titulo, 'Edição Recente da Aba A');
 
     // Testa também bloqueio de confirmação de importação externa quando a versão ou sessão mudou após a prévia
@@ -528,11 +535,19 @@ test('7. Layouts visuais distintos 16:9, teclado ArrowLeft/ArrowRight, fullscree
     revisarTodosSlidesDaApresentacao(sandbox, ap.id);
 
     const apAtualizada = sandbox.obterEstadoApresentacoesSst().apresentacoes.find(a => a.id === ap.id);
+    assert.equal(apAtualizada.slides.length, 6, 'Piloto NR-35 deve conter Slide 1 (Capa Oficial), Slide 2 (Empresa & Projeto Ramal do Agreste) e 4 slides técnicos');
+    assert.equal(apAtualizada.slides[0].layout, 'CAPA_OFICIAL');
+    assert.equal(apAtualizada.slides[1].layout, 'INSTITUCIONAL_PROJETO');
+    assert.match(apAtualizada.slides[1].titulo, /Ramal do Agreste/);
 
-    // Verifica que os 4 layouts geram classes/estruturas visuais distintas e geometria 16:9
-    const htmlLayout1 = sandbox.renderizarMoldeSlideInstitucionalHtml(apAtualizada, apAtualizada.slides[0], 4, { modoProjetor16x9: true });
-    const htmlLayout2 = sandbox.renderizarMoldeSlideInstitucionalHtml(apAtualizada, apAtualizada.slides[1], 4, { modoProjetor16x9: true });
-    const htmlLayout3 = sandbox.renderizarMoldeSlideInstitucionalHtml(apAtualizada, apAtualizada.slides[2], 4, { modoProjetor16x9: true });
+    // Verifica que os 6 layouts (Capa Oficial, Institucional Projeto e 4 técnicos) geram classes/estruturas visuais distintas e geometria 16:9
+    const htmlCapa = sandbox.renderizarMoldeSlideInstitucionalHtml(apAtualizada, apAtualizada.slides[0], 6, { modoProjetor16x9: true });
+    const htmlInst = sandbox.renderizarMoldeSlideInstitucionalHtml(apAtualizada, apAtualizada.slides[1], 6, { modoProjetor16x9: true });
+    const htmlLayout1 = sandbox.renderizarMoldeSlideInstitucionalHtml(apAtualizada, apAtualizada.slides[2], 6, { modoProjetor16x9: true });
+    const htmlLayout2 = sandbox.renderizarMoldeSlideInstitucionalHtml(apAtualizada, apAtualizada.slides[3], 6, { modoProjetor16x9: true });
+    const htmlLayout3 = sandbox.renderizarMoldeSlideInstitucionalHtml(apAtualizada, apAtualizada.slides[4], 6, { modoProjetor16x9: true });
+    assert.match(htmlCapa, /ap-layout-capa-oficial/);
+    assert.match(htmlInst, /ap-layout-institucional-projeto/);
     assert.match(htmlLayout1, /aspect-ratio:\s*16\s*\/\s*9/);
     assert.match(htmlLayout1, /ap-layout-normativo/);
     assert.match(htmlLayout2, /ap-layout-grid-2col/);

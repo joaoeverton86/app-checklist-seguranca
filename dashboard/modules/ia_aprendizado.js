@@ -3003,6 +3003,7 @@
                         '</p>' +
                     '</div>' +
                     '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+                        '<button type="button" class="db-clear-btn" onclick="if(typeof window.abrirApresentacoesDaContextoIaUI===\'function\'){window.abrirApresentacoesDaContextoIaUI();}else if(typeof window.showDbPage===\'function\'){window.showDbPage(\'apresentacoes_sst\');}" style="font-weight:700;">📽️ Apresentações SST</button>' +
                         '<button type="button" class="db-clear-btn" onclick="window.imprimirDossieIaAprendizado()" style="font-weight:700;">🖨️ Imprimir Dossiê Operacional</button>' +
                     '</div>' +
                 '</div>' +
@@ -4115,9 +4116,22 @@
     }
     instalarHookConfirmacaoSalvarApr();
 
+    function obterEstadoIaAprendizadoSomenteLeitura() {
+        garantirEstadoSessao();
+        return JSON.parse(JSON.stringify({
+            identidadeChave: estadoModulo.identidadeChave,
+            geracaoSessaoId: estadoModulo.geracaoSessaoId,
+            contextoSelecionadoId: estadoModulo.contextoSelecionadoId,
+            contextos: estadoModulo.contextos,
+            regrasAprendidas: estadoModulo.regrasAprendidas,
+            sugestoesFila: estadoModulo.sugestoesFila
+        }));
+    }
+
     // Exportações públicas
     window.renderIaAprendizadoPanel = renderIaAprendizadoPanel;
     window.inicializarIaAprendizado = renderIaAprendizadoPanel;
+    window.obterEstadoIaAprendizadoSomenteLeitura = obterEstadoIaAprendizadoSomenteLeitura;
     window.obterPapelUsuarioIa = obterPapelUsuarioIa;
     window.carregarRascunhoEstudoOpcional = carregarRascunhoEstudoOpcional;
     window.salvarContextoOperacional = salvarContextoOperacional;

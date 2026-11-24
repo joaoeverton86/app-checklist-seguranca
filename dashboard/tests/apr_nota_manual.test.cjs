@@ -8,13 +8,20 @@ const codigo = fs.readFileSync(path.join(painel, 'modules', 'apr_cipa.js'), 'utf
 const html = fs.readFileSync(path.join(painel, 'index.html'), 'utf8');
 const nucleo = fs.readFileSync(path.join(painel, 'dashboard.js'), 'utf8');
 
-assert.match(html, /modules\/apr_cipa\.js\?v=297/);
+assert.match(html, /modules\/apr_cipa\.js\?v=298/);
 assert.match(html, /id="aprForm_riscoNovo"/);
 assert.match(html, />Novo risco identificado</);
 assert.match(html, /Escreva o risco que ainda não está na APR\. Ele fica aguardando revisão\./);
 assert.match(html, /id="aprForm_riscoNovoAviso"[^>]*>Aguardando revisão</);
 const impressaoApr = codigo.slice(codigo.indexOf('function imprimirApr('), codigo.indexOf('// CIPA (Comissão Interna'));
-assert.doesNotMatch(impressaoApr, /risco_novo_identificado|Novo risco identificado|Aguardando revisão/);
+assert.match(impressaoApr, /NOVO RISCO IDENTIFICADO PELO RESPONSÁVEL DA FRENTE — AGUARDANDO REVISÃO/);
+assert.match(impressaoApr, /risco_novo_identificado/);
+assert.match(impressaoApr, /MIN_LINHAS_RISCO_NOVO = 6/);
+assert.match(impressaoApr, /ALTURA_LINHA_RISCO_NOVO = 32/);
+assert.match(impressaoApr, /Math\.max\(MIN_LINHAS_RISCO_NOVO, linhasTextoRiscoNovo\)/);
+assert.match(impressaoApr, /line-height:32px/);
+assert.match(impressaoApr, /repeating-linear-gradient/);
+assert.doesNotMatch(impressaoApr.slice(impressaoApr.indexOf('const linhasRisco'), impressaoApr.indexOf('const ALTURA_LINHA_EQUIPE')), /risco_novo_identificado/);
 assert.doesNotMatch(codigo.slice(codigo.indexOf('var BIBLIOTECA_RISCOS_OBRA'), codigo.indexOf('function inserirPacoteRiscosDaBiblioteca')), /risco_novo_identificado/);
 const migracaoRiscoNovo = fs.readFileSync(path.join(painel, '..', 'supabase', 'migrations', '20261123_apr_risco_novo_identificado.sql'), 'utf8');
 assert.match(migracaoRiscoNovo, /ADD COLUMN IF NOT EXISTS risco_novo_identificado TEXT/);
@@ -294,7 +301,14 @@ async function provarGravacao() {
     sandbox.document.body = { appendChild() {}, removeChild() {} };
     sandbox.imprimirApr('42');
     assert.match(htmlImpresso, />4<\/td>\s*<td style="text-align:center;">5<\/td>\s*<td style="text-align:center;[^"]*">20<\/td>\s*<td>escoramento<\/td>\s*<td style="text-align:center;">2<\/td>\s*<td style="text-align:center;">4<\/td>\s*<td style="text-align:center;[^"]*">8<\/td>/);
-    assert.doesNotMatch(htmlImpresso, /Buraco sem sinalização na lateral da vala|Novo risco identificado|Aguardando revisão/);
+    assert.match(htmlImpresso, /NOVO RISCO IDENTIFICADO PELO RESPONSÁVEL DA FRENTE — AGUARDANDO REVISÃO/);
+    assert.match(htmlImpresso, /Buraco sem sinalização na lateral da vala/);
+    assert.match(htmlImpresso, /min-height:192px/);
+    assert.match(htmlImpresso, /line-height:32px/);
+    const matriz42 = htmlImpresso.slice(htmlImpresso.indexOf('<tbody>'), htmlImpresso.indexOf('NOVO RISCO IDENTIFICADO PELO RESPONSÁVEL DA FRENTE'));
+    assert.doesNotMatch(matriz42, /Buraco sem sinalização na lateral da vala/);
+    const depoisDaFaixa42 = htmlImpresso.split('NOVO RISCO IDENTIFICADO PELO RESPONSÁVEL DA FRENTE — AGUARDANDO REVISÃO').slice(1).join('');
+    assert.doesNotMatch(depoisDaFaixa42.slice(depoisDaFaixa42.indexOf('EQUIPAMENTOS DE PROTEÇÃO')), /Buraco sem sinalização na lateral da vala/);
     assert.equal(sandbox.allAprRegistros.find(item => item.id === '42').riscos[0].p_puro, 4);
 
     sandbox.abrirFormNovaApr = abrirFormNovaAprReal;
@@ -360,7 +374,47 @@ async function provarGravacao() {
     };
     sandbox.imprimirApr('904');
     assert.match(htmlReaberto, /desabamento/);
-    assert.doesNotMatch(htmlReaberto, /Cabo solto na borda da escavação|Novo risco identificado|Aguardando revisão/);
+    assert.match(htmlReaberto, /NOVO RISCO IDENTIFICADO PELO RESPONSÁVEL DA FRENTE — AGUARDANDO REVISÃO/);
+    assert.match(htmlReaberto, /Cabo solto na borda da escavação/);
+    assert.match(htmlReaberto, /min-height:192px/);
+    assert.match(htmlReaberto, /line-height:32px/);
+    const matriz904 = htmlReaberto.slice(htmlReaberto.indexOf('<tbody>'), htmlReaberto.indexOf('NOVO RISCO IDENTIFICADO PELO RESPONSÁVEL DA FRENTE'));
+    assert.doesNotMatch(matriz904, /Cabo solto na borda da escavação/);
+    const depoisDaFaixa904 = htmlReaberto.split('NOVO RISCO IDENTIFICADO PELO RESPONSÁVEL DA FRENTE — AGUARDANDO REVISÃO').slice(1).join('');
+    assert.doesNotMatch(depoisDaFaixa904.slice(depoisDaFaixa904.indexOf('EQUIPAMENTOS DE PROTEÇÃO')), /Cabo solto na borda da escavação/);
+
+    let htmlVazio = '';
+    sandbox.Blob = class BlobVazio {
+        constructor(partes) { htmlVazio = partes.join(''); }
+    };
+    sandbox.imprimirApr('902');
+    assert.match(htmlVazio, /NOVO RISCO IDENTIFICADO PELO RESPONSÁVEL DA FRENTE — AGUARDANDO REVISÃO/);
+    assert.match(htmlVazio, /min-height:192px/);
+    assert.match(htmlVazio, /class="faixa-risco-novo" style="min-height:192px;"><\/div>/);
+
+    sandbox.allAprRegistros.push({
+        id: '905',
+        titulo: 'Texto longo',
+        riscos: [{
+            evento_risco: 'desabamento',
+            medidas_prevencao: 'escoramento',
+            p_puro: 1,
+            s_puro: 1,
+            p_residual: 1,
+            s_residual: 1,
+            responsavel: 'encarregado'
+        }],
+        risco_novo_identificado: 'linha 1\nlinha 2\nlinha 3\nlinha 4\nlinha 5\nlinha 6\nlinha 7'
+    });
+    let htmlLongo = '';
+    sandbox.Blob = class BlobLongo {
+        constructor(partes) { htmlLongo = partes.join(''); }
+    };
+    sandbox.imprimirApr('905');
+    assert.match(htmlLongo, /min-height:224px/);
+    assert.match(htmlLongo, /linha 1\nlinha 2\nlinha 3\nlinha 4\nlinha 5\nlinha 6\nlinha 7/);
+    const matriz905 = htmlLongo.slice(htmlLongo.indexOf('<tbody>'), htmlLongo.indexOf('NOVO RISCO IDENTIFICADO PELO RESPONSÁVEL DA FRENTE'));
+    assert.doesNotMatch(matriz905, /linha 7/);
 }
 
 function provarQueOModuloSubstituiONucleo() {

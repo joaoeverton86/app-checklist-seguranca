@@ -1210,6 +1210,13 @@ function imprimirApr(id) {
     }
     const linhasEquipeTabela = linhasEquipe.concat(linhasEquipeVazias).join('');
 
+    const ALTURA_LINHA_RISCO_NOVO = 32;
+    const MIN_LINHAS_RISCO_NOVO = 6;
+    const textoRiscoNovoFolha = textoRiscoNovoApr(a.risco_novo_identificado);
+    const linhasTextoRiscoNovo = textoRiscoNovoFolha ? textoRiscoNovoFolha.split(/\r\n|\n|\r/).length : 0;
+    const linhasAreaRiscoNovo = Math.max(MIN_LINHAS_RISCO_NOVO, linhasTextoRiscoNovo);
+    const alturaAreaRiscoNovo = linhasAreaRiscoNovo * ALTURA_LINHA_RISCO_NOVO;
+
     const cabecalho = () => `
         <div class="cabecalho">
             <img src="${LOGO_COP_BASE64}" alt="COP">
@@ -1239,6 +1246,7 @@ function imprimirApr(id) {
     table { width:100%; border-collapse:collapse; }
     th, td { border:1px solid #000; padding:3px 5px; font-size:9.5px; vertical-align:top; }
     th { background:#e5e5e5; font-size:9px; }
+    .faixa-risco-novo { box-sizing:border-box; padding:0 8px; white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; line-height:32px; background-image:repeating-linear-gradient(to bottom, transparent 0, transparent 31px, #c5c5c5 31px, #c5c5c5 32px); }
     .no-print { text-align:center; margin:16px 0; }
     .no-print button { padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer; border-radius:8px; border:none; background:#4f46e5; color:#fff; }
     @media print { .no-print { display:none; } body { margin:0; } .folha { page-break-after: always; } .folha:last-child { page-break-after: auto; } }
@@ -1304,6 +1312,8 @@ function imprimirApr(id) {
             </tr></thead>
             <tbody>${linhasRisco || '<tr><td colspan="13" style="text-align:center; color:#888;">Nenhum risco cadastrado</td></tr>'}</tbody>
         </table>
+        <div class="secao-titulo">NOVO RISCO IDENTIFICADO PELO RESPONSÁVEL DA FRENTE — AGUARDANDO REVISÃO</div>
+        <div class="faixa-risco-novo" style="min-height:${alturaAreaRiscoNovo}px;">${escapeHTML(textoRiscoNovoFolha)}</div>
     </div>
 
     <div class="folha">

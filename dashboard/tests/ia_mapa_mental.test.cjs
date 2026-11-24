@@ -133,7 +133,7 @@ function criarAmbienteMapa(sessaoInicial, opcoesEnv) {
 test('1. Verificações estáticas, cache-buster e restrições de governança', () => {
     assert.match(html, /modules\/ia_mapa_mental\.js\?v=2/, 'ia_mapa_mental.js?v=2 deve estar carregado no HTML');
     assert.match(html, /modules\/ia_aprendizado\.js\?v=5/, 'ia_aprendizado.js?v=5 deve estar atualizado no HTML');
-    assert.match(html, /modules\/apr_cipa\.js\?v=297/, 'apr_cipa.js?v=297 acompanha o campo de risco novo da APR');
+    assert.match(html, /modules\/apr_cipa\.js\?v=298/, 'apr_cipa.js?v=298 acompanha a faixa de escrita na impressão da APR');
     const posMapa = html.indexOf('modules/ia_mapa_mental.js?v=2');
     const posIa = html.indexOf('modules/ia_aprendizado.js?v=5');
     assert.ok(posMapa > 0 && posIa > posMapa, 'ia_mapa_mental.js deve carregar antes de ia_aprendizado.js');

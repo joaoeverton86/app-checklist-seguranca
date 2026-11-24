@@ -1368,6 +1368,7 @@ CREATE TABLE IF NOT EXISTS public.apr_registros (
     supervisor_tarefa TEXT,
     responsavel_area TEXT,
     observacoes TEXT,
+    risco_novo_identificado TEXT, -- texto opcional do responsável da frente; fora da lista oficial de riscos; aguarda revisão
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

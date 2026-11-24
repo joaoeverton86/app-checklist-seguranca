@@ -15,7 +15,11 @@
 var allAprRegistros = [];
 var aprLoaded = false;
 var aprRiscosForm = [];
+var aprAvulsosForm = [];
 var aprItemExpandidoId = null;
+// Marca dentro de apr_registros.observacoes. A coluna já existe e pode ficar vazia.
+// Não cria coluna, não muda acesso e não cadastra a pessoa na equipe nem no efetivo.
+var MARCA_AVULSOS_APR = '[[apr_colaboradores_avulsos_v1]]';
 
 // Faixas de classificação da matriz 5×5 da APR, padronizadas pelo usuário em
 // 03/09/2026: 1-4 Baixo, 5-9 Moderado, 10-16 Alto, 17-25 Crítico. Cores só de
@@ -115,6 +119,7 @@ async function showAprSubtab(tab) {
         if (btn) btn.classList.toggle('active', t === tab);
     });
     if (tab === 'visao') renderAprPanel();
+    if (tab === 'nova' && typeof renderAvulsosAprForm === 'function') renderAvulsosAprForm();
     if (tab === 'historico') { await carregarAprAuditLog(); renderAprHistoricoLista(); }
     if (tab === 'modelos') { await carregarAprModelos(); renderAprModelosLista(); }
 }
@@ -392,6 +397,130 @@ function duplicarAprComoNova(id) {
     renderEquipeAprPreview();
 }
 
+function textoAvulsoApr(valor) {
+    return String(valor == null ? '' : valor).trim();
+}
+
+function linhaAvulsoApr(item) {
+    return {
+        nome: textoAvulsoApr(item && item.nome),
+        matricula: textoAvulsoApr(item && (item.matricula || item.id)),
+        funcao: textoAvulsoApr(item && (item.funcao || item.cargo))
+    };
+}
+
+// Nome é obrigatório. Matrícula e função/cargo são opcionais. Linha vazia é ignorada.
+function listaAvulsosAprValida(lista) {
+    const itens = (Array.isArray(lista) ? lista : []).map(linhaAvulsoApr);
+    const usados = itens.filter(item => item.nome || item.matricula || item.funcao);
+    if (usados.some(item => !item.nome)) {
+        return { erro: 'Informe o nome de cada colaborador avulso.', lista: [] };
+    }
+    return { erro: '', lista: usados };
+}
+
+function separarObservacoesAvulsosApr(observacoes) {
+    const texto = String(observacoes || '');
+    const marca = texto.indexOf(MARCA_AVULSOS_APR);
+    if (marca < 0) return { notas: texto.trim(), avulsos: [] };
+    const notas = texto.slice(0, marca).trim();
+    try {
+        const parsed = JSON.parse(texto.slice(marca + MARCA_AVULSOS_APR.length).trim());
+        const lidos = listaAvulsosAprValida(Array.isArray(parsed) ? parsed : []);
+        if (lidos.erro) return { notas: texto.trim(), avulsos: [] };
+        return { notas, avulsos: lidos.lista };
+    } catch (e) {
+        return { notas: texto.trim(), avulsos: [] };
+    }
+}
+
+function observacoesComAvulsosApr(notas, lista) {
+    const base = textoAvulsoApr(notas);
+    if (!lista.length) return base || null;
+    return (base ? base + '\n\n' : '') + MARCA_AVULSOS_APR + '\n' + JSON.stringify(lista);
+}
+
+function avulsosDoRegistroApr(registro) {
+    return separarObservacoesAvulsosApr(registro && registro.observacoes).avulsos;
+}
+
+function atualizarResumoAvulsosApr() {
+    const resumo = document.getElementById('aprFormAvulsosResumo');
+    if (!resumo) return;
+    const nomes = (Array.isArray(aprAvulsosForm) ? aprAvulsosForm : [])
+        .map(item => textoAvulsoApr(item && item.nome))
+        .filter(Boolean);
+    resumo.textContent = nomes.length
+        ? 'Vai na folha de assinatura, depois da equipe: ' + nomes.join(', ')
+        : '';
+}
+
+function renderAvulsosAprForm() {
+    const lista = document.getElementById('aprFormAvulsosLista');
+    if (lista) {
+        const itens = Array.isArray(aprAvulsosForm) ? aprAvulsosForm : [];
+        const campoEstilo = 'width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:12.5px;';
+        lista.innerHTML = itens.length === 0
+            ? '<div style="font-size:12px; color:var(--text-light);">Nenhum colaborador avulso nesta APR. A equipe da frente continua como está.</div>'
+            : itens.map((item, i) => `
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:8px; align-items:end; margin-bottom:8px;">
+                    <div>
+                        <label style="font-size:10px; font-weight:700; color:var(--text-light); display:block; margin-bottom:2px;">Nome *</label>
+                        <input type="text" value="${escapeHTML(item.nome)}" oninput="aprAvulsosForm[${i}].nome=this.value; atualizarResumoAvulsosApr(); renderEquipeAprPreview()" style="${campoEstilo}">
+                    </div>
+                    <div>
+                        <label style="font-size:10px; font-weight:700; color:var(--text-light); display:block; margin-bottom:2px;">Matrícula</label>
+                        <input type="text" value="${escapeHTML(item.matricula)}" oninput="aprAvulsosForm[${i}].matricula=this.value" placeholder="opcional" style="${campoEstilo}">
+                    </div>
+                    <div>
+                        <label style="font-size:10px; font-weight:700; color:var(--text-light); display:block; margin-bottom:2px;">Função/Cargo</label>
+                        <input type="text" value="${escapeHTML(item.funcao)}" oninput="aprAvulsosForm[${i}].funcao=this.value" placeholder="opcional" style="${campoEstilo}">
+                    </div>
+                    <button type="button" class="db-clear-btn" onclick="removerAvulsoAprForm(${i})" style="font-size:12px; padding:8px 10px;">Tirar</button>
+                </div>`).join('');
+    }
+    atualizarResumoAvulsosApr();
+}
+
+function adicionarAvulsoAprForm() {
+    if (!Array.isArray(aprAvulsosForm)) aprAvulsosForm = [];
+    aprAvulsosForm.push({ nome: '', matricula: '', funcao: '' });
+    renderAvulsosAprForm();
+    if (typeof renderEquipeAprPreview === 'function') renderEquipeAprPreview();
+}
+
+function removerAvulsoAprForm(i) {
+    if (!Array.isArray(aprAvulsosForm) || i < 0 || i >= aprAvulsosForm.length) return;
+    aprAvulsosForm.splice(i, 1);
+    renderAvulsosAprForm();
+    if (typeof renderEquipeAprPreview === 'function') renderEquipeAprPreview();
+}
+
+function linhasAssinaturaExecutantesApr(equipe, avulsos, alturaLinha) {
+    const pessoas = [];
+    (Array.isArray(equipe) ? equipe : []).forEach(pessoa => {
+        pessoas.push({
+            matricula: textoAvulsoApr(pessoa && (pessoa.matricula || pessoa.id)),
+            nome: textoAvulsoApr(pessoa && pessoa.nome),
+            funcao: textoAvulsoApr(pessoa && pessoa.funcao)
+        });
+    });
+    listaAvulsosAprValida(avulsos).lista.forEach(pessoa => pessoas.push(pessoa));
+    const altura = alturaLinha || 30;
+    const linhas = pessoas.map((pessoa, i) => `<tr style="height:${altura}px;">
+        <td style="text-align:center;">${String(i + 1).padStart(2, '0')}</td>
+        <td style="text-align:center;">${escapeHTML(pessoa.matricula)}</td>
+        <td>${escapeHTML(pessoa.nome)}</td>
+        <td>${escapeHTML(pessoa.funcao)}</td>
+        <td></td>
+    </tr>`);
+    const minimo = 10;
+    for (let i = pessoas.length; i < minimo; i++) {
+        linhas.push(`<tr style="height:${altura}px;"><td style="text-align:center;">${String(i + 1).padStart(2, '0')}</td><td></td><td></td><td></td><td></td></tr>`);
+    }
+    return linhas.join('');
+}
+
 // 4. Painel de Visualização de Equipe & Checagem de Treinamentos Obrigatórios
 function renderEquipeAprPreview() {
     const container = document.getElementById('aprFormEquipeContainer');
@@ -478,6 +607,15 @@ function renderEquipeAprPreview() {
             </div>`;
     }
 
+    const nomesAvulsosPreview = (typeof aprAvulsosForm !== 'undefined' && Array.isArray(aprAvulsosForm) ? aprAvulsosForm : [])
+        .map(item => String((item && item.nome) || '').trim())
+        .filter(Boolean);
+    const blocoAvulsos = nomesAvulsosPreview.length ? `
+        <div style="margin-top:8px; font-size:12px;">
+            <b>Colaborador avulso nesta APR:</b> ${nomesAvulsosPreview.map(nome => escapeHTML(nome)).join(', ')}
+            <div style="color:var(--text-light); font-size:11px;">Saem na mesma folha de assinatura, depois da equipe.</div>
+        </div>` : '';
+
     container.style.display = 'block';
     container.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -489,7 +627,8 @@ function renderEquipeAprPreview() {
         ${bannerAlerta}
         <div style="display:flex; flex-direction:column; gap:4px; max-height:180px; overflow-y:auto;">
             ${linhasHtml}
-        </div>`;
+        </div>
+        ${blocoAvulsos}`;
 }
 
 // 5. Modal de Biblioteca Rápida de Riscos da Obra
@@ -667,6 +806,8 @@ function abrirFormNovaApr() {
     document.getElementById('aprForm_responsavelArea').value = '';
     document.getElementById('aprForm_riscoNovo').value = '';
     document.getElementById('aprForm_riscoNovoAviso').style.display = 'none';
+    aprAvulsosForm = [];
+    if (typeof renderAvulsosAprForm === 'function') renderAvulsosAprForm();
     document.getElementById('aprFormTitle').textContent = '➕ Nova APR';
     document.getElementById('aprForm_btnImprimir').style.display = 'none';
     const btnAnexosNova = document.getElementById('aprForm_btnAnexos');
@@ -720,9 +861,12 @@ function editarApr(id) {
     document.getElementById('aprForm_responsavelArea').value = a.responsavel_area || '';
     document.getElementById('aprForm_riscoNovo').value = a.risco_novo_identificado || '';
     atualizarAvisoRiscoNovoApr();
+    aprAvulsosForm = avulsosDoRegistroApr(a).map(pessoa => ({ nome: pessoa.nome, matricula: pessoa.matricula, funcao: pessoa.funcao }));
+    renderAvulsosAprForm();
 
     aprRiscosForm = Array.isArray(a.riscos) && a.riscos.length > 0 ? a.riscos.map(r => ({ ...r })) : [rowRiscoVazio()];
     renderRiscosAprForm();
+    renderEquipeAprPreview();
 
     document.getElementById('aprFormTitle').textContent = `✏️ Editando APR ${escapeHTML(a.id)}`;
     document.getElementById('aprForm_btnImprimir').style.display = 'inline-block';
@@ -878,6 +1022,18 @@ async function salvarApr() {
     const episEspecificos = Array.from(document.querySelectorAll('.aprEpiEspecificoCheckbox:checked')).map(cb => cb.value);
 
     const existente = editandoId ? allAprRegistros.find(a => a.id === editandoId) : null;
+    let observacoesSalvas = existente?.observacoes || null;
+    if (typeof listaAvulsosAprValida === 'function' && typeof separarObservacoesAvulsosApr === 'function' && typeof observacoesComAvulsosApr === 'function') {
+        const origemAvulsos = (typeof aprAvulsosForm !== 'undefined' && Array.isArray(aprAvulsosForm)) ? aprAvulsosForm : [];
+        const conferidos = listaAvulsosAprValida(origemAvulsos);
+        if (conferidos.erro) {
+            statusEl.textContent = '❌ ' + conferidos.erro;
+            statusEl.style.color = 'var(--danger)';
+            return;
+        }
+        const notasApr = separarObservacoesAvulsosApr(existente && existente.observacoes).notas;
+        observacoesSalvas = observacoesComAvulsosApr(notasApr, conferidos.lista);
+    }
     const row = {
         id: numero,
         data_emissao: dataEmissao,
@@ -905,7 +1061,7 @@ async function salvarApr() {
         elaborador_sesmt: document.getElementById('aprForm_elaborador').value.trim() || null,
         supervisor_tarefa: document.getElementById('aprForm_supervisor').value.trim() || null,
         responsavel_area: document.getElementById('aprForm_responsavelArea').value.trim() || null,
-        observacoes: existente?.observacoes || null,
+        observacoes: observacoesSalvas,
         risco_novo_identificado: String((document.getElementById('aprForm_riscoNovo') || {}).value || '').trim() || null
     };
 
@@ -951,6 +1107,11 @@ function resumoAlteracoesApr(antigo, novo) {
     if (textoRiscoNovoApr(antigo.risco_novo_identificado) !== textoRiscoNovoApr(novo.risco_novo_identificado)) {
         partes.push('Novo risco identificado atualizado. Continua aguardando revisão.');
     }
+    if (typeof avulsosDoRegistroApr === 'function') {
+        const avulsosAntes = avulsosDoRegistroApr(antigo).map(pessoa => pessoa.nome).join(', ');
+        const avulsosDepois = avulsosDoRegistroApr(novo).map(pessoa => pessoa.nome).join(', ');
+        if (avulsosAntes !== avulsosDepois) partes.push(`Colaborador avulso: "${avulsosAntes}" → "${avulsosDepois}"`);
+    }
     return partes.length > 0 ? partes.join(' · ') : 'Salva novamente, sem mudança nos campos principais (pode ter mudado só detalhe de algum risco).';
 }
 
@@ -990,6 +1151,7 @@ function renderAprHistoricoLista() {
                 : '<span class="badge" style="background:#e6f7ee; color:#1a7f4b; border:1px solid #b8e6cc;">✅ Ativa</span>';
         const riscos = Array.isArray(a.riscos) ? a.riscos : [];
         const riscoNovo = textoRiscoNovoApr(a.risco_novo_identificado);
+        const nomesAvulsos = (typeof avulsosDoRegistroApr === 'function' ? avulsosDoRegistroApr(a) : []).map(pessoa => escapeHTML(pessoa.nome)).join(', ');
         const expandido = aprItemExpandidoId === a.id;
         const logsDesta = allAprAuditLog.filter(l => l.record_id === a.id);
         const acaoLabelHistorico = { create: '🟢 Criou', update: '🟡 Editou', delete: '🔴 Excluiu' };
@@ -1009,6 +1171,7 @@ function renderAprHistoricoLista() {
                     <div><b>Novo risco identificado</b> — <span style="font-weight:700; color:#b78a00;">Aguardando revisão</span></div>
                     <div style="margin-top:4px; white-space:pre-wrap;">${escapeHTML(riscoNovo)}</div>
                 </div>` : ''}
+                ${nomesAvulsos ? `<div style="margin-top:8px;"><b>Colaborador avulso:</b> ${nomesAvulsos}</div>` : ''}
                 <div style="margin-top:10px;"><b>🕘 Histórico de Alterações (${logsDesta.length}):</b></div>
                 ${logsDesta.length === 0
                     ? '<div style="color:var(--text-light); font-size:11.5px; margin-top:4px;">Nenhum registro ainda - só passa a valer pra alterações feitas a partir de agora.</div>'
@@ -1022,6 +1185,7 @@ function renderAprHistoricoLista() {
                 <div class="db-list-item-title">APR ${escapeHTML(a.id)} — ${escapeHTML(a.titulo || a.descricao_atividade || a.setor_unidade || '')}</div>
                 <div class="db-list-item-sub">Emitida em ${formatSimpleDate(a.data_emissao)} — válida até ${formatSimpleDate(a.validade_ate)}</div>
                 ${riscoNovo ? `<div class="db-list-item-sub"><b>Novo risco identificado:</b> ${escapeHTML(riscoNovo)} — Aguardando revisão</div>` : ''}
+                ${nomesAvulsos ? `<div class="db-list-item-sub"><b>Colaborador avulso:</b> ${nomesAvulsos}</div>` : ''}
             </div>
             ${badge}
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
@@ -1158,9 +1322,9 @@ async function importarModelosAprSeed() {
 
 // ---- Impressão (3 folhas, mesmo layout do formulário de papel real) ----
 
-// A equipe da tarefa não fica salva num campo próprio - é resolvida ao vivo a partir da
-// frente/encarregado (mesmo padrão já usado em Registro de Treinamento/Ficha de EPI),
-// então uma mudança de equipe entre a emissão e a impressão já reflete automaticamente.
+// A equipe da frente não fica salva num campo próprio: é resolvida ao vivo a partir do
+// encarregado. O colaborador avulso fica só neste registro da APR e entra na mesma
+// tabela, depois da equipe. Uma mudança de equipe entre a emissão e a impressão reflete.
 function imprimirApr(id) {
     const a = allAprRegistros.find(x => x.id === id);
     if (!a) return;
@@ -1168,7 +1332,8 @@ function imprimirApr(id) {
     const ativCriticas = Array.isArray(a.atividades_criticas) ? a.atividades_criticas : [];
     const episBasicos = Array.isArray(a.epis_basicos) ? a.epis_basicos : [];
     const episEspecificos = Array.isArray(a.epis_especificos) ? a.epis_especificos : [];
-    const equipe = equipeDaFrente(a.responsavel);
+    const equipe = typeof equipeDaFrente === 'function' ? equipeDaFrente(a.responsavel) : [];
+    const avulsos = typeof avulsosDoRegistroApr === 'function' ? avulsosDoRegistroApr(a) : [];
 
     const marcadoAtiv = label => ativCriticas.includes(label) ? '☑' : '☐';
     const marcadoBasico = label => episBasicos.includes(label) ? '☑' : '☐';
@@ -1196,19 +1361,7 @@ function imprimirApr(id) {
     }).join('');
 
     const ALTURA_LINHA_EQUIPE = 30; // linhas mais altas pra dar espaço real de assinatura no papel
-    const linhasEquipe = equipe.map((p, i) => `<tr style="height:${ALTURA_LINHA_EQUIPE}px;">
-        <td style="text-align:center;">${String(i + 1).padStart(2, '0')}</td>
-        <td style="text-align:center;">${escapeHTML(p.matricula)}</td>
-        <td>${escapeHTML(p.nome)}</td>
-        <td>${escapeHTML(p.funcao || '')}</td>
-        <td></td>
-    </tr>`);
-    const MIN_LINHAS_EQUIPE = 10;
-    const linhasEquipeVazias = [];
-    for (let i = equipe.length; i < MIN_LINHAS_EQUIPE; i++) {
-        linhasEquipeVazias.push(`<tr style="height:${ALTURA_LINHA_EQUIPE}px;"><td style="text-align:center;">${String(i + 1).padStart(2, '0')}</td><td></td><td></td><td></td><td></td></tr>`);
-    }
-    const linhasEquipeTabela = linhasEquipe.concat(linhasEquipeVazias).join('');
+    const linhasEquipeTabela = linhasAssinaturaExecutantesApr(equipe, avulsos, ALTURA_LINHA_EQUIPE);
 
     const ALTURA_LINHA_RISCO_NOVO = 32;
     const MIN_LINHAS_RISCO_NOVO = 6;

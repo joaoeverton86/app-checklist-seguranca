@@ -235,7 +235,7 @@ test('1. Verificações estáticas, rota Opção 2 no menu lateral, cache-buster
     assert.match(html, /modules\/ia_aprendizado\.js\?v=5/, 'ia_aprendizado.js?v=5 deve estar carregado');
     assert.match(html, /dashboard\.js\?v=303\.15/, 'dashboard.js?v=303.15 deve estar atualizado');
     assert.match(html, /modules\/epi_estoque\.js\?v=303\.4/, 'epi_estoque.js?v=303.4 deve estar atualizado');
-    assert.match(html, /modules\/apr_cipa\.js\?v=298/, 'apr_cipa.js?v=298 acompanha a faixa de escrita na impressão da APR');
+    assert.match(html, /modules\/apr_cipa\.js\?v=299/, 'apr_cipa.js?v=299 acompanha a faixa de escrita na impressão da APR');
 
     const posMapa = html.indexOf('modules/ia_mapa_mental.js?v=2');
     const posIa = html.indexOf('modules/ia_aprendizado.js?v=5');

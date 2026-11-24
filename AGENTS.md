@@ -26,6 +26,18 @@
 - Respeite as cotas de uso de João: concentre testes locais e agrupe código, testes e documentação antes da publicação. Evite push/PR/deploy extra apenas de documentação; registre comprovantes posteriores na ponte/scratch.
 - O chat do Codex não é um terminal Copilot. A ponte em arquivo pode ser lida diretamente, mas `avisar-copilot.ps1` não aciona este chat. Sem confirmação, registrar apenas arquivo salvo/aviso aceito, nunca leitura ou execução confirmadas. Usar o caminho absoluto da ponte quando ela estiver em outro checkout.
 
+### Modo orquestrado (padrão do projeto)
+
+- Quando João pedir "modo orquestrado" ou uma entrega completa multi-etapas, um único Coordenador cria o Run com `orca orchestration run-create --environment local` e conduz as etapas. João não transporta mensagens entre chats.
+- Coordenador padrão: Antigravity, pelo custo marginal de cota no modelo Gemini. João pode nomear outro chat compatível ou o bot `SST_APP`.
+- Reserve as demais cotas para o papel em que cada agente entrega mais: Grok implementa telas, APR e ajustes rápidos; Codex revisa `git diff`, testes locais e lógica complexa; Claude planeja arquitetura em entregas grandes ou faz revisão crítica; Antigravity coordena, aplica regras de SST/ESG e trabalha nos módulos do painel.
+- Com cerca de 8 GB de RAM, mantenha 1 worker ativo por vez, em cadeia: implementa, libera e só então revisa. Aumentar o paralelismo exige autorização de João depois de medir a memória.
+- Quem implementa nunca revisa o próprio diff. Depois da implementação, o Coordenador despacha outro agente para revisar o `git diff` sem editar os arquivos.
+- O revisor executa `npm run check:local` e `git diff --check`.
+- Depois de `worker-start`, o Coordenador encerra o turno e espera o Orca acordá-lo com `worker_done` ou `escalation`. Não faça polling.
+- Não faça `git push`, PR, merge, deploy na Vercel nem alteração em Supabase, RLS ou produção sem autorização expressa de João na conversa.
+- `gate-create` registra a parada; não substitui a autorização humana.
+
 ## Regras de implementação
 
 - Pedidos exclusivos do painel devem permanecer em `dashboard/`, salvo dependência demonstrada e explicada. Preserve armazenamento offline, sincronização e Service Worker do campo.

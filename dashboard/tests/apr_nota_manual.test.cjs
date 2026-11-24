@@ -8,7 +8,10 @@ const codigo = fs.readFileSync(path.join(painel, 'modules', 'apr_cipa.js'), 'utf
 const html = fs.readFileSync(path.join(painel, 'index.html'), 'utf8');
 const nucleo = fs.readFileSync(path.join(painel, 'dashboard.js'), 'utf8');
 
-assert.match(html, /modules\/apr_cipa\.js\?v=298/);
+assert.match(html, /modules\/apr_cipa\.js\?v=299/);
+assert.match(html, /id="aprFormAvulsosContainer"/);
+assert.match(html, />Colaborador avulso</);
+assert.match(html, /Nome de quem vai na atividade e não está na equipe\. Ex\.: motorista emprestado\./);
 assert.match(html, /id="aprForm_riscoNovo"/);
 assert.match(html, />Novo risco identificado</);
 assert.match(html, /Escreva o risco que ainda não está na APR\. Ele fica aguardando revisão\./);
@@ -501,8 +504,195 @@ function provarQueOModuloSubstituiONucleo() {
     assert.equal(campo('aprFormStatus').textContent, 'A probabilidade e a gravidade ficam com o engenheiro.');
 }
 
+function riscoMinimoAvulso() {
+    return {
+        passo_tarefa: 'transporte',
+        perigo_fonte: 'veículo',
+        evento_risco: 'desabamento',
+        danos_provaveis: 'atropelamento',
+        p_puro: '',
+        s_puro: '',
+        medidas_prevencao: 'isolamento',
+        p_residual: '',
+        s_residual: '',
+        responsavel: 'encarregado'
+    };
+}
+
+function prepararAprAvulso(numero, titulo) {
+    campo('aprForm_id').value = '';
+    campo('aprForm_numero').value = numero;
+    campo('aprForm_dataEmissao').value = '2026-11-24';
+    campo('aprForm_titulo').value = titulo;
+    campo('aprForm_validadeDias').value = '15';
+    campo('aprForm_validadeAte').value = '';
+    campo('aprForm_riscoNovo').value = 'Buraco na via';
+    campo('aprForm_responsavel').value = 'Frente Civil';
+    sandbox.aprRiscosForm = [riscoMinimoAvulso()];
+    sandbox.aprAvulsosForm = [];
+}
+
+function cienciaImpressa(htmlFolha) {
+    const inicio = htmlFolha.indexOf('CIÊNCIA E TREINAMENTO DOS EXECUTANTES DA TAREFA');
+    const fim = htmlFolha.indexOf('RESPONSÁVEIS PELA APROVAÇÃO');
+    assert.ok(inicio > 0 && fim > inicio);
+    return htmlFolha.slice(inicio, fim);
+}
+
+function capturarImpressaoApr(id) {
+    let htmlFolha = '';
+    sandbox.Blob = class BlobAvulso {
+        constructor(partes) { htmlFolha = partes.join(''); }
+    };
+    sandbox.imprimirApr(id);
+    return htmlFolha;
+}
+
+async function provarColaboradorAvulso() {
+    const efetivo = [{ id: '101', nome: 'Servente da Civil', funcao: 'Servente', responsavel: 'Frente Civil' }];
+    sandbox.allEfetivo = efetivo;
+    sandbox.equipeDaFrente = () => [
+        { matricula: '101', nome: 'Servente da Civil', funcao: 'Servente' },
+        { matricula: '102', nome: 'Encarregado da Civil', funcao: 'Encarregado' }
+    ];
+    sandbox.confirm = () => { throw new Error('avulso não pede confirmação de nota'); };
+    sandbox.setTimeout = () => {};
+    sandbox.URL = { createObjectURL: () => 'blob:apr-avulso', revokeObjectURL() {} };
+    sandbox.document.createElement = () => ({ href: '', target: '', rel: '', click() {} });
+    sandbox.document.body = { appendChild() {}, removeChild() {} };
+
+    prepararAprAvulso('910', 'Só a equipe');
+    await sandbox.salvarApr();
+    const soEquipe = gravacoes.at(-1).linhas[0];
+    assert.equal(soEquipe.id, '910');
+    assert.equal(soEquipe.observacoes, null);
+    assert.equal(soEquipe.risco_novo_identificado, 'Buraco na via');
+    assert.equal(JSON.stringify(soEquipe.riscos).includes('Servente da Civil'), false);
+    const folhaSoEquipe = capturarImpressaoApr('910');
+    const cienciaSoEquipe = cienciaImpressa(folhaSoEquipe);
+    assert.match(cienciaSoEquipe, /Servente da Civil/);
+    assert.match(cienciaSoEquipe, /Encarregado da Civil/);
+    assert.equal(cienciaSoEquipe.indexOf('Servente da Civil') < cienciaSoEquipe.indexOf('Encarregado da Civil'), true);
+    assert.doesNotMatch(cienciaSoEquipe, /Motorista Emprestado|Ajudante Emprestado/);
+    assert.doesNotMatch(folhaSoEquipe.slice(folhaSoEquipe.indexOf('<tbody>'), folhaSoEquipe.indexOf('NOVO RISCO IDENTIFICADO')), /Servente da Civil/);
+
+    sandbox.aprAvulsosForm = [
+        { nome: '  ', matricula: '9', funcao: '' }
+    ];
+    const antesDoBloqueio = gravacoes.length;
+    prepararAprAvulso('919', 'Nome obrigatório');
+    sandbox.aprAvulsosForm = [{ nome: '   ', matricula: '9', funcao: '' }];
+    await sandbox.salvarApr();
+    assert.equal(gravacoes.length, antesDoBloqueio);
+    assert.match(campo('aprFormStatus').textContent, /Informe o nome de cada colaborador avulso/);
+
+    prepararAprAvulso('911', 'Equipe e dois avulsos');
+    sandbox.aprAvulsosForm = [
+        { nome: 'Quem Sai', matricula: '', funcao: '' },
+        { nome: 'Motorista Emprestado', matricula: '555', funcao: 'Motorista' },
+        { nome: 'Ajudante Emprestado', matricula: '', funcao: '' }
+    ];
+    sandbox.removerAvulsoAprForm(0);
+    assert.deepEqual(sandbox.aprAvulsosForm.map(pessoa => pessoa.nome), ['Motorista Emprestado', 'Ajudante Emprestado']);
+    campo('aprForm_id').value = '';
+    sandbox.allAprRegistros = sandbox.allAprRegistros.filter(item => item.id !== '911');
+    const notaAntiga = 'Nota da frente sobre o acesso.';
+    sandbox.allAprRegistros.push({
+        id: '911',
+        titulo: 'Equipe e dois avulsos',
+        observacoes: notaAntiga,
+        riscos: [riscoMinimoAvulso()],
+        risco_novo_identificado: 'texto antigo'
+    });
+    campo('aprForm_id').value = '911';
+    campo('aprForm_numero').value = '911';
+    await sandbox.salvarApr();
+    const comAvulsos = gravacoes.at(-1).linhas[0];
+    assert.equal(comAvulsos.id, '911');
+    assert.equal(comAvulsos.risco_novo_identificado, 'Buraco na via');
+    assert.equal(comAvulsos.riscos.length, 1);
+    assert.equal(JSON.stringify(comAvulsos.riscos).includes('Motorista Emprestado'), false);
+    assert.equal(JSON.stringify(comAvulsos.riscos).includes('Ajudante Emprestado'), false);
+    assert.match(comAvulsos.observacoes, /Nota da frente sobre o acesso\./);
+    assert.match(comAvulsos.observacoes, /\[\[apr_colaboradores_avulsos_v1\]\]/);
+    assert.equal(comAvulsos.observacoes.includes('Quem Sai'), false);
+    const lidos = sandbox.avulsosDoRegistroApr(comAvulsos);
+    assert.equal(lidos.length, 2);
+    assert.equal(lidos[0].nome, 'Motorista Emprestado');
+    assert.equal(lidos[0].matricula, '555');
+    assert.equal(lidos[0].funcao, 'Motorista');
+    assert.equal(lidos[1].nome, 'Ajudante Emprestado');
+    assert.equal(lidos[1].matricula, '');
+    sandbox.editarApr('911');
+    assert.equal(campo('aprForm_id').value, '911');
+    assert.equal(sandbox.aprAvulsosForm.length, 2);
+    assert.equal(sandbox.aprAvulsosForm[0].nome, 'Motorista Emprestado');
+    assert.equal(sandbox.aprAvulsosForm[1].nome, 'Ajudante Emprestado');
+    assert.equal(sandbox.aprRiscosForm.some(item => JSON.stringify(item).includes('Motorista Emprestado')), false);
+    assert.equal(campo('aprForm_riscoNovo').value, 'Buraco na via');
+    const folhaComAvulsos = capturarImpressaoApr('911');
+    const cienciaAvulsos = cienciaImpressa(folhaComAvulsos);
+    assert.match(cienciaAvulsos, /Servente da Civil/);
+    assert.match(cienciaAvulsos, /Encarregado da Civil/);
+    assert.match(cienciaAvulsos, /Motorista Emprestado/);
+    assert.match(cienciaAvulsos, /Ajudante Emprestado/);
+    assert.equal(cienciaAvulsos.indexOf('Encarregado da Civil') < cienciaAvulsos.indexOf('Motorista Emprestado'), true);
+    assert.equal(cienciaAvulsos.indexOf('Motorista Emprestado') < cienciaAvulsos.indexOf('Ajudante Emprestado'), true);
+    assert.match(cienciaAvulsos, /<td style="text-align:center;">555<\/td>\s*<td>Motorista Emprestado<\/td>\s*<td>Motorista<\/td>\s*<td><\/td>/);
+    assert.match(cienciaAvulsos, /<td style="text-align:center;"><\/td>\s*<td>Ajudante Emprestado<\/td>\s*<td><\/td>\s*<td><\/td>/);
+    const matriz911 = folhaComAvulsos.slice(folhaComAvulsos.indexOf('<tbody>'), folhaComAvulsos.indexOf('NOVO RISCO IDENTIFICADO'));
+    assert.doesNotMatch(matriz911, /Motorista Emprestado|Ajudante Emprestado/);
+    assert.match(folhaComAvulsos, /Buraco na via/);
+    assert.match(folhaComAvulsos, /MIN_LINHAS|min-height:192px/);
+    assert.equal((cienciaAvulsos.match(/Servente da Civil/g) || []).length, 1);
+    assert.equal((cienciaAvulsos.match(/Encarregado da Civil/g) || []).length, 1);
+
+    prepararAprAvulso('912', 'Avulso sem matrícula');
+    sandbox.aprAvulsosForm = [{ nome: 'Motorista Emprestado', matricula: '', funcao: '' }];
+    await sandbox.salvarApr();
+    const semMatricula = gravacoes.at(-1).linhas[0];
+    assert.equal(semMatricula.id, '912');
+    assert.equal(sandbox.avulsosDoRegistroApr(semMatricula)[0].matricula, '');
+    assert.equal(sandbox.avulsosDoRegistroApr(semMatricula)[0].funcao, '');
+    assert.equal(JSON.stringify(semMatricula.riscos).includes('Motorista Emprestado'), false);
+    sandbox.editarApr('912');
+    assert.equal(sandbox.aprAvulsosForm.length, 1);
+    assert.equal(sandbox.aprAvulsosForm[0].nome, 'Motorista Emprestado');
+    assert.equal(sandbox.aprAvulsosForm[0].matricula, '');
+    const folhaSemMatricula = capturarImpressaoApr('912');
+    const cienciaSemMatricula = cienciaImpressa(folhaSemMatricula);
+    assert.match(cienciaSemMatricula, /Servente da Civil/);
+    assert.match(cienciaSemMatricula, /Encarregado da Civil/);
+    assert.match(cienciaSemMatricula, /<td style="text-align:center;">03<\/td>\s*<td style="text-align:center;"><\/td>\s*<td>Motorista Emprestado<\/td>\s*<td><\/td>\s*<td><\/td>/);
+    assert.equal(cienciaSemMatricula.indexOf('Encarregado da Civil') < cienciaSemMatricula.indexOf('Motorista Emprestado'), true);
+    assert.doesNotMatch(folhaSemMatricula.slice(0, folhaSemMatricula.indexOf('CIÊNCIA E TREINAMENTO DOS EXECUTANTES')), /Motorista Emprestado/);
+    assert.match(folhaSemMatricula, /min-height:192px/);
+    assert.match(folhaSemMatricula, /Buraco na via/);
+
+    sandbox.editarApr('911');
+    sandbox.aprAvulsosForm = [];
+    await sandbox.salvarApr();
+    const semAvulsoDepois = gravacoes.at(-1).linhas[0];
+    assert.equal(semAvulsoDepois.id, '911');
+    assert.equal(semAvulsoDepois.observacoes, 'Nota da frente sobre o acesso.');
+    assert.equal(sandbox.avulsosDoRegistroApr(semAvulsoDepois).length, 0);
+    const folhaSemAvulsoDepois = capturarImpressaoApr('911');
+    assert.doesNotMatch(cienciaImpressa(folhaSemAvulsoDepois), /Motorista Emprestado|Ajudante Emprestado/);
+    assert.match(cienciaImpressa(folhaSemAvulsoDepois), /Servente da Civil/);
+    assert.match(cienciaImpressa(folhaSemAvulsoDepois), /Encarregado da Civil/);
+
+    sandbox.duplicarAprComoNova('912');
+    assert.equal(sandbox.aprAvulsosForm.length, 0);
+    assert.equal(campo('aprForm_id').value, '');
+
+    assert.equal(sandbox.allEfetivo, efetivo);
+    assert.equal(sandbox.allEfetivo.length, 1);
+    assert.equal(sandbox.allEfetivo[0].nome, 'Servente da Civil');
+    assert.equal(gravacoes.every(item => item.tabela === 'apr_registros'), true);
+}
+
 provarQueOModuloSubstituiONucleo();
-provarGravacao().then(() => {
+provarGravacao().then(() => provarColaboradorAvulso()).then(() => {
     console.log('apr_nota_manual.test.cjs: a nota da APR permanece com o engenheiro');
 }).catch(erro => {
     console.error(erro);

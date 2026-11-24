@@ -8,7 +8,17 @@ const codigo = fs.readFileSync(path.join(painel, 'modules', 'apr_cipa.js'), 'utf
 const html = fs.readFileSync(path.join(painel, 'index.html'), 'utf8');
 const nucleo = fs.readFileSync(path.join(painel, 'dashboard.js'), 'utf8');
 
-assert.match(html, /modules\/apr_cipa\.js\?v=296/);
+assert.match(html, /modules\/apr_cipa\.js\?v=297/);
+assert.match(html, /id="aprForm_riscoNovo"/);
+assert.match(html, />Novo risco identificado</);
+assert.match(html, /Escreva o risco que ainda não está na APR\. Ele fica aguardando revisão\./);
+assert.match(html, /id="aprForm_riscoNovoAviso"[^>]*>Aguardando revisão</);
+const impressaoApr = codigo.slice(codigo.indexOf('function imprimirApr('), codigo.indexOf('// CIPA (Comissão Interna'));
+assert.doesNotMatch(impressaoApr, /risco_novo_identificado|Novo risco identificado|Aguardando revisão/);
+assert.doesNotMatch(codigo.slice(codigo.indexOf('var BIBLIOTECA_RISCOS_OBRA'), codigo.indexOf('function inserirPacoteRiscosDaBiblioteca')), /risco_novo_identificado/);
+const migracaoRiscoNovo = fs.readFileSync(path.join(painel, '..', 'supabase', 'migrations', '20261123_apr_risco_novo_identificado.sql'), 'utf8');
+assert.match(migracaoRiscoNovo, /ADD COLUMN IF NOT EXISTS risco_novo_identificado TEXT/);
+assert.doesNotMatch(migracaoRiscoNovo, /POLICY|ROW LEVEL|GRANT|REVOKE/i);
 assert.match(html, /modules\/ia_aprendizado\.js\?v=5/);
 assert.doesNotMatch(html, /ia_aprendizado\.js\?v=[1234]\b/);
 assert.doesNotMatch(html, /autoCalibrarTodosRiscosApr|Sugerir P\/S/);
@@ -202,6 +212,8 @@ async function provarGravacao() {
     assert.equal(gravacoes.length, 1);
     assert.equal(gravacoes[0].linhas[0].riscos[0].p_puro, '');
     assert.equal(gravacoes[0].linhas[0].riscos[0].s_residual, '');
+    assert.equal(gravacoes[0].linhas[0].risco_novo_identificado, null);
+    assert.equal(gravacoes[0].linhas[0].riscos.length, 1);
 
     sandbox.aprRiscosForm = [{
         passo_tarefa: 'altura',
@@ -269,7 +281,8 @@ async function provarGravacao() {
             p_residual: 2,
             s_residual: 4,
             responsavel: 'encarregado'
-        }]
+        }],
+        risco_novo_identificado: 'Buraco sem sinalização na lateral da vala'
     });
     sandbox.setTimeout = () => {};
     let htmlImpresso = '';
@@ -281,6 +294,7 @@ async function provarGravacao() {
     sandbox.document.body = { appendChild() {}, removeChild() {} };
     sandbox.imprimirApr('42');
     assert.match(htmlImpresso, />4<\/td>\s*<td style="text-align:center;">5<\/td>\s*<td style="text-align:center;[^"]*">20<\/td>\s*<td>escoramento<\/td>\s*<td style="text-align:center;">2<\/td>\s*<td style="text-align:center;">4<\/td>\s*<td style="text-align:center;[^"]*">8<\/td>/);
+    assert.doesNotMatch(htmlImpresso, /Buraco sem sinalização na lateral da vala|Novo risco identificado|Aguardando revisão/);
     assert.equal(sandbox.allAprRegistros.find(item => item.id === '42').riscos[0].p_puro, 4);
 
     sandbox.abrirFormNovaApr = abrirFormNovaAprReal;
@@ -292,7 +306,61 @@ async function provarGravacao() {
     assert.equal(sandbox.aprRiscosForm[0].p_residual, 2);
     assert.equal(sandbox.aprRiscosForm[0].s_residual, 4);
     assert.match(sandbox.aprRiscosForm[0].medidas_prevencao, /escoramento/);
+    assert.equal(campo('aprForm_riscoNovo').value, 'Buraco sem sinalização na lateral da vala');
+    assert.equal(campo('aprForm_riscoNovoAviso').style.display, 'block');
+    assert.equal(sandbox.aprRiscosForm.some(item => JSON.stringify(item).includes('Buraco sem sinalização')), false);
     assert.equal(sandbox.allAprRegistros.find(item => item.id === '42').riscos[0].s_residual, 4);
+
+    const frase = 'Cabo solto na borda da escavação';
+    sandbox.confirm = () => true;
+    sandbox.aprRiscosForm = [{
+        passo_tarefa: 'escavação',
+        perigo_fonte: 'talude',
+        evento_risco: 'desabamento',
+        danos_provaveis: 'soterramento',
+        p_puro: '',
+        s_puro: '',
+        medidas_prevencao: 'escoramento',
+        p_residual: '',
+        s_residual: '',
+        responsavel: 'encarregado'
+    }];
+    campo('aprForm_riscoNovo').value = '   ';
+    preencherMinimo('903', 'Campo de risco novo vazio');
+    await sandbox.salvarApr();
+    assert.equal(gravacoes.at(-1).linhas[0].id, '903');
+    assert.equal(gravacoes.at(-1).linhas[0].risco_novo_identificado, null);
+    assert.equal(gravacoes.at(-1).linhas[0].riscos.length, 1);
+
+    campo('aprForm_riscoNovo').value = '  ' + frase + '  ';
+    preencherMinimo('904', 'Risco escrito à mão');
+    await sandbox.salvarApr();
+    const salvo = gravacoes.at(-1).linhas[0];
+    assert.equal(salvo.id, '904');
+    assert.equal(salvo.risco_novo_identificado, frase);
+    assert.equal(salvo.riscos.length, 1);
+    assert.equal(JSON.stringify(salvo.riscos).includes(frase), false);
+    sandbox.editarApr('904');
+    assert.equal(campo('aprForm_id').value, '904');
+    assert.equal(campo('aprForm_riscoNovo').value, frase);
+    assert.equal(campo('aprForm_riscoNovoAviso').style.display, 'block');
+    assert.equal(sandbox.aprRiscosForm.some(item => JSON.stringify(item).includes(frase)), false);
+
+    sandbox.aprItemExpandidoId = '904';
+    sandbox.renderAprHistoricoLista();
+    const bloco = campo('listAprHistorico').innerHTML.split('APR 904')[1].split('APR ')[0];
+    assert.match(bloco, /Cabo solto na borda da escavação/);
+    assert.match(bloco, /Aguardando revisão/);
+    const listaOficial = bloco.slice(bloco.indexOf('Riscos ('), bloco.indexOf('Novo risco identificado'));
+    assert.doesNotMatch(listaOficial, /Cabo solto na borda da escavação/);
+
+    let htmlReaberto = '';
+    sandbox.Blob = class BlobReaberto {
+        constructor(partes) { htmlReaberto = partes.join(''); }
+    };
+    sandbox.imprimirApr('904');
+    assert.match(htmlReaberto, /desabamento/);
+    assert.doesNotMatch(htmlReaberto, /Cabo solto na borda da escavação|Novo risco identificado|Aguardando revisão/);
 }
 
 function provarQueOModuloSubstituiONucleo() {

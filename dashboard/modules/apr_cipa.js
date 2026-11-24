@@ -377,6 +377,8 @@ function duplicarAprComoNova(id) {
     document.getElementById('aprForm_elaborador').value = a.elaborador_sesmt || 'JOÃO EVERTON DE SOUZA LIMEIRA';
     document.getElementById('aprForm_supervisor').value = a.supervisor_tarefa || '';
     document.getElementById('aprForm_responsavelArea').value = a.responsavel_area || '';
+    document.getElementById('aprForm_riscoNovo').value = a.risco_novo_identificado || '';
+    atualizarAvisoRiscoNovoApr();
 
     // Riscos copiados com P e S
     aprRiscosForm = Array.isArray(a.riscos) ? JSON.parse(JSON.stringify(a.riscos)) : [rowRiscoVazio()];
@@ -624,6 +626,17 @@ function rowRiscoVazio() {
     return { passo_tarefa: '', perigo_fonte: '', evento_risco: '', danos_provaveis: '', p_puro: '', s_puro: '', medidas_prevencao: '', p_residual: '', s_residual: '', responsavel: '' };
 }
 
+function textoRiscoNovoApr(valor) {
+    return String(valor || '').trim();
+}
+
+function atualizarAvisoRiscoNovoApr() {
+    const campoNovo = document.getElementById('aprForm_riscoNovo');
+    const aviso = document.getElementById('aprForm_riscoNovoAviso');
+    if (!campoNovo || !aviso) return;
+    aviso.style.display = textoRiscoNovoApr(campoNovo.value) ? 'block' : 'none';
+}
+
 function abrirFormNovaApr() {
     document.getElementById('aprForm_id').value = '';
     document.getElementById('aprForm_numero').value = proximoNumeroApr();
@@ -652,6 +665,8 @@ function abrirFormNovaApr() {
     document.getElementById('aprForm_elaborador').value = 'JOÃO EVERTON DE SOUZA LIMEIRA';
     document.getElementById('aprForm_supervisor').value = '';
     document.getElementById('aprForm_responsavelArea').value = '';
+    document.getElementById('aprForm_riscoNovo').value = '';
+    document.getElementById('aprForm_riscoNovoAviso').style.display = 'none';
     document.getElementById('aprFormTitle').textContent = '➕ Nova APR';
     document.getElementById('aprForm_btnImprimir').style.display = 'none';
     const btnAnexosNova = document.getElementById('aprForm_btnAnexos');
@@ -703,6 +718,8 @@ function editarApr(id) {
     document.getElementById('aprForm_elaborador').value = a.elaborador_sesmt || '';
     document.getElementById('aprForm_supervisor').value = a.supervisor_tarefa || '';
     document.getElementById('aprForm_responsavelArea').value = a.responsavel_area || '';
+    document.getElementById('aprForm_riscoNovo').value = a.risco_novo_identificado || '';
+    atualizarAvisoRiscoNovoApr();
 
     aprRiscosForm = Array.isArray(a.riscos) && a.riscos.length > 0 ? a.riscos.map(r => ({ ...r })) : [rowRiscoVazio()];
     renderRiscosAprForm();
@@ -888,7 +905,8 @@ async function salvarApr() {
         elaborador_sesmt: document.getElementById('aprForm_elaborador').value.trim() || null,
         supervisor_tarefa: document.getElementById('aprForm_supervisor').value.trim() || null,
         responsavel_area: document.getElementById('aprForm_responsavelArea').value.trim() || null,
-        observacoes: existente?.observacoes || null
+        observacoes: existente?.observacoes || null,
+        risco_novo_identificado: String((document.getElementById('aprForm_riscoNovo') || {}).value || '').trim() || null
     };
 
     statusEl.textContent = 'Salvando...';
@@ -930,6 +948,9 @@ function resumoAlteracoesApr(antigo, novo) {
     const riscosAntes = Array.isArray(antigo.riscos) ? antigo.riscos.length : 0;
     const riscosDepois = Array.isArray(novo.riscos) ? novo.riscos.length : 0;
     if (riscosAntes !== riscosDepois) partes.push(`Riscos: ${riscosAntes} → ${riscosDepois}`);
+    if (textoRiscoNovoApr(antigo.risco_novo_identificado) !== textoRiscoNovoApr(novo.risco_novo_identificado)) {
+        partes.push('Novo risco identificado atualizado. Continua aguardando revisão.');
+    }
     return partes.length > 0 ? partes.join(' · ') : 'Salva novamente, sem mudança nos campos principais (pode ter mudado só detalhe de algum risco).';
 }
 
@@ -968,6 +989,7 @@ function renderAprHistoricoLista() {
                 ? '<span class="badge" style="background:#fff9e6; color:#b78a00; border:1px solid #ffe8a1;">🟡 Vencendo</span>'
                 : '<span class="badge" style="background:#e6f7ee; color:#1a7f4b; border:1px solid #b8e6cc;">✅ Ativa</span>';
         const riscos = Array.isArray(a.riscos) ? a.riscos : [];
+        const riscoNovo = textoRiscoNovoApr(a.risco_novo_identificado);
         const expandido = aprItemExpandidoId === a.id;
         const logsDesta = allAprAuditLog.filter(l => l.record_id === a.id);
         const acaoLabelHistorico = { create: '🟢 Criou', update: '🟡 Editou', delete: '🔴 Excluiu' };
@@ -983,6 +1005,10 @@ function renderAprHistoricoLista() {
                         return `<li>${escapeHTML(r.evento_risco || r.perigo_fonte || '')} — Residual: <b style="color:${residual.cor}">${residual.valor ?? '—'} (${residual.label})</b></li>`;
                     }).join('')}
                 </ul>
+                ${riscoNovo ? `<div style="margin-top:8px; padding:8px 10px; border:1px dashed var(--border); border-radius:8px;">
+                    <div><b>Novo risco identificado</b> — <span style="font-weight:700; color:#b78a00;">Aguardando revisão</span></div>
+                    <div style="margin-top:4px; white-space:pre-wrap;">${escapeHTML(riscoNovo)}</div>
+                </div>` : ''}
                 <div style="margin-top:10px;"><b>🕘 Histórico de Alterações (${logsDesta.length}):</b></div>
                 ${logsDesta.length === 0
                     ? '<div style="color:var(--text-light); font-size:11.5px; margin-top:4px;">Nenhum registro ainda - só passa a valer pra alterações feitas a partir de agora.</div>'
@@ -995,6 +1021,7 @@ function renderAprHistoricoLista() {
             <div style="flex:1; min-width:220px; cursor:pointer;" onclick="toggleDetalheApr('${escapeHTML(a.id)}')">
                 <div class="db-list-item-title">APR ${escapeHTML(a.id)} — ${escapeHTML(a.titulo || a.descricao_atividade || a.setor_unidade || '')}</div>
                 <div class="db-list-item-sub">Emitida em ${formatSimpleDate(a.data_emissao)} — válida até ${formatSimpleDate(a.validade_ate)}</div>
+                ${riscoNovo ? `<div class="db-list-item-sub"><b>Novo risco identificado:</b> ${escapeHTML(riscoNovo)} — Aguardando revisão</div>` : ''}
             </div>
             ${badge}
             <div style="display:flex; gap:6px; flex-wrap:wrap;">

@@ -8402,6 +8402,12 @@
                             💡 <b>Risco Puro</b> = P e S da tarefa <b>sem nenhum cuidado especial</b> (só a exposição natural). <b>Risco Residual</b> = P e S <b>depois</b> de aplicar de verdade a medida de prevenção escrita ao lado. Se a medida funciona, o Residual normalmente deve ficar <b>menor</b> que o Puro (a medida reduz a chance de acontecer e/ou a gravidade se acontecer) — deixar os dois iguais em toda linha geralmente é sinal de que a medida não foi considerada na hora de reavaliar.
                         </div>
                         <div id="aprFormRiscosLista"></div>
+                        <div style="margin-top:12px; padding:10px 12px; border:1px dashed var(--border); border-radius:8px; background:var(--bg);">
+                            <label for="aprForm_riscoNovo" style="font-weight:700; font-size:12.5px; display:block;">Novo risco identificado</label>
+                            <p style="font-size:11.5px; color:var(--text-light); margin:4px 0 6px;">Escreva o risco que ainda não está na APR. Ele fica aguardando revisão.</p>
+                            <textarea id="aprForm_riscoNovo" rows="3" oninput="atualizarAvisoRiscoNovoApr()" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-size:12.5px; font-family:inherit; resize:vertical;"></textarea>
+                            <div id="aprForm_riscoNovoAviso" style="display:none; margin-top:6px; font-size:12px; font-weight:700; color:#b78a00;">Aguardando revisão</div>
+                        </div>
                     </div>
 
                     <div style="margin-top:16px; padding-top:12px; border-top:1px dashed var(--border);">
@@ -10522,7 +10528,7 @@
     <script src="modules/saude_prestadores.js?v=295"></script>
     <script src="modules/epi_estoque.js?v=303.4"></script>
     <script src="modules/ambiental_compras_hht.js?v=303.6"></script>
-    <script src="modules/apr_cipa.js?v=296"></script>
+    <script src="modules/apr_cipa.js?v=297"></script>
     <script src="modules/documentos_brigada.js?v=295"></script>
     <script src="modules/ergonomia_periculosidade_pgr.js?v=295"></script>
     <script src="modules/gerador_prompts.js?v=299"></script>

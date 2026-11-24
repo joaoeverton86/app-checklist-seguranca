@@ -20,7 +20,7 @@
         })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="dashboard.css?v=295">
+    <link rel="stylesheet" href="dashboard.css?v=296">
 </head>
 <body>
 
@@ -363,6 +363,11 @@
                             </div>
                         </div>
                     </div>
+
+                    <button type="button" id="btnBlocoAnotacoesTopo" class="db-btn-bloco-anotacoes" title="Bloco de Anotações" aria-label="Bloco de Anotações" aria-expanded="false" aria-controls="blocoAnotacoesDrawer">
+                        <i class="fas fa-note-sticky" aria-hidden="true"></i>
+                        <span class="db-bloco-anotacoes-badge" id="badgeBlocoAnotacoesQtd" hidden>0</span>
+                    </button>
 
                     <span style="margin-left:10px; padding-left:10px; border-left:1px solid var(--border); font-size:12px; color:var(--text-light);">
                         👤 <span id="badgeUsuarioDashboard">(não identificado)</span>
@@ -10510,6 +10515,30 @@
             <footer class="db-footer">
                 Painel somente leitura — atualiza automaticamente a cada 5 minutos. Dados sincronizados do mesmo banco do app de campo.
             </footer>
+
+            <div id="blocoAnotacoesBackdrop" class="db-bloco-backdrop"></div>
+            <aside id="blocoAnotacoesDrawer" class="db-bloco-drawer" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="blocoAnotacoesTitulo" tabindex="-1">
+                <header class="db-bloco-header">
+                    <div class="db-bloco-header-info">
+                        <h2 id="blocoAnotacoesTitulo" class="db-bloco-titulo"><i class="fas fa-note-sticky" aria-hidden="true"></i> Bloco de Anotações</h2>
+                        <p id="blocoAnotacoesStatus" class="db-bloco-status" data-estado="local">Salvo localmente</p>
+                    </div>
+                    <button type="button" class="db-bloco-fechar" data-action="fechar" aria-label="Fechar bloco de anotações">✕</button>
+                </header>
+                <div class="db-bloco-abas" role="tablist" aria-label="Escopo das notas">
+                    <button type="button" class="db-bloco-aba is-active" id="abaBlocoMinhas" role="tab" aria-selected="true" data-action="aba" data-escopo="minhas">Minhas Notas</button>
+                    <button type="button" class="db-bloco-aba" id="abaBlocoEquipe" role="tab" aria-selected="false" data-action="aba" data-escopo="equipe">Equipe SST</button>
+                </div>
+                <p id="blocoAnotacoesAvisoAnonimo" class="db-bloco-aviso" hidden>A sincronização na nuvem exige um usuário identificado. Suas notas ficam só neste navegador.</p>
+                <div class="db-bloco-ferramentas">
+                    <label class="db-bloco-busca">
+                        <input type="search" id="blocoAnotacoesBusca" placeholder="Buscar por título, conteúdo ou etiqueta" autocomplete="off" aria-label="Buscar por título, conteúdo ou etiqueta">
+                    </label>
+                    <button type="button" id="btnNovaNotaBloco" class="db-bloco-nova" data-action="nova">Nova nota</button>
+                </div>
+                <div id="blocoAnotacoesFiltros" class="db-bloco-filtros"></div>
+                <div id="blocoAnotacoesCorpo" class="db-bloco-corpo"></div>
+            </aside>
         </main>
     </div>
 
@@ -10545,6 +10574,7 @@
     <script src="modules/ia_aprendizado.js?v=5"></script>
     <script src="modules/apresentacoes_sst.js?v=2"></script>
     <script src="placar_lideres.js?v=295"></script>
+    <script src="modules/bloco_anotacoes.js?v=1"></script>
 <script>
 function filterMatrizEpi(q) {
     q = (q || '').trim().toLowerCase();

@@ -2661,7 +2661,14 @@
                 <button id="btnSugFiltro-ineditos" class="db-filter-btn" onclick="filtrarAbaSugestaoTemas('ineditos')">🏆 Inéditos na Obra</button>
                 <button id="btnSugFiltro-liberados" class="db-filter-btn" onclick="filtrarAbaSugestaoTemas('liberados')">✅ Liberados (>90d)</button>
                 <button id="btnSugFiltro-bloqueados" class="db-filter-btn" onclick="filtrarAbaSugestaoTemas('bloqueados')">⚠️ Recentes (<90d)</button>
+                <button id="btnSugFiltro-todos" class="db-filter-btn" onclick="filtrarAbaSugestaoTemas('todos')">📋 Todos</button>
             </div>
+        </div>
+
+        <!-- Barra de Pesquisa Instantânea de Temas -->
+        <div style="position: relative; margin-bottom: 12px;">
+            <input type="text" id="modalSugestaoBuscaInput" placeholder="🔍 Pesquisar tema por código, palavra-chave ou NR (ex: 79, direção, NR-17, doação)..." oninput="agendarRenderSugestoesTemasModal()" autocomplete="off" style="width: 100%; padding: 9px 38px 9px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; background: var(--card, #fff); color: var(--text);">
+            <button type="button" class="db-clear-btn" onclick="limparBuscaSugestaoTemas()" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 2px 7px; font-size: 12px;" title="Limpar pesquisa">✕</button>
         </div>
 
         <!-- Conteúdo dinâmico das sugestões -->
@@ -2702,7 +2709,15 @@
 
         <!-- Seleção de Treinamento -->
         <div style="margin-bottom: 14px;">
-            <label style="display:block; font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 4px;">Treinamento / Tema de SST *</label>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px;">
+                <label style="display:block; font-size: 12px; font-weight: 700; color: var(--text);">Treinamento / Tema de SST *</label>
+                <span id="patAdd_contagemTemas" style="font-size: 11px; color: var(--text-light); font-weight: 600;"></span>
+            </div>
+            <div style="position: relative; margin-bottom: 6px;">
+                <input type="text" id="patAdd_buscaTreinamento" placeholder="🔍 Digite código, palavra-chave ou NR para pesquisar tema..." oninput="filtrarPatAddTreinamentos(this.value)" autocomplete="off" style="width: 100%; padding: 8px 36px 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; box-sizing: border-box; background: var(--bg, #f8fafc); color: var(--text);">
+                <button type="button" class="db-clear-btn" onclick="limparBuscaPatAddTreinamento()" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); padding: 2px 6px; font-size: 11.5px;" title="Limpar pesquisa">✕</button>
+            </div>
+            <div id="patAdd_resultadosRapidos" style="display: none; max-height: 190px; overflow-y: auto; border: 1px solid var(--primary); border-radius: 8px; margin-bottom: 6px; background: var(--card, #fff); box-shadow: 0 4px 12px rgba(15,23,42,0.08);"></div>
             <select id="patAdd_treinamento" onchange="onPatAddTreinamentoChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
                 <!-- Populado dinamicamente -->
             </select>
@@ -2772,10 +2787,17 @@
 
         <!-- Opção Alternativa: Substituir o Tema Desta Data por Outro do Catálogo -->
         <div style="background: #f8fafc; border: 1px dashed var(--border); border-radius: 8px; padding: 12px; margin-bottom: 14px;">
-            <div style="font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-                <span>💡</span> Deseja apenas trocar o tema desta data por outro?
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 4px;">
+                <div style="font-size: 12px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 6px;">
+                    <span>💡</span> Deseja apenas trocar o tema desta data por outro?
+                </div>
+                <span id="reprog_contagemTemas" style="font-size: 10.5px; color: var(--text-light); font-weight: 600;"></span>
             </div>
             <p style="font-size: 11px; color: var(--text-light); margin: 0 0 8px 0;">Substitui o tema agendado nesta data por qualquer outro curso liberado do catálogo.</p>
+            <div style="position: relative; margin-bottom: 6px;">
+                <input type="text" id="reprog_buscaSubstitutoTema" placeholder="🔍 Pesquisar tema substituto por código, palavra-chave ou NR..." oninput="filtrarReprogSubstitutoTema(this.value)" autocomplete="off" style="width: 100%; padding: 7px 34px 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; box-sizing: border-box; background: #fff;">
+                <button type="button" class="db-clear-btn" onclick="limparBuscaReprogSubstitutoTema()" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); padding: 1px 6px; font-size: 11px;" title="Limpar pesquisa">✕</button>
+            </div>
             <div style="display: flex; gap: 8px;">
                 <select id="reprog_substitutoTemaSelect" style="flex:1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px;">
                     <!-- Populado dinamicamente -->
@@ -2844,6 +2866,10 @@
         <!-- Treinamento Obrigatório -->
         <div style="margin-bottom: 14px;">
             <label style="display:block; font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 4px;">Treinamento / Curso do Catálogo *</label>
+            <div style="position: relative; margin-bottom: 6px;">
+                <input type="text" id="formRegra_buscaTreinamento" placeholder="🔍 Digite código ou palavra-chave para filtrar cursos..." oninput="filtrarRegraTreinamentoSelect(this.value)" autocomplete="off" style="width: 100%; padding: 7px 34px 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; box-sizing: border-box; background: var(--bg, #f8fafc); color: var(--text);">
+                <button type="button" class="db-clear-btn" onclick="limparBuscaRegraTreinamento()" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); padding: 1px 6px; font-size: 11px;" title="Limpar pesquisa">✕</button>
+            </div>
             <select id="formRegra_treinamentoCod" onchange="onRegraTreinamentoChange()" style="width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px;">
                 <!-- Populado dinamicamente com allTreinamentosCatalogo -->
             </select>
@@ -10551,7 +10577,7 @@
     <script src="../data.js?v=295"></script>
     <script src="logo_cop_base64.js?v=295"></script>
     <script src="dashboard.js?v=303.15"></script>
-    <script src="modules/treinamentos_ddsma.js?v=303.12"></script>
+    <script src="modules/treinamentos_ddsma.js?v=303.13"></script>
     <script src="modules/kits_admissionais.js?v=4"></script>
     <script src="modules/efetivo_ferias.js?v=303"></script>
     <script src="modules/ghe_os.js?v=303.6"></script>
@@ -10567,7 +10593,7 @@
     <script src="modules/ambiental_compras_hht.js?v=303.6"></script>
     <script src="modules/apr_cipa.js?v=299"></script>
     <script src="modules/documentos_brigada.js?v=295"></script>
-    <script src="modules/ergonomia_periculosidade_pgr.js?v=295"></script>
+    <script src="modules/ergonomia_periculosidade_pgr.js?v=296"></script>
     <script src="modules/gerador_prompts.js?v=299"></script>
     <script src="modules/gestao_de_condutores_cnh.js?v=301.8"></script>
     <script src="modules/ia_mapa_mental.js?v=2"></script>

@@ -13226,19 +13226,11 @@ async function abrirModalNovaRegra(regraId = null) {
         });
     }
 
-    // Popula dropdown de Treinamentos do Catálogo
+    // Limpa busca e popula dropdown de Treinamentos do Catálogo
     const selTrein = document.getElementById('formRegra_treinamentoCod');
-    if (selTrein) {
-        selTrein.innerHTML = '<option value="">Selecione o Treinamento...</option>';
-        const cursosOrdenados = [...allTreinamentosCatalogo].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
-        cursosOrdenados.forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = String(c.id);
-            const valLabel = c.meses_validade ? ` | Validade: ${c.meses_validade}m` : ' | Sem validade';
-            opt.textContent = `[${c.id}] ${c.nome}${valLabel}`;
-            selTrein.appendChild(opt);
-        });
-    }
+    const buscaRegraEl = document.getElementById('formRegra_buscaTreinamento');
+    if (buscaRegraEl) buscaRegraEl.value = '';
+    filtrarRegraTreinamentoSelect('');
 
     if (regraEmEdicaoId) {
         const regra = allTreinamentosRegras.find(r => String(r.id) === regraEmEdicaoId);
@@ -13275,6 +13267,86 @@ async function abrirModalNovaRegra(regraId = null) {
     onRegraTreinamentoChange();
     if (modal) modal.style.display = 'flex';
 }
+
+function filtrarRegraTreinamentoSelect(termo) {
+    const selTrein = document.getElementById('formRegra_treinamentoCod');
+    if (!selTrein) return;
+
+    const valorAtual = String(selTrein.value || '');
+    const termoNorm = String(termo || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/['’]/g, '')
+        .replace(/nr[\s.\-_]*(\d+)/g, 'nr$1 nr $1')
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const tokens = termoNorm ? termoNorm.split(' ').filter(Boolean) : [];
+
+    const cursosOrdenados = [...(allTreinamentosCatalogo || [])].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    const filtrados = cursosOrdenados.filter(c => {
+        if (tokens.length === 0) return true;
+        if (!c._buscaNormRegra) {
+            c._buscaNormRegra = `${c.id || ''} ${c.nome || ''} ${c.objetivo || ''}`
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .replace(/['’]/g, '')
+                .replace(/nr[\s.\-_]*(\d+)/g, 'nr$1 nr $1')
+                .replace(/[^a-z0-9\s]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+        return tokens.every(tk => c._buscaNormRegra.includes(tk));
+    });
+
+    selTrein.innerHTML = '';
+    if (filtrados.length === 0) {
+        const optVazio = document.createElement('option');
+        optVazio.value = '';
+        optVazio.textContent = `Nenhum curso encontrado para "${(termo || '').trim()}"`;
+        selTrein.appendChild(optVazio);
+        onRegraTreinamentoChange();
+        return;
+    }
+
+    if (!termoNorm) {
+        const optPlaceholder = document.createElement('option');
+        optPlaceholder.value = '';
+        optPlaceholder.textContent = 'Selecione o Treinamento...';
+        selTrein.appendChild(optPlaceholder);
+    }
+
+    filtrados.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = String(c.id);
+        const valLabel = c.meses_validade ? ` | Validade: ${c.meses_validade}m` : ' | Sem validade';
+        opt.textContent = `[${c.id}] ${c.nome}${valLabel}`;
+        selTrein.appendChild(opt);
+    });
+
+    if (valorAtual && filtrados.some(c => String(c.id) === valorAtual)) {
+        selTrein.value = valorAtual;
+    } else if (termoNorm && filtrados.length > 0) {
+        selTrein.value = String(filtrados[0].id);
+    } else {
+        selTrein.value = '';
+    }
+    onRegraTreinamentoChange();
+}
+
+function limparBuscaRegraTreinamento() {
+    const buscaEl = document.getElementById('formRegra_buscaTreinamento');
+    if (buscaEl) {
+        buscaEl.value = '';
+        filtrarRegraTreinamentoSelect('');
+        buscaEl.focus();
+    }
+}
+
+window.filtrarRegraTreinamentoSelect = filtrarRegraTreinamentoSelect;
+window.limparBuscaRegraTreinamento = limparBuscaRegraTreinamento;
 
 function fecharModalRegra() {
     const modal = document.getElementById('modalTreinamentoRegra');

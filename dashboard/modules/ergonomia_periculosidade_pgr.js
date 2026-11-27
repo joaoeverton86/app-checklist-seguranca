@@ -3505,8 +3505,37 @@ var CAMPANHAS_SAZONAIS_SST = {
 
 var patAnoAtual = 2026;
 var patCategoriaFiltroAtual = 'todos'; // 'todos' | 'normativos' | 'campanhas' | 'operacionais'
-var modalSugestaoFiltroAtual = 'recomendados'; // 'recomendados' | 'ineditos' | 'liberados' | 'bloqueados'
+var modalSugestaoFiltroAtual = 'recomendados'; // 'recomendados' | 'ineditos' | 'liberados' | 'bloqueados' | 'todos'
 var modalSugestaoMesAlvoIndex = new Date().getMonth();
+var patAddOpcoesCache = [];
+var reprogOpcoesSubstitutoCache = [];
+var _historicoTemasConsolidadoMemo = { chave: '', mapa: null };
+var _timerRenderSugestoesTemas = null;
+
+// Utilitário de busca textual sem acentos e tolerante a variações de NR (ex: NR-17, NR.17, nr17, nr 17)
+function normalizarBuscaTemaPat(str) {
+    return String(str || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/['’]/g, '')
+        .replace(/nr[\s.\-_]*(\d+)/g, 'nr$1 nr $1')
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function extrairTokensBuscaTemaPat(termoBusca) {
+    const termoNorm = normalizarBuscaTemaPat(termoBusca);
+    return termoNorm ? termoNorm.split(' ').filter(Boolean) : [];
+}
+
+function correspondeBuscaTemaPat(camposTexto, termoBusca) {
+    const tokens = extrairTokensBuscaTemaPat(termoBusca);
+    if (tokens.length === 0) return true;
+    const base = normalizarBuscaTemaPat(Array.isArray(camposTexto) ? camposTexto.join(' ') : camposTexto);
+    return tokens.every(tk => base.includes(tk));
+}
 
 // 0. Utilitário: Obter todas as Terças e Quintas-feiras de um Mês
 function obterTerceirasEQuintasDoMes(ano, mesIdx) {
@@ -3543,8 +3572,25 @@ function obterInfoDiaSemana(dataIso) {
     };
 }
 
-// 1. Motor de Histórico Consolidado de Temas (DDS + Treinamentos)
+// 1. Motor de Histórico Consolidado de Temas (DDS + Treinamentos) com Memoização O(1)
+function _assinaturaArrayHistoricoPat(arr, campoData, campoTema) {
+    if (!Array.isArray(arr) || arr.length === 0) return '0';
+    const ini = arr[0] || {};
+    const fim = arr[arr.length - 1] || {};
+    return `${arr.length}:${ini[campoData] || ''}:${ini[campoTema] || ''}:${fim[campoData] || ''}:${fim[campoTema] || ''}`;
+}
+
 function obterHistoricoTemasConsolidado() {
+    const chaveAtual = [
+        _assinaturaArrayHistoricoPat(allDdsRealizados, 'data_dds', 'tema'),
+        _assinaturaArrayHistoricoPat(allDdsTemasCronograma, 'data', 'tema'),
+        _assinaturaArrayHistoricoPat(allTreinamentosRealizados, 'data_treinamento', 'treinamento_nome')
+    ].join('|');
+
+    if (_historicoTemasConsolidadoMemo.mapa && _historicoTemasConsolidadoMemo.chave === chaveAtual) {
+        return _historicoTemasConsolidadoMemo.mapa;
+    }
+
     const mapa = new Map(); // nomeNormalizado -> { ultimoIso: string, total: number, frentes: Set, nomeOriginal: string }
 
     function normalizar(s) {
@@ -3597,12 +3643,13 @@ function obterHistoricoTemasConsolidado() {
         }
     });
 
+    _historicoTemasConsolidadoMemo = { chave: chaveAtual, mapa };
     return mapa;
 }
 
 // 2. Cálculo da Carência de 90 Dias de um Tema
-function calcularCarenciaTema(nomeTema, dataReferenciaIso) {
-    const historico = obterHistoricoTemasConsolidado();
+function calcularCarenciaTema(nomeTema, dataReferenciaIso, historicoPreCalculado) {
+    const historico = historicoPreCalculado || obterHistoricoTemasConsolidado();
     const norm = typeof normalizarTextoCargoBasico === 'function' 
         ? normalizarTextoCargoBasico(nomeTema) 
         : String(nomeTema || '').toLowerCase().trim();
@@ -3910,15 +3957,16 @@ async function gerarCronogramaMesTerceirasEQuintas(mesIdx) {
             .map(c => c.treinamento_cod)
     );
 
-    // Avaliar carência de todos os cursos do catálogo
+    // Avaliar carência de todos os cursos do catálogo (histórico consolidado único)
     const catalogo = allTreinamentosCatalogo || [];
     const codigosSazonais = new Set(infoSazonal.temasSugeridos || []);
+    const historicoConsolidado = obterHistoricoTemasConsolidado();
 
     const candidatos = catalogo
         .filter(c => !codigosJaNoMes.has(c.id))
         .map(c => {
             const dataRefIso = vagasLivres[0].iso;
-            const carencia = calcularCarenciaTema(c.nome, dataRefIso);
+            const carencia = calcularCarenciaTema(c.nome, dataRefIso, historicoConsolidado);
             const ehSazonal = codigosSazonais.has(c.id);
             return {
                 ...c,
@@ -4011,18 +4059,52 @@ function abrirModalSugestaoTemas(mesIndex0) {
     const selMes = document.getElementById('modalSugestaoMesAlvo');
     if (selMes) selMes.value = String(modalSugestaoMesAlvoIndex);
 
+    const buscaInput = document.getElementById('modalSugestaoBuscaInput');
+    if (buscaInput) buscaInput.value = '';
+
+    ['recomendados', 'ineditos', 'liberados', 'bloqueados', 'todos'].forEach(a => {
+        const btn = document.getElementById('btnSugFiltro-' + a);
+        if (btn) btn.classList.toggle('active', a === modalSugestaoFiltroAtual);
+    });
+
     modal.style.display = 'flex';
     renderSugestoesTemasModal();
+    if (buscaInput) setTimeout(() => buscaInput.focus(), 80);
+}
+
+function agendarRenderSugestoesTemasModal() {
+    if (_timerRenderSugestoesTemas) clearTimeout(_timerRenderSugestoesTemas);
+    _timerRenderSugestoesTemas = setTimeout(() => {
+        _timerRenderSugestoesTemas = null;
+        renderSugestoesTemasModal();
+    }, 60);
+}
+
+function limparBuscaSugestaoTemas() {
+    if (_timerRenderSugestoesTemas) {
+        clearTimeout(_timerRenderSugestoesTemas);
+        _timerRenderSugestoesTemas = null;
+    }
+    const buscaInput = document.getElementById('modalSugestaoBuscaInput');
+    if (buscaInput) {
+        buscaInput.value = '';
+        renderSugestoesTemasModal();
+        buscaInput.focus();
+    }
 }
 
 function fecharModalSugestaoTemas() {
+    if (_timerRenderSugestoesTemas) {
+        clearTimeout(_timerRenderSugestoesTemas);
+        _timerRenderSugestoesTemas = null;
+    }
     const modal = document.getElementById('modalSugestaoTemasPat');
     if (modal) modal.style.display = 'none';
 }
 
 function filtrarAbaSugestaoTemas(aba) {
     modalSugestaoFiltroAtual = aba;
-    ['recomendados', 'ineditos', 'liberados', 'bloqueados'].forEach(a => {
+    ['recomendados', 'ineditos', 'liberados', 'bloqueados', 'todos'].forEach(a => {
         const btn = document.getElementById('btnSugFiltro-' + a);
         if (btn) btn.classList.toggle('active', a === aba);
     });
@@ -4035,6 +4117,9 @@ function renderSugestoesTemasModal() {
 
     const selMes = document.getElementById('modalSugestaoMesAlvo');
     if (selMes) modalSugestaoMesAlvoIndex = parseInt(selMes.value, 10);
+
+    const termoBusca = (document.getElementById('modalSugestaoBuscaInput')?.value || '').trim();
+    const tokensBusca = extrairTokensBuscaTemaPat(termoBusca);
 
     const mesIdx = modalSugestaoMesAlvoIndex;
     const ano = patAnoAtual;
@@ -4067,38 +4152,43 @@ function renderSugestoesTemasModal() {
     });
 
     const catalogo = allTreinamentosCatalogo || [];
+    const historicoConsolidado = obterHistoricoTemasConsolidado();
 
-    // Avaliar carência de todos os temas do catálogo
+    // Avaliar carência de todos os temas do catálogo (O(N) sobre mapa já memoizado)
     const todosAvaliados = catalogo.map(c => {
+        if (!c._buscaNormPat) {
+            c._buscaNormPat = normalizarBuscaTemaPat(`${c.id || ''} ${c.nome || ''} ${c.objetivo || ''}`);
+        }
         const jaNoMesData = temasJaNoMes.get(c.id);
-        const carencia = calcularCarenciaTema(c.nome, dataRefIso);
+        const carencia = calcularCarenciaTema(c.nome, dataRefIso, historicoConsolidado);
         return {
             ...c,
+            _buscaNormPat: c._buscaNormPat,
             jaNoMesData,
             carencia
         };
     });
 
+    const codigosSazonais = new Set(infoSazonal.temasSugeridos);
+    const ordenarPorPrioridadePat = (a, b) => {
+        if (!!a.jaNoMesData !== !!b.jaNoMesData) return a.jaNoMesData ? 1 : -1;
+        const aSazonal = codigosSazonais.has(a.id) ? 1 : 0;
+        const bSazonal = codigosSazonais.has(b.id) ? 1 : 0;
+        if (aSazonal !== bSazonal) return bSazonal - aSazonal;
+        const pesoStatus = s => (s === 'inedito' ? 3 : s === 'liberado' ? 2 : 1);
+        const diffStatus = pesoStatus(b.carencia.status) - pesoStatus(a.carencia.status);
+        if (diffStatus !== 0) return diffStatus;
+        return (b.carencia.dias || 0) - (a.carencia.dias || 0);
+    };
+
     let listaFiltrada = [];
 
     if (modalSugestaoFiltroAtual === 'recomendados') {
-        const codigosSazonais = new Set(infoSazonal.temasSugeridos);
         listaFiltrada = todosAvaliados.filter(item => {
             if (codigosSazonais.has(item.id)) return true;
             return item.carencia.status === 'inedito' || (item.carencia.status === 'liberado' && item.carencia.dias >= 120);
         });
-
-        listaFiltrada.sort((a, b) => {
-            // Se já está no mês, joga para o fim
-            if (!!a.jaNoMesData !== !!b.jaNoMesData) return a.jaNoMesData ? 1 : -1;
-            const aSazonal = codigosSazonais.has(a.id) ? 1 : 0;
-            const bSazonal = codigosSazonais.has(b.id) ? 1 : 0;
-            if (aSazonal !== bSazonal) return bSazonal - aSazonal;
-            const aInedito = a.carencia.status === 'inedito' ? 1 : 0;
-            const bInedito = b.carencia.status === 'inedito' ? 1 : 0;
-            if (aInedito !== bInedito) return bInedito - aInedito;
-            return (b.carencia.dias || 0) - (a.carencia.dias || 0);
-        });
+        listaFiltrada.sort(ordenarPorPrioridadePat);
     } else if (modalSugestaoFiltroAtual === 'ineditos') {
         listaFiltrada = todosAvaliados.filter(item => item.carencia.status === 'inedito');
     } else if (modalSugestaoFiltroAtual === 'liberados') {
@@ -4107,21 +4197,48 @@ function renderSugestoesTemasModal() {
     } else if (modalSugestaoFiltroAtual === 'bloqueados') {
         listaFiltrada = todosAvaliados.filter(item => item.carencia.status === 'bloqueado' || !!item.jaNoMesData);
         listaFiltrada.sort((a, b) => (a.carencia.dias || 0) - (b.carencia.dias || 0));
+    } else {
+        listaFiltrada = [...todosAvaliados];
+        listaFiltrada.sort(ordenarPorPrioridadePat);
+    }
+
+    let totalCoincidentesCatalogo = 0;
+    if (tokensBusca.length > 0) {
+        totalCoincidentesCatalogo = todosAvaliados.filter(item =>
+            tokensBusca.every(tk => item._buscaNormPat.includes(tk))
+        ).length;
+        listaFiltrada = listaFiltrada.filter(item =>
+            tokensBusca.every(tk => item._buscaNormPat.includes(tk))
+        );
     }
 
     if (listaFiltrada.length === 0) {
+        const avisoOutrasAbas = (tokensBusca.length > 0 && modalSugestaoFiltroAtual !== 'todos' && totalCoincidentesCatalogo > 0)
+            ? `<div style="margin-top:10px;">
+                    <button type="button" class="db-apply-btn" onclick="filtrarAbaSugestaoTemas('todos')" style="font-size:12px; padding:7px 14px; font-weight:700;">
+                        📋 Ver ${totalCoincidentesCatalogo} tema(s) encontrado(s) em Todo o Catálogo
+                    </button>
+               </div>`
+            : '';
         container.innerHTML = `
             <div style="padding:30px; text-align:center; color:var(--text-light); font-size:13px;">
-                Nenhum tema encontrado para este filtro no mês selecionado.
+                ${termoBusca
+                    ? `🔍 Nenhum tema encontrado nesta aba para "<strong>${escapeHTML(termoBusca)}</strong>".`
+                    : 'Nenhum tema encontrado para este filtro no mês selecionado.'}
+                ${avisoOutrasAbas}
             </div>
         `;
         return;
     }
 
+    const botaoVerTodosResultados = (tokensBusca.length > 0 && modalSugestaoFiltroAtual !== 'todos' && totalCoincidentesCatalogo > listaFiltrada.length)
+        ? ` • <button type="button" class="db-clear-btn" onclick="filtrarAbaSugestaoTemas('todos')" style="padding:2px 8px; font-size:11px; color:var(--primary); border-color:var(--primary); font-weight:700;">🔎 Ver todos no catálogo (${totalCoincidentesCatalogo})</button>`
+        : '';
+
     let html = `
         <div style="font-size:12px; color:var(--text-light); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
             <div>
-                Mostrando <strong>${listaFiltrada.length} tema(s)</strong> para <strong>${infoSazonal.nomeMes}/${ano}</strong>
+                Mostrando <strong>${listaFiltrada.length} tema(s)</strong> para <strong>${infoSazonal.nomeMes}/${ano}</strong>${botaoVerTodosResultados}
                 ${proximaDataSugerida 
                     ? ` • Próxima vaga regular: <strong style="color:#059669;">${formatSimpleDate(proximaDataSugerida.iso)} (${proximaDataSugerida.diaSemanaNome})</strong>`
                     : ' • <span style="color:#b45309; font-weight:700;">Todas as Terças e Quintas do mês já preenchidas</span>'
@@ -4132,7 +4249,7 @@ function renderSugestoesTemasModal() {
         <div style="max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
     `;
 
-    listaFiltrada.slice(0, 60).forEach(item => {
+    listaFiltrada.forEach(item => {
         const car = item.carencia;
         let badgeStatus = '';
         let podeInserir = true;
@@ -4288,6 +4405,7 @@ async function confirmarGerarSugestaoPat() {
 
     const novosItens = [];
     const codigosUsadosRecentemente = new Set();
+    const historicoConsolidado = obterHistoricoTemasConsolidado();
 
     for (let mesIdx = 0; mesIdx < 12; mesIdx++) {
         const info = CAMPANHAS_SAZONAIS_SST[mesIdx];
@@ -4324,7 +4442,7 @@ async function confirmarGerarSugestaoPat() {
             const cat = (allTreinamentosCatalogo || []).find(c => c.id === cod);
             if (!cat) continue;
 
-            const carencia = calcularCarenciaTema(cat.nome, datasAlvo[temasEscolhidos.length].iso);
+            const carencia = calcularCarenciaTema(cat.nome, datasAlvo[temasEscolhidos.length].iso, historicoConsolidado);
             if (carencia.status === 'inedito' || (carencia.status === 'liberado' && carencia.dias >= 90)) {
                 temasEscolhidos.push(cod);
                 codigosUsadosRecentemente.add(cod);
@@ -4336,7 +4454,7 @@ async function confirmarGerarSugestaoPat() {
             for (const cat of (allTreinamentosCatalogo || [])) {
                 if (temasEscolhidos.length >= datasAlvo.length) break;
                 if (temasEscolhidos.includes(cat.id) || codigosUsadosRecentemente.has(cat.id)) continue;
-                const carencia = calcularCarenciaTema(cat.nome, datasAlvo[temasEscolhidos.length].iso);
+                const carencia = calcularCarenciaTema(cat.nome, datasAlvo[temasEscolhidos.length].iso, historicoConsolidado);
                 if (carencia.status === 'inedito') {
                     temasEscolhidos.push(cat.id);
                     codigosUsadosRecentemente.add(cat.id);
@@ -4628,28 +4746,139 @@ function abrirModalAdicionarAcaoPat(mesIdx) {
 
     onPatAddDataChange();
 
-    // Popular select de treinamentos (EXCLUINDO TEMAS QUE JÁ ESTÃO NO MÊS)
-    const selectTrein = document.getElementById('patAdd_treinamento');
-    const codigosJaNoMes = new Set(itensMes.map(c => String(c.treinamento_cod).trim()));
+    // Limpar campo de pesquisa ao abrir e popular opções do mês
+    const buscaEl = document.getElementById('patAdd_buscaTreinamento');
+    if (buscaEl) buscaEl.value = '';
+    const listaRapida = document.getElementById('patAdd_resultadosRapidos');
+    if (listaRapida) listaRapida.style.display = 'none';
 
-    const opcoes = (allTreinamentosCatalogo || [])
+    patAddAtualizarOpcoesTreinamento(true);
+
+    modal.style.display = 'flex';
+    if (buscaEl) setTimeout(() => buscaEl.focus(), 80);
+}
+
+function patAddAtualizarOpcoesTreinamento(resetarSelecao) {
+    const mesIdx = parseInt(document.getElementById('patAdd_mesIdx')?.value || '0', 10);
+    const dataRef = document.getElementById('patAdd_data')?.value || '';
+    const anoRef = dataRef ? parseLocalDate(dataRef).getFullYear() : patAnoAtual;
+    const mesRef = dataRef ? parseLocalDate(dataRef).getMonth() : mesIdx;
+
+    const itensMes = (allTreinamentosCronograma || []).filter(c => {
+        if (!c.data_prevista) return false;
+        const d = parseLocalDate(c.data_prevista);
+        return d.getFullYear() === anoRef && d.getMonth() === mesRef;
+    });
+    const codigosJaNoMes = new Set(itensMes.map(c => String(c.treinamento_cod).trim()));
+    const historicoConsolidado = obterHistoricoTemasConsolidado();
+
+    patAddOpcoesCache = (allTreinamentosCatalogo || [])
         .filter(c => !codigosJaNoMes.has(String(c.id).trim()))
         .map(c => {
-            const carencia = calcularCarenciaTema(c.nome, dataInicial);
+            const carencia = calcularCarenciaTema(c.nome, dataRef, historicoConsolidado);
             let tag = '🏆 Inédito';
             if (carencia.status === 'liberado') tag = `✅ Liberado (${carencia.dias}d)`;
             else if (carencia.status === 'bloqueado') tag = `⚠️ Recente (${carencia.dias}d)`;
+            const idStr = String(c.id);
             return {
-                id: c.id,
+                id: idStr,
+                nome: c.nome || '',
+                objetivo: c.objetivo || '',
+                carga_horaria: c.carga_horaria || 2,
+                tag,
                 texto: `[${c.id}] ${c.nome} (${c.carga_horaria || 2}h - ${tag})`,
+                _buscaNorm: normalizarBuscaTemaPat(`${idStr} ${c.nome || ''} ${c.objetivo || ''} ${tag}`),
                 carencia
             };
         });
 
-    selectTrein.innerHTML = opcoes.map(op => `<option value="${escapeHTML(op.id)}">${escapeHTML(op.texto)}</option>`).join('');
+    const termoAtual = resetarSelecao ? '' : (document.getElementById('patAdd_buscaTreinamento')?.value || '');
+    filtrarPatAddTreinamentos(termoAtual, !resetarSelecao);
+}
+
+function filtrarPatAddTreinamentos(termo, ocultarListaRapida) {
+    const selectTrein = document.getElementById('patAdd_treinamento');
+    const contagemEl = document.getElementById('patAdd_contagemTemas');
+    const listaRapida = document.getElementById('patAdd_resultadosRapidos');
+    const feedback = document.getElementById('patAdd_carenciaFeedback');
+    if (!selectTrein) return;
+
+    const valorAnterior = String(selectTrein.value || '');
+    const termoLimpo = String(termo || '').trim();
+    const tokens = extrairTokensBuscaTemaPat(termoLimpo);
+    const filtradas = tokens.length === 0
+        ? patAddOpcoesCache
+        : patAddOpcoesCache.filter(op => tokens.every(tk => op._buscaNorm.includes(tk)));
+
+    if (contagemEl) {
+        contagemEl.textContent = termoLimpo
+            ? `${filtradas.length} de ${patAddOpcoesCache.length} tema(s)`
+            : `${patAddOpcoesCache.length} tema(s) disponíveis`;
+    }
+
+    if (filtradas.length === 0) {
+        selectTrein.innerHTML = `<option value="">Nenhum tema encontrado para "${escapeHTML(termoLimpo)}"</option>`;
+        if (feedback) {
+            feedback.innerHTML = '<span style="color:#b45309; font-weight:600;">🔍 Nenhum tema disponível corresponde à pesquisa digitada.</span>';
+        }
+        if (listaRapida) {
+            listaRapida.style.display = termoLimpo ? 'block' : 'none';
+            listaRapida.innerHTML = `<div style="padding:10px 12px; font-size:12px; color:var(--text-light); text-align:center;">Nenhum tema encontrado para "<strong>${escapeHTML(termoLimpo)}</strong>".</div>`;
+        }
+        return;
+    }
+
+    selectTrein.innerHTML = filtradas.map(op =>
+        `<option value="${escapeHTML(op.id)}">${escapeHTML(op.texto)}</option>`
+    ).join('');
+
+    const manterAnterior = filtradas.some(op => op.id === valorAnterior);
+    selectTrein.value = manterAnterior ? valorAnterior : filtradas[0].id;
     onPatAddTreinamentoChange();
 
-    modal.style.display = 'flex';
+    if (listaRapida) {
+        if (!termoLimpo || ocultarListaRapida) {
+            listaRapida.style.display = 'none';
+            listaRapida.innerHTML = '';
+        } else {
+            const selecionadoAtual = String(selectTrein.value || '');
+            listaRapida.style.display = 'block';
+            listaRapida.innerHTML = filtradas.map(op => {
+                const ativo = op.id === selecionadoAtual;
+                let badgeCor = 'background:#e0e7ff; color:#3730a3;';
+                if (op.carencia.status === 'liberado') badgeCor = 'background:#d1fae5; color:#065f46;';
+                else if (op.carencia.status === 'bloqueado') badgeCor = 'background:#fee2e2; color:#991b1b;';
+                return `
+                    <div data-cod="${escapeHTML(op.id)}" onclick="selecionarPatAddTreinamentoRapido(this.getAttribute('data-cod'))" style="padding:8px 10px; border-bottom:1px solid var(--border); cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:12px; background:${ativo ? '#eff6ff' : 'transparent'};">
+                        <div style="font-weight:${ativo ? '700' : '600'}; color:var(--text); overflow:hidden; text-overflow:ellipsis;">
+                            <span style="color:var(--primary); font-weight:700;">[${escapeHTML(op.id)}]</span> ${escapeHTML(op.nome)} <span style="color:var(--text-light); font-weight:400;">(${op.carga_horaria}h)</span>
+                        </div>
+                        <span style="flex-shrink:0; font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:999px; ${badgeCor}">${escapeHTML(op.tag)}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+}
+
+function selecionarPatAddTreinamentoRapido(cod) {
+    const selectTrein = document.getElementById('patAdd_treinamento');
+    const listaRapida = document.getElementById('patAdd_resultadosRapidos');
+    const contagemEl = document.getElementById('patAdd_contagemTemas');
+    if (!selectTrein || !cod) return;
+    selectTrein.value = String(cod);
+    onPatAddTreinamentoChange();
+    if (listaRapida) listaRapida.style.display = 'none';
+    if (contagemEl) contagemEl.textContent = `✓ Tema [${cod}] selecionado`;
+}
+
+function limparBuscaPatAddTreinamento() {
+    const buscaEl = document.getElementById('patAdd_buscaTreinamento');
+    if (buscaEl) {
+        buscaEl.value = '';
+        filtrarPatAddTreinamentos('');
+        buscaEl.focus();
+    }
 }
 
 function fecharModalAdicionarAcaoPat() {
@@ -4685,13 +4914,20 @@ function onPatAddDataChange() {
             badge.style.borderColor = '#fde68a';
         }
     }
+    if (patAddOpcoesCache.length > 0) {
+        patAddAtualizarOpcoesTreinamento(false);
+    }
 }
 
 function onPatAddTreinamentoChange() {
     const cod = document.getElementById('patAdd_treinamento').value;
-    const cat = (allTreinamentosCatalogo || []).find(c => c.id === cod);
+    const cat = (allTreinamentosCatalogo || []).find(c => String(c.id) === String(cod));
     const feedback = document.getElementById('patAdd_carenciaFeedback');
-    if (!cat || !feedback) return;
+    if (!feedback) return;
+    if (!cat) {
+        if (!cod) feedback.innerHTML = '';
+        return;
+    }
 
     const data = document.getElementById('patAdd_data').value;
     const carencia = calcularCarenciaTema(cat.nome, data);
@@ -4845,17 +5081,29 @@ function abrirModalReprogramarCronograma(id) {
         }
     }).join('');
 
-    // Preencher select de substituição de tema
-    const selectSub = document.getElementById('reprog_substitutoTemaSelect');
+    // Preencher select de substituição de tema com suporte a pesquisa instantânea
     const codigosJaNoMes = new Set();
     ocupadasMap.forEach(c => {
         if (c.id !== id) codigosJaNoMes.add(String(c.treinamento_cod).trim());
     });
 
-    const opcoes = (allTreinamentosCatalogo || [])
+    reprogOpcoesSubstitutoCache = (allTreinamentosCatalogo || [])
         .filter(c => !codigosJaNoMes.has(String(c.id).trim()))
-        .map(c => `<option value="${c.id}">[${c.id}] ${c.nome} (${c.carga_horaria || 2}h)</option>`);
-    selectSub.innerHTML = opcoes.join('');
+        .map(c => {
+            const idStr = String(c.id);
+            return {
+                id: idStr,
+                nome: c.nome || '',
+                objetivo: c.objetivo || '',
+                carga_horaria: c.carga_horaria || 2,
+                texto: `[${c.id}] ${c.nome} (${c.carga_horaria || 2}h)`,
+                _buscaNorm: normalizarBuscaTemaPat(`${idStr} ${c.nome || ''} ${c.objetivo || ''}`)
+            };
+        });
+
+    const buscaReprogEl = document.getElementById('reprog_buscaSubstitutoTema');
+    if (buscaReprogEl) buscaReprogEl.value = '';
+    filtrarReprogSubstitutoTema('');
 
     document.getElementById('reprog_statusMsg').textContent = '';
     avaliarDestinoReprogramacao();
@@ -4863,10 +5111,61 @@ function abrirModalReprogramarCronograma(id) {
     modal.style.display = 'flex';
 }
 
+function filtrarReprogSubstitutoTema(termo) {
+    const selectSub = document.getElementById('reprog_substitutoTemaSelect');
+    const contagemEl = document.getElementById('reprog_contagemTemas');
+    if (!selectSub) return;
+
+    const valorAnterior = String(selectSub.value || '');
+    const termoLimpo = String(termo || '').trim();
+    const tokens = extrairTokensBuscaTemaPat(termoLimpo);
+    const filtradas = tokens.length === 0
+        ? reprogOpcoesSubstitutoCache
+        : reprogOpcoesSubstitutoCache.filter(op => tokens.every(tk => op._buscaNorm.includes(tk)));
+
+    if (contagemEl) {
+        contagemEl.textContent = termoLimpo
+            ? `${filtradas.length} de ${reprogOpcoesSubstitutoCache.length} tema(s)`
+            : `${reprogOpcoesSubstitutoCache.length} tema(s) disponíveis`;
+    }
+
+    if (filtradas.length === 0) {
+        selectSub.innerHTML = `<option value="">Nenhum tema encontrado para "${escapeHTML(termoLimpo)}"</option>`;
+        return;
+    }
+
+    selectSub.innerHTML = filtradas.map(op =>
+        `<option value="${escapeHTML(op.id)}">${escapeHTML(op.texto)}</option>`
+    ).join('');
+
+    const manterAnterior = filtradas.some(op => op.id === valorAnterior);
+    selectSub.value = manterAnterior ? valorAnterior : filtradas[0].id;
+}
+
+function limparBuscaReprogSubstitutoTema() {
+    const buscaEl = document.getElementById('reprog_buscaSubstitutoTema');
+    if (buscaEl) {
+        buscaEl.value = '';
+        filtrarReprogSubstitutoTema('');
+        buscaEl.focus();
+    }
+}
+
 function fecharModalReprogramarCronograma() {
     const modal = document.getElementById('modalReprogramarCronograma');
     if (modal) modal.style.display = 'none';
 }
+
+window.normalizarBuscaTemaPat = normalizarBuscaTemaPat;
+window.extrairTokensBuscaTemaPat = extrairTokensBuscaTemaPat;
+window.correspondeBuscaTemaPat = correspondeBuscaTemaPat;
+window.agendarRenderSugestoesTemasModal = agendarRenderSugestoesTemasModal;
+window.limparBuscaSugestaoTemas = limparBuscaSugestaoTemas;
+window.filtrarPatAddTreinamentos = filtrarPatAddTreinamentos;
+window.selecionarPatAddTreinamentoRapido = selecionarPatAddTreinamentoRapido;
+window.limparBuscaPatAddTreinamento = limparBuscaPatAddTreinamento;
+window.filtrarReprogSubstitutoTema = filtrarReprogSubstitutoTema;
+window.limparBuscaReprogSubstitutoTema = limparBuscaReprogSubstitutoTema;
 
 function reprogPreencherData(isoData) {
     const input = document.getElementById('reprog_novaData');

@@ -32,7 +32,8 @@ const testes = [
     'dashboard/tests/relatorio_sms.test.cjs',
     'dashboard/tests/terceiros_gestao.test.cjs',
     'dashboard/tests/terceiros_subtabs.test.cjs',
-    'dashboard/tests/bloco_anotacoes.test.cjs'
+    'dashboard/tests/bloco_anotacoes.test.cjs',
+    'dashboard/tests/busca_temas_treinamentos.test.cjs'
 ];
 if (process.argv.includes('--list')) {
     console.log(testes.join('\n'));
